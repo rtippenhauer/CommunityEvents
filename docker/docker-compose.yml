@@ -1,0 +1,137 @@
+version: '3.9'
+
+# ============================================================
+# DinnerBears.com — Docker Compose
+# Networks:
+#   public   — nginx only (external traffic)
+#   internal — all containers (api, frontend, mysql)
+# Only nginx has public port bindings.
+# ============================================================
+
+services:
+
+  # ── NGINX Proxy ─────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: dinnerbears-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+      - frontend-build:/usr/share/nginx/html:ro
+    depends_on:
+      - angular
+      - nestjs-api
+    networks:
+      - public
+      - internal
+    restart: unless-stopped
+
+  # ── Angular Frontend ────────────────────────────────────────
+  angular:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: build
+    container_name: dinnerbears-angular
+    volumes:
+      - frontend-build:/app/dist/dinnerbears/browser
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ── NestJS API ──────────────────────────────────────────────
+  # NO public port bindings — internal only
+  nestjs-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: dinnerbears-api
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - DB_HOST=mysql
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - FACEBOOK_CLIENT_ID=${FACEBOOK_CLIENT_ID}
+      - FACEBOOK_CLIENT_SECRET=${FACEBOOK_CLIENT_SECRET}
+      - BREVO_API_KEY=${BREVO_API_KEY}
+      - BREVO_FROM_EMAIL=${BREVO_FROM_EMAIL}
+      - BREVO_FROM_NAME=${BREVO_FROM_NAME}
+      - BREVO_DAILY_LIMIT=${BREVO_DAILY_LIMIT}
+      - GMAIL_SMTP_HOST=${GMAIL_SMTP_HOST}
+      - GMAIL_SMTP_PORT=${GMAIL_SMTP_PORT}
+      - GMAIL_SMTP_USER=${GMAIL_SMTP_USER}
+      - GMAIL_SMTP_APP_PASSWORD=${GMAIL_SMTP_APP_PASSWORD}
+      - GMAIL_FROM_NAME=${GMAIL_FROM_NAME}
+      - GMAIL_DAILY_LIMIT=${GMAIL_DAILY_LIMIT}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_SUBJECT=${VAPID_SUBJECT}
+      - GEOCODING_API_KEY=${GEOCODING_API_KEY}
+      - GEOCODING_PROVIDER=${GEOCODING_PROVIDER}
+      - FACEBOOK_GRAPH_TOKEN=${FACEBOOK_GRAPH_TOKEN}
+      - FACEBOOK_CINCINNATI_GROUP_ID=${FACEBOOK_CINCINNATI_GROUP_ID}
+      - FACEBOOK_DAYTON_GROUP_ID=${FACEBOOK_DAYTON_GROUP_ID}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+    # Debug port (dev only — remove for production)
+    # ports:
+    #   - "9229:9229"
+
+  # ── MySQL Database ──────────────────────────────────────────
+  # NO public port bindings — internal only
+  mysql:
+    image: mysql:8.0
+    container_name: dinnerbears-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${DB_USER}", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Dev only — uncomment to connect from host with MySQL client
+    # ports:
+    #   - "3306:3306"
+
+# ── Volumes ──────────────────────────────────────────────────
+volumes:
+  mysql-data:
+    driver: local
+  uploads:
+    driver: local
+  frontend-build:
+    driver: local
+
+# ── Networks ─────────────────────────────────────────────────
+networks:
+  public:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true
