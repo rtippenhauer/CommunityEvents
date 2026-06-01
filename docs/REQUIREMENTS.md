@@ -159,21 +159,21 @@ a per-event "additional info" free-text field.
 
 ### 6.1 Group Configuration
 
-**R-039** Two Facebook groups are configured globally in admin settings, not
-per-event.
+**R-039** Two Facebook groups are configured in admin settings.
 
 **R-040** **Group 1** is the admin-managed group: the admin is a group admin on
 Facebook. It is **city-scoped** — Cincinnati and Dayton each have their own
-Group 1 configured separately.
+Group 1 configured separately in the Cities admin tab.
 
 **R-041** **Group 2** is a secondary group the admin can post to but does not
-administer on Facebook. It is configured globally (not city-scoped).
+administer on Facebook. It is **scoped to Dayton only**. Cincinnati events do
+not post to Group 2.
 
 ### 6.2 Group 1 — Full Two-Way Sync
 
 **R-042** When a website event is published, a corresponding Facebook Event is
 created inside Group 1 for the matching city. This requires the admin token
-to have `publish_to_groups` permission (see R-058).
+to have `publish_to_groups` permission (see R-052).
 
 **R-043** Facebook Event creation is triggered automatically on publish by
 default. An admin toggle in settings can switch the trigger to manual, in which
@@ -197,11 +197,12 @@ current website RSVP count. The appended note reads:
 If the Facebook count is unavailable (sync error, event not yet created), only
 the website count is shown; no placeholder is shown for the Facebook count.
 
-### 6.3 Group 2 — Post-Only Announcement
+### 6.3 Group 2 — Dayton Post-Only Announcement
 
-**R-048** When a website event is published, an announcement post is made to
-Group 2. The post contains the event name, date, time, restaurant name, and a
-direct link back to the website event page.
+**R-048** When a Dayton website event is published, an announcement post is made
+to Group 2. The post contains the event name, date, time, restaurant name, and
+a direct link back to the website event page. Cincinnati events do not post to
+Group 2.
 
 **R-049** Group 2 posting is triggered automatically on publish by default. An
 admin toggle in settings can switch it to manual, matching the same trigger
@@ -277,7 +278,7 @@ initiate or cancel account deletion.
 revoke any link.
 
 **R-067** **Cities tab:** add a city, configure its Group 1 Facebook group,
-configure the global Group 2 Facebook group, toggle auto-post on/off for
+configure the Dayton-only Group 2 Facebook group, toggle auto-post on/off for
 each trigger (event publish → FB Event, event publish → Group 2 post).
 
 **R-068** **Email dashboard:** show Brevo and Gmail send counts for today, toggle
@@ -334,3 +335,34 @@ prohibited.
 **R-081** The `docker compose up` command from a clean checkout (with a valid
 `.env`) must produce a fully functional stack within 2 minutes on the Unraid
 host.
+
+---
+
+## 12. Historical Restaurant Import (Phase 4.5)
+
+**R-082** A one-time utility script pulls all past events from Group 1 (the
+admin-managed Facebook group) via the Facebook Graph API. The script uses the
+same admin user token and `publish_to_groups` permission model as the live
+integration (R-051–R-052).
+
+**R-083** The import script exports pulled event data to a `.xlsx` spreadsheet
+containing the following columns: Event Title, Event Date, Location Name,
+Address, and Notes. This file is used for manual review and cleanup before
+import.
+
+**R-084** A second import script reads the reviewed `.xlsx` file and inserts
+records into the `restaurants` table. Duplicate detection is performed by
+restaurant name (case-insensitive); existing records are skipped, not
+overwritten.
+
+**R-085** Address geocoding (R-029) runs automatically on each imported
+restaurant record during the import script execution.
+
+**R-086** This import is treated as a one-time setup operation. It is run via
+Claude Code directly against the database, not exposed as a UI feature. The
+admin may use HeidiSQL to manually edit or remove imported records after the
+fact.
+
+**R-087** The historical import is prioritized as **Phase 4.5**, between the
+Email System (Phase 4) and the Restaurant Database UI (Phase 5), so that the
+restaurant table is pre-populated before the restaurant management UI is built.
