@@ -8,5 +8,5 @@ RUN npm run build -- --configuration production
 
 FROM alpine:latest
 WORKDIR /app
-COPY --from=build /app/dist/frontend/browser ./dist/frontend/browser
-CMD ["sh", "-c", "cp -r /app/dist/frontend/browser/* /output/"]
+COPY --from=build /app/dist/dinnerbears/browser ./dist/dinnerbears/browser
+CMD ["sh", "-c", "cp -r /app/dist/dinnerbears/browser/* /output/"]

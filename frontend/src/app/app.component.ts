@@ -32,10 +32,10 @@ export class AppComponent {
   isMobile = toSignal(
     this.breakpointObserver
       .observe([Breakpoints.XSmall, Breakpoints.Small])
-      .pipe(map(result => result.matches)),
+      .pipe(map((result) => result.matches)),
     { initialValue: false },
   );
 
-  readonly currentCity =
-    window.location.hostname.match(/^([a-z]+)\./)?.[1] ?? 'cincinnati';
+  readonly currentCity = window.location.hostname.match(/^([a-z]+)\./)?.[1] ?? 'cincinnati';
+  readonly currentYear = new Date().getFullYear();
 }

@@ -1,18 +1,19 @@
 # DinnerBears — Docker Compose
-# All services on internal network except NGINX
-# API and MySQL have NO public ports
+# MySQL runs on Unraid (192.168.2.241:3306) — not managed here
+# API has no public ports; nginx is the only public entry point
 
 version: '3.9'
 
 services:
 
   nginx:
-    image: nginx:alpine
+    build:
+      context: docker/nginx
+      dockerfile: Dockerfile
     container_name: dinnerbears-nginx
     ports:
-      - "8080:80"
+      - "8081:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - angular-dist:/usr/share/nginx/html:ro
     depends_on:
       - nestjs-api
@@ -24,18 +25,18 @@ services:
 
   angular:
     build:
-      context: ../frontend
+      context: frontend
       dockerfile: Dockerfile
     container_name: dinnerbears-angular
     volumes:
-      - angular-dist:/app/dist/frontend/browser
+      - angular-dist:/output
     networks:
       - internal
     restart: unless-stopped
 
   nestjs-api:
     build:
-      context: ../api
+      context: api
       dockerfile: Dockerfile
     container_name: dinnerbears-api
     environment:
@@ -61,10 +62,9 @@ services:
       - VAPID_SUBJECT=${VAPID_SUBJECT}
       - GEOCODING_API_KEY=${GEOCODING_API_KEY}
       - APP_URL=${APP_URL}
-    depends_on:
-      - mysql
     networks:
       - internal
+      - public
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/health"]
@@ -72,28 +72,7 @@ services:
       timeout: 10s
       retries: 3
 
-  mysql:
-    image: mysql:8.0
-    container_name: dinnerbears-mysql
-    environment:
-      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
-      - MYSQL_DATABASE=${DB_NAME}
-      - MYSQL_USER=${DB_USER}
-      - MYSQL_PASSWORD=${DB_PASSWORD}
-    volumes:
-      - mysql-data:/var/lib/mysql
-    networks:
-      - internal
-    restart: unless-stopped
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
 volumes:
-  mysql-data:
   angular-dist:
 
 networks:
