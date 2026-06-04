@@ -57,7 +57,7 @@ export class UserEntity {
   @Column({ name: 'email_verified_at', type: 'datetime', nullable: true })
   emailVerifiedAt: Date | null;
 
-  @Column({ name: 'password_hash', length: 255, nullable: true })
+  @Column({ name: 'password_hash', type: 'varchar', length: 255, nullable: true })
   passwordHash: string | null;
 
   @Column({ name: 'city_id', unsigned: true })
@@ -70,16 +70,16 @@ export class UserEntity {
   @Column({ type: 'enum', enum: UserRole, default: UserRole.MEMBER })
   role: UserRole;
 
-  @Column({ name: 'profile_photo_path', length: 500, nullable: true })
+  @Column({ name: 'profile_photo_path', type: 'varchar', length: 500, nullable: true })
   profilePhotoPath: string | null;
 
   @Column({ type: 'enum', enum: UserStatus, default: UserStatus.ACTIVE })
   status: UserStatus;
 
-  @Column({ name: 'invited_by', unsigned: true, nullable: true })
+  @Column({ name: 'invited_by', type: 'int', unsigned: true, nullable: true })
   invitedBy: number | null;
 
-  @Column({ name: 'invite_id', unsigned: true, nullable: true })
+  @Column({ name: 'invite_id', type: 'int', unsigned: true, nullable: true })
   inviteId: number | null;
 
   @Column({
@@ -90,7 +90,7 @@ export class UserEntity {
   })
   inviteSource: InviteSource | null;
 
-  @Column({ name: 'invite_source_name', length: 255, nullable: true })
+  @Column({ name: 'invite_source_name', type: 'varchar', length: 255, nullable: true })
   inviteSourceName: string | null;
 
   @Column({ name: 'last_login_at', type: 'datetime', nullable: true })

@@ -11,10 +11,10 @@ export class AppConfigEntity {
   @Column({ name: 'config_value', type: 'text' })
   configValue: string;
 
-  @Column({ length: 500, nullable: true })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   description: string | null;
 
-  @Column({ name: 'updated_by', unsigned: true, nullable: true })
+  @Column({ name: 'updated_by', type: 'int', unsigned: true, nullable: true })
   updatedBy: number | null;
 
   @UpdateDateColumn({ name: 'updated_at' })

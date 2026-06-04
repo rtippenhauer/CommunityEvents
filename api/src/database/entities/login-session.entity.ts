@@ -23,16 +23,16 @@ export class LoginSessionEntity {
   @Column({ name: 'jwt_jti', length: 100, unique: true })
   jwtJti: string;
 
-  @Column({ name: 'user_agent', length: 500, nullable: true })
+  @Column({ name: 'user_agent', type: 'varchar', length: 500, nullable: true })
   userAgent: string | null;
 
-  @Column({ name: 'ip_address', length: 45, nullable: true })
+  @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
   ipAddress: string | null;
 
-  @Column({ length: 100, nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   country: string | null;
 
-  @Column({ length: 100, nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   city: string | null;
 
   @Column({ name: 'is_active', default: true })

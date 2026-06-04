@@ -25,10 +25,10 @@ export class FacebookGroupConfigEntity {
   @Column({ length: 500 })
   url: string;
 
-  @Column({ name: 'group_id', length: 50, nullable: true })
+  @Column({ name: 'group_id', type: 'varchar', length: 50, nullable: true })
   groupId: string | null;
 
-  @Column({ name: 'city_id', unsigned: true, nullable: true })
+  @Column({ name: 'city_id', type: 'int', unsigned: true, nullable: true })
   cityId: number | null;
 
   @ManyToOne(() => CityEntity, { nullable: true })

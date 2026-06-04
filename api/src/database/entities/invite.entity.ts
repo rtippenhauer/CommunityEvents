@@ -36,36 +36,36 @@ export class InviteEntity {
   @JoinColumn({ name: 'created_by' })
   creator: UserEntity;
 
-  @Column({ name: 'city_id', unsigned: true, nullable: true })
+  @Column({ name: 'city_id', type: 'int', unsigned: true, nullable: true })
   cityId: number | null;
 
   @ManyToOne(() => CityEntity, { nullable: true })
   @JoinColumn({ name: 'city_id' })
   city: CityEntity | null;
 
-  @Column({ name: 'event_id', unsigned: true, nullable: true })
+  @Column({ name: 'event_id', type: 'int', unsigned: true, nullable: true })
   eventId: number | null;
 
-  @Column({ name: 'facebook_group_id', unsigned: true, nullable: true })
+  @Column({ name: 'facebook_group_id', type: 'int', unsigned: true, nullable: true })
   facebookGroupId: number | null;
 
   @ManyToOne(() => FacebookGroupConfigEntity, { nullable: true })
   @JoinColumn({ name: 'facebook_group_id' })
   facebookGroup: FacebookGroupConfigEntity | null;
 
-  @Column({ name: 'bound_to_email', length: 255, nullable: true })
+  @Column({ name: 'bound_to_email', type: 'varchar', length: 255, nullable: true })
   boundToEmail: string | null;
 
-  @Column({ name: 'bound_to_name', length: 200, nullable: true })
+  @Column({ name: 'bound_to_name', type: 'varchar', length: 200, nullable: true })
   boundToName: string | null;
 
-  @Column({ name: 'redeemed_by', unsigned: true, nullable: true })
+  @Column({ name: 'redeemed_by', type: 'int', unsigned: true, nullable: true })
   redeemedBy: number | null;
 
   @Column({ name: 'redeemed_at', type: 'datetime', nullable: true })
   redeemedAt: Date | null;
 
-  @Column({ name: 'guest_rsvp_id', unsigned: true, nullable: true })
+  @Column({ name: 'guest_rsvp_id', type: 'int', unsigned: true, nullable: true })
   guestRsvpId: number | null;
 
   @Column({ name: 'expires_at', type: 'datetime' })

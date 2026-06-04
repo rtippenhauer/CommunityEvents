@@ -31,7 +31,7 @@ export class OAuthAccountEntity {
   @Column({ name: 'provider_id', length: 255 })
   providerId: string;
 
-  @Column({ length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   email: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
