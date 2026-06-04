@@ -1,14 +1,11 @@
 {
   "recommendations": [
-    "angular.ng-template",
-    "dbaeumer.vscode-eslint",
+    "anthropic.claude-code",
     "esbenp.prettier-vscode",
-    "eamodio.gitlens",
-    "rangav.vscode-thunder-client",
-    "pkief.material-icon-theme",
-    "christian-kohler.path-intellisense",
-    "ms-azuretools.vscode-docker",
-    "cweijan.vscode-mysql-client2",
-    "anthropic.claude-code"
+    "dbaeumer.vscode-eslint",
+    "angular.ng-template",
+    "ms-vscode.vscode-typescript-next",
+    "formulahendry.auto-rename-tag",
+    "streetsidesoftware.code-spell-checker"
   ]
 }

@@ -1,44 +1,38 @@
-# Environment files - NEVER commit these
+# Environment
 .env
 .env.*
 !.env.example
 
-# Claude Code local settings
-.claude/settings.local.json
-
 # Dependencies
 node_modules/
-*/node_modules/
+.npm
 
 # Build output
 dist/
-*/dist/
 build/
-*/build/
-
-# Angular cache
 .angular/
-*/.angular/
 
-# Coverage
-coverage/
-*/coverage/
-
-# IDE
-.idea/
-*.iml
+# Logs
+*.log
+npm-debug.log*
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
-logs/
-*/logs/
+# IDE
+.idea/
+*.swp
+*.swo
 
-# Docker volumes (local dev data)
-docker/volumes/
+# TypeScript
+*.tsbuildinfo
 
-# Uploads (local dev)
+# Coverage
+coverage/
+
+# Docker
+docker/data/
+
+# Uploads
 uploads/

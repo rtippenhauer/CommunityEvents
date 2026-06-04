@@ -1,6 +1,6 @@
 # DinnerBears — Product Requirements
 
-_Last updated: 2026-05-31_
+_Last updated: 2026-06-03_
 
 Requirements are numbered R-001 … R-NNN and grouped by domain. Each item is a
 testable statement of what the system must do. Implementation details live in
@@ -14,8 +14,8 @@ CLAUDE.md, PHASES.md, and the module-level CLAUDE.md files.
 share an internal Docker network; only NGINX Proxy Manager exposes public ports.
 
 **R-002** The frontend is served at `dinnerbears.com`, with city subdomains
-`cincinnati.dinnerbears.com` and `dayton.dinnerbears.com`. Additional cities are
-added by config without code changes.
+`cincinnati.dinnerbears.com` and `dayton.dinnerbears.com`. Additional cities
+are added by config without code changes.
 
 **R-003** City context is resolved server-side from the HTTP `Host` header
 subdomain; it is never derived solely from client-supplied input.
@@ -25,10 +25,14 @@ reaches it through NGINX (`/api/*` → internal `nestjs-api:3000`).
 
 **R-005** A health check endpoint `GET /api/v1/health` returns HTTP 200 with
 `{ status, timestamp, database }` when all subsystems are reachable, and HTTP
-503 with `status: "degraded"` plus a per-subsystem breakdown when any are not.
+503 with `status: "degraded"` when any are not.
 
-**R-006** All environment secrets (DB credentials, JWT secret, OAuth client IDs,
-API keys, VAPID keys) are supplied via `.env` and never hardcoded or committed.
+**R-006** All environment secrets are supplied via `.env` and never hardcoded
+or committed.
+
+**R-007** A placeholder static site (landing page, privacy policy, terms of
+service) is deployed at `dinnerbears.com` during Phase 1 to satisfy Facebook
+App domain verification requirements.
 
 ---
 
@@ -36,333 +40,408 @@ API keys, VAPID keys) are supplied via `.env` and never hardcoded or committed.
 
 ### 2.1 Invite-Only Registration
 
-**R-007** Open registration is disabled. An account can only be created by
+**R-008** Open registration is disabled. An account can only be created by
 redeeming a valid, unexpired invite link.
 
-**R-008** Member invite links are single-use, expire after 30 days, and record
-the inviting member's ID.
+**R-009** Every account has a traceable invite lineage. The `invited_by` field
+records the member or admin who issued the invite. Campaign links record the
+source Facebook group.
 
-**R-009** Admin invite links are unlimited-use within an admin-configured time
-gate (maximum 30 days). They are revocable at any time.
+**R-010** Google OAuth account creation requires a valid invite link. OAuth
+may not be used to bypass the invite requirement.
 
-**R-010** Google OAuth and Facebook OAuth account creation still requires a valid
-invite link. OAuth may not be used to bypass the invite requirement.
+**R-011** The registration form collects: full name, email address, password
+(optional for OAuth), and city. All fields are validated server-side.
 
-**R-011** The registration form collects: full name, email address, password,
-and city. All fields are validated server-side via DTO + ValidationPipe.
+**R-012** Email-only registrations require email verification before the account
+is activated. Unverified accounts are in `pending` status and are soft-purged
+after 48 hours if not confirmed.
 
-### 2.2 Authentication
+**R-013** Members can request a new verification email if the original expired.
 
-**R-012** Passwords are hashed with Argon2id (or bcrypt work factor ≥ 12).
-Plaintext passwords are never stored or logged.
+### 2.2 Invite Types
 
-**R-013** Authentication sessions use JWTs stored in HTTP-only, Secure,
-SameSite=Strict cookies. JWTs are never returned to or stored in
-`localStorage` or `sessionStorage`.
+**R-014** The system supports five invite types:
 
-**R-014** Login supports three methods: email + password, Google OAuth, and
-Facebook OAuth. All three resolve to the same `users` row via `oauth_accounts`.
+| Type | Uses | Expiry | Created by | Purpose |
+|---|---|---|---|---|
+| `member` | 1 | 48 hours | Any member | Direct personal invite |
+| `admin` | Unlimited | Up to 30 days | Admin | Admin onboarding gate |
+| `campaign_facebook` | Unlimited | Up to 30 days | Admin only | Facebook group migration |
+| `guest_rsvp` | 1 | Event date | Member (via RSVP) | Email +1 invite |
+| `shareable_rsvp` | 1 | Event date | Member (via RSVP) | Copy link +1 invite |
 
-**R-015** Auth endpoints (`/api/v1/auth/*`, `/api/v1/users/register`) are rate-
-limited via `@nestjs/throttler`.
+**R-015** Member invites (`member` type) are tied to the invitee's specific
+email address. If someone else attempts to redeem the link it is rejected.
+Only one active pending invite per invitee email is allowed at a time.
 
-**R-016** Login sessions are tracked in `login_sessions` with device
+**R-016** Campaign Facebook invites (`campaign_facebook` type) are admin-only.
+When creating one, the admin selects which configured Facebook group the link
+is for, sets an expiry date (maximum 30 days), and optionally sets a use cap.
+Members who register via a campaign link have their lineage recorded as:
+`invite_source = facebook_group`, `invite_source_name = [group name]`.
+
+**R-017** Campaign links expire after a maximum of 30 days. This prevents
+members finding old Facebook posts and using stale links to gain access.
+Expired links show a friendly message directing the visitor to contact admin.
+Admins renew links by generating a new one — old links cannot be extended.
+
+**R-018** Only one campaign link per Facebook group should be active at a time.
+The admin UI warns if an active link already exists for the selected group.
+
+### 2.3 Authentication (Phase 2 — Google OAuth)
+
+**R-019** Phase 2 implements Google OAuth as the sole login method.
+
+**R-020** Authentication sessions use JWTs stored in HTTP-only, Secure,
+SameSite=Strict cookies. JWTs are never stored in `localStorage` or
+`sessionStorage`.
+
+**R-021** Auth endpoints are rate-limited via `@nestjs/throttler`.
+
+**R-022** Login sessions are tracked in `login_sessions` with device
 fingerprinting (user-agent, IP, geoip-lite lookup). Logins from a new device
-trigger a security-alert email and in-app notification.
+trigger an in-app security notification.
 
-### 2.3 Account Management
+**R-023** The `users` table tracks `last_login_at` and `login_count` for
+activity monitoring.
 
-**R-017** Members can view and edit their profile: name, email, city, profile
+### 2.4 Authentication Expansion (Phase 6)
+
+**R-024** Phase 6 adds Facebook OAuth login, reusing the Meta App token
+obtained during Phase 3.5.
+
+**R-025** Phase 6 adds email + password login with email verification,
+password reset, and password change flows.
+
+**R-026** All three login methods (Google, Facebook, email) resolve to the
+same `users` row via `oauth_accounts`.
+
+### 2.5 Account Management
+
+**R-027** Members can view and edit their profile: name, email, city, profile
 photo, and linked OAuth accounts.
 
-**R-018** Members can change their password from the profile Security tab.
+**R-028** Account deletion is soft-deleted on request with a 30-day recovery
+window. On day 30 all PII is hard-deleted and a one-way hash of the email
+is retained in `email_suppressions`.
 
-**R-019** A password-reset flow sends a time-limited token via email (Brevo
-Priority 1 template). The token is single-use and invalidated on redemption.
+**R-029** When a previously suppressed email re-registers:
+- `unsubscribed` → account created with `email_status = unsubscribed`
+- `bounced` → account flagged for admin review before activation
+- `complained` → registration blocked; admin must manually approve
 
-**R-020** Account deletion is soft-deleted on request. A 30-day recovery window
-is provided. On day 30 all PII is hard-deleted and the row is anonymised.
+### 2.6 Inactivity Management
 
----
+**R-030** A scheduled job monitors `last_login_at` and enforces:
+- **60 days** — re-engagement email sent
+- **90 days** — final warning email sent
+- **120 days** — account automatically soft-deleted
+- **150 days** — account hard-deleted, email hash retained
 
-## 3. Email System
+**R-031** Inactivity emails are skipped if `email_status` is not `active`.
+The deletion timeline proceeds regardless of email status.
 
-**R-021** All outbound email is queued in the `email_queue` MySQL table. Email
-is never sent inline during a request.
-
-**R-022** An `EmailDispatcherService` cron runs every 5 minutes, dequeues
-messages in priority order, and dispatches them via the active provider.
-
-**R-023** The primary email provider is Brevo (limit: 300 messages/day). Gmail
-SMTP via Nodemailer is the overflow fallback (limit: 500 messages/day).
-Combined ceiling is 800 messages/day.
-
-**R-024** Provider selection is controlled by a flag in `email_provider_config`.
-An admin can toggle the overflow on/off from the admin panel.
-
-**R-025** The system supports nine transactional email templates: (1) invite,
-(2) registration confirmation, (3) password reset, (4) password changed,
-(5) new security alert, (6) event published, (7) RSVP confirmation,
-(8) event reminder (24 h before), (9) account deletion confirmation.
-
-**R-026** Member notification preferences (per template opt-in/out) are stored
-in `notification_preferences` and respected by the dispatcher.
+**R-032** Admin panel shows inactivity segments: active, 60+ days inactive,
+90+ days inactive, pending hard-delete.
 
 ---
 
-## 4. Restaurant Database
+## 3. Email System (Phase 5)
 
-**R-027** Restaurants are created and maintained by admins and moderators.
-Regular members have read-only access.
+### 3.1 Queue & Dispatch
 
-**R-028** Each restaurant record stores: name, address, lat/lng (geocoded from
-address), phone, website URL, description, city, and up to N photos.
+**R-033** All outbound email is queued in `email_queue`. Email is never sent
+inline during a request.
 
-**R-029** Address geocoding to lat/lng is performed server-side via a configured
-geocoding API. The result is stored; re-geocoding is triggered only on address
-change.
+**R-034** An `EmailDispatcherService` cron runs every 5 minutes, dequeues in
+priority order, and dispatches via the active provider.
 
-**R-030** Photos are uploaded via multipart form, validated for MIME type and
-extension server-side, and stored on an Unraid volume outside the web root.
+**R-035** Primary provider: Brevo (300/day). Overflow fallback: Gmail SMTP
+via Nodemailer (500/day). Combined ceiling: 800/day.
 
-**R-031** The restaurant list supports search by name and filter by city.
+**R-036** Provider selection is admin-togglable from the email dashboard.
+
+**R-037** The system supports eleven transactional email templates:
+(1) invite, (2) email verification, (3) registration confirmation,
+(4) password reset, (5) password changed, (6) security alert,
+(7) event published, (8) RSVP confirmation, (9) event reminder (24h),
+(10) account deletion confirmation, (11) re-engagement (60-day and 90-day
+variants).
+
+**R-038** Member notification preferences are stored in
+`notification_preferences` and respected by the dispatcher.
+
+### 3.2 Email Status & Bounce Handling
+
+**R-039** Each user has an `email_status`:
+- `pending` — not yet verified
+- `active` — emails send normally
+- `unsubscribed` — opted out via unsubscribe link
+- `bounced` — hard bounce from Brevo webhook
+- `complained` — spam complaint from Brevo webhook
+
+**R-040** Brevo send-event webhooks are consumed for delivery, open, bounce,
+block, and spam complaint. The `email_queue` record is updated with the
+actual Brevo delivery status.
+
+**R-041** On hard bounce: `email_status = bounced`, pending emails cancelled,
+admin notified via in-app notification.
+
+**R-042** On spam complaint: `email_status = complained`, pending emails
+permanently cancelled. Account stays active but email is disabled. On next
+login a banner informs the member and instructs them to contact admin.
+Not self-service reversible — admin must manually restore after the member
+resolves it on their email provider's side.
+
+**R-043** On unsubscribe: `email_status = unsubscribed`, pending emails
+cancelled. On next login a dismissible banner offers a Re-subscribe option.
+
+**R-044** Re-subscribe calls `DELETE /v3/contacts/blockedContacts/{email}`
+on the Brevo API to remove from the suppression list, then sets
+`email_status = active`. Available only for `unsubscribed` status —
+not `bounced` or `complained`.
 
 ---
 
-## 5. Event System
+## 4. Restaurant Database (Phase 3)
 
-**R-032** Events are weekly and scoped to a single city. One event per week per
-city is the expected cadence; the system does not enforce a hard limit.
+**R-045** Restaurants are created and maintained by admins and moderators.
+Members have read-only access.
 
-**R-033** When creating an event, selecting a restaurant pre-fills the event
-fields (name, address, description) from the restaurant record as a snapshot.
-Subsequent edits to the restaurant do not retroactively change the event.
+**R-046** Each restaurant stores: name, address, lat/lng (geocoded), phone,
+website URL, description, city, and photos.
 
-**R-034** Event states: `draft` → `published` → `cancelled`. Only published
+**R-047** Geocoding runs server-side on save and is re-triggered only on
+address change.
+
+**R-048** Photos are uploaded via multipart form, validated for MIME type and
+extension, and stored on the Unraid volume outside the web root.
+
+**R-049** The restaurant list supports name search and city filter.
+
+---
+
+## 5. Event System (Phase 4)
+
+**R-050** Events are weekly and city-scoped.
+
+**R-051** Selecting a restaurant pre-fills event fields as a snapshot.
+Subsequent restaurant edits do not retroactively change the event.
+
+**R-052** Event states: `draft` → `published` → `cancelled`. Only published
 events are visible to non-admin members.
 
-**R-035** Members can RSVP to published events. They can remove their RSVP at
-any time before the event date.
+**R-053** Events support a standard description block (from `app_config`)
+plus a per-event additional info field.
 
-**R-036** The event page displays two RSVP counts independently when Facebook
-sync is active: "X attending via website · Y attending via Facebook" (see R-052).
-
-**R-037** Events support a standard description block (from a config table) plus
-a per-event "additional info" free-text field.
-
-**R-038** Calendar export is available for each event: `.ics` download (RFC
-5545), Google Calendar URL, and Apple Calendar deep link.
+**R-054** Calendar export: `.ics` download, Google Calendar URL, Apple
+Calendar deep link.
 
 ---
 
-## 6. Facebook Integration
+## 6. RSVP System (Phase 4)
 
-### 6.1 Group Configuration
+### 6.1 Member RSVPs
 
-**R-039** Two Facebook groups are configured in admin settings.
+**R-055** Members can RSVP to published events and remove their RSVP any
+time before the event date.
 
-**R-040** **Group 1** is the admin-managed group: the admin is a group admin on
-Facebook. It is **city-scoped** — Cincinnati and Dayton each have their own
-Group 1 configured separately in the Cities admin tab.
+**R-056** When RSVPing, members select additional guests (0–9) and for each
+choose one of:
+- **Name them** — enter guest name for headcount
+- **Send by email** — enter email; system sends a personal RSVP management link
+- **Copy shareable link** — unique one-time link to share via any channel
 
-**R-041** **Group 2** is a secondary group the admin can post to but does not
-administer on Facebook. It is **scoped to Dayton only**. Cincinnati events do
-not post to Group 2.
+**R-057** All guest links are tied to the inviting member's ID for lineage
+tracking. Links expire at the event date.
 
-### 6.2 Group 1 — Full Two-Way Sync
+**R-058** Only one active guest link per invitee email per event is allowed.
 
-**R-042** When a website event is published, a corresponding Facebook Event is
-created inside Group 1 for the matching city. This requires the admin token
-to have `publish_to_groups` permission (see R-052).
+### 6.2 Guest RSVPs
 
-**R-043** Facebook Event creation is triggered automatically on publish by
-default. An admin toggle in settings can switch the trigger to manual, in which
-case an admin action explicitly initiates creation.
+**R-059** Published event pages show a "RSVP without an account" form
+collecting name and email only.
 
-**R-044** The system stores the Facebook Event ID returned from the Graph API
-alongside the website event record, for use in subsequent sync calls.
+**R-060** On guest RSVP:
+- Guest counted immediately in headcount
+- Confirmation email sent with: event details, cancel link (single-use
+  token), and optional invite ("Your invite is waiting →" pre-filled)
+- Invite link in confirmation expires after 30 days
 
-**R-045** A scheduled job runs hourly and pulls the attendee count (the
-`attending_count` field from the Facebook Event) for every active event that
-has a linked Facebook Event ID. Only the aggregate count is stored — no names
-or email addresses are ever retrieved or stored.
+**R-061** If a guest converts to a full account their guest RSVP is
+automatically promoted to a member RSVP — no duplicate created.
 
-**R-046** After each attendee-count pull (R-045) and after each new website
-RSVP, the system updates the Facebook Event description to append the
-current website RSVP count. The appended note reads:
-> "X member(s) have also RSVP'd via the DinnerBears website."
+**R-062** Guests who arrive via a member's shareable link are tied to that
+member in the lineage. Guests who arrive via admin's Facebook campaign link
+are tied to the admin and the source Facebook group.
 
-**R-047** The website event page displays both counts independently:
-`"X attending via website · Y attending via Facebook"`.
-If the Facebook count is unavailable (sync error, event not yet created), only
-the website count is shown; no placeholder is shown for the Facebook count.
+### 6.3 RSVP Display
 
-### 6.3 Group 2 — Dayton Post-Only Announcement
+**R-063** Event page headcount display:
+- Members attending (count + names visible to all members)
+- Guests attending (count only — names/emails never shown to non-admins)
+- Additional guests count
+- **Total Seats Needed** (sum of all, prominently shown)
 
-**R-048** When a Dayton website event is published, an announcement post is made
-to Group 2. The post contains the event name, date, time, restaurant name, and
-a direct link back to the website event page. Cincinnati events do not post to
-Group 2.
+**R-064** Admins see full breakdown: member names, guest names and emails,
+who invited each guest, per-member additional guest counts.
 
-**R-049** Group 2 posting is triggered automatically on publish by default. An
-admin toggle in settings can switch it to manual, matching the same trigger
-model as R-043.
-
-**R-050** No Facebook Event is created in Group 2. No data is read back from
-Group 2. There is no description update to Group 2 posts.
-
-### 6.4 Token & Permissions
-
-**R-051** Facebook API calls use a user access token obtained when an admin
-authenticates via Facebook OAuth (the same Meta App used for Facebook Login).
-
-**R-052** The required Facebook permissions are: `publish_to_groups` (for event
-creation and group posting) and `public_profile` (baseline). The Meta App must
-complete Facebook App Review before `publish_to_groups` is usable in production.
-
-**R-053** The admin user token is stored encrypted server-side. The system
-handles token refresh automatically; if a refresh fails, admins are alerted
-via an in-app notification and email.
-
-**R-054** If a Facebook API call fails (rate limit, token expiry, network error),
-the failure is logged to the `audit_log`, the event record's Facebook status
-field is updated to `error`, and an admin in-app notification is created. No
-silent failures are permitted.
+**R-065** Total Seats Needed is the figure given to the restaurant for
+reservations and is the most prominent number on the admin event page.
 
 ---
 
-## 7. Push Notifications
+## 7. Invite Lineage & Community Log
 
-**R-055** The Angular frontend registers a Web Push service worker using VAPID
-keys. Push subscriptions are stored in `push_subscriptions` per user per device.
+**R-066** Every account has a traceable lineage via `invited_by` on `users`.
 
-**R-056** iOS members who have added the site to their Home Screen receive push
-notifications via the PWA service worker. An onboarding banner prompts iOS users
-to add to Home Screen on first visit.
+**R-067** An Invite Log records: who invited whom, invite type, source
+Facebook group (if campaign), date, and redemption status.
 
-**R-057** In-app notifications are displayed in a bell icon with an unread badge.
-The bell dropdown shows the latest N notifications with mark-as-read.
+**R-068** The Invite Log is admin-only initially. A future release may expose
+a public Community Wall.
 
-**R-058** Notification delivery is real-time via SSE or 60-second polling
-(implementation choice deferred to Phase 7).
+**R-069** Admins can view the full invite tree for any member — upward to
+the founder and downward to all invitees.
 
-**R-059** Members can configure per-type notification preferences (email on/off,
-push on/off) from the Profile → Notifications tab.
+**R-070** Members can view their own invite history only: who they invited
+and the status of those invites.
 
 ---
 
-## 8. Announcements
+## 8. Facebook Integration (Phase 4+)
 
-**R-060** Admins and moderators can create announcements scoped to a city or
-all cities. Announcements have `draft` and `published` states.
+**R-071** Facebook group integration is outbound sharing only. Meta's
+deprecation of the Groups API prevents automated posting or sync.
 
-**R-061** Published announcements support member comments.
+**R-072** Each published event page has a **"Share to Facebook"** button
+(admin only) that opens Facebook's composer pre-filled with event details
+and a link back to the website event page.
 
-**R-062** Members can flag comments for moderator review. Flagged content
-appears in a moderation queue; moderators receive an in-app notification.
+**R-073** A **"Copy Post Text"** button copies formatted event text to
+clipboard for posting to any platform.
 
----
+**R-074** Facebook group names and URLs are stored as reference data only.
+No API calls are made to Facebook groups.
 
-## 9. Admin Panel
+**R-075** Facebook OAuth login is added in Phase 6, reusing the Meta App
+token from Phase 3.5. It uses only `public_profile` and `email` permissions.
 
-**R-063** The admin panel is accessible only to users with the `admin` role.
-All admin endpoints enforce server-side role checks.
-
-**R-064** Admin panel sections: Users, Invites, Restaurants, Events,
-Announcements, Email Queue, Notifications, Cities, Audit Log, Config.
-
-**R-065** **Users tab:** view all members, change roles, suspend accounts,
-initiate or cancel account deletion.
-
-**R-066** **Invites tab:** generate invite links, view pending and used links,
-revoke any link.
-
-**R-067** **Cities tab:** add a city, configure its Group 1 Facebook group,
-configure the Dayton-only Group 2 Facebook group, toggle auto-post on/off for
-each trigger (event publish → FB Event, event publish → Group 2 post).
-
-**R-068** **Email dashboard:** show Brevo and Gmail send counts for today, toggle
-overflow provider, retry failed sends.
-
-**R-069** **Audit Log tab:** filterable read-only log of key actions (see R-071).
+**R-076** Up to 3 Facebook groups can be configured in admin settings, each
+with a name, URL, and group ID. Campaign invite links are tied to one of
+these configured groups.
 
 ---
 
-## 10. Security
+## 9. Push Notifications (Phase 7)
 
-**R-070** All SQL is executed via TypeORM parameterized queries. Raw string
-interpolation into SQL is prohibited.
+**R-077** Web Push service worker using VAPID keys. Subscriptions stored per
+user per device.
 
-**R-071** The following actions are written to `audit_log`: login, logout,
-password change, role change, event create/edit/cancel, invite create/revoke,
-Facebook post triggered, account deletion request, account restoration.
+**R-078** iOS PWA push via Add-to-Home-Screen. Onboarding banner on first
+visit.
 
-**R-072** A global exception filter catches all unhandled exceptions and returns
-a sanitised error envelope `{ statusCode, message, timestamp, path }`. Stack
-traces are never exposed to API consumers.
+**R-079** In-app bell notification with unread badge and mark-as-read.
 
-**R-073** File uploads validate both MIME type and file extension server-side.
-Uploaded files are stored outside the web root on the Unraid volume.
+**R-080** SSE or 60-second polling (decided in Phase 7).
 
-**R-074** Server-side role checks are enforced on every protected route.
-Client-side role state is used only for UI rendering and is never trusted for
-access control.
-
-**R-075** A pre-launch security checklist (OWASP Top 10 + items above) must be
-signed off before Phase 8 is marked complete.
+**R-081** Per-type notification preferences in Profile → Notifications tab.
 
 ---
 
-## 11. Non-Functional Requirements
+## 10. Announcements (Phase 7)
 
-**R-076** Mobile-first responsive design: usable at 375 px, 768 px, and 1280 px
-breakpoints. Angular Material components are used wherever a suitable component
-exists.
+**R-082** Admins and moderators create city-scoped or global announcements
+with draft/published states.
 
-**R-077** All API routes are prefixed `/api/v1/`. Route versioning is applied
-globally in NestJS main.ts.
+**R-083** Published announcements support member comments.
 
-**R-078** TypeScript strict mode is enabled in both the Angular and NestJS
-projects. No `any` escapes without an explanatory comment.
-
-**R-079** ESLint and Prettier are configured and must pass with zero errors in
-CI before a phase is marked complete.
-
-**R-080** Database schema changes are managed exclusively via TypeORM migrations.
-`synchronize: false` is enforced in the TypeORM config. Manual DB edits are
-prohibited.
-
-**R-081** The `docker compose up` command from a clean checkout (with a valid
-`.env`) must produce a fully functional stack within 2 minutes on the Unraid
-host.
+**R-084** Members can flag comments. Flagged content appears in a moderation
+queue with moderator notification.
 
 ---
 
-## 12. Historical Restaurant Import (Phase 4.5)
+## 11. Admin Panel (Phase 8)
 
-**R-082** A one-time utility script pulls all past events from Group 1 (the
-admin-managed Facebook group) via the Facebook Graph API. The script uses the
-same admin user token and `publish_to_groups` permission model as the live
-integration (R-051–R-052).
+**R-085** Admin panel is role-gated. All admin endpoints enforce server-side
+role checks.
 
-**R-083** The import script exports pulled event data to a `.xlsx` spreadsheet
-containing the following columns: Event Title, Event Date, Location Name,
-Address, and Notes. This file is used for manual review and cleanup before
-import.
+**R-086** Sections: Users, Invites, Restaurants, Events, Announcements,
+Email Queue, Notifications, Cities, Audit Log, Config.
 
-**R-084** A second import script reads the reviewed `.xlsx` file and inserts
-records into the `restaurants` table. Duplicate detection is performed by
-restaurant name (case-insensitive); existing records are skipped, not
-overwritten.
+**R-087** **Users tab:** view members, change roles, suspend, delete, view
+email status, view inactivity segments, manually override email suppression.
 
-**R-085** Address geocoding (R-029) runs automatically on each imported
-restaurant record during the import script execution.
+**R-088** **Invites tab:** generate all invite types, view/revoke links,
+view full invite tree, view Invite Log.
 
-**R-086** This import is treated as a one-time setup operation. It is run via
-Claude Code directly against the database, not exposed as a UI feature. The
-admin may use HeidiSQL to manually edit or remove imported records after the
-fact.
+**R-089** **Cities tab:** configure Group 1 per city, Group 2 for Dayton,
+manage up to 3 Facebook group configurations for campaign links.
 
-**R-087** The historical import is prioritized as **Phase 4.5**, between the
-Email System (Phase 4) and the Restaurant Database UI (Phase 5), so that the
-restaurant table is pre-populated before the restaurant management UI is built.
+**R-090** **Email dashboard:** Brevo/Gmail send counts, overflow toggle,
+retry failed sends, bounce and complaint log.
+
+**R-091** **Audit Log tab:** filterable, read-only.
+
+---
+
+## 12. Security
+
+**R-092** All SQL via TypeORM parameterized queries. No raw string
+interpolation.
+
+**R-093** Audit log captures: login, logout, password change, role change,
+event create/edit/cancel, invite create/revoke, Facebook share triggered,
+account deletion, account restoration, email status change, suppression
+override.
+
+**R-094** Global exception filter returns sanitised error envelope. Stack
+traces never exposed to API consumers.
+
+**R-095** File uploads validate MIME type and extension server-side.
+
+**R-096** Server-side role checks on every protected route. Client-side
+role state used for UI only.
+
+**R-097** Pre-launch OWASP Top 10 security checklist signed off before
+Phase 8 is complete.
+
+---
+
+## 13. Non-Functional Requirements
+
+**R-098** Mobile-first: usable at 375px, 768px, 1280px. Angular Material
+used wherever a suitable component exists.
+
+**R-099** All API routes prefixed `/api/v1/`. Route versioning applied
+globally.
+
+**R-100** TypeScript strict mode in Angular and NestJS. No `any` without
+comment.
+
+**R-101** ESLint and Prettier pass with zero errors before each phase is
+marked complete.
+
+**R-102** Schema changes via TypeORM migrations only. `synchronize: false`
+enforced.
+
+**R-103** `docker compose up` from clean checkout produces a working stack
+within 2 minutes.
+
+---
+
+## 14. Historical Restaurant Import (Phase 3.5)
+
+**R-104** One-time script pulls past events from Group 1 via Facebook Graph
+API using admin OAuth token. Read-only — does not require `publish_to_groups`.
+
+**R-105** Script exports to `.xlsx`: Event Title, Date, Location Name,
+Address, Notes.
+
+**R-106** Import script reads reviewed `.xlsx`, inserts into `restaurants`
+table. Duplicate detection by name (case-insensitive). Geocoding runs
+automatically.
+
+**R-107** One-time Claude Code operation — not a UI feature. Admin cleans
+data in HeidiSQL after import.

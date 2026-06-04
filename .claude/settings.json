@@ -1,32 +1,29 @@
 {
+  "defaultMode": "bypassPermissions",
   "permissions": {
     "allow": [
-      "Bash(npm run *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
       "Bash(ng *)",
       "Bash(nest *)",
-      "Bash(npx *)",
-      "Bash(docker compose *)",
-      "Bash(docker ps)",
-      "Bash(docker logs *)",
-      "Bash(git status)",
-      "Bash(git diff *)",
-      "Bash(git add *)",
-      "Bash(git commit *)",
-      "Bash(git log *)",
-      "Bash(ls *)",
-      "Bash(cat *)",
+      "Bash(git *)",
+      "Bash(docker *)",
       "Bash(mkdir *)",
       "Bash(cp *)",
-      "Bash(mv *)"
+      "Bash(mv *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(echo *)",
+      "Bash(node *)",
+      "Bash(tsc *)"
     ],
     "deny": [
       "Read(./.env)",
       "Read(./.env.*)",
       "Read(./secrets/**)",
-      "Bash(rm -rf *)",
+      "Bash(rm -rf /)",
       "Bash(curl *)",
       "Bash(wget *)"
     ]
-  },
-  "defaultMode": "acceptEdits"
+  }
 }

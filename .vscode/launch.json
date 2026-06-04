@@ -4,32 +4,13 @@
     {
       "name": "Debug NestJS API",
       "type": "node",
-      "request": "attach",
-      "port": 9229,
-      "address": "localhost",
-      "localRoot": "${workspaceFolder}/api",
-      "remoteRoot": "/app",
-      "restart": true,
+      "request": "launch",
+      "program": "${workspaceFolder}/api/src/main.ts",
+      "runtimeArgs": ["-r", "ts-node/register"],
+      "cwd": "${workspaceFolder}/api",
+      "env": { "NODE_ENV": "development" },
       "sourceMaps": true,
       "outFiles": ["${workspaceFolder}/api/dist/**/*.js"]
-    },
-    {
-      "name": "Debug Angular (Chrome)",
-      "type": "chrome",
-      "request": "launch",
-      "url": "http://localhost:4200",
-      "webRoot": "${workspaceFolder}/frontend/src",
-      "sourceMapPathOverrides": {
-        "webpack:/*": "${webRoot}/*",
-        "/./*": "${webRoot}/*",
-        "/src/*": "${webRoot}/*"
-      }
-    }
-  ],
-  "compounds": [
-    {
-      "name": "Debug Full Stack",
-      "configurations": ["Debug NestJS API", "Debug Angular (Chrome)"]
     }
   ]
 }
