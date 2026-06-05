@@ -20,6 +20,7 @@ export class UsersService {
   async updateProfile(user: UserEntity, dto: UpdateProfileDto): Promise<UserEntity> {
     if (dto.fullName) user.fullName = dto.fullName;
     if (dto.cityId) user.cityId = dto.cityId;
+    if (dto.profilePhotoPath === null) user.profilePhotoPath = null;
     return this.userRepo.save(user);
   }
 

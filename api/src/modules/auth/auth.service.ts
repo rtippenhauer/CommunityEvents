@@ -1,15 +1,17 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import * as geoip from 'geoip-lite';
-import { UserEntity, EmailStatus, InviteSource } from '../../database/entities/user.entity';
+import { UserEntity, EmailStatus, InviteSource, UserRole } from '../../database/entities/user.entity';
 import { OAuthAccountEntity, OAuthProvider } from '../../database/entities/oauth-account.entity';
 import { LoginSessionEntity } from '../../database/entities/login-session.entity';
 import { InvitesService } from '../invites/invites.service';
 import { CitiesService } from '../cities/cities.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { InviteType } from '../../database/entities/invite.entity';
 
 export interface SessionContext {
@@ -27,9 +29,11 @@ export class AuthService {
     @InjectRepository(LoginSessionEntity)
     private readonly sessionRepo: Repository<LoginSessionEntity>,
     private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
     private readonly invitesService: InvitesService,
     private readonly citiesService: CitiesService,
     private readonly auditService: AuditService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async findOrCreateGoogleUser(
@@ -38,17 +42,41 @@ export class AuthService {
     displayName: string,
     inviteToken?: string,
   ): Promise<UserEntity> {
+    // Primary lookup: existing OAuth account
     const existing = await this.oauthRepo.findOne({
       where: { provider: OAuthProvider.GOOGLE, providerId: googleId },
       relations: ['user'],
     });
     if (existing) return existing.user;
 
-    if (!inviteToken) {
+    // Fallback: user row exists (orphaned from a previous partial attempt)
+    // Link the OAuth account and return rather than trying to re-insert.
+    const existingByEmail = await this.userRepo.findOne({
+      where: { email: email.toLowerCase() },
+    });
+    if (existingByEmail) {
+      await this.oauthRepo.save(
+        this.oauthRepo.create({
+          userId: existingByEmail.id,
+          provider: OAuthProvider.GOOGLE,
+          providerId: googleId,
+          email: email.toLowerCase(),
+        }),
+      );
+      return existingByEmail;
+    }
+
+    const adminEmail = this.configService.get<string>('ADMIN_EMAIL');
+    const isAdminBootstrap =
+      !!adminEmail && email.toLowerCase() === adminEmail.toLowerCase();
+
+    if (!inviteToken && !isAdminBootstrap) {
       throw new UnauthorizedException('An invite is required to create an account');
     }
 
-    const invite = await this.invitesService.validate(inviteToken, email);
+    const invite = inviteToken
+      ? await this.invitesService.validate(inviteToken, email)
+      : null;
 
     const defaultCity = await this.citiesService.findAll().then((cities) => cities[0]);
 
@@ -58,11 +86,13 @@ export class AuthService {
       emailStatus: EmailStatus.ACTIVE,
       emailVerifiedAt: new Date(),
       cityId: defaultCity.id,
-      inviteId: invite.id,
-      inviteSource:
-        invite.type === InviteType.CAMPAIGN_FACEBOOK
+      role: isAdminBootstrap ? UserRole.ADMIN : UserRole.MEMBER,
+      inviteId: invite?.id ?? null,
+      inviteSource: invite
+        ? invite.type === InviteType.CAMPAIGN_FACEBOOK
           ? InviteSource.FACEBOOK_GROUP
-          : InviteSource.GOOGLE_OAUTH,
+          : InviteSource.GOOGLE_OAUTH
+        : null,
     });
     await this.userRepo.save(user);
 
@@ -75,14 +105,19 @@ export class AuthService {
       }),
     );
 
-    await this.invitesService.redeem(invite, user);
+    if (invite) {
+      await this.invitesService.redeem(invite, user);
+    }
 
     await this.auditService.log({
       userId: user.id,
       action: 'user.register',
       entityType: 'user',
       entityId: user.id,
-      metadata: { provider: 'google', inviteType: invite.type },
+      metadata: {
+        provider: 'google',
+        inviteType: invite?.type ?? 'admin_bootstrap',
+      },
     });
 
     return user;
@@ -106,6 +141,21 @@ export class AuthService {
       city: geo?.city ?? null,
     });
     await this.sessionRepo.save(session);
+
+    const previousSession = await this.sessionRepo.findOne({
+      where: { userId: user.id, userAgent: ctx.userAgent ?? undefined, isActive: true },
+    });
+    const isNewDevice = !previousSession || previousSession.id === session.id;
+    if (isNewDevice) {
+      const location = [geo?.city, geo?.country].filter(Boolean).join(', ') || 'unknown location';
+      await this.notificationsService.create({
+        userId: user.id,
+        type: 'security_alert',
+        title: 'New sign-in detected',
+        body: `A new sign-in was detected from ${location}.`,
+        actionUrl: '/profile',
+      });
+    }
 
     await this.userRepo.update(user.id, {
       lastLoginAt: new Date(),

@@ -12,6 +12,7 @@ WORKDIR /app
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY package*.json ./
+RUN mkdir -p /app/uploads && chown nestjs:nestjs /app/uploads
 USER nestjs
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

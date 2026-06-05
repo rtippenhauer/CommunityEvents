@@ -14,6 +14,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { InvitesModule } from '../invites/invites.module';
 import { CitiesModule } from '../cities/cities.module';
 import { AuditModule } from '../audit/audit.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AuditModule } from '../audit/audit.module';
     InvitesModule,
     CitiesModule,
     AuditModule,
+    NotificationsModule,
   ],
   providers: [AuthService, GoogleStrategy, JwtStrategy],
   controllers: [AuthController],

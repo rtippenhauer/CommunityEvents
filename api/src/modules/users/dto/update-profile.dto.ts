@@ -10,4 +10,8 @@ export class UpdateProfileDto {
   @IsPositive()
   @IsOptional()
   cityId?: number;
+
+  // null = remove photo
+  @IsOptional()
+  profilePhotoPath?: null;
 }

@@ -1,24 +1,35 @@
 @use '@angular/material' as mat;
 
-// DinnerBears M3 theme — primary #1E4D8C (azure is the closest built-in M3 palette)
-$theme: mat.define-theme(
-  (
-    color: (
-      theme-type: light,
-      primary: mat.$azure-palette,
-    ),
-    typography: (
-      brand-family: 'Roboto, sans-serif',
-      plain-family: 'Roboto, sans-serif',
-    ),
-    density: (
-      scale: 0,
-    ),
-  )
-);
+// DinnerBears brand palette — warm amber/gold matching the brand art
+// Primary: amber gold #C9933A | Background: warm cream #FDFAF5 | Dark: #3D1C05
+$theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$orange-palette,
+  ),
+  typography: (
+    brand-family: 'Roboto, sans-serif',
+    plain-family: 'Roboto, sans-serif',
+  ),
+  density: (
+    scale: 0,
+  ),
+));
 
 html {
   @include mat.all-component-themes($theme);
+}
+
+// Brand CSS variables — used throughout the app
+:root {
+  --db-primary:     #C9933A;   // amber gold
+  --db-primary-dark:#A0721F;   // deep amber
+  --db-brown-dark:  #3D1C05;   // rich dark brown
+  --db-brown-mid:   #7B3F00;   // medium brown
+  --db-cream:       #FDFAF5;   // warm white
+  --db-cream-dark:  #F5EDD8;   // warm cream
+  --db-text-dark:   #2C1503;   // near-black brown
+  --db-text-mid:    #6B4226;   // body text brown
 }
 
 *,
@@ -32,4 +43,19 @@ body {
   height: 100%;
   margin: 0;
   font-family: Roboto, 'Helvetica Neue', sans-serif;
+  background-color: var(--db-cream);
+  color: var(--db-text-dark);
+}
+
+// Override Material primary button to match brand amber exactly
+.mat-mdc-raised-button.mat-primary,
+.mat-mdc-fab.mat-primary,
+.mat-mdc-mini-fab.mat-primary {
+  --mdc-filled-button-container-color: var(--db-primary);
+  --mdc-filled-button-label-text-color: #fff;
+}
+
+.mat-mdc-outlined-button.mat-primary {
+  --mdc-outlined-button-label-text-color: var(--db-primary);
+  --mdc-outlined-button-outline-color: var(--db-primary);
 }

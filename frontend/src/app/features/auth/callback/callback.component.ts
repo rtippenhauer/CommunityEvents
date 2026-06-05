@@ -33,7 +33,7 @@ export class CallbackComponent {
   constructor() {
     effect(() => {
       if (!this.authService.isLoading()) {
-        this.router.navigate([this.authService.isLoggedIn() ? '/' : '/login']);
+        this.router.navigate([this.authService.isLoggedIn() ? '/profile' : '/login']);
       }
     });
   }

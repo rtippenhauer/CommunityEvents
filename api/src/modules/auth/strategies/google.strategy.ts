@@ -35,6 +35,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     try {
       const email = profile.emails?.[0]?.value;
       if (!email) throw new UnauthorizedException('No email from Google');
+      console.log(`[BOOTSTRAP] Google ID: ${profile.id}  Email: ${email}`);
 
       const inviteToken = req.query.state ?? undefined;
       const user = await this.authService.findOrCreateGoogleUser(

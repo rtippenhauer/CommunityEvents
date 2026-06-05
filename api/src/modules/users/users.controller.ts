@@ -13,6 +13,7 @@ import { diskStorage } from 'multer';
 import type { Request } from 'express';
 import type { FileFilterCallback } from 'multer';
 import { extname } from 'path';
+import { mkdirSync } from 'fs';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -41,7 +42,11 @@ export class UsersController {
   @UseInterceptors(
     FileInterceptor('photo', {
       storage: diskStorage({
-        destination: process.env.UPLOAD_PATH ?? './uploads/photos',
+        destination: (_req, _file, cb) => {
+          const dest = process.env.UPLOAD_PATH ?? '/app/uploads';
+          mkdirSync(dest, { recursive: true });
+          cb(null, dest);
+        },
         filename: (_req, file, cb) => {
           const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
           cb(null, `${unique}${extname(file.originalname)}`);
@@ -61,8 +66,9 @@ export class UsersController {
   async uploadPhoto(
     @CurrentUser() user: UserEntity,
     @UploadedFile() file: Express.Multer.File,
-  ): Promise<{ path: string }> {
-    await this.usersService.updatePhotoPath(user.id, file.path);
-    return { path: file.path };
+  ): Promise<{ url: string }> {
+    const url = `/api/uploads/${file.filename}`;
+    await this.usersService.updatePhotoPath(user.id, url);
+    return { url };
   }
 }

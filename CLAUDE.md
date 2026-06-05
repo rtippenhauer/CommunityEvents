@@ -33,8 +33,12 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 1 — Project Foundation & Design System**
+**Phase 3 — Restaurant Database**
 See PHASES.md for full phase breakdown and definitions of done.
+
+## Completed Phases
+- **Phase 1** — Docker scaffold, Angular shell, NestJS + TypeORM, health check, ESLint/Prettier ✓
+- **Phase 2** — Google OAuth, invite system, JWT sessions, profile page, photo upload ✓
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules
@@ -56,7 +60,7 @@ See PHASES.md for full phase breakdown and definitions of done.
 ## Database
 - MySQL 8.x via TypeORM
 - `synchronize: false` always — migrations only
-- Migrations in `api/src/migrations/` with timestamp prefix
+- Migrations in `api/src/database/migrations/` with timestamp prefix
 - See `docs/DATABASE_SCHEMA.md` for full schema
 
 ## Key Files for Context

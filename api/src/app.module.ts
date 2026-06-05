@@ -10,6 +10,9 @@ import { InvitesModule } from './modules/invites/invites.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { FacebookGroupsModule } from './modules/facebook-groups/facebook-groups.module';
+import { RestaurantsModule } from './modules/restaurants/restaurants.module';
 
 @Module({
   imports: [
@@ -41,6 +44,9 @@ import { AuditModule } from './modules/audit/audit.module';
     AuthModule,
     UsersModule,
     AuditModule,
+    NotificationsModule,
+    FacebookGroupsModule,
+    RestaurantsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

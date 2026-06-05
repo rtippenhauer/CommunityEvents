@@ -1,25 +1,63 @@
 <mat-sidenav-container class="app-container">
+
+  <!-- Mobile sidenav -->
   <mat-sidenav #sidenav mode="over" class="app-sidenav">
     <mat-nav-list>
-      <a mat-list-item routerLink="/">Home</a>
-      <a mat-list-item routerLink="/events">Events</a>
-      <a mat-list-item routerLink="/restaurants">Restaurants</a>
+      <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
+        <mat-icon matListItemIcon>restaurant</mat-icon>
+        Restaurants
+      </a>
+      <a mat-list-item routerLink="/profile" (click)="sidenav.close()">
+        <mat-icon matListItemIcon>person</mat-icon>
+        Profile
+      </a>
+      @if (isLoggedIn()) {
+        <button mat-list-item (click)="logout(); sidenav.close()">
+          <mat-icon matListItemIcon>logout</mat-icon>
+          Sign out
+        </button>
+      }
     </mat-nav-list>
   </mat-sidenav>
 
   <mat-sidenav-content>
-    <mat-toolbar color="primary" class="app-toolbar">
+    <mat-toolbar class="app-toolbar">
+
+      <!-- Mobile: hamburger -->
       @if (isMobile()) {
         <button mat-icon-button (click)="sidenav.toggle()" aria-label="Toggle navigation">
           <mat-icon>menu</mat-icon>
         </button>
       }
+
       <span class="app-title">DinnerBears</span>
+
+      <!-- Desktop: inline nav links -->
+      @if (!isMobile() && isLoggedIn()) {
+        <nav class="desktop-nav">
+          <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">
+            <mat-icon>restaurant</mat-icon> Restaurants
+          </a>
+          <a mat-button routerLink="/profile" routerLinkActive="nav-active">
+            <mat-icon>person</mat-icon> Profile
+          </a>
+        </nav>
+      }
+
       <span class="toolbar-spacer"></span>
+
       <mat-select class="city-selector" [value]="currentCity" aria-label="Select city">
         <mat-option value="cincinnati">Cincinnati</mat-option>
         <mat-option value="dayton">Dayton</mat-option>
       </mat-select>
+
+      <!-- Desktop: sign out button -->
+      @if (!isMobile() && isLoggedIn()) {
+        <button mat-icon-button (click)="logout()" aria-label="Sign out" title="Sign out">
+          <mat-icon>logout</mat-icon>
+        </button>
+      }
+
     </mat-toolbar>
 
     <main class="app-content">
@@ -30,4 +68,5 @@
       <p>&copy; {{ currentYear }} DinnerBears</p>
     </footer>
   </mat-sidenav-content>
+
 </mat-sidenav-container>
