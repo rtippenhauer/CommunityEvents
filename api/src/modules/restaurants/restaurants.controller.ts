@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -13,10 +14,10 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
 import type { Request } from 'express';
 import type { FileFilterCallback } from 'multer';
-import { extname, join } from 'path';
+import { extname } from 'path';
 import { mkdirSync } from 'fs';
 import { RestaurantsService } from './restaurants.service';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
@@ -59,10 +60,41 @@ const photoFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCal
   }
 };
 
+const jsonFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCallback): void => {
+  const ext = extname(file.originalname).toLowerCase();
+  const allowedMime = ['application/json', 'text/plain', 'application/octet-stream'];
+  if (allowedMime.includes(file.mimetype) && (ext === '.json' || ext === '.txt')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only .json files are accepted'));
+  }
+};
+
 @Controller('restaurants')
 @UseGuards(JwtAuthGuard)
 export class RestaurantsController {
   constructor(private readonly restaurantsService: RestaurantsService) {}
+
+  // Must be declared before :id routes to avoid route collision
+  @Post('import/facebook')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: jsonFilter,
+    }),
+  )
+  importFacebook(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('cityId') cityId: string,
+  ) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    const id = parseInt(cityId, 10);
+    if (!id) throw new BadRequestException('cityId query parameter is required');
+    return this.restaurantsService.importFacebookEvents(file.buffer, id);
+  }
 
   @Get()
   findAll(@Query('cityId') cityId?: string, @Query('search') search?: string) {

@@ -1,0 +1,94 @@
+@use '@angular/material' as mat;
+
+// DinnerBears brand palette: dark wood, cream lettering, and warm sign glow.
+$theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$orange-palette,
+  ),
+  typography: (
+    brand-family: 'Roboto, sans-serif',
+    plain-family: 'Roboto, sans-serif',
+  ),
+  density: (
+    scale: 0,
+  ),
+));
+
+html {
+  @include mat.all-component-themes($theme);
+}
+
+:root {
+  --db-primary: #c9933a;
+  --db-primary-dark: #8f5d16;
+  --db-gold: #ffb41f;
+  --db-gold-soft: #ffd875;
+  --db-brown-dark: #2b1406;
+  --db-brown-mid: #6b350c;
+  --db-brown-red: #4a2109;
+  --db-cream: #fff3d2;
+  --db-cream-dark: #f3dfb3;
+  --db-surface: #fffaf0;
+  --db-text-dark: #241104;
+  --db-text-mid: #6b4226;
+  --db-shadow: rgba(43, 20, 6, 0.24);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  background:
+    radial-gradient(circle at 50% -12rem, rgba(255, 180, 31, 0.38), transparent 32rem),
+    linear-gradient(180deg, #201006 0%, #f8ead0 24rem, #fff8ec 100%);
+  color: var(--db-text-dark);
+}
+
+.mat-mdc-card {
+  --mdc-elevated-card-container-color: var(--db-surface);
+  border: 1px solid rgba(107, 53, 12, 0.13);
+  border-radius: 8px !important;
+  box-shadow: 0 14px 34px rgba(43, 20, 6, 0.12) !important;
+}
+
+.mat-mdc-menu-panel,
+.mat-mdc-select-panel {
+  --mat-menu-container-color: #321707;
+  --mat-option-label-text-color: var(--db-cream);
+  --mat-option-selected-state-label-text-color: var(--db-gold-soft);
+  --mat-option-hover-state-layer-color: rgba(255, 180, 31, 0.14);
+  border: 1px solid rgba(255, 216, 117, 0.24);
+  box-shadow: 0 18px 34px rgba(24, 10, 2, 0.38) !important;
+}
+
+.mat-mdc-menu-item,
+.mat-mdc-option {
+  color: var(--db-cream) !important;
+}
+
+.mat-mdc-form-field {
+  --mdc-outlined-text-field-focus-outline-color: var(--db-primary);
+  --mdc-outlined-text-field-focus-label-text-color: var(--db-primary-dark);
+  --mdc-outlined-text-field-caret-color: var(--db-primary-dark);
+}
+
+.mat-mdc-raised-button.mat-primary,
+.mat-mdc-fab.mat-primary,
+.mat-mdc-mini-fab.mat-primary {
+  --mdc-filled-button-container-color: var(--db-gold);
+  --mdc-filled-button-label-text-color: var(--db-text-dark);
+  box-shadow: 0 8px 18px rgba(144, 91, 10, 0.22) !important;
+}
+
+.mat-mdc-outlined-button.mat-primary {
+  --mdc-outlined-button-label-text-color: var(--db-primary-dark);
+  --mdc-outlined-button-outline-color: rgba(143, 93, 22, 0.48);
+}

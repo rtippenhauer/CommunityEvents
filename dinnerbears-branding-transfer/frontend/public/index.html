@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DinnerBears — Community Dining</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --wood: #2b1406;
+      --wood-mid: #6b350c;
+      --gold: #ffb41f;
+      --cream: #fff3d2;
+      --warm-white: #fff8ec;
+      --text: #241104;
+      --muted: #6b4226;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: radial-gradient(circle at 50% -10rem, rgba(255, 180, 31, 0.28), transparent 30rem), var(--warm-white);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* NAV */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.25rem 3rem;
+      background: linear-gradient(135deg, rgba(43, 20, 6, 0.96), rgba(74, 33, 9, 0.94));
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255, 216, 117, 0.28);
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      color: var(--cream);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .logo img {
+      width: 92px;
+      height: 58px;
+      object-fit: contain;
+      filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.36));
+    }
+
+    .logo span { color: var(--cream); }
+
+    nav a.nav-link {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--cream);
+      text-decoration: none;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+
+    nav a.nav-link:hover { color: var(--gold); }
+
+    /* HERO */
+    .hero {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      padding: 8rem 3rem 4rem;
+      gap: 4rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .hero-text { animation: fadeUp 0.8s ease both; }
+
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--gold);
+      border: 1px solid var(--gold);
+      padding: 0.35rem 0.85rem;
+      border-radius: 2px;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.8rem, 5vw, 4.5rem);
+      font-weight: 900;
+      line-height: 1.05;
+      color: var(--wood);
+      letter-spacing: -0.03em;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 em {
+      font-style: italic;
+      color: var(--gold);
+    }
+
+    .hero-sub {
+      font-size: 1.1rem;
+      line-height: 1.7;
+      color: var(--muted);
+      max-width: 480px;
+      margin-bottom: 2.5rem;
+      font-weight: 300;
+    }
+
+    .coming-soon-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: var(--wood);
+      color: var(--cream);
+      padding: 1rem 2rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+    }
+
+    .coming-soon-badge .dot {
+      width: 8px;
+      height: 8px;
+      background: var(--gold);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    /* HERO VISUAL */
+    .hero-visual {
+      animation: fadeUp 0.8s 0.2s ease both;
+      position: relative;
+    }
+
+    .table-card {
+      background: var(--cream);
+      border-radius: 8px;
+      padding: 2.5rem;
+      border: 1px solid rgba(201, 147, 58, 0.2);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .table-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--gold), var(--wood));
+    }
+
+    .card-label {
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 500;
+      margin-bottom: 1rem;
+    }
+
+    .card-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem;
+      color: var(--wood);
+      margin-bottom: 0.4rem;
+    }
+
+    .card-meta {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+    }
+
+    .attendees {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .avatar-stack {
+      display: flex;
+    }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid var(--warm-white);
+      margin-left: -8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: white;
+    }
+
+    .avatar:first-child { margin-left: 0; }
+    .avatar:nth-child(1) { background: #4a7c9e; }
+    .avatar:nth-child(2) { background: #7c6b4a; }
+    .avatar:nth-child(3) { background: #4a7c6b; }
+    .avatar:nth-child(4) { background: #7c4a6b; }
+    .avatar:nth-child(5) { background: var(--wood); }
+
+    .attendee-text {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .attendee-text strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .rsvp-btn {
+      width: 100%;
+      background: var(--gold);
+      color: white;
+      border: none;
+      padding: 0.85rem;
+      border-radius: 4px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: background 0.2s;
+    }
+
+    .rsvp-btn:hover { background: #b8832e; }
+
+    .floating-tag {
+      position: absolute;
+      top: -1rem;
+      right: 2rem;
+      background: var(--wood);
+      color: var(--cream);
+      font-size: 0.75rem;
+      padding: 0.4rem 0.9rem;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+
+    /* CITIES */
+    .cities {
+      background: var(--wood);
+      padding: 5rem 3rem;
+      text-align: center;
+    }
+
+    .cities h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.2rem;
+      color: var(--cream);
+      margin-bottom: 0.75rem;
+    }
+
+    .cities p {
+      color: rgba(247, 243, 236, 0.6);
+      margin-bottom: 3rem;
+      font-size: 1rem;
+    }
+
+    .city-grid {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .city-pill {
+      background: rgba(201, 147, 58, 0.15);
+      border: 1px solid rgba(201, 147, 58, 0.3);
+      color: var(--gold);
+      padding: 0.75rem 2rem;
+      border-radius: 40px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+    }
+
+    /* HOW IT WORKS */
+    .how {
+      padding: 6rem 3rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .section-label {
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 500;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .how h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.5rem;
+      color: var(--wood);
+      margin-bottom: 3.5rem;
+      max-width: 500px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2.5rem;
+    }
+
+    .step-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 3rem;
+      font-weight: 900;
+      color: rgba(201, 147, 58, 0.2);
+      line-height: 1;
+      margin-bottom: 1rem;
+    }
+
+    .step h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.2rem;
+      color: var(--wood);
+      margin-bottom: 0.5rem;
+    }
+
+    .step p {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* FOOTER */
+    footer {
+      background: var(--cream);
+      border-top: 1px solid rgba(201, 147, 58, 0.15);
+      padding: 2.5rem 3rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    footer .logo { font-size: 1.2rem; }
+
+    .footer-links {
+      display: flex;
+      gap: 2rem;
+    }
+
+    .footer-links a {
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: var(--wood); }
+
+    .footer-copy {
+      font-size: 0.8rem;
+      color: var(--muted);
+      width: 100%;
+      text-align: center;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(0,0,0,0.06);
+      margin-top: 0.5rem;
+    }
+
+    /* ANIMATIONS */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      nav { padding: 1rem 1.5rem; }
+      .hero { grid-template-columns: 1fr; padding: 7rem 1.5rem 3rem; gap: 2.5rem; }
+      .steps { grid-template-columns: 1fr; gap: 2rem; }
+      .how, .cities { padding: 4rem 1.5rem; }
+      footer { padding: 2rem 1.5rem; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">
+    <img src="/assets/logo.png" alt="DinnerBears">
+    <span>DinnerBears</span>
+  </a>
+  <a href="/privacy.html" class="nav-link">Privacy Policy</a>
+</nav>
+
+<section class="hero">
+  <div class="hero-text">
+    <span class="hero-eyebrow">Cincinnati & Dayton</span>
+    <h1>Good food.<br>Good people.<br><em>Every week.</em></h1>
+    <p class="hero-sub">DinnerBears is an invite-only community for people who love discovering great restaurants together. Weekly dinners, real connections.</p>
+    <div class="coming-soon-badge">
+      <span class="dot"></span>
+      Platform launching soon
+    </div>
+  </div>
+
+  <div class="hero-visual">
+    <div class="table-card">
+      <span class="floating-tag">This Thursday</span>
+      <div class="card-label">Weekly Dinner · Cincinnati</div>
+      <div class="card-title">Precinct Bar & Grill</div>
+      <div class="card-meta">Thursday, June 12 · 7:00 PM · Hyde Park</div>
+      <div class="attendees">
+        <div class="avatar-stack">
+          <div class="avatar">JR</div>
+          <div class="avatar">SK</div>
+          <div class="avatar">MT</div>
+          <div class="avatar">PL</div>
+          <div class="avatar">+8</div>
+        </div>
+        <div class="attendee-text"><strong>12 members</strong> attending</div>
+      </div>
+      <button class="rsvp-btn">RSVP for This Dinner</button>
+    </div>
+  </div>
+</section>
+
+<section class="cities">
+  <h2>Two cities, one community</h2>
+  <p>Weekly dinners in both Cincinnati and Dayton</p>
+  <div class="city-grid">
+    <div class="city-pill">📍 Cincinnati</div>
+    <div class="city-pill">📍 Dayton</div>
+  </div>
+</section>
+
+<section class="how">
+  <span class="section-label">How it works</span>
+  <h2>Simple, social, delicious.</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <h3>Get Invited</h3>
+      <p>DinnerBears is invite-only. A current member sends you a link to join the community.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <h3>See the Week's Dinner</h3>
+      <p>Each week a new restaurant is chosen. Browse the details, menu, and who's coming.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <h3>RSVP & Show Up</h3>
+      <p>Claim your spot, show up, and enjoy a great meal with great people.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <a href="/" class="logo">
+    <img src="/assets/logo.png" alt="DinnerBears">
+    <span>DinnerBears</span>
+  </a>
+  <div class="footer-links">
+    <a href="/privacy.html">Privacy Policy</a>
+    <a href="/terms.html">Terms of Service</a>
+  </div>
+  <div class="footer-copy">© 2026 DinnerBears LLC. All rights reserved.</div>
+</footer>
+
+</body>
+</html>
