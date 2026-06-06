@@ -33,6 +33,7 @@ import { RestaurantsModule } from './modules/restaurants/restaurants.module';
         entities: [__dirname + '/database/entities/*.entity{.ts,.js}'],
         migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
         synchronize: false,
+        migrationsRun: true,
         retryAttempts: 3,
         retryDelay: 3000,
       }),

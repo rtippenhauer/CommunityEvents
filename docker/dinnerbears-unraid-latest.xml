@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>DinnerBears</Name>
-  <Repository>dinnerbears/app:latest</Repository>
+  <Repository>rtippenhauer/dinnerbears:latest</Repository>
   <Registry/>
   <Network>bridge</Network>
   <MyIP/>
@@ -11,7 +11,7 @@
   <Project>https://github.com/rtippenhauer/DinnerBears</Project>
   <Overview>DinnerBears community dining platform — Production. Invite-only weekly dinner group for Cincinnati and Dayton. Angular frontend + NestJS API via NGINX. To edit environment variables directly, place a .env file at /mnt/user/appdata/dinnerbears/latest/.env and mount it into the container.</Overview>
   <Category>Tools:</Category>
-  <WebUI>http://[IP]:[PORT:8050]/</WebUI>
+  <WebUI>http://[IP]:[PORT:8065]/</WebUI>
   <TemplateURL/>
   <Icon/>
   <ExtraParams>--restart unless-stopped</ExtraParams>
@@ -23,9 +23,9 @@
   <Requires/>
 
   <!-- ==================== PORTS ==================== -->
-  <Config Name="Web Port" Target="8080" Default="8050" Mode="tcp"
+  <Config Name="Web Port" Target="8080" Default="8065" Mode="tcp"
     Description="Production web port" Type="Port"
-    Display="always" Required="true" Mask="false">8050</Config>
+    Display="always" Required="true" Mask="false">8065</Config>
 
   <!-- ==================== DATABASE ==================== -->
   <Config Name="DB Host" Target="DB_HOST" Default="192.168.2.241" Mode=""

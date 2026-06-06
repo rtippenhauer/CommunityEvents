@@ -1,0 +1,23 @@
+.git
+**/.git
+
+# Dependencies — rebuilt inside Docker
+**/node_modules
+
+# Build outputs — rebuilt inside Docker
+frontend/dist
+api/dist
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dev/docs — not needed in build context
+docs/
+scripts/
+.vscode/
+.idea/
+*.md
+!frontend/*.md
+!api/*.md

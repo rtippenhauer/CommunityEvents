@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>DinnerBears-Stage</Name>
-  <Repository>dinnerbears/app:stage</Repository>
+  <Repository>rtippenhauer/dinnerbears:stage</Repository>
   <Registry/>
   <Network>bridge</Network>
   <MyIP/>
@@ -11,7 +11,7 @@
   <Project>https://github.com/rtippenhauer/DinnerBears</Project>
   <Overview>DinnerBears community dining platform — Staging. Invite-only weekly dinner group for Cincinnati and Dayton. Angular frontend + NestJS API via NGINX. To edit environment variables directly, place a .env file at /mnt/user/appdata/dinnerbears/stage/.env and mount it into the container.</Overview>
   <Category>Tools:</Category>
-  <WebUI>http://[IP]:[PORT:8050]/</WebUI>
+  <WebUI>http://[IP]:[PORT:8066]/</WebUI>
   <TemplateURL/>
   <Icon/>
   <ExtraParams>--restart unless-stopped</ExtraParams>
@@ -23,9 +23,9 @@
   <Requires/>
 
   <!-- ==================== PORTS ==================== -->
-  <Config Name="Web Port" Target="8080" Default="8051" Mode="tcp"
+  <Config Name="Web Port" Target="8080" Default="8066" Mode="tcp"
     Description="Staging web port" Type="Port"
-    Display="always" Required="true" Mask="false">8051</Config>
+    Display="always" Required="true" Mask="false">8066</Config>
 
   <!-- ==================== DATABASE ==================== -->
   <Config Name="DB Host" Target="DB_HOST" Default="192.168.2.241" Mode=""
@@ -158,8 +158,8 @@
     Description="Persistent storage for uploaded restaurant photos"
     Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/dinnerbears/stage/uploads</Config>
   <Config Name="App Data Path" Target="/app/appdata"
-    Default="/mnt/user/appdata/dinnerbears/latest" Mode="rw"
+    Default="/mnt/user/appdata/dinnerbears/stage" Mode="rw"
     Description="App data folder. Place a .env file here to override env vars via file"
-    Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/dinnerbears/latest</Config>
+    Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/dinnerbears/stage</Config>
 
 </Container>
