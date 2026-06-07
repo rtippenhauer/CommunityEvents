@@ -149,7 +149,11 @@ export class EnrichmentService {
           const locality = placeData.address_components
             ? this.parseLocalityFromComponents(placeData.address_components)
             : restaurant.city?.name ?? null;
-          result.name = locality ? `${placeData.name} at ${locality}` : placeData.name;
+          // Strip "- City, ST" disambiguation suffixes Google Places sometimes includes
+          const baseName =
+            placeData.name.replace(/\s*[-–—]\s*.+,\s*[A-Z]{2}\b.*$/, '').trim() ||
+            placeData.name;
+          result.name = locality ? `${baseName} in ${locality}` : baseName;
         }
         if (placeData.formatted_phone_number) {
           result.phone = placeData.formatted_phone_number;
