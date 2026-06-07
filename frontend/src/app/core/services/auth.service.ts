@@ -56,6 +56,10 @@ export class AuthService {
       .subscribe();
   }
 
+  updatePhoto(path: string | null): void {
+    this.currentUser.update(u => u ? { ...u, profilePhotoPath: path } : null);
+  }
+
   isLoggedIn(): boolean {
     return this.currentUser() !== null;
   }

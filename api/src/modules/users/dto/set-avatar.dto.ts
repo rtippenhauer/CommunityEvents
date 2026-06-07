@@ -13,6 +13,8 @@ export const PRESET_AVATARS = [
   '/avatars/bear-dapper.jpg',
   '/avatars/bear-astronaut.jpg',
   '/avatars/bear-artist.jpg',
+  '/avatars/bear-disco.jpg',
+  '/avatars/bear-karaoke.jpg',
 ] as const;
 
 export class SetAvatarDto {

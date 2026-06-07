@@ -33,6 +33,8 @@ const PRESET_AVATARS = [
   { path: '/avatars/bear-dapper.jpg',    label: 'Dapper' },
   { path: '/avatars/bear-astronaut.jpg', label: 'Astronaut' },
   { path: '/avatars/bear-artist.jpg',    label: 'Artist' },
+  { path: '/avatars/bear-disco.jpg',     label: 'Disco' },
+  { path: '/avatars/bear-karaoke.jpg',   label: 'Karaoke' },
 ];
 
 @Component({
@@ -192,6 +194,7 @@ const PRESET_AVATARS = [
       width: 100%;
       height: 100%;
       object-fit: cover;
+      object-position: center top;
       display: block;
     }
     .photo-placeholder {
@@ -218,12 +221,13 @@ const PRESET_AVATARS = [
       padding: 0;
       background: none;
       transition: border-color 0.15s, transform 0.15s;
-      aspect-ratio: 1;
+      aspect-ratio: 3 / 4;
 
       img {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        object-position: center top;
         display: block;
       }
 
@@ -319,6 +323,7 @@ export class ProfileComponent implements OnInit {
     this.http.post<{ url: string }>('/api/v1/users/me/photo', formData).subscribe({
       next: (res) => {
         this.photoUrl.set(res.url);
+        this.authService.updatePhoto(res.url);
         this.snackBar.open('Photo updated', 'OK', { duration: 3000 });
       },
       error: () => this.snackBar.open('Photo upload failed', 'OK', { duration: 3000 }),
@@ -329,6 +334,7 @@ export class ProfileComponent implements OnInit {
     this.http.post<{ url: string }>('/api/v1/users/me/avatar', { avatarPath: path }).subscribe({
       next: (res) => {
         this.photoUrl.set(res.url);
+        this.authService.updatePhoto(res.url);
         this.snackBar.open('Avatar updated', 'OK', { duration: 3000 });
       },
       error: () => this.snackBar.open('Failed to set avatar', 'OK', { duration: 3000 }),
@@ -339,6 +345,7 @@ export class ProfileComponent implements OnInit {
     this.http.patch('/api/v1/users/me', { profilePhotoPath: null }).subscribe({
       next: () => {
         this.photoUrl.set(null);
+        this.authService.updatePhoto(null);
         this.snackBar.open('Photo removed', 'OK', { duration: 3000 });
       },
     });
