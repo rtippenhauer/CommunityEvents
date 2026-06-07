@@ -16,6 +16,7 @@ import { extname } from 'path';
 import { mkdirSync } from 'fs';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { SetAvatarDto } from './dto/set-avatar.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity } from '../../database/entities/user.entity';
@@ -70,5 +71,13 @@ export class UsersController {
     const url = `/api/uploads/${file.filename}`;
     await this.usersService.updatePhotoPath(user.id, url);
     return { url };
+  }
+
+  @Post('me/avatar')
+  selectAvatar(
+    @CurrentUser() user: UserEntity,
+    @Body() dto: SetAvatarDto,
+  ): Promise<{ url: string }> {
+    return this.usersService.setAvatar(user.id, dto.avatarPath);
   }
 }

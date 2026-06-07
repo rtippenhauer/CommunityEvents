@@ -27,4 +27,9 @@ export class UsersService {
   async updatePhotoPath(userId: number, path: string): Promise<void> {
     await this.userRepo.update(userId, { profilePhotoPath: path });
   }
+
+  async setAvatar(userId: number, avatarPath: string): Promise<{ url: string }> {
+    await this.userRepo.update(userId, { profilePhotoPath: avatarPath });
+    return { url: avatarPath };
+  }
 }

@@ -32,13 +32,15 @@ COPY --from=frontend-build /app/dist/dinnerbears/browser /usr/share/nginx/html
 # Config
 COPY docker/nginx/nginx-combined.conf /etc/nginx/http.d/default.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
+COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN mkdir -p /app/uploads /app/appdata /run/nginx \
-    && chown -R nestjs:nestjs /app/uploads /app/appdata
+    && chown -R nestjs:nestjs /app/uploads /app/appdata \
+    && chmod +x /entrypoint.sh
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
   CMD wget -qO- http://localhost:8080/nginx-health || exit 1
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]
+CMD ["/entrypoint.sh"]

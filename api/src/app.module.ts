@@ -13,12 +13,13 @@ import { AuditModule } from './modules/audit/audit.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { FacebookGroupsModule } from './modules/facebook-groups/facebook-groups.module';
 import { RestaurantsModule } from './modules/restaurants/restaurants.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '../.env',
+      envFilePath: ['/app/appdata/.env', '.env'],
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }]),
     TypeOrmModule.forRootAsync({
@@ -48,6 +49,7 @@ import { RestaurantsModule } from './modules/restaurants/restaurants.module';
     NotificationsModule,
     FacebookGroupsModule,
     RestaurantsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
