@@ -16,6 +16,7 @@ import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { RestaurantsService, Restaurant } from '../../../core/services/restaurants.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { RestaurantFormDialogComponent } from '../form/restaurant-form-dialog.component';
+import { FacebookImportDialogComponent } from '../import/facebook-import-dialog.component';
 
 interface City {
   id: number;
@@ -41,9 +42,14 @@ interface City {
     <div class="page-header">
       <h1>Restaurants</h1>
       @if (isAdminOrMod()) {
-        <button mat-raised-button color="primary" (click)="openCreate()">
-          <mat-icon>add</mat-icon> Add Restaurant
-        </button>
+        <div class="header-actions">
+          <button mat-stroked-button (click)="openImport()">
+            <mat-icon>upload</mat-icon> Import
+          </button>
+          <button mat-raised-button color="primary" (click)="openCreate()">
+            <mat-icon>add</mat-icon> Add Restaurant
+          </button>
+        </div>
       }
     </div>
 
@@ -115,6 +121,11 @@ interface City {
           font-size: 1.75rem;
           color: var(--db-brown-dark);
         }
+      }
+      .header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
       }
       .filters {
         display: flex;
@@ -252,6 +263,13 @@ export class RestaurantsListComponent implements OnInit {
     const ref = this.dialog.open(RestaurantFormDialogComponent, { data: {} });
     ref.afterClosed().subscribe((r: Restaurant | undefined) => {
       if (r) this.load();
+    });
+  }
+
+  openImport(): void {
+    const ref = this.dialog.open(FacebookImportDialogComponent, { disableClose: true });
+    ref.afterClosed().subscribe((imported: boolean | undefined) => {
+      if (imported) this.load();
     });
   }
 }
