@@ -28,9 +28,9 @@ export interface Restaurant {
 export interface CreateRestaurantPayload {
   name: string;
   address: string;
-  phone?: string;
-  websiteUrl?: string;
-  description?: string;
+  phone?: string | null;
+  websiteUrl?: string | null;
+  description?: string | null;
   cityId: number;
 }
 
