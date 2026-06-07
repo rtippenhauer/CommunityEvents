@@ -38,6 +38,19 @@ export interface UpdateRestaurantPayload extends Partial<CreateRestaurantPayload
   isActive?: boolean;
 }
 
+export interface ImportDetail {
+  name: string;
+  status: 'inserted' | 'skipped' | 'error';
+  reason?: string;
+}
+
+export interface ImportResult {
+  inserted: number;
+  skipped: number;
+  errors: number;
+  details: ImportDetail[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class RestaurantsService {
   private readonly http = inject(HttpClient);
@@ -74,6 +87,12 @@ export class RestaurantsService {
 
   deletePhoto(restaurantId: number, photoId: number): Observable<void> {
     return this.http.delete<void>(`${this.base}/${restaurantId}/photos/${photoId}`);
+  }
+
+  importFacebook(file: File, cityId: number): Observable<ImportResult> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<ImportResult>(`${this.base}/import/facebook?cityId=${cityId}`, form);
   }
 
   googleMapsUrl(restaurant: Restaurant): string | null {
