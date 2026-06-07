@@ -36,6 +36,22 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'events',
+    loadComponent: () =>
+      import('./features/events/list/events-list.component').then(
+        (m) => m.EventsListComponent,
+      ),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'events/:id',
+    loadComponent: () =>
+      import('./features/events/detail/event-detail.component').then(
+        (m) => m.EventDetailComponent,
+      ),
+    canActivate: [authGuard],
+  },
+  {
     path: 'admin/invites',
     loadComponent: () =>
       import('./features/admin/invites/admin-invites.component').then(
@@ -51,5 +67,5 @@ export const routes: Routes = [
       ),
     canActivate: [authGuard, adminGuard],
   },
-  { path: '', pathMatch: 'full', redirectTo: 'login' },
+  { path: '', pathMatch: 'full', redirectTo: 'events' },
 ];

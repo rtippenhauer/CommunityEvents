@@ -87,28 +87,55 @@ Phase 6 when Facebook login is added for members.
 
 ---
 
-## Phase 4 — Events & RSVP System
+## Phase 4.1 — Event Core
 
-- NestJS EventsModule (CRUD, restaurant snapshot on creation)
+- NestJS EventsModule — CRUD, restaurant snapshot on creation
 - Event states: draft → published → cancelled
-- Event listing (city filter, upcoming/past toggle, MatCard layout)
-- Member RSVP (add/remove, additional guests 0–9 dropdown)
-- Guest RSVP form (name + email, no account required)
-- Guest confirmation email with cancel link and optional invite offer
-- Guest invite link generated on confirmation (30-day expiry)
-- +1 options: name them, send by email, copy shareable link
-- `guest_rsvp` and `shareable_rsvp` invite types activated
-- RSVP display: members (count + names), guests (count only), additional
-  guests count, Total Seats Needed prominently shown
-- Admin event page: full breakdown with names, emails, who invited whom
-- Share to Facebook button (admin only): opens FB composer pre-filled
-- Copy Post Text button: copies formatted event text to clipboard
-- Calendar export: .ics, Google Calendar URL, Apple Calendar deep link
-- All guest links tied to inviting member for lineage tracking
+- Event list page — city filter, upcoming/past toggle, MatCard layout
+- Event detail page — restaurant, date/time, description
+- Admin create/edit event form
 
-**Definition of done:** Admin can publish events, members and guests can
-RSVP, +1 links work, headcount displays correctly, Share to Facebook
-generates correct pre-filled text, Total Seats Needed is accurate.
+**Definition of done:** Admin can create, edit, publish, and cancel events.
+Members can view the event list and detail page. Restaurant snapshot is
+captured on publish.
+
+---
+
+## Phase 4.2 — Member RSVP
+
+- Member RSVP — add/remove, 0–9 additional guests dropdown
+- +1 options: name them, send by email, copy shareable link
+- `shareable_rsvp` invite type activated
+- RSVP display: member names, additional guest count, Total Seats Needed
+
+**Definition of done:** Members can RSVP and add additional guests. Shareable
++1 links work. Total Seats Needed is accurate.
+
+---
+
+## Phase 4.3 — Guest RSVP
+
+- Guest RSVP form — name + email, no account required
+- Guest confirmation email with cancel link + optional invite offer
+- Guest invite link (30-day expiry) generated on confirmation
+- `guest_rsvp` invite type activated, linked to inviting member for lineage
+- Admin event page: full breakdown — names, emails, who invited whom
+- RSVP display updated to include guest count
+
+**Definition of done:** Guests can RSVP without an account, receive
+confirmation email, and cancel via link. Admin sees full attendee breakdown
+with lineage.
+
+---
+
+## Phase 4.4 — Sharing & Calendar Export
+
+- Share to Facebook button (admin only — pre-fills FB composer)
+- Copy Post Text button
+- Calendar export — .ics, Google Calendar URL, Apple Calendar deep link
+
+**Definition of done:** Admin can share event to Facebook with pre-filled
+text. All three calendar export formats work correctly.
 
 ---
 

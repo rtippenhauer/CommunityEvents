@@ -13,6 +13,8 @@ import { RestaurantsService, Restaurant } from '../../../core/services/restauran
 import { AuthService } from '../../../core/services/auth.service';
 import { RestaurantFormDialogComponent } from '../form/restaurant-form-dialog.component';
 import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-dialog/photo-crop-dialog.component';
+import { EventFormDialogComponent } from '../../events/form/event-form-dialog.component';
+import { Event as DinnerEvent } from '../../../core/services/events.service';
 
 @Component({
   selector: 'app-restaurant-detail',
@@ -40,6 +42,9 @@ import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-
           </button>
           @if (isAdminOrMod()) {
             <div class="actions">
+              <button mat-raised-button color="primary" (click)="createEvent()">
+                <mat-icon>event</mat-icon> Create Event
+              </button>
               <button mat-stroked-button (click)="openEdit()">
                 <mat-icon>edit</mat-icon> Edit
               </button>
@@ -327,6 +332,23 @@ export class RestaurantDetailComponent implements OnInit {
 
   mapsUrl(): string {
     return this.restaurantsService.googleMapsUrl(this.restaurant()!) ?? '#';
+  }
+
+  createEvent(): void {
+    const r = this.restaurant()!;
+    const ref = this.dialog.open(EventFormDialogComponent, {
+      data: {
+        preset: {
+          cityId: r.cityId,
+          restaurantId: r.id,
+          title: `Bear Dinner at ${r.name}`,
+        },
+      },
+      width: '600px',
+    });
+    ref.afterClosed().subscribe((created: DinnerEvent | undefined) => {
+      if (created) void this.router.navigate(['/events', created.id]);
+    });
   }
 
   openEdit(): void {

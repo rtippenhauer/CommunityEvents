@@ -13,6 +13,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { FacebookGroupsModule } from './modules/facebook-groups/facebook-groups.module';
 import { RestaurantsModule } from './modules/restaurants/restaurants.module';
+import { EventsModule } from './modules/events/events.module';
 import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
@@ -49,6 +50,7 @@ import { AdminModule } from './modules/admin/admin.module';
     NotificationsModule,
     FacebookGroupsModule,
     RestaurantsModule,
+    EventsModule,
     AdminModule,
   ],
   controllers: [AppController],

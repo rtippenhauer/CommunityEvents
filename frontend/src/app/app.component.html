@@ -3,6 +3,10 @@
   <!-- Mobile sidenav -->
   <mat-sidenav #sidenav mode="over" class="app-sidenav">
     <mat-nav-list>
+      <a mat-list-item routerLink="/events" (click)="sidenav.close()">
+        <mat-icon matListItemIcon>event</mat-icon>
+        Events
+      </a>
       <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
         <mat-icon matListItemIcon>restaurant</mat-icon>
         Restaurants
@@ -35,6 +39,9 @@
       <!-- Desktop: inline nav links -->
       @if (!isMobile() && isLoggedIn()) {
         <nav class="desktop-nav">
+          <a mat-button routerLink="/events" routerLinkActive="nav-active">
+            <mat-icon>event</mat-icon> Events
+          </a>
           <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">
             <mat-icon>restaurant</mat-icon> Restaurants
           </a>

@@ -33,12 +33,14 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 3 — Restaurant Database**
+**Phase 4.1 — Event Core**
 See PHASES.md for full phase breakdown and definitions of done.
 
 ## Completed Phases
 - **Phase 1** — Docker scaffold, Angular shell, NestJS + TypeORM, health check, ESLint/Prettier ✓
 - **Phase 2** — Google OAuth, invite system, JWT sessions, profile page, photo upload ✓
+- **Phase 3** — Restaurant database UI, photos, geocoding ✓
+- **Phase 3.5** — Historical Facebook import, enrichment via Google Places + Claude AI ✓
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules
