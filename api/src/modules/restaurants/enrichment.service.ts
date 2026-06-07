@@ -10,6 +10,7 @@ import { RestaurantEntity } from '../../database/entities/restaurant.entity';
 import { RestaurantPhotoEntity } from '../../database/entities/restaurant-photo.entity';
 
 export interface EnrichResult {
+  name: string | null;
   description: string | null;
   phone: string | null;
   website: string | null;
@@ -54,8 +55,15 @@ interface PlaceSearchResponse {
   status: string;
 }
 
+interface AddressComponent {
+  long_name: string;
+  types: string[];
+}
+
 interface PlaceDetailsResponse {
   result: {
+    name?: string;
+    address_components?: AddressComponent[];
     editorial_summary?: { overview: string };
     formatted_phone_number?: string;
     website?: string;
@@ -122,6 +130,7 @@ export class EnrichmentService {
 
   async enrich(restaurant: RestaurantEntity, uploaderId: number): Promise<EnrichResult> {
     const result: EnrichResult = {
+      name: null,
       description: null,
       phone: null,
       website: null,
@@ -136,10 +145,16 @@ export class EnrichmentService {
       if (placeData) {
         result.placeFound = true;
 
-        if (!restaurant.phone && placeData.formatted_phone_number) {
+        if (placeData.name) {
+          const locality = placeData.address_components
+            ? this.parseLocalityFromComponents(placeData.address_components)
+            : restaurant.city?.name ?? null;
+          result.name = locality ? `${placeData.name} at ${locality}` : placeData.name;
+        }
+        if (placeData.formatted_phone_number) {
           result.phone = placeData.formatted_phone_number;
         }
-        if (!restaurant.websiteUrl && placeData.website) {
+        if (placeData.website) {
           result.website = placeData.website;
         }
         if (restaurant.photos.length === 0 && placeData.photos?.length) {
@@ -163,6 +178,7 @@ export class EnrichmentService {
 
     // Persist updates directly
     const updates: Partial<RestaurantEntity> = { enrichedAt: new Date() };
+    if (result.name) updates.name = result.name;
     if (result.description) updates.description = result.description;
     if (result.phone) updates.phone = result.phone;
     if (result.website) updates.websiteUrl = result.website;
@@ -215,7 +231,7 @@ export class EnrichmentService {
 
         if (searchData.status === 'OK' && searchData.candidates.length) {
           placeId = searchData.candidates[0].place_id;
-          const fields = 'editorial_summary,formatted_phone_number,website,photos';
+          const fields = 'name,address_components,editorial_summary,formatted_phone_number,website,photos';
           const detailUrl =
             `https://maps.googleapis.com/maps/api/place/details/json` +
             `?place_id=${placeId}&fields=${fields}&key=${this.googleKey}`;
@@ -293,6 +309,18 @@ export class EnrichmentService {
     return diagnosis;
   }
 
+  // Priority: sublocality_level_1 (Hyde Park) → neighborhood → locality (Cincinnati, Centerville)
+  private parseLocalityFromComponents(components: AddressComponent[]): string | null {
+    const pick = (...types: string[]): string | null => {
+      for (const type of types) {
+        const comp = components.find((c) => c.types.includes(type));
+        if (comp) return comp.long_name;
+      }
+      return null;
+    };
+    return pick('sublocality_level_1', 'neighborhood', 'locality');
+  }
+
   private async fetchPlaceDetails(
     name: string,
     address: string,
@@ -312,7 +340,7 @@ export class EnrichmentService {
       }
 
       const placeId = searchData.candidates[0].place_id;
-      const fields = 'editorial_summary,formatted_phone_number,website,photos';
+      const fields = 'name,address_components,editorial_summary,formatted_phone_number,website,photos';
       const detailUrl =
         `https://maps.googleapis.com/maps/api/place/details/json` +
         `?place_id=${placeId}&fields=${fields}&key=${this.googleKey}`;
