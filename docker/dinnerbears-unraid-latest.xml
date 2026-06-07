@@ -5,7 +5,7 @@
   <Registry/>
   <Network>bridge</Network>
   <MyIP/>
-  <Shell>bash</Shell>
+  <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support/>
   <Project>https://github.com/rtippenhauer/DinnerBears</Project>
