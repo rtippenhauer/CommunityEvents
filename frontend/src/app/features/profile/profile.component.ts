@@ -221,13 +221,10 @@ const PRESET_AVATARS = [
       padding: 0;
       background: none;
       transition: border-color 0.15s, transform 0.15s;
-      aspect-ratio: 3 / 4;
 
       img {
         width: 100%;
-        height: 100%;
-        object-fit: cover;
-        object-position: center top;
+        height: auto;
         display: block;
       }
 
