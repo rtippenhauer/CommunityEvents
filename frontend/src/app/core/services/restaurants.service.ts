@@ -89,6 +89,14 @@ export class RestaurantsService {
     return this.http.delete<void>(`${this.base}/${restaurantId}/photos/${photoId}`);
   }
 
+  diagnose(id: number): Observable<unknown> {
+    return this.http.get(`${this.base}/${id}/enrich/diagnose`);
+  }
+
+  enrich(id: number): Observable<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; photoAdded: boolean; restaurant: Restaurant }> {
+    return this.http.post<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; photoAdded: boolean; restaurant: Restaurant }>(`${this.base}/${id}/enrich`, {});
+  }
+
   importFacebook(file: File, cityId: number): Observable<ImportResult> {
     const form = new FormData();
     form.append('file', file);

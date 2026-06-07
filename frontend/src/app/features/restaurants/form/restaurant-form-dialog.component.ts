@@ -150,9 +150,9 @@ export class RestaurantFormDialogComponent implements OnInit {
       name: val.name,
       address: val.address,
       cityId: val.cityId,
-      phone: val.phone || undefined,
-      websiteUrl: val.websiteUrl || undefined,
-      description: val.description || undefined,
+      phone: val.phone.trim() || null,
+      websiteUrl: val.websiteUrl.trim() || null,
+      description: val.description.trim() || null,
     };
 
     const req$ = this.data.restaurant

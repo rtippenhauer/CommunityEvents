@@ -70,6 +70,14 @@
   <Config Name="Geocoding Provider" Target="GEOCODING_PROVIDER" Default="google" Mode=""
     Description="Geocoding provider: google or opencage" Type="Variable"
     Display="advanced" Required="false" Mask="false">google</Config>
+  <Config Name="Google Places API Key" Target="GOOGLE_PLACES_API_KEY" Default="" Mode=""
+    Description="Google Places API key for restaurant enrichment (phone, photo, description). Can be the same key as GEOCODING_API_KEY if Places API is enabled." Type="Variable"
+    Display="advanced" Required="false" Mask="true"></Config>
+
+  <!-- ==================== AI ==================== -->
+  <Config Name="Anthropic API Key" Target="ANTHROPIC_API_KEY" Default="" Mode=""
+    Description="Anthropic API key for AI-generated restaurant descriptions via Claude" Type="Variable"
+    Display="advanced" Required="false" Mask="true"></Config>
 
   <!-- ==================== APP ==================== -->
   <Config Name="Admin Email" Target="ADMIN_EMAIL" Default="" Mode=""

@@ -3,10 +3,11 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatDialog } from '@angular/material/dialog';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { EnrichDiagnoseDialogComponent } from './enrich-diagnose-dialog.component';
 import { RestaurantsService, Restaurant } from '../../../core/services/restaurants.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { RestaurantFormDialogComponent } from '../form/restaurant-form-dialog.component';
@@ -20,6 +21,7 @@ import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-
     MatButtonModule,
     MatCardModule,
     MatChipsModule,
+    MatDialogModule,
     MatIconModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
@@ -41,6 +43,17 @@ import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-
               </button>
               <button mat-stroked-button (click)="openAddPhoto()">
                 <mat-icon>add_photo_alternate</mat-icon> Add Photo
+              </button>
+              <button mat-stroked-button (click)="diagnose()" [disabled]="enriching()">
+                <mat-icon>manage_search</mat-icon> Diagnose
+              </button>
+              <button mat-stroked-button (click)="enrich()" [disabled]="enriching()">
+                @if (enriching()) {
+                  <mat-spinner diameter="16" style="display:inline-block;margin-right:6px" />
+                } @else {
+                  <mat-icon>auto_awesome</mat-icon>
+                }
+                Enrich
               </button>
               <input
                 #photoInput
@@ -225,6 +238,7 @@ export class RestaurantDetailComponent implements OnInit {
 
   readonly restaurant = signal<Restaurant | null>(null);
   readonly loading = signal(true);
+  readonly enriching = signal(false);
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get('id'));
@@ -287,6 +301,48 @@ export class RestaurantDetailComponent implements OnInit {
         },
         error: () => this.snackBar.open('Upload failed', 'OK', { duration: 3000 }),
       });
+    });
+  }
+
+  diagnose(): void {
+    const id = this.restaurant()!.id;
+    this.enriching.set(true);
+    this.restaurantsService.diagnose(id).subscribe({
+      next: (result) => {
+        this.enriching.set(false);
+        this.dialog.open(EnrichDiagnoseDialogComponent, {
+          data: result,
+          maxWidth: '700px',
+          width: '95vw',
+        });
+      },
+      error: () => {
+        this.enriching.set(false);
+        this.snackBar.open('Diagnose failed', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  enrich(): void {
+    const id = this.restaurant()!.id;
+    this.enriching.set(true);
+    this.restaurantsService.enrich(id).subscribe({
+      next: (res) => {
+        this.restaurant.set(res.restaurant);
+        this.enriching.set(false);
+        const parts: string[] = [];
+        if (res.placeFound) parts.push('found on Google Places');
+        if (res.description) parts.push('description added');
+        if (res.phone) parts.push('phone added');
+        if (res.website) parts.push('website added');
+        if (res.photoAdded) parts.push('photo added');
+        const msg = parts.length ? parts.join(', ') : 'nothing new to add';
+        this.snackBar.open(`Enriched: ${msg}`, 'OK', { duration: 5000 });
+      },
+      error: () => {
+        this.enriching.set(false);
+        this.snackBar.open('Enrichment failed', 'OK', { duration: 3000 });
+      },
     });
   }
 

@@ -6,10 +6,11 @@ import { CityEntity } from '../../database/entities/city.entity';
 import { RestaurantsService } from './restaurants.service';
 import { RestaurantsController } from './restaurants.controller';
 import { GeocodingService } from './geocoding.service';
+import { EnrichmentService } from './enrichment.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([RestaurantEntity, RestaurantPhotoEntity, CityEntity])],
-  providers: [RestaurantsService, GeocodingService],
+  providers: [RestaurantsService, GeocodingService, EnrichmentService],
   controllers: [RestaurantsController],
   exports: [RestaurantsService],
 })

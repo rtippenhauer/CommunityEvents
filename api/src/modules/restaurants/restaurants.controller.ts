@@ -20,6 +20,7 @@ import type { FileFilterCallback } from 'multer';
 import { extname } from 'path';
 import { mkdirSync } from 'fs';
 import { RestaurantsService } from './restaurants.service';
+import { EnrichmentService } from './enrichment.service';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -73,7 +74,10 @@ const jsonFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCall
 @Controller('restaurants')
 @UseGuards(JwtAuthGuard)
 export class RestaurantsController {
-  constructor(private readonly restaurantsService: RestaurantsService) {}
+  constructor(
+    private readonly restaurantsService: RestaurantsService,
+    private readonly enrichmentService: EnrichmentService,
+  ) {}
 
   // Must be declared before :id routes to avoid route collision
   @Post('import/facebook')
@@ -156,5 +160,38 @@ export class RestaurantsController {
     @Param('photoId', ParseIntPipe) photoId: number,
   ) {
     return this.restaurantsService.removePhoto(id, photoId);
+  }
+
+  @Get(':id/enrich/diagnose')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  async enrichDiagnose(@Param('id', ParseIntPipe) id: number) {
+    const restaurant = await this.restaurantsService.findOne(id);
+    return this.enrichmentService.diagnose(restaurant);
+  }
+
+  @Post(':id/enrich')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  async enrich(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserEntity,
+  ) {
+    const restaurant = await this.restaurantsService.findOne(id);
+    const enrichResult = await this.enrichmentService.enrich(restaurant, user.id);
+
+    const updates: Record<string, unknown> = {};
+    if (enrichResult.description) updates['description'] = enrichResult.description;
+    if (enrichResult.phone) updates['phone'] = enrichResult.phone;
+    if (enrichResult.website) updates['websiteUrl'] = enrichResult.website;
+
+    if (Object.keys(updates).length > 0) {
+      await this.restaurantsService.update(id, updates);
+    }
+
+    return {
+      ...enrichResult,
+      restaurant: await this.restaurantsService.findOne(id),
+    };
   }
 }
