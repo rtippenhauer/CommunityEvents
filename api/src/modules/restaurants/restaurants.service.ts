@@ -81,31 +81,35 @@ export class RestaurantsService {
   async findOne(id: number): Promise<RestaurantEntity> {
     const r = await this.restaurantRepo.findOne({
       where: { id, isActive: true },
-      relations: ['city', 'photos'],
+      relations: ['city', 'photos', 'createdByUser', 'updatedByUser'],
     });
     if (!r) throw new NotFoundException('Restaurant not found');
     return r;
   }
 
-  async create(dto: CreateRestaurantDto): Promise<RestaurantEntity> {
+  async create(dto: CreateRestaurantDto, userId?: number): Promise<RestaurantEntity> {
     const coords = await this.geocodingService.geocode(dto.address);
     const restaurant = this.restaurantRepo.create({
       ...dto,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
+      createdById: userId ?? null,
+      updatedById: userId ?? null,
     });
     const saved = await this.restaurantRepo.save(restaurant);
     return this.findOne(saved.id);
   }
 
-  async update(id: number, dto: UpdateRestaurantDto): Promise<RestaurantEntity> {
+  async update(id: number, dto: UpdateRestaurantDto | Record<string, unknown>, userId?: number): Promise<RestaurantEntity> {
     const restaurant = await this.findOne(id);
-    const addressChanged = dto.address && dto.address !== restaurant.address;
+    const addressChanged = (dto as UpdateRestaurantDto).address && (dto as UpdateRestaurantDto).address !== restaurant.address;
 
     Object.assign(restaurant, dto);
 
+    if (userId) restaurant.updatedById = userId;
+
     if (addressChanged) {
-      const coords = await this.geocodingService.geocode(dto.address!);
+      const coords = await this.geocodingService.geocode((dto as UpdateRestaurantDto).address!);
       restaurant.lat = coords?.lat ?? null;
       restaurant.lng = coords?.lng ?? null;
     }

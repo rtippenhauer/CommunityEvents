@@ -9,6 +9,12 @@ export interface RestaurantPhoto {
   sortOrder: number;
 }
 
+export interface RestaurantUser {
+  id: number;
+  fullName: string;
+  profilePhotoPath: string | null;
+}
+
 export interface Restaurant {
   id: number;
   name: string;
@@ -23,6 +29,10 @@ export interface Restaurant {
   isActive: boolean;
   photos: RestaurantPhoto[];
   createdAt: string;
+  updatedAt: string;
+  enrichedAt: string | null;
+  createdByUser: RestaurantUser | null;
+  updatedByUser: RestaurantUser | null;
 }
 
 export interface CreateRestaurantPayload {
@@ -91,6 +101,10 @@ export class RestaurantsService {
 
   diagnose(id: number): Observable<unknown> {
     return this.http.get(`${this.base}/${id}/enrich/diagnose`);
+  }
+
+  bulkEnrich(): Observable<{ started: boolean; total: number }> {
+    return this.http.post<{ started: boolean; total: number }>(`${this.base}/enrich/bulk`, {});
   }
 
   enrich(id: number): Observable<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; photoAdded: boolean; restaurant: Restaurant }> {

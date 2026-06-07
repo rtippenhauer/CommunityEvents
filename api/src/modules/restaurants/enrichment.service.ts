@@ -73,6 +73,8 @@ export class EnrichmentService {
 
   constructor(
     private readonly configService: ConfigService,
+    @InjectRepository(RestaurantEntity)
+    private readonly restaurantRepo: Repository<RestaurantEntity>,
     @InjectRepository(RestaurantPhotoEntity)
     private readonly photoRepo: Repository<RestaurantPhotoEntity>,
   ) {
@@ -80,6 +82,42 @@ export class EnrichmentService {
     const anthropicKey = configService.get<string>('ANTHROPIC_API_KEY');
     this.anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
     this.uploadPath = configService.get<string>('UPLOAD_PATH') ?? '/app/uploads';
+  }
+
+  async bulkEnrich(
+    restaurants: RestaurantEntity[],
+    uploaderId: number,
+    onProgress?: (done: number, total: number, name: string) => void,
+  ): Promise<{ enriched: number; skipped: number; errors: number }> {
+    let enriched = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (let i = 0; i < restaurants.length; i++) {
+      const restaurant = restaurants[i];
+      onProgress?.(i, restaurants.length, restaurant.name);
+      try {
+        const result = await this.enrich(restaurant, uploaderId);
+        const updated = result.description || result.phone || result.website || result.photoAdded;
+        if (updated) {
+          enriched++;
+          this.logger.log(`[Bulk] ${i + 1}/${restaurants.length} enriched: ${restaurant.name}`);
+        } else {
+          skipped++;
+          this.logger.log(`[Bulk] ${i + 1}/${restaurants.length} nothing new: ${restaurant.name}`);
+        }
+      } catch (err) {
+        errors++;
+        this.logger.error(`[Bulk] ${i + 1}/${restaurants.length} error: ${restaurant.name}`, err);
+      }
+      // 400ms delay between restaurants to stay well within Google rate limits
+      if (i < restaurants.length - 1) {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }
+
+    this.logger.log(`[Bulk] Complete — enriched: ${enriched}, skipped: ${skipped}, errors: ${errors}`);
+    return { enriched, skipped, errors };
   }
 
   async enrich(restaurant: RestaurantEntity, uploaderId: number): Promise<EnrichResult> {
@@ -122,6 +160,13 @@ export class EnrichmentService {
         placeData?.editorial_summary?.overview,
       );
     }
+
+    // Persist updates directly
+    const updates: Partial<RestaurantEntity> = { enrichedAt: new Date() };
+    if (result.description) updates.description = result.description;
+    if (result.phone) updates.phone = result.phone;
+    if (result.website) updates.websiteUrl = result.website;
+    await this.restaurantRepo.update(restaurant.id, updates);
 
     return result;
   }

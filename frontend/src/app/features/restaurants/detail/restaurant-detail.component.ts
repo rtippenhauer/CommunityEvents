@@ -1,4 +1,5 @@
 import { Component, ElementRef, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -17,6 +18,7 @@ import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-
   selector: 'app-restaurant-detail',
   standalone: true,
   imports: [
+    DatePipe,
     RouterLink,
     MatButtonModule,
     MatCardModule,
@@ -120,6 +122,41 @@ import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-
             @if (restaurant()!.description) {
               <p class="description">{{ restaurant()!.description }}</p>
             }
+
+            <div class="audit-info">
+              @if (restaurant()!.createdByUser) {
+                <div class="audit-row">
+                  <img
+                    class="audit-avatar"
+                    [src]="restaurant()!.createdByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'"
+                    [alt]="restaurant()!.createdByUser!.fullName"
+                  />
+                  <span>Added by <strong>{{ restaurant()!.createdByUser!.fullName }}</strong>
+                    on {{ restaurant()!.createdAt | date:'mediumDate' }}</span>
+                </div>
+              } @else {
+                <div class="audit-row muted">
+                  Added {{ restaurant()!.createdAt | date:'mediumDate' }}
+                </div>
+              }
+              @if (restaurant()!.updatedByUser && restaurant()!.updatedAt !== restaurant()!.createdAt) {
+                <div class="audit-row">
+                  <img
+                    class="audit-avatar"
+                    [src]="restaurant()!.updatedByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'"
+                    [alt]="restaurant()!.updatedByUser!.fullName"
+                  />
+                  <span>Updated by <strong>{{ restaurant()!.updatedByUser!.fullName }}</strong>
+                    on {{ restaurant()!.updatedAt | date:'mediumDate' }}</span>
+                </div>
+              }
+              @if (restaurant()!.enrichedAt) {
+                <div class="audit-row muted">
+                  <mat-icon class="audit-icon">auto_awesome</mat-icon>
+                  Enriched {{ restaurant()!.enrichedAt | date:'mediumDate' }}
+                </div>
+              }
+            </div>
           </mat-card-content>
         </mat-card>
       </div>
@@ -222,6 +259,35 @@ import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-
         text-align: center;
         color: #999;
         padding: 48px 0;
+      }
+      .audit-info {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid #eee;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .audit-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82rem;
+        color: #666;
+        &.muted { color: #aaa; }
+      }
+      .audit-avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .audit-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: var(--db-primary);
       }
     `,
   ],

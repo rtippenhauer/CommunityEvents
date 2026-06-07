@@ -116,15 +116,19 @@ export class RestaurantsController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
-  create(@Body() dto: CreateRestaurantDto) {
-    return this.restaurantsService.create(dto);
+  create(@Body() dto: CreateRestaurantDto, @CurrentUser() user: UserEntity) {
+    return this.restaurantsService.create(dto, user.id);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRestaurantDto) {
-    return this.restaurantsService.update(id, dto);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateRestaurantDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.restaurantsService.update(id, dto, user.id);
   }
 
   @Delete(':id')
@@ -179,19 +183,18 @@ export class RestaurantsController {
   ) {
     const restaurant = await this.restaurantsService.findOne(id);
     const enrichResult = await this.enrichmentService.enrich(restaurant, user.id);
-
-    const updates: Record<string, unknown> = {};
-    if (enrichResult.description) updates['description'] = enrichResult.description;
-    if (enrichResult.phone) updates['phone'] = enrichResult.phone;
-    if (enrichResult.website) updates['websiteUrl'] = enrichResult.website;
-
-    if (Object.keys(updates).length > 0) {
-      await this.restaurantsService.update(id, updates);
-    }
-
     return {
       ...enrichResult,
       restaurant: await this.restaurantsService.findOne(id),
     };
+  }
+
+  @Post('enrich/bulk')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async enrichBulk(@CurrentUser() user: UserEntity) {
+    const restaurants = await this.restaurantsService.findAll({});
+    void this.enrichmentService.bulkEnrich(restaurants, user.id);
+    return { started: true, total: restaurants.length };
   }
 }

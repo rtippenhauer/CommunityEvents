@@ -12,6 +12,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { RestaurantsService, Restaurant } from '../../../core/services/restaurants.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -37,6 +38,7 @@ interface City {
     MatInputModule,
     MatProgressSpinnerModule,
     MatSelectModule,
+    MatSnackBarModule,
   ],
   template: `
     <div class="page-header">
@@ -45,6 +47,14 @@ interface City {
         <div class="header-actions">
           <button mat-stroked-button (click)="openImport()">
             <mat-icon>upload</mat-icon> Import
+          </button>
+          <button mat-stroked-button (click)="bulkEnrich()" [disabled]="enrichingAll()">
+            @if (enrichingAll()) {
+              <mat-spinner diameter="16" style="display:inline-block;margin-right:6px" />
+            } @else {
+              <mat-icon>auto_awesome</mat-icon>
+            }
+            Enrich All
           </button>
           <button mat-raised-button color="primary" (click)="openCreate()">
             <mat-icon>add</mat-icon> Add Restaurant
@@ -217,12 +227,14 @@ export class RestaurantsListComponent implements OnInit {
   private readonly restaurantsService = inject(RestaurantsService);
   private readonly authService = inject(AuthService);
   private readonly dialog = inject(MatDialog);
+  private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
   private readonly http = inject(HttpClient);
 
   readonly restaurants = signal<Restaurant[]>([]);
   readonly cities = signal<City[]>([]);
   readonly loading = signal(true);
+  readonly enrichingAll = signal(false);
 
   readonly searchCtrl = new FormControl('');
   readonly cityCtrl = new FormControl<number | null>(null);
@@ -263,6 +275,29 @@ export class RestaurantsListComponent implements OnInit {
     const ref = this.dialog.open(RestaurantFormDialogComponent, { data: {} });
     ref.afterClosed().subscribe((r: Restaurant | undefined) => {
       if (r) this.load();
+    });
+  }
+
+  bulkEnrich(): void {
+    const count = this.restaurants().length;
+    const confirmed = window.confirm(
+      `Enrich all ${count} restaurants with Google Places + Claude descriptions?\n\nThis runs in the background — check Unraid logs for progress. Takes ~${Math.ceil(count * 0.7 / 60)} minutes.`
+    );
+    if (!confirmed) return;
+    this.enrichingAll.set(true);
+    this.restaurantsService.bulkEnrich().subscribe({
+      next: (res) => {
+        this.enrichingAll.set(false);
+        this.snackBar.open(
+          `Enriching ${res.total} restaurants in background — check logs for progress`,
+          'OK',
+          { duration: 6000 }
+        );
+      },
+      error: () => {
+        this.enrichingAll.set(false);
+        this.snackBar.open('Bulk enrich failed to start', 'OK', { duration: 3000 });
+      },
     });
   }
 

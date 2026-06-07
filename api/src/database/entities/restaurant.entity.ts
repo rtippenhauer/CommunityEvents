@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { CityEntity } from './city.entity';
 import { RestaurantPhotoEntity } from './restaurant-photo.entity';
+import { UserEntity } from './user.entity';
 
 export enum ImportSource {
   MANUAL = 'manual',
@@ -68,4 +69,21 @@ export class RestaurantEntity {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @Column({ name: 'enriched_at', type: 'datetime', nullable: true })
+  enrichedAt: Date | null;
+
+  @Column({ name: 'created_by', unsigned: true, nullable: true })
+  createdById: number | null;
+
+  @ManyToOne(() => UserEntity, { nullable: true, eager: false })
+  @JoinColumn({ name: 'created_by' })
+  createdByUser: UserEntity | null;
+
+  @Column({ name: 'updated_by', unsigned: true, nullable: true })
+  updatedById: number | null;
+
+  @ManyToOne(() => UserEntity, { nullable: true, eager: false })
+  @JoinColumn({ name: 'updated_by' })
+  updatedByUser: UserEntity | null;
 }
