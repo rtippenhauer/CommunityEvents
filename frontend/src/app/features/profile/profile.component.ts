@@ -1,10 +1,15 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { DatePipe } from '@angular/common';
+import { Clipboard } from '@angular/cdk/clipboard';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDividerModule } from '@angular/material/divider';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -18,6 +23,20 @@ interface City {
   id: number;
   name: string;
   subdomain: string;
+}
+
+interface Invite {
+  id: number;
+  token: string;
+  type: string;
+  boundToEmail: string | null;
+  boundToName: string | null;
+  expiresAt: string;
+  isRevoked: boolean;
+  useCount: number;
+  maxUses: number | null;
+  redeemedAt: string | null;
+  createdAt: string;
 }
 
 const PRESET_AVATARS = [
@@ -42,8 +61,12 @@ const PRESET_AVATARS = [
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    DatePipe,
     MatCardModule,
+    MatChipsModule,
+    MatDividerModule,
     MatFormFieldModule,
+    MatIconModule,
     MatInputModule,
     MatSelectModule,
     MatButtonModule,
@@ -55,6 +78,8 @@ const PRESET_AVATARS = [
   ],
   template: `
     <div class="profile-container">
+
+      <!-- Profile card -->
       <mat-card>
         <mat-card-header>
           <mat-card-title>Your Profile</mat-card-title>
@@ -154,12 +179,85 @@ const PRESET_AVATARS = [
           }
         </mat-card-content>
       </mat-card>
+
+      <!-- Invites card -->
+      <mat-card class="invites-card">
+        <mat-card-header>
+          <mat-card-title>Invite a Friend</mat-card-title>
+          <mat-card-subtitle>Send someone a personal invite link to join DinnerBears.</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <form [formGroup]="inviteForm" (ngSubmit)="createInvite()" class="invite-form">
+            <mat-form-field appearance="outline">
+              <mat-label>Their Email</mat-label>
+              <input matInput formControlName="boundToEmail" type="email" />
+              <mat-hint>The link will only work for this address</mat-hint>
+              <mat-error>A valid email is required</mat-error>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Their Name (optional)</mat-label>
+              <input matInput formControlName="boundToName" />
+            </mat-form-field>
+            <div>
+              <button mat-raised-button color="primary" type="submit"
+                [disabled]="inviteForm.invalid || creatingInvite()">
+                <mat-icon>add_link</mat-icon>
+                Generate Invite Link
+              </button>
+            </div>
+          </form>
+
+          @if (newInviteUrl()) {
+            <div class="new-link-banner">
+              <mat-icon color="primary">check_circle</mat-icon>
+              <span class="new-link-url">{{ newInviteUrl() }}</span>
+              <button mat-icon-button (click)="copyNewLink()" aria-label="Copy link" title="Copy">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          }
+
+          @if (myInvites().length > 0) {
+            <mat-divider class="section-divider" />
+            <h3 class="invites-history-title">Your Invites</h3>
+            <div class="invite-list">
+              @for (invite of myInvites(); track invite.id) {
+                <div class="invite-row">
+                  <div class="invite-row-info">
+                    <span class="invite-email">{{ invite.boundToEmail ?? '—' }}</span>
+                    <span class="invite-meta">Expires {{ invite.expiresAt | date:'shortDate' }}</span>
+                  </div>
+                  <div class="invite-row-status">
+                    @if (invite.isRevoked) {
+                      <mat-chip class="chip-revoked">Revoked</mat-chip>
+                    } @else if (invite.redeemedAt) {
+                      <mat-chip class="chip-used">Joined!</mat-chip>
+                    } @else if (isExpired(invite)) {
+                      <mat-chip class="chip-expired">Expired</mat-chip>
+                    } @else {
+                      <mat-chip class="chip-active">Pending</mat-chip>
+                      <button mat-icon-button (click)="copyToken(invite.token)"
+                        aria-label="Copy link" title="Copy link">
+                        <mat-icon>content_copy</mat-icon>
+                      </button>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
     </div>
   `,
   styles: [`
     .profile-container {
       max-width: 600px;
       margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
     }
     .profile-form {
       display: flex;
@@ -261,6 +359,72 @@ const PRESET_AVATARS = [
       color: #999;
       margin: 0;
     }
+
+    /* Invites card */
+    .invites-card mat-card-content { padding-top: 8px; }
+    .invite-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 8px 0 16px;
+    }
+    .new-link-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #e8f5e9;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .new-link-url {
+      font-family: monospace;
+      font-size: 0.8rem;
+      word-break: break-all;
+      flex: 1;
+    }
+    .section-divider { margin: 16px 0 12px; }
+    .invites-history-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin: 0 0 10px;
+      color: #555;
+    }
+    .invite-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .invite-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 4px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .invite-row-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .invite-email { font-size: 0.9rem; font-weight: 500; }
+    .invite-meta { font-size: 0.75rem; color: #999; }
+    .invite-row-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    mat-chip {
+      font-size: 0.72rem !important;
+      min-height: 22px !important;
+    }
+    .chip-active { background: #c8e6c9 !important; }
+    .chip-used { background: #bbdefb !important; }
+    .chip-expired { background: #e0e0e0 !important; }
+    .chip-revoked { background: #ffccbc !important; }
   `],
 })
 export class ProfileComponent implements OnInit {
@@ -269,6 +433,7 @@ export class ProfileComponent implements OnInit {
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly clipboard = inject(Clipboard);
 
   readonly presetAvatars = PRESET_AVATARS;
   readonly cities = signal<City[]>([]);
@@ -278,6 +443,15 @@ export class ProfileComponent implements OnInit {
   readonly form = this.fb.group({
     fullName: ['', [Validators.required, Validators.maxLength(200)]],
     cityId: [0, Validators.required],
+  });
+
+  readonly myInvites = signal<Invite[]>([]);
+  readonly newInviteUrl = signal<string | null>(null);
+  readonly creatingInvite = signal(false);
+
+  readonly inviteForm = this.fb.group({
+    boundToEmail: ['', [Validators.required, Validators.email]],
+    boundToName: [''],
   });
 
   ngOnInit(): void {
@@ -290,6 +464,53 @@ export class ProfileComponent implements OnInit {
       const path = user.profilePhotoPath;
       this.photoUrl.set(path ?? null);
     }
+    this.loadMyInvites();
+  }
+
+  loadMyInvites(): void {
+    this.http.get<Invite[]>('/api/v1/invites/mine').subscribe({
+      next: (invites) => this.myInvites.set(invites),
+    });
+  }
+
+  createInvite(): void {
+    if (this.inviteForm.invalid) return;
+    this.creatingInvite.set(true);
+    const { boundToEmail, boundToName } = this.inviteForm.getRawValue();
+    const body: Record<string, unknown> = { type: 'member', boundToEmail };
+    if (boundToName) body['boundToName'] = boundToName;
+
+    this.http.post<Invite>('/api/v1/invites', body).subscribe({
+      next: (invite) => {
+        this.newInviteUrl.set(`${window.location.origin}/login?token=${invite.token}`);
+        this.inviteForm.reset();
+        this.loadMyInvites();
+        this.creatingInvite.set(false);
+      },
+      error: (err) => {
+        const msg = err?.error?.message ?? 'Failed to create invite';
+        this.snackBar.open(msg, 'OK', { duration: 4000 });
+        this.creatingInvite.set(false);
+      },
+    });
+  }
+
+  copyNewLink(): void {
+    const url = this.newInviteUrl();
+    if (url) {
+      this.clipboard.copy(url);
+      this.snackBar.open('Link copied', 'OK', { duration: 2000 });
+    }
+  }
+
+  copyToken(token: string): void {
+    const url = `${window.location.origin}/login?token=${token}`;
+    this.clipboard.copy(url);
+    this.snackBar.open('Link copied', 'OK', { duration: 2000 });
+  }
+
+  isExpired(invite: Invite): boolean {
+    return new Date(invite.expiresAt) < new Date();
   }
 
   openFilePicker(): void {

@@ -89,4 +89,11 @@ export class InvitesService {
   findAll(): Promise<InviteEntity[]> {
     return this.inviteRepo.find({ order: { createdAt: 'DESC' } });
   }
+
+  findByCreator(userId: number): Promise<InviteEntity[]> {
+    return this.inviteRepo.find({
+      where: { createdBy: userId },
+      order: { createdAt: 'DESC' },
+    });
+  }
 }

@@ -11,6 +11,10 @@
         <mat-icon matListItemIcon>restaurant</mat-icon>
         Restaurants
       </a>
+      <a mat-list-item routerLink="/members" (click)="sidenav.close()">
+        <mat-icon matListItemIcon>group</mat-icon>
+        Members
+      </a>
       <a mat-list-item routerLink="/profile" (click)="sidenav.close()">
         <mat-icon matListItemIcon>person</mat-icon>
         Profile
@@ -44,6 +48,9 @@
           </a>
           <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">
             <mat-icon>restaurant</mat-icon> Restaurants
+          </a>
+          <a mat-button routerLink="/members" routerLinkActive="nav-active">
+            <mat-icon>group</mat-icon> Members
           </a>
           <a mat-button routerLink="/profile" routerLinkActive="nav-active">
             <mat-icon>person</mat-icon> Profile

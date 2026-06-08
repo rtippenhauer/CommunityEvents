@@ -13,6 +13,7 @@ import {
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { UpsertRsvpDto } from './dto/upsert-rsvp.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -68,5 +69,21 @@ export class EventsController {
   @Roles(UserRole.ADMIN)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.eventsService.remove(id);
+  }
+
+  @Post(':id/rsvp')
+  @UseGuards(JwtAuthGuard)
+  rsvp(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpsertRsvpDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.eventsService.upsertRsvp(id, user.id, dto.additionalGuests);
+  }
+
+  @Delete(':id/rsvp')
+  @UseGuards(JwtAuthGuard)
+  unrsvp(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+    return this.eventsService.removeRsvp(id, user.id);
   }
 }

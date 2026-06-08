@@ -56,6 +56,12 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'members',
+    loadComponent: () =>
+      import('./features/members/members.component').then((m) => m.MembersComponent),
+    canActivate: [authGuard],
+  },
+  {
     path: 'admin/invites',
     loadComponent: () =>
       import('./features/admin/invites/admin-invites.component').then(

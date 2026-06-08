@@ -1,14 +1,18 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe, TitleCasePipe } from '@angular/common';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog } from '@angular/material/dialog';
+import { MatDividerModule } from '@angular/material/divider';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { EventsService, Event } from '../../../core/services/events.service';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { EventsService, Event, Rsvp } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 
@@ -18,11 +22,16 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
   imports: [
     DatePipe,
     TitleCasePipe,
+    ReactiveFormsModule,
+    RouterLink,
     MatButtonModule,
     MatCardModule,
     MatChipsModule,
+    MatDividerModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    MatSelectModule,
+    MatTooltipModule,
   ],
   template: `
     @if (loading()) {
@@ -100,6 +109,71 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
               <mat-icon>cancel</mat-icon>
               <span>{{ event()!.cancelledReason }}</span>
             </div>
+          }
+
+          <!-- RSVP section (published events only) -->
+          @if (event()!.status === 'published') {
+            <mat-card class="rsvp-card">
+              <mat-card-content>
+                <div class="rsvp-header">
+                  <h3>Who's coming</h3>
+                  <span class="seat-count">{{ totalSeats() }} seat{{ totalSeats() === 1 ? '' : 's' }} needed</span>
+                </div>
+
+                <!-- RSVP action for logged-in members -->
+                @if (isLoggedIn()) {
+                  <div class="rsvp-action">
+                    @if (myRsvp()) {
+                      <div class="rsvp-controls">
+                        <mat-icon class="going-icon">check_circle</mat-icon>
+                        <span class="going-label">You're going!</span>
+                        <mat-select [formControl]="guestsCtrl" class="guests-select" (selectionChange)="updateGuests($event.value)">
+                          @for (n of guestOptions; track n) {
+                            <mat-option [value]="n">+{{ n }} guest{{ n === 1 ? '' : 's' }}</mat-option>
+                          }
+                        </mat-select>
+                        <button mat-stroked-button color="warn" class="cancel-rsvp-btn" (click)="removeRsvp()" [disabled]="rsvpLoading()">
+                          Can't make it
+                        </button>
+                      </div>
+                    } @else {
+                      <button mat-raised-button color="primary" (click)="addRsvp()" [disabled]="rsvpLoading()">
+                        <mat-icon>how_to_reg</mat-icon> RSVP
+                      </button>
+                    }
+                  </div>
+                } @else {
+                  <div class="rsvp-guest-cta">
+                    <a mat-stroked-button routerLink="/login">Sign in to RSVP</a>
+                  </div>
+                }
+
+                <mat-divider class="rsvp-divider" />
+
+                <!-- Attendee list -->
+                @if (event()!.rsvps.length === 0) {
+                  <p class="no-rsvps">No RSVPs yet — be the first!</p>
+                } @else {
+                  <ul class="attendee-list">
+                    @for (r of event()!.rsvps; track r.id) {
+                      <li class="attendee-row">
+                        <div class="attendee-avatar">
+                          @if (r.user.profilePhotoPath) {
+                            <img [src]="r.user.profilePhotoPath" [alt]="r.user.fullName" />
+                          } @else {
+                            <span class="avatar-initials">{{ initials(r.user.fullName) }}</span>
+                          }
+                        </div>
+                        <span class="attendee-name">{{ r.user.fullName }}</span>
+                        @if (r.additionalGuests > 0) {
+                          <span class="attendee-guests">+{{ r.additionalGuests }}</span>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+              </mat-card-content>
+            </mat-card>
           }
 
           <!-- Admin actions -->
@@ -196,6 +270,67 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       margin-bottom: 24px;
       mat-icon { color: #c62828; }
     }
+    .rsvp-card { margin-bottom: 24px; }
+    .rsvp-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      h3 { margin: 0; color: var(--db-brown-dark); }
+    }
+    .seat-count {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--db-primary);
+    }
+    .rsvp-action { margin-bottom: 16px; }
+    .rsvp-guest-cta { margin-bottom: 16px; }
+    .rsvp-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .going-icon { color: #2e7d32; font-size: 1.4rem; width: 1.4rem; height: 1.4rem; }
+    .going-label { font-weight: 600; color: #2e7d32; }
+    .guests-select { width: 130px; }
+    .cancel-rsvp-btn { font-size: 0.8rem; }
+    .rsvp-divider { margin: 16px 0; }
+    .no-rsvps { color: #999; font-size: 0.9rem; margin: 0; }
+    .attendee-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .attendee-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .attendee-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: var(--db-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      img { width: 100%; height: 100%; object-fit: cover; }
+    }
+    .avatar-initials { color: #fff; font-size: 0.8rem; font-weight: 700; }
+    .attendee-name { font-size: 0.95rem; color: var(--db-brown-dark); flex: 1; }
+    .attendee-guests {
+      font-size: 0.8rem;
+      color: #888;
+      background: #f0ebe3;
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
     .admin-actions {
       display: flex;
       gap: 8px;
@@ -218,11 +353,31 @@ export class EventDetailComponent implements OnInit {
 
   readonly event = signal<Event | null>(null);
   readonly loading = signal(true);
+  readonly rsvpLoading = signal(false);
+
+  readonly guestOptions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+  readonly guestsCtrl = new FormControl<number>(0, { nonNullable: true });
+
+  readonly myRsvp = computed<Rsvp | null>(() => {
+    const e = this.event();
+    const me = this.authService.currentUser();
+    if (!e || !me) return null;
+    return e.rsvps.find((r) => r.userId === me.id) ?? null;
+  });
+
+  readonly totalSeats = computed<number>(() => {
+    return (this.event()?.rsvps ?? []).reduce((sum, r) => sum + 1 + r.additionalGuests, 0);
+  });
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get('id'));
     this.eventsService.getOne(id).subscribe({
-      next: (e) => { this.event.set(e); this.loading.set(false); },
+      next: (e) => {
+        this.event.set(e);
+        this.loading.set(false);
+        const my = e.rsvps.find((r) => r.userId === this.authService.currentUser()?.id);
+        if (my) this.guestsCtrl.setValue(my.additionalGuests);
+      },
       error: () => this.loading.set(false),
     });
   }
@@ -237,6 +392,55 @@ export class EventDetailComponent implements OnInit {
   mapsUrl(): string {
     const e = this.event()!;
     return this.eventsService.mapsUrl(e.restaurantLat, e.restaurantLng, e.restaurantAddress);
+  }
+
+  isLoggedIn(): boolean {
+    return this.authService.isLoggedIn();
+  }
+
+  initials(name: string): string {
+    return name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  }
+
+  addRsvp(): void {
+    const e = this.event()!;
+    this.rsvpLoading.set(true);
+    this.eventsService.rsvp(e.id, 0).subscribe({
+      next: (rsvp) => {
+        this.event.update((ev) => ev ? { ...ev, rsvps: [...ev.rsvps, rsvp] } : ev);
+        this.guestsCtrl.setValue(0);
+        this.rsvpLoading.set(false);
+        this.snackBar.open("You're going! 🎉", 'OK', { duration: 3000 });
+      },
+      error: () => { this.rsvpLoading.set(false); this.snackBar.open('RSVP failed', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  updateGuests(additionalGuests: number): void {
+    const e = this.event()!;
+    this.eventsService.rsvp(e.id, additionalGuests).subscribe({
+      next: (rsvp) => {
+        this.event.update((ev) => ev
+          ? { ...ev, rsvps: ev.rsvps.map((r) => r.userId === rsvp.userId ? rsvp : r) }
+          : ev);
+      },
+      error: () => this.snackBar.open('Failed to update guests', 'OK', { duration: 3000 }),
+    });
+  }
+
+  removeRsvp(): void {
+    const e = this.event()!;
+    const me = this.authService.currentUser()!;
+    this.rsvpLoading.set(true);
+    this.eventsService.unrsvp(e.id).subscribe({
+      next: () => {
+        this.event.update((ev) => ev ? { ...ev, rsvps: ev.rsvps.filter((r) => r.userId !== me.id) } : ev);
+        this.guestsCtrl.setValue(0);
+        this.rsvpLoading.set(false);
+        this.snackBar.open('RSVP removed', 'OK', { duration: 3000 });
+      },
+      error: () => { this.rsvpLoading.set(false); this.snackBar.open('Failed to remove RSVP', 'OK', { duration: 3000 }); },
+    });
   }
 
   isAdminOrMod(): boolean {

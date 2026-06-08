@@ -13,6 +13,15 @@ export interface EventRestaurant {
   photos: Array<{ id: number; filePath: string }>;
 }
 
+export interface Rsvp {
+  id: number;
+  eventId: number;
+  userId: number;
+  user: { id: number; fullName: string; profilePhotoPath: string | null };
+  additionalGuests: number;
+  createdAt: string;
+}
+
 export interface Event {
   id: number;
   cityId: number;
@@ -35,6 +44,7 @@ export interface Event {
   facebookShareText: string | null;
   createdById: number;
   createdByUser: { id: number; fullName: string; profilePhotoPath: string | null };
+  rsvps: Rsvp[];
   createdAt: string;
   updatedAt: string;
 }
@@ -88,6 +98,14 @@ export class EventsService {
 
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`${this.base}/${id}`);
+  }
+
+  rsvp(eventId: number, additionalGuests: number): Observable<Rsvp> {
+    return this.http.post<Rsvp>(`${this.base}/${eventId}/rsvp`, { additionalGuests });
+  }
+
+  unrsvp(eventId: number): Observable<void> {
+    return this.http.delete<void>(`${this.base}/${eventId}/rsvp`);
   }
 
   mapsUrl(lat: number | null, lng: number | null, address: string): string {

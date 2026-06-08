@@ -168,7 +168,7 @@ export class RestaurantsController {
 
   @Get(':id/enrich/diagnose')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  @Roles(UserRole.ADMIN)
   async enrichDiagnose(@Param('id', ParseIntPipe) id: number) {
     const restaurant = await this.restaurantsService.findOne(id);
     return this.enrichmentService.diagnose(restaurant);
@@ -176,7 +176,7 @@ export class RestaurantsController {
 
   @Post(':id/enrich')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  @Roles(UserRole.ADMIN)
   async enrich(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: UserEntity,

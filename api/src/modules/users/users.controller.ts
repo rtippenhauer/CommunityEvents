@@ -34,6 +34,11 @@ export class UsersController {
     return this.usersService.findById(user.id);
   }
 
+  @Get('members')
+  getMembers(@CurrentUser() user: UserEntity) {
+    return this.usersService.findMembers(user.role);
+  }
+
   @Patch('me')
   updateProfile(@CurrentUser() user: UserEntity, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(user, dto);

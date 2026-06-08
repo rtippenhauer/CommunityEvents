@@ -57,20 +57,24 @@ import { Event as DinnerEvent } from '../../../core/services/events.service';
                 <button mat-menu-item (click)="openAddPhoto()">
                   <mat-icon>add_photo_alternate</mat-icon> Add Photo
                 </button>
-                <button mat-menu-item (click)="diagnose()" [disabled]="enriching()">
-                  <mat-icon>manage_search</mat-icon> Diagnose
-                </button>
-                <button mat-menu-item (click)="enrich()" [disabled]="enriching()">
-                  @if (enriching()) {
-                    <mat-spinner diameter="16" style="display:inline-block;margin-right:6px" />
-                  } @else {
-                    <mat-icon>auto_awesome</mat-icon>
-                  }
-                  Enrich
-                </button>
-                <button mat-menu-item class="delete-item" (click)="deleteRestaurant()">
-                  <mat-icon color="warn">delete</mat-icon> Delete
-                </button>
+                @if (isAdmin()) {
+                  <button mat-menu-item (click)="diagnose()" [disabled]="enriching()">
+                    <mat-icon>manage_search</mat-icon> Diagnose
+                  </button>
+                  <button mat-menu-item (click)="enrich()" [disabled]="enriching()">
+                    @if (enriching()) {
+                      <mat-spinner diameter="16" style="display:inline-block;margin-right:6px" />
+                    } @else {
+                      <mat-icon>auto_awesome</mat-icon>
+                    }
+                    Enrich
+                  </button>
+                }
+                @if (isAdmin()) {
+                  <button mat-menu-item class="delete-item" (click)="deleteRestaurant()">
+                    <mat-icon color="warn">delete</mat-icon> Delete
+                  </button>
+                }
               </mat-menu>
               <input
                 #photoInput
@@ -340,6 +344,10 @@ export class RestaurantDetailComponent implements OnInit {
   isAdminOrMod(): boolean {
     const role = this.authService.currentUser()?.role;
     return role === 'admin' || role === 'moderator';
+  }
+
+  isAdmin(): boolean {
+    return this.authService.currentUser()?.role === 'admin';
   }
 
   mapsUrl(): string {

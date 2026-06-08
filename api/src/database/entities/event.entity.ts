@@ -4,12 +4,14 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { CityEntity } from './city.entity';
 import { RestaurantEntity } from './restaurant.entity';
 import { UserEntity } from './user.entity';
+import { EventRsvpEntity } from './event-rsvp.entity';
 
 export enum EventStatus {
   DRAFT = 'draft',
@@ -89,6 +91,9 @@ export class EventEntity {
   @ManyToOne(() => UserEntity, { eager: false })
   @JoinColumn({ name: 'created_by' })
   createdByUser: UserEntity;
+
+  @OneToMany(() => EventRsvpEntity, (r) => r.event)
+  rsvps: EventRsvpEntity[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

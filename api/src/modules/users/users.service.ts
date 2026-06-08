@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { UserEntity } from '../../database/entities/user.entity';
+import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
@@ -31,5 +31,23 @@ export class UsersService {
   async setAvatar(userId: number, avatarPath: string): Promise<{ url: string }> {
     await this.userRepo.update(userId, { profilePhotoPath: avatarPath });
     return { url: avatarPath };
+  }
+
+  async findMembers(viewerRole: UserRole): Promise<object[]> {
+    const users = await this.userRepo.find({
+      where: { status: UserStatus.ACTIVE },
+      relations: ['city'],
+      order: { fullName: 'ASC' },
+    });
+    const showRole = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
+    return users.map((u) => ({
+      id: u.id,
+      fullName: u.fullName,
+      profilePhotoPath: u.profilePhotoPath,
+      cityId: u.cityId,
+      cityName: u.city?.name ?? null,
+      joinedAt: u.createdAt,
+      ...(showRole ? { role: u.role } : {}),
+    }));
   }
 }

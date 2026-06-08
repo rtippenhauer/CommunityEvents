@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
+import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -21,6 +22,8 @@ export class EventsService {
   constructor(
     @InjectRepository(EventEntity)
     private readonly eventRepo: Repository<EventEntity>,
+    @InjectRepository(EventRsvpEntity)
+    private readonly rsvpRepo: Repository<EventRsvpEntity>,
     @InjectRepository(RestaurantEntity)
     private readonly restaurantRepo: Repository<RestaurantEntity>,
   ) {}
@@ -58,7 +61,7 @@ export class EventsService {
   async findOne(id: number): Promise<EventEntity> {
     const event = await this.eventRepo.findOne({
       where: { id },
-      relations: ['city', 'restaurant', 'restaurant.photos', 'createdByUser'],
+      relations: ['city', 'restaurant', 'restaurant.photos', 'createdByUser', 'rsvps', 'rsvps.user'],
     });
     if (!event) throw new NotFoundException(`Event ${id} not found`);
     return event;
@@ -141,5 +144,25 @@ export class EventsService {
       throw new BadRequestException('Cannot delete a published event — cancel it first');
     }
     await this.eventRepo.remove(event);
+  }
+
+  async upsertRsvp(eventId: number, userId: number, additionalGuests: number): Promise<EventRsvpEntity> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException(`Event ${eventId} not found`);
+    if (event.status !== EventStatus.PUBLISHED) {
+      throw new BadRequestException('Can only RSVP to published events');
+    }
+
+    const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
+    if (existing) {
+      existing.additionalGuests = additionalGuests;
+      return this.rsvpRepo.save(existing);
+    }
+    return this.rsvpRepo.save(this.rsvpRepo.create({ eventId, userId, additionalGuests }));
+  }
+
+  async removeRsvp(eventId: number, userId: number): Promise<void> {
+    const rsvp = await this.rsvpRepo.findOne({ where: { eventId, userId } });
+    if (rsvp) await this.rsvpRepo.remove(rsvp);
   }
 }
