@@ -57,7 +57,7 @@ interface MemberProfile {
                   <img [src]="profile()!.profilePhotoPath" alt="Profile photo" class="profile-photo"
                     [class.photo-banned]="profile()!.status === 'suspended'" />
                 } @else {
-                  <div class="photo-placeholder" [class.photo-banned]="profile()!.status === 'suspended'">🐻</div>
+                  <img src="/avatars/bear-default.jpg" alt="Bear avatar" class="profile-photo" [class.photo-banned]="profile()!.status === 'suspended'" />
                 }
               </div>
               <div class="profile-meta">
@@ -95,7 +95,7 @@ interface MemberProfile {
                     @if (profile()!.invitedBy!.profilePhotoPath) {
                       <img [src]="profile()!.invitedBy!.profilePhotoPath" [alt]="profile()!.invitedBy!.fullName" />
                     } @else {
-                      <span>🐻</span>
+                      <img src="/avatars/bear-default.jpg" [alt]="profile()!.invitedBy!.fullName" />
                     }
                   </div>
                   <span>{{ profile()!.invitedBy!.fullName }}</span>
@@ -114,7 +114,7 @@ interface MemberProfile {
                         @if (m.profilePhotoPath) {
                           <img [src]="m.profilePhotoPath" [alt]="m.fullName" />
                         } @else {
-                          <span>🐻</span>
+                          <img src="/avatars/bear-default.jpg" [alt]="m.fullName" />
                         }
                       </div>
                       <span>{{ m.fullName }}</span>

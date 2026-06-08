@@ -66,7 +66,7 @@ interface Member {
                 @if (member.profilePhotoPath) {
                   <img [src]="member.profilePhotoPath" [alt]="member.fullName" />
                 } @else {
-                  <span class="avatar-fallback">🐻</span>
+                  <img src="/avatars/bear-default.jpg" alt="Bear avatar" />
                 }
               </div>
               <div class="member-info">

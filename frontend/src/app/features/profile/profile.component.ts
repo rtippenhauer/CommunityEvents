@@ -66,6 +66,10 @@ const PRESET_AVATARS = [
   { path: '/avatars/bear-artist.jpg',    label: 'Artist' },
   { path: '/avatars/bear-disco.jpg',     label: 'Disco' },
   { path: '/avatars/bear-karaoke.jpg',   label: 'Karaoke' },
+  { path: '/avatars/bear-pirate.jpg',    label: 'Pirate' },
+  { path: '/avatars/bear-mech.jpg',      label: 'Mech' },
+  { path: '/avatars/bear-viking.jpg',    label: 'Viking' },
+  { path: '/avatars/bear-wizard.jpg',    label: 'Wizard' },
 ];
 
 @Component({
@@ -132,9 +136,7 @@ const PRESET_AVATARS = [
                     @if (photoUrl()) {
                       <img [src]="photoUrl()!" alt="Profile photo" class="profile-photo" />
                     } @else {
-                      <div class="photo-placeholder">
-                        <span class="placeholder-icon">🐻</span>
-                      </div>
+                      <img src="/avatars/bear-default.jpg" alt="Bear avatar" class="profile-photo" />
                     }
                   </div>
                   @if (photoUrl()) {
@@ -205,7 +207,7 @@ const PRESET_AVATARS = [
                     @if (inviter.profilePhotoPath) {
                       <img [src]="inviter.profilePhotoPath" [alt]="inviter.fullName" />
                     } @else {
-                      <span>🐻</span>
+                      <img src="/avatars/bear-default.jpg" [alt]="inviter.fullName" />
                     }
                   </div>
                   <span>{{ inviter.fullName }}</span>
@@ -222,7 +224,7 @@ const PRESET_AVATARS = [
                         @if (m.profilePhotoPath) {
                           <img [src]="m.profilePhotoPath" [alt]="m.fullName" />
                         } @else {
-                          <span>🐻</span>
+                          <img src="/avatars/bear-default.jpg" [alt]="m.fullName" />
                         }
                       </div>
                       <span>{{ m.fullName }}</span>
