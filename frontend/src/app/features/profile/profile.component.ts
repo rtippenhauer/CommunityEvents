@@ -67,7 +67,7 @@ const PRESET_AVATARS = [
   { path: '/avatars/bear-disco.jpg', label: 'Disco' },
   { path: '/avatars/bear-karaoke.jpg', label: 'Karaoke' },
   { path: '/avatars/bear-pirate.jpg', label: 'Pirate' },
-  { path: '/avatars/bear-mech.jpg', label: 'Mech' },
+  { path: '/avatars/bear-steampunk.jpg', label: 'Steampunk' },
   { path: '/avatars/bear-viking.jpg', label: 'Viking' },
   { path: '/avatars/bear-wizard.jpg', label: 'Wizard' },
   { path: '/avatars/bear-shopping.png', label: 'Shopping' },
