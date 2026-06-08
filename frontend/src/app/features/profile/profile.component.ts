@@ -52,24 +52,25 @@ interface Invite {
 }
 
 const PRESET_AVATARS = [
-  { path: '/avatars/bear-chef.jpg',      label: 'Chef' },
-  { path: '/avatars/bear-flannel.jpg',   label: 'Flannel' },
-  { path: '/avatars/bear-cool.jpg',      label: 'Cool' },
-  { path: '/avatars/bear-rainbow.jpg',   label: 'Rainbow' },
-  { path: '/avatars/bear-hoodie.jpg',    label: 'Hoodie' },
-  { path: '/avatars/bear-bookworm.jpg',  label: 'Bookworm' },
-  { path: '/avatars/bear-explorer.jpg',  label: 'Explorer' },
-  { path: '/avatars/bear-musician.jpg',  label: 'Musician' },
-  { path: '/avatars/bear-athlete.jpg',   label: 'Athlete' },
-  { path: '/avatars/bear-dapper.jpg',    label: 'Dapper' },
+  { path: '/avatars/bear-chef.jpg', label: 'Chef' },
+  { path: '/avatars/bear-flannel.jpg', label: 'Flannel' },
+  { path: '/avatars/bear-cool.jpg', label: 'Cool' },
+  { path: '/avatars/bear-rainbow.jpg', label: 'Rainbow' },
+  { path: '/avatars/bear-hoodie.jpg', label: 'Hoodie' },
+  { path: '/avatars/bear-bookworm.jpg', label: 'Bookworm' },
+  { path: '/avatars/bear-explorer.jpg', label: 'Explorer' },
+  { path: '/avatars/bear-musician.jpg', label: 'Musician' },
+  { path: '/avatars/bear-athlete.jpg', label: 'Athlete' },
+  { path: '/avatars/bear-dapper.jpg', label: 'Dapper' },
   { path: '/avatars/bear-astronaut.jpg', label: 'Astronaut' },
-  { path: '/avatars/bear-artist.jpg',    label: 'Artist' },
-  { path: '/avatars/bear-disco.jpg',     label: 'Disco' },
-  { path: '/avatars/bear-karaoke.jpg',   label: 'Karaoke' },
-  { path: '/avatars/bear-pirate.jpg',    label: 'Pirate' },
-  { path: '/avatars/bear-mech.jpg',      label: 'Mech' },
-  { path: '/avatars/bear-viking.jpg',    label: 'Viking' },
-  { path: '/avatars/bear-wizard.jpg',    label: 'Wizard' },
+  { path: '/avatars/bear-artist.jpg', label: 'Artist' },
+  { path: '/avatars/bear-disco.jpg', label: 'Disco' },
+  { path: '/avatars/bear-karaoke.jpg', label: 'Karaoke' },
+  { path: '/avatars/bear-pirate.jpg', label: 'Pirate' },
+  { path: '/avatars/bear-mech.jpg', label: 'Mech' },
+  { path: '/avatars/bear-viking.jpg', label: 'Viking' },
+  { path: '/avatars/bear-wizard.jpg', label: 'Wizard' },
+  { path: '/avatars/bear-shopping.png', label: 'Shopping' },
 ];
 
 @Component({
@@ -95,7 +96,6 @@ const PRESET_AVATARS = [
   ],
   template: `
     <div class="profile-container">
-
       <!-- Profile card -->
       <mat-card>
         <mat-card-header>
@@ -106,7 +106,6 @@ const PRESET_AVATARS = [
             <mat-spinner diameter="32" />
           } @else {
             <form [formGroup]="form" (ngSubmit)="save()" class="profile-form">
-
               <mat-form-field appearance="outline">
                 <mat-label>Full Name</mat-label>
                 <input matInput formControlName="fullName" />
@@ -136,7 +135,11 @@ const PRESET_AVATARS = [
                     @if (photoUrl()) {
                       <img [src]="photoUrl()!" alt="Profile photo" class="profile-photo" />
                     } @else {
-                      <img src="/avatars/bear-default.jpg" alt="Bear avatar" class="profile-photo" />
+                      <img
+                        src="/avatars/bear-default.jpg"
+                        alt="Bear avatar"
+                        class="profile-photo"
+                      />
                     }
                   </div>
                   @if (photoUrl()) {
@@ -155,7 +158,8 @@ const PRESET_AVATARS = [
                           class="avatar-tile"
                           [class.selected]="photoUrl() === avatar.path"
                           [matTooltip]="avatar.label"
-                          (click)="selectAvatar(avatar.path)">
+                          (click)="selectAvatar(avatar.path)"
+                        >
                           <img [src]="avatar.path" [alt]="avatar.label" />
                           @if (photoUrl() === avatar.path) {
                             <div class="avatar-check">✓</div>
@@ -169,7 +173,9 @@ const PRESET_AVATARS = [
                       <button mat-stroked-button type="button" (click)="openFilePicker()">
                         Choose photo…
                       </button>
-                      <p class="photo-hint">Square images work best. Max 5 MB. JPEG, PNG, or WebP.</p>
+                      <p class="photo-hint">
+                        Square images work best. Max 5 MB. JPEG, PNG, or WebP.
+                      </p>
                     </div>
                   </mat-tab>
                 </mat-tab-group>
@@ -184,12 +190,15 @@ const PRESET_AVATARS = [
               </div>
 
               <mat-card-actions>
-                <button mat-raised-button color="primary" type="submit"
-                  [disabled]="form.invalid || saving()">
+                <button
+                  mat-raised-button
+                  color="primary"
+                  type="submit"
+                  [disabled]="form.invalid || saving()"
+                >
                   Save Changes
                 </button>
               </mat-card-actions>
-
             </form>
           }
         </mat-card-content>
@@ -241,7 +250,9 @@ const PRESET_AVATARS = [
       <mat-card class="invites-card">
         <mat-card-header>
           <mat-card-title>Invite a Friend</mat-card-title>
-          <mat-card-subtitle>Send someone a personal invite link to join DinnerBears.</mat-card-subtitle>
+          <mat-card-subtitle
+            >Send someone a personal invite link to join DinnerBears.</mat-card-subtitle
+          >
         </mat-card-header>
         <mat-card-content>
           <form [formGroup]="inviteForm" (ngSubmit)="createInvite()" class="invite-form">
@@ -256,8 +267,12 @@ const PRESET_AVATARS = [
               <input matInput formControlName="boundToName" />
             </mat-form-field>
             <div>
-              <button mat-raised-button color="primary" type="submit"
-                [disabled]="inviteForm.invalid || creatingInvite()">
+              <button
+                mat-raised-button
+                color="primary"
+                type="submit"
+                [disabled]="inviteForm.invalid || creatingInvite()"
+              >
                 <mat-icon>add_link</mat-icon>
                 Generate Invite Link
               </button>
@@ -282,7 +297,9 @@ const PRESET_AVATARS = [
                 <div class="invite-row">
                   <div class="invite-row-info">
                     <span class="invite-email">{{ invite.boundToEmail ?? '—' }}</span>
-                    <span class="invite-meta">Expires {{ invite.expiresAt | date:'shortDate' }}</span>
+                    <span class="invite-meta"
+                      >Expires {{ invite.expiresAt | date: 'shortDate' }}</span
+                    >
                   </div>
                   <div class="invite-row-status">
                     @if (invite.isRevoked) {
@@ -293,8 +310,12 @@ const PRESET_AVATARS = [
                       <mat-chip class="chip-expired">Expired</mat-chip>
                     } @else {
                       <mat-chip class="chip-active">Pending</mat-chip>
-                      <button mat-icon-button (click)="copyToken(invite.token)"
-                        aria-label="Copy link" title="Copy link">
+                      <button
+                        mat-icon-button
+                        (click)="copyToken(invite.token)"
+                        aria-label="Copy link"
+                        title="Copy link"
+                      >
                         <mat-icon>content_copy</mat-icon>
                       </button>
                     }
@@ -305,227 +326,262 @@ const PRESET_AVATARS = [
           }
         </mat-card-content>
       </mat-card>
-
     </div>
   `,
-  styles: [`
-    .profile-container {
-      max-width: 600px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-    .profile-form {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      padding: 16px 0;
-    }
-    .photo-section {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .photo-label {
-      font-size: 0.875rem;
-      color: #555;
-      font-weight: 500;
-    }
-    .photo-current {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-    .photo-preview {
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      overflow: hidden;
-      flex-shrink: 0;
-      border: 2px solid #ddd;
-    }
-    .profile-photo {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: center top;
-      display: block;
-    }
-    .photo-placeholder {
-      width: 100%;
-      height: 100%;
-      background: #f0f0f0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2rem;
-    }
-    .avatar-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      padding: 12px 0;
-    }
-    .avatar-tile {
-      position: relative;
-      border: 2px solid transparent;
-      border-radius: 8px;
-      overflow: hidden;
-      cursor: pointer;
-      padding: 0;
-      background: none;
-      transition: border-color 0.15s, transform 0.15s;
-
-      img {
+  styles: [
+    `
+      .profile-container {
+        max-width: 600px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      .profile-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 16px 0;
+      }
+      .photo-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .photo-label {
+        font-size: 0.875rem;
+        color: #555;
+        font-weight: 500;
+      }
+      .photo-current {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .photo-preview {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        overflow: hidden;
+        flex-shrink: 0;
+        border: 2px solid #ddd;
+      }
+      .profile-photo {
         width: 100%;
-        height: auto;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
         display: block;
       }
+      .photo-placeholder {
+        width: 100%;
+        height: 100%;
+        background: #f0f0f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+      }
+      .avatar-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        padding: 12px 0;
+      }
+      .avatar-tile {
+        position: relative;
+        border: 2px solid transparent;
+        border-radius: 8px;
+        overflow: hidden;
+        cursor: pointer;
+        padding: 0;
+        background: none;
+        transition:
+          border-color 0.15s,
+          transform 0.15s;
 
-      &:hover {
-        border-color: var(--db-primary, #1E4D8C);
-        transform: scale(1.04);
+        img {
+          width: 100%;
+          height: auto;
+          display: block;
+        }
+
+        &:hover {
+          border-color: var(--db-primary, #1e4d8c);
+          transform: scale(1.04);
+        }
+
+        &.selected {
+          border-color: var(--db-primary, #1e4d8c);
+          box-shadow: 0 0 0 2px var(--db-primary, #1e4d8c);
+        }
+      }
+      .avatar-check {
+        position: absolute;
+        inset: 0;
+        background: rgba(30, 77, 140, 0.45);
+        color: #fff;
+        font-size: 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+      }
+      .upload-tab {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px 0;
+      }
+      .photo-hint {
+        font-size: 0.75rem;
+        color: #999;
+        margin: 0;
       }
 
-      &.selected {
-        border-color: var(--db-primary, #1E4D8C);
-        box-shadow: 0 0 0 2px var(--db-primary, #1E4D8C);
+      /* Connections card */
+      .connections-card mat-card-content {
+        padding: 12px 16px;
       }
-    }
-    .avatar-check {
-      position: absolute;
-      inset: 0;
-      background: rgba(30, 77, 140, 0.45);
-      color: #fff;
-      font-size: 1.5rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-    }
-    .upload-tab {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 12px 0;
-    }
-    .photo-hint {
-      font-size: 0.75rem;
-      color: #999;
-      margin: 0;
-    }
+      .connection-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        & + .connection-row {
+          margin-top: 16px;
+        }
+      }
+      .connection-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .mini-members-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .mini-member {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+        color: inherit;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: #f5f5f5;
+        font-size: 0.88rem;
+        transition: background 0.12s;
+        &:hover {
+          background: #ebebeb;
+        }
+      }
+      .mini-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+      }
 
-    /* Connections card */
-    .connections-card mat-card-content { padding: 12px 16px; }
-    .connection-row {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      & + .connection-row { margin-top: 16px; }
-    }
-    .connection-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #999;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .mini-members-list { display: flex; flex-wrap: wrap; gap: 8px; }
-    .mini-member {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      text-decoration: none;
-      color: inherit;
-      padding: 6px 10px;
-      border-radius: 8px;
-      background: #f5f5f5;
-      font-size: 0.88rem;
-      transition: background 0.12s;
-      &:hover { background: #ebebeb; }
-    }
-    .mini-avatar {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      overflow: hidden;
-      background: #e0e0e0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.9rem;
-      flex-shrink: 0;
-      img { width: 100%; height: 100%; object-fit: cover; }
-    }
-
-    /* Invites card */
-    .invites-card mat-card-content { padding-top: 8px; }
-    .invite-form {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      padding: 8px 0 16px;
-    }
-    .new-link-banner {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #e8f5e9;
-      border-radius: 8px;
-      padding: 10px 12px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
-    }
-    .new-link-url {
-      font-family: monospace;
-      font-size: 0.8rem;
-      word-break: break-all;
-      flex: 1;
-    }
-    .section-divider { margin: 16px 0 12px; }
-    .invites-history-title {
-      font-size: 0.9rem;
-      font-weight: 600;
-      margin: 0 0 10px;
-      color: #555;
-    }
-    .invite-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .invite-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 8px 4px;
-      border-bottom: 1px solid #f0f0f0;
-    }
-    .invite-row-info {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .invite-email { font-size: 0.9rem; font-weight: 500; }
-    .invite-meta { font-size: 0.75rem; color: #999; }
-    .invite-row-status {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      flex-shrink: 0;
-    }
-    mat-chip {
-      font-size: 0.72rem !important;
-      min-height: 22px !important;
-    }
-    .chip-active { background: #c8e6c9 !important; }
-    .chip-used { background: #bbdefb !important; }
-    .chip-expired { background: #e0e0e0 !important; }
-    .chip-revoked { background: #ffccbc !important; }
-  `],
+      /* Invites card */
+      .invites-card mat-card-content {
+        padding-top: 8px;
+      }
+      .invite-form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 8px 0 16px;
+      }
+      .new-link-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #e8f5e9;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+      }
+      .new-link-url {
+        font-family: monospace;
+        font-size: 0.8rem;
+        word-break: break-all;
+        flex: 1;
+      }
+      .section-divider {
+        margin: 16px 0 12px;
+      }
+      .invites-history-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin: 0 0 10px;
+        color: #555;
+      }
+      .invite-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .invite-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 4px;
+        border-bottom: 1px solid #f0f0f0;
+      }
+      .invite-row-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .invite-email {
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+      .invite-meta {
+        font-size: 0.75rem;
+        color: #999;
+      }
+      .invite-row-status {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+      }
+      mat-chip {
+        font-size: 0.72rem !important;
+        min-height: 22px !important;
+      }
+      .chip-active {
+        background: #c8e6c9 !important;
+      }
+      .chip-used {
+        background: #bbdefb !important;
+      }
+      .chip-expired {
+        background: #e0e0e0 !important;
+      }
+      .chip-revoked {
+        background: #ffccbc !important;
+      }
+    `,
+  ],
 })
 export class ProfileComponent implements OnInit {
   readonly authService = inject(AuthService);
