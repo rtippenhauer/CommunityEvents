@@ -186,11 +186,26 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                 <button mat-raised-button color="primary" (click)="publish()">
                   <mat-icon>publish</mat-icon> Publish
                 </button>
+                @if (isAdmin()) {
+                  <button mat-stroked-button color="warn" (click)="deleteEvent()">
+                    <mat-icon>delete</mat-icon> Delete
+                  </button>
+                }
               }
               @if (event()!.status === 'published') {
                 <button mat-stroked-button color="warn" (click)="cancel()">
                   <mat-icon>cancel</mat-icon> Cancel Event
                 </button>
+              }
+              @if (event()!.status === 'cancelled') {
+                <button mat-stroked-button color="primary" (click)="restore()">
+                  <mat-icon>undo</mat-icon> Restore to Draft
+                </button>
+                @if (isAdmin()) {
+                  <button mat-stroked-button color="warn" (click)="deleteEvent()">
+                    <mat-icon>delete</mat-icon> Delete
+                  </button>
+                }
               }
             </div>
           }
@@ -402,14 +417,24 @@ export class EventDetailComponent implements OnInit {
     return name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
   }
 
-  addRsvp(): void {
-    const e = this.event()!;
-    this.rsvpLoading.set(true);
-    this.eventsService.rsvp(e.id, 0).subscribe({
-      next: (rsvp) => {
-        this.event.update((ev) => ev ? { ...ev, rsvps: [...ev.rsvps, rsvp] } : ev);
-        this.guestsCtrl.setValue(0);
+  private refreshEvent(id: number): void {
+    this.eventsService.getOne(id).subscribe({
+      next: (e) => {
+        this.event.set(e);
+        const my = e.rsvps.find((r) => r.userId === this.authService.currentUser()?.id);
+        this.guestsCtrl.setValue(my?.additionalGuests ?? 0);
         this.rsvpLoading.set(false);
+      },
+      error: () => this.rsvpLoading.set(false),
+    });
+  }
+
+  addRsvp(): void {
+    const id = this.event()!.id;
+    this.rsvpLoading.set(true);
+    this.eventsService.rsvp(id, 0).subscribe({
+      next: () => {
+        this.refreshEvent(id);
         this.snackBar.open("You're going! 🎉", 'OK', { duration: 3000 });
       },
       error: () => { this.rsvpLoading.set(false); this.snackBar.open('RSVP failed', 'OK', { duration: 3000 }); },
@@ -417,26 +442,19 @@ export class EventDetailComponent implements OnInit {
   }
 
   updateGuests(additionalGuests: number): void {
-    const e = this.event()!;
-    this.eventsService.rsvp(e.id, additionalGuests).subscribe({
-      next: (rsvp) => {
-        this.event.update((ev) => ev
-          ? { ...ev, rsvps: ev.rsvps.map((r) => r.userId === rsvp.userId ? rsvp : r) }
-          : ev);
-      },
+    const id = this.event()!.id;
+    this.eventsService.rsvp(id, additionalGuests).subscribe({
+      next: () => this.refreshEvent(id),
       error: () => this.snackBar.open('Failed to update guests', 'OK', { duration: 3000 }),
     });
   }
 
   removeRsvp(): void {
-    const e = this.event()!;
-    const me = this.authService.currentUser()!;
+    const id = this.event()!.id;
     this.rsvpLoading.set(true);
-    this.eventsService.unrsvp(e.id).subscribe({
+    this.eventsService.unrsvp(id).subscribe({
       next: () => {
-        this.event.update((ev) => ev ? { ...ev, rsvps: ev.rsvps.filter((r) => r.userId !== me.id) } : ev);
-        this.guestsCtrl.setValue(0);
-        this.rsvpLoading.set(false);
+        this.refreshEvent(id);
         this.snackBar.open('RSVP removed', 'OK', { duration: 3000 });
       },
       error: () => { this.rsvpLoading.set(false); this.snackBar.open('Failed to remove RSVP', 'OK', { duration: 3000 }); },
@@ -479,6 +497,33 @@ export class EventDetailComponent implements OnInit {
       },
       error: () => this.snackBar.open('Failed to cancel event', 'OK', { duration: 3000 }),
     });
+  }
+
+  restore(): void {
+    const e = this.event()!;
+    this.eventsService.update(e.id, { status: 'draft' }).subscribe({
+      next: (updated) => {
+        this.event.set(updated);
+        this.snackBar.open('Event restored to draft', 'OK', { duration: 3000 });
+      },
+      error: () => this.snackBar.open('Failed to restore event', 'OK', { duration: 3000 }),
+    });
+  }
+
+  deleteEvent(): void {
+    if (!window.confirm('Permanently delete this event? This cannot be undone.')) return;
+    const e = this.event()!;
+    this.eventsService.delete(e.id).subscribe({
+      next: () => {
+        this.snackBar.open('Event deleted', 'OK', { duration: 3000 });
+        void this.router.navigate(['/events']);
+      },
+      error: () => this.snackBar.open('Failed to delete event', 'OK', { duration: 3000 }),
+    });
+  }
+
+  isAdmin(): boolean {
+    return this.authService.currentUser()?.role === 'admin';
   }
 
   goBack(): void {

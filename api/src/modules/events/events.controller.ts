@@ -51,21 +51,21 @@ export class EventsController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   create(@Body() dto: CreateEventDto, @CurrentUser() user: UserEntity) {
     return this.eventsService.create(dto, user.id);
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateEventDto) {
     return this.eventsService.update(id, dto);
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.eventsService.remove(id);

@@ -100,7 +100,8 @@ export class EventsService {
   async update(id: number, dto: UpdateEventDto): Promise<EventEntity> {
     const event = await this.findOne(id);
 
-    if (event.status === EventStatus.CANCELLED) {
+    const isRestoring = event.status === EventStatus.CANCELLED && dto.status === EventStatus.DRAFT;
+    if (event.status === EventStatus.CANCELLED && !isRestoring) {
       throw new BadRequestException('Cannot edit a cancelled event');
     }
 

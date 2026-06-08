@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Not, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
@@ -34,20 +34,88 @@ export class UsersService {
   }
 
   async findMembers(viewerRole: UserRole): Promise<object[]> {
-    const users = await this.userRepo.find({
-      where: { status: UserStatus.ACTIVE },
-      relations: ['city'],
-      order: { fullName: 'ASC' },
-    });
-    const showRole = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
-    return users.map((u) => ({
-      id: u.id,
-      fullName: u.fullName,
-      profilePhotoPath: u.profilePhotoPath,
-      cityId: u.cityId,
-      cityName: u.city?.name ?? null,
-      joinedAt: u.createdAt,
-      ...(showRole ? { role: u.role } : {}),
+    const isElevated = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
+
+    const rows = await this.userRepo
+      .createQueryBuilder('u')
+      .leftJoin(UserEntity, 'inviter', 'inviter.id = u.invited_by')
+      .leftJoin('u.city', 'city')
+      .select([
+        'u.id AS id',
+        'u.full_name AS fullName',
+        'u.profile_photo_path AS profilePhotoPath',
+        'u.city_id AS cityId',
+        'city.name AS cityName',
+        'u.created_at AS joinedAt',
+        'u.invited_by AS invitedById',
+        'inviter.full_name AS invitedByName',
+        'inviter.profile_photo_path AS invitedByPhoto',
+        ...(isElevated ? ['u.role AS role', 'u.status AS status'] : []),
+      ])
+      .where(isElevated ? 'u.status != :deleted' : 'u.status = :active', {
+        deleted: UserStatus.DELETED,
+        active: UserStatus.ACTIVE,
+      })
+      .orderBy('u.full_name', 'ASC')
+      .getRawMany();
+
+    return rows.map((r) => ({
+      id: r.id,
+      fullName: r.fullName,
+      profilePhotoPath: r.profilePhotoPath,
+      cityId: r.cityId,
+      cityName: r.cityName ?? null,
+      joinedAt: r.joinedAt,
+      invitedBy: r.invitedById
+        ? { id: r.invitedById, fullName: r.invitedByName, profilePhotoPath: r.invitedByPhoto }
+        : null,
+      ...(isElevated ? { role: r.role, status: r.status } : {}),
     }));
+  }
+
+  async findMemberProfile(
+    id: number,
+    viewerId: number,
+    viewerRole: UserRole,
+  ): Promise<object> {
+    const user = await this.userRepo.findOne({ where: { id }, relations: ['city'] });
+    if (!user || user.status === UserStatus.DELETED) throw new NotFoundException('Member not found');
+
+    const isElevated = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
+    const isSelf = viewerId === id;
+
+    let invitedByInfo: { id: number; fullName: string; profilePhotoPath: string | null } | null = null;
+    if (user.invitedBy) {
+      const inviter = await this.userRepo.findOne({ where: { id: user.invitedBy } });
+      if (inviter) {
+        invitedByInfo = { id: inviter.id, fullName: inviter.fullName, profilePhotoPath: inviter.profilePhotoPath };
+      }
+    }
+
+    let invitedMembers: Array<{ id: number; fullName: string; profilePhotoPath: string | null }> = [];
+    if (isSelf || isElevated) {
+      const members = await this.userRepo.find({
+        where: { invitedBy: id, status: Not(UserStatus.DELETED) },
+        select: ['id', 'fullName', 'profilePhotoPath'],
+        order: { createdAt: 'ASC' },
+      });
+      invitedMembers = members.map((m) => ({
+        id: m.id,
+        fullName: m.fullName,
+        profilePhotoPath: m.profilePhotoPath,
+      }));
+    }
+
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      profilePhotoPath: user.profilePhotoPath,
+      cityId: user.cityId,
+      cityName: user.city?.name ?? null,
+      joinedAt: user.createdAt,
+      invitedBy: invitedByInfo,
+      ...(isSelf || isElevated ? { invitedMembers } : {}),
+      ...(isElevated ? { role: user.role, status: user.status } : {}),
+    };
   }
 }

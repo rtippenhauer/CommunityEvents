@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { UserEntity } from '../../database/entities/user.entity';
+import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
 
 export interface AdminUserRow {
   id: number;
@@ -48,5 +48,44 @@ export class AdminService {
       .getRawMany<AdminUserRow>();
 
     return users;
+  }
+
+  async banUser(targetId: number, actorId: number, actorRole: UserRole): Promise<void> {
+    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('User not found');
+    if (target.id === actorId) throw new BadRequestException('Cannot ban yourself');
+    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot ban an admin');
+    if (actorRole === UserRole.MODERATOR && target.role !== UserRole.MEMBER) {
+      throw new ForbiddenException('Moderators can only ban regular members');
+    }
+    if (target.status === UserStatus.SUSPENDED) throw new BadRequestException('User is already banned');
+    await this.userRepo.update(targetId, { status: UserStatus.SUSPENDED });
+  }
+
+  async forceBanUser(targetId: number, actorId: number): Promise<void> {
+    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('User not found');
+    if (target.id === actorId) throw new BadRequestException('Cannot ban yourself');
+    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot ban an admin');
+    await this.userRepo.update(targetId, {
+      status: UserStatus.DELETED,
+      deletedAt: new Date(),
+    });
+  }
+
+  async unbanUser(targetId: number): Promise<void> {
+    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('User not found');
+    if (target.status === UserStatus.ACTIVE) throw new BadRequestException('User is not banned');
+    await this.userRepo.update(targetId, { status: UserStatus.ACTIVE, deletedAt: null });
+  }
+
+  async setRole(targetId: number, actorId: number, role: UserRole): Promise<void> {
+    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('User not found');
+    if (target.id === actorId) throw new BadRequestException('Cannot change your own role');
+    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot change another admin\'s role');
+    if (role === UserRole.ADMIN) throw new ForbiddenException('Cannot promote to admin — set directly in the database');
+    await this.userRepo.update(targetId, { role });
   }
 }

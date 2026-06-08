@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  ParseIntPipe,
   Patch,
   Post,
   UploadedFile,
@@ -37,6 +39,14 @@ export class UsersController {
   @Get('members')
   getMembers(@CurrentUser() user: UserEntity) {
     return this.usersService.findMembers(user.role);
+  }
+
+  @Get(':id')
+  getMemberProfile(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() viewer: UserEntity,
+  ) {
+    return this.usersService.findMemberProfile(id, viewer.id, viewer.role);
   }
 
   @Patch('me')

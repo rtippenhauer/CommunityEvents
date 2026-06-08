@@ -5,7 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import * as geoip from 'geoip-lite';
-import { UserEntity, EmailStatus, InviteSource, UserRole } from '../../database/entities/user.entity';
+import { UserEntity, EmailStatus, InviteSource, UserRole, UserStatus } from '../../database/entities/user.entity';
 import { OAuthAccountEntity, OAuthProvider } from '../../database/entities/oauth-account.entity';
 import { LoginSessionEntity } from '../../database/entities/login-session.entity';
 import { InvitesService } from '../invites/invites.service';
@@ -47,7 +47,12 @@ export class AuthService {
       where: { provider: OAuthProvider.GOOGLE, providerId: googleId },
       relations: ['user'],
     });
-    if (existing) return existing.user;
+    if (existing) {
+      if (existing.user.status !== UserStatus.ACTIVE) {
+        throw new UnauthorizedException('Account not active');
+      }
+      return existing.user;
+    }
 
     // Fallback: user row exists (orphaned from a previous partial attempt)
     // Link the OAuth account and return rather than trying to re-insert.
@@ -88,6 +93,7 @@ export class AuthService {
       cityId: defaultCity.id,
       role: isAdminBootstrap ? UserRole.ADMIN : UserRole.MEMBER,
       inviteId: invite?.id ?? null,
+      invitedBy: invite?.createdBy ?? null,
       inviteSource: invite
         ? invite.type === InviteType.CAMPAIGN_FACEBOOK
           ? InviteSource.FACEBOOK_GROUP

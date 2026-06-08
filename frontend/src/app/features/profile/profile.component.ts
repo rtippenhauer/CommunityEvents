@@ -2,6 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -23,6 +24,17 @@ interface City {
   id: number;
   name: string;
   subdomain: string;
+}
+
+interface MiniMember {
+  id: number;
+  fullName: string;
+  profilePhotoPath: string | null;
+}
+
+interface MyProfile {
+  invitedBy: MiniMember | null;
+  invitedMembers: MiniMember[];
 }
 
 interface Invite {
@@ -60,6 +72,7 @@ const PRESET_AVATARS = [
   selector: 'app-profile',
   standalone: true,
   imports: [
+    RouterLink,
     ReactiveFormsModule,
     DatePipe,
     MatCardModule,
@@ -179,6 +192,48 @@ const PRESET_AVATARS = [
           }
         </mat-card-content>
       </mat-card>
+
+      <!-- Invited by / brought in -->
+      @if (myProfile()?.invitedBy || (myProfile()?.invitedMembers?.length ?? 0) > 0) {
+        <mat-card class="connections-card">
+          <mat-card-content>
+            @if (myProfile()?.invitedBy; as inviter) {
+              <div class="connection-row">
+                <span class="connection-label">Invited by</span>
+                <a class="mini-member" [routerLink]="['/members', inviter.id]">
+                  <div class="mini-avatar">
+                    @if (inviter.profilePhotoPath) {
+                      <img [src]="inviter.profilePhotoPath" [alt]="inviter.fullName" />
+                    } @else {
+                      <span>🐻</span>
+                    }
+                  </div>
+                  <span>{{ inviter.fullName }}</span>
+                </a>
+              </div>
+            }
+            @if ((myProfile()?.invitedMembers?.length ?? 0) > 0) {
+              <div class="connection-row">
+                <span class="connection-label">Brought to the table</span>
+                <div class="mini-members-list">
+                  @for (m of myProfile()!.invitedMembers; track m.id) {
+                    <a class="mini-member" [routerLink]="['/members', m.id]">
+                      <div class="mini-avatar">
+                        @if (m.profilePhotoPath) {
+                          <img [src]="m.profilePhotoPath" [alt]="m.fullName" />
+                        } @else {
+                          <span>🐻</span>
+                        }
+                      </div>
+                      <span>{{ m.fullName }}</span>
+                    </a>
+                  }
+                </div>
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
 
       <!-- Invites card -->
       <mat-card class="invites-card">
@@ -360,6 +415,49 @@ const PRESET_AVATARS = [
       margin: 0;
     }
 
+    /* Connections card */
+    .connections-card mat-card-content { padding: 12px 16px; }
+    .connection-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      & + .connection-row { margin-top: 16px; }
+    }
+    .connection-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .mini-members-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .mini-member {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: inherit;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: #f5f5f5;
+      font-size: 0.88rem;
+      transition: background 0.12s;
+      &:hover { background: #ebebeb; }
+    }
+    .mini-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+      img { width: 100%; height: 100%; object-fit: cover; }
+    }
+
     /* Invites card */
     .invites-card mat-card-content { padding-top: 8px; }
     .invite-form {
@@ -445,6 +543,7 @@ export class ProfileComponent implements OnInit {
     cityId: [0, Validators.required],
   });
 
+  readonly myProfile = signal<MyProfile | null>(null);
   readonly myInvites = signal<Invite[]>([]);
   readonly newInviteUrl = signal<string | null>(null);
   readonly creatingInvite = signal(false);
@@ -465,6 +564,15 @@ export class ProfileComponent implements OnInit {
       this.photoUrl.set(path ?? null);
     }
     this.loadMyInvites();
+    this.loadMyProfile();
+  }
+
+  loadMyProfile(): void {
+    const user = this.authService.currentUser();
+    if (!user) return;
+    this.http.get<MyProfile>(`/api/v1/users/${user.id}`).subscribe({
+      next: (p) => this.myProfile.set(p),
+    });
   }
 
   loadMyInvites(): void {
