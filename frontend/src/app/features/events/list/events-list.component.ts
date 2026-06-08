@@ -98,14 +98,17 @@ interface City {
                 <div class="photo-placeholder">🍽️</div>
               }
               @if (e.status === 'cancelled') {
-                <div class="cancelled-badge">Cancelled</div>
+                <div class="cancelled-overlay">CANCELLED</div>
               }
             </div>
             <mat-card-content class="card-body">
               <div class="event-date">
                 {{ e.eventDate | date: 'EEE, MMM d, y' }} at {{ formatTime(e.eventTime) }}
               </div>
-              <h3 class="event-title">{{ e.title }}</h3>
+              <h3 class="event-title" [class.cancelled-title]="e.status === 'cancelled'">
+                @if (e.status === 'cancelled') { <span class="cancelled-prefix">CANCELLED:</span> }
+                {{ e.title }}
+              </h3>
               <p class="event-restaurant">
                 <mat-icon class="inline-icon">restaurant</mat-icon>
                 {{ e.restaurantName }}
@@ -178,17 +181,21 @@ interface City {
       justify-content: center;
       font-size: 3rem;
     }
-    .cancelled-badge {
+    .cancelled-overlay {
       position: absolute;
-      top: 8px;
-      right: 8px;
-      background: #c62828;
+      inset: 0;
+      background: rgba(180, 0, 0, 0.72);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 900;
+      letter-spacing: 0.12em;
       color: #fff;
-      font-size: 0.75rem;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 4px;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
+    .cancelled-title { color: #b00000; }
+    .cancelled-prefix { font-weight: 700; margin-right: 4px; }
     .card-body { padding: 12px 16px 16px; }
     .event-date {
       font-size: 0.8rem;
