@@ -16,7 +16,7 @@ export class InvitesController {
   @Post()
   create(@Body() dto: CreateInviteDto, @CurrentUser() user: UserEntity) {
     const isElevated = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
-    const effectiveDto = isElevated ? dto : { ...dto, type: InviteType.MEMBER };
+    const effectiveDto: CreateInviteDto = isElevated ? dto : { ...dto, type: InviteType.MEMBER as InviteType.MEMBER };
     return this.invitesService.create(effectiveDto, user);
   }
 
