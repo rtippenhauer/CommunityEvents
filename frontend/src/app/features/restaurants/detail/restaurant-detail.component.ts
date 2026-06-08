@@ -6,6 +6,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { EnrichDiagnoseDialogComponent } from './enrich-diagnose-dialog.component';
@@ -27,6 +28,7 @@ import { Event as DinnerEvent } from '../../../core/services/events.service';
     MatChipsModule,
     MatDialogModule,
     MatIconModule,
+    MatMenuModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
   ],
@@ -45,23 +47,31 @@ import { Event as DinnerEvent } from '../../../core/services/events.service';
               <button mat-raised-button color="primary" (click)="createEvent()">
                 <mat-icon>event</mat-icon> Create Event
               </button>
-              <button mat-stroked-button (click)="openEdit()">
-                <mat-icon>edit</mat-icon> Edit
+              <button mat-icon-button [matMenuTriggerFor]="adminMenu" aria-label="More actions">
+                <mat-icon>more_vert</mat-icon>
               </button>
-              <button mat-stroked-button (click)="openAddPhoto()">
-                <mat-icon>add_photo_alternate</mat-icon> Add Photo
-              </button>
-              <button mat-stroked-button (click)="diagnose()" [disabled]="enriching()">
-                <mat-icon>manage_search</mat-icon> Diagnose
-              </button>
-              <button mat-stroked-button (click)="enrich()" [disabled]="enriching()">
-                @if (enriching()) {
-                  <mat-spinner diameter="16" style="display:inline-block;margin-right:6px" />
-                } @else {
-                  <mat-icon>auto_awesome</mat-icon>
-                }
-                Enrich
-              </button>
+              <mat-menu #adminMenu="matMenu">
+                <button mat-menu-item (click)="openEdit()">
+                  <mat-icon>edit</mat-icon> Edit
+                </button>
+                <button mat-menu-item (click)="openAddPhoto()">
+                  <mat-icon>add_photo_alternate</mat-icon> Add Photo
+                </button>
+                <button mat-menu-item (click)="diagnose()" [disabled]="enriching()">
+                  <mat-icon>manage_search</mat-icon> Diagnose
+                </button>
+                <button mat-menu-item (click)="enrich()" [disabled]="enriching()">
+                  @if (enriching()) {
+                    <mat-spinner diameter="16" style="display:inline-block;margin-right:6px" />
+                  } @else {
+                    <mat-icon>auto_awesome</mat-icon>
+                  }
+                  Enrich
+                </button>
+                <button mat-menu-item class="delete-item" (click)="deleteRestaurant()">
+                  <mat-icon color="warn">delete</mat-icon> Delete
+                </button>
+              </mat-menu>
               <input
                 #photoInput
                 type="file"
@@ -190,8 +200,10 @@ import { Event as DinnerEvent } from '../../../core/services/events.service';
       }
       .actions {
         display: flex;
-        gap: 8px;
+        gap: 4px;
+        align-items: center;
       }
+      .delete-item { color: #c62828; }
       .gallery {
         display: flex;
         gap: 8px;
@@ -431,6 +443,15 @@ export class RestaurantDetailComponent implements OnInit {
         this.enriching.set(false);
         this.snackBar.open('Enrichment failed', 'OK', { duration: 3000 });
       },
+    });
+  }
+
+  deleteRestaurant(): void {
+    const r = this.restaurant()!;
+    if (!window.confirm(`Delete "${r.name}"? This cannot be undone.`)) return;
+    this.restaurantsService.delete(r.id).subscribe({
+      next: () => void this.router.navigate(['/restaurants']),
+      error: () => this.snackBar.open('Delete failed', 'OK', { duration: 3000 }),
     });
   }
 

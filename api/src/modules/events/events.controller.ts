@@ -14,6 +14,7 @@ import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -21,11 +22,11 @@ import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { EventStatus } from '../../database/entities/event.entity';
 
 @Controller('events')
-@UseGuards(JwtAuthGuard)
 export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 
   @Get()
+  @UseGuards(OptionalJwtAuthGuard)
   findAll(
     @Query('cityId') cityId?: string,
     @Query('upcoming') upcoming?: string,
@@ -38,12 +39,12 @@ export class EventsController {
     return this.eventsService.findAll({
       cityId: cityId ? parseInt(cityId, 10) : undefined,
       upcoming: upcoming === 'true' ? true : upcoming === 'false' ? false : undefined,
-      // Admins/mods can filter by status; members only see published/cancelled
       status: isAdminOrMod ? status : undefined,
     });
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.eventsService.findOne(id);
   }

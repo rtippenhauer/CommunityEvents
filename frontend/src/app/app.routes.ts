@@ -41,7 +41,6 @@ export const routes: Routes = [
       import('./features/events/list/events-list.component').then(
         (m) => m.EventsListComponent,
       ),
-    canActivate: [authGuard],
   },
   {
     path: 'events/:id',
@@ -49,7 +48,6 @@ export const routes: Routes = [
       import('./features/events/detail/event-detail.component').then(
         (m) => m.EventDetailComponent,
       ),
-    canActivate: [authGuard],
   },
   {
     path: 'admin/invites',

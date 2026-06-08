@@ -422,7 +422,9 @@ export class EnrichmentService {
         ],
       });
       const block = message.content[0];
-      return block.type === 'text' ? block.text.trim() : null;
+      if (block.type !== 'text') return null;
+      // Strip any markdown heading lines Claude occasionally prepends
+      return block.text.replace(/^#+\s+.+\n+/m, '').trim() || null;
     } catch (err) {
       this.logger.error('[Enrich] Claude API error', err);
       return null;

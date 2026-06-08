@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe, SlicePipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
@@ -27,6 +28,7 @@ interface City {
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    RouterLink,
     DatePipe,
     SlicePipe,
     MatButtonModule,
@@ -39,8 +41,15 @@ interface City {
     MatSelectModule,
   ],
   template: `
+    @if (!isLoggedIn()) {
+      <div class="guest-banner">
+        <span>Join DinnerBears to RSVP for events.</span>
+        <a mat-stroked-button routerLink="/login">Sign in</a>
+      </div>
+    }
+
     <div class="page-header">
-      <h1>Events</h1>
+      <h1>Upcoming Dinners</h1>
       @if (isAdminOrMod()) {
         <button mat-raised-button color="primary" (click)="openCreate()">
           <mat-icon>add</mat-icon> Create Event
@@ -114,6 +123,19 @@ interface City {
     }
   `,
   styles: [`
+    .guest-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--db-cream-dark);
+      border: 1px solid #e0d8cc;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 0.95rem;
+      color: var(--db-brown-dark);
+      gap: 16px;
+    }
     .page-header {
       display: flex;
       align-items: center;
@@ -223,6 +245,10 @@ export class EventsListComponent implements OnInit {
       next: (evts) => { this.events.set(evts); this.loading.set(false); },
       error: () => this.loading.set(false),
     });
+  }
+
+  isLoggedIn(): boolean {
+    return this.authService.isLoggedIn();
   }
 
   isAdminOrMod(): boolean {
