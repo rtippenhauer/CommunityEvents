@@ -153,7 +153,10 @@ export class EnrichmentService {
           const baseName =
             placeData.name.replace(/\s*[-–—]\s*.+,\s*[A-Z]{2}\b.*$/, '').trim() ||
             placeData.name;
-          result.name = locality ? `${baseName} in ${locality}` : baseName;
+          const alreadyHasLocality =
+            locality && baseName.toLowerCase().includes(locality.toLowerCase());
+          result.name =
+            locality && !alreadyHasLocality ? `${baseName} in ${locality}` : baseName;
         }
         if (placeData.formatted_phone_number) {
           result.phone = placeData.formatted_phone_number;
