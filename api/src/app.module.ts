@@ -15,6 +15,7 @@ import { FacebookGroupsModule } from './modules/facebook-groups/facebook-groups.
 import { RestaurantsModule } from './modules/restaurants/restaurants.module';
 import { EventsModule } from './modules/events/events.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { StatsModule } from './modules/stats/stats.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AdminModule } from './modules/admin/admin.module';
     RestaurantsModule,
     EventsModule,
     AdminModule,
+    StatsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

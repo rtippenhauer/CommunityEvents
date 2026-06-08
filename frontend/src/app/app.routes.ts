@@ -42,6 +42,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'calendar',
+    loadComponent: () =>
+      import('./features/calendar/calendar.component').then((m) => m.CalendarComponent),
+  },
+  {
     path: 'events',
     loadComponent: () =>
       import('./features/events/list/events-list.component').then(

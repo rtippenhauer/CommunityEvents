@@ -30,6 +30,19 @@ html {
   --db-cream-dark:  #F5EDD8;   // warm cream
   --db-text-dark:   #2C1503;   // near-black brown
   --db-text-mid:    #6B4226;   // body text brown
+
+  // Extended design system
+  --db-accent:      #C9933A;   // alias — components that use --db-accent
+  --db-amber:       #C9933A;   // alias for --db-primary
+  --db-amber-dark:  #A0721F;   // hover
+  --db-brown:       #2C1503;   // near-black brown
+  --db-brown-nav:   #3D1C05;   // nav/sidenav background
+  --db-brown-card:  #4A2208;   // card on dark backgrounds
+  --db-cream-muted: #C8A882;   // secondary text on dark
+  --db-green:       #5DCA98;   // spots available
+  --db-red-overlay: rgba(180, 20, 20, 0.75); // cancelled overlay
+  --db-font-display:'Fraunces', serif;
+  --db-font-body:   'DM Sans', sans-serif;
 }
 
 *,

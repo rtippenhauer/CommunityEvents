@@ -2,35 +2,56 @@
 
   <!-- Mobile sidenav -->
   <mat-sidenav #sidenav mode="over" class="app-sidenav">
+    <div class="sidenav-header">
+      <img src="assets/logo.png" height="40" alt="DinnerBears" class="sidenav-logo" />
+    </div>
     <mat-nav-list>
+      <a mat-list-item routerLink="/" (click)="sidenav.close()">
+        <mat-icon matListItemIcon>home</mat-icon> Home
+      </a>
       <a mat-list-item routerLink="/events" (click)="sidenav.close()">
-        <mat-icon matListItemIcon>event</mat-icon>
-        Events
+        <mat-icon matListItemIcon>event</mat-icon> Events
+      </a>
+      <a mat-list-item routerLink="/calendar" (click)="sidenav.close()">
+        <mat-icon matListItemIcon>calendar_month</mat-icon> Calendar
       </a>
       <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
-        <mat-icon matListItemIcon>restaurant</mat-icon>
-        Restaurants
-      </a>
-      <a mat-list-item routerLink="/members" (click)="sidenav.close()">
-        <mat-icon matListItemIcon>group</mat-icon>
-        Members
-      </a>
-      <a mat-list-item routerLink="/profile" (click)="sidenav.close()">
-        <mat-icon matListItemIcon>person</mat-icon>
-        Profile
+        <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
       </a>
       @if (isLoggedIn()) {
+        <a mat-list-item routerLink="/members" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>group</mat-icon> Members
+        </a>
+        <a mat-list-item routerLink="/profile" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>person</mat-icon> Profile
+        </a>
         <button mat-list-item (click)="logout(); sidenav.close()">
-          <mat-icon matListItemIcon>logout</mat-icon>
-          Sign out
+          <mat-icon matListItemIcon>logout</mat-icon> Sign out
         </button>
+      } @else {
+        <a mat-list-item routerLink="/login" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>login</mat-icon> Sign in
+        </a>
       }
     </mat-nav-list>
+
+    <!-- City selector in sidenav -->
+    <div class="sidenav-city">
+      <span class="sidenav-city-label">City</span>
+      <div class="city-pills">
+        @for (city of cityService.cities; track city.slug) {
+          <button class="city-pill" [class.active]="cityService.selected() === city.slug"
+            (click)="selectCity(city.slug)">
+            {{ city.name }}
+          </button>
+        }
+      </div>
+    </div>
   </mat-sidenav>
 
   <mat-sidenav-content>
-    <mat-toolbar class="app-toolbar">
 
+    <mat-toolbar class="app-toolbar">
       <!-- Mobile: hamburger -->
       @if (isMobile()) {
         <button mat-icon-button (click)="sidenav.toggle()" aria-label="Toggle navigation">
@@ -38,40 +59,57 @@
         </button>
       }
 
-      <span class="app-title">DinnerBears</span>
+      <!-- Logo -->
+      <a routerLink="/" class="app-logo-link" aria-label="DinnerBears home">
+        <img src="assets/logo.png" height="36" alt="DinnerBears" class="app-logo" />
+      </a>
 
-      <!-- Desktop: inline nav links -->
-      @if (!isMobile() && isLoggedIn()) {
+      <!-- Desktop nav links -->
+      @if (!isMobile()) {
         <nav class="desktop-nav">
-          <a mat-button routerLink="/events" routerLinkActive="nav-active">
-            <mat-icon>event</mat-icon> Events
+          <a mat-button routerLink="/" routerLinkActive="nav-active" [routerLinkActiveOptions]="{ exact: true }">
+            Home
           </a>
-          <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">
-            <mat-icon>restaurant</mat-icon> Restaurants
-          </a>
-          <a mat-button routerLink="/members" routerLinkActive="nav-active">
-            <mat-icon>group</mat-icon> Members
-          </a>
-          <a mat-button routerLink="/profile" routerLinkActive="nav-active">
-            <mat-icon>person</mat-icon> Profile
-          </a>
+          <a mat-button routerLink="/events" routerLinkActive="nav-active">Events</a>
+          <a mat-button routerLink="/calendar" routerLinkActive="nav-active">Calendar</a>
+          <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">Restaurants</a>
+          @if (isLoggedIn()) {
+            <a mat-button routerLink="/members" routerLinkActive="nav-active">Members</a>
+          }
         </nav>
       }
 
       <span class="toolbar-spacer"></span>
 
-      <mat-select class="city-selector" [value]="currentCity" aria-label="Select city">
-        <mat-option value="cincinnati">Cincinnati</mat-option>
-        <mat-option value="dayton">Dayton</mat-option>
-      </mat-select>
-
-      <!-- Desktop: sign out button -->
-      @if (!isMobile() && isLoggedIn()) {
-        <button mat-icon-button (click)="logout()" aria-label="Sign out" title="Sign out">
-          <mat-icon>logout</mat-icon>
-        </button>
+      <!-- City selector (desktop) -->
+      @if (!isMobile()) {
+        <div class="city-toggle">
+          @for (city of cityService.cities; track city.slug) {
+            <button class="city-btn" [class.active]="cityService.selected() === city.slug"
+              (click)="selectCity(city.slug)">
+              {{ city.name }}
+            </button>
+          }
+        </div>
       }
 
+      <!-- User avatar or Sign in -->
+      @if (isLoggedIn()) {
+        <a routerLink="/profile" class="user-avatar" [attr.aria-label]="'Profile: ' + (authService.currentUser()?.fullName ?? '')">
+          @if (userPhoto()) {
+            <img [src]="userPhoto()!" alt="Profile photo" class="avatar-photo" />
+          } @else {
+            <span class="avatar-initials">{{ userInitials() }}</span>
+          }
+        </a>
+        @if (!isMobile()) {
+          <button mat-icon-button (click)="logout()" aria-label="Sign out" title="Sign out" class="logout-btn">
+            <mat-icon>logout</mat-icon>
+          </button>
+        }
+      } @else {
+        <a mat-stroked-button routerLink="/login" class="signin-btn">Sign in</a>
+      }
     </mat-toolbar>
 
     <main class="app-content">
@@ -79,8 +117,16 @@
     </main>
 
     <footer class="app-footer">
-      <p>&copy; {{ currentYear }} DinnerBears</p>
+      <img src="assets/logo.png" height="32" alt="DinnerBears" class="footer-logo" />
+      <p class="footer-tagline">Good food. Great company. Bear memories.</p>
+      <div class="footer-links">
+        <a href="/privacy.html">Privacy</a>
+        <span class="footer-dot">&middot;</span>
+        <a href="/terms.html">Terms</a>
+      </div>
+      <p class="footer-copy">&copy; {{ currentYear }} DinnerBears</p>
     </footer>
+
   </mat-sidenav-content>
 
 </mat-sidenav-container>
