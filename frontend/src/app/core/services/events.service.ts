@@ -13,12 +13,23 @@ export interface EventRestaurant {
   photos: Array<{ id: number; filePath: string }>;
 }
 
+export interface GuestLink {
+  id: number;
+  token: string;
+  recipientName: string | null;
+  usedAt: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface Rsvp {
   id: number;
   eventId: number;
   userId: number;
   user: { id: number; fullName: string; profilePhotoPath: string | null };
   additionalGuests: number;
+  guestNames: string[] | null;
+  guestLinks: GuestLink[];
   createdAt: string;
 }
 
@@ -100,12 +111,16 @@ export class EventsService {
     return this.http.delete<void>(`${this.base}/${id}`);
   }
 
-  rsvp(eventId: number, additionalGuests: number): Observable<Rsvp> {
-    return this.http.post<Rsvp>(`${this.base}/${eventId}/rsvp`, { additionalGuests });
+  rsvp(eventId: number, additionalGuests: number, guestNames?: string[]): Observable<Rsvp> {
+    return this.http.post<Rsvp>(`${this.base}/${eventId}/rsvp`, { additionalGuests, guestNames });
   }
 
   unrsvp(eventId: number): Observable<void> {
     return this.http.delete<void>(`${this.base}/${eventId}/rsvp`);
+  }
+
+  generateGuestLink(eventId: number, recipientName?: string): Observable<GuestLink> {
+    return this.http.post<GuestLink>(`${this.base}/${eventId}/rsvp/link`, { recipientName });
   }
 
   mapsUrl(lat: number | null, lng: number | null, address: string): string {

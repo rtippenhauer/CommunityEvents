@@ -14,6 +14,7 @@ import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { UpsertRsvpDto } from './dto/upsert-rsvp.dto';
+import { CreateGuestLinkDto } from './dto/create-guest-link.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -78,12 +79,22 @@ export class EventsController {
     @Body() dto: UpsertRsvpDto,
     @CurrentUser() user: UserEntity,
   ) {
-    return this.eventsService.upsertRsvp(id, user.id, dto.additionalGuests);
+    return this.eventsService.upsertRsvp(id, user.id, dto.additionalGuests, dto.guestNames);
   }
 
   @Delete(':id/rsvp')
   @UseGuards(JwtAuthGuard)
   unrsvp(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
     return this.eventsService.removeRsvp(id, user.id);
+  }
+
+  @Post(':id/rsvp/link')
+  @UseGuards(JwtAuthGuard)
+  generateGuestLink(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateGuestLinkDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.eventsService.generateGuestLink(id, user.id, dto.recipientName);
   }
 }

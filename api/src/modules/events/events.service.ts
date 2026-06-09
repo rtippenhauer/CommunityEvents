@@ -4,8 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
+import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
 import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -24,6 +26,8 @@ export class EventsService {
     private readonly eventRepo: Repository<EventEntity>,
     @InjectRepository(EventRsvpEntity)
     private readonly rsvpRepo: Repository<EventRsvpEntity>,
+    @InjectRepository(EventGuestLinkEntity)
+    private readonly guestLinkRepo: Repository<EventGuestLinkEntity>,
     @InjectRepository(RestaurantEntity)
     private readonly restaurantRepo: Repository<RestaurantEntity>,
   ) {}
@@ -61,7 +65,15 @@ export class EventsService {
   async findOne(id: number): Promise<EventEntity> {
     const event = await this.eventRepo.findOne({
       where: { id },
-      relations: ['city', 'restaurant', 'restaurant.photos', 'createdByUser', 'rsvps', 'rsvps.user'],
+      relations: [
+        'city',
+        'restaurant',
+        'restaurant.photos',
+        'createdByUser',
+        'rsvps',
+        'rsvps.user',
+        'rsvps.guestLinks',
+      ],
     });
     if (!event) throw new NotFoundException(`Event ${id} not found`);
     return event;
@@ -147,7 +159,12 @@ export class EventsService {
     await this.eventRepo.remove(event);
   }
 
-  async upsertRsvp(eventId: number, userId: number, additionalGuests: number): Promise<EventRsvpEntity> {
+  async upsertRsvp(
+    eventId: number,
+    userId: number,
+    additionalGuests: number,
+    guestNames?: string[],
+  ): Promise<EventRsvpEntity> {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
@@ -157,13 +174,64 @@ export class EventsService {
     const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
     if (existing) {
       existing.additionalGuests = additionalGuests;
+      if (guestNames !== undefined) {
+        existing.guestNames = guestNames.length > 0 ? guestNames : null;
+      }
       return this.rsvpRepo.save(existing);
     }
-    return this.rsvpRepo.save(this.rsvpRepo.create({ eventId, userId, additionalGuests }));
+
+    return this.rsvpRepo.save(
+      this.rsvpRepo.create({
+        eventId,
+        userId,
+        additionalGuests,
+        guestNames: guestNames && guestNames.length > 0 ? guestNames : null,
+      }),
+    );
   }
 
   async removeRsvp(eventId: number, userId: number): Promise<void> {
     const rsvp = await this.rsvpRepo.findOne({ where: { eventId, userId } });
     if (rsvp) await this.rsvpRepo.remove(rsvp);
+  }
+
+  async generateGuestLink(
+    eventId: number,
+    userId: number,
+    recipientName?: string,
+  ): Promise<EventGuestLinkEntity> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException(`Event ${eventId} not found`);
+    if (event.status !== EventStatus.PUBLISHED) {
+      throw new BadRequestException('Event is not published');
+    }
+
+    const rsvp = await this.rsvpRepo.findOne({ where: { eventId, userId } });
+    if (!rsvp) throw new BadRequestException('You must RSVP before generating a guest link');
+
+    const existingLinks = await this.guestLinkRepo.count({ where: { memberRsvpId: rsvp.id } });
+    if (existingLinks >= rsvp.additionalGuests) {
+      throw new BadRequestException(
+        `You already have ${existingLinks} guest link(s) — increase your additional guests count to generate more`,
+      );
+    }
+
+    const token = randomBytes(20).toString('hex');
+
+    const [y, m, d] = event.eventDate.split('-').map(Number);
+    const [h, min] = event.eventTime.split(':').map(Number);
+    const expiresAt = new Date(y, m - 1, d, h, min);
+
+    const link = this.guestLinkRepo.create({
+      eventId,
+      createdById: userId,
+      memberRsvpId: rsvp.id,
+      deliveryType: 'shareable',
+      recipientName: recipientName ?? null,
+      token,
+      expiresAt,
+    });
+
+    return this.guestLinkRepo.save(link);
   }
 }

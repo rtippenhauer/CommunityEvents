@@ -4,10 +4,12 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { EventEntity } from './event.entity';
+import { EventGuestLinkEntity } from './event-guest-link.entity';
 import { UserEntity } from './user.entity';
 
 @Entity('event_rsvps')
@@ -31,6 +33,12 @@ export class EventRsvpEntity {
 
   @Column({ name: 'additional_guests', type: 'tinyint', unsigned: true, default: 0 })
   additionalGuests: number;
+
+  @Column({ name: 'guest_names', type: 'json', nullable: true })
+  guestNames: string[] | null;
+
+  @OneToMany(() => EventGuestLinkEntity, (l) => l.memberRsvp)
+  guestLinks: EventGuestLinkEntity[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

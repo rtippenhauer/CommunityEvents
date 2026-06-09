@@ -1,6 +1,5 @@
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -19,7 +18,6 @@ interface CalendarDay {
   standalone: true,
   imports: [
     DatePipe,
-    RouterLink,
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
