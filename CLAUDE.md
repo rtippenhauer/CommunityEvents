@@ -33,7 +33,7 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 4.1 — Event Core**
+**Phase 4.3 — Sharing & Calendar Export**
 See PHASES.md for full phase breakdown and definitions of done.
 
 ## Completed Phases
@@ -41,6 +41,8 @@ See PHASES.md for full phase breakdown and definitions of done.
 - **Phase 2** — Google OAuth, invite system, JWT sessions, profile page, photo upload ✓
 - **Phase 3** — Restaurant database UI, photos, geocoding ✓
 - **Phase 3.5** — Historical Facebook import, enrichment via Google Places + Claude AI ✓
+- **Phase 4.1** — Event core, CRUD, publish/cancel, event list + detail pages ✓
+- **Phase 4.2** — Member RSVP, +N guests, guest naming, shareable guest links ✓
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

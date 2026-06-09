@@ -113,22 +113,7 @@ captured on publish.
 
 ---
 
-## Phase 4.3 — Guest RSVP
-
-- Guest RSVP form — name + email, no account required
-- Guest confirmation email with cancel link + optional invite offer
-- Guest invite link (30-day expiry) generated on confirmation
-- `guest_rsvp` invite type activated, linked to inviting member for lineage
-- Admin event page: full breakdown — names, emails, who invited whom
-- RSVP display updated to include guest count
-
-**Definition of done:** Guests can RSVP without an account, receive
-confirmation email, and cancel via link. Admin sees full attendee breakdown
-with lineage.
-
----
-
-## Phase 4.4 — Sharing & Calendar Export
+## Phase 4.3 — Sharing & Calendar Export
 
 - Share to Facebook button (admin only — pre-fills FB composer)
 - Copy Post Text button
@@ -165,6 +150,20 @@ text. All three calendar export formats work correctly.
 activates on toggle, Brevo webhooks update delivery status, bounce/complaint/
 unsubscribe flows work end-to-end, inactivity cron runs correctly, member
 preferences respected, suppression survives hard delete and re-registration.
+
+---
+
+## Phase 5.5 — Guest RSVP (email-complete)
+
+- Guest confirmation email with cancel link + optional DinnerBears invite offer
+- Guest invite link (30-day expiry) generated on confirmation, linked to inviting member for lineage
+- `guest_rsvp` invite type activated
+- Admin event page: full attendee breakdown — names, emails, who invited whom
+- RSVP display updated to include confirmed guest count
+
+**Definition of done:** Guests can RSVP without an account, receive a
+confirmation email with a cancel link, and optionally join DinnerBears via
+the invite offer. Admin sees the full attendee breakdown with lineage.
 
 ---
 
