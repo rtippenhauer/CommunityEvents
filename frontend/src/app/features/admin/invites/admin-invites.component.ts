@@ -97,6 +97,21 @@ interface Invite {
               </mat-form-field>
             }
 
+            @if (form.value.type !== 'member') {
+              <div class="limits-row">
+                <mat-form-field appearance="outline" class="limit-field">
+                  <mat-label>Expiry (days)</mat-label>
+                  <input matInput type="number" formControlName="expiryDays" min="1" max="30" />
+                  <mat-hint>1–30, default 30</mat-hint>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="limit-field">
+                  <mat-label>Max uses</mat-label>
+                  <input matInput type="number" formControlName="maxUses" min="2" />
+                  <mat-hint>Leave blank for unlimited</mat-hint>
+                </mat-form-field>
+              </div>
+            }
+
             <mat-card-actions>
               <button mat-raised-button color="primary" type="submit" [disabled]="form.invalid">
                 <mat-icon>add_link</mat-icon>
@@ -212,6 +227,11 @@ interface Invite {
         gap: 12px;
         padding-top: 8px;
       }
+      .limits-row {
+        display: flex;
+        gap: 12px;
+        .limit-field { flex: 1; }
+      }
       .new-link-card {
         background: #e8f5e9;
       }
@@ -249,6 +269,8 @@ export class AdminInvitesComponent implements OnInit {
     boundToEmail: [''],
     boundToName: [''],
     facebookGroupId: [null as number | null],
+    expiryDays: [null as number | null],
+    maxUses: [null as number | null],
   });
 
   ngOnInit(): void {
@@ -263,7 +285,7 @@ export class AdminInvitesComponent implements OnInit {
   }
 
   create(): void {
-    const { type, boundToEmail, boundToName, facebookGroupId } = this.form.getRawValue();
+    const { type, boundToEmail, boundToName, facebookGroupId, expiryDays, maxUses } = this.form.getRawValue();
     const body: Record<string, unknown> = { type };
     if (type === 'member') {
       body['boundToEmail'] = boundToEmail;
@@ -271,6 +293,10 @@ export class AdminInvitesComponent implements OnInit {
     }
     if (type === 'campaign_facebook' && facebookGroupId) {
       body['facebookGroupId'] = facebookGroupId;
+    }
+    if (type !== 'member') {
+      if (expiryDays) body['expiryDays'] = expiryDays;
+      if (maxUses) body['maxUses'] = maxUses;
     }
 
     this.http.post<Invite>('/api/v1/invites', body).subscribe({

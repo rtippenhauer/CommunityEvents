@@ -39,7 +39,7 @@ export class InvitesService {
     if (dto.type === InviteType.MEMBER) {
       expiresAt.setHours(expiresAt.getHours() + 48);
     } else {
-      expiresAt.setDate(expiresAt.getDate() + 30);
+      expiresAt.setDate(expiresAt.getDate() + (dto.expiryDays ?? 30));
     }
 
     const invite = this.inviteRepo.create({
@@ -51,7 +51,7 @@ export class InvitesService {
       boundToEmail: dto.boundToEmail ?? null,
       boundToName: dto.boundToName ?? null,
       expiresAt,
-      maxUses: dto.type === InviteType.MEMBER ? 1 : null,
+      maxUses: dto.type === InviteType.MEMBER ? 1 : (dto.maxUses ?? null),
     });
 
     return this.inviteRepo.save(invite);

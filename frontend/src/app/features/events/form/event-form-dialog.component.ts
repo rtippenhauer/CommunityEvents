@@ -110,6 +110,13 @@ interface Restaurant { id: number; name: string; cityId: number; }
           </mat-select>
         </mat-form-field>
 
+        <mat-form-field appearance="outline">
+          <mat-label>Facebook Post Text (optional)</mat-label>
+          <textarea matInput formControlName="facebookShareText" rows="3"
+            placeholder="Leave blank to auto-generate from event details…"></textarea>
+          <mat-hint>Pre-filled text for sharing to Facebook. Auto-generated if empty.</mat-hint>
+        </mat-form-field>
+
       </form>
     </mat-dialog-content>
 
@@ -164,6 +171,7 @@ export class EventFormDialogComponent implements OnInit {
     eventTime: ['', Validators.required],
     description: [''],
     additionalInfo: [''],
+    facebookShareText: [''],
     status: ['draft' as EventStatus],
   });
 
@@ -193,6 +201,7 @@ export class EventFormDialogComponent implements OnInit {
         eventTime: e.eventTime.substring(0, 5),
         description: e.description ?? '',
         additionalInfo: e.additionalInfo ?? '',
+        facebookShareText: e.facebookShareText ?? '',
         status: e.status === 'cancelled' ? 'published' : e.status,
       });
     } else if (this.data.preset) {
@@ -228,6 +237,7 @@ export class EventFormDialogComponent implements OnInit {
       eventTime: val.eventTime,
       description: val.description.trim() || null,
       additionalInfo: val.additionalInfo.trim() || null,
+      facebookShareText: val.facebookShareText.trim() || null,
       status: val.status as EventStatus,
     };
 

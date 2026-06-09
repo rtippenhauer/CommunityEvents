@@ -5,6 +5,8 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Max,
+  Min,
   MaxLength,
 } from 'class-validator';
 import { InviteType } from '../../../database/entities/invite.entity';
@@ -31,4 +33,15 @@ export class CreateInviteDto {
   @IsPositive()
   @IsOptional()
   facebookGroupId?: number;
+
+  @IsInt()
+  @Min(2)
+  @IsOptional()
+  maxUses?: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  @IsOptional()
+  expiryDays?: number;
 }

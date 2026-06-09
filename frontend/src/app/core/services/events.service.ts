@@ -92,6 +92,7 @@ export interface UpdateEventPayload {
   title?: string;
   description?: string | null;
   additionalInfo?: string | null;
+  facebookShareText?: string | null;
   eventDate?: string;
   eventTime?: string;
   status?: EventStatus;
@@ -150,5 +151,42 @@ export class EventsService {
   mapsUrl(lat: number | null, lng: number | null, address: string): string {
     if (lat && lng) return `https://www.google.com/maps?q=${lat},${lng}`;
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  }
+
+  googleCalendarUrl(event: Event): string {
+    const [y, m, d] = event.eventDate.split('-').map(Number);
+    const [h, min] = event.eventTime.split(':').map(Number);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const startDt = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
+    const endDt = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: event.title,
+      dates: `${startDt}/${endDt}`,
+      location: event.restaurantAddress,
+    });
+    if (event.description) params.set('details', event.description);
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  }
+
+  generatePostText(event: Event): string {
+    if (event.facebookShareText) return event.facebookShareText;
+    const [y, m, d] = event.eventDate.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const dateStr = date.toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    });
+    const [h, min] = event.eventTime.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const timeStr = `${h % 12 || 12}:${String(min).padStart(2, '0')} ${ampm}`;
+    const lines = [
+      `🐻 DinnerBears Dinner Night!\n`,
+      `🍽️ ${event.restaurantName}`,
+      `📅 ${dateStr} at ${timeStr}`,
+      `📍 ${event.restaurantAddress}`,
+    ];
+    if (event.description) lines.push(`\n${event.description}`);
+    lines.push(`\nRSVP: ${window.location.origin}/events/${event.id}`);
+    return lines.join('\n');
   }
 }

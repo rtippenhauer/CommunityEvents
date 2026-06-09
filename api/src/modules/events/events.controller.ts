@@ -3,13 +3,16 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -44,6 +47,17 @@ export class EventsController {
       upcoming: upcoming === 'true' ? true : upcoming === 'false' ? false : undefined,
       status: isAdminOrMod ? status : undefined,
     });
+  }
+
+  @Get(':id/ics')
+  async downloadIcs(
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ): Promise<void> {
+    const ics = await this.eventsService.generateIcs(id);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="dinnerbears-event-${id}.ics"`);
+    res.end(ics);
   }
 
   @Get('guest-link/:token')

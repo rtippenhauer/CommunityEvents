@@ -274,6 +274,48 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
             </mat-card>
           }
 
+          <!-- Sharing & Calendar (published events only) -->
+          @if (event()!.status === 'published') {
+            <mat-card class="share-card">
+              <mat-card-content>
+
+                <!-- Calendar export (all users) -->
+                <div class="share-section">
+                  <h4 class="share-section-title">
+                    <mat-icon>event_available</mat-icon> Add to Calendar
+                  </h4>
+                  <div class="share-btn-row">
+                    <a mat-stroked-button [href]="googleCalendarUrl()" target="_blank" rel="noopener" class="cal-btn">
+                      <mat-icon>event</mat-icon> Google Calendar
+                    </a>
+                    <a mat-stroked-button [href]="icsUrl()" download class="cal-btn">
+                      <mat-icon>download</mat-icon> Download .ics
+                    </a>
+                  </div>
+                </div>
+
+                <!-- Sharing (admin/mod only) -->
+                @if (isAdminOrMod()) {
+                  <mat-divider class="share-divider" />
+                  <div class="share-section">
+                    <h4 class="share-section-title">
+                      <mat-icon>share</mat-icon> Share
+                    </h4>
+                    <div class="share-btn-row">
+                      <button mat-stroked-button class="fb-btn" (click)="shareToFacebook()">
+                        <mat-icon>open_in_new</mat-icon> Share on Facebook
+                      </button>
+                      <button mat-stroked-button (click)="copyPostText()">
+                        <mat-icon>content_copy</mat-icon> Copy Post Text
+                      </button>
+                    </div>
+                  </div>
+                }
+
+              </mat-card-content>
+            </mat-card>
+          }
+
           <!-- Admin actions -->
           @if (isAdminOrMod()) {
             <div class="admin-actions">
@@ -574,6 +616,46 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
     }
     .guest-names-inline { color: #666; font-style: italic; }
 
+    // ── Share & Calendar ──────────────────────────────────────────────────────
+
+    .share-card { margin-bottom: 24px; }
+
+    .share-section {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .share-section-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--db-brown-dark);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; color: var(--db-amber); }
+    }
+
+    .share-btn-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .cal-btn, .fb-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+
+    .share-divider { margin: 16px 0; }
+
+    // ── Admin actions ─────────────────────────────────────────────────────────
+
     .admin-actions {
       display: flex;
       gap: 8px;
@@ -666,6 +748,25 @@ export class EventDetailComponent implements OnInit {
   mapsUrl(): string {
     const e = this.event()!;
     return this.eventsService.mapsUrl(e.restaurantLat, e.restaurantLng, e.restaurantAddress);
+  }
+
+  googleCalendarUrl(): string {
+    return this.eventsService.googleCalendarUrl(this.event()!);
+  }
+
+  icsUrl(): string {
+    return `/api/v1/events/${this.event()!.id}/ics`;
+  }
+
+  shareToFacebook(): void {
+    const url = `${window.location.origin}/events/${this.event()!.id}`;
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank', 'noopener');
+  }
+
+  copyPostText(): void {
+    const text = this.eventsService.generatePostText(this.event()!);
+    this.clipboard.copy(text);
+    this.snackBar.open('Post text copied to clipboard!', 'OK', { duration: 3000 });
   }
 
   isLoggedIn(): boolean {

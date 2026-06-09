@@ -48,4 +48,9 @@ export class UpdateEventDto {
   @IsString()
   @IsOptional()
   cancelledReason?: string | null;
+
+  @ValidateIf((o: UpdateEventDto) => o.facebookShareText !== null)
+  @IsString()
+  @IsOptional()
+  facebookShareText?: string | null;
 }

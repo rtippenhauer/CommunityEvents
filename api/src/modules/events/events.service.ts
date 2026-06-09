@@ -134,6 +134,7 @@ export class EventsService {
     if (dto.title !== undefined) event.title = dto.title;
     if ('description' in dto) event.description = dto.description ?? null;
     if ('additionalInfo' in dto) event.additionalInfo = dto.additionalInfo ?? null;
+    if ('facebookShareText' in dto) event.facebookShareText = dto.facebookShareText ?? null;
     if (dto.eventDate !== undefined) event.eventDate = dto.eventDate;
     if (dto.eventTime !== undefined) event.eventTime = dto.eventTime;
 
@@ -232,6 +233,40 @@ export class EventsService {
     if (guestName?.trim()) link.recipientName = guestName.trim();
     await this.guestLinkRepo.save(link);
     return { message: 'RSVP confirmed' };
+  }
+
+  async generateIcs(id: number): Promise<string> {
+    const event = await this.findOne(id);
+
+    const [y, m, d] = event.eventDate.split('-').map(Number);
+    const [h, min] = event.eventTime.split(':').map(Number);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const startDt = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
+    const endDt = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
+
+    const esc = (s: string) =>
+      s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//DinnerBears//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      `DTSTART:${startDt}`,
+      `DTEND:${endDt}`,
+      `SUMMARY:${esc(event.title)}`,
+      `LOCATION:${esc(event.restaurantAddress)}`,
+      `UID:event-${event.id}@dinnerbears.com`,
+    ];
+
+    if (event.description) {
+      lines.push(`DESCRIPTION:${esc(event.description)}`);
+    }
+
+    lines.push('END:VEVENT', 'END:VCALENDAR');
+    return lines.join('\r\n');
   }
 
   async generateGuestLink(
