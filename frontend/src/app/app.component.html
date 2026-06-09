@@ -25,6 +25,20 @@
         <a mat-list-item routerLink="/profile" (click)="sidenav.close()">
           <mat-icon matListItemIcon>person</mat-icon> Profile
         </a>
+        @if (isAdmin()) {
+          <mat-divider />
+          <div class="sidenav-section-label">Admin</div>
+          <a mat-list-item routerLink="/admin/users" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>manage_accounts</mat-icon> Users
+          </a>
+          <a mat-list-item routerLink="/admin/invites" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>link</mat-icon> Invites
+          </a>
+          <a mat-list-item routerLink="/admin/email" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>mail</mat-icon> Email
+          </a>
+        }
+        <mat-divider />
         <button mat-list-item (click)="logout(); sidenav.close()">
           <mat-icon matListItemIcon>logout</mat-icon> Sign out
         </button>
@@ -75,6 +89,22 @@
           <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">Restaurants</a>
           @if (isLoggedIn()) {
             <a mat-button routerLink="/members" routerLinkActive="nav-active">Members</a>
+          }
+          @if (isAdmin()) {
+            <button mat-button [matMenuTriggerFor]="adminMenu" class="admin-menu-btn">
+              <mat-icon>admin_panel_settings</mat-icon> Admin
+            </button>
+            <mat-menu #adminMenu="matMenu">
+              <a mat-menu-item routerLink="/admin/users">
+                <mat-icon>manage_accounts</mat-icon> Users
+              </a>
+              <a mat-menu-item routerLink="/admin/invites">
+                <mat-icon>link</mat-icon> Invites
+              </a>
+              <a mat-menu-item routerLink="/admin/email">
+                <mat-icon>mail</mat-icon> Email
+              </a>
+            </mat-menu>
           }
         </nav>
       }

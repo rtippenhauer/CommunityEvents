@@ -5,6 +5,8 @@ import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatListModule } from '@angular/material/list';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatDividerModule } from '@angular/material/divider';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
@@ -23,6 +25,8 @@ import { CityService, CitySlug } from './core/services/city.service';
     MatIconModule,
     MatButtonModule,
     MatListModule,
+    MatMenuModule,
+    MatDividerModule,
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -53,6 +57,10 @@ export class AppComponent {
 
   readonly userPhoto = computed<string | null>(
     () => this.authService.currentUser()?.profilePhotoPath ?? null,
+  );
+
+  readonly isAdmin = computed<boolean>(
+    () => this.authService.currentUser()?.role === 'admin',
   );
 
   isLoggedIn(): boolean {

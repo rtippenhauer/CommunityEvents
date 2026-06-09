@@ -11,8 +11,7 @@ import { EmailProviderConfigEntity } from '../../database/entities/email-provide
 import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
 import { BrevoService } from './brevo.service';
 import { GmailService } from './gmail.service';
-import { EmailTemplateName, TEMPLATE_ENV_KEYS } from './email.constants';
-import { ConfigService } from '@nestjs/config';
+import { EmailTemplateName } from './email.constants';
 
 const MAX_ATTEMPTS = 3;
 const BATCH_SIZE = 20;
@@ -30,7 +29,6 @@ export class EmailDispatcherService {
     private readonly userRepo: Repository<UserEntity>,
     private readonly brevo: BrevoService,
     private readonly gmail: GmailService,
-    private readonly appConfig: ConfigService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -118,13 +116,13 @@ export class EmailDispatcherService {
 
     const useBrevo =
       providerConfig.brevoEnabled &&
-      this.brevo.isConfigured &&
+      (await this.brevo.isConfigured()) &&
       providerConfig.brevoSentToday < providerConfig.brevoDailyLimit;
 
     const useGmail =
       !useBrevo &&
       providerConfig.gmailOverflowEnabled &&
-      this.gmail.isConfigured &&
+      (await this.gmail.isConfigured()) &&
       providerConfig.gmailSentToday < providerConfig.gmailDailyLimit;
 
     if (!useBrevo && !useGmail) {

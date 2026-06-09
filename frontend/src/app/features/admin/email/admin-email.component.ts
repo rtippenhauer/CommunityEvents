@@ -1,10 +1,15 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
+import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatDividerModule } from '@angular/material/divider';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -16,26 +21,44 @@ interface EmailQueueItem {
   toEmail: string;
   toName: string | null;
   subject: string | null;
-  template: string;
+  templateId: string | null;
   status: string;
   provider: string | null;
   attempts: number;
-  priority: number;
-  scheduledAt: string;
+  scheduledAt: string | null;
   sentAt: string | null;
   createdAt: string;
 }
 
-interface EmailProviderConfig {
+interface EmailConfig {
   id: number;
   brevoEnabled: boolean;
-  brevoApiKey: string | null;
+  gmailOverflowEnabled: boolean;
   brevoDailyLimit: number;
-  brevoDailyCount: number;
-  gmailEnabled: boolean;
   gmailDailyLimit: number;
-  gmailDailyCount: number;
-  lastResetAt: string;
+  brevoSentToday: number;
+  gmailSentToday: number;
+  lastResetDate: string;
+  // credentials
+  brevoApiKey: string | null;
+  brevoFromEmail: string | null;
+  brevoFromName: string | null;
+  gmailUser: string | null;
+  gmailAppPassword: string | null;
+  gmailFromEmail: string | null;
+  gmailFromName: string | null;
+  // template IDs
+  tmplInvite: number | null;
+  tmplSecurityAlert: number | null;
+  tmplEventPublished: number | null;
+  tmplRsvpConfirmation: number | null;
+  tmplEventReminder: number | null;
+  tmplAccountDeletion: number | null;
+  tmplReengagement60: number | null;
+  tmplReengagement90: number | null;
+  tmplGuestRsvpConfirmation: number | null;
+  tmplEmailVerification: number | null;
+  tmplPasswordReset: number | null;
 }
 
 @Component({
@@ -43,10 +66,15 @@ interface EmailProviderConfig {
   standalone: true,
   imports: [
     DatePipe,
+    ReactiveFormsModule,
     MatButtonModule,
     MatCardModule,
     MatChipsModule,
+    MatDividerModule,
+    MatExpansionModule,
+    MatFormFieldModule,
     MatIconModule,
+    MatInputModule,
     MatProgressSpinnerModule,
     MatSlideToggleModule,
     MatSnackBarModule,
@@ -57,218 +85,302 @@ interface EmailProviderConfig {
     <div class="email-admin-container">
       <h2 class="page-title">Email Admin</h2>
 
-      <!-- Provider config card -->
-      <mat-card class="config-card">
-        <mat-card-header>
-          <mat-card-title>Provider Configuration</mat-card-title>
-        </mat-card-header>
-        <mat-card-content>
-          @if (config(); as cfg) {
+      @if (config(); as cfg) {
+
+        <!-- Send counts card -->
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Today's Send Counts</mat-card-title>
+            <div class="header-actions">
+              <button mat-stroked-button color="primary" (click)="retryFailed()" [disabled]="retrying()">
+                <mat-icon>replay</mat-icon> Retry Failed
+              </button>
+              <button mat-icon-button (click)="loadQueue()" matTooltip="Refresh queue">
+                <mat-icon>refresh</mat-icon>
+              </button>
+            </div>
+          </mat-card-header>
+          <mat-card-content>
             <div class="provider-grid">
               <div class="provider-block">
                 <div class="provider-header">
                   <span class="provider-name">Brevo</span>
-                  <mat-slide-toggle
-                    [checked]="cfg.brevoEnabled"
-                    (change)="updateConfig({ brevoEnabled: $event.checked })"
-                  />
+                  <mat-slide-toggle [checked]="cfg.brevoEnabled"
+                    (change)="patchConfig({ brevoEnabled: $event.checked })" />
                 </div>
-                <div class="provider-stat">
-                  <span>Daily sent</span>
-                  <strong>{{ cfg.brevoDailyCount }} / {{ cfg.brevoDailyLimit }}</strong>
-                </div>
-                <div class="provider-stat">
-                  <span>Reset at</span>
-                  <strong>{{ cfg.lastResetAt | date: 'short' }}</strong>
-                </div>
+                <div class="provider-stat"><span>Sent today</span>
+                  <strong>{{ cfg.brevoSentToday }} / {{ cfg.brevoDailyLimit }}</strong></div>
+                <div class="provider-stat"><span>Reset date</span>
+                  <strong>{{ cfg.lastResetDate }}</strong></div>
               </div>
-
               <div class="provider-block">
                 <div class="provider-header">
                   <span class="provider-name">Gmail (overflow)</span>
-                  <mat-slide-toggle
-                    [checked]="cfg.gmailEnabled"
-                    (change)="updateConfig({ gmailEnabled: $event.checked })"
-                  />
+                  <mat-slide-toggle [checked]="cfg.gmailOverflowEnabled"
+                    (change)="patchConfig({ gmailOverflowEnabled: $event.checked })" />
                 </div>
-                <div class="provider-stat">
-                  <span>Daily sent</span>
-                  <strong>{{ cfg.gmailDailyCount }} / {{ cfg.gmailDailyLimit }}</strong>
-                </div>
+                <div class="provider-stat"><span>Sent today</span>
+                  <strong>{{ cfg.gmailSentToday }} / {{ cfg.gmailDailyLimit }}</strong></div>
               </div>
             </div>
-          } @else {
-            <mat-spinner diameter="28" />
-          }
-        </mat-card-content>
-      </mat-card>
+          </mat-card-content>
+        </mat-card>
 
-      <!-- Queue card -->
-      <mat-card class="queue-card">
-        <mat-card-header>
-          <mat-card-title>Email Queue</mat-card-title>
-          <div class="queue-actions">
-            <button mat-stroked-button color="primary" (click)="retryFailed()" [disabled]="retrying()">
-              <mat-icon>replay</mat-icon>
-              Retry Failed
-            </button>
-            <button mat-icon-button (click)="loadQueue()" matTooltip="Refresh">
-              <mat-icon>refresh</mat-icon>
-            </button>
-          </div>
-        </mat-card-header>
-        <mat-card-content>
-          @if (loading()) {
-            <mat-spinner diameter="28" />
-          } @else if (queue().length === 0) {
-            <p class="empty-state">Queue is empty.</p>
-          } @else {
-            <table mat-table [dataSource]="queue()" class="queue-table">
-              <ng-container matColumnDef="status">
-                <th mat-header-cell *matHeaderCellDef>Status</th>
-                <td mat-cell *matCellDef="let row">
-                  <mat-chip [class]="'chip-' + row.status">{{ row.status }}</mat-chip>
-                </td>
-              </ng-container>
+        <!-- Credentials & Templates (expansion panel) -->
+        <mat-accordion>
+          <mat-expansion-panel>
+            <mat-expansion-panel-header>
+              <mat-panel-title>Brevo Credentials</mat-panel-title>
+              <mat-panel-description>API key, sender address</mat-panel-description>
+            </mat-expansion-panel-header>
+            <form [formGroup]="brevoForm" (ngSubmit)="saveBrevo()" class="creds-form">
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>API Key</mat-label>
+                <input matInput formControlName="brevoApiKey" type="password" autocomplete="off" />
+                <mat-hint>Overrides BREVO_API_KEY env var</mat-hint>
+              </mat-form-field>
+              <div class="two-col">
+                <mat-form-field appearance="outline">
+                  <mat-label>From Email</mat-label>
+                  <input matInput formControlName="brevoFromEmail" type="email" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>From Name</mat-label>
+                  <input matInput formControlName="brevoFromName" />
+                </mat-form-field>
+              </div>
+              <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
+                Save Brevo Credentials
+              </button>
+            </form>
+          </mat-expansion-panel>
 
-              <ng-container matColumnDef="template">
-                <th mat-header-cell *matHeaderCellDef>Template</th>
-                <td mat-cell *matCellDef="let row">{{ row.template }}</td>
-              </ng-container>
+          <mat-expansion-panel>
+            <mat-expansion-panel-header>
+              <mat-panel-title>Gmail Credentials</mat-panel-title>
+              <mat-panel-description>Gmail user and app password for overflow</mat-panel-description>
+            </mat-expansion-panel-header>
+            <form [formGroup]="gmailForm" (ngSubmit)="saveGmail()" class="creds-form">
+              <div class="two-col">
+                <mat-form-field appearance="outline">
+                  <mat-label>Gmail User</mat-label>
+                  <input matInput formControlName="gmailUser" type="email" autocomplete="off" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>App Password</mat-label>
+                  <input matInput formControlName="gmailAppPassword" type="password" autocomplete="off" />
+                </mat-form-field>
+              </div>
+              <div class="two-col">
+                <mat-form-field appearance="outline">
+                  <mat-label>From Email</mat-label>
+                  <input matInput formControlName="gmailFromEmail" type="email" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>From Name</mat-label>
+                  <input matInput formControlName="gmailFromName" />
+                </mat-form-field>
+              </div>
+              <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
+                Save Gmail Credentials
+              </button>
+            </form>
+          </mat-expansion-panel>
 
-              <ng-container matColumnDef="toEmail">
-                <th mat-header-cell *matHeaderCellDef>To</th>
-                <td mat-cell *matCellDef="let row">{{ row.toEmail }}</td>
-              </ng-container>
+          <mat-expansion-panel>
+            <mat-expansion-panel-header>
+              <mat-panel-title>Brevo Template IDs</mat-panel-title>
+              <mat-panel-description>Numeric IDs from your Brevo template library</mat-panel-description>
+            </mat-expansion-panel-header>
+            <form [formGroup]="templatesForm" (ngSubmit)="saveTemplates()" class="creds-form">
+              <div class="templates-grid">
+                <mat-form-field appearance="outline">
+                  <mat-label>Invite</mat-label>
+                  <input matInput formControlName="tmplInvite" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Security Alert</mat-label>
+                  <input matInput formControlName="tmplSecurityAlert" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Event Published</mat-label>
+                  <input matInput formControlName="tmplEventPublished" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>RSVP Confirmation</mat-label>
+                  <input matInput formControlName="tmplRsvpConfirmation" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Event Reminder</mat-label>
+                  <input matInput formControlName="tmplEventReminder" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Account Deletion Warning</mat-label>
+                  <input matInput formControlName="tmplAccountDeletion" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Re-engagement (60 day)</mat-label>
+                  <input matInput formControlName="tmplReengagement60" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Re-engagement (90 day)</mat-label>
+                  <input matInput formControlName="tmplReengagement90" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Guest RSVP Confirmation</mat-label>
+                  <input matInput formControlName="tmplGuestRsvpConfirmation" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Email Verification</mat-label>
+                  <input matInput formControlName="tmplEmailVerification" type="number" min="0" />
+                </mat-form-field>
+                <mat-form-field appearance="outline">
+                  <mat-label>Password Reset</mat-label>
+                  <input matInput formControlName="tmplPasswordReset" type="number" min="0" />
+                </mat-form-field>
+              </div>
+              <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
+                Save Template IDs
+              </button>
+            </form>
+          </mat-expansion-panel>
+        </mat-accordion>
 
-              <ng-container matColumnDef="provider">
-                <th mat-header-cell *matHeaderCellDef>Provider</th>
-                <td mat-cell *matCellDef="let row">{{ row.provider ?? '—' }}</td>
-              </ng-container>
+        <!-- Queue -->
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Email Queue</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            @if (loading()) {
+              <mat-spinner diameter="28" />
+            } @else if (queue().length === 0) {
+              <p class="empty-state">Queue is empty.</p>
+            } @else {
+              <table mat-table [dataSource]="queue()" class="queue-table">
+                <ng-container matColumnDef="status">
+                  <th mat-header-cell *matHeaderCellDef>Status</th>
+                  <td mat-cell *matCellDef="let row">
+                    <mat-chip [class]="'chip-' + row.status">{{ row.status }}</mat-chip>
+                  </td>
+                </ng-container>
+                <ng-container matColumnDef="template">
+                  <th mat-header-cell *matHeaderCellDef>Template</th>
+                  <td mat-cell *matCellDef="let row">{{ row.templateId ?? '—' }}</td>
+                </ng-container>
+                <ng-container matColumnDef="toEmail">
+                  <th mat-header-cell *matHeaderCellDef>To</th>
+                  <td mat-cell *matCellDef="let row">{{ row.toEmail }}</td>
+                </ng-container>
+                <ng-container matColumnDef="provider">
+                  <th mat-header-cell *matHeaderCellDef>Provider</th>
+                  <td mat-cell *matCellDef="let row">{{ row.provider ?? '—' }}</td>
+                </ng-container>
+                <ng-container matColumnDef="attempts">
+                  <th mat-header-cell *matHeaderCellDef>Tries</th>
+                  <td mat-cell *matCellDef="let row">{{ row.attempts }}</td>
+                </ng-container>
+                <ng-container matColumnDef="createdAt">
+                  <th mat-header-cell *matHeaderCellDef>Created</th>
+                  <td mat-cell *matCellDef="let row">{{ row.createdAt | date: 'short' }}</td>
+                </ng-container>
+                <ng-container matColumnDef="actions">
+                  <th mat-header-cell *matHeaderCellDef></th>
+                  <td mat-cell *matCellDef="let row">
+                    @if (row.status === 'pending' || row.status === 'failed') {
+                      <button mat-icon-button color="warn" (click)="cancelEmail(row.id)" matTooltip="Cancel">
+                        <mat-icon>cancel</mat-icon>
+                      </button>
+                    }
+                  </td>
+                </ng-container>
+                <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+              </table>
+            }
+          </mat-card-content>
+        </mat-card>
 
-              <ng-container matColumnDef="attempts">
-                <th mat-header-cell *matHeaderCellDef>Tries</th>
-                <td mat-cell *matCellDef="let row">{{ row.attempts }}</td>
-              </ng-container>
-
-              <ng-container matColumnDef="scheduledAt">
-                <th mat-header-cell *matHeaderCellDef>Scheduled</th>
-                <td mat-cell *matCellDef="let row">{{ row.scheduledAt | date: 'short' }}</td>
-              </ng-container>
-
-              <ng-container matColumnDef="actions">
-                <th mat-header-cell *matHeaderCellDef></th>
-                <td mat-cell *matCellDef="let row">
-                  @if (row.status === 'pending' || row.status === 'failed') {
-                    <button
-                      mat-icon-button
-                      color="warn"
-                      (click)="cancelEmail(row.id)"
-                      matTooltip="Cancel"
-                    >
-                      <mat-icon>cancel</mat-icon>
-                    </button>
-                  }
-                </td>
-              </ng-container>
-
-              <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-              <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
-            </table>
-          }
-        </mat-card-content>
-      </mat-card>
+      } @else {
+        <mat-spinner diameter="40" />
+      }
     </div>
   `,
-  styles: [
-    `
-      .email-admin-container {
-        max-width: 900px;
-        margin: 0 auto;
-        padding: 24px 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-      }
-      .page-title {
-        margin: 0;
-        font-size: 1.4rem;
-      }
-      .config-card mat-card-content {
-        padding-top: 8px;
-      }
-      .provider-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
-      }
-      @media (max-width: 600px) {
-        .provider-grid { grid-template-columns: 1fr; }
-      }
-      .provider-block {
-        background: #f9f9f9;
-        border-radius: 8px;
-        padding: 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .provider-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      .provider-name {
-        font-weight: 600;
-        font-size: 0.95rem;
-      }
-      .provider-stat {
-        display: flex;
-        justify-content: space-between;
-        font-size: 0.85rem;
-        color: #555;
-      }
-      .queue-card mat-card-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-      .queue-actions {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-      }
-      .queue-table {
-        width: 100%;
-      }
-      .empty-state {
-        color: #999;
-        text-align: center;
-        padding: 24px 0;
-      }
-      mat-chip {
-        font-size: 0.72rem !important;
-        min-height: 22px !important;
-      }
-      .chip-pending { background: #fff9c4 !important; }
-      .chip-sent { background: #c8e6c9 !important; }
-      .chip-failed { background: #ffccbc !important; }
-      .chip-cancelled { background: #e0e0e0 !important; }
-    `,
-  ],
+  styles: [`
+    .email-admin-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .page-title { margin: 0; font-size: 1.4rem; }
+    mat-card-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+    .provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 8px; }
+    @media (max-width: 600px) { .provider-grid { grid-template-columns: 1fr; } }
+    .provider-block {
+      background: #f9f9f9; border-radius: 8px; padding: 14px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .provider-header { display: flex; align-items: center; justify-content: space-between; }
+    .provider-name { font-weight: 600; font-size: 0.95rem; }
+    .provider-stat { display: flex; justify-content: space-between; font-size: 0.85rem; color: #555; }
+    .creds-form { display: flex; flex-direction: column; gap: 12px; padding: 16px 0 8px; }
+    .full-width { width: 100%; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+    .templates-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 600px) { .templates-grid { grid-template-columns: 1fr; } }
+    .queue-table { width: 100%; }
+    .empty-state { color: #999; text-align: center; padding: 24px 0; }
+    mat-chip { font-size: 0.72rem !important; min-height: 22px !important; }
+    .chip-pending { background: #fff9c4 !important; }
+    .chip-sent { background: #c8e6c9 !important; }
+    .chip-failed { background: #ffccbc !important; }
+    .chip-cancelled, .chip-blocked { background: #e0e0e0 !important; }
+  `],
 })
 export class AdminEmailComponent implements OnInit {
   private readonly http = inject(HttpClient);
+  private readonly fb = inject(NonNullableFormBuilder);
   private readonly snackBar = inject(MatSnackBar);
 
   readonly queue = signal<EmailQueueItem[]>([]);
-  readonly config = signal<EmailProviderConfig | null>(null);
+  readonly config = signal<EmailConfig | null>(null);
   readonly loading = signal(false);
   readonly retrying = signal(false);
+  readonly saving = signal(false);
 
-  readonly displayedColumns = ['status', 'template', 'toEmail', 'provider', 'attempts', 'scheduledAt', 'actions'];
+  readonly displayedColumns = ['status', 'template', 'toEmail', 'provider', 'attempts', 'createdAt', 'actions'];
+
+  readonly brevoForm = this.fb.group({
+    brevoApiKey: [''],
+    brevoFromEmail: [''],
+    brevoFromName: [''],
+  });
+
+  readonly gmailForm = this.fb.group({
+    gmailUser: [''],
+    gmailAppPassword: [''],
+    gmailFromEmail: [''],
+    gmailFromName: [''],
+  });
+
+  readonly templatesForm = this.fb.group({
+    tmplInvite: [null as number | null],
+    tmplSecurityAlert: [null as number | null],
+    tmplEventPublished: [null as number | null],
+    tmplRsvpConfirmation: [null as number | null],
+    tmplEventReminder: [null as number | null],
+    tmplAccountDeletion: [null as number | null],
+    tmplReengagement60: [null as number | null],
+    tmplReengagement90: [null as number | null],
+    tmplGuestRsvpConfirmation: [null as number | null],
+    tmplEmailVerification: [null as number | null],
+    tmplPasswordReset: [null as number | null],
+  });
 
   ngOnInit(): void {
     this.loadConfig();
@@ -276,8 +388,34 @@ export class AdminEmailComponent implements OnInit {
   }
 
   loadConfig(): void {
-    this.http.get<EmailProviderConfig>('/api/v1/admin/email/config').subscribe({
-      next: (cfg) => this.config.set(cfg),
+    this.http.get<EmailConfig>('/api/v1/admin/email/config').subscribe({
+      next: (cfg) => {
+        this.config.set(cfg);
+        this.brevoForm.patchValue({
+          brevoApiKey: cfg.brevoApiKey ?? '',
+          brevoFromEmail: cfg.brevoFromEmail ?? '',
+          brevoFromName: cfg.brevoFromName ?? '',
+        });
+        this.gmailForm.patchValue({
+          gmailUser: cfg.gmailUser ?? '',
+          gmailAppPassword: cfg.gmailAppPassword ?? '',
+          gmailFromEmail: cfg.gmailFromEmail ?? '',
+          gmailFromName: cfg.gmailFromName ?? '',
+        });
+        this.templatesForm.patchValue({
+          tmplInvite: cfg.tmplInvite,
+          tmplSecurityAlert: cfg.tmplSecurityAlert,
+          tmplEventPublished: cfg.tmplEventPublished,
+          tmplRsvpConfirmation: cfg.tmplRsvpConfirmation,
+          tmplEventReminder: cfg.tmplEventReminder,
+          tmplAccountDeletion: cfg.tmplAccountDeletion,
+          tmplReengagement60: cfg.tmplReengagement60,
+          tmplReengagement90: cfg.tmplReengagement90,
+          tmplGuestRsvpConfirmation: cfg.tmplGuestRsvpConfirmation,
+          tmplEmailVerification: cfg.tmplEmailVerification,
+          tmplPasswordReset: cfg.tmplPasswordReset,
+        });
+      },
     });
   }
 
@@ -289,13 +427,48 @@ export class AdminEmailComponent implements OnInit {
     });
   }
 
-  updateConfig(patch: Partial<EmailProviderConfig>): void {
-    this.http.patch<EmailProviderConfig>('/api/v1/admin/email/config', patch).subscribe({
-      next: (cfg) => {
-        this.config.set(cfg);
-        this.snackBar.open('Config updated', 'OK', { duration: 2000 });
-      },
-      error: () => this.snackBar.open('Failed to update config', 'OK', { duration: 3000 }),
+  patchConfig(patch: Partial<EmailConfig>): void {
+    this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
+      next: (cfg) => { this.config.set(cfg); this.snackBar.open('Saved', 'OK', { duration: 2000 }); },
+      error: () => this.snackBar.open('Failed to save', 'OK', { duration: 3000 }),
+    });
+  }
+
+  saveBrevo(): void {
+    this.saving.set(true);
+    const val = this.brevoForm.getRawValue();
+    const patch: Partial<EmailConfig> = {
+      brevoApiKey: val.brevoApiKey || null,
+      brevoFromEmail: val.brevoFromEmail || null,
+      brevoFromName: val.brevoFromName || null,
+    };
+    this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
+      next: (cfg) => { this.config.set(cfg); this.saving.set(false); this.snackBar.open('Brevo credentials saved', 'OK', { duration: 2000 }); },
+      error: () => { this.saving.set(false); this.snackBar.open('Failed to save', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  saveGmail(): void {
+    this.saving.set(true);
+    const val = this.gmailForm.getRawValue();
+    const patch: Partial<EmailConfig> = {
+      gmailUser: val.gmailUser || null,
+      gmailAppPassword: val.gmailAppPassword || null,
+      gmailFromEmail: val.gmailFromEmail || null,
+      gmailFromName: val.gmailFromName || null,
+    };
+    this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
+      next: (cfg) => { this.config.set(cfg); this.saving.set(false); this.snackBar.open('Gmail credentials saved', 'OK', { duration: 2000 }); },
+      error: () => { this.saving.set(false); this.snackBar.open('Failed to save', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  saveTemplates(): void {
+    this.saving.set(true);
+    const val = this.templatesForm.getRawValue();
+    this.http.patch<EmailConfig>('/api/v1/admin/email/config', val).subscribe({
+      next: (cfg) => { this.config.set(cfg); this.saving.set(false); this.snackBar.open('Template IDs saved', 'OK', { duration: 2000 }); },
+      error: () => { this.saving.set(false); this.snackBar.open('Failed to save', 'OK', { duration: 3000 }); },
     });
   }
 
@@ -313,10 +486,7 @@ export class AdminEmailComponent implements OnInit {
 
   cancelEmail(id: number): void {
     this.http.delete(`/api/v1/admin/email/${id}`).subscribe({
-      next: () => {
-        this.snackBar.open('Email cancelled', 'OK', { duration: 2000 });
-        this.loadQueue();
-      },
+      next: () => { this.snackBar.open('Email cancelled', 'OK', { duration: 2000 }); this.loadQueue(); },
       error: () => this.snackBar.open('Failed to cancel', 'OK', { duration: 3000 }),
     });
   }

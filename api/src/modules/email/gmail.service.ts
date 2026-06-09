@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import * as nodemailer from 'nodemailer';
+import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
 
 export interface GmailSendPayload {
   toEmail: string;
@@ -13,40 +16,49 @@ export interface GmailSendPayload {
 @Injectable()
 export class GmailService {
   private readonly logger = new Logger(GmailService.name);
-  private transporter: nodemailer.Transporter | null = null;
-  private readonly fromEmail: string;
-  private readonly fromName: string;
 
-  constructor(private readonly config: ConfigService) {
-    this.fromEmail = this.config.get<string>('GMAIL_FROM_EMAIL', '');
-    this.fromName = this.config.get<string>('GMAIL_FROM_NAME', 'DinnerBears');
+  constructor(
+    private readonly config: ConfigService,
+    @InjectRepository(EmailProviderConfigEntity)
+    private readonly configRepo: Repository<EmailProviderConfigEntity>,
+  ) {}
 
-    const user = this.config.get<string>('GMAIL_USER', '');
-    const pass = this.config.get<string>('GMAIL_APP_PASSWORD', '');
-
-    if (user && pass) {
-      this.transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: { user, pass },
-      });
-    }
+  private async getEffectiveConfig(): Promise<{
+    user: string;
+    pass: string;
+    fromEmail: string;
+    fromName: string;
+  }> {
+    const db = await this.configRepo.findOne({ where: { id: 1 } });
+    return {
+      user: db?.gmailUser || this.config.get<string>('GMAIL_USER', ''),
+      pass: db?.gmailAppPassword || this.config.get<string>('GMAIL_APP_PASSWORD', ''),
+      fromEmail: db?.gmailFromEmail || this.config.get<string>('GMAIL_FROM_EMAIL', ''),
+      fromName: db?.gmailFromName || this.config.get<string>('GMAIL_FROM_NAME', 'DinnerBears'),
+    };
   }
 
-  get isConfigured(): boolean {
-    return this.transporter !== null;
+  async isConfigured(): Promise<boolean> {
+    const { user, pass } = await this.getEffectiveConfig();
+    return user.length > 0 && pass.length > 0;
   }
 
   async send(payload: GmailSendPayload): Promise<void> {
-    if (!this.transporter) {
+    const { user, pass, fromEmail, fromName } = await this.getEffectiveConfig();
+
+    if (!user || !pass) {
       this.logger.warn(`Gmail not configured — skipping email to ${payload.toEmail}`);
       return;
     }
 
-    await this.transporter.sendMail({
-      from: `"${this.fromName}" <${this.fromEmail}>`,
-      to: payload.toName
-        ? `"${payload.toName}" <${payload.toEmail}>`
-        : payload.toEmail,
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+    });
+
+    await transporter.sendMail({
+      from: `"${fromName}" <${fromEmail || user}>`,
+      to: payload.toName ? `"${payload.toName}" <${payload.toEmail}>` : payload.toEmail,
       subject: payload.subject,
       html: payload.htmlBody ?? undefined,
       text: payload.textBody ?? undefined,
