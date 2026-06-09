@@ -72,6 +72,8 @@ const PRESET_AVATARS = [
   { path: '/avatars/bear-wizard.jpg', label: 'Wizard' },
   { path: '/avatars/bear-shopping.png', label: 'Shopping' },
   { path: '/avatars/bear-hawaiian.png', label: 'Hawaiian' },
+  { path: '/avatars/bear-nascar.png', label: 'Nascar' },
+  { path: '/avatars/bear-bbq.png', label: 'BBQ' },
 ];
 
 @Component({
