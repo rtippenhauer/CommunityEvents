@@ -84,8 +84,10 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
                 @if (submitting()) {
                   <mat-spinner diameter="20" />
                 } @else {
-                  <mat-icon>check_circle</mat-icon>
-                  I'll be there!
+                  <ng-container>
+                    <mat-icon>check_circle</mat-icon>
+                    I'll be there!
+                  </ng-container>
                 }
               </button>
 
@@ -103,6 +105,13 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
               <h2>You're going!</h2>
               <p>See you at <strong>{{ info()!.restaurantName }}</strong> on {{ info()!.eventDate | date: 'MMMM d' }}.</p>
               <p class="state-sub">{{ info()!.invitedByName }} will have your spot reserved.</p>
+              <div class="join-cta">
+                <p class="join-text">Want to discover future dinners and join the group?</p>
+                <a mat-raised-button color="primary" href="/login" class="join-btn">
+                  <mat-icon>group_add</mat-icon>
+                  Join DinnerBears
+                </a>
+              </div>
             </div>
           </div>
         }
@@ -114,6 +123,13 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
               <h2>Already RSVP'd!</h2>
               <p>You're confirmed for <strong>{{ info()!.restaurantName }}</strong> on {{ info()!.eventDate | date: 'MMMM d' }}.</p>
               <p class="state-sub">See you there!</p>
+              <div class="join-cta">
+                <p class="join-text">Want to discover future dinners and join the group?</p>
+                <a mat-raised-button color="primary" href="/login" class="join-btn">
+                  <mat-icon>group_add</mat-icon>
+                  Join DinnerBears
+                </a>
+              </div>
             </div>
           </div>
         }
@@ -292,6 +308,30 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
     .error-icon { color: #c62828; }
 
     .state-sub { color: #999 !important; font-size: 0.85rem !important; }
+
+    .join-cta {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #f0ebe3;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .join-text {
+      margin: 0 !important;
+      font-size: 0.9rem !important;
+      color: #555 !important;
+    }
+
+    .join-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+    }
 
     .footer-brand {
       margin-top: 32px;

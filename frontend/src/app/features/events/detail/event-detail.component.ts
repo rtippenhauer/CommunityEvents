@@ -151,32 +151,43 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                             <span class="guest-panel-title">Your Guests</span>
                           </div>
 
-                          <!-- Name inputs -->
+                          <!-- Name + email inputs -->
                           <div class="guest-name-list" [formGroup]="guestNamesForm">
                             @for (ctrl of guestNameControls; track $index) {
-                              <div class="guest-name-row">
-                                <span class="guest-slot-num">{{ $index + 1 }}</span>
-                                <mat-form-field appearance="outline" class="guest-name-field">
-                                  <mat-label>Guest {{ $index + 1 }} name (optional)</mat-label>
-                                  <input matInput [formControl]="ctrl" maxlength="200" />
-                                </mat-form-field>
-                                <button
-                                  mat-icon-button
-                                  class="copy-link-btn"
-                                  [matTooltip]="guestLinkTooltip($index)"
-                                  [disabled]="generatingLinkIndex() === $index"
-                                  (click)="generateAndCopyLink($index)"
-                                >
-                                  @if (generatingLinkIndex() === $index) {
-                                    <mat-spinner diameter="18" />
-                                  } @else if (guestLinkAt(myRsvp()!, $index)?.usedAt) {
-                                    <mat-icon class="link-used-icon">how_to_reg</mat-icon>
-                                  } @else if (guestLinkAt(myRsvp()!, $index)) {
-                                    <mat-icon class="link-ready-icon">content_copy</mat-icon>
-                                  } @else {
-                                    <mat-icon>link</mat-icon>
-                                  }
-                                </button>
+                              <div class="guest-slot-block">
+                                <div class="guest-name-row">
+                                  <span class="guest-slot-num">{{ $index + 1 }}</span>
+                                  <mat-form-field appearance="outline" class="guest-name-field">
+                                    <mat-label>Guest {{ $index + 1 }} name (optional)</mat-label>
+                                    <input matInput [formControl]="ctrl" maxlength="200" />
+                                  </mat-form-field>
+                                  <button
+                                    mat-icon-button
+                                    class="copy-link-btn"
+                                    [matTooltip]="guestLinkTooltip($index)"
+                                    [disabled]="generatingLinkIndex() === $index"
+                                    (click)="generateAndCopyLink($index)"
+                                  >
+                                    @if (generatingLinkIndex() === $index) {
+                                      <mat-spinner diameter="18" />
+                                    } @else if (guestLinkAt(myRsvp()!, $index)?.usedAt) {
+                                      <mat-icon class="link-used-icon">how_to_reg</mat-icon>
+                                    } @else if (guestLinkAt(myRsvp()!, $index)) {
+                                      <mat-icon class="link-ready-icon">content_copy</mat-icon>
+                                    } @else {
+                                      <mat-icon>link</mat-icon>
+                                    }
+                                  </button>
+                                </div>
+                                @if (!guestLinkAt(myRsvp()!, $index)) {
+                                  <div class="guest-email-row">
+                                    <mat-form-field appearance="outline" class="guest-email-field">
+                                      <mat-label>Guest {{ $index + 1 }} email (optional)</mat-label>
+                                      <mat-icon matPrefix>mail_outline</mat-icon>
+                                      <input matInput [formControl]="guestEmailControls[$index]" type="email" maxlength="255" />
+                                    </mat-form-field>
+                                  </div>
+                                }
                               </div>
                             }
                           </div>
@@ -425,12 +436,24 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       letter-spacing: 0.06em;
     }
 
-    .guest-name-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+    .guest-name-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+
+    .guest-slot-block { display: flex; flex-direction: column; gap: 4px; }
 
     .guest-name-row {
       display: flex;
       align-items: center;
       gap: 8px;
+    }
+
+    .guest-email-row {
+      padding-left: 28px;
+    }
+
+    .guest-email-field {
+      width: 100%;
+      font-size: 0.88rem;
+      .mat-mdc-form-field-subscript-wrapper { display: none; }
     }
 
     .guest-slot-num {
@@ -583,9 +606,14 @@ export class EventDetailComponent implements OnInit {
   readonly guestsCtrl = new FormControl<number>(0, { nonNullable: true });
 
   readonly guestNamesForm = this.fb.group({ names: this.fb.array<string>([]) });
+  readonly guestEmailsForm = this.fb.group({ emails: this.fb.array<string>([]) });
 
   get guestNameControls(): FormControl<string>[] {
     return (this.guestNamesForm.get('names') as FormArray<FormControl<string>>).controls;
+  }
+
+  get guestEmailControls(): FormControl<string>[] {
+    return (this.guestEmailsForm.get('emails') as FormArray<FormControl<string>>).controls;
   }
 
   readonly myRsvp = computed<Rsvp | null>(() => {
@@ -620,6 +648,11 @@ export class EventDetailComponent implements OnInit {
     arr.clear();
     for (let i = 0; i < count; i++) {
       arr.push(this.fb.control(existing?.[i] ?? ''));
+    }
+    const emailArr = this.guestEmailsForm.get('emails') as FormArray<FormControl<string>>;
+    emailArr.clear();
+    for (let i = 0; i < count; i++) {
+      emailArr.push(this.fb.control(''));
     }
   }
 
@@ -737,9 +770,10 @@ export class EventDetailComponent implements OnInit {
 
     const id = this.event()!.id;
     const recipientName = this.guestNameControls[index]?.value || undefined;
+    const recipientEmail = this.guestEmailControls[index]?.value || undefined;
     this.generatingLinkIndex.set(index);
 
-    this.eventsService.generateGuestLink(id, recipientName).subscribe({
+    this.eventsService.generateGuestLink(id, recipientName, recipientEmail).subscribe({
       next: (link) => {
         this.generatingLinkIndex.set(null);
         const url = `${window.location.origin}/rsvp-guest?token=${link.token}`;

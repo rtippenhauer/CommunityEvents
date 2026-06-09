@@ -135,8 +135,8 @@ export class EventsService {
     return this.http.delete<void>(`${this.base}/${eventId}/rsvp`);
   }
 
-  generateGuestLink(eventId: number, recipientName?: string): Observable<GuestLink> {
-    return this.http.post<GuestLink>(`${this.base}/${eventId}/rsvp/link`, { recipientName });
+  generateGuestLink(eventId: number, recipientName?: string, recipientEmail?: string): Observable<GuestLink> {
+    return this.http.post<GuestLink>(`${this.base}/${eventId}/rsvp/link`, { recipientName, recipientEmail });
   }
 
   getGuestLinkInfo(token: string): Observable<GuestLinkInfo> {
