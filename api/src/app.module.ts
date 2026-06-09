@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthModule } from './modules/health/health.module';
@@ -16,6 +17,7 @@ import { RestaurantsModule } from './modules/restaurants/restaurants.module';
 import { EventsModule } from './modules/events/events.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { StatsModule } from './modules/stats/stats.module';
+import { EmailModule } from './modules/email/email.module';
 
 @Module({
   imports: [
@@ -24,6 +26,7 @@ import { StatsModule } from './modules/stats/stats.module';
       envFilePath: ['/app/appdata/.env', '.env'],
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }]),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
@@ -54,6 +57,7 @@ import { StatsModule } from './modules/stats/stats.module';
     EventsModule,
     AdminModule,
     StatsModule,
+    EmailModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,5 +1,9 @@
-import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AdminService } from './admin.service';
+import { EmailService } from '../email/email.service';
+import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -9,7 +13,12 @@ import { UserEntity, UserRole } from '../../database/entities/user.entity';
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly emailService: EmailService,
+    @InjectRepository(EmailProviderConfigEntity)
+    private readonly providerConfigRepo: Repository<EmailProviderConfigEntity>,
+  ) {}
 
   @Get('users')
   @Roles(UserRole.ADMIN)
@@ -47,5 +56,40 @@ export class AdminController {
     @CurrentUser() actor: UserEntity,
   ) {
     return this.adminService.setRole(id, actor.id, role);
+  }
+
+  @Get('email/queue')
+  @Roles(UserRole.ADMIN)
+  getEmailQueue() {
+    return this.emailService.getQueue();
+  }
+
+  @Get('email/config')
+  @Roles(UserRole.ADMIN)
+  async getEmailConfig() {
+    return this.providerConfigRepo.findOne({ where: { id: 1 } });
+  }
+
+  @Patch('email/config')
+  @Roles(UserRole.ADMIN)
+  async updateEmailConfig(@Body() body: Partial<EmailProviderConfigEntity>) {
+    const config = await this.providerConfigRepo.findOne({ where: { id: 1 } });
+    if (!config) return;
+    Object.assign(config, body);
+    return this.providerConfigRepo.save(config);
+  }
+
+  @Post('email/retry-failed')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  async retryFailed() {
+    const count = await this.emailService.retryFailed();
+    return { retried: count };
+  }
+
+  @Delete('email/:id')
+  @Roles(UserRole.ADMIN)
+  cancelEmail(@Param('id', ParseIntPipe) id: number) {
+    return this.emailService.cancelEmail(id);
   }
 }

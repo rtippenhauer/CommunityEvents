@@ -21,7 +21,9 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SetAvatarDto } from './dto/set-avatar.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity } from '../../database/entities/user.entity';
+import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
+import { EmailService } from '../email/email.service';
+import { SuppressionReason } from '../../database/entities/email-suppression.entity';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -29,7 +31,10 @@ const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly emailService: EmailService,
+  ) {}
 
   @Get('me')
   getProfile(@CurrentUser() user: UserEntity) {
@@ -94,5 +99,32 @@ export class UsersController {
     @Body() dto: SetAvatarDto,
   ): Promise<{ url: string }> {
     return this.usersService.setAvatar(user.id, dto.avatarPath);
+  }
+
+  @Get('me/notification-prefs')
+  getNotificationPrefs(@CurrentUser() user: UserEntity) {
+    return this.emailService.getNotificationPrefs(user.id);
+  }
+
+  @Patch('me/notification-prefs')
+  updateNotificationPrefs(@CurrentUser() user: UserEntity, @Body() body: Record<string, boolean>) {
+    return this.emailService.updateNotificationPrefs(user.id, body);
+  }
+
+  @Post('me/unsubscribe')
+  async unsubscribe(@CurrentUser() user: UserEntity): Promise<{ message: string }> {
+    await this.usersService.updateEmailStatus(user.id, EmailStatus.UNSUBSCRIBED);
+    await this.emailService.suppress(user.email, SuppressionReason.UNSUBSCRIBED);
+    return { message: 'You have been unsubscribed from DinnerBears emails.' };
+  }
+
+  @Post('me/resubscribe')
+  async resubscribe(@CurrentUser() user: UserEntity): Promise<{ message: string }> {
+    if (user.emailStatus === EmailStatus.COMPLAINED) {
+      return { message: 'Spam complaints cannot be self-reversed. Please contact us.' };
+    }
+    await this.usersService.updateEmailStatus(user.id, EmailStatus.ACTIVE);
+    await this.emailService.removeSuppression(user.email);
+    return { message: 'You have been resubscribed to DinnerBears emails.' };
   }
 }

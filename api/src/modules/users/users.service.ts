@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Not, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
-import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
+import { UserEntity, UserRole, UserStatus, EmailStatus } from '../../database/entities/user.entity';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
@@ -31,6 +31,10 @@ export class UsersService {
   async setAvatar(userId: number, avatarPath: string): Promise<{ url: string }> {
     await this.userRepo.update(userId, { profilePhotoPath: avatarPath });
     return { url: avatarPath };
+  }
+
+  async updateEmailStatus(userId: number, status: EmailStatus): Promise<void> {
+    await this.userRepo.update(userId, { emailStatus: status });
   }
 
   async findMembers(viewerRole: UserRole): Promise<object[]> {

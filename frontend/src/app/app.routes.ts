@@ -95,4 +95,12 @@ export const routes: Routes = [
       ),
     canActivate: [authGuard, adminGuard],
   },
+  {
+    path: 'admin/email',
+    loadComponent: () =>
+      import('./features/admin/email/admin-email.component').then(
+        (m) => m.AdminEmailComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
 ];

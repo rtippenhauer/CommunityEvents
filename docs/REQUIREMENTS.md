@@ -1,6 +1,6 @@
 # DinnerBears — Product Requirements
 
-_Last updated: 2026-06-03_
+_Last updated: 2026-06-09_
 
 Requirements are numbered R-001 … R-NNN and grouped by domain. Each item is a
 testable statement of what the system must do. Implementation details live in
