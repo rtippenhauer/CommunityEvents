@@ -47,6 +47,13 @@ export const routes: Routes = [
       import('./features/calendar/calendar.component').then((m) => m.CalendarComponent),
   },
   {
+    path: 'rsvp-guest',
+    loadComponent: () =>
+      import('./features/events/guest-rsvp/guest-rsvp.component').then(
+        (m) => m.GuestRsvpComponent,
+      ),
+  },
+  {
     path: 'events',
     loadComponent: () =>
       import('./features/events/list/events-list.component').then(

@@ -195,10 +195,50 @@ export class EventsService {
     if (rsvp) await this.rsvpRepo.remove(rsvp);
   }
 
+  async getGuestLink(token: string) {
+    const link = await this.guestLinkRepo.findOne({
+      where: { token },
+      relations: ['event', 'event.restaurant', 'event.restaurant.photos', 'createdBy'],
+    });
+    if (!link) throw new NotFoundException('Guest link not found');
+
+    const event = link.event;
+    const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
+
+    return {
+      eventTitle: event.title,
+      eventDate: event.eventDate,
+      eventTime: event.eventTime,
+      eventStatus: event.status,
+      restaurantName: event.restaurantName,
+      restaurantAddress: event.restaurantAddress,
+      restaurantLat: event.restaurantLat,
+      restaurantLng: event.restaurantLng,
+      restaurantPhotoUrl: photoUrl,
+      invitedByName: link.createdBy.fullName,
+      recipientName: link.recipientName,
+      usedAt: link.usedAt,
+      expiresAt: link.expiresAt,
+    };
+  }
+
+  async useGuestLink(token: string, guestName?: string): Promise<{ message: string }> {
+    const link = await this.guestLinkRepo.findOne({ where: { token } });
+    if (!link) throw new NotFoundException('Guest link not found');
+    if (link.usedAt) throw new BadRequestException('This link has already been used');
+    if (new Date() > link.expiresAt) throw new BadRequestException('This link has expired');
+
+    link.usedAt = new Date();
+    if (guestName?.trim()) link.recipientName = guestName.trim();
+    await this.guestLinkRepo.save(link);
+    return { message: 'RSVP confirmed' };
+  }
+
   async generateGuestLink(
     eventId: number,
     userId: number,
     recipientName?: string,
+    recipientEmail?: string,
   ): Promise<EventGuestLinkEntity> {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
@@ -228,6 +268,7 @@ export class EventsService {
       memberRsvpId: rsvp.id,
       deliveryType: 'shareable',
       recipientName: recipientName ?? null,
+      recipientEmail: recipientEmail ?? null,
       token,
       expiresAt,
     });

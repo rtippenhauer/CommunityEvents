@@ -60,6 +60,22 @@ export interface Event {
   updatedAt: string;
 }
 
+export interface GuestLinkInfo {
+  eventTitle: string;
+  eventDate: string;
+  eventTime: string;
+  eventStatus: string;
+  restaurantName: string;
+  restaurantAddress: string;
+  restaurantLat: number | null;
+  restaurantLng: number | null;
+  restaurantPhotoUrl: string | null;
+  invitedByName: string;
+  recipientName: string | null;
+  usedAt: string | null;
+  expiresAt: string;
+}
+
 export interface CreateEventPayload {
   cityId: number;
   restaurantId: number;
@@ -121,6 +137,14 @@ export class EventsService {
 
   generateGuestLink(eventId: number, recipientName?: string): Observable<GuestLink> {
     return this.http.post<GuestLink>(`${this.base}/${eventId}/rsvp/link`, { recipientName });
+  }
+
+  getGuestLinkInfo(token: string): Observable<GuestLinkInfo> {
+    return this.http.get<GuestLinkInfo>(`${this.base}/guest-link/${token}`);
+  }
+
+  confirmGuestRsvp(token: string, guestName?: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.base}/guest-link/${token}`, { guestName });
   }
 
   mapsUrl(lat: number | null, lng: number | null, address: string): string {

@@ -15,6 +15,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { UpsertRsvpDto } from './dto/upsert-rsvp.dto';
 import { CreateGuestLinkDto } from './dto/create-guest-link.dto';
+import { UseGuestLinkDto } from './dto/use-guest-link.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -43,6 +44,16 @@ export class EventsController {
       upcoming: upcoming === 'true' ? true : upcoming === 'false' ? false : undefined,
       status: isAdminOrMod ? status : undefined,
     });
+  }
+
+  @Get('guest-link/:token')
+  getGuestLink(@Param('token') token: string) {
+    return this.eventsService.getGuestLink(token);
+  }
+
+  @Post('guest-link/:token')
+  useGuestLink(@Param('token') token: string, @Body() dto: UseGuestLinkDto) {
+    return this.eventsService.useGuestLink(token, dto.guestName);
   }
 
   @Get(':id')
@@ -95,6 +106,6 @@ export class EventsController {
     @Body() dto: CreateGuestLinkDto,
     @CurrentUser() user: UserEntity,
   ) {
-    return this.eventsService.generateGuestLink(id, user.id, dto.recipientName);
+    return this.eventsService.generateGuestLink(id, user.id, dto.recipientName, dto.recipientEmail);
   }
 }
