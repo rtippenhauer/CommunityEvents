@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThanOrEqual, Repository } from 'typeorm';
+import { IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import {
   EmailQueueEntity,
   EmailQueueStatus,
@@ -41,7 +41,7 @@ export class EmailDispatcherService {
     const now = new Date();
     const batch = await this.queueRepo.find({
       where: [
-        { status: EmailQueueStatus.PENDING, sendAfter: null },
+        { status: EmailQueueStatus.PENDING, sendAfter: IsNull() },
         { status: EmailQueueStatus.PENDING, sendAfter: LessThanOrEqual(now) },
       ],
       order: { priority: 'ASC', createdAt: 'ASC' },
