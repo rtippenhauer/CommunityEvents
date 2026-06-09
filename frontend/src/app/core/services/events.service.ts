@@ -29,7 +29,7 @@ export interface Rsvp {
   user: { id: number; fullName: string; profilePhotoPath: string | null };
   additionalGuests: number;
   guestNames: string[] | null;
-  guestLinks: GuestLink[];
+  guestLinks: GuestLink[] | undefined;
   createdAt: string;
 }
 

@@ -407,7 +407,9 @@ const PRESET_AVATARS = [
 
         img {
           width: 100%;
-          height: auto;
+          aspect-ratio: 1;
+          object-fit: cover;
+          object-position: center top;
           display: block;
         }
 

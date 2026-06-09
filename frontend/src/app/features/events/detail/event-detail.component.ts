@@ -133,7 +133,8 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                         <mat-icon class="going-icon">check_circle</mat-icon>
                         <span class="going-label">You're going!</span>
                         <mat-select [formControl]="guestsCtrl" class="guests-select" (selectionChange)="updateGuests($event.value)">
-                          @for (n of guestOptions; track n) {
+                          <mat-option [value]="0">Just me</mat-option>
+                          @for (n of guestOptions.slice(1); track n) {
                             <mat-option [value]="n">+{{ n }} guest{{ n === 1 ? '' : 's' }}</mat-option>
                           }
                         </mat-select>
@@ -181,9 +182,9 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                           </div>
 
                           <!-- Generated links status -->
-                          @if (myRsvp()!.guestLinks.length > 0) {
+                          @if ((myRsvp()!.guestLinks?.length ?? 0) > 0) {
                             <div class="link-status-list">
-                              @for (link of myRsvp()!.guestLinks; track link.id) {
+                              @for (link of (myRsvp()!.guestLinks ?? []); track link.id) {
                                 <div class="link-status-row">
                                   <mat-icon class="link-status-icon" [class.used]="link.usedAt">
                                     {{ link.usedAt ? 'check_circle' : 'link' }}
@@ -648,13 +649,13 @@ export class EventDetailComponent implements OnInit {
   }
 
   guestLinkAt(rsvp: Rsvp, index: number): GuestLink | undefined {
-    return rsvp.guestLinks[index] as GuestLink | undefined;
+    return rsvp.guestLinks?.[index];
   }
 
   guestLinkTooltip(index: number): string {
     const rsvp = this.myRsvp();
     if (!rsvp) return 'Generate guest link';
-    const link = rsvp.guestLinks[index];
+    const link = rsvp.guestLinks?.[index];
     if (!link) return 'Generate & copy guest link';
     if (link.usedAt) return 'Guest already RSVP\'d via this link';
     return 'Copy guest link';
@@ -723,7 +724,7 @@ export class EventDetailComponent implements OnInit {
 
   generateAndCopyLink(index: number): void {
     const rsvp = this.myRsvp()!;
-    const existingLink = rsvp.guestLinks[index];
+    const existingLink = rsvp.guestLinks?.[index];
 
     if (existingLink && !existingLink.usedAt) {
       this.copyExistingLink(existingLink.token);

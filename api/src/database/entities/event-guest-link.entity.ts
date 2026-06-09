@@ -46,10 +46,10 @@ export class EventGuestLinkEntity {
   })
   deliveryType: GuestLinkDeliveryType;
 
-  @Column({ name: 'recipient_name', length: 200, nullable: true })
+  @Column({ name: 'recipient_name', type: 'varchar', length: 200, nullable: true })
   recipientName: string | null;
 
-  @Column({ name: 'recipient_email', length: 255, nullable: true })
+  @Column({ name: 'recipient_email', type: 'varchar', length: 255, nullable: true })
   recipientEmail: string | null;
 
   @Column({ length: 100, unique: true })
