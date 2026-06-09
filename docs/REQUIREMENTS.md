@@ -445,3 +445,145 @@ automatically.
 
 **R-107** One-time Claude Code operation — not a UI feature. Admin cleans
 data in HeidiSQL after import.
+
+---
+
+## 15. Restaurant Ratings & Attendance (Phase TBD)
+
+**R-108** Members may only submit a rating for a restaurant tied to an event
+they attended. The system enforces this by checking the member's verified
+attendance record before allowing a rating submission. Members who did not
+attend see the rating UI as disabled with a tooltip explaining why.
+
+**R-109** Moderators may mark members as attended for a given event after the
+event concludes. Attendance is recorded as a distinct `attended` boolean on the
+RSVP record, separate from RSVP status. A member can have `attended: true`
+even if their RSVP was not GOING (walk-ins, late adds). Only moderators may
+set this field. **DB impact:** Add `attended` boolean column to `event_rsvps`.
+
+**R-110** The system calculates a per-member attendance probability score
+derived from the member's historical ratio of GOING RSVPs to verified
+attendance. Visible to moderators on the event attendee list to assist with
+reservation headcount planning. Not visible to standard members.
+
+**R-111** Each restaurant displays an aggregate rating calculated from all
+attendance-verified member submissions. Ratings are submitted per-event visit
+and aggregated across all visits. Rating dimensions (Food, Service, Value,
+Noise — each 1–5 stars) plus an optional text comment are confirmed before
+implementation. **DB impact:** New table `event_ratings` (member_id, event_id,
+restaurant_id, food, service, value, noise, comment, created_at).
+
+---
+
+## 16. Threaded Event Discussion (Phase TBD)
+
+**R-112** Each event has a threaded discussion board. Any member may post a
+top-level comment. Replies nest one level deep under a top-level comment (no
+infinite nesting). Discussions persist after the event concludes and are
+visible to all members. Moderators may delete any post; members may delete
+their own. Soft delete only. **DB impact:** New tables `event_comments` and
+`event_comment_replies`.
+
+---
+
+## 17. Event RSVP Disclaimer & Cutoff (Phase TBD)
+
+**R-113** All event detail pages display a standard platform-wide disclaimer
+stored as a config constant (not hardcoded in the template). The disclaimer
+communicates: (1) members are expected to mark GOING by 5:00 PM on the day of
+the event, (2) only GOING RSVPs count for reservation purposes — MAYBE is not
+counted, (3) the event generally begins at 6:30 PM with members commonly
+arriving around 6:00 PM.
+
+**R-114** The system does not accept new GOING RSVPs after 5:00 PM on the day
+of the event. Members attempting to RSVP after the cutoff are shown a message
+explaining the deadline has passed and to contact a moderator if needed.
+Moderators retain the ability to add or adjust RSVPs after the cutoff regardless.
+
+---
+
+## 18. Venue Moderator Notes & Contact (Phase TBD)
+
+**R-115** Each restaurant record includes a moderator-only free-text notes
+field for capturing operational context (reservation tips, parking notes,
+service observations). Not visible to standard members under any circumstance.
+Visible only to moderator and admin roles. **DB impact:** Add `moderator_notes`
+(longtext, nullable) to `restaurants`.
+
+**R-116** The restaurant record supports a structured moderator-only contact:
+contact name, contact phone, and contact email. Distinct from the public-facing
+restaurant phone/website fields. Used to record the specific person to call for
+reservations. Visible to moderators and admins only. **DB impact:** Add
+`contact_name` (varchar 100), `contact_phone` (varchar 30), `contact_email`
+(varchar 150) — all nullable — to `restaurants`.
+
+---
+
+## 19. Avatar System (Phase TBD)
+
+**R-117** The avatar picker does not use a hardcoded list. On application
+startup, the backend scans the avatar asset directory for `*.png` and `*.jpg`
+files and returns the list via `GET /api/v1/avatars` (no auth required). Any
+new bear image dropped into the directory is automatically available without a
+code change or redeployment. **Supersedes** the hardcoded `PRESET_AVATARS`
+array in the profile component.
+
+**R-118** Avatar display names are derived from filenames at runtime: strip
+the `bear-` prefix, remove the file extension, capitalize the first letter.
+No separate name mapping file is maintained. This transform runs on the
+frontend as a pure utility function. (Examples: `bear-bbq.png` → **Bbq**,
+`bear-nascar.png` → **Nascar**.)
+
+**R-119** The member profile avatar picker includes an **"I Feel Lucky"**
+button that selects a random avatar from the discovered list, explicitly
+excluding the member's currently selected avatar. The selection is previewed
+immediately but not saved until the member confirms via the normal save action.
+Pure frontend logic — no additional API call required.
+
+---
+
+## 20. Dark Warm Theme (Phase TBD)
+
+**R-120** The entire site uses a dark warm-brown color palette. No page
+renders with white or light-gray backgrounds. The Angular Material theme
+background and surface tokens are updated globally. The palette is defined
+once and applied across both the landing page and all post-login app pages.
+
+Approved palette:
+
+| Role | Hex | Notes |
+|---|---|---|
+| Page background | `#3d2210` | Primary surface — all pages |
+| Nav / footer background | `#311a0a` | Slightly darker than page bg |
+| Card surface | `#4d2c14` | All card and panel surfaces |
+| Border color | `#5e3418` | All borders and dividers |
+| Primary accent (amber) | `#e8a44a` | Headings, icons, active states |
+| Body text | `#eab87a` | Primary readable text |
+| Secondary text | `#9a6840` | Metadata, labels, hints |
+| Button text (RSVP / Going) | `#ffffff` | White — must be legible on dark button backgrounds |
+| Going button background | `#0d2b18` | Dark green |
+| Going button border | `#1d5c32` | Green border |
+
+RSVP and Going button text must be explicitly set to `#ffffff` — Material
+theme defaults are insufficient against dark button backgrounds.
+
+---
+
+## 21. CMS Legal Pages (Phase TBD)
+
+**R-121** The Terms and Conditions and Privacy Policy pages are stored in the
+database as moderator-editable content, not hardcoded in the Angular app. A
+moderator can update either document through the admin UI without a code change
+or redeployment. Both pages render using the standard site theme (dark
+background, site typography, full nav). **Supersedes** the static placeholder
+files from R-007 for Terms and Privacy. **DB impact:** New table `legal_pages`
+(id, page_type enum[terms|privacy], content longtext, published boolean,
+created_by FK users, created_at). Public endpoint: `GET /api/v1/legal/:type`.
+Admin endpoint: `POST /api/v1/admin/legal/:type` (moderator guard). Angular
+routes: `/terms`, `/privacy` — content rendered as sanitized HTML via
+`DomSanitizer`.
+
+**R-122** Each update to the Terms or Privacy content creates a new versioned
+record with a timestamp and the moderator who made the change. The current
+published version is flagged with a `published` boolean. Provides an audit
+trail and enables future re-consent prompts if material changes are made.

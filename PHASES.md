@@ -219,3 +219,137 @@ flagged content appears in moderation queue.
 **Definition of done:** All admin tabs functional, audit log captures all
 required actions, invite lineage fully visible, security checklist signed
 off, system ready for real users.
+
+---
+
+## Phase 3.6 — Venue Moderator Tools (low effort, slot after Phase 3.5)
+
+Reqs: R-115, R-116
+
+- Add `moderator_notes` (longtext, nullable) to `restaurants` table via migration
+- Add `contact_name` (varchar 100), `contact_phone` (varchar 30),
+  `contact_email` (varchar 150) — all nullable — to `restaurants` table
+- Restaurant edit form: moderator-only Notes and Contact sections (hidden from
+  standard members at API level, not just UI level)
+- Restaurant detail page: Notes and Contact sections visible to mod/admin only
+
+**Definition of done:** Moderators can save and view private venue notes and
+contact info. Fields are server-side role-gated — standard member API response
+omits them entirely.
+
+---
+
+## Phase 4.4 — Event RSVP Disclaimer & Cutoff
+
+Reqs: R-113, R-114
+
+- Add platform disclaimer constant (not hardcoded in template) to event detail page:
+  - GOING by 5:00 PM day-of
+  - MAYBE not counted for reservations
+  - Dinner starts 6:30 PM, members arrive ~6:00 PM
+- Hard-block new GOING RSVPs after 5:00 PM on event day
+- Cutoff message shown to members; moderators retain full override
+- Admin/mod RSVP controls bypass the cutoff check
+
+**Definition of done:** Disclaimer visible on all event detail pages. GOING
+RSVP hard-blocked after 5:00 PM day-of for standard members. Moderators
+can still adjust RSVPs after cutoff.
+
+---
+
+## Phase 4.5 — Dark Warm Theme
+
+Reqs: R-120
+
+- Update Angular Material theme tokens: background `#3d2210`, surface
+  `#4d2c14`, primary accent amber `#e8a44a`
+- Update SCSS global variables for body text, secondary text, borders
+- Nav/footer background `#311a0a`
+- RSVP / Going button text explicitly `#ffffff`; Going button bg `#0d2b18`
+  with border `#1d5c32`
+- Landing page (public/) updated to match dark palette
+- Verify legibility at 375px and 1280px
+
+**Definition of done:** No page or card renders with white or light-gray
+backgrounds. All Material components use dark palette. RSVP button text
+legible. Landing page matches app.
+
+---
+
+## Phase 4.6 — Avatar System (dynamic)
+
+Reqs: R-117, R-118, R-119
+
+- NestJS `GET /api/v1/avatars` endpoint: scans avatar asset directory for
+  `*.png` and `*.jpg`, returns `[{ filename, displayName }]`, no auth required
+- Display name utility: strip `bear-` prefix, strip extension, capitalize first
+  letter — pure function on frontend, no server-side mapping
+- Profile avatar picker refactored: remove hardcoded `PRESET_AVATARS` array,
+  load from `/api/v1/avatars` on init
+- "I Feel Lucky" button: picks a random avatar excluding the current one,
+  previews it immediately, saves only on normal save action
+
+**Definition of done:** Adding a new `bear-*.jpg` to the avatar directory
+makes it appear in the picker without any code change or redeployment.
+"I Feel Lucky" always produces a different avatar. Display names derive
+correctly from filenames.
+
+---
+
+## Phase 5.6 — Attendance Tracking & Restaurant Ratings
+
+Reqs: R-108, R-109, R-110, R-111
+
+- DB: `attended` boolean (default false) on `event_rsvps` table via migration
+- DB: new `event_ratings` table (member_id, event_id, restaurant_id, food,
+  service, value, noise — each 1–5 int, comment text nullable, created_at)
+- Moderator event admin: mark members as attended after event concludes
+- Attendance probability score per member: (attended events) / (GOING RSVPs);
+  displayed to moderators on the event attendee list only
+- Restaurant detail page: aggregate rating card (avg food/service/value/noise
+  scores across all verified submissions, count of ratings)
+- Event detail page (post-event): rating submission form for attendees only;
+  disabled with tooltip for non-attendees
+- API guards: attendance-gate rating submissions server-side
+
+**Definition of done:** Moderators can mark attendance. Verified attendees can
+submit ratings. Aggregate scores display on restaurant pages. Non-attendees
+cannot submit (blocked at API level). Probability score visible to moderators.
+
+---
+
+## Phase 5.7 — Threaded Event Discussion
+
+Reqs: R-112
+
+- DB: `event_comments` (id, event_id, member_id, body, created_at, deleted_at)
+- DB: `event_comment_replies` (id, comment_id, member_id, body, created_at, deleted_at)
+- Event detail page: discussion section below RSVP panel
+- Any member can post a top-level comment
+- Replies nest one level deep only (no infinite threading)
+- Soft delete: members delete own posts; moderators delete any post
+- Discussions persist and remain visible after event concludes
+
+**Definition of done:** Members can comment and reply on event pages.
+Moderators can delete any comment. Deleted comments show a "removed" placeholder.
+Discussions persist post-event.
+
+---
+
+## Phase 8.5 — CMS Legal Pages
+
+Reqs: R-121, R-122
+
+- DB: `legal_pages` table (id, page_type enum[terms|privacy], content longtext,
+  published boolean, created_by FK users, created_at)
+- Seed initial content from existing static placeholder files
+- Public endpoint: `GET /api/v1/legal/:type` — returns published version, no auth
+- Admin endpoint: `POST /api/v1/admin/legal/:type` — moderator guard; creates
+  new version, sets published: true, unpublishes prior
+- Angular lazy routes `/terms` and `/privacy` — render sanitized HTML via
+  `DomSanitizer` within full site shell (dark theme, full nav)
+- Admin legal editor UI (textarea + preview)
+
+**Definition of done:** Moderators can update Terms and Privacy through admin
+UI without a code change. Public pages render within site theme, not as blank
+white pages. Each update creates a versioned audit record.
