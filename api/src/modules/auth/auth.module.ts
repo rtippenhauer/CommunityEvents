@@ -11,6 +11,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { GoogleStrategy } from './strategies/google.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleCallbackGuard } from '../../common/guards/google-callback.guard';
 import { InvitesModule } from '../invites/invites.module';
 import { CitiesModule } from '../cities/cities.module';
 import { AuditModule } from '../audit/audit.module';
@@ -35,7 +36,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AuditModule,
     NotificationsModule,
   ],
-  providers: [AuthService, GoogleStrategy, JwtStrategy],
+  providers: [AuthService, GoogleStrategy, JwtStrategy, GoogleCallbackGuard],
   controllers: [AuthController],
   exports: [AuthService],
 })

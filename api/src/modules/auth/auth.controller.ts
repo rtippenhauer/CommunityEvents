@@ -28,15 +28,10 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(GoogleCallbackGuard)
   async googleCallback(
-    @Req() req: Request & { user: UserEntity; authErrorReason?: string; authErrorEmail?: string },
+    @Req() req: Request & { user: UserEntity },
     @Res() res: Response,
   ): Promise<void> {
-    if (req.authErrorReason) {
-      const params = new URLSearchParams({ reason: req.authErrorReason });
-      if (req.authErrorEmail) params.set('email', req.authErrorEmail);
-      res.redirect(`${this.frontendUrl}/auth/error?${params.toString()}`);
-      return;
-    }
+    if (res.headersSent) return; // guard already redirected to error page
 
     const { accessToken } = await this.authService.issueTokens(req.user, {
       userAgent: req.headers['user-agent'],

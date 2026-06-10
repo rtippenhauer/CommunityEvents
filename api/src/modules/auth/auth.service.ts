@@ -1,4 +1,5 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -49,7 +50,7 @@ export class AuthService {
     });
     if (existing) {
       if (existing.user.status !== UserStatus.ACTIVE) {
-        throw new UnauthorizedException('Account not active');
+        throw new AuthFlowError('not_active');
       }
       return existing.user;
     }
@@ -76,12 +77,22 @@ export class AuthService {
       !!adminEmail && email.toLowerCase() === adminEmail.toLowerCase();
 
     if (!inviteToken && !isAdminBootstrap) {
-      throw new UnauthorizedException('An invite is required to create an account');
+      throw new AuthFlowError('no_invite');
     }
 
-    const invite = inviteToken
-      ? await this.invitesService.validate(inviteToken, email)
-      : null;
+    let invite = null;
+    if (inviteToken) {
+      try {
+        invite = await this.invitesService.validate(inviteToken, email);
+      } catch (err) {
+        if (err instanceof AuthFlowError) throw err; // already has reason + boundEmail
+        if (err instanceof NotFoundException) throw new AuthFlowError('invalid_invite');
+        const msg: string = (err as Error).message ?? '';
+        if (msg.includes('expired')) throw new AuthFlowError('invite_expired');
+        if (msg.includes('already been used') || msg.includes('revoked')) throw new AuthFlowError('invite_used');
+        throw new AuthFlowError('invalid_invite');
+      }
+    }
 
     const defaultCity = await this.citiesService.findAll().then((cities) => cities[0]);
 

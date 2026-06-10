@@ -1,37 +1,35 @@
 import { ExecutionContext, Injectable } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
+import type { Response } from 'express';
 import { AuthFlowError } from '../errors/auth-flow.error';
-
-const REASON_MAP: Record<string, string> = {
-  'An invite is required to create an account': 'no_invite',
-  'No email from Google': 'no_invite',
-  'Account not active': 'not_active',
-  'Invalid invite link': 'invalid_invite',
-  'This invite has already been used': 'invite_used',
-  'This invite has expired': 'invite_expired',
-  'This invite has been revoked': 'invite_used',
-};
-
-export interface AuthErrorRequest {
-  authErrorReason?: string;
-  authErrorEmail?: string;
-}
 
 @Injectable()
 export class GoogleCallbackGuard extends AuthGuard('google') {
-  handleRequest<T>(err: Error | null, user: T, _info: unknown, ctx: ExecutionContext): T {
-    if (err || !user) {
-      const req = ctx.switchToHttp().getRequest<AuthErrorRequest>();
+  constructor(private readonly config: ConfigService) {
+    super();
+  }
 
-      if (err instanceof AuthFlowError || err?.name === 'AuthFlowError') {
-        const authErr = err as AuthFlowError;
-        req.authErrorReason = authErr.reason;
-        if (authErr.boundEmail) req.authErrorEmail = authErr.boundEmail;
-      } else {
-        const msg = err?.message ?? '';
-        req.authErrorReason = REASON_MAP[msg] ?? 'unknown';
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    try {
+      return (await super.canActivate(context)) as boolean;
+    } catch (err) {
+      const res = context.switchToHttp().getResponse<Response>();
+      const frontendUrl = this.config.get<string>('APP_URL', 'http://localhost:8081');
+
+      let reason = 'unknown';
+      let email: string | undefined;
+
+      const e = err as Error & { reason?: string; boundEmail?: string };
+      if (e?.name === 'AuthFlowError') {
+        reason = e.reason ?? 'unknown';
+        email = e.boundEmail;
       }
+
+      const params = new URLSearchParams({ reason });
+      if (email) params.set('email', email);
+      res.redirect(`${frontendUrl}/auth/error?${params.toString()}`);
+      return true; // allow controller to run; it checks res.headersSent and returns immediately
     }
-    return user ?? (null as T);
   }
 }
