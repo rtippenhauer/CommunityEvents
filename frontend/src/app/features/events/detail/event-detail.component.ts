@@ -130,11 +130,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                 <div class="rsvp-disclaimer">
                   <div class="disclaimer-row">
                     <mat-icon class="disc-icon">schedule</mat-icon>
-                    <span>RSVP deadline: <strong>5:00 PM</strong> day-of</span>
-                  </div>
-                  <div class="disclaimer-row">
-                    <mat-icon class="disc-icon">restaurant</mat-icon>
-                    <span>Arrive by <strong>6:00 PM</strong> — dinner served at <strong>6:30 PM</strong></span>
+                    <span>RSVP deadline: <strong>{{ cutoffTimeLabel() }}</strong> day-of</span>
                   </div>
                 </div>
 
@@ -244,7 +240,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                       @if (!isAdminOrMod() && isPastCutoff()) {
                         <div class="cutoff-banner">
                           <mat-icon>lock_clock</mat-icon>
-                          <span>RSVP closed — the 5:00 PM deadline has passed</span>
+                          <span>RSVP closed — deadline was {{ cutoffTimeLabel() }} today</span>
                         </div>
                       } @else {
                         <button mat-raised-button color="primary" (click)="addRsvp()" [disabled]="rsvpLoading()">
@@ -782,7 +778,20 @@ export class EventDetailComponent implements OnInit {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const eventDay = new Date(y, m - 1, d);
     if (today.getTime() !== eventDay.getTime()) return false;
-    return now.getHours() >= 17;
+    const [h, min] = e.eventTime.split(':').map(Number);
+    const cutoffMinutes = h * 60 + min - 150; // 2.5 hrs before event
+    return now.getHours() * 60 + now.getMinutes() >= cutoffMinutes;
+  });
+
+  readonly cutoffTimeLabel = computed<string>(() => {
+    const e = this.event();
+    if (!e) return '';
+    const [h, min] = e.eventTime.split(':').map(Number);
+    const cm = h * 60 + min - 150;
+    const ch = Math.floor(cm / 60);
+    const cmin = cm % 60;
+    const ampm = ch >= 12 ? 'PM' : 'AM';
+    return `${ch % 12 || 12}:${String(cmin).padStart(2, '0')} ${ampm}`;
   });
 
   ngOnInit(): void {

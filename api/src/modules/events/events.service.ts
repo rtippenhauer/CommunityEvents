@@ -168,7 +168,7 @@ export class EventsService {
     await this.eventRepo.remove(event);
   }
 
-  private isPastRsvpCutoff(eventDate: string): boolean {
+  private isPastRsvpCutoff(eventDate: string, eventTime: string): boolean {
     const now = new Date();
     const fmt = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
@@ -178,7 +178,11 @@ export class EventsService {
     const parts = fmt.formatToParts(now);
     const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '0';
     const todayEastern = `${get('year')}-${get('month')}-${get('day')}`;
-    return todayEastern === eventDate && parseInt(get('hour'), 10) >= 17;
+    if (todayEastern !== eventDate) return false;
+    const [h, min] = eventTime.split(':').map(Number);
+    const cutoffMinutes = h * 60 + min - 150; // 2.5 hrs before event
+    const nowMinutes = parseInt(get('hour'), 10) * 60 + parseInt(get('minute'), 10);
+    return nowMinutes >= cutoffMinutes;
   }
 
   async upsertRsvp(
@@ -196,9 +200,9 @@ export class EventsService {
 
     const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
 
-    if (!existing && this.isPastRsvpCutoff(event.eventDate) &&
+    if (!existing && this.isPastRsvpCutoff(event.eventDate, event.eventTime) &&
         userRole !== UserRole.ADMIN && userRole !== UserRole.MODERATOR) {
-      throw new ForbiddenException('RSVP is closed — the 5:00 PM deadline has passed');
+      throw new ForbiddenException('RSVP is closed — the deadline has passed');
     }
 
     if (existing) {
