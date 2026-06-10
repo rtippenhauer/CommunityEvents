@@ -46,6 +46,7 @@ export class EventsController {
       cityId: cityId ? parseInt(cityId, 10) : undefined,
       upcoming: upcoming === 'true' ? true : upcoming === 'false' ? false : undefined,
       status: isAdminOrMod ? status : undefined,
+      isAdminOrMod,
     });
   }
 

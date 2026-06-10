@@ -86,6 +86,7 @@ interface City {
           <mat-card
             class="event-card"
             [class.cancelled]="e.status === 'cancelled'"
+            [class.draft]="e.status === 'draft'"
             (click)="goToDetail(e.id)"
             role="button"
             tabindex="0"
@@ -100,10 +101,13 @@ interface City {
               @if (e.status === 'cancelled') {
                 <div class="cancelled-overlay">CANCELLED</div>
               }
+              @if (e.status === 'draft') {
+                <div class="draft-overlay">DRAFT</div>
+              }
             </div>
             <mat-card-content class="card-body">
               <div class="event-date">
-                {{ e.eventDate | date: 'EEE, MMM d, y' }} at {{ formatTime(e.eventTime) }}
+                {{ (e.eventDate + 'T12:00:00') | date: 'EEE, MMM d, y' }} at {{ formatTime(e.eventTime) }}
               </div>
               <h3 class="event-title" [class.cancelled-title]="e.status === 'cancelled'">
                 @if (e.status === 'cancelled') { <span class="cancelled-prefix">CANCELLED:</span> }
@@ -166,6 +170,7 @@ interface City {
       overflow: hidden;
       &:hover { box-shadow: 0 6px 20px rgba(61,28,5,0.18); transform: translateY(-2px); }
       &.cancelled { opacity: 0.65; }
+      &.draft { opacity: 0.85; }
     }
     .card-photo {
       position: relative;
@@ -185,6 +190,19 @@ interface City {
       position: absolute;
       inset: 0;
       background: rgba(180, 0, 0, 0.72);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      color: #fff;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    .draft-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(160, 110, 0, 0.68);
       display: flex;
       align-items: center;
       justify-content: center;

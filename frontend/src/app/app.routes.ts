@@ -103,4 +103,20 @@ export const routes: Routes = [
       ),
     canActivate: [authGuard, adminGuard],
   },
+  {
+    path: 'admin/feedback',
+    loadComponent: () =>
+      import('./features/admin/feedback/admin-feedback.component').then(
+        (m) => m.AdminFeedbackComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
+    path: 'feedback',
+    loadComponent: () =>
+      import('./features/feedback/feedback-submit.component').then(
+        (m) => m.FeedbackSubmitComponent,
+      ),
+    canActivate: [authGuard],
+  },
 ];

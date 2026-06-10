@@ -31,6 +31,10 @@ export class CreateEventDto {
   @IsOptional()
   additionalInfo?: string | null;
 
+  @IsString()
+  @IsOptional()
+  facebookShareText?: string | null;
+
   @IsDateString()
   eventDate: string;
 

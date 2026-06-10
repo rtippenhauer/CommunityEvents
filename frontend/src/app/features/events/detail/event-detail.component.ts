@@ -64,7 +64,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
           <h1 class="event-title">{{ event()!.title }}</h1>
           <div class="event-datetime">
             <mat-icon>event</mat-icon>
-            <span>{{ event()!.eventDate | date: 'EEEE, MMMM d, y' }} at {{ formatTime(event()!.eventTime) }}</span>
+            <span>{{ (event()!.eventDate + 'T12:00:00') | date: 'EEEE, MMMM d, y' }} at {{ formatTime(event()!.eventTime) }}</span>
           </div>
 
           <!-- Restaurant info -->

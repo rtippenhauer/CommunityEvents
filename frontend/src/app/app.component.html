@@ -25,6 +25,9 @@
         <a mat-list-item routerLink="/profile" (click)="sidenav.close()">
           <mat-icon matListItemIcon>person</mat-icon> Profile
         </a>
+        <a mat-list-item routerLink="/feedback" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>feedback</mat-icon> Feedback
+        </a>
         @if (isAdmin()) {
           <mat-divider />
           <div class="sidenav-section-label">Admin</div>
@@ -36,6 +39,13 @@
           </a>
           <a mat-list-item routerLink="/admin/email" (click)="sidenav.close()">
             <mat-icon matListItemIcon>mail</mat-icon> Email
+          </a>
+          <a mat-list-item routerLink="/admin/feedback" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>feedback</mat-icon>
+            Feedback
+            @if (feedbackService.unseenCount() > 0) {
+              <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
+            }
           </a>
         }
         <mat-divider />
@@ -89,10 +99,14 @@
           <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">Restaurants</a>
           @if (isLoggedIn()) {
             <a mat-button routerLink="/members" routerLinkActive="nav-active">Members</a>
+            <a mat-button routerLink="/feedback" routerLinkActive="nav-active">Feedback</a>
           }
           @if (isAdmin()) {
             <button mat-button [matMenuTriggerFor]="adminMenu" class="admin-menu-btn">
               <mat-icon>admin_panel_settings</mat-icon> Admin
+              @if (feedbackService.unseenCount() > 0) {
+                <span class="admin-badge-dot"></span>
+              }
             </button>
             <mat-menu #adminMenu="matMenu">
               <a mat-menu-item routerLink="/admin/users">
@@ -103,6 +117,12 @@
               </a>
               <a mat-menu-item routerLink="/admin/email">
                 <mat-icon>mail</mat-icon> Email
+              </a>
+              <a mat-menu-item routerLink="/admin/feedback">
+                <mat-icon>feedback</mat-icon> Feedback
+                @if (feedbackService.unseenCount() > 0) {
+                  <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
+                }
               </a>
             </mat-menu>
           }

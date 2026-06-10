@@ -6,10 +6,12 @@ import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
 import { EventsService } from './events.service';
 import { EventsController } from './events.controller';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([EventEntity, EventRsvpEntity, EventGuestLinkEntity, RestaurantEntity]),
+    EmailModule,
   ],
   providers: [EventsService],
   controllers: [EventsController],

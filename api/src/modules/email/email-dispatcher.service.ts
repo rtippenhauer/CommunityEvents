@@ -10,7 +10,7 @@ import {
 import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
 import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
 import { BrevoService } from './brevo.service';
-import { GmailService } from './gmail.service';
+import { ResendService } from './resend.service';
 import { EmailTemplateName } from './email.constants';
 
 const MAX_ATTEMPTS = 3;
@@ -28,7 +28,7 @@ export class EmailDispatcherService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly brevo: BrevoService,
-    private readonly gmail: GmailService,
+    private readonly resend: ResendService,
   ) {}
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -119,13 +119,13 @@ export class EmailDispatcherService {
       (await this.brevo.isConfigured()) &&
       providerConfig.brevoSentToday < providerConfig.brevoDailyLimit;
 
-    const useGmail =
+    const useResend =
       !useBrevo &&
-      providerConfig.gmailOverflowEnabled &&
-      (await this.gmail.isConfigured()) &&
-      providerConfig.gmailSentToday < providerConfig.gmailDailyLimit;
+      providerConfig.resendOverflowEnabled &&
+      (await this.resend.isConfigured()) &&
+      providerConfig.resendSentToday < providerConfig.resendDailyLimit;
 
-    if (!useBrevo && !useGmail) {
+    if (!useBrevo && !useResend) {
       email.status = EmailQueueStatus.BLOCKED;
       email.errorMessage = 'No provider available or daily limit reached';
       await this.queueRepo.save(email);
@@ -146,7 +146,7 @@ export class EmailDispatcherService {
         email.provider = EmailProvider.BREVO;
         providerConfig.brevoSentToday += 1;
       } else {
-        await this.gmail.send({
+        await this.resend.send({
           toEmail: email.toEmail,
           toName: email.toName,
           subject: email.subject,
@@ -154,7 +154,7 @@ export class EmailDispatcherService {
           textBody: email.textBody,
         });
         email.provider = EmailProvider.GMAIL;
-        providerConfig.gmailSentToday += 1;
+        providerConfig.resendSentToday += 1;
       }
 
       email.status = EmailQueueStatus.SENT;
@@ -190,7 +190,7 @@ export class EmailDispatcherService {
     const today = new Date().toISOString().split('T')[0];
     if (config.lastResetDate !== today) {
       config.brevoSentToday = 0;
-      config.gmailSentToday = 0;
+      config.resendSentToday = 0;
       config.lastResetDate = today;
     }
   }

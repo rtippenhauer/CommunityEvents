@@ -33,20 +33,19 @@ interface EmailQueueItem {
 interface EmailConfig {
   id: number;
   brevoEnabled: boolean;
-  gmailOverflowEnabled: boolean;
+  resendOverflowEnabled: boolean;
   brevoDailyLimit: number;
-  gmailDailyLimit: number;
+  resendDailyLimit: number;
   brevoSentToday: number;
-  gmailSentToday: number;
+  resendSentToday: number;
   lastResetDate: string;
   // credentials
   brevoApiKey: string | null;
   brevoFromEmail: string | null;
   brevoFromName: string | null;
-  gmailUser: string | null;
-  gmailAppPassword: string | null;
-  gmailFromEmail: string | null;
-  gmailFromName: string | null;
+  resendApiKey: string | null;
+  resendFromEmail: string | null;
+  resendFromName: string | null;
   // template IDs
   tmplInvite: number | null;
   tmplSecurityAlert: number | null;
@@ -115,12 +114,12 @@ interface EmailConfig {
               </div>
               <div class="provider-block">
                 <div class="provider-header">
-                  <span class="provider-name">Gmail (overflow)</span>
-                  <mat-slide-toggle [checked]="cfg.gmailOverflowEnabled"
-                    (change)="patchConfig({ gmailOverflowEnabled: $event.checked })" />
+                  <span class="provider-name">Resend (overflow)</span>
+                  <mat-slide-toggle [checked]="cfg.resendOverflowEnabled"
+                    (change)="patchConfig({ resendOverflowEnabled: $event.checked })" />
                 </div>
                 <div class="provider-stat"><span>Sent today</span>
-                  <strong>{{ cfg.gmailSentToday }} / {{ cfg.gmailDailyLimit }}</strong></div>
+                  <strong>{{ cfg.resendSentToday }} / {{ cfg.resendDailyLimit }}</strong></div>
               </div>
             </div>
           </mat-card-content>
@@ -157,32 +156,27 @@ interface EmailConfig {
 
           <mat-expansion-panel>
             <mat-expansion-panel-header>
-              <mat-panel-title>Gmail Credentials</mat-panel-title>
-              <mat-panel-description>Gmail user and app password for overflow</mat-panel-description>
+              <mat-panel-title>Resend Credentials</mat-panel-title>
+              <mat-panel-description>API key and sender address for overflow</mat-panel-description>
             </mat-expansion-panel-header>
-            <form [formGroup]="gmailForm" (ngSubmit)="saveGmail()" class="creds-form">
-              <div class="two-col">
-                <mat-form-field appearance="outline">
-                  <mat-label>Gmail User</mat-label>
-                  <input matInput formControlName="gmailUser" type="email" autocomplete="off" />
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>App Password</mat-label>
-                  <input matInput formControlName="gmailAppPassword" type="password" autocomplete="off" />
-                </mat-form-field>
-              </div>
+            <form [formGroup]="resendForm" (ngSubmit)="saveResend()" class="creds-form">
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>API Key</mat-label>
+                <input matInput formControlName="resendApiKey" type="password" autocomplete="off" />
+                <mat-hint>Overrides RESEND_API_KEY env var</mat-hint>
+              </mat-form-field>
               <div class="two-col">
                 <mat-form-field appearance="outline">
                   <mat-label>From Email</mat-label>
-                  <input matInput formControlName="gmailFromEmail" type="email" />
+                  <input matInput formControlName="resendFromEmail" type="email" />
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>From Name</mat-label>
-                  <input matInput formControlName="gmailFromName" />
+                  <input matInput formControlName="resendFromName" />
                 </mat-form-field>
               </div>
               <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
-                Save Gmail Credentials
+                Save Resend Credentials
               </button>
             </form>
           </mat-expansion-panel>
@@ -361,11 +355,10 @@ export class AdminEmailComponent implements OnInit {
     brevoFromName: [''],
   });
 
-  readonly gmailForm = this.fb.group({
-    gmailUser: [''],
-    gmailAppPassword: [''],
-    gmailFromEmail: [''],
-    gmailFromName: [''],
+  readonly resendForm = this.fb.group({
+    resendApiKey: [''],
+    resendFromEmail: [''],
+    resendFromName: [''],
   });
 
   readonly templatesForm = this.fb.group({
@@ -396,11 +389,10 @@ export class AdminEmailComponent implements OnInit {
           brevoFromEmail: cfg.brevoFromEmail ?? '',
           brevoFromName: cfg.brevoFromName ?? '',
         });
-        this.gmailForm.patchValue({
-          gmailUser: cfg.gmailUser ?? '',
-          gmailAppPassword: cfg.gmailAppPassword ?? '',
-          gmailFromEmail: cfg.gmailFromEmail ?? '',
-          gmailFromName: cfg.gmailFromName ?? '',
+        this.resendForm.patchValue({
+          resendApiKey: cfg.resendApiKey ?? '',
+          resendFromEmail: cfg.resendFromEmail ?? '',
+          resendFromName: cfg.resendFromName ?? '',
         });
         this.templatesForm.patchValue({
           tmplInvite: cfg.tmplInvite,
@@ -448,17 +440,16 @@ export class AdminEmailComponent implements OnInit {
     });
   }
 
-  saveGmail(): void {
+  saveResend(): void {
     this.saving.set(true);
-    const val = this.gmailForm.getRawValue();
+    const val = this.resendForm.getRawValue();
     const patch: Partial<EmailConfig> = {
-      gmailUser: val.gmailUser || null,
-      gmailAppPassword: val.gmailAppPassword || null,
-      gmailFromEmail: val.gmailFromEmail || null,
-      gmailFromName: val.gmailFromName || null,
+      resendApiKey: val.resendApiKey || null,
+      resendFromEmail: val.resendFromEmail || null,
+      resendFromName: val.resendFromName || null,
     };
     this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
-      next: (cfg) => { this.config.set(cfg); this.saving.set(false); this.snackBar.open('Gmail credentials saved', 'OK', { duration: 2000 }); },
+      next: (cfg) => { this.config.set(cfg); this.saving.set(false); this.snackBar.open('Resend credentials saved', 'OK', { duration: 2000 }); },
       error: () => { this.saving.set(false); this.snackBar.open('Failed to save', 'OK', { duration: 3000 }); },
     });
   }

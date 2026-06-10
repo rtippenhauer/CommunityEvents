@@ -7,7 +7,7 @@ import { NotificationPreferencesEntity } from '../../database/entities/notificat
 import { UserEntity } from '../../database/entities/user.entity';
 import { EmailService } from './email.service';
 import { BrevoService } from './brevo.service';
-import { GmailService } from './gmail.service';
+import { ResendService } from './resend.service';
 import { EmailDispatcherService } from './email-dispatcher.service';
 import { EmailWebhookController } from './email-webhook.controller';
 
@@ -22,7 +22,7 @@ import { EmailWebhookController } from './email-webhook.controller';
     ]),
   ],
   controllers: [EmailWebhookController],
-  providers: [EmailService, BrevoService, GmailService, EmailDispatcherService],
+  providers: [EmailService, BrevoService, ResendService, EmailDispatcherService],
   exports: [EmailService],
 })
 export class EmailModule {}

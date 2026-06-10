@@ -1,4 +1,4 @@
-import { Component, inject, computed } from '@angular/core';
+import { Component, inject, computed, effect } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
@@ -12,6 +12,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
 import { AuthService } from './core/services/auth.service';
 import { CityService, CitySlug } from './core/services/city.service';
+import { FeedbackService } from './core/services/feedback.service';
 
 @Component({
   selector: 'app-root',
@@ -35,6 +36,7 @@ export class AppComponent {
   private readonly breakpointObserver = inject(BreakpointObserver);
   readonly authService = inject(AuthService);
   readonly cityService = inject(CityService);
+  readonly feedbackService = inject(FeedbackService);
 
   readonly currentYear = new Date().getFullYear();
 
@@ -62,6 +64,16 @@ export class AppComponent {
   readonly isAdmin = computed<boolean>(
     () => this.authService.currentUser()?.role === 'admin',
   );
+
+  constructor() {
+    effect(() => {
+      if (this.isAdmin()) {
+        this.feedbackService.loadUnseenCount();
+      } else {
+        this.feedbackService.unseenCount.set(0);
+      }
+    });
+  }
 
   isLoggedIn(): boolean {
     return this.authService.isLoggedIn();

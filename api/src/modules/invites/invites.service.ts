@@ -5,12 +5,17 @@ import { randomBytes } from 'crypto';
 import { InviteEntity, InviteType } from '../../database/entities/invite.entity';
 import { UserEntity } from '../../database/entities/user.entity';
 import { CreateInviteDto } from './dto/create-invite.dto';
+import { EmailService } from '../email/email.service';
+import { EmailTemplate } from '../email/email.constants';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class InvitesService {
   constructor(
     @InjectRepository(InviteEntity)
     private readonly inviteRepo: Repository<InviteEntity>,
+    private readonly emailService: EmailService,
+    private readonly config: ConfigService,
   ) {}
 
   async create(dto: CreateInviteDto, creator: UserEntity): Promise<InviteEntity> {
@@ -54,7 +59,33 @@ export class InvitesService {
       maxUses: dto.type === InviteType.MEMBER ? 1 : (dto.maxUses ?? null),
     });
 
-    return this.inviteRepo.save(invite);
+    const saved = await this.inviteRepo.save(invite);
+
+    if (dto.type === InviteType.MEMBER && dto.boundToEmail) {
+      const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+      const inviteUrl = `${appUrl}/login?token=${saved.token}`;
+      const inviterName = creator.fullName || 'A DinnerBears member';
+
+      await this.emailService.queue({
+        toEmail: dto.boundToEmail,
+        toName: dto.boundToName ?? undefined,
+        subject: `${inviterName} invited you to DinnerBears!`,
+        templateId: EmailTemplate.INVITE,
+        templateParams: {
+          inviter_name: inviterName,
+          invite_url: inviteUrl,
+          invitee_name: dto.boundToName ?? dto.boundToEmail,
+        },
+        htmlBody: `
+          <h2>You're invited to DinnerBears!</h2>
+          <p><strong>${inviterName}</strong> has invited you to join DinnerBears — a community of people who love good food and great company.</p>
+          <p><a href="${inviteUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Accept Invite</a></p>
+          <p style="color:#888;font-size:0.85em">This link expires in 48 hours and can only be used by this email address.</p>
+        `,
+      });
+    }
+
+    return saved;
   }
 
   async validate(token: string, email?: string): Promise<InviteEntity> {

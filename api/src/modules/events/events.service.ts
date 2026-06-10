@@ -12,11 +12,15 @@ import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { EmailService } from '../email/email.service';
+import { EmailTemplate } from '../email/email.constants';
+import { ConfigService } from '@nestjs/config';
 
 export interface EventFilters {
   cityId?: number;
   upcoming?: boolean;
   status?: EventStatus;
+  isAdminOrMod?: boolean;
 }
 
 @Injectable()
@@ -30,6 +34,8 @@ export class EventsService {
     private readonly guestLinkRepo: Repository<EventGuestLinkEntity>,
     @InjectRepository(RestaurantEntity)
     private readonly restaurantRepo: Repository<RestaurantEntity>,
+    private readonly emailService: EmailService,
+    private readonly config: ConfigService,
   ) {}
 
   async findAll(filters: EventFilters): Promise<EventEntity[]> {
@@ -46,7 +52,7 @@ export class EventsService {
 
     if (filters.status) {
       qb.andWhere('e.status = :status', { status: filters.status });
-    } else {
+    } else if (!filters.isAdminOrMod) {
       qb.andWhere('e.status != :draft', { draft: EventStatus.DRAFT });
     }
 
@@ -308,6 +314,37 @@ export class EventsService {
       expiresAt,
     });
 
-    return this.guestLinkRepo.save(link);
+    const saved = await this.guestLinkRepo.save(link);
+
+    if (recipientEmail) {
+      const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+      const guestUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
+      const eventDate = new Date(`${event.eventDate}T${event.eventTime}`).toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric',
+      });
+
+      await this.emailService.queue({
+        toEmail: recipientEmail,
+        toName: recipientName ?? undefined,
+        subject: `You're invited to a DinnerBears dinner!`,
+        templateId: EmailTemplate.GUEST_RSVP_CONFIRMATION,
+        templateParams: {
+          recipient_name: recipientName ?? recipientEmail,
+          event_name: event.title,
+          event_date: eventDate,
+          event_time: event.eventTime,
+          restaurant_name: event.restaurantName ?? '',
+          guest_url: guestUrl,
+        },
+        htmlBody: `
+          <h2>You're invited to a DinnerBears dinner!</h2>
+          <p>You've been invited to join us at <strong>${event.restaurantName ?? 'dinner'}</strong> on <strong>${eventDate} at ${event.eventTime}</strong>.</p>
+          <p><a href="${guestUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">View Your Invitation</a></p>
+          <p style="color:#888;font-size:0.85em">This link lets you RSVP and manage your attendance. It expires when the event starts.</p>
+        `,
+      });
+    }
+
+    return saved;
   }
 }

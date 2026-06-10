@@ -3,8 +3,10 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { HttpClient } from '@angular/common/http';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatNativeDateModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -21,12 +23,20 @@ export interface EventFormDialogData {
   };
 }
 
-function nextTuesday(): string {
+function nextTuesdayDate(): Date {
   const today = new Date();
   const daysUntil = (2 - today.getDay() + 7) % 7 || 7;
-  const d = new Date(today);
-  d.setDate(today.getDate() + daysUntil);
-  return d.toISOString().split('T')[0];
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysUntil);
+  return d;
+}
+
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function toDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 interface City { id: number; name: string; }
@@ -39,6 +49,8 @@ interface Restaurant { id: number; name: string; cityId: number; }
     ReactiveFormsModule,
     MatDialogModule,
     MatButtonModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
@@ -79,7 +91,9 @@ interface Restaurant { id: number; name: string; cityId: number; }
         <div class="date-time-row">
           <mat-form-field appearance="outline" class="date-field">
             <mat-label>Date</mat-label>
-            <input matInput type="date" formControlName="eventDate" />
+            <input matInput [matDatepicker]="datePicker" formControlName="eventDate" />
+            <mat-datepicker-toggle matIconSuffix [for]="datePicker" />
+            <mat-datepicker #datePicker />
             <mat-error>Date is required</mat-error>
           </mat-form-field>
 
@@ -167,7 +181,7 @@ export class EventFormDialogComponent implements OnInit {
     cityId: [0, Validators.required],
     restaurantId: [0, Validators.required],
     title: ['', Validators.required],
-    eventDate: ['', Validators.required],
+    eventDate: [nextTuesdayDate(), Validators.required],
     eventTime: ['', Validators.required],
     description: [''],
     additionalInfo: [''],
@@ -197,7 +211,7 @@ export class EventFormDialogComponent implements OnInit {
         cityId: e.cityId,
         restaurantId: e.restaurantId ?? 0,
         title: e.title,
-        eventDate: e.eventDate,
+        eventDate: parseLocalDate(e.eventDate),
         eventTime: e.eventTime.substring(0, 5),
         description: e.description ?? '',
         additionalInfo: e.additionalInfo ?? '',
@@ -210,12 +224,12 @@ export class EventFormDialogComponent implements OnInit {
         cityId: p.cityId ?? 0,
         restaurantId: p.restaurantId ?? 0,
         title: p.title ?? '',
-        eventDate: p.eventDate ?? nextTuesday(),
+        eventDate: p.eventDate ? parseLocalDate(p.eventDate) : nextTuesdayDate(),
         eventTime: p.eventTime ?? '18:30',
       });
       if (p.cityId) this.filterRestaurants(p.cityId);
     } else {
-      this.form.patchValue({ eventDate: nextTuesday(), eventTime: '18:30' });
+      this.form.patchValue({ eventTime: '18:30' });
     }
   }
 
@@ -233,7 +247,7 @@ export class EventFormDialogComponent implements OnInit {
       cityId: val.cityId,
       restaurantId: val.restaurantId,
       title: val.title.trim(),
-      eventDate: val.eventDate,
+      eventDate: toDateString(val.eventDate),
       eventTime: val.eventTime,
       description: val.description.trim() || null,
       additionalInfo: val.additionalInfo.trim() || null,
