@@ -26,7 +26,7 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
   template: `
     <div class="guest-rsvp-page">
       <div class="brand-header">
-        <img src="/assets/logo.png" alt="DinnerBears" class="brand-logo" />
+        <img src="/images/DinnerBearsIcon.png" alt="DinnerBears" class="brand-logo" />
       </div>
 
       @switch (state()) {
@@ -191,17 +191,21 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 24px 16px 48px;
+      padding: 0 16px 48px;
     }
 
     .brand-header {
-      margin-bottom: 28px;
+      width: 100%;
+      background: #3D1C05;
+      display: flex;
+      justify-content: center;
+      padding: 20px 0;
+      margin-bottom: 32px;
     }
 
     .brand-logo {
       height: 64px;
       width: auto;
-      filter: drop-shadow(0 2px 6px rgba(61,28,5,0.25));
     }
 
     .center {

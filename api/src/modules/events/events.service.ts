@@ -359,7 +359,7 @@ export class EventsService {
       photoUrl, description, additionalInfo, manageUrl, googleCalUrl, icsUrl,
     } = params;
 
-    const logoUrl = `${appUrl}/images/DinnerBearsIcon.png`;
+    const logoUrl = `${appUrl}/assets/logo.png`;
     const mapsUrl = (restaurantLat && restaurantLng)
       ? `https://www.google.com/maps?q=${restaurantLat},${restaurantLng}`
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantAddress)}`;
@@ -396,7 +396,7 @@ export class EventsService {
 
   <!-- Header -->
   <tr><td style="background:#3D1C05;padding:20px;text-align:center">
-    <img src="${logoUrl}" alt="DinnerBears" height="60" style="display:inline-block;height:60px" />
+    <img src="${logoUrl}" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
   </td></tr>
 
   <!-- Hero photo -->

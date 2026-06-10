@@ -1010,7 +1010,7 @@ export class EventDetailComponent implements OnInit {
     return 'Copy guest link';
   }
 
-  private refreshEvent(id: number, preservedEmails?: string[]): void {
+  private refreshEvent(id: number, preservedEmails?: string[], expandIndex?: number | null): void {
     this.eventsService.getOne(id).subscribe({
       next: (e) => {
         this.event.set(e);
@@ -1018,6 +1018,7 @@ export class EventDetailComponent implements OnInit {
         this.guestsCtrl.setValue(my?.additionalGuests ?? 0);
         this.rebuildNameControls(my?.additionalGuests ?? 0, my?.guestNames ?? null, preservedEmails);
         this.rsvpLoading.set(false);
+        if (expandIndex != null) this.editingGuestIndex.set(expandIndex);
       },
       error: () => this.rsvpLoading.set(false),
     });
@@ -1037,10 +1038,11 @@ export class EventDetailComponent implements OnInit {
 
   updateGuests(additionalGuests: number): void {
     const id = this.event()!.id;
+    const oldCount = this.guestNameControls.length;
     const names = this.guestNameControls.map((c) => c.value);
     const emails = this.guestEmailControls.map((c) => c.value);
     this.eventsService.rsvp(id, additionalGuests, names).subscribe({
-      next: () => this.refreshEvent(id, emails),
+      next: () => this.refreshEvent(id, emails, additionalGuests > oldCount ? additionalGuests - 1 : null),
       error: () => this.snackBar.open('Failed to update guests', 'OK', { duration: 3000 }),
     });
   }
