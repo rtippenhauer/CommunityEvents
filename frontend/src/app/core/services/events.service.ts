@@ -18,6 +18,7 @@ export interface GuestLink {
   token: string;
   recipientName: string | null;
   usedAt: string | null;
+  cancelledAt: string | null;
   expiresAt: string;
   createdAt: string;
 }
@@ -73,6 +74,7 @@ export interface GuestLinkInfo {
   invitedByName: string;
   recipientName: string | null;
   usedAt: string | null;
+  cancelledAt: string | null;
   expiresAt: string;
 }
 

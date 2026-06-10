@@ -251,6 +251,7 @@ export class EventsService {
       invitedByName: link.createdBy.fullName,
       recipientName: link.recipientName,
       usedAt: link.usedAt,
+      cancelledAt: link.cancelledAt,
       expiresAt: link.expiresAt,
     };
   }
@@ -259,17 +260,18 @@ export class EventsService {
     const link = await this.guestLinkRepo.findOne({ where: { token } });
     if (!link) throw new NotFoundException('Guest link not found');
     if (new Date() > link.expiresAt) throw new BadRequestException('This link has expired');
-    link.usedAt = null;
+    link.cancelledAt = new Date();
     await this.guestLinkRepo.save(link);
   }
 
   async useGuestLink(token: string, guestName?: string): Promise<{ message: string }> {
     const link = await this.guestLinkRepo.findOne({ where: { token } });
     if (!link) throw new NotFoundException('Guest link not found');
-    if (link.usedAt) throw new BadRequestException('This link has already been used');
+    if (link.usedAt && !link.cancelledAt) throw new BadRequestException('This link has already been used');
     if (new Date() > link.expiresAt) throw new BadRequestException('This link has expired');
 
     link.usedAt = new Date();
+    link.cancelledAt = null;
     if (guestName?.trim()) link.recipientName = guestName.trim();
     await this.guestLinkRepo.save(link);
     return { message: 'RSVP confirmed' };

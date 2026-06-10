@@ -179,6 +179,8 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                                   >
                                     @if (generatingLinkIndex() === idx) {
                                       <mat-spinner diameter="18" />
+                                    } @else if (guestLinkAt(myRsvp()!, idx)?.cancelledAt) {
+                                      <mat-icon class="link-cancelled-icon">person_off</mat-icon>
                                     } @else if (guestLinkAt(myRsvp()!, idx)?.usedAt) {
                                       <mat-icon class="link-used-icon">how_to_reg</mat-icon>
                                     } @else if (guestLinkAt(myRsvp()!, idx)) {
@@ -206,12 +208,12 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                             <div class="link-status-list">
                               @for (link of (myRsvp()!.guestLinks ?? []); track link.id) {
                                 <div class="link-status-row">
-                                  <mat-icon class="link-status-icon" [class.used]="link.usedAt">
-                                    {{ link.usedAt ? 'check_circle' : 'link' }}
+                                  <mat-icon class="link-status-icon" [class.used]="link.usedAt && !link.cancelledAt" [class.cancelled]="link.cancelledAt">
+                                    {{ link.cancelledAt ? 'person_off' : link.usedAt ? 'check_circle' : 'link' }}
                                   </mat-icon>
                                   <span class="link-status-name">{{ link.recipientName || 'Guest ' + ($index + 1) }}</span>
-                                  <span class="link-status-badge" [class.used]="link.usedAt">
-                                    {{ link.usedAt ? 'RSVP\'d' : 'Link sent' }}
+                                  <span class="link-status-badge" [class.used]="link.usedAt && !link.cancelledAt" [class.cancelled]="link.cancelledAt">
+                                    {{ link.cancelledAt ? "Can't Make It" : link.usedAt ? 'Confirmed' : 'Pending' }}
                                   </span>
                                   @if (!link.usedAt) {
                                     <button mat-icon-button matTooltip="Copy link again" (click)="copyExistingLink(link.token)">
@@ -581,6 +583,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 
     .link-ready-icon { color: #2e7d32 !important; }
     .link-used-icon { color: #999 !important; }
+    .link-cancelled-icon { color: #c62828 !important; }
 
     .link-status-list {
       display: flex;
@@ -606,6 +609,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       height: 1rem;
       color: var(--db-amber);
       &.used { color: #2e7d32; }
+      &.cancelled { color: #c62828; }
     }
 
     .link-status-name { flex: 1; color: var(--db-brown-dark); }
@@ -618,6 +622,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       background: #fff3e0;
       color: var(--db-amber-dark);
       &.used { background: #e8f5e9; color: #2e7d32; }
+      &.cancelled { background: #ffebee; color: #c62828; }
     }
 
     .guest-panel-actions { display: flex; justify-content: flex-end; }
@@ -767,7 +772,10 @@ export class EventDetailComponent implements OnInit {
   });
 
   readonly totalSeats = computed<number>(() => {
-    return (this.event()?.rsvps ?? []).reduce((sum, r) => sum + 1 + r.additionalGuests, 0);
+    return (this.event()?.rsvps ?? []).reduce((sum, r) => {
+      const cancelled = (r.guestLinks ?? []).filter((l) => l.cancelledAt).length;
+      return sum + 1 + r.additionalGuests - cancelled;
+    }, 0);
   });
 
   readonly isPastCutoff = computed<boolean>(() => {
@@ -876,7 +884,8 @@ export class EventDetailComponent implements OnInit {
     if (!rsvp) return 'Generate guest link';
     const link = rsvp.guestLinks?.[index];
     if (!link) return 'Generate & copy guest link';
-    if (link.usedAt) return 'Guest already RSVP\'d via this link';
+    if (link.cancelledAt) return "Guest can't make it";
+    if (link.usedAt) return 'Guest confirmed';
     return 'Copy guest link';
   }
 
@@ -970,12 +979,16 @@ export class EventDetailComponent implements OnInit {
     const rsvp = this.myRsvp()!;
     const existingLink = rsvp.guestLinks?.[index];
 
+    if (existingLink?.cancelledAt) {
+      this.snackBar.open("Guest can't make it — their slot is still counted in your total", 'OK', { duration: 4000 });
+      return;
+    }
     if (existingLink && !existingLink.usedAt) {
       this.copyExistingLink(existingLink.token);
       return;
     }
     if (existingLink?.usedAt) {
-      this.snackBar.open('This guest has already RSVP\'d via that link', 'OK', { duration: 3000 });
+      this.snackBar.open('Guest already confirmed', 'OK', { duration: 3000 });
       return;
     }
 

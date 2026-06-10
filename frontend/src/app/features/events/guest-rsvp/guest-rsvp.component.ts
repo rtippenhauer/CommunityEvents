@@ -392,6 +392,8 @@ export class GuestRsvpComponent implements OnInit {
         this.info.set(info);
         if (info.eventStatus === 'cancelled') {
           this.state.set('cancelled');
+        } else if (info.cancelledAt) {
+          this.state.set('cancel-confirm');
         } else if (info.usedAt) {
           this.state.set('used');
         } else if (new Date() > new Date(info.expiresAt)) {
