@@ -35,6 +35,12 @@ export interface Rsvp {
   createdAt: string;
 }
 
+export interface PublicRsvp {
+  id: number;
+  recipientName: string | null;
+  cancelledAt: string | null;
+}
+
 export interface Event {
   id: number;
   cityId: number;
@@ -58,6 +64,7 @@ export interface Event {
   createdById: number;
   createdByUser: { id: number; fullName: string; profilePhotoPath: string | null };
   rsvps: Rsvp[];
+  publicRsvps: PublicRsvp[];
   createdAt: string;
   updatedAt: string;
 }
@@ -159,6 +166,10 @@ export class EventsService {
     return this.http.delete<void>(`${this.base}/${eventId}/rsvp/link/${linkId}`);
   }
 
+  publicRsvp(eventId: number, name: string, email: string): Observable<{ success: boolean }> {
+    return this.http.post<{ success: boolean }>(`${this.base}/${eventId}/public-rsvp`, { name, email });
+  }
+
   mapsUrl(lat: number | null, lng: number | null, address: string): string {
     if (lat && lng) return `https://www.google.com/maps?q=${lat},${lng}`;
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
@@ -198,6 +209,8 @@ export class EventsService {
     ];
     if (event.description) lines.push(`\n${event.description}`);
     lines.push(`\nRSVP: ${window.location.origin}/events/${event.id}`);
+    const cityHost = window.location.hostname;
+    lines.push(`\nNot a member yet? Visit https://${cityHost} to join DinnerBears!`);
     return lines.join('\n');
   }
 }

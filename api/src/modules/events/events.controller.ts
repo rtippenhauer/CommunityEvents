@@ -18,6 +18,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { UpsertRsvpDto } from './dto/upsert-rsvp.dto';
 import { CreateGuestLinkDto } from './dto/create-guest-link.dto';
+import { CreatePublicRsvpDto } from './dto/create-public-rsvp.dto';
 import { UseGuestLinkDto } from './dto/use-guest-link.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
@@ -111,6 +112,15 @@ export class EventsController {
   @Roles(UserRole.ADMIN)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.eventsService.remove(id);
+  }
+
+  @Post(':id/public-rsvp')
+  async publicRsvp(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreatePublicRsvpDto,
+  ) {
+    await this.eventsService.createPublicRsvp(id, dto.name, dto.email);
+    return { success: true };
   }
 
   @Post(':id/rsvp')

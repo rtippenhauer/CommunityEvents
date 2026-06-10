@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
 import { UserRole } from '../../database/entities/user.entity';
 import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
@@ -70,7 +70,7 @@ export class EventsService {
     return qb.getMany();
   }
 
-  async findOne(id: number): Promise<EventEntity> {
+  async findOne(id: number): Promise<EventEntity & { publicRsvps: Pick<EventGuestLinkEntity, 'id' | 'recipientName' | 'cancelledAt'>[] }> {
     const event = await this.eventRepo.findOne({
       where: { id },
       relations: [
@@ -84,7 +84,14 @@ export class EventsService {
       ],
     });
     if (!event) throw new NotFoundException(`Event ${id} not found`);
-    return event;
+
+    const publicRsvps = await this.guestLinkRepo.find({
+      where: { eventId: id, source: 'public', cancelledAt: IsNull() },
+      select: ['id', 'recipientName', 'cancelledAt'],
+      order: { createdAt: 'ASC' },
+    });
+
+    return Object.assign(event, { publicRsvps });
   }
 
   async create(dto: CreateEventDto, userId: number): Promise<EventEntity> {
@@ -248,7 +255,7 @@ export class EventsService {
       restaurantLat: event.restaurantLat,
       restaurantLng: event.restaurantLng,
       restaurantPhotoUrl: photoUrl,
-      invitedByName: link.createdBy.fullName,
+      invitedByName: link.createdBy?.fullName ?? 'DinnerBears',
       recipientName: link.recipientName,
       usedAt: link.usedAt,
       cancelledAt: link.cancelledAt,
@@ -264,6 +271,7 @@ export class EventsService {
     if (!link) throw new NotFoundException('Link not found');
 
     const rsvp = link.memberRsvp;
+    if (!rsvp) throw new BadRequestException('Cannot remove a public guest RSVP this way');
     if (rsvp.userId !== userId) throw new ForbiddenException('Not your RSVP');
 
     // Find this link's position in the sorted array to know which name to drop
@@ -408,5 +416,64 @@ export class EventsService {
     }
 
     return saved;
+  }
+
+  async createPublicRsvp(eventId: number, name: string, email: string): Promise<void> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId }, relations: ['city'] });
+    if (!event) throw new NotFoundException(`Event ${eventId} not found`);
+    if (event.status !== EventStatus.PUBLISHED) {
+      throw new BadRequestException('RSVPs are not open for this event');
+    }
+    const now = new Date();
+    const eventStart = new Date(`${event.eventDate}T${event.eventTime}`);
+    if (now >= eventStart) throw new BadRequestException('This event has already started');
+
+    const existing = await this.guestLinkRepo.findOne({
+      where: { eventId, recipientEmail: email.toLowerCase(), source: 'public', cancelledAt: IsNull() },
+    });
+    if (existing) throw new BadRequestException('An RSVP for this email already exists for this event');
+
+    const token = randomBytes(32).toString('hex');
+    const link = this.guestLinkRepo.create({
+      eventId,
+      source: 'public',
+      memberRsvpId: null,
+      createdById: null,
+      recipientName: name.trim(),
+      recipientEmail: email.trim().toLowerCase(),
+      token,
+      expiresAt: eventStart,
+      usedAt: now,
+      deliveryType: 'email',
+    });
+    const saved = await this.guestLinkRepo.save(link);
+
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
+    const eventDate = new Date(`${event.eventDate}T12:00:00`).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    });
+
+    await this.emailService.queue({
+      toEmail: email,
+      toName: name,
+      subject: `You're going to a DinnerBears dinner!`,
+      templateId: EmailTemplate.GUEST_RSVP_CONFIRMATION,
+      templateParams: {
+        recipient_name: name,
+        event_name: event.title,
+        event_date: eventDate,
+        event_time: event.eventTime,
+        restaurant_name: event.restaurantName,
+        guest_url: manageUrl,
+      },
+      htmlBody: `
+        <h2>You're going to a DinnerBears dinner!</h2>
+        <p>Hi ${name},</p>
+        <p>You're confirmed for <strong>${event.title}</strong> at <strong>${event.restaurantName}</strong> on <strong>${eventDate} at ${event.eventTime}</strong>.</p>
+        <p><a href="${manageUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Manage Your RSVP</a></p>
+        <p style="color:#888;font-size:0.85em">Use this link to cancel if you can't make it. It expires when the event starts.</p>
+      `,
+    });
   }
 }

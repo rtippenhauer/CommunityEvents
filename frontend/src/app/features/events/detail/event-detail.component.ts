@@ -17,7 +17,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { EventsService, Event, GuestLink, Rsvp } from '../../../core/services/events.service';
+import { EventsService, Event, GuestLink, PublicRsvp, Rsvp } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 
@@ -281,13 +281,43 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                 } @else {
                   <div class="rsvp-guest-cta">
                     <a mat-stroked-button routerLink="/login">Sign in to RSVP</a>
+                    <span class="rsvp-or">or</span>
+                    @if (publicRsvpDone()) {
+                      <div class="public-rsvp-success">
+                        <mat-icon>check_circle</mat-icon>
+                        You're on the list! Check your email for your confirmation link.
+                      </div>
+                    } @else {
+                      <div class="public-rsvp-form">
+                        <p class="public-rsvp-label">Attending without an account?</p>
+                        <div class="public-rsvp-fields">
+                          <mat-form-field appearance="outline" class="pub-field">
+                            <mat-label>Your name</mat-label>
+                            <input matInput [value]="publicRsvpName()" (input)="publicRsvpName.set($any($event.target).value)" maxlength="200" />
+                          </mat-form-field>
+                          <mat-form-field appearance="outline" class="pub-field">
+                            <mat-label>Email address</mat-label>
+                            <input matInput type="email" [value]="publicRsvpEmail()" (input)="publicRsvpEmail.set($any($event.target).value)" maxlength="255" />
+                          </mat-form-field>
+                        </div>
+                        @if (publicRsvpError()) {
+                          <div class="public-rsvp-error">{{ publicRsvpError() }}</div>
+                        }
+                        <button mat-stroked-button
+                          [disabled]="publicRsvpLoading() || !publicRsvpName().trim() || !publicRsvpEmail().trim()"
+                          (click)="submitPublicRsvp()">
+                          @if (publicRsvpLoading()) { <mat-spinner diameter="16" /> }
+                          I'm going!
+                        </button>
+                      </div>
+                    }
                   </div>
                 }
 
                 <mat-divider class="rsvp-divider" />
 
                 <!-- Attendee list -->
-                @if (event()!.rsvps.length === 0) {
+                @if (event()!.rsvps.length === 0 && event()!.publicRsvps.length === 0) {
                   <p class="no-rsvps">No RSVPs yet — be the first!</p>
                 } @else {
                   <ul class="attendee-list">
@@ -310,6 +340,17 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                               }
                             </span>
                           }
+                        </div>
+                      </li>
+                    }
+                    @for (p of event()!.publicRsvps; track p.id) {
+                      <li class="attendee-row">
+                        <div class="attendee-avatar attendee-avatar-guest">
+                          <mat-icon class="guest-avatar-icon">person</mat-icon>
+                        </div>
+                        <div class="attendee-info">
+                          <span class="attendee-name">{{ p.recipientName || 'Guest' }}</span>
+                          <span class="attendee-guest-badge">guest</span>
                         </div>
                       </li>
                     }
@@ -507,7 +548,55 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       mat-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
     }
     .rsvp-action { margin-bottom: 16px; }
-    .rsvp-guest-cta { margin-bottom: 16px; }
+    .rsvp-guest-cta {
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .rsvp-or {
+      font-size: 0.8rem;
+      color: #aaa;
+      text-align: center;
+    }
+    .public-rsvp-form {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .public-rsvp-label {
+      margin: 0;
+      font-size: 0.82rem;
+      color: #666;
+      font-weight: 500;
+    }
+    .public-rsvp-fields {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      .pub-field {
+        flex: 1;
+        min-width: 140px;
+        font-size: 0.88rem;
+        .mat-mdc-form-field-subscript-wrapper { display: none; }
+      }
+    }
+    .public-rsvp-error {
+      font-size: 0.8rem;
+      color: #c62828;
+    }
+    .public-rsvp-success {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #e8f5e9;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      color: #2e7d32;
+      font-weight: 500;
+      mat-icon { color: #2e7d32; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
+    }
     .rsvp-controls {
       display: flex;
       align-items: center;
@@ -661,6 +750,19 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       gap: 4px;
     }
     .guest-names-inline { color: #666; font-style: italic; }
+    .attendee-avatar-guest {
+      background: #e8e0d6;
+      .guest-avatar-icon { color: #999; font-size: 1.2rem; width: 1.2rem; height: 1.2rem; }
+    }
+    .attendee-guest-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: #f5edd8;
+      color: var(--db-brown-mid);
+      align-self: flex-start;
+    }
 
     // ── Share & Calendar ──────────────────────────────────────────────────────
 
@@ -736,6 +838,11 @@ export class EventDetailComponent implements OnInit {
   readonly savingNames = signal(false);
   readonly generatingLinkIndex = signal<number | null>(null);
   readonly removingLinkId = signal<number | null>(null);
+  readonly publicRsvpName = signal('');
+  readonly publicRsvpEmail = signal('');
+  readonly publicRsvpLoading = signal(false);
+  readonly publicRsvpDone = signal(false);
+  readonly publicRsvpError = signal<string | null>(null);
 
   readonly editingGuestIndex = signal<number | null>(null);
 
@@ -774,10 +881,14 @@ export class EventDetailComponent implements OnInit {
   });
 
   readonly totalSeats = computed<number>(() => {
-    return (this.event()?.rsvps ?? []).reduce((sum, r) => {
+    const e = this.event();
+    if (!e) return 0;
+    const memberSeats = e.rsvps.reduce((sum, r) => {
       const cancelled = (r.guestLinks ?? []).filter((l) => l.cancelledAt).length;
       return sum + 1 + r.additionalGuests - cancelled;
     }, 0);
+    const publicSeats = (e.publicRsvps ?? []).length;
+    return memberSeats + publicSeats;
   });
 
   readonly isPastCutoff = computed<boolean>(() => {
@@ -1099,6 +1210,24 @@ export class EventDetailComponent implements OnInit {
         void this.router.navigate(['/events']);
       },
       error: () => this.snackBar.open('Failed to delete event', 'OK', { duration: 3000 }),
+    });
+  }
+
+  submitPublicRsvp(): void {
+    const name = this.publicRsvpName().trim();
+    const email = this.publicRsvpEmail().trim();
+    if (!name || !email) return;
+    this.publicRsvpLoading.set(true);
+    this.publicRsvpError.set(null);
+    this.eventsService.publicRsvp(this.event()!.id, name, email).subscribe({
+      next: () => {
+        this.publicRsvpLoading.set(false);
+        this.publicRsvpDone.set(true);
+      },
+      error: (err) => {
+        this.publicRsvpLoading.set(false);
+        this.publicRsvpError.set(err?.error?.message ?? 'Something went wrong. Please try again.');
+      },
     });
   }
 

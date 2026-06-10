@@ -11,6 +11,7 @@ import { EventRsvpEntity } from './event-rsvp.entity';
 import { UserEntity } from './user.entity';
 
 export type GuestLinkDeliveryType = 'email' | 'shareable';
+export type GuestLinkSource = 'member' | 'public';
 
 @Entity('event_guest_links')
 export class EventGuestLinkEntity {
@@ -24,19 +25,19 @@ export class EventGuestLinkEntity {
   @JoinColumn({ name: 'event_id' })
   event: EventEntity;
 
-  @Column({ name: 'created_by', unsigned: true })
-  createdById: number;
+  @Column({ name: 'created_by', unsigned: true, nullable: true })
+  createdById: number | null;
 
-  @ManyToOne(() => UserEntity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => UserEntity, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'created_by' })
-  createdBy: UserEntity;
+  createdBy: UserEntity | null;
 
-  @Column({ name: 'member_rsvp_id', unsigned: true })
-  memberRsvpId: number;
+  @Column({ name: 'member_rsvp_id', unsigned: true, nullable: true })
+  memberRsvpId: number | null;
 
-  @ManyToOne(() => EventRsvpEntity, (r) => r.guestLinks, { onDelete: 'CASCADE' })
+  @ManyToOne(() => EventRsvpEntity, (r) => r.guestLinks, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'member_rsvp_id' })
-  memberRsvp: EventRsvpEntity;
+  memberRsvp: EventRsvpEntity | null;
 
   @Column({
     name: 'delivery_type',
@@ -45,6 +46,9 @@ export class EventGuestLinkEntity {
     default: 'shareable',
   })
   deliveryType: GuestLinkDeliveryType;
+
+  @Column({ type: 'enum', enum: ['member', 'public'], default: 'member' })
+  source: GuestLinkSource;
 
   @Column({ name: 'recipient_name', type: 'varchar', length: 200, nullable: true })
   recipientName: string | null;
