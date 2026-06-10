@@ -10,6 +10,7 @@ export interface EventRestaurant {
   address: string;
   lat: number | null;
   lng: number | null;
+  websiteUrl: string | null;
   photos: Array<{ id: number; filePath: string }>;
 }
 

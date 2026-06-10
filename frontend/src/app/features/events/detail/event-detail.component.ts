@@ -15,6 +15,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EventsService, Event, GuestLink, Rsvp } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -35,6 +36,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    MatMenuModule,
     MatProgressSpinnerModule,
     MatSelectModule,
     MatTooltipModule,
@@ -66,6 +68,22 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
           <div class="event-datetime">
             <mat-icon>event</mat-icon>
             <span>{{ (event()!.eventDate + 'T12:00:00') | date: 'EEEE, MMMM d, y' }} at {{ formatTime(event()!.eventTime) }}</span>
+            @if (event()!.status === 'published') {
+              <button mat-icon-button class="cal-add-btn" matTooltip="Add to calendar" [matMenuTriggerFor]="calMenu">
+                <mat-icon>calendar_add_on</mat-icon>
+              </button>
+              <mat-menu #calMenu="matMenu">
+                <a mat-menu-item [href]="googleCalendarUrl()" target="_blank" rel="noopener">
+                  <mat-icon>event</mat-icon> Google Calendar
+                </a>
+                <a mat-menu-item [href]="appleCalendarUrl()" target="_blank" rel="noopener">
+                  <mat-icon>calendar_today</mat-icon> Apple Calendar
+                </a>
+                <a mat-menu-item [href]="icsUrl()" download>
+                  <mat-icon>download</mat-icon> Download .ics
+                </a>
+              </mat-menu>
+            }
           </div>
 
           <!-- Restaurant info -->
@@ -75,7 +93,13 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                 <mat-icon>restaurant</mat-icon>
                 <div>
                   <div class="info-label">Restaurant</div>
-                  <div class="info-value">{{ event()!.restaurantName }}</div>
+                  @if (event()!.restaurant?.websiteUrl) {
+                    <a class="info-value map-link" [href]="event()!.restaurant!.websiteUrl!" target="_blank" rel="noopener">
+                      {{ event()!.restaurantName }}
+                    </a>
+                  } @else {
+                    <div class="info-value">{{ event()!.restaurantName }}</div>
+                  }
                 </div>
               </div>
               <div class="info-row">
@@ -166,7 +190,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                                 <mat-icon class="guest-row-icon"
                                   [class.link-ready-icon]="guestLinkAt(myRsvp()!, idx) && !guestLinkAt(myRsvp()!, idx)?.usedAt && !guestLinkAt(myRsvp()!, idx)?.cancelledAt"
                                   [class.link-used-icon]="guestLinkAt(myRsvp()!, idx)?.usedAt && !guestLinkAt(myRsvp()!, idx)?.cancelledAt"
-                                  [class.link-cancelled-icon]="guestLinkAt(myRsvp()!, idx)?.cancelledAt">
+                                  [class.link-cancelled-icon]="!!guestLinkAt(myRsvp()!, idx)?.cancelledAt">
                                   {{ guestLinkAt(myRsvp()!, idx)?.cancelledAt ? 'person_off' : guestLinkAt(myRsvp()!, idx)?.usedAt ? 'how_to_reg' : guestLinkAt(myRsvp()!, idx) ? 'link' : 'person_outline' }}
                                 </mat-icon>
                                 <span class="guest-compact-name" [class.unnamed]="!guestNameControls[idx]?.value?.trim()">
@@ -295,47 +319,23 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
             </mat-card>
           }
 
-          <!-- Sharing & Calendar (published events only) -->
-          @if (event()!.status === 'published') {
+          <!-- Sharing (admin/mod only, published events only) -->
+          @if (event()!.status === 'published' && isAdminOrMod()) {
             <mat-card class="share-card">
               <mat-card-content>
-
-                <!-- Calendar export (all users) -->
                 <div class="share-section">
                   <h4 class="share-section-title">
-                    <mat-icon>event_available</mat-icon> Add to Calendar
+                    <mat-icon>share</mat-icon> Share
                   </h4>
                   <div class="share-btn-row">
-                    <a mat-stroked-button [href]="googleCalendarUrl()" target="_blank" rel="noopener" class="cal-btn">
-                      <mat-icon>event</mat-icon> Google
-                    </a>
-                    <a mat-stroked-button [href]="appleCalendarUrl()" target="_blank" rel="noopener" class="cal-btn">
-                      <mat-icon>calendar_today</mat-icon> Apple
-                    </a>
-                    <a mat-stroked-button [href]="icsUrl()" download class="cal-btn">
-                      <mat-icon>download</mat-icon> .ics
-                    </a>
+                    <button mat-stroked-button class="fb-btn" (click)="shareToFacebook()">
+                      <mat-icon>open_in_new</mat-icon> Share on Facebook
+                    </button>
+                    <button mat-stroked-button (click)="copyPostText()">
+                      <mat-icon>content_copy</mat-icon> Copy Post Text
+                    </button>
                   </div>
                 </div>
-
-                <!-- Sharing (admin/mod only) -->
-                @if (isAdminOrMod()) {
-                  <mat-divider class="share-divider" />
-                  <div class="share-section">
-                    <h4 class="share-section-title">
-                      <mat-icon>share</mat-icon> Share
-                    </h4>
-                    <div class="share-btn-row">
-                      <button mat-stroked-button class="fb-btn" (click)="shareToFacebook()">
-                        <mat-icon>open_in_new</mat-icon> Share on Facebook
-                      </button>
-                      <button mat-stroked-button (click)="copyPostText()">
-                        <mat-icon>content_copy</mat-icon> Copy Post Text
-                      </button>
-                    </div>
-                  </div>
-                }
-
               </mat-card-content>
             </mat-card>
           }
@@ -422,6 +422,13 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       font-weight: 500;
       margin-bottom: 20px;
       mat-icon { color: var(--db-primary); }
+    }
+    .cal-add-btn {
+      width: 28px;
+      height: 28px;
+      line-height: 28px;
+      color: var(--db-primary) !important;
+      mat-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
     }
     .info-card { margin-bottom: 24px; }
     .info-row {
