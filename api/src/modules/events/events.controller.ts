@@ -64,6 +64,17 @@ export class EventsController {
     res.end(ics);
   }
 
+  @Get('guest-ics/:token')
+  async downloadGuestIcs(
+    @Param('token') token: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { ics, eventId } = await this.eventsService.generateGuestIcs(token);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="dinnerbears-event-${eventId}.ics"`);
+    res.end(ics);
+  }
+
   @Get('guest-link/:token')
   getGuestLink(@Param('token') token: string) {
     return this.eventsService.getGuestLink(token);

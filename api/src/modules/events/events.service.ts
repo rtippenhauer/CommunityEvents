@@ -15,7 +15,6 @@ import { RestaurantEntity } from '../../database/entities/restaurant.entity';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { EmailService } from '../email/email.service';
-import { EmailTemplate } from '../email/email.constants';
 import { ConfigService } from '@nestjs/config';
 
 export interface EventFilters {
@@ -316,17 +315,158 @@ export class EventsService {
     return { message: 'RSVP confirmed' };
   }
 
-  async generateIcs(id: number): Promise<string> {
-    const event = await this.findOne(id);
+  private buildGoogleCalendarUrl(event: EventEntity): string {
+    const [y, m, d] = event.eventDate.split('-').map(Number);
+    const [h, min] = event.eventTime.split(':').map(Number);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const start = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
+    const end = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
+    const p = new URLSearchParams({
+      action: 'TEMPLATE', text: event.title,
+      dates: `${start}/${end}`, location: event.restaurantAddress,
+    });
+    if (event.description) p.set('details', event.description);
+    return `https://calendar.google.com/calendar/render?${p.toString()}`;
+  }
 
+  private buildGuestEmail(params: {
+    appUrl: string;
+    recipientName: string;
+    inviterName: string | null;
+    subject: string;
+    eventTitle: string;
+    eventDateDisplay: string;
+    eventTimeDisplay: string;
+    restaurantName: string;
+    restaurantAddress: string;
+    restaurantLat: number | null;
+    restaurantLng: number | null;
+    photoUrl: string | null;
+    description: string | null;
+    additionalInfo: string | null;
+    manageUrl: string;
+    googleCalUrl: string;
+    icsUrl: string;
+  }): string {
+    const {
+      appUrl, recipientName, inviterName, eventTitle, eventDateDisplay, eventTimeDisplay,
+      restaurantName, restaurantAddress, restaurantLat, restaurantLng,
+      photoUrl, description, additionalInfo, manageUrl, googleCalUrl, icsUrl,
+    } = params;
+
+    const logoUrl = `${appUrl}/images/DinnerBearsIcon.png`;
+    const mapsUrl = (restaurantLat && restaurantLng)
+      ? `https://www.google.com/maps?q=${restaurantLat},${restaurantLng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantAddress)}`;
+
+    const icsHost = appUrl.replace(/^https?:\/\//, '');
+    const appleCalUrl = `webcal://${icsHost}${icsUrl.replace(appUrl, '')}`;
+
+    const photoRow = photoUrl
+      ? `<tr><td style="padding:0;line-height:0"><img src="${appUrl}${photoUrl}" alt="${restaurantName}" width="600" style="display:block;width:100%;max-height:260px;object-fit:cover" /></td></tr>`
+      : '';
+
+    const inviterRow = inviterName
+      ? `<p style="margin:0 0 16px;font-size:1rem;color:#6B4226">🎉 <strong>${inviterName}</strong> invited you to dinner!</p>`
+      : `<p style="margin:0 0 16px;font-size:1rem;color:#6B4226">🎉 You're on the guest list for a DinnerBears dinner!</p>`;
+
+    const descriptionBlock = description
+      ? `<p style="margin:16px 0 0;font-size:0.95rem;color:#444;line-height:1.6">${description}</p>`
+      : '';
+
+    const additionalInfoBlock = additionalInfo
+      ? `<p style="margin:12px 0 0;font-size:0.88rem;color:#666;line-height:1.5;padding:10px 14px;background:#f5edd8;border-radius:6px">${additionalInfo}</p>`
+      : '';
+
+    const btn = (href: string, label: string, bg: string, fg: string) =>
+      `<a href="${href}" style="display:inline-block;padding:8px 16px;background:${bg};color:${fg};text-decoration:none;border-radius:6px;font-size:0.8rem;font-weight:600;border:1px solid ${bg}">${label}</a>`;
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
+
+  <!-- Header -->
+  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+    <img src="${logoUrl}" alt="DinnerBears" height="60" style="display:inline-block;height:60px" />
+  </td></tr>
+
+  <!-- Hero photo -->
+  ${photoRow}
+
+  <!-- Content -->
+  <tr><td style="padding:32px 36px 24px">
+    ${inviterRow}
+    <h1 style="margin:0 0 20px;font-size:1.5rem;font-weight:700;color:#3D1C05;line-height:1.2">${eventTitle}</h1>
+
+    <!-- Details card -->
+    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:20px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📅</span>
+        <strong>${eventDateDisplay}</strong> at ${eventTimeDisplay}
+      </td></tr>
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">🍽️</span>${restaurantName}
+      </td></tr>
+      <tr><td style="padding:10px 16px;font-size:0.9rem">
+        <span style="color:#C9933A;margin-right:8px">📍</span>
+        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${restaurantAddress}</a>
+      </td></tr>
+    </table>
+
+    ${descriptionBlock}
+    ${additionalInfoBlock}
+
+    <!-- Manage RSVP button -->
+    <div style="text-align:center;margin:28px 0 20px">
+      <a href="${manageUrl}" style="display:inline-block;padding:14px 32px;background:#C9933A;color:#fff;text-decoration:none;border-radius:8px;font-size:1rem;font-weight:700">
+        Manage Your RSVP
+      </a>
+    </div>
+
+    <!-- Calendar -->
+    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-top:20px">
+      <tr><td style="padding:14px 16px">
+        <p style="margin:0 0 10px;font-size:0.8rem;font-weight:700;color:#3D1C05;text-transform:uppercase;letter-spacing:0.05em">Add to Calendar</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${btn(googleCalUrl, '📅 Google Calendar', '#fff', '#1a73e8')}
+          &nbsp;
+          ${btn(appleCalUrl, '🗓 Apple Calendar', '#fff', '#1d1d1f')}
+          &nbsp;
+          ${btn(`${appUrl}${icsUrl.replace(appUrl, '')}`, '⬇ Download .ics', '#fff', '#555')}
+        </div>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+    <p style="margin:0 0 6px;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+    <p style="margin:0;font-size:0.72rem;color:#bbb">This link is yours — don't share it. It expires when the event starts.</p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+  }
+
+  private buildIcs(event: EventEntity, descriptionSuffix?: string): string {
     const [y, m, d] = event.eventDate.split('-').map(Number);
     const [h, min] = event.eventTime.split(':').map(Number);
     const pad = (n: number) => String(n).padStart(2, '0');
     const startDt = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
     const endDt = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
-
     const esc = (s: string) =>
       s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+    const descParts: string[] = [];
+    if (event.description) descParts.push(event.description);
+    if (descriptionSuffix) descParts.push(descriptionSuffix);
 
     const lines = [
       'BEGIN:VCALENDAR',
@@ -342,12 +482,28 @@ export class EventsService {
       `UID:event-${event.id}@dinnerbears.com`,
     ];
 
-    if (event.description) {
-      lines.push(`DESCRIPTION:${esc(event.description)}`);
-    }
+    if (descParts.length) lines.push(`DESCRIPTION:${esc(descParts.join('\n\n'))}`);
 
     lines.push('END:VEVENT', 'END:VCALENDAR');
     return lines.join('\r\n');
+  }
+
+  async generateIcs(id: number): Promise<string> {
+    const event = await this.findOne(id);
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    return this.buildIcs(event, `View event: ${appUrl}/events/${id}`);
+  }
+
+  async generateGuestIcs(token: string): Promise<{ ics: string; eventId: number }> {
+    const link = await this.guestLinkRepo.findOne({
+      where: { token },
+      relations: ['event'],
+    });
+    if (!link) throw new NotFoundException('Guest link not found');
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const manageUrl = `${appUrl}/rsvp-guest?token=${token}`;
+    const ics = this.buildIcs(link.event, `Manage your RSVP: ${manageUrl}`);
+    return { ics, eventId: link.event.id };
   }
 
   async generateGuestLink(
@@ -356,13 +512,16 @@ export class EventsService {
     recipientName?: string,
     recipientEmail?: string,
   ): Promise<EventGuestLinkEntity> {
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    const event = await this.eventRepo.findOne({
+      where: { id: eventId },
+      relations: ['restaurant'],
+    });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
       throw new BadRequestException('Event is not published');
     }
 
-    const rsvp = await this.rsvpRepo.findOne({ where: { eventId, userId } });
+    const rsvp = await this.rsvpRepo.findOne({ where: { eventId, userId }, relations: ['user'] });
     if (!rsvp) throw new BadRequestException('You must RSVP before generating a guest link');
 
     const existingLinks = await this.guestLinkRepo.count({ where: { memberRsvpId: rsvp.id } });
@@ -393,30 +552,41 @@ export class EventsService {
 
     if (recipientEmail) {
       const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
-      const guestUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
-      const eventDate = new Date(`${event.eventDate}T${event.eventTime}`).toLocaleDateString('en-US', {
-        weekday: 'long', month: 'long', day: 'numeric',
+      const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
+      const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
+
+      const [ey, em, ed] = event.eventDate.split('-').map(Number);
+      const [eh, emin] = event.eventTime.split(':').map(Number);
+      const eventDateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
       });
+      const eventTimeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+      const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
+      const inviterName = rsvp.user?.fullName ?? null;
 
       await this.emailService.queue({
         toEmail: recipientEmail,
         toName: recipientName ?? undefined,
         subject: `You're invited to a DinnerBears dinner!`,
-        templateId: EmailTemplate.GUEST_RSVP_CONFIRMATION,
-        templateParams: {
-          recipient_name: recipientName ?? recipientEmail,
-          event_name: event.title,
-          event_date: eventDate,
-          event_time: event.eventTime,
-          restaurant_name: event.restaurantName ?? '',
-          guest_url: guestUrl,
-        },
-        htmlBody: `
-          <h2>You're invited to a DinnerBears dinner!</h2>
-          <p>You've been invited to join us at <strong>${event.restaurantName ?? 'dinner'}</strong> on <strong>${eventDate} at ${event.eventTime}</strong>.</p>
-          <p><a href="${guestUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">View Your Invitation</a></p>
-          <p style="color:#888;font-size:0.85em">This link lets you RSVP and manage your attendance. It expires when the event starts.</p>
-        `,
+        htmlBody: this.buildGuestEmail({
+          appUrl,
+          recipientName: recipientName ?? recipientEmail,
+          inviterName,
+          subject: `You're invited to a DinnerBears dinner!`,
+          eventTitle: event.title,
+          eventDateDisplay,
+          eventTimeDisplay,
+          restaurantName: event.restaurantName ?? '',
+          restaurantAddress: event.restaurantAddress ?? '',
+          restaurantLat: event.restaurantLat ?? null,
+          restaurantLng: event.restaurantLng ?? null,
+          photoUrl,
+          description: event.description ?? null,
+          additionalInfo: event.additionalInfo ?? null,
+          manageUrl,
+          googleCalUrl: this.buildGoogleCalendarUrl(event),
+          icsUrl,
+        }),
       });
     }
 
@@ -424,7 +594,10 @@ export class EventsService {
   }
 
   async createPublicRsvp(eventId: number, name: string, email: string): Promise<void> {
-    const event = await this.eventRepo.findOne({ where: { id: eventId }, relations: ['city'] });
+    const event = await this.eventRepo.findOne({
+      where: { id: eventId },
+      relations: ['city', 'restaurant'],
+    });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
       throw new BadRequestException('RSVPs are not open for this event');
@@ -455,30 +628,39 @@ export class EventsService {
 
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
-    const eventDate = new Date(`${event.eventDate}T12:00:00`).toLocaleDateString('en-US', {
+    const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
+
+    const [ey, em, ed] = event.eventDate.split('-').map(Number);
+    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const eventDateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
+    const eventTimeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
 
     await this.emailService.queue({
       toEmail: email,
       toName: name,
       subject: `You're going to a DinnerBears dinner!`,
-      templateId: EmailTemplate.GUEST_RSVP_CONFIRMATION,
-      templateParams: {
-        recipient_name: name,
-        event_name: event.title,
-        event_date: eventDate,
-        event_time: event.eventTime,
-        restaurant_name: event.restaurantName,
-        guest_url: manageUrl,
-      },
-      htmlBody: `
-        <h2>You're going to a DinnerBears dinner!</h2>
-        <p>Hi ${name},</p>
-        <p>You're confirmed for <strong>${event.title}</strong> at <strong>${event.restaurantName}</strong> on <strong>${eventDate} at ${event.eventTime}</strong>.</p>
-        <p><a href="${manageUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Manage Your RSVP</a></p>
-        <p style="color:#888;font-size:0.85em">Use this link to cancel if you can't make it. It expires when the event starts.</p>
-      `,
+      htmlBody: this.buildGuestEmail({
+        appUrl,
+        recipientName: name,
+        inviterName: null,
+        subject: `You're going to a DinnerBears dinner!`,
+        eventTitle: event.title,
+        eventDateDisplay,
+        eventTimeDisplay,
+        restaurantName: event.restaurantName ?? '',
+        restaurantAddress: event.restaurantAddress ?? '',
+        restaurantLat: event.restaurantLat ?? null,
+        restaurantLng: event.restaurantLng ?? null,
+        photoUrl,
+        description: event.description ?? null,
+        additionalInfo: event.additionalInfo ?? null,
+        manageUrl,
+        googleCalUrl: this.buildGoogleCalendarUrl(event),
+        icsUrl,
+      }),
     });
   }
 }
