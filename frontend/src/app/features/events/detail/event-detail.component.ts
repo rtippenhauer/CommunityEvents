@@ -160,25 +160,30 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                             <span class="guest-panel-title">Your Guests</span>
                           </div>
 
-                          <!-- Name + email inputs -->
-                          <div class="guest-name-list" [formGroup]="guestNamesForm">
-                            @for (idx of reversedGuestIndices; track idx) {
-                              <div class="guest-slot-block">
-                                <div class="guest-slot-label">Guest {{ idx + 1 }}</div>
-                                <div class="guest-name-row">
-                                  <mat-form-field appearance="outline" class="guest-name-field">
-                                    <mat-label>Name (optional)</mat-label>
-                                    <input matInput [formControl]="guestNameControls[idx]" maxlength="200" />
-                                  </mat-form-field>
-                                  <button
-                                    mat-icon-button
-                                    class="copy-link-btn"
+                          <div class="guest-compact-list">
+                            @for (idx of guestIndices; track idx) {
+                              <div class="guest-compact-row">
+                                <mat-icon class="guest-row-icon"
+                                  [class.link-ready-icon]="guestLinkAt(myRsvp()!, idx) && !guestLinkAt(myRsvp()!, idx)?.usedAt && !guestLinkAt(myRsvp()!, idx)?.cancelledAt"
+                                  [class.link-used-icon]="guestLinkAt(myRsvp()!, idx)?.usedAt && !guestLinkAt(myRsvp()!, idx)?.cancelledAt"
+                                  [class.link-cancelled-icon]="guestLinkAt(myRsvp()!, idx)?.cancelledAt">
+                                  {{ guestLinkAt(myRsvp()!, idx)?.cancelledAt ? 'person_off' : guestLinkAt(myRsvp()!, idx)?.usedAt ? 'how_to_reg' : guestLinkAt(myRsvp()!, idx) ? 'link' : 'person_outline' }}
+                                </mat-icon>
+                                <span class="guest-compact-name" [class.unnamed]="!guestNameControls[idx]?.value?.trim()">
+                                  {{ guestNameControls[idx]?.value?.trim() || ('Guest ' + (idx + 1)) }}
+                                </span>
+                                @if (guestLinkAt(myRsvp()!, idx); as link) {
+                                  <span class="link-status-badge" [class.used]="link.usedAt && !link.cancelledAt" [class.cancelled]="link.cancelledAt">
+                                    {{ link.cancelledAt ? "Can't Make It" : link.usedAt ? 'Confirmed' : 'Pending' }}
+                                  </span>
+                                }
+                                <div class="guest-row-actions">
+                                  <button mat-icon-button class="copy-link-btn"
                                     [matTooltip]="guestLinkTooltip(idx)"
                                     [disabled]="generatingLinkIndex() === idx"
-                                    (click)="generateAndCopyLink(idx)"
-                                  >
+                                    (click)="generateAndCopyLink(idx)">
                                     @if (generatingLinkIndex() === idx) {
-                                      <mat-spinner diameter="18" />
+                                      <mat-spinner diameter="16" />
                                     } @else if (guestLinkAt(myRsvp()!, idx)?.cancelledAt) {
                                       <mat-icon class="link-cancelled-icon">person_off</mat-icon>
                                     } @else if (guestLinkAt(myRsvp()!, idx)?.usedAt) {
@@ -189,54 +194,50 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                                       <mat-icon>link</mat-icon>
                                     }
                                   </button>
+                                  <button mat-icon-button class="edit-guest-btn"
+                                    matTooltip="Edit guest"
+                                    (click)="toggleEditGuest(idx)">
+                                    <mat-icon>{{ editingGuestIndex() === idx ? 'close' : 'edit' }}</mat-icon>
+                                  </button>
+                                  @if (guestLinkAt(myRsvp()!, idx)) {
+                                    <button mat-icon-button class="remove-link-btn"
+                                      matTooltip="Remove guest"
+                                      [disabled]="removingLinkId() === guestLinkAt(myRsvp()!, idx)!.id"
+                                      (click)="removeLink(guestLinkAt(myRsvp()!, idx)!.id)">
+                                      @if (removingLinkId() === guestLinkAt(myRsvp()!, idx)!.id) {
+                                        <mat-spinner diameter="16" />
+                                      } @else {
+                                        <mat-icon>person_remove</mat-icon>
+                                      }
+                                    </button>
+                                  }
                                 </div>
-                                @if (!guestLinkAt(myRsvp()!, idx)) {
-                                  <div class="guest-email-row">
+                              </div>
+
+                              @if (editingGuestIndex() === idx) {
+                                <div class="guest-edit-expansion">
+                                  <mat-form-field appearance="outline" class="guest-name-field">
+                                    <mat-label>Name (optional)</mat-label>
+                                    <input matInput [formControl]="guestNameControls[idx]" maxlength="200" />
+                                  </mat-form-field>
+                                  @if (!guestLinkAt(myRsvp()!, idx)) {
                                     <mat-form-field appearance="outline" class="guest-email-field">
                                       <mat-label>Email (optional)</mat-label>
                                       <mat-icon matPrefix>mail_outline</mat-icon>
                                       <input matInput [formControl]="guestEmailControls[idx]" type="email" maxlength="255" />
                                     </mat-form-field>
+                                  }
+                                  <div class="guest-edit-save-row">
+                                    <button mat-icon-button color="primary" matTooltip="Save"
+                                      [disabled]="savingNames()"
+                                      (click)="saveAndCloseEdit()">
+                                      @if (savingNames()) { <mat-spinner diameter="18" /> }
+                                      @else { <mat-icon>check</mat-icon> }
+                                    </button>
                                   </div>
-                                }
-                              </div>
-                            }
-                          </div>
-
-                          <!-- Generated links status -->
-                          @if ((myRsvp()!.guestLinks?.length ?? 0) > 0) {
-                            <div class="link-status-list">
-                              @for (link of (myRsvp()!.guestLinks ?? []); track link.id) {
-                                <div class="link-status-row">
-                                  <mat-icon class="link-status-icon" [class.used]="link.usedAt && !link.cancelledAt" [class.cancelled]="link.cancelledAt">
-                                    {{ link.cancelledAt ? 'person_off' : link.usedAt ? 'check_circle' : 'link' }}
-                                  </mat-icon>
-                                  <span class="link-status-name">{{ link.recipientName || 'Guest ' + ($index + 1) }}</span>
-                                  <span class="link-status-badge" [class.used]="link.usedAt && !link.cancelledAt" [class.cancelled]="link.cancelledAt">
-                                    {{ link.cancelledAt ? "Can't Make It" : link.usedAt ? 'Confirmed' : 'Pending' }}
-                                  </span>
-                                  <button mat-icon-button matTooltip="Copy & re-send link" (click)="copyExistingLink(link.token)">
-                                    <mat-icon>content_copy</mat-icon>
-                                  </button>
-                                  <button mat-icon-button matTooltip="Remove guest" class="remove-link-btn" [disabled]="removingLinkId() === link.id" (click)="removeLink(link.id)">
-                                    @if (removingLinkId() === link.id) { <mat-spinner diameter="16" /> }
-                                    @else { <mat-icon>person_remove</mat-icon> }
-                                  </button>
                                 </div>
                               }
-                            </div>
-                          }
-
-                          <div class="guest-panel-actions">
-                            <button
-                              mat-stroked-button
-                              class="save-names-btn"
-                              [disabled]="savingNames()"
-                              (click)="saveGuestNames()"
-                            >
-                              @if (savingNames()) { <mat-spinner diameter="16" /> }
-                              Save names
-                            </button>
+                            }
                           </div>
                         </div>
                       }
@@ -306,10 +307,13 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                   </h4>
                   <div class="share-btn-row">
                     <a mat-stroked-button [href]="googleCalendarUrl()" target="_blank" rel="noopener" class="cal-btn">
-                      <mat-icon>event</mat-icon> Google Calendar
+                      <mat-icon>event</mat-icon> Google
+                    </a>
+                    <a mat-stroked-button [href]="appleCalendarUrl()" target="_blank" rel="noopener" class="cal-btn">
+                      <mat-icon>calendar_today</mat-icon> Apple
                     </a>
                     <a mat-stroked-button [href]="icsUrl()" download class="cal-btn">
-                      <mat-icon>download</mat-icon> Download .ics
+                      <mat-icon>download</mat-icon> .ics
                     </a>
                   </div>
                 </div>
@@ -522,7 +526,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
 
     .guest-panel-icon { color: var(--db-amber); font-size: 1.2rem; width: 1.2rem; height: 1.2rem; }
@@ -535,109 +539,80 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       letter-spacing: 0.06em;
     }
 
-    .guest-name-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+    .guest-compact-list { display: flex; flex-direction: column; gap: 4px; }
 
-    .guest-slot-block {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding: 10px 12px 6px;
-      background: #fff;
-      border: 1px solid #e8e0d6;
-      border-radius: 8px;
-    }
-
-    .guest-slot-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--db-amber);
-      margin-bottom: 2px;
-    }
-
-    .guest-name-row {
+    .guest-compact-row {
       display: flex;
       align-items: center;
       gap: 8px;
+      padding: 4px 8px 4px 4px;
+      border-radius: 6px;
+      background: #fff;
+      border: 1px solid #e8e0d6;
     }
 
-    .guest-email-row {
-      padding-left: 0;
-    }
-
-    .guest-email-field {
-      width: 100%;
-      font-size: 0.88rem;
-      .mat-mdc-form-field-subscript-wrapper { display: none; }
-    }
-
-    .guest-name-field {
-      flex: 1;
-      font-size: 0.88rem;
-      .mat-mdc-form-field-subscript-wrapper { display: none; }
-    }
-
-    .copy-link-btn {
+    .guest-row-icon {
+      font-size: 1rem;
+      width: 1rem;
+      height: 1rem;
       flex-shrink: 0;
-      color: var(--db-amber) !important;
+      color: #bbb;
     }
+
+    .guest-compact-name {
+      flex: 1;
+      font-size: 0.9rem;
+      color: var(--db-brown-dark);
+      &.unnamed { color: #aaa; font-style: italic; }
+    }
+
+    .guest-row-actions {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-shrink: 0;
+      .mat-mdc-icon-button { width: 32px; height: 32px; padding: 4px; }
+    }
+
+    .copy-link-btn { color: var(--db-amber) !important; }
+    .edit-guest-btn { color: #888 !important; }
 
     .link-ready-icon { color: #2e7d32 !important; }
     .link-used-icon { color: #999 !important; }
     .link-cancelled-icon { color: #c62828 !important; }
-
-    .link-status-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      margin-bottom: 12px;
-      padding: 10px 12px;
-      background: #fff;
-      border-radius: 8px;
-      border: 1px solid #e8e0d6;
-    }
-
-    .link-status-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 0.85rem;
-    }
-
-    .link-status-icon {
-      font-size: 1rem;
-      width: 1rem;
-      height: 1rem;
-      color: var(--db-amber);
-      &.used { color: #2e7d32; }
-      &.cancelled { color: #c62828; }
-    }
-
-    .link-status-name { flex: 1; color: var(--db-brown-dark); }
     .remove-link-btn { color: #c62828 !important; opacity: 0.7; &:hover { opacity: 1; } }
 
     .link-status-badge {
-      font-size: 0.7rem;
+      font-size: 0.68rem;
       font-weight: 600;
-      padding: 2px 8px;
+      padding: 2px 7px;
       border-radius: 10px;
+      white-space: nowrap;
       background: #fff3e0;
       color: var(--db-amber-dark);
       &.used { background: #e8f5e9; color: #2e7d32; }
       &.cancelled { background: #ffebee; color: #c62828; }
     }
 
-    .guest-panel-actions { display: flex; justify-content: flex-end; }
-
-    .save-names-btn {
-      font-size: 0.8rem;
-      height: 32px;
-      line-height: 30px;
+    .guest-edit-expansion {
+      padding: 10px 12px 4px;
+      background: #fff;
+      border: 1px solid #e8e0d6;
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      margin-top: -4px;
       display: flex;
-      align-items: center;
-      gap: 6px;
+      flex-direction: column;
+      gap: 0;
     }
+
+    .guest-name-field, .guest-email-field {
+      width: 100%;
+      font-size: 0.88rem;
+      .mat-mdc-form-field-subscript-wrapper { display: none; }
+    }
+
+    .guest-edit-save-row { display: flex; justify-content: flex-end; margin-top: -4px; }
 
     // ── Attendee list ─────────────────────────────────────────────────────────
 
@@ -710,10 +685,16 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
     }
 
     .cal-btn, .fb-btn {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
       text-decoration: none;
+      height: 28px !important;
+      min-height: 28px !important;
+      line-height: 26px !important;
+      font-size: 0.78rem !important;
+      padding: 0 10px !important;
+      mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; }
     }
 
     .share-divider { margin: 16px 0; }
@@ -749,6 +730,8 @@ export class EventDetailComponent implements OnInit {
   readonly generatingLinkIndex = signal<number | null>(null);
   readonly removingLinkId = signal<number | null>(null);
 
+  readonly editingGuestIndex = signal<number | null>(null);
+
   readonly guestOptions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
   readonly guestsCtrl = new FormControl<number>(0, { nonNullable: true });
 
@@ -763,9 +746,17 @@ export class EventDetailComponent implements OnInit {
     return (this.guestEmailsForm.get('emails') as FormArray<FormControl<string>>).controls;
   }
 
-  get reversedGuestIndices(): number[] {
-    const len = this.guestNameControls.length;
-    return Array.from({ length: len }, (_, i) => len - 1 - i);
+  get guestIndices(): number[] {
+    return Array.from({ length: this.guestNameControls.length }, (_, i) => i);
+  }
+
+  toggleEditGuest(idx: number): void {
+    this.editingGuestIndex.set(this.editingGuestIndex() === idx ? null : idx);
+  }
+
+  saveAndCloseEdit(): void {
+    this.editingGuestIndex.set(null);
+    this.saveGuestNames();
   }
 
   readonly myRsvp = computed<Rsvp | null>(() => {
@@ -853,6 +844,11 @@ export class EventDetailComponent implements OnInit {
 
   icsUrl(): string {
     return `/api/v1/events/${this.event()!.id}/ics`;
+  }
+
+  appleCalendarUrl(): string {
+    const ics = `${window.location.origin}/api/v1/events/${this.event()!.id}/ics`;
+    return `webcal://${ics.replace(/^https?:\/\//, '')}`;
   }
 
   shareToFacebook(): void {
