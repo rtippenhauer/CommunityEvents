@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { GoogleCallbackGuard } from '../../common/guards/google-callback.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity } from '../../database/entities/user.entity';
 
@@ -25,11 +26,16 @@ export class AuthController {
   }
 
   @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleCallbackGuard)
   async googleCallback(
-    @Req() req: Request & { user: UserEntity },
+    @Req() req: Request & { user: UserEntity; authErrorReason?: string },
     @Res() res: Response,
   ): Promise<void> {
+    if (req.authErrorReason) {
+      res.redirect(`${this.frontendUrl}/auth/error?reason=${req.authErrorReason}`);
+      return;
+    }
+
     const { accessToken } = await this.authService.issueTokens(req.user, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,

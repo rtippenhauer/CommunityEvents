@@ -20,6 +20,11 @@ export const routes: Routes = [
       import('./features/auth/callback/callback.component').then((m) => m.CallbackComponent),
   },
   {
+    path: 'auth/error',
+    loadComponent: () =>
+      import('./features/auth/error/auth-error.component').then((m) => m.AuthErrorComponent),
+  },
+  {
     path: 'profile',
     loadComponent: () =>
       import('./features/profile/profile.component').then((m) => m.ProfileComponent),
