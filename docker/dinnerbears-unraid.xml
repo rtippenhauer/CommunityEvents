@@ -40,7 +40,7 @@
   <Config Name="Facebook App Secret" Target="FACEBOOK_APP_SECRET" Default="" Mode="" Description="Facebook App Secret" Type="Variable" Display="always" Required="false" Mask="true"></Config>
 
   <Config Name="Brevo API Key" Target="BREVO_API_KEY" Default="" Mode="" Description="Brevo (Sendinblue) API key for email sending" Type="Variable" Display="always" Required="true" Mask="true"></Config>
-  <Config Name="Brevo From Email" Target="BREVO_FROM_EMAIL" Default="noreply@dinnerbears.com" Mode="" Description="From address for outbound emails" Type="Variable" Display="always" Required="true" Mask="false">noreply@dinnerbears.com</Config>
+  <Config Name="Brevo From Email" Target="BREVO_FROM_EMAIL" Default="rob@dinnerbears.com" Mode="" Description="From address for outbound emails" Type="Variable" Display="always" Required="true" Mask="false">rob@dinnerbears.com</Config>
   <Config Name="Gmail User" Target="GMAIL_USER" Default="" Mode="" Description="Gmail address for SMTP fallback" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Gmail App Password" Target="GMAIL_APP_PASSWORD" Default="" Mode="" Description="Gmail app password for SMTP fallback" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
 

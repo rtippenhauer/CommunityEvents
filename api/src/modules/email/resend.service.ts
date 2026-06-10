@@ -26,7 +26,7 @@ export class ResendService {
     const db = await this.configRepo.findOne({ where: { id: 1 } });
     return {
       apiKey: db?.resendApiKey || this.config.get<string>('RESEND_API_KEY', ''),
-      fromEmail: db?.resendFromEmail || this.config.get<string>('RESEND_FROM_EMAIL', 'noreply@dinnerbears.com'),
+      fromEmail: db?.resendFromEmail || this.config.get<string>('RESEND_FROM_EMAIL', 'rob@dinnerbears.com'),
       fromName: db?.resendFromName || this.config.get<string>('RESEND_FROM_NAME', 'DinnerBears'),
     };
   }

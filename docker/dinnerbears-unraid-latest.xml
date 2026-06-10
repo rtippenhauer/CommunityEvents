@@ -95,9 +95,9 @@
     Description="Brevo API key for transactional email" Type="Variable"
     Display="always" Required="true" Mask="true"></Config>
   <Config Name="Brevo From Email" Target="BREVO_FROM_EMAIL"
-    Default="noreply@dinnerbears.com" Mode=""
+    Default="rob@dinnerbears.com" Mode=""
     Description="From address for outbound emails" Type="Variable"
-    Display="always" Required="true" Mask="false">noreply@dinnerbears.com</Config>
+    Display="always" Required="true" Mask="false">rob@dinnerbears.com</Config>
   <Config Name="Brevo From Name" Target="BREVO_FROM_NAME" Default="DinnerBears" Mode=""
     Description="From name for outbound emails" Type="Variable"
     Display="advanced" Required="false" Mask="false">DinnerBears</Config>
