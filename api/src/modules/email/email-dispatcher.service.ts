@@ -174,11 +174,11 @@ export class EmailDispatcherService {
     if (!config) {
       config = this.configRepo.create({
         brevoEnabled: true,
-        gmailOverflowEnabled: false,
+        resendOverflowEnabled: false,
         brevoDailyLimit: 300,
-        gmailDailyLimit: 500,
+        resendDailyLimit: 1000,
         brevoSentToday: 0,
-        gmailSentToday: 0,
+        resendSentToday: 0,
         lastResetDate: new Date().toISOString().split('T')[0],
       });
       await this.configRepo.save(config);

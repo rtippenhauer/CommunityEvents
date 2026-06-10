@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal, HostListener } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -62,7 +62,8 @@ interface Member {
         <div class="members-grid">
           @for (member of filtered(); track member.id) {
             <a class="member-card" [routerLink]="['/members', member.id]">
-              <div class="avatar" [class.avatar-banned]="member.status === 'suspended'">
+              <div class="avatar" [class.avatar-banned]="member.status === 'suspended'"
+                   (click)="openLightbox(member, $event)">
                 @if (member.profilePhotoPath) {
                   <img [src]="member.profilePhotoPath" [alt]="member.fullName" />
                 } @else {
@@ -89,6 +90,16 @@ interface Member {
         </div>
       }
     </div>
+
+    @if (lightboxSrc()) {
+      <div class="lightbox" (click)="lightboxSrc.set(null)" role="dialog" aria-modal="true">
+        <div class="lightbox-inner" (click)="$event.stopPropagation()">
+          <img [src]="lightboxSrc()!" [alt]="lightboxName()" class="lightbox-img" />
+          <p class="lightbox-name">{{ lightboxName() }}</p>
+          <button class="lightbox-close" (click)="lightboxSrc.set(null)" aria-label="Close">✕</button>
+        </div>
+      </div>
+    }
   `,
   styles: [`
     .members-container {
@@ -120,7 +131,7 @@ interface Member {
     }
     .members-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
       gap: 16px;
     }
     .member-card {
@@ -143,23 +154,79 @@ interface Member {
       }
     }
     .avatar {
-      width: 72px;
-      height: 72px;
-      border-radius: 50%;
+      width: 108px;
+      height: 108px;
+      border-radius: 14px;
       overflow: hidden;
       background: #f0f0f0;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      cursor: zoom-in;
+      transition: box-shadow 0.15s;
+      &:hover { box-shadow: 0 0 0 3px var(--db-amber, #C9933A); }
       img {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        object-position: center top;
       }
     }
     .avatar-banned { opacity: 0.5; filter: grayscale(1); }
     .avatar-fallback { font-size: 2rem; }
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.72);
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      animation: fadeIn 0.15s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .lightbox-inner {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      cursor: default;
+    }
+    .lightbox-img {
+      width: min(80vw, 480px);
+      height: min(80vw, 480px);
+      object-fit: cover;
+      object-position: center top;
+      border-radius: 16px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+    .lightbox-name {
+      color: #fff;
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    }
+    .lightbox-close {
+      position: absolute;
+      top: -14px;
+      right: -14px;
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: #fff;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      &:hover { background: rgba(255,255,255,0.3); }
+    }
     .member-info {
       display: flex;
       flex-direction: column;
@@ -186,6 +253,8 @@ export class MembersComponent implements OnInit {
   readonly members = signal<Member[]>([]);
   readonly query = signal('');
   readonly roleFilter = signal('');
+  readonly lightboxSrc = signal<string | null>(null);
+  readonly lightboxName = signal<string | null>(null);
 
   readonly showRoles = computed(() => {
     const role = this.authService.currentUser()?.role;
@@ -214,5 +283,18 @@ export class MembersComponent implements OnInit {
 
   onSearch(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value.trim());
+  }
+
+  openLightbox(member: Member, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const src = member.profilePhotoPath ?? '/avatars/bear-default.jpg';
+    this.lightboxSrc.set(src);
+    this.lightboxName.set(member.fullName);
+  }
+
+  @HostListener('document:keydown.escape')
+  closeLightbox(): void {
+    this.lightboxSrc.set(null);
   }
 }
