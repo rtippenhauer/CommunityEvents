@@ -105,7 +105,7 @@ export class EventsController {
     @Body() dto: UpsertRsvpDto,
     @CurrentUser() user: UserEntity,
   ) {
-    return this.eventsService.upsertRsvp(id, user.id, dto.additionalGuests, dto.guestNames);
+    return this.eventsService.upsertRsvp(id, user.id, dto.additionalGuests, dto.guestNames, user.role);
   }
 
   @Delete(':id/rsvp')

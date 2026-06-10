@@ -1,4 +1,5 @@
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import { forkJoin } from 'rxjs';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe, TitleCasePipe } from '@angular/common';
 import { FormArray, FormControl, NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
@@ -125,6 +126,18 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                   <span class="seat-count">{{ totalSeats() }} seat{{ totalSeats() === 1 ? '' : 's' }} needed</span>
                 </div>
 
+                <!-- Timing & deadline info -->
+                <div class="rsvp-disclaimer">
+                  <div class="disclaimer-row">
+                    <mat-icon class="disc-icon">schedule</mat-icon>
+                    <span>RSVP deadline: <strong>5:00 PM</strong> day-of</span>
+                  </div>
+                  <div class="disclaimer-row">
+                    <mat-icon class="disc-icon">restaurant</mat-icon>
+                    <span>Arrive by <strong>6:00 PM</strong> — dinner served at <strong>6:30 PM</strong></span>
+                  </div>
+                </div>
+
                 <!-- RSVP action for logged-in members -->
                 @if (isLoggedIn()) {
                   <div class="rsvp-action">
@@ -153,38 +166,38 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 
                           <!-- Name + email inputs -->
                           <div class="guest-name-list" [formGroup]="guestNamesForm">
-                            @for (ctrl of guestNameControls; track $index) {
+                            @for (idx of reversedGuestIndices; track idx) {
                               <div class="guest-slot-block">
+                                <div class="guest-slot-label">Guest {{ idx + 1 }}</div>
                                 <div class="guest-name-row">
-                                  <span class="guest-slot-num">{{ $index + 1 }}</span>
                                   <mat-form-field appearance="outline" class="guest-name-field">
-                                    <mat-label>Guest {{ $index + 1 }} name (optional)</mat-label>
-                                    <input matInput [formControl]="ctrl" maxlength="200" />
+                                    <mat-label>Name (optional)</mat-label>
+                                    <input matInput [formControl]="guestNameControls[idx]" maxlength="200" />
                                   </mat-form-field>
                                   <button
                                     mat-icon-button
                                     class="copy-link-btn"
-                                    [matTooltip]="guestLinkTooltip($index)"
-                                    [disabled]="generatingLinkIndex() === $index"
-                                    (click)="generateAndCopyLink($index)"
+                                    [matTooltip]="guestLinkTooltip(idx)"
+                                    [disabled]="generatingLinkIndex() === idx"
+                                    (click)="generateAndCopyLink(idx)"
                                   >
-                                    @if (generatingLinkIndex() === $index) {
+                                    @if (generatingLinkIndex() === idx) {
                                       <mat-spinner diameter="18" />
-                                    } @else if (guestLinkAt(myRsvp()!, $index)?.usedAt) {
+                                    } @else if (guestLinkAt(myRsvp()!, idx)?.usedAt) {
                                       <mat-icon class="link-used-icon">how_to_reg</mat-icon>
-                                    } @else if (guestLinkAt(myRsvp()!, $index)) {
+                                    } @else if (guestLinkAt(myRsvp()!, idx)) {
                                       <mat-icon class="link-ready-icon">content_copy</mat-icon>
                                     } @else {
                                       <mat-icon>link</mat-icon>
                                     }
                                   </button>
                                 </div>
-                                @if (!guestLinkAt(myRsvp()!, $index)) {
+                                @if (!guestLinkAt(myRsvp()!, idx)) {
                                   <div class="guest-email-row">
                                     <mat-form-field appearance="outline" class="guest-email-field">
-                                      <mat-label>Guest {{ $index + 1 }} email (optional)</mat-label>
+                                      <mat-label>Email (optional)</mat-label>
                                       <mat-icon matPrefix>mail_outline</mat-icon>
-                                      <input matInput [formControl]="guestEmailControls[$index]" type="email" maxlength="255" />
+                                      <input matInput [formControl]="guestEmailControls[idx]" type="email" maxlength="255" />
                                     </mat-form-field>
                                   </div>
                                 }
@@ -228,9 +241,16 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                         </div>
                       }
                     } @else {
-                      <button mat-raised-button color="primary" (click)="addRsvp()" [disabled]="rsvpLoading()">
-                        <mat-icon>how_to_reg</mat-icon> RSVP
-                      </button>
+                      @if (!isAdminOrMod() && isPastCutoff()) {
+                        <div class="cutoff-banner">
+                          <mat-icon>lock_clock</mat-icon>
+                          <span>RSVP closed — the 5:00 PM deadline has passed</span>
+                        </div>
+                      } @else {
+                        <button mat-raised-button color="primary" (click)="addRsvp()" [disabled]="rsvpLoading()">
+                          <mat-icon>how_to_reg</mat-icon> RSVP
+                        </button>
+                      }
                     }
                   </div>
                 } @else {
@@ -438,6 +458,43 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       font-weight: 600;
       color: var(--db-primary);
     }
+    .rsvp-disclaimer {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      background: #faf7f2;
+      border: 1px solid #e8e0d6;
+      border-radius: 8px;
+    }
+    .disclaimer-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: #666;
+    }
+    .disc-icon {
+      font-size: 0.95rem;
+      width: 0.95rem;
+      height: 0.95rem;
+      color: var(--db-amber);
+      flex-shrink: 0;
+    }
+    .cutoff-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #fff3e0;
+      border: 1px solid #ffb74d;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: #e65100;
+      mat-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
+    }
     .rsvp-action { margin-bottom: 16px; }
     .rsvp-guest-cta { margin-bottom: 16px; }
     .rsvp-controls {
@@ -478,9 +535,26 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       letter-spacing: 0.06em;
     }
 
-    .guest-name-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+    .guest-name-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 
-    .guest-slot-block { display: flex; flex-direction: column; gap: 4px; }
+    .guest-slot-block {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 10px 12px 6px;
+      background: #fff;
+      border: 1px solid #e8e0d6;
+      border-radius: 8px;
+    }
+
+    .guest-slot-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--db-amber);
+      margin-bottom: 2px;
+    }
 
     .guest-name-row {
       display: flex;
@@ -489,27 +563,13 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
     }
 
     .guest-email-row {
-      padding-left: 28px;
+      padding-left: 0;
     }
 
     .guest-email-field {
       width: 100%;
       font-size: 0.88rem;
       .mat-mdc-form-field-subscript-wrapper { display: none; }
-    }
-
-    .guest-slot-num {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: var(--db-amber);
-      color: #fff;
-      font-size: 0.7rem;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
     }
 
     .guest-name-field {
@@ -698,6 +758,11 @@ export class EventDetailComponent implements OnInit {
     return (this.guestEmailsForm.get('emails') as FormArray<FormControl<string>>).controls;
   }
 
+  get reversedGuestIndices(): number[] {
+    const len = this.guestNameControls.length;
+    return Array.from({ length: len }, (_, i) => len - 1 - i);
+  }
+
   readonly myRsvp = computed<Rsvp | null>(() => {
     const e = this.event();
     const me = this.authService.currentUser();
@@ -707,6 +772,17 @@ export class EventDetailComponent implements OnInit {
 
   readonly totalSeats = computed<number>(() => {
     return (this.event()?.rsvps ?? []).reduce((sum, r) => sum + 1 + r.additionalGuests, 0);
+  });
+
+  readonly isPastCutoff = computed<boolean>(() => {
+    const e = this.event();
+    if (!e) return false;
+    const now = new Date();
+    const [y, m, d] = e.eventDate.split('-').map(Number);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const eventDay = new Date(y, m - 1, d);
+    if (today.getTime() !== eventDay.getTime()) return false;
+    return now.getHours() >= 17;
   });
 
   ngOnInit(): void {
@@ -725,7 +801,7 @@ export class EventDetailComponent implements OnInit {
     });
   }
 
-  private rebuildNameControls(count: number, existing: string[] | null): void {
+  private rebuildNameControls(count: number, existing: string[] | null, preservedEmails?: string[]): void {
     const arr = this.guestNamesForm.get('names') as FormArray<FormControl<string>>;
     arr.clear();
     for (let i = 0; i < count; i++) {
@@ -734,7 +810,7 @@ export class EventDetailComponent implements OnInit {
     const emailArr = this.guestEmailsForm.get('emails') as FormArray<FormControl<string>>;
     emailArr.clear();
     for (let i = 0; i < count; i++) {
-      emailArr.push(this.fb.control(''));
+      emailArr.push(this.fb.control(preservedEmails?.[i] ?? ''));
     }
   }
 
@@ -795,13 +871,13 @@ export class EventDetailComponent implements OnInit {
     return 'Copy guest link';
   }
 
-  private refreshEvent(id: number): void {
+  private refreshEvent(id: number, preservedEmails?: string[]): void {
     this.eventsService.getOne(id).subscribe({
       next: (e) => {
         this.event.set(e);
         const my = e.rsvps.find((r) => r.userId === this.authService.currentUser()?.id);
         this.guestsCtrl.setValue(my?.additionalGuests ?? 0);
-        this.rebuildNameControls(my?.additionalGuests ?? 0, my?.guestNames ?? null);
+        this.rebuildNameControls(my?.additionalGuests ?? 0, my?.guestNames ?? null, preservedEmails);
         this.rsvpLoading.set(false);
       },
       error: () => this.rsvpLoading.set(false),
@@ -823,8 +899,9 @@ export class EventDetailComponent implements OnInit {
   updateGuests(additionalGuests: number): void {
     const id = this.event()!.id;
     const names = this.guestNameControls.map((c) => c.value);
+    const emails = this.guestEmailControls.map((c) => c.value);
     this.eventsService.rsvp(id, additionalGuests, names).subscribe({
-      next: () => this.refreshEvent(id),
+      next: () => this.refreshEvent(id, emails),
       error: () => this.snackBar.open('Failed to update guests', 'OK', { duration: 3000 }),
     });
   }
@@ -845,12 +922,36 @@ export class EventDetailComponent implements OnInit {
     const id = this.event()!.id;
     const rsvp = this.myRsvp()!;
     const names = this.guestNameControls.map((c) => c.value);
+    const emails = this.guestEmailControls.map((c) => c.value);
     this.savingNames.set(true);
     this.eventsService.rsvp(id, rsvp.additionalGuests, names).subscribe({
       next: () => {
-        this.refreshEvent(id);
-        this.savingNames.set(false);
-        this.snackBar.open('Guest names saved', 'OK', { duration: 2000 });
+        // Auto-generate links (and queue invite emails) for guests who have an email but no link yet
+        const linkTasks = emails
+          .map((email, i) => ({ email: email.trim(), i }))
+          .filter(({ email, i }) => email && !this.guestLinkAt(rsvp, i))
+          .map(({ email, i }) => this.eventsService.generateGuestLink(id, names[i] || undefined, email));
+
+        if (linkTasks.length === 0) {
+          this.refreshEvent(id, emails);
+          this.savingNames.set(false);
+          this.snackBar.open('Guest names saved', 'OK', { duration: 2000 });
+          return;
+        }
+
+        forkJoin(linkTasks).subscribe({
+          next: () => {
+            this.refreshEvent(id, emails);
+            this.savingNames.set(false);
+            const n = linkTasks.length;
+            this.snackBar.open(`Names saved — ${n} invite email${n !== 1 ? 's' : ''} queued`, 'OK', { duration: 3000 });
+          },
+          error: () => {
+            this.refreshEvent(id, emails);
+            this.savingNames.set(false);
+            this.snackBar.open('Names saved — some invites may have failed to send', 'OK', { duration: 3000 });
+          },
+        });
       },
       error: () => { this.savingNames.set(false); this.snackBar.open('Failed to save names', 'OK', { duration: 3000 }); },
     });

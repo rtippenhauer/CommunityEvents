@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
+import { UserRole } from '../../database/entities/user.entity';
 import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
 import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
@@ -166,11 +168,25 @@ export class EventsService {
     await this.eventRepo.remove(event);
   }
 
+  private isPastRsvpCutoff(eventDate: string): boolean {
+    const now = new Date();
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+    const parts = fmt.formatToParts(now);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '0';
+    const todayEastern = `${get('year')}-${get('month')}-${get('day')}`;
+    return todayEastern === eventDate && parseInt(get('hour'), 10) >= 17;
+  }
+
   async upsertRsvp(
     eventId: number,
     userId: number,
     additionalGuests: number,
     guestNames?: string[],
+    userRole?: UserRole,
   ): Promise<EventRsvpEntity> {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
@@ -179,6 +195,12 @@ export class EventsService {
     }
 
     const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
+
+    if (!existing && this.isPastRsvpCutoff(event.eventDate) &&
+        userRole !== UserRole.ADMIN && userRole !== UserRole.MODERATOR) {
+      throw new ForbiddenException('RSVP is closed — the 5:00 PM deadline has passed');
+    }
+
     if (existing) {
       existing.additionalGuests = additionalGuests;
       if (guestNames !== undefined) {

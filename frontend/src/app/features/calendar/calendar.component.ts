@@ -384,6 +384,7 @@ export class CalendarComponent implements OnInit {
   }
 
   private todayStr(): string {
-    return this.today.toISOString().split('T')[0];
+    const d = this.today;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 }
