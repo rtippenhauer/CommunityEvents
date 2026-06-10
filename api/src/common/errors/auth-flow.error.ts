@@ -5,5 +5,7 @@ export class AuthFlowError extends Error {
   ) {
     super(reason);
     this.name = 'AuthFlowError';
+    // Restore prototype chain broken by TypeScript when extending built-in Error
+    Object.setPrototypeOf(this, AuthFlowError.prototype);
   }
 }

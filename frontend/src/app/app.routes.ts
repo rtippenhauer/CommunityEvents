@@ -124,4 +124,9 @@ export const routes: Routes = [
       ),
     canActivate: [authGuard],
   },
+  {
+    path: '**',
+    loadComponent: () =>
+      import('./features/not-found/not-found.component').then((m) => m.NotFoundComponent),
+  },
 ];

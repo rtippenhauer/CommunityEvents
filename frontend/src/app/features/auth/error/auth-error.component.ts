@@ -1,7 +1,6 @@
-import { Component, computed, inject, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
-import { MatButtonModule } from '@angular/material/button';
-import { MatIconModule } from '@angular/material/icon';
+import { Component, computed, inject } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { ErrorPageComponent } from '../../../shared/components/error-page/error-page.component';
 
 interface ErrorContent {
   icon: string;
@@ -13,8 +12,8 @@ interface ErrorContent {
 const ERROR_CONTENT: Record<string, ErrorContent> = {
   no_invite: {
     icon: 'mail_lock',
-    title: 'Invite required',
-    body: 'DinnerBears is invite-only. Ask a current member to send you an invite link, then try signing in again.',
+    title: 'Account not found',
+    body: "We couldn't find a DinnerBears account linked to your Google sign-in. DinnerBears is invite-only — if you've received an invite link, use it to sign up.",
     showInviteHint: true,
   },
   not_active: {
@@ -52,132 +51,24 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
 const FALLBACK: ErrorContent = {
   icon: 'error_outline',
   title: 'Sign-in failed',
-  body: "Something went wrong while signing you in. Please try again, or contact a DinnerBears admin if the problem continues.",
+  body: 'Something went wrong while signing you in. Please try again, or contact a DinnerBears admin if the problem continues.',
   showInviteHint: false,
 };
 
 @Component({
   selector: 'app-auth-error',
   standalone: true,
-  imports: [MatButtonModule, MatIconModule, RouterLink],
+  imports: [ErrorPageComponent],
   template: `
-    <div class="error-page">
-      <div class="error-card">
-        <div class="bear-logo">
-          <img src="/images/DinnerBearsIcon.png" alt="DinnerBears" />
-        </div>
-
-        <mat-icon class="error-icon">{{ content().icon }}</mat-icon>
-
-        <h1 class="error-title">{{ content().title }}</h1>
-        <p class="error-body">{{ content().body }}</p>
-
-        @if (invitedEmail()) {
-          <div class="invited-email-block">
-            <span class="invited-label">Invite sent to:</span>
-            <span class="invited-address">{{ invitedEmail() }}</span>
-          </div>
-        }
-
-        @if (content().showInviteHint) {
-          <p class="invite-hint">
-            Don't have an invite? Have a current member visit
-            <strong>dinnerbears.com</strong> to send you one.
-          </p>
-        }
-
-        <div class="actions">
-          <a mat-raised-button color="primary" routerLink="/login">Back to sign in</a>
-        </div>
-      </div>
-    </div>
+    <app-error-page
+      [icon]="content().icon"
+      [title]="content().title"
+      [body]="content().body"
+      [showInviteHint]="content().showInviteHint"
+      [invitedEmail]="invitedEmail()"
+      [showLoginButton]="true"
+    />
   `,
-  styles: [`
-    .error-page {
-      min-height: calc(100vh - 64px - 52px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--db-cream);
-      padding: 24px 16px;
-    }
-
-    .error-card {
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 2px 16px rgba(0,0,0,.08);
-      padding: 40px 32px;
-      max-width: 420px;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 16px;
-    }
-
-    .bear-logo img {
-      height: 56px;
-      filter: drop-shadow(0 2px 4px rgba(61,28,5,.15));
-    }
-
-    .error-icon {
-      font-size: 48px;
-      width: 48px;
-      height: 48px;
-      color: #c62828;
-    }
-
-    .error-title {
-      margin: 0;
-      font-size: 1.4rem;
-      font-weight: 600;
-      color: var(--db-text-dark);
-    }
-
-    .error-body {
-      margin: 0;
-      color: var(--db-text-mid);
-      line-height: 1.5;
-    }
-
-    .invited-email-block {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-      background: #fff3e0;
-      border: 1px solid #ffe0b2;
-      border-radius: 8px;
-      padding: 10px 20px;
-      width: 100%;
-    }
-    .invited-label {
-      font-size: 0.75rem;
-      color: #888;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .invited-address {
-      font-weight: 600;
-      color: var(--db-text-dark);
-      word-break: break-all;
-    }
-
-    .invite-hint {
-      margin: 0;
-      font-size: 0.85rem;
-      color: #888;
-      background: var(--db-cream);
-      border-radius: 6px;
-      padding: 10px 14px;
-      line-height: 1.5;
-    }
-
-    .actions {
-      margin-top: 8px;
-    }
-  `],
 })
 export class AuthErrorComponent {
   private readonly route = inject(ActivatedRoute);
@@ -187,7 +78,7 @@ export class AuthErrorComponent {
     return ERROR_CONTENT[reason] ?? FALLBACK;
   });
 
-  readonly invitedEmail = signal(
-    this.route.snapshot.queryParamMap.get('email') ?? null,
+  readonly invitedEmail = computed<string | null>(
+    () => this.route.snapshot.queryParamMap.get('email'),
   );
 }
