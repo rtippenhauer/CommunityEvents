@@ -1,0 +1,102 @@
+[
+  {
+    "path": "/avatars/bear-artist.jpg",
+    "label": "Artist"
+  },
+  {
+    "path": "/avatars/bear-astronaut.jpg",
+    "label": "Astronaut"
+  },
+  {
+    "path": "/avatars/bear-athlete.jpg",
+    "label": "Athlete"
+  },
+  {
+    "path": "/avatars/bear-bbq.png",
+    "label": "Bbq"
+  },
+  {
+    "path": "/avatars/bear-bookworm.jpg",
+    "label": "Bookworm"
+  },
+  {
+    "path": "/avatars/bear-brewmaster.png",
+    "label": "Brewmaster"
+  },
+  {
+    "path": "/avatars/bear-camper.png",
+    "label": "Camper"
+  },
+  {
+    "path": "/avatars/bear-chef.jpg",
+    "label": "Chef"
+  },
+  {
+    "path": "/avatars/bear-cool.jpg",
+    "label": "Cool"
+  },
+  {
+    "path": "/avatars/bear-dapper.jpg",
+    "label": "Dapper"
+  },
+  {
+    "path": "/avatars/bear-default.jpg",
+    "label": "Default"
+  },
+  {
+    "path": "/avatars/bear-disco.jpg",
+    "label": "Disco"
+  },
+  {
+    "path": "/avatars/bear-explorer.jpg",
+    "label": "Explorer"
+  },
+  {
+    "path": "/avatars/bear-flannel.jpg",
+    "label": "Flannel"
+  },
+  {
+    "path": "/avatars/bear-hawaiian.png",
+    "label": "Hawaiian"
+  },
+  {
+    "path": "/avatars/bear-hoodie.jpg",
+    "label": "Hoodie"
+  },
+  {
+    "path": "/avatars/bear-karaoke.jpg",
+    "label": "Karaoke"
+  },
+  {
+    "path": "/avatars/bear-musician.jpg",
+    "label": "Musician"
+  },
+  {
+    "path": "/avatars/bear-nascar.png",
+    "label": "Nascar"
+  },
+  {
+    "path": "/avatars/bear-pirate.jpg",
+    "label": "Pirate"
+  },
+  {
+    "path": "/avatars/bear-rainbow.jpg",
+    "label": "Rainbow"
+  },
+  {
+    "path": "/avatars/bear-shopping.png",
+    "label": "Shopping"
+  },
+  {
+    "path": "/avatars/bear-steampunk.jpg",
+    "label": "Steampunk"
+  },
+  {
+    "path": "/avatars/bear-viking.jpg",
+    "label": "Viking"
+  },
+  {
+    "path": "/avatars/bear-wizard.jpg",
+    "label": "Wizard"
+  }
+]

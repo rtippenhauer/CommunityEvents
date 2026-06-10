@@ -65,32 +65,7 @@ interface Invite {
   createdAt: string;
 }
 
-const PRESET_AVATARS = [
-  { path: '/avatars/bear-chef.jpg', label: 'Chef' },
-  { path: '/avatars/bear-flannel.jpg', label: 'Flannel' },
-  { path: '/avatars/bear-steampunk.jpg', label: 'Steampunk' },
-  { path: '/avatars/bear-viking.jpg', label: 'Viking' },
-  { path: '/avatars/bear-wizard.jpg', label: 'Wizard' },
-  { path: '/avatars/bear-shopping.png', label: 'Shopping' },
-  { path: '/avatars/bear-hawaiian.png', label: 'Hawaiian' },
-  { path: '/avatars/bear-nascar.png', label: 'Nascar' },
-  { path: '/avatars/bear-bbq.png', label: 'BBQ' },
-  { path: '/avatars/bear-cool.jpg', label: 'Cool' },
-  { path: '/avatars/bear-rainbow.jpg', label: 'Rainbow' },
-  { path: '/avatars/bear-hoodie.jpg', label: 'Hoodie' },
-  { path: '/avatars/bear-bookworm.jpg', label: 'Bookworm' },
-  { path: '/avatars/bear-explorer.jpg', label: 'Explorer' },
-  { path: '/avatars/bear-musician.jpg', label: 'Musician' },
-  { path: '/avatars/bear-athlete.jpg', label: 'Athlete' },
-  { path: '/avatars/bear-dapper.jpg', label: 'Dapper' },
-  { path: '/avatars/bear-astronaut.jpg', label: 'Astronaut' },
-  { path: '/avatars/bear-artist.jpg', label: 'Artist' },
-  { path: '/avatars/bear-disco.jpg', label: 'Disco' },
-  { path: '/avatars/bear-karaoke.jpg', label: 'Karaoke' },
-  { path: '/avatars/bear-pirate.jpg', label: 'Pirate' },
-  { path: '/avatars/bear-brewmaster.png', label: 'Brewmaster' },
-  { path: '/avatars/bear-camper.png', label: 'Camper' },
-];
+interface AvatarEntry { path: string; label: string; }
 
 @Component({
   selector: 'app-profile',
@@ -172,7 +147,7 @@ const PRESET_AVATARS = [
                 <mat-tab-group animationDuration="150ms">
                   <mat-tab label="Choose a Bear">
                     <div class="avatar-grid">
-                      @for (avatar of presetAvatars; track avatar.path) {
+                      @for (avatar of presetAvatars(); track avatar.path) {
                         <button
                           type="button"
                           class="avatar-tile"
@@ -750,7 +725,7 @@ export class ProfileComponent implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly clipboard = inject(Clipboard);
 
-  readonly presetAvatars = PRESET_AVATARS;
+  readonly presetAvatars = signal<AvatarEntry[]>([]);
   readonly cities = signal<City[]>([]);
   readonly saving = signal(false);
   readonly photoUrl = signal<string | null>(null);
@@ -776,6 +751,10 @@ export class ProfileComponent implements OnInit {
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((cities) => {
       this.cities.set(cities);
+    });
+    this.http.get<AvatarEntry[]>('/avatars/manifest.json').subscribe({
+      next: (avatars) => this.presetAvatars.set(avatars),
+      error: () => {},
     });
     const user = this.authService.currentUser();
     if (user) {
