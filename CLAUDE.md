@@ -33,16 +33,11 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 4.3 — Sharing & Calendar Export**
+**Phase 4.6 — Avatar System (dynamic):** Replace hardcoded avatar list with a live `GET /api/v1/avatars` endpoint that scans the asset directory, add "I Feel Lucky" random picker, and remove all hardcoded `PRESET_AVATARS` references.
 See PHASES.md for full phase breakdown and definitions of done.
 
 ## Completed Phases
-- **Phase 1** — Docker scaffold, Angular shell, NestJS + TypeORM, health check, ESLint/Prettier ✓
-- **Phase 2** — Google OAuth, invite system, JWT sessions, profile page, photo upload ✓
-- **Phase 3** — Restaurant database UI, photos, geocoding ✓
-- **Phase 3.5** — Historical Facebook import, enrichment via Google Places + Claude AI ✓
-- **Phase 4.1** — Event core, CRUD, publish/cancel, event list + detail pages ✓
-- **Phase 4.2** — Member RSVP, +N guests, guest naming, shareable guest links ✓
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules
@@ -67,8 +62,3 @@ See PHASES.md for full phase breakdown and definitions of done.
 - Migrations in `api/src/database/migrations/` with timestamp prefix
 - See `docs/DATABASE_SCHEMA.md` for full schema
 
-## Key Files for Context
-- `docs/REQUIREMENTS.md` — all 107 product requirements
-- `docs/DATABASE_SCHEMA.md` — all 25 tables with columns and indexes
-- `docs/PHASES.md` — phase breakdown (same as root PHASES.md)
-- `docs/FACEBOOK_APP_SETUP.md` — Facebook OAuth setup guide

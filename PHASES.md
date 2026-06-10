@@ -257,25 +257,6 @@ can still adjust RSVPs after cutoff.
 
 ---
 
-## Phase 4.5 — Dark Warm Theme
-
-Reqs: R-120
-
-- Update Angular Material theme tokens: background `#3d2210`, surface
-  `#4d2c14`, primary accent amber `#e8a44a`
-- Update SCSS global variables for body text, secondary text, borders
-- Nav/footer background `#311a0a`
-- RSVP / Going button text explicitly `#ffffff`; Going button bg `#0d2b18`
-  with border `#1d5c32`
-- Landing page (public/) updated to match dark palette
-- Verify legibility at 375px and 1280px
-
-**Definition of done:** No page or card renders with white or light-gray
-backgrounds. All Material components use dark palette. RSVP button text
-legible. Landing page matches app.
-
----
-
 ## Phase 4.6 — Avatar System (dynamic)
 
 Reqs: R-117, R-118, R-119

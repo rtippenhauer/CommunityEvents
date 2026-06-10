@@ -321,11 +321,16 @@ export class EventsService {
     const pad = (n: number) => String(n).padStart(2, '0');
     const start = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
     const end = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const details: string[] = [`🍽️ ${event.restaurantName}`];
+    if (event.description) details.push(event.description);
+    if (event.additionalInfo) details.push(event.additionalInfo);
+    details.push(`View event: ${appUrl}/events/${event.id}`);
     const p = new URLSearchParams({
       action: 'TEMPLATE', text: event.title,
       dates: `${start}/${end}`, location: event.restaurantAddress,
+      details: details.join('\n\n'),
     });
-    if (event.description) p.set('details', event.description);
     return `https://calendar.google.com/calendar/render?${p.toString()}`;
   }
 
@@ -464,8 +469,9 @@ export class EventsService {
     const esc = (s: string) =>
       s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
 
-    const descParts: string[] = [];
+    const descParts: string[] = [`🍽️ ${event.restaurantName}`];
     if (event.description) descParts.push(event.description);
+    if (event.additionalInfo) descParts.push(event.additionalInfo);
     if (descriptionSuffix) descParts.push(descriptionSuffix);
 
     const lines = [

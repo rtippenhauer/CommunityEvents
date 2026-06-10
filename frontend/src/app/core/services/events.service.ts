@@ -182,13 +182,17 @@ export class EventsService {
     const pad = (n: number) => String(n).padStart(2, '0');
     const startDt = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
     const endDt = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
+    const details: string[] = [`🍽️ ${event.restaurantName}`];
+    if (event.description) details.push(event.description);
+    if (event.additionalInfo) details.push(event.additionalInfo);
+    details.push(`View event: ${window.location.origin}/events/${event.id}`);
     const params = new URLSearchParams({
       action: 'TEMPLATE',
       text: event.title,
       dates: `${startDt}/${endDt}`,
       location: event.restaurantAddress,
+      details: details.join('\n\n'),
     });
-    if (event.description) params.set('details', event.description);
     return `https://calendar.google.com/calendar/render?${params.toString()}`;
   }
 
