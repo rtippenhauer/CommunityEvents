@@ -9,6 +9,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatButtonModule } from '@angular/material/button';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 interface AdminUser {
   id: number;
@@ -38,6 +40,8 @@ interface AdminUser {
     MatTooltipModule,
     MatInputModule,
     MatFormFieldModule,
+    MatButtonModule,
+    MatSnackBarModule,
   ],
   template: `
     <div class="admin-users-container">
@@ -119,6 +123,33 @@ interface AdminUser {
                   </td>
                 </ng-container>
 
+                <ng-container matColumnDef="actions">
+                  <th mat-header-cell *matHeaderCellDef></th>
+                  <td mat-cell *matCellDef="let u">
+                    @if (u.role !== 'admin') {
+                      @if (confirmDeleteId() === u.id) {
+                        <div class="confirm-row">
+                          <span class="confirm-label">Delete?</span>
+                          <button mat-icon-button class="confirm-yes" (click)="confirmDelete(u.id)"
+                            matTooltip="Yes, dev delete" [disabled]="deletingId() === u.id">
+                            <mat-icon>check</mat-icon>
+                          </button>
+                          <button mat-icon-button (click)="cancelDelete()"
+                            matTooltip="Cancel">
+                            <mat-icon>close</mat-icon>
+                          </button>
+                        </div>
+                      } @else {
+                        <button mat-icon-button class="dev-delete-btn"
+                          (click)="requestDelete(u.id)"
+                          matTooltip="Dev Delete — anonymizes email, removes OAuth, frees account for re-invite">
+                          <mat-icon>delete_forever</mat-icon>
+                        </button>
+                      }
+                    }
+                  </td>
+                </ng-container>
+
                 <tr mat-header-row *matHeaderRowDef="columns"></tr>
                 <tr mat-row *matRowDef="let row; columns: columns;"></tr>
               </table>
@@ -196,15 +227,31 @@ interface AdminUser {
     .role-member { background: #e0e0e0 !important; }
     .status-active { background: #c8e6c9 !important; }
     .status-suspended { background: #ffccbc !important; }
+    .dev-delete-btn { color: #c62828; opacity: 0.5; }
+    .dev-delete-btn:hover { opacity: 1; }
+    .confirm-row {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .confirm-label {
+      font-size: 0.75rem;
+      color: #c62828;
+      font-weight: 500;
+    }
+    .confirm-yes { color: #c62828; }
   `],
 })
 export class AdminUsersComponent implements OnInit {
   private readonly http = inject(HttpClient);
+  private readonly snackBar = inject(MatSnackBar);
 
-  readonly columns = ['photo', 'name', 'role', 'status', 'invitedBy', 'joined', 'lastLogin'];
+  readonly columns = ['photo', 'name', 'role', 'status', 'invitedBy', 'joined', 'lastLogin', 'actions'];
   readonly loading = signal(true);
   readonly users = signal<AdminUser[]>([]);
   readonly filtered = signal<AdminUser[]>([]);
+  readonly confirmDeleteId = signal<number | null>(null);
+  readonly deletingId = signal<number | null>(null);
 
   ngOnInit(): void {
     this.http.get<AdminUser[]>('/api/v1/admin/users').subscribe({
@@ -226,5 +273,33 @@ export class AdminUsersComponent implements OnInit {
           )
         : this.users(),
     );
+  }
+
+  requestDelete(id: number): void {
+    this.confirmDeleteId.set(id);
+  }
+
+  cancelDelete(): void {
+    this.confirmDeleteId.set(null);
+  }
+
+  confirmDelete(id: number): void {
+    this.deletingId.set(id);
+    this.http.delete(`/api/v1/admin/users/${id}`).subscribe({
+      next: () => {
+        this.deletingId.set(null);
+        this.confirmDeleteId.set(null);
+        const updated = this.users().filter((u) => u.id !== id);
+        this.users.set(updated);
+        this.filtered.set(this.filtered().filter((u) => u.id !== id));
+        this.snackBar.open('User dev-deleted — email freed for re-invite', 'OK', { duration: 4000 });
+      },
+      error: (err) => {
+        this.deletingId.set(null);
+        this.confirmDeleteId.set(null);
+        const msg = err?.error?.message ?? 'Delete failed';
+        this.snackBar.open(msg, 'OK', { duration: 4000 });
+      },
+    });
   }
 }

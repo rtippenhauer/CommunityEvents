@@ -256,6 +256,32 @@ export class EventsService {
     };
   }
 
+  async removeGuestLink(linkId: number, userId: number): Promise<void> {
+    const link = await this.guestLinkRepo.findOne({
+      where: { id: linkId },
+      relations: ['memberRsvp', 'memberRsvp.guestLinks'],
+    });
+    if (!link) throw new NotFoundException('Link not found');
+
+    const rsvp = link.memberRsvp;
+    if (rsvp.userId !== userId) throw new ForbiddenException('Not your RSVP');
+
+    // Find this link's position in the sorted array to know which name to drop
+    const sorted = [...rsvp.guestLinks].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    const idx = sorted.findIndex((l) => l.id === linkId);
+
+    rsvp.additionalGuests = Math.max(0, rsvp.additionalGuests - 1);
+    if (rsvp.guestNames && idx >= 0 && idx < rsvp.guestNames.length) {
+      rsvp.guestNames.splice(idx, 1);
+      if (rsvp.guestNames.length === 0) rsvp.guestNames = null;
+    }
+
+    await this.guestLinkRepo.remove(link);
+    await this.rsvpRepo.save(rsvp);
+  }
+
   async cancelGuestRsvp(token: string): Promise<void> {
     const link = await this.guestLinkRepo.findOne({ where: { token } });
     if (!link) throw new NotFoundException('Guest link not found');

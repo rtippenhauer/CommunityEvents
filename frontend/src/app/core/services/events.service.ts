@@ -154,6 +154,10 @@ export class EventsService {
     return this.http.delete<void>(`${this.base}/guest-link/${token}`);
   }
 
+  removeGuestLink(eventId: number, linkId: number): Observable<void> {
+    return this.http.delete<void>(`${this.base}/${eventId}/rsvp/link/${linkId}`);
+  }
+
   mapsUrl(lat: number | null, lng: number | null, address: string): string {
     if (lat && lng) return `https://www.google.com/maps?q=${lat},${lng}`;
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;

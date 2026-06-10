@@ -76,6 +76,16 @@ export class EventsController {
     return this.eventsService.cancelGuestRsvp(token);
   }
 
+  @Delete(':id/rsvp/link/:linkId')
+  @UseGuards(JwtAuthGuard)
+  removeGuestLink(
+    @Param('id', ParseIntPipe) _id: number,
+    @Param('linkId', ParseIntPipe) linkId: number,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.eventsService.removeGuestLink(linkId, user.id);
+  }
+
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   findOne(@Param('id', ParseIntPipe) id: number) {

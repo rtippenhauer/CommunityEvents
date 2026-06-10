@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
+import { OAuthAccountEntity } from '../../database/entities/oauth-account.entity';
 
 export interface AdminUserRow {
   id: number;
@@ -23,6 +24,8 @@ export class AdminService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(OAuthAccountEntity)
+    private readonly oauthRepo: Repository<OAuthAccountEntity>,
   ) {}
 
   async getUsers(): Promise<AdminUserRow[]> {
@@ -78,6 +81,21 @@ export class AdminService {
     if (!target) throw new NotFoundException('User not found');
     if (target.status === UserStatus.ACTIVE) throw new BadRequestException('User is not banned');
     await this.userRepo.update(targetId, { status: UserStatus.ACTIVE, deletedAt: null });
+  }
+
+  async devDeleteUser(targetId: number, actorId: number): Promise<void> {
+    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('User not found');
+    if (target.id === actorId) throw new BadRequestException('Cannot delete yourself');
+    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot delete an admin');
+
+    await this.oauthRepo.delete({ userId: targetId });
+
+    await this.userRepo.update(targetId, {
+      status: UserStatus.DELETED,
+      deletedAt: new Date(),
+      email: `deleted_${targetId}@deleted.invalid`,
+    });
   }
 
   async setRole(targetId: number, actorId: number, role: UserRole): Promise<void> {

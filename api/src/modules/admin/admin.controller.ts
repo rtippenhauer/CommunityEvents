@@ -47,6 +47,16 @@ export class AdminController {
     return this.adminService.unbanUser(id);
   }
 
+  @Delete('users/:id')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(204)
+  devDelete(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() actor: UserEntity,
+  ) {
+    return this.adminService.devDeleteUser(id, actor.id);
+  }
+
   @Post('users/:id/role')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)

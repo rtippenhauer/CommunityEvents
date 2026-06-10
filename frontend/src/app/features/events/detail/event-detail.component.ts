@@ -215,11 +215,13 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                                   <span class="link-status-badge" [class.used]="link.usedAt && !link.cancelledAt" [class.cancelled]="link.cancelledAt">
                                     {{ link.cancelledAt ? "Can't Make It" : link.usedAt ? 'Confirmed' : 'Pending' }}
                                   </span>
-                                  @if (!link.usedAt) {
-                                    <button mat-icon-button matTooltip="Copy link again" (click)="copyExistingLink(link.token)">
-                                      <mat-icon>content_copy</mat-icon>
-                                    </button>
-                                  }
+                                  <button mat-icon-button matTooltip="Copy & re-send link" (click)="copyExistingLink(link.token)">
+                                    <mat-icon>content_copy</mat-icon>
+                                  </button>
+                                  <button mat-icon-button matTooltip="Remove guest" class="remove-link-btn" [disabled]="removingLinkId() === link.id" (click)="removeLink(link.id)">
+                                    @if (removingLinkId() === link.id) { <mat-spinner diameter="16" /> }
+                                    @else { <mat-icon>person_remove</mat-icon> }
+                                  </button>
                                 </div>
                               }
                             </div>
@@ -613,6 +615,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
     }
 
     .link-status-name { flex: 1; color: var(--db-brown-dark); }
+    .remove-link-btn { color: #c62828 !important; opacity: 0.7; &:hover { opacity: 1; } }
 
     .link-status-badge {
       font-size: 0.7rem;
@@ -744,6 +747,7 @@ export class EventDetailComponent implements OnInit {
   readonly rsvpLoading = signal(false);
   readonly savingNames = signal(false);
   readonly generatingLinkIndex = signal<number | null>(null);
+  readonly removingLinkId = signal<number | null>(null);
 
   readonly guestOptions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
   readonly guestsCtrl = new FormControl<number>(0, { nonNullable: true });
@@ -979,16 +983,14 @@ export class EventDetailComponent implements OnInit {
     const rsvp = this.myRsvp()!;
     const existingLink = rsvp.guestLinks?.[index];
 
-    if (existingLink?.cancelledAt) {
-      this.snackBar.open("Guest can't make it — their slot is still counted in your total", 'OK', { duration: 4000 });
-      return;
-    }
-    if (existingLink && !existingLink.usedAt) {
-      this.copyExistingLink(existingLink.token);
-      return;
-    }
-    if (existingLink?.usedAt) {
-      this.snackBar.open('Guest already confirmed', 'OK', { duration: 3000 });
+    // Always allow copying an existing link so the member can re-send it
+    if (existingLink) {
+      const url = `${window.location.origin}/rsvp-guest?token=${existingLink.token}`;
+      this.clipboard.copy(url);
+      const msg = existingLink.cancelledAt ? "Link copied — guest can re-RSVP with this"
+                : existingLink.usedAt ? 'Link copied — guest already confirmed'
+                : 'Link copied!';
+      this.snackBar.open(msg, 'OK', { duration: 3000 });
       return;
     }
 
@@ -1009,6 +1011,23 @@ export class EventDetailComponent implements OnInit {
         this.generatingLinkIndex.set(null);
         const msg = err?.error?.message ?? 'Failed to generate link';
         this.snackBar.open(msg, 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  removeLink(linkId: number): void {
+    if (!window.confirm('Remove this guest? Their link will stop working and your guest count will decrease by 1.')) return;
+    const id = this.event()!.id;
+    this.removingLinkId.set(linkId);
+    this.eventsService.removeGuestLink(id, linkId).subscribe({
+      next: () => {
+        this.removingLinkId.set(null);
+        this.refreshEvent(id);
+        this.snackBar.open('Guest removed', 'OK', { duration: 2000 });
+      },
+      error: () => {
+        this.removingLinkId.set(null);
+        this.snackBar.open('Failed to remove guest', 'OK', { duration: 3000 });
       },
     });
   }
