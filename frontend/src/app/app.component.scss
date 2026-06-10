@@ -198,16 +198,6 @@
   margin-left: auto;
 }
 
-.admin-badge-dot {
-  position: absolute;
-  top: 6px;
-  right: 4px;
-  width: 8px;
-  height: 8px;
-  background: #c62828;
-  border-radius: 50%;
-  border: 1.5px solid var(--db-brown-nav, #3d1c05);
-}
 
 .logout-btn { color: var(--db-cream) !important; opacity: 0.7; &:hover { opacity: 1; } }
 

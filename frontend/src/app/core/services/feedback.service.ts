@@ -61,4 +61,10 @@ export class FeedbackService {
       }),
     );
   }
+
+  markAllSeen(): Observable<{ count: number }> {
+    return this.http.patch<{ count: number }>('/api/v1/feedback/mark-all-seen', {}).pipe(
+      tap(() => this.unseenCount.set(0)),
+    );
+  }
 }

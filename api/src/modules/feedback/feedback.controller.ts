@@ -47,6 +47,14 @@ export class FeedbackController {
     return this.feedbackService.update(id, dto);
   }
 
+  @Patch('mark-all-seen')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async markAllSeen(): Promise<{ count: number }> {
+    await this.feedbackService.markAllSeen();
+    return { count: 0 };
+  }
+
   @Patch(':id/seen')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)

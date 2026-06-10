@@ -105,7 +105,7 @@
             <button mat-button [matMenuTriggerFor]="adminMenu" class="admin-menu-btn">
               <mat-icon>admin_panel_settings</mat-icon> Admin
               @if (feedbackService.unseenCount() > 0) {
-                <span class="admin-badge-dot"></span>
+                <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
               }
             </button>
             <mat-menu #adminMenu="matMenu">

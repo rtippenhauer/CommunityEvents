@@ -53,4 +53,13 @@ export class FeedbackService {
     }
     return item;
   }
+
+  async markAllSeen(): Promise<void> {
+    await this.feedbackRepo
+      .createQueryBuilder()
+      .update()
+      .set({ seenAt: new Date() })
+      .where('seen_at IS NULL')
+      .execute();
+  }
 }

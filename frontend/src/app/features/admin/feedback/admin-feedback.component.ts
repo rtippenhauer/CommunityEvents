@@ -288,6 +288,9 @@ export class AdminFeedbackComponent implements OnInit {
         this.items.set(data);
         this.applyFilter();
         this.loading.set(false);
+        if (data.some((i) => !i.seenAt)) {
+          this.feedbackService.markAllSeen().subscribe();
+        }
       },
       error: () => this.loading.set(false),
     });
