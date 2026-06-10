@@ -168,7 +168,93 @@ export class EventsService {
       event.status = dto.status;
     }
 
-    return this.eventRepo.save(event);
+    const saved = await this.eventRepo.save(event);
+
+    if (saved.status === EventStatus.CANCELLED && wasPublished) {
+      void this.sendCancellationEmails(saved);
+    }
+
+    return saved;
+  }
+
+  private async sendCancellationEmails(event: EventEntity): Promise<void> {
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const [ey, em, ed] = event.eventDate.split('-').map(Number);
+    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    });
+    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+
+    const reasonBlock = event.cancelledReason
+      ? `<p style="margin:16px 0 0;padding:12px 16px;background:#fff3e0;border-left:3px solid #e65100;border-radius:4px;font-size:0.9rem;color:#444">${event.cancelledReason}</p>`
+      : '';
+
+    const buildHtml = (recipientName: string) => `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
+  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+  </td></tr>
+  <tr><td style="padding:32px 36px 24px">
+    <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#c62828;line-height:1.2">This event has been cancelled</h1>
+    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:20px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.title}</strong>
+      </td></tr>
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay}
+      </td></tr>
+      <tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">🍽️</span>${event.restaurantName}
+      </td></tr>
+    </table>
+    ${reasonBlock}
+    <p style="margin:20px 0 0;font-size:0.88rem;color:#888">We hope to see you at the next DinnerBears dinner!</p>
+  </td></tr>
+  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    // Members who RSVPd
+    const rsvps = await this.rsvpRepo.find({
+      where: { eventId: event.id },
+      relations: ['user'],
+    });
+    for (const rsvp of rsvps) {
+      if (!rsvp.user?.email) continue;
+      await this.emailService.queue({
+        toEmail: rsvp.user.email,
+        toName: rsvp.user.fullName,
+        subject: `Cancelled: ${event.title}`,
+        htmlBody: buildHtml(rsvp.user.fullName),
+      });
+    }
+
+    // Guest link holders (member-invited + public RSVPs) with an email who haven't already cancelled
+    const guestLinks = await this.guestLinkRepo.find({
+      where: { eventId: event.id, cancelledAt: IsNull() },
+    });
+    for (const link of guestLinks) {
+      if (!link.recipientEmail) continue;
+      const name = link.recipientName ?? link.recipientEmail;
+      await this.emailService.queue({
+        toEmail: link.recipientEmail,
+        toName: name,
+        subject: `Cancelled: ${event.title}`,
+        htmlBody: buildHtml(name),
+      });
+    }
   }
 
   async remove(id: number): Promise<void> {

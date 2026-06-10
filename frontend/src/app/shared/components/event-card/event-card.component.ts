@@ -10,7 +10,7 @@ import { Event } from '../../../core/services/events.service';
   standalone: true,
   imports: [DatePipe, RouterLink, MatButtonModule, MatIconModule],
   template: `
-    <a class="event-card" [class.cancelled]="event.status === 'cancelled'" [routerLink]="['/events', event.id]">
+    <a class="event-card" [class.cancelled]="event.status === 'cancelled'" [class.draft]="event.status === 'draft'" [routerLink]="['/events', event.id]">
       <div class="card-photo" [class.compact]="compact">
         @if (event.restaurant?.photos?.length) {
           <img [src]="event.restaurant!.photos[0].filePath" [alt]="event.restaurantName" loading="lazy" />
@@ -19,6 +19,9 @@ import { Event } from '../../../core/services/events.service';
         }
         @if (event.status === 'cancelled') {
           <div class="cancelled-overlay">CANCELLED</div>
+        }
+        @if (event.status === 'draft') {
+          <div class="draft-overlay">DRAFT</div>
         }
         <div class="card-photo-fade"></div>
       </div>
@@ -57,6 +60,7 @@ import { Event } from '../../../core/services/events.service';
       &:hover { box-shadow: 0 6px 20px rgba(61,28,5,0.12); transform: translateY(-2px); }
     }
     .cancelled { opacity: 0.85; }
+    .draft { opacity: 0.85; }
 
     .card-photo {
       position: relative;
@@ -79,10 +83,9 @@ import { Event } from '../../../core/services/events.service';
       pointer-events: none;
     }
 
-    .cancelled-overlay {
+    .cancelled-overlay, .draft-overlay {
       position: absolute;
       inset: 0;
-      background: var(--db-red-overlay);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -92,6 +95,8 @@ import { Event } from '../../../core/services/events.service';
       color: #fff;
       text-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
+    .cancelled-overlay { background: var(--db-red-overlay); }
+    .draft-overlay { background: rgba(160, 110, 0, 0.68); }
 
     .card-body { padding: 12px 14px; }
 
