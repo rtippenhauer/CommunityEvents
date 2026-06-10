@@ -69,8 +69,8 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
             <mat-icon>event</mat-icon>
             <span>{{ (event()!.eventDate + 'T12:00:00') | date: 'EEEE, MMMM d, y' }} at {{ formatTime(event()!.eventTime) }}</span>
             @if (event()!.status === 'published') {
-              <button mat-icon-button class="cal-add-btn" matTooltip="Add to calendar" [matMenuTriggerFor]="calMenu">
-                <mat-icon>calendar_add_on</mat-icon>
+              <button mat-stroked-button class="cal-add-btn" [matMenuTriggerFor]="calMenu">
+                <mat-icon>calendar_add_on</mat-icon> Add to Calendar
               </button>
               <mat-menu #calMenu="matMenu">
                 <a mat-menu-item [href]="googleCalendarUrl()" target="_blank" rel="noopener">
@@ -465,11 +465,14 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       mat-icon { color: var(--db-primary); }
     }
     .cal-add-btn {
-      width: 28px;
-      height: 28px;
-      line-height: 28px;
+      height: 28px !important;
+      min-height: 28px !important;
+      line-height: 26px !important;
+      font-size: 0.75rem !important;
+      padding: 0 10px !important;
       color: var(--db-primary) !important;
-      mat-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
+      border-color: var(--db-primary) !important;
+      mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; margin-right: 2px; }
     }
     .info-card { margin-bottom: 24px; }
     .info-row {
