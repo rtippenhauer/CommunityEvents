@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
@@ -98,7 +99,7 @@ export class InvitesService {
       throw new BadRequestException('This invite has already been used');
     }
     if (invite.boundToEmail && email && invite.boundToEmail !== email.toLowerCase()) {
-      throw new BadRequestException('This invite is for a different email address');
+      throw new AuthFlowError('invite_email_mismatch', invite.boundToEmail);
     }
 
     return invite;

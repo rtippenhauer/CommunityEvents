@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -44,7 +44,7 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
   invite_email_mismatch: {
     icon: 'person_off',
     title: 'Wrong Google account',
-    body: "This invite was sent to a different email address. Try signing in with the Google account that matches your invitation, or ask for a new invite.",
+    body: "The Google account you signed in with doesn't match the email this invite was sent to. Try again with the correct Google account.",
     showInviteHint: false,
   },
 };
@@ -64,13 +64,20 @@ const FALLBACK: ErrorContent = {
     <div class="error-page">
       <div class="error-card">
         <div class="bear-logo">
-          <img src="/images/dinnerbears-logo.png" alt="DinnerBears" />
+          <img src="/images/DinnerBearsIcon.png" alt="DinnerBears" />
         </div>
 
         <mat-icon class="error-icon">{{ content().icon }}</mat-icon>
 
         <h1 class="error-title">{{ content().title }}</h1>
         <p class="error-body">{{ content().body }}</p>
+
+        @if (invitedEmail()) {
+          <div class="invited-email-block">
+            <span class="invited-label">Invite sent to:</span>
+            <span class="invited-address">{{ invitedEmail() }}</span>
+          </div>
+        }
 
         @if (content().showInviteHint) {
           <p class="invite-hint">
@@ -134,6 +141,29 @@ const FALLBACK: ErrorContent = {
       line-height: 1.5;
     }
 
+    .invited-email-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      background: #fff3e0;
+      border: 1px solid #ffe0b2;
+      border-radius: 8px;
+      padding: 10px 20px;
+      width: 100%;
+    }
+    .invited-label {
+      font-size: 0.75rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .invited-address {
+      font-weight: 600;
+      color: var(--db-text-dark);
+      word-break: break-all;
+    }
+
     .invite-hint {
       margin: 0;
       font-size: 0.85rem;
@@ -156,4 +186,8 @@ export class AuthErrorComponent {
     const reason = this.route.snapshot.queryParamMap.get('reason') ?? '';
     return ERROR_CONTENT[reason] ?? FALLBACK;
   });
+
+  readonly invitedEmail = signal(
+    this.route.snapshot.queryParamMap.get('email') ?? null,
+  );
 }
