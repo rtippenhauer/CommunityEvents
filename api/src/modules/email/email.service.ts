@@ -138,8 +138,13 @@ export class EmailService {
     return result.affected ?? 0;
   }
 
-  getNotificationPrefs(userId: number): Promise<NotificationPreferencesEntity | null> {
-    return this.prefsRepo.findOne({ where: { userId } });
+  async getNotificationPrefs(userId: number): Promise<NotificationPreferencesEntity> {
+    let prefs = await this.prefsRepo.findOne({ where: { userId } });
+    if (!prefs) {
+      prefs = this.prefsRepo.create({ userId });
+      prefs = await this.prefsRepo.save(prefs);
+    }
+    return prefs;
   }
 
   async updateNotificationPrefs(

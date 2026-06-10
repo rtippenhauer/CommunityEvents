@@ -40,19 +40,19 @@ export class FeedbackController {
     return this.feedbackService.findOne(id);
   }
 
-  @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateFeedbackDto) {
-    return this.feedbackService.update(id, dto);
-  }
-
   @Patch('mark-all-seen')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async markAllSeen(): Promise<{ count: number }> {
     await this.feedbackService.markAllSeen();
     return { count: 0 };
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateFeedbackDto) {
+    return this.feedbackService.update(id, dto);
   }
 
   @Patch(':id/seen')

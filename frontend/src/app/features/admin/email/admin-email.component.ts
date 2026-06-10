@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
@@ -91,9 +91,11 @@ interface EmailConfig {
           <mat-card-header>
             <mat-card-title>Today's Send Counts</mat-card-title>
             <div class="header-actions">
-              <button mat-stroked-button color="primary" (click)="retryFailed()" [disabled]="retrying()">
-                <mat-icon>replay</mat-icon> Retry Failed
-              </button>
+              @if (failedCount() > 0) {
+                <button mat-stroked-button color="warn" (click)="retryFailed()" [disabled]="retrying()">
+                  <mat-icon>replay</mat-icon> Retry {{ failedCount() }} Failed
+                </button>
+              }
               <button mat-icon-button (click)="loadQueue()" matTooltip="Refresh queue">
                 <mat-icon>refresh</mat-icon>
               </button>
@@ -346,6 +348,7 @@ export class AdminEmailComponent implements OnInit {
   readonly loading = signal(false);
   readonly retrying = signal(false);
   readonly saving = signal(false);
+  readonly failedCount = computed(() => this.queue().filter((e) => e.status === 'failed').length);
 
   readonly displayedColumns = ['status', 'template', 'toEmail', 'provider', 'attempts', 'createdAt', 'actions'];
 
