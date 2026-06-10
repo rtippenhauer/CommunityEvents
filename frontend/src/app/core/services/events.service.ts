@@ -148,6 +148,10 @@ export class EventsService {
     return this.http.post<{ message: string }>(`${this.base}/guest-link/${token}`, { guestName });
   }
 
+  cancelGuestRsvp(token: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/guest-link/${token}`);
+  }
+
   mapsUrl(lat: number | null, lng: number | null, address: string): string {
     if (lat && lng) return `https://www.google.com/maps?q=${lat},${lng}`;
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;

@@ -71,6 +71,11 @@ export class EventsController {
     return this.eventsService.useGuestLink(token, dto.guestName);
   }
 
+  @Delete('guest-link/:token')
+  cancelGuestRsvp(@Param('token') token: string) {
+    return this.eventsService.cancelGuestRsvp(token);
+  }
+
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   findOne(@Param('id', ParseIntPipe) id: number) {

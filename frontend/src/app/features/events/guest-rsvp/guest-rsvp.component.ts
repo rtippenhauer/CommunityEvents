@@ -9,7 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, GuestLinkInfo } from '../../../core/services/events.service';
 
-type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error' | 'confirmed';
+type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error' | 'confirmed' | 'cancel-confirm';
 
 @Component({
   selector: 'app-guest-rsvp',
@@ -123,6 +123,9 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
               <h2>Already RSVP'd!</h2>
               <p>You're confirmed for <strong>{{ info()!.restaurantName }}</strong> on {{ info()!.eventDate | date: 'MMMM d' }}.</p>
               <p class="state-sub">See you there!</p>
+              <button mat-stroked-button color="warn" class="cancel-btn" [disabled]="cancelling()" (click)="cancelRsvp()">
+                @if (cancelling()) { <mat-spinner diameter="16" /> } @else { Can't make it anymore }
+              </button>
               <div class="join-cta">
                 <p class="join-text">Want to discover future dinners and join the group?</p>
                 <a mat-raised-button color="primary" href="/login" class="join-btn">
@@ -130,6 +133,19 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
                   Join DinnerBears
                 </a>
               </div>
+            </div>
+          </div>
+        }
+
+        @case ('cancel-confirm') {
+          <div class="rsvp-card">
+            <div class="card-body state-body">
+              <mat-icon class="state-icon expired-icon">sentiment_dissatisfied</mat-icon>
+              <h2>You're cancelled</h2>
+              <p>We'll let {{ info()!.invitedByName }} know.</p>
+              <button mat-stroked-button color="primary" class="cancel-btn" (click)="reopen()">
+                Actually, I can make it!
+              </button>
             </div>
           </div>
         }
@@ -183,8 +199,9 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
     }
 
     .brand-logo {
-      height: 48px;
+      height: 64px;
       width: auto;
+      filter: drop-shadow(0 2px 6px rgba(61,28,5,0.25));
     }
 
     .center {
@@ -309,6 +326,13 @@ type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error'
 
     .state-sub { color: #999 !important; font-size: 0.85rem !important; }
 
+    .cancel-btn {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
     .join-cta {
       margin-top: 24px;
       padding-top: 20px;
@@ -349,6 +373,7 @@ export class GuestRsvpComponent implements OnInit {
   readonly state = signal<PageState>('loading');
   readonly info = signal<GuestLinkInfo | null>(null);
   readonly submitting = signal(false);
+  readonly cancelling = signal(false);
   readonly errorMsg = signal<string | null>(null);
 
   readonly nameCtrl = new FormControl<string>('', { nonNullable: true });
@@ -395,6 +420,19 @@ export class GuestRsvpComponent implements OnInit {
         this.errorMsg.set(err?.error?.message ?? 'Something went wrong. Please try again.');
       },
     });
+  }
+
+  cancelRsvp(): void {
+    this.cancelling.set(true);
+    this.eventsService.cancelGuestRsvp(this.token).subscribe({
+      next: () => { this.cancelling.set(false); this.state.set('cancel-confirm'); },
+      error: () => { this.cancelling.set(false); },
+    });
+  }
+
+  reopen(): void {
+    this.nameCtrl.setValue(this.info()!.recipientName ?? '');
+    this.state.set('open');
   }
 
   formatTime(time: string): string {

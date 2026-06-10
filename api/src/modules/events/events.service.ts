@@ -255,6 +255,14 @@ export class EventsService {
     };
   }
 
+  async cancelGuestRsvp(token: string): Promise<void> {
+    const link = await this.guestLinkRepo.findOne({ where: { token } });
+    if (!link) throw new NotFoundException('Guest link not found');
+    if (new Date() > link.expiresAt) throw new BadRequestException('This link has expired');
+    link.usedAt = null;
+    await this.guestLinkRepo.save(link);
+  }
+
   async useGuestLink(token: string, guestName?: string): Promise<{ message: string }> {
     const link = await this.guestLinkRepo.findOne({ where: { token } });
     if (!link) throw new NotFoundException('Guest link not found');
