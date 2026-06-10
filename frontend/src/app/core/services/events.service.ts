@@ -114,10 +114,11 @@ export class EventsService {
   private readonly http = inject(HttpClient);
   private readonly base = '/api/v1/events';
 
-  getAll(filters: { cityId?: number; upcoming?: boolean; status?: EventStatus } = {}): Observable<Event[]> {
+  getAll(filters: { cityId?: number; upcoming?: boolean; fromDate?: string; status?: EventStatus } = {}): Observable<Event[]> {
     const params: Record<string, string> = {};
     if (filters.cityId) params['cityId'] = String(filters.cityId);
-    if (filters.upcoming !== undefined) params['upcoming'] = String(filters.upcoming);
+    if (filters.fromDate) params['fromDate'] = filters.fromDate;
+    else if (filters.upcoming !== undefined) params['upcoming'] = String(filters.upcoming);
     if (filters.status) params['status'] = filters.status;
     return this.http.get<Event[]>(this.base, { params });
   }

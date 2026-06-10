@@ -5,12 +5,14 @@ import { HttpClient } from '@angular/common/http';
 import { DatePipe, SlicePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatNativeDateModule } from '@angular/material/core';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -32,11 +34,13 @@ interface City {
     DatePipe,
     SlicePipe,
     MatButtonModule,
-    MatButtonToggleModule,
     MatCardModule,
     MatChipsModule,
+    MatDatepickerModule,
     MatFormFieldModule,
     MatIconModule,
+    MatInputModule,
+    MatNativeDateModule,
     MatProgressSpinnerModule,
     MatSelectModule,
   ],
@@ -59,10 +63,12 @@ interface City {
 
     <!-- Filters -->
     <div class="filters">
-      <mat-button-toggle-group [formControl]="upcomingCtrl" class="toggle-group">
-        <mat-button-toggle [value]="true">Upcoming</mat-button-toggle>
-        <mat-button-toggle [value]="false">Past</mat-button-toggle>
-      </mat-button-toggle-group>
+      <mat-form-field appearance="outline" class="date-field">
+        <mat-label>Show from</mat-label>
+        <input matInput [matDatepicker]="picker" [formControl]="fromDateCtrl" />
+        <mat-datepicker-toggle matIconSuffix [for]="picker" />
+        <mat-datepicker #picker />
+      </mat-form-field>
 
       <mat-form-field appearance="outline" class="city-field">
         <mat-label>City</mat-label>
@@ -73,13 +79,17 @@ interface City {
           }
         </mat-select>
       </mat-form-field>
+
+      <button mat-stroked-button class="today-btn" (click)="resetToToday()">
+        Today
+      </button>
     </div>
 
     <!-- Events -->
     @if (loading()) {
       <div class="center"><mat-spinner /></div>
     } @else if (events().length === 0) {
-      <p class="empty">No {{ upcomingCtrl.value ? 'upcoming' : 'past' }} events found.</p>
+      <p class="empty">No events found from this date.</p>
     } @else {
       <div class="events-grid">
         @for (e of events(); track e.id) {
@@ -157,8 +167,9 @@ interface City {
       margin-bottom: 24px;
       flex-wrap: wrap;
     }
-    .toggle-group { height: 40px; }
+    .date-field { width: 160px; margin-bottom: -1.25em; }
     .city-field { width: 180px; margin-bottom: -1.25em; }
+    .today-btn { height: 40px; font-size: 0.85rem; }
     .events-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -251,25 +262,31 @@ export class EventsListComponent implements OnInit {
   readonly cities = signal<City[]>([]);
   readonly loading = signal(true);
 
-  readonly upcomingCtrl = new FormControl<boolean>(true, { nonNullable: true });
+  readonly fromDateCtrl = new FormControl<Date>(new Date(), { nonNullable: true });
   readonly cityCtrl = new FormControl<number | null>(null);
 
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((c) => this.cities.set(c));
     this.load();
-    this.upcomingCtrl.valueChanges.subscribe(() => this.load());
+    this.fromDateCtrl.valueChanges.subscribe(() => this.load());
     this.cityCtrl.valueChanges.subscribe(() => this.load());
   }
 
   load(): void {
     this.loading.set(true);
+    const d = this.fromDateCtrl.value;
+    const fromDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     this.eventsService.getAll({
       cityId: this.cityCtrl.value ?? undefined,
-      upcoming: this.upcomingCtrl.value,
+      fromDate,
     }).subscribe({
       next: (evts) => { this.events.set(evts); this.loading.set(false); },
       error: () => this.loading.set(false),
     });
+  }
+
+  resetToToday(): void {
+    this.fromDateCtrl.setValue(new Date());
   }
 
   isLoggedIn(): boolean {

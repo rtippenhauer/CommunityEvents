@@ -21,6 +21,7 @@ import { ConfigService } from '@nestjs/config';
 export interface EventFilters {
   cityId?: number;
   upcoming?: boolean;
+  fromDate?: string;
   status?: EventStatus;
   isAdminOrMod?: boolean;
 }
@@ -58,13 +59,17 @@ export class EventsService {
       qb.andWhere('e.status != :draft', { draft: EventStatus.DRAFT });
     }
 
-    const today = new Date().toISOString().split('T')[0];
-    if (filters.upcoming === true) {
-      qb.andWhere('e.eventDate >= :today', { today }).orderBy('e.eventDate', 'ASC');
-    } else if (filters.upcoming === false) {
-      qb.andWhere('e.eventDate < :today', { today }).orderBy('e.eventDate', 'DESC');
+    if (filters.fromDate) {
+      qb.andWhere('e.eventDate >= :fromDate', { fromDate: filters.fromDate }).orderBy('e.eventDate', 'ASC');
     } else {
-      qb.orderBy('e.eventDate', 'DESC');
+      const today = new Date().toISOString().split('T')[0];
+      if (filters.upcoming === true) {
+        qb.andWhere('e.eventDate >= :today', { today }).orderBy('e.eventDate', 'ASC');
+      } else if (filters.upcoming === false) {
+        qb.andWhere('e.eventDate < :today', { today }).orderBy('e.eventDate', 'DESC');
+      } else {
+        qb.orderBy('e.eventDate', 'DESC');
+      }
     }
 
     return qb.getMany();

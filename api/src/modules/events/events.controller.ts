@@ -37,6 +37,7 @@ export class EventsController {
   findAll(
     @Query('cityId') cityId?: string,
     @Query('upcoming') upcoming?: string,
+    @Query('fromDate') fromDate?: string,
     @Query('status') status?: EventStatus,
     @CurrentUser() user?: UserEntity,
   ) {
@@ -45,7 +46,8 @@ export class EventsController {
 
     return this.eventsService.findAll({
       cityId: cityId ? parseInt(cityId, 10) : undefined,
-      upcoming: upcoming === 'true' ? true : upcoming === 'false' ? false : undefined,
+      fromDate: fromDate || undefined,
+      upcoming: fromDate ? undefined : (upcoming === 'true' ? true : upcoming === 'false' ? false : undefined),
       status: isAdminOrMod ? status : undefined,
       isAdminOrMod,
     });
