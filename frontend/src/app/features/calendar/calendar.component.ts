@@ -299,8 +299,14 @@ export class CalendarComponent implements OnInit {
 
   readonly visibleEvents = computed(() => {
     const day = this.selectedDay();
-    if (!day) return this.monthEvents();
-    return this.monthEvents().filter((e) => e.eventDate === day);
+    if (day) return this.monthEvents().filter((e) => e.eventDate === day);
+    // When viewing the current month with no day selected, hide past events
+    const t = this.today;
+    const todayStr = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    if (this.viewYear() === t.getFullYear() && this.viewMonth() === t.getMonth()) {
+      return this.monthEvents().filter((e) => e.eventDate >= todayStr);
+    }
+    return this.monthEvents();
   });
 
   readonly eventGroups = computed(() => {
