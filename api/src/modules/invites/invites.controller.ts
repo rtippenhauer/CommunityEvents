@@ -38,4 +38,9 @@ export class InvitesController {
   revoke(@Param('id', ParseIntPipe) id: number) {
     return this.invitesService.revoke(id);
   }
+
+  @Patch(':id/revoke-own')
+  revokeOwn(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+    return this.invitesService.revokeOwn(id, user.id);
+  }
 }

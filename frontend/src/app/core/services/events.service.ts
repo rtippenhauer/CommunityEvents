@@ -98,6 +98,7 @@ export interface CreateEventPayload {
 }
 
 export interface UpdateEventPayload {
+  cityId?: number;
   restaurantId?: number;
   title?: string;
   description?: string | null;

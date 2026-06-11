@@ -15,6 +15,11 @@ export class UpdateEventDto {
   @IsInt()
   @IsPositive()
   @IsOptional()
+  cityId?: number;
+
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
   restaurantId?: number;
 
   @IsString()

@@ -123,57 +123,55 @@ interface AvatarEntry { path: string; label: string; }
 
               <!-- Photo section -->
               <div class="photo-section">
-                <span class="photo-label">Profile Photo</span>
-
                 <div class="photo-current">
                   <div class="photo-preview">
                     @if (photoUrl()) {
                       <img [src]="photoUrl()!" alt="Profile photo" class="profile-photo" />
                     } @else {
-                      <img
-                        src="/avatars/bear-default.jpg"
-                        alt="Bear avatar"
-                        class="profile-photo"
-                      />
+                      <img src="/avatars/bear-default.jpg" alt="Bear avatar" class="profile-photo" />
                     }
                   </div>
-                  @if (photoUrl()) {
-                    <button mat-button type="button" color="warn" (click)="removePhoto()">
-                      Remove
+                  <div class="photo-actions">
+                    <button mat-stroked-button type="button" class="change-avatar-btn" (click)="avatarOpen.set(!avatarOpen())">
+                      <mat-icon>{{ avatarOpen() ? 'expand_less' : 'edit' }}</mat-icon>
+                      {{ avatarOpen() ? 'Close' : 'Change Avatar' }}
                     </button>
-                  }
+                    @if (photoUrl()) {
+                      <button mat-button type="button" color="warn" (click)="removePhoto()">Remove</button>
+                    }
+                  </div>
                 </div>
 
-                <mat-tab-group animationDuration="150ms">
-                  <mat-tab label="Choose a Bear">
-                    <div class="avatar-grid">
-                      @for (avatar of presetAvatars(); track avatar.path) {
-                        <button
-                          type="button"
-                          class="avatar-tile"
-                          [class.selected]="photoUrl() === avatar.path"
-                          [matTooltip]="avatar.label"
-                          (click)="selectAvatar(avatar.path)"
-                        >
-                          <img [src]="avatar.path" [alt]="avatar.label" />
-                          @if (photoUrl() === avatar.path) {
-                            <div class="avatar-check">✓</div>
-                          }
+                @if (avatarOpen()) {
+                  <mat-tab-group animationDuration="150ms">
+                    <mat-tab label="Choose a Bear">
+                      <div class="avatar-grid">
+                        @for (avatar of presetAvatars(); track avatar.path) {
+                          <button
+                            type="button"
+                            class="avatar-tile"
+                            [class.selected]="photoUrl() === avatar.path"
+                            [matTooltip]="avatar.label"
+                            (click)="selectAvatar(avatar.path)"
+                          >
+                            <img [src]="avatar.path" [alt]="avatar.label" />
+                            @if (photoUrl() === avatar.path) {
+                              <div class="avatar-check">✓</div>
+                            }
+                          </button>
+                        }
+                      </div>
+                    </mat-tab>
+                    <mat-tab label="Upload Photo">
+                      <div class="upload-tab">
+                        <button mat-stroked-button type="button" (click)="openFilePicker()">
+                          Choose photo…
                         </button>
-                      }
-                    </div>
-                  </mat-tab>
-                  <mat-tab label="Upload Photo">
-                    <div class="upload-tab">
-                      <button mat-stroked-button type="button" (click)="openFilePicker()">
-                        Choose photo…
-                      </button>
-                      <p class="photo-hint">
-                        Square images work best. Max 5 MB. JPEG, PNG, or WebP.
-                      </p>
-                    </div>
-                  </mat-tab>
-                </mat-tab-group>
+                        <p class="photo-hint">Square images work best. Max 5 MB. JPEG, PNG, or WebP.</p>
+                      </div>
+                    </mat-tab>
+                  </mat-tab-group>
+                }
 
                 <input
                   #fileInput
@@ -326,83 +324,87 @@ interface AvatarEntry { path: string; label: string; }
 
       <!-- Invites card -->
       <mat-card class="invites-card">
-        <mat-card-header>
-          <mat-card-title>Invite a Friend</mat-card-title>
-          <mat-card-subtitle
-            >Send someone a personal invite link to join DinnerBears.</mat-card-subtitle
-          >
-        </mat-card-header>
-        <mat-card-content>
-          <form [formGroup]="inviteForm" (ngSubmit)="createInvite()" class="invite-form">
-            <mat-form-field appearance="outline">
-              <mat-label>Their Email</mat-label>
-              <input matInput formControlName="boundToEmail" type="email" />
-              <mat-hint>The link will only work for this address</mat-hint>
-              <mat-error>A valid email is required</mat-error>
-            </mat-form-field>
-            <mat-form-field appearance="outline">
-              <mat-label>Their Name (optional)</mat-label>
-              <input matInput formControlName="boundToName" />
-            </mat-form-field>
-            <div>
-              <button
-                mat-raised-button
-                color="primary"
-                type="submit"
-                [disabled]="inviteForm.invalid || creatingInvite()"
-              >
-                <mat-icon>add_link</mat-icon>
-                Generate Invite Link
-              </button>
-            </div>
-          </form>
+        <button class="collapsible-header" type="button" (click)="invitesOpen.set(!invitesOpen())">
+          <div class="collapsible-header-text">
+            <span class="collapsible-title">Invite a Friend</span>
+            <span class="collapsible-sub">Send someone a personal invite link to join DinnerBears</span>
+          </div>
+          <mat-icon class="collapsible-chevron">{{ invitesOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
+        </button>
 
-          @if (newInviteUrl()) {
-            <div class="new-link-banner">
-              <mat-icon color="primary">check_circle</mat-icon>
-              <span class="new-link-url">{{ newInviteUrl() }}</span>
-              <button mat-icon-button (click)="copyNewLink()" aria-label="Copy link" title="Copy">
-                <mat-icon>content_copy</mat-icon>
-              </button>
-            </div>
-          }
+        @if (invitesOpen()) {
+          <mat-card-content>
+            <form [formGroup]="inviteForm" (ngSubmit)="createInvite()" class="invite-form">
+              <mat-form-field appearance="outline">
+                <mat-label>Their Email</mat-label>
+                <input matInput formControlName="boundToEmail" type="email" />
+                <mat-hint>The link will only work for this address</mat-hint>
+                <mat-error>A valid email is required</mat-error>
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Their Name (optional)</mat-label>
+                <input matInput formControlName="boundToName" />
+              </mat-form-field>
+              <div>
+                <button mat-raised-button color="primary" type="submit" [disabled]="inviteForm.invalid || creatingInvite()">
+                  <mat-icon>add_link</mat-icon>
+                  Generate Invite Link
+                </button>
+              </div>
+            </form>
 
-          @if (myInvites().length > 0) {
-            <mat-divider class="section-divider" />
-            <h3 class="invites-history-title">Your Invites</h3>
-            <div class="invite-list">
-              @for (invite of myInvites(); track invite.id) {
-                <div class="invite-row">
-                  <div class="invite-row-info">
-                    <span class="invite-email">{{ invite.boundToEmail ?? '—' }}</span>
-                    <span class="invite-meta"
-                      >Expires {{ invite.expiresAt | date: 'shortDate' }}</span
-                    >
+            @if (newInviteUrl()) {
+              <div class="new-link-banner">
+                <mat-icon color="primary">check_circle</mat-icon>
+                <span class="new-link-url">{{ newInviteUrl() }}</span>
+                <button mat-icon-button (click)="copyNewLink()" aria-label="Copy link" title="Copy">
+                  <mat-icon>content_copy</mat-icon>
+                </button>
+              </div>
+            }
+
+            @if (myInvites().length > 0) {
+              <mat-divider class="section-divider" />
+              <h3 class="invites-history-title">Your Invites</h3>
+              <div class="invite-list">
+                @for (invite of myInvites(); track invite.id) {
+                  <div class="invite-row">
+                    <div class="invite-row-info">
+                      <span class="invite-email">{{ invite.boundToEmail ?? '—' }}</span>
+                      @if (invite.boundToName) {
+                        <span class="invite-name">{{ invite.boundToName }}</span>
+                      }
+                      <span class="invite-meta">Expires {{ invite.expiresAt | date: 'shortDate' }}</span>
+                    </div>
+                    <div class="invite-row-status">
+                      @if (invite.isRevoked) {
+                        <mat-chip class="chip-revoked">Revoked</mat-chip>
+                      } @else if (invite.redeemedAt) {
+                        <mat-chip class="chip-used">Joined!</mat-chip>
+                      } @else if (isExpired(invite)) {
+                        <mat-chip class="chip-expired">Expired</mat-chip>
+                      } @else {
+                        <mat-chip class="chip-active">Pending</mat-chip>
+                        <button mat-icon-button matTooltip="Copy invite link" (click)="copyToken(invite.token)">
+                          <mat-icon>content_copy</mat-icon>
+                        </button>
+                        <button mat-icon-button matTooltip="Revoke invite" class="revoke-btn"
+                          [disabled]="revokingId() === invite.id"
+                          (click)="revokeInvite(invite.id)">
+                          @if (revokingId() === invite.id) {
+                            <mat-spinner diameter="16" />
+                          } @else {
+                            <mat-icon>link_off</mat-icon>
+                          }
+                        </button>
+                      }
+                    </div>
                   </div>
-                  <div class="invite-row-status">
-                    @if (invite.isRevoked) {
-                      <mat-chip class="chip-revoked">Revoked</mat-chip>
-                    } @else if (invite.redeemedAt) {
-                      <mat-chip class="chip-used">Joined!</mat-chip>
-                    } @else if (isExpired(invite)) {
-                      <mat-chip class="chip-expired">Expired</mat-chip>
-                    } @else {
-                      <mat-chip class="chip-active">Pending</mat-chip>
-                      <button
-                        mat-icon-button
-                        (click)="copyToken(invite.token)"
-                        aria-label="Copy link"
-                        title="Copy link"
-                      >
-                        <mat-icon>content_copy</mat-icon>
-                      </button>
-                    }
-                  </div>
-                </div>
-              }
-            </div>
-          }
-        </mat-card-content>
+                }
+              </div>
+            }
+          </mat-card-content>
+        }
       </mat-card>
     </div>
   `,
@@ -426,15 +428,19 @@ interface AvatarEntry { path: string; label: string; }
         flex-direction: column;
         gap: 12px;
       }
-      .photo-label {
-        font-size: 0.875rem;
-        color: #555;
-        font-weight: 500;
-      }
       .photo-current {
         display: flex;
         align-items: center;
         gap: 16px;
+      }
+      .photo-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        align-items: flex-start;
+      }
+      .change-avatar-btn {
+        font-size: 0.82rem !important;
       }
       .photo-preview {
         width: 80px;
@@ -577,9 +583,44 @@ interface AvatarEntry { path: string; label: string; }
         }
       }
 
+      /* Collapsible header */
+      .collapsible-header {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 16px 16px 20px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+        border-bottom: 1px solid transparent;
+        transition: background 0.12s;
+        &:hover { background: #faf7f2; }
+      }
+      .collapsible-header-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .collapsible-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--db-brown-dark, #3d1c05);
+      }
+      .collapsible-sub {
+        font-size: 0.78rem;
+        color: #999;
+      }
+      .collapsible-chevron {
+        color: #aaa;
+        flex-shrink: 0;
+      }
+
       /* Invites card */
       .invites-card mat-card-content {
         padding-top: 8px;
+        border-top: 1px solid #f0ebe3;
       }
       .invite-form {
         display: flex;
@@ -634,10 +675,15 @@ interface AvatarEntry { path: string; label: string; }
         font-size: 0.9rem;
         font-weight: 500;
       }
+      .invite-name {
+        font-size: 0.8rem;
+        color: #666;
+      }
       .invite-meta {
         font-size: 0.75rem;
         color: #999;
       }
+      .revoke-btn { color: #c62828 !important; opacity: 0.7; &:hover { opacity: 1; } }
       .invite-row-status {
         display: flex;
         align-items: center;
@@ -729,6 +775,9 @@ export class ProfileComponent implements OnInit {
   readonly cities = signal<City[]>([]);
   readonly saving = signal(false);
   readonly photoUrl = signal<string | null>(null);
+  readonly avatarOpen = signal(false);
+  readonly invitesOpen = signal(false);
+  readonly revokingId = signal<number | null>(null);
 
   readonly form = this.fb.group({
     fullName: ['', [Validators.required, Validators.maxLength(200)]],
@@ -863,6 +912,21 @@ export class ProfileComponent implements OnInit {
 
   isExpired(invite: Invite): boolean {
     return new Date(invite.expiresAt) < new Date();
+  }
+
+  revokeInvite(id: number): void {
+    this.revokingId.set(id);
+    this.http.patch(`/api/v1/invites/${id}/revoke-own`, {}).subscribe({
+      next: () => {
+        this.revokingId.set(null);
+        this.loadMyInvites();
+        this.snackBar.open('Invite revoked', 'OK', { duration: 2000 });
+      },
+      error: (err) => {
+        this.revokingId.set(null);
+        this.snackBar.open(err?.error?.message ?? 'Failed to revoke invite', 'OK', { duration: 3000 });
+      },
+    });
   }
 
   openFilePicker(): void {

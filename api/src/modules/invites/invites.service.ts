@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -115,6 +115,14 @@ export class InvitesService {
   }
 
   async revoke(id: number): Promise<void> {
+    await this.inviteRepo.update(id, { isRevoked: true });
+  }
+
+  async revokeOwn(id: number, userId: number): Promise<void> {
+    const invite = await this.inviteRepo.findOne({ where: { id } });
+    if (!invite) throw new NotFoundException('Invite not found');
+    if (invite.createdBy !== userId) throw new ForbiddenException('Not your invite');
+    if (invite.redeemedAt) throw new BadRequestException('Invite has already been accepted');
     await this.inviteRepo.update(id, { isRevoked: true });
   }
 

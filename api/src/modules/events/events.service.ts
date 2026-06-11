@@ -138,6 +138,13 @@ export class EventsService {
 
     const wasPublished = event.status === EventStatus.PUBLISHED;
 
+    // Track meaningful changes for update-notification email
+    const changedDate = dto.eventDate !== undefined && dto.eventDate !== event.eventDate;
+    const changedTime = dto.eventTime !== undefined && dto.eventTime !== event.eventTime.substring(0, 5);
+    const changedRestaurant = dto.restaurantId !== undefined && dto.restaurantId !== event.restaurantId;
+
+    if (dto.cityId !== undefined) event.cityId = dto.cityId;
+
     if (dto.restaurantId && dto.restaurantId !== event.restaurantId) {
       const restaurant = await this.restaurantRepo.findOne({
         where: { id: dto.restaurantId },
@@ -168,10 +175,15 @@ export class EventsService {
       event.status = dto.status;
     }
 
-    const saved = await this.eventRepo.save(event);
+    await this.eventRepo.save(event);
+
+    // Reload with fresh relations so the response reflects any restaurant/city change
+    const saved = await this.findOne(event.id);
 
     if (saved.status === EventStatus.CANCELLED && wasPublished) {
       void this.sendCancellationEmails(saved);
+    } else if (wasPublished && saved.status === EventStatus.PUBLISHED && (changedDate || changedTime || changedRestaurant)) {
+      void this.sendUpdateEmails(saved);
     }
 
     return saved;
@@ -252,6 +264,83 @@ export class EventsService {
         toEmail: link.recipientEmail,
         toName: name,
         subject: `Cancelled: ${event.title}`,
+        htmlBody: buildHtml(name),
+      });
+    }
+  }
+
+  private async sendUpdateEmails(event: EventEntity): Promise<void> {
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const [ey, em, ed] = event.eventDate.split('-').map(Number);
+    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    });
+    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const eventUrl = `${appUrl}/events/${event.id}`;
+
+    const buildHtml = (recipientName: string) => `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
+  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+  </td></tr>
+  <tr><td style="padding:32px 36px 24px">
+    <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">Event details have been updated</h1>
+    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.title}</strong>
+      </td></tr>
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay}
+      </td></tr>
+      <tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📍</span>${event.restaurantName}${event.restaurantAddress ? ` — ${event.restaurantAddress}` : ''}
+      </td></tr>
+    </table>
+    <p style="text-align:center;margin:0 0 24px">
+      <a href="${eventUrl}" style="background:#3D1C05;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Updated Event</a>
+    </p>
+    <p style="margin:0;font-size:0.85rem;color:#888">If you can no longer attend, you can update your RSVP on the event page.</p>
+  </td></tr>
+  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    const rsvps = await this.rsvpRepo.find({
+      where: { eventId: event.id },
+      relations: ['user'],
+    });
+    for (const rsvp of rsvps) {
+      if (!rsvp.user?.email) continue;
+      await this.emailService.queue({
+        toEmail: rsvp.user.email,
+        toName: rsvp.user.fullName,
+        subject: `Updated: ${event.title}`,
+        htmlBody: buildHtml(rsvp.user.fullName),
+      });
+    }
+
+    const guestLinks = await this.guestLinkRepo.find({
+      where: { eventId: event.id, cancelledAt: IsNull() },
+    });
+    for (const link of guestLinks) {
+      if (!link.recipientEmail) continue;
+      const name = link.recipientName ?? link.recipientEmail;
+      await this.emailService.queue({
+        toEmail: link.recipientEmail,
+        toName: name,
+        subject: `Updated: ${event.title}`,
         htmlBody: buildHtml(name),
       });
     }
