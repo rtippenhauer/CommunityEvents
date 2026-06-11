@@ -34,6 +34,7 @@ export class EventsController {
 
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
   findAll(
     @Query('cityId') cityId?: string,
     @Query('upcoming') upcoming?: string,
@@ -102,6 +103,7 @@ export class EventsController {
 
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.eventsService.findOne(id);
   }

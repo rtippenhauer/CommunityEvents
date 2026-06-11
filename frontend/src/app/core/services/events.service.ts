@@ -115,17 +115,19 @@ export class EventsService {
   private readonly http = inject(HttpClient);
   private readonly base = '/api/v1/events';
 
+  private readonly noCache = { headers: { 'Cache-Control': 'no-cache' } };
+
   getAll(filters: { cityId?: number; upcoming?: boolean; fromDate?: string; status?: EventStatus } = {}): Observable<Event[]> {
     const params: Record<string, string> = {};
     if (filters.cityId) params['cityId'] = String(filters.cityId);
     if (filters.fromDate) params['fromDate'] = filters.fromDate;
     else if (filters.upcoming !== undefined) params['upcoming'] = String(filters.upcoming);
     if (filters.status) params['status'] = filters.status;
-    return this.http.get<Event[]>(this.base, { params });
+    return this.http.get<Event[]>(this.base, { params, ...this.noCache });
   }
 
   getOne(id: number): Observable<Event> {
-    return this.http.get<Event>(`${this.base}/${id}`);
+    return this.http.get<Event>(`${this.base}/${id}`, this.noCache);
   }
 
   create(payload: CreateEventPayload): Observable<Event> {

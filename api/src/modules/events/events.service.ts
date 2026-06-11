@@ -150,6 +150,9 @@ export class EventsService {
         where: { id: dto.restaurantId },
       });
       if (!restaurant) throw new NotFoundException(`Restaurant ${dto.restaurantId} not found`);
+      // Must set the relation object so TypeORM uses the new FK on save,
+      // not the old relation it loaded from findOne
+      event.restaurant = restaurant;
       event.restaurantId = restaurant.id;
       event.restaurantName = restaurant.name;
       event.restaurantAddress = restaurant.address;
