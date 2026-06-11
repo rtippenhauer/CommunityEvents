@@ -1168,7 +1168,9 @@ export class EventDetailComponent implements OnInit {
       width: '600px',
     });
     ref.afterClosed().subscribe((updated: Event | undefined) => {
-      if (updated) this.event.set(updated);
+      if (updated) {
+        this.eventsService.getOne(updated.id).subscribe((fresh) => this.event.set(fresh));
+      }
     });
   }
 

@@ -1,33 +1,7 @@
-import { IsIn } from 'class-validator';
-
-export const PRESET_AVATARS = [
-  '/avatars/bear-chef.jpg',
-  '/avatars/bear-flannel.jpg',
-  '/avatars/bear-cool.jpg',
-  '/avatars/bear-rainbow.jpg',
-  '/avatars/bear-hoodie.jpg',
-  '/avatars/bear-bookworm.jpg',
-  '/avatars/bear-explorer.jpg',
-  '/avatars/bear-musician.jpg',
-  '/avatars/bear-athlete.jpg',
-  '/avatars/bear-dapper.jpg',
-  '/avatars/bear-astronaut.jpg',
-  '/avatars/bear-artist.jpg',
-  '/avatars/bear-disco.jpg',
-  '/avatars/bear-karaoke.jpg',
-  '/avatars/bear-pirate.jpg',
-  '/avatars/bear-steampunk.jpg',
-  '/avatars/bear-viking.jpg',
-  '/avatars/bear-wizard.jpg',
-  '/avatars/bear-shopping.png',
-  '/avatars/bear-hawaiian.png',
-  '/avatars/bear-nascar.png',
-  '/avatars/bear-bbq.png',
-  '/avatars/bear-brewmaster.png',
-  '/avatars/bear-camper.png',
-] as const;
+import { IsString, Matches } from 'class-validator';
 
 export class SetAvatarDto {
-  @IsIn(PRESET_AVATARS)
+  @IsString()
+  @Matches(/^\/avatars\/[a-zA-Z0-9_-]+\.(jpg|jpeg|png|webp)$/)
   avatarPath: string;
 }
