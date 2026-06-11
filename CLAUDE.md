@@ -33,11 +33,11 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 4.6 — Avatar System (dynamic):** Replace hardcoded avatar list with a live `GET /api/v1/avatars` endpoint that scans the asset directory, add "I Feel Lucky" random picker, and remove all hardcoded `PRESET_AVATARS` references.
+**Phase 6 — Facebook OAuth & Email/Password Auth:** adds Facebook login, account linking, email+password registration with verification, and password reset/account deletion flows.
 See PHASES.md for full phase breakdown and definitions of done.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

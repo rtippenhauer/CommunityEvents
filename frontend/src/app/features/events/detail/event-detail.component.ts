@@ -369,7 +369,8 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                     <mat-icon>share</mat-icon> Share
                   </h4>
                   <div class="share-btn-row">
-                    <button mat-stroked-button class="fb-btn" (click)="shareToFacebook()">
+                    <button mat-stroked-button class="fb-btn" (click)="shareToFacebook()"
+                      matTooltip="Opens Facebook share dialog — change destination to your DinnerBears group">
                       <mat-icon>open_in_new</mat-icon> Share on Facebook
                     </button>
                     <button mat-stroked-button (click)="copyPostText()">
@@ -973,8 +974,14 @@ export class EventDetailComponent implements OnInit {
   }
 
   shareToFacebook(): void {
-    const url = `${window.location.origin}/events/${this.event()!.id}`;
-    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank', 'noopener');
+    const e = this.event()!;
+    const url = `${window.location.origin}/events/${e.id}`;
+    const quote = this.eventsService.generatePostText(e);
+    window.open(
+      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(quote)}`,
+      '_blank',
+      'noopener',
+    );
   }
 
   copyPostText(): void {

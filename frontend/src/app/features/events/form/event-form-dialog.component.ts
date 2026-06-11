@@ -178,8 +178,8 @@ export class EventFormDialogComponent implements OnInit {
   readonly saving = signal(false);
 
   readonly form = this.fb.group({
-    cityId: [0, Validators.required],
-    restaurantId: [0, Validators.required],
+    cityId: [0, [Validators.required, Validators.min(1)]],
+    restaurantId: [0, [Validators.required, Validators.min(1)]],
     title: ['', Validators.required],
     eventDate: [nextTuesdayDate(), Validators.required],
     eventTime: ['', Validators.required],
@@ -203,6 +203,24 @@ export class EventFormDialogComponent implements OnInit {
     this.form.controls.cityId.valueChanges.subscribe((id) => {
       this.filterRestaurants(id);
       this.form.controls.restaurantId.setValue(0);
+    });
+
+    this.form.controls.restaurantId.valueChanges.subscribe((id) => {
+      if (!id) return;
+      const restaurant = this.restaurants().find((r) => r.id === id);
+      if (!restaurant) return;
+
+      // Sync city if the selected restaurant is in a different city (edit scenario)
+      if (this.form.controls.cityId.value !== restaurant.cityId) {
+        this.form.controls.cityId.setValue(restaurant.cityId, { emitEvent: false });
+        this.filterRestaurants(restaurant.cityId);
+      }
+
+      // Auto-fill title if blank or still matches the generated pattern
+      const currentTitle = this.form.controls.title.value;
+      if (!currentTitle || /^Bear Dinner at /.test(currentTitle)) {
+        this.form.controls.title.setValue(`Bear Dinner at ${restaurant.name}`);
+      }
     });
 
     if (this.data.event) {
