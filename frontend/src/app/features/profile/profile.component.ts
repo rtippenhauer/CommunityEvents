@@ -145,6 +145,11 @@ interface AvatarEntry { path: string; label: string; }
                 @if (avatarOpen()) {
                   <mat-tab-group animationDuration="150ms">
                     <mat-tab label="Choose a Bear">
+                      <div class="avatar-tab-actions">
+                        <button mat-stroked-button type="button" class="lucky-btn" (click)="feelLucky()">
+                          <mat-icon>casino</mat-icon> I Feel Lucky
+                        </button>
+                      </div>
                       <div class="avatar-grid">
                         @for (avatar of presetAvatars(); track avatar.path) {
                           <button
@@ -466,6 +471,12 @@ interface AvatarEntry { path: string; label: string; }
         justify-content: center;
         font-size: 2rem;
       }
+      .avatar-tab-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding: 10px 0 4px;
+      }
+      .lucky-btn { font-size: 0.82rem !important; }
       .avatar-grid {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
@@ -962,6 +973,13 @@ export class ProfileComponent implements OnInit {
       },
       error: () => this.snackBar.open('Photo upload failed', 'OK', { duration: 3000 }),
     });
+  }
+
+  feelLucky(): void {
+    const avatars = this.presetAvatars();
+    if (!avatars.length) return;
+    const pick = avatars[Math.floor(Math.random() * avatars.length)];
+    this.selectAvatar(pick.path);
   }
 
   selectAvatar(path: string): void {
