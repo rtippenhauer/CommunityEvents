@@ -33,7 +33,7 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 6 — Facebook OAuth & Email/Password Auth:** adds Facebook login, account linking, email+password registration with verification, and password reset/account deletion flows.
+**Phase 6 — Feedback Board, Release Notes & Versioning:** extends the existing feedback system with upvotes, threaded notes, privacy, and adds a public changelog with admin-managed semver releases linked to resolved tickets.
 See PHASES.md for full phase breakdown and definitions of done.
 
 ## Completed Phases
@@ -61,4 +61,24 @@ Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5 ✓ — see PHASES.md for d
 - `synchronize: false` always — migrations only
 - Migrations in `api/src/database/migrations/` with timestamp prefix
 - See `docs/DATABASE_SCHEMA.md` for full schema
+
+## Bug-Driven Development Workflow
+
+When asked to work on bugs, Claude Code should:
+
+1. Call `GET /api/v1/admin/feedback/open-bugs` to retrieve all open bug tickets
+2. Present the list to Rob and ask which to work on
+3. Implement the fix
+4. Call `PATCH /api/v1/admin/feedback/:id/status` with `{status: "resolved"}` on the fixed ticket
+5. Add an admin note via `POST /api/v1/admin/feedback/:id/notes` summarizing what was changed
+
+## Versioning Workflow
+
+When asked to cut a release or bump the version:
+
+1. Summarize all changes made in the session (features added, bugs fixed)
+2. Recommend a semver bump: patch for bug-only, minor for any new features
+3. Draft release note copy for Rob to review — do not publish automatically
+4. Rob reviews and publishes via the admin UI at `/admin/releases/new`
+5. Publishing auto-bumps `package.json` version in both `frontend/` and `api/`
 

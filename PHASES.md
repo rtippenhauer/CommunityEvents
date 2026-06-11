@@ -83,7 +83,7 @@ Geocoded map links generate from addresses.
 events, all records geocoded, admin has reviewed and cleaned the data.
 
 **Note:** Facebook OAuth token obtained here is stored and reused in
-Phase 6 when Facebook login is added for members.
+Phase 11 when Facebook login is added for members.
 
 ---
 
@@ -121,6 +121,40 @@ captured on publish.
 
 **Definition of done:** Admin can share event to Facebook with pre-filled
 text. All three calendar export formats work correctly.
+
+---
+
+## Phase 4.4 — Event RSVP Disclaimer & Cutoff
+
+- Add platform disclaimer constant (not hardcoded in template) to event detail page:
+  - GOING by 5:00 PM day-of
+  - MAYBE not counted for reservations
+  - Dinner starts 6:30 PM, members arrive ~6:00 PM
+- Hard-block new GOING RSVPs after 5:00 PM on event day
+- Cutoff message shown to members; moderators retain full override
+- Admin/mod RSVP controls bypass the cutoff check
+
+**Definition of done:** Disclaimer visible on all event detail pages. GOING
+RSVP hard-blocked after 5:00 PM day-of for standard members. Moderators
+can still adjust RSVPs after cutoff.
+
+---
+
+## Phase 4.6 — Avatar System (dynamic)
+
+- NestJS `GET /api/v1/avatars` endpoint: scans avatar asset directory for
+  `*.png` and `*.jpg`, returns `[{ filename, displayName }]`, no auth required
+- Display name utility: strip `bear-` prefix, strip extension, capitalize first
+  letter — pure function on frontend, no server-side mapping
+- Profile avatar picker refactored: remove hardcoded `PRESET_AVATARS` array,
+  load from `/api/v1/avatars` on init
+- "I Feel Lucky" button: picks a random avatar excluding the current one,
+  previews it immediately, saves only on normal save action
+
+**Definition of done:** Adding a new `bear-*.jpg` to the avatar directory
+makes it appear in the picker without any code change or redeployment.
+"I Feel Lucky" always produces a different avatar. Display names derive
+correctly from filenames.
 
 ---
 
@@ -167,22 +201,47 @@ the invite offer. Admin sees the full attendee breakdown with lineage.
 
 ---
 
-## Phase 6 — Facebook OAuth & Email/Password Auth
+## Phase 6 — Feedback Board, Release Notes & Versioning
 
-- Facebook OAuth (same Meta App as Phase 3.5 token)
-- Account linking (oauth_accounts table, profile Security tab)
-- Email + password registration (invite still required)
-- Email verification flow (48-hour token, pending → active)
-- Resend verification email
-- Password reset flow (time-limited token, single-use)
-- Password change from profile Security tab
-- Account deletion request (soft delete, 30-day recovery)
-- Hard delete job (runs nightly, processes accounts past 30-day window)
+- DB migrations: add `title` (varchar 200), `is_private` (boolean default false),
+  `upvote_count` (int default 0) to existing `feedback` table; reconcile status
+  enum to `open`, `in_progress`, `resolved`, `shipped`, `closed`, `wont_fix`;
+  keep existing `seen_at` and `comment` category
+- DB: `feedback_notes` table (id, feedback_id FK, author_id FK, content text,
+  is_admin_only boolean default false, created_at)
+- DB: `feedback_upvotes` table (id, feedback_id FK, member_id FK, created_at;
+  UNIQUE on feedback_id + member_id)
+- DB: `releases` table (id, version varchar 20, title varchar 200, body text,
+  released_at datetime, created_by FK members)
+- DB: `release_feedback` join table (release_id FK, feedback_id FK)
+- NestJS: extend FeedbackModule — upvote toggle, threaded notes (with
+  is_admin_only), privacy flag, open-bugs admin query
+- NestJS: ReleasesModule — public list + detail, admin create/publish with
+  package.json version bump in both frontend/ and api/
+- Quill rich text editor installed and integrated for description, notes,
+  and release body fields; server-side HTML sanitization (sanitize-html)
+- Member feedback board `/feedback` — list with upvote counts, type/status
+  badges, private lock icon; filter tabs (All / Bugs / Features / Comments);
+  sort by Most Upvoted or Newest
+- `/feedback/new` — submit form (type, title, Quill description, private toggle)
+- `/feedback/:id` — ticket detail with upvote button, status banner ("Shipped
+  in vX.X.X" links to release), threaded notes, add-note form
+- `/updates` — public changelog, no auth required; lists releases newest-first
+  with rich text body and community credit section (name or "a community member"
+  for private tickets)
+- Admin `/admin/feedback` enhanced — full list including private, inline status
+  dropdown, admin-only note capability
+- Admin `/admin/releases/new` — version field (semver validated), title, Quill
+  release notes, ticket linker for resolved tickets, community credit preview,
+  publish button
+- Member profile stats: bugs reported, features requested, shipped count
+- CLAUDE.md updated with Bug-Driven Development and Versioning Workflow sections
 
-**Definition of done:** Members can log in via Google, Facebook, or
-email/password. New email accounts require verification. Password reset
-works. Account deletion soft-deletes with recovery window. Facebook OAuth
-token from Phase 3.5 is reused correctly.
+**Definition of done:** Members can submit, upvote, and discuss feedback.
+Admin can manage status and publish releases linked to resolved tickets.
+`/updates` is publicly visible with community credit. Publishing a release
+auto-bumps `package.json` in both workspaces. Open-bugs API endpoint
+returns current open bug tickets for the agentic workflow.
 
 ---
 
@@ -203,28 +262,7 @@ flagged content appears in moderation queue.
 
 ---
 
-## Phase 8 — Admin Panel, Audit Log & Security
-
-- Full audit log viewer (filterable, read-only)
-- Admin Users tab: all members, roles, suspend, delete, email status,
-  inactivity segments, manual suppression override
-- Admin Cities tab: configure Group 1 per city, Group 2 for Dayton,
-  campaign link management
-- Admin Invite tree: full lineage view for any member
-- Community invite log (admin-only initially)
-- Pre-launch OWASP Top 10 security checklist sign-off
-- Rate limiting audit and hardening
-- Final performance review and load testing
-
-**Definition of done:** All admin tabs functional, audit log captures all
-required actions, invite lineage fully visible, security checklist signed
-off, system ready for real users.
-
----
-
-## Phase 3.6 — Venue Moderator Tools (low effort, slot after Phase 3.5)
-
-Reqs: R-115, R-116
+## Phase 8 — Venue Moderator Tools
 
 - Add `moderator_notes` (longtext, nullable) to `restaurants` table via migration
 - Add `contact_name` (varchar 100), `contact_phone` (varchar 30),
@@ -239,47 +277,7 @@ omits them entirely.
 
 ---
 
-## Phase 4.4 — Event RSVP Disclaimer & Cutoff
-
-Reqs: R-113, R-114
-
-- Add platform disclaimer constant (not hardcoded in template) to event detail page:
-  - GOING by 5:00 PM day-of
-  - MAYBE not counted for reservations
-  - Dinner starts 6:30 PM, members arrive ~6:00 PM
-- Hard-block new GOING RSVPs after 5:00 PM on event day
-- Cutoff message shown to members; moderators retain full override
-- Admin/mod RSVP controls bypass the cutoff check
-
-**Definition of done:** Disclaimer visible on all event detail pages. GOING
-RSVP hard-blocked after 5:00 PM day-of for standard members. Moderators
-can still adjust RSVPs after cutoff.
-
----
-
-## Phase 4.6 — Avatar System (dynamic)
-
-Reqs: R-117, R-118, R-119
-
-- NestJS `GET /api/v1/avatars` endpoint: scans avatar asset directory for
-  `*.png` and `*.jpg`, returns `[{ filename, displayName }]`, no auth required
-- Display name utility: strip `bear-` prefix, strip extension, capitalize first
-  letter — pure function on frontend, no server-side mapping
-- Profile avatar picker refactored: remove hardcoded `PRESET_AVATARS` array,
-  load from `/api/v1/avatars` on init
-- "I Feel Lucky" button: picks a random avatar excluding the current one,
-  previews it immediately, saves only on normal save action
-
-**Definition of done:** Adding a new `bear-*.jpg` to the avatar directory
-makes it appear in the picker without any code change or redeployment.
-"I Feel Lucky" always produces a different avatar. Display names derive
-correctly from filenames.
-
----
-
-## Phase 5.6 — Attendance Tracking & Restaurant Ratings
-
-Reqs: R-108, R-109, R-110, R-111
+## Phase 9 — Attendance Tracking & Restaurant Ratings
 
 - DB: `attended` boolean (default false) on `event_rsvps` table via migration
 - DB: new `event_ratings` table (member_id, event_id, restaurant_id, food,
@@ -299,9 +297,7 @@ cannot submit (blocked at API level). Probability score visible to moderators.
 
 ---
 
-## Phase 5.7 — Threaded Event Discussion
-
-Reqs: R-112
+## Phase 10 — Threaded Event Discussion
 
 - DB: `event_comments` (id, event_id, member_id, body, created_at, deleted_at)
 - DB: `event_comment_replies` (id, comment_id, member_id, body, created_at, deleted_at)
@@ -317,9 +313,45 @@ Discussions persist post-event.
 
 ---
 
-## Phase 8.5 — CMS Legal Pages
+## Phase 11 — Facebook OAuth & Email/Password Auth
 
-Reqs: R-121, R-122
+- Facebook OAuth (same Meta App as Phase 3.5 token)
+- Account linking (oauth_accounts table, profile Security tab)
+- Email + password registration (invite still required)
+- Email verification flow (48-hour token, pending → active)
+- Resend verification email
+- Password reset flow (time-limited token, single-use)
+- Password change from profile Security tab
+- Account deletion request (soft delete, 30-day recovery)
+- Hard delete job (runs nightly, processes accounts past 30-day window)
+
+**Definition of done:** Members can log in via Google, Facebook, or
+email/password. New email accounts require verification. Password reset
+works. Account deletion soft-deletes with recovery window. Facebook OAuth
+token from Phase 3.5 is reused correctly.
+
+---
+
+## Phase 12 — Admin Panel, Audit Log & Security
+
+- Full audit log viewer (filterable, read-only)
+- Admin Users tab: all members, roles, suspend, delete, email status,
+  inactivity segments, manual suppression override
+- Admin Cities tab: configure Group 1 per city, Group 2 for Dayton,
+  campaign link management
+- Admin Invite tree: full lineage view for any member
+- Community invite log (admin-only initially)
+- Pre-launch OWASP Top 10 security checklist sign-off
+- Rate limiting audit and hardening
+- Final performance review and load testing
+
+**Definition of done:** All admin tabs functional, audit log captures all
+required actions, invite lineage fully visible, security checklist signed
+off, system ready for real users.
+
+---
+
+## Phase 13 — CMS Legal Pages
 
 - DB: `legal_pages` table (id, page_type enum[terms|privacy], content longtext,
   published boolean, created_by FK users, created_at)
