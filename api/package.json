@@ -1,6 +1,6 @@
 {
   "name": "dinnerbears-api",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "DinnerBears NestJS API",
   "scripts": {
     "build": "nest build",
