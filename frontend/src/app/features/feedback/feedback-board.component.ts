@@ -123,7 +123,7 @@ const COMPLETED_STATUSES = new Set(['shipped', 'wont_fix', 'closed']);
                 </div>
                 <div class="row-title">{{ item.title ?? '(no title)' }}</div>
                 <div class="row-meta">
-                  <span>{{ item.user.fullName }}</span>
+                  <span>{{ item.user?.fullName }}</span>
                   <span class="dot">&middot;</span>
                   <span>{{ item.createdAt | date:'MMM d, y' }}</span>
                 </div>

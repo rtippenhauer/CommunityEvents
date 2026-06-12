@@ -2,6 +2,7 @@ import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { catchError, firstValueFrom, of, tap } from 'rxjs';
+import { Observable } from 'rxjs';
 
 export interface CurrentUser {
   id: number;
@@ -37,6 +38,27 @@ export class AuthService {
   loginWithGoogle(inviteToken?: string): void {
     const params = inviteToken ? `?inviteToken=${encodeURIComponent(inviteToken)}` : '';
     window.location.href = `/api/v1/auth/google${params}`;
+  }
+
+  loginWithFacebook(accessToken: string, inviteToken?: string): Observable<void> {
+    return this.http.post<void>('/api/v1/auth/facebook', { accessToken, inviteToken }).pipe(
+      tap(() => {
+        // Re-fetch user then redirect, same as Google callback
+        void firstValueFrom(
+          this.http.get<CurrentUser>('/api/v1/auth/me').pipe(
+            tap((user) => {
+              this.currentUser.set(user);
+              void this.router.navigate(['/']);
+            }),
+            catchError(() => of(null)),
+          ),
+        );
+      }),
+    );
+  }
+
+  linkFacebook(accessToken: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>('/api/v1/auth/facebook/link', { accessToken });
   }
 
   logout(): void {

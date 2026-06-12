@@ -3,13 +3,15 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../../core/services/auth.service';
 import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [MatButtonModule, MatCardModule, MatIconModule],
+  imports: [MatButtonModule, MatCardModule, MatIconModule, MatSnackBarModule, MatProgressSpinnerModule],
   template: `
     <div class="login-page">
 
@@ -44,11 +46,15 @@ import { environment } from '../../../../environments/environment';
           </button>
 
           @if (fbReady()) {
-            <button mat-raised-button class="fb-btn" (click)="signInWithFacebook()">
-              <svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="white" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-              </svg>
-              {{ fbStatus() === 'connected' ? 'Continue with Facebook' : 'Continue with Facebook' }}
+            <button mat-raised-button class="fb-btn" (click)="signInWithFacebook()" [disabled]="fbLogging()">
+              @if (fbLogging()) {
+                <mat-spinner diameter="20" />
+              } @else {
+                <svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="white" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                </svg>
+                Continue with Facebook
+              }
             </button>
           }
 
@@ -192,6 +198,8 @@ export class LoginComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
+  private readonly snackBar = inject(MatSnackBar);
+  readonly fbLogging = signal(false);
 
   readonly inviteToken = signal<string | null>(null);
   readonly fbReady = signal(false);
@@ -211,19 +219,29 @@ export class LoginComponent implements OnInit {
   }
 
   private loadFbSdk(appId: string): void {
-    if (document.getElementById('facebook-jssdk')) return;
-    (window as any).fbAsyncInit = () => {
-      (window as any).FB.init({ appId, cookie: true, xfbml: true, version: 'v22.0' });
-      (window as any).FB.AppEvents.logPageView();
-      (window as any).FB.getLoginStatus((response: { status: string }) => {
+    const initAndCheck = () => {
+      const FB = (window as any).FB;
+      FB.init({ appId, cookie: true, xfbml: true, version: 'v22.0' });
+      FB.AppEvents.logPageView();
+      FB.getLoginStatus((response: { status: string }) => {
         this.fbStatus.set(response.status as 'connected' | 'not_authorized' | 'unknown');
         this.fbReady.set(true);
       });
     };
-    const js = document.createElement('script');
-    js.id = 'facebook-jssdk';
-    js.src = 'https://connect.facebook.net/en_US/sdk.js';
-    document.head.appendChild(js);
+
+    if ((window as any).FB) {
+      initAndCheck();
+      return;
+    }
+
+    (window as any).fbAsyncInit = initAndCheck;
+
+    if (!document.getElementById('facebook-jssdk')) {
+      const js = document.createElement('script');
+      js.id = 'facebook-jssdk';
+      js.src = 'https://connect.facebook.net/en_US/sdk.js';
+      document.head.appendChild(js);
+    }
   }
 
   signInWithGoogle(): void {
@@ -251,8 +269,13 @@ export class LoginComponent implements OnInit {
   }
 
   private handleFbToken(accessToken: string): void {
-    // Phase 11: send accessToken to backend, receive DinnerBears JWT
-    // this.authService.loginWithFacebook(accessToken, this.inviteToken() ?? undefined);
-    console.log('FB token ready for Phase 11 backend:', accessToken);
+    this.fbLogging.set(true);
+    this.authService.loginWithFacebook(accessToken, this.inviteToken() ?? undefined).subscribe({
+      error: (err) => {
+        this.fbLogging.set(false);
+        const msg = err?.error?.message ?? 'Facebook sign-in failed. Please try again.';
+        this.snackBar.open(msg, 'OK', { duration: 5000 });
+      },
+    });
   }
 }

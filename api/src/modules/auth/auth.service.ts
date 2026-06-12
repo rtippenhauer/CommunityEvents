@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -138,6 +138,124 @@ export class AuthService {
     });
 
     return user;
+  }
+
+  async findOrCreateFacebookUser(
+    facebookId: string,
+    email: string | null,
+    displayName: string,
+    inviteToken?: string,
+  ): Promise<UserEntity> {
+    // Primary lookup: existing Facebook OAuth account
+    const existing = await this.oauthRepo.findOne({
+      where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
+      relations: ['user'],
+    });
+    if (existing) {
+      if (existing.user.status !== UserStatus.ACTIVE) throw new AuthFlowError('not_active');
+      return existing.user;
+    }
+
+    // Email match: link Facebook to existing account
+    if (email) {
+      const existingByEmail = await this.userRepo.findOne({
+        where: { email: email.toLowerCase() },
+      });
+      if (existingByEmail) {
+        if (existingByEmail.status !== UserStatus.ACTIVE) throw new AuthFlowError('not_active');
+        await this.oauthRepo.save(
+          this.oauthRepo.create({
+            userId: existingByEmail.id,
+            provider: OAuthProvider.FACEBOOK,
+            providerId: facebookId,
+            email: email.toLowerCase(),
+          }),
+        );
+        return existingByEmail;
+      }
+    }
+
+    // New user — requires invite
+    if (!inviteToken) throw new AuthFlowError('no_invite');
+
+    let invite = null;
+    try {
+      invite = await this.invitesService.validate(inviteToken, email ?? '');
+    } catch (err) {
+      if (err instanceof AuthFlowError) throw err;
+      if (err instanceof NotFoundException) throw new AuthFlowError('invalid_invite');
+      const msg: string = (err as Error).message ?? '';
+      if (msg.includes('expired')) throw new AuthFlowError('invite_expired');
+      if (msg.includes('already been used') || msg.includes('revoked')) throw new AuthFlowError('invite_used');
+      throw new AuthFlowError('invalid_invite');
+    }
+
+    const defaultCity = await this.citiesService.findAll().then((cities) => cities[0]);
+
+    const user = this.userRepo.create({
+      fullName: displayName,
+      email: email ? email.toLowerCase() : `fb_${facebookId}@placeholder.invalid`,
+      emailStatus: email ? EmailStatus.ACTIVE : EmailStatus.PENDING,
+      emailVerifiedAt: email ? new Date() : undefined,
+      cityId: defaultCity.id,
+      role: UserRole.MEMBER,
+      inviteId: invite?.id ?? null,
+      invitedBy: invite?.createdBy ?? null,
+      inviteSource: InviteSource.GOOGLE_OAUTH,
+    });
+    await this.userRepo.save(user);
+
+    await this.oauthRepo.save(
+      this.oauthRepo.create({
+        userId: user.id,
+        provider: OAuthProvider.FACEBOOK,
+        providerId: facebookId,
+        email: email ? email.toLowerCase() : null,
+      }),
+    );
+
+    if (invite) await this.invitesService.redeem(invite, user);
+
+    await this.auditService.log({
+      userId: user.id,
+      action: 'user.register',
+      entityType: 'user',
+      entityId: user.id,
+      metadata: { provider: 'facebook', inviteType: invite?.type ?? 'none' },
+    });
+
+    return user;
+  }
+
+  async linkFacebook(
+    userId: number,
+    facebookId: string,
+    email: string | null,
+  ): Promise<void> {
+    // Reject if this FB account is already linked to any user
+    const alreadyLinked = await this.oauthRepo.findOne({
+      where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
+    });
+    if (alreadyLinked) {
+      if (alreadyLinked.userId === userId) return; // already linked to self — no-op
+      throw new ConflictException('This Facebook account is already linked to another user');
+    }
+
+    await this.oauthRepo.save(
+      this.oauthRepo.create({
+        userId,
+        provider: OAuthProvider.FACEBOOK,
+        providerId: facebookId,
+        email: email ? email.toLowerCase() : null,
+      }),
+    );
+
+    await this.auditService.log({
+      userId,
+      action: 'user.link_facebook',
+      entityType: 'user',
+      entityId: userId,
+    });
   }
 
   async issueTokens(

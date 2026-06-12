@@ -66,7 +66,7 @@ import { switchMap } from 'rxjs';
             </div>
             <h1 class="item-title">{{ item()!.title ?? '(no title)' }}</h1>
             <div class="item-meta">
-              <span>{{ item()!.user.fullName }}</span>
+              <span>{{ item()!.user?.fullName }}</span>
               <span class="dot">&middot;</span>
               <span>{{ item()!.createdAt | date:'MMMM d, y' }}</span>
             </div>

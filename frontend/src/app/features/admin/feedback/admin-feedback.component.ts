@@ -108,7 +108,7 @@ import {
                     }
                   </div>
                   <div class="meta">
-                    <span class="submitter">{{ item.user.fullName }}</span>
+                    <span class="submitter">{{ item.user?.fullName }}</span>
                     <span class="dot">&middot;</span>
                     <span class="date">{{ item.createdAt | date: 'MMM d, y' }}</span>
                     <span class="dot">&middot;</span>

@@ -311,7 +311,7 @@ export class AdminReleasesComponent implements OnInit {
 
   creditPreview(): string {
     const linked = this.resolvedFeedback().filter((fb) => this.linkedIds().has(fb.id));
-    const names = linked.map((fb) => (fb.isPrivate ? 'a community member' : fb.user.fullName));
+    const names = linked.map((fb) => (fb.isPrivate ? 'a community member' : (fb.user?.fullName ?? 'Unknown')));
     const unique = [...new Set(names)];
     if (unique.length === 0) return '';
     if (unique.length === 1) return unique[0];

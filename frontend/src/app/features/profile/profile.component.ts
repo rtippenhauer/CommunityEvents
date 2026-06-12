@@ -21,6 +21,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
 import { FeedbackService, MemberFeedbackStats } from '../../core/services/feedback.service';
 import { PhotoCropDialogComponent } from '../../shared/components/photo-crop-dialog/photo-crop-dialog.component';
+import { environment } from '../../../environments/environment';
 
 interface City {
   id: number;
@@ -343,6 +344,31 @@ interface AvatarEntry { path: string; label: string; }
           </div>
         </mat-card-content>
       </mat-card>
+
+      <!-- Connected accounts (only when Facebook is enabled for this build) -->
+      @if (facebookEnabled) {
+        <mat-card class="connected-accounts-card">
+          <mat-card-header>
+            <mat-card-title>Connected Accounts</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="account-row">
+              <svg class="provider-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+              </svg>
+              <span class="account-name">Facebook</span>
+              @if (fbLinked()) {
+                <span class="account-status linked"><mat-icon>check_circle</mat-icon> Connected</span>
+              } @else {
+                <button mat-stroked-button class="connect-fb-btn" (click)="connectFacebook()" [disabled]="fbLinking() || !fbReady()">
+                  @if (fbLinking()) { <mat-spinner diameter="16" /> }
+                  @else { Connect }
+                </button>
+              }
+            </div>
+          </mat-card-content>
+        </mat-card>
+      }
 
       <!-- Feedback stats card -->
       @if (feedbackStats()) {
@@ -673,6 +699,20 @@ interface AvatarEntry { path: string; label: string; }
       .stat-value { font-size: 1.75rem; font-weight: 800; color: var(--db-blue, #1E4D8C); line-height: 1; margin-bottom: 4px; }
       .stat-item.shipped .stat-value { color: #2e7d32; }
       .stat-label { font-size: 0.75rem; color: #888; text-align: center; }
+
+      /* Connected accounts */
+      .connected-accounts-card mat-card-content { padding-top: 8px; }
+      .account-row {
+        display: flex; align-items: center; gap: 12px; padding: 8px 0;
+      }
+      .provider-icon { width: 24px; height: 24px; flex-shrink: 0; }
+      .account-name { flex: 1; font-size: 0.95rem; font-weight: 500; }
+      .account-status.linked {
+        display: flex; align-items: center; gap: 4px;
+        font-size: 0.85rem; color: #2e7d32;
+        mat-icon { font-size: 1rem; width: 1rem; height: 1rem; }
+      }
+      .connect-fb-btn { height: 32px; font-size: 0.85rem; min-width: 90px; }
     `,
   ],
 })
@@ -706,6 +746,10 @@ export class ProfileComponent implements OnInit {
   readonly savingPrefs = signal(false);
   readonly emailStatus = signal<string | null>(null);
   readonly feedbackStats = signal<MemberFeedbackStats | null>(null);
+  readonly fbReady = signal(false);
+  readonly fbLinked = signal(false);
+  readonly fbLinking = signal(false);
+  readonly facebookEnabled = !!environment.facebookAppId;
 
   readonly inviteForm = this.fb.group({
     boundToEmail: ['', [Validators.required, Validators.email]],
@@ -736,6 +780,55 @@ export class ProfileComponent implements OnInit {
     this.http.get<{ emailStatus: string }>('/api/v1/users/me').subscribe({
       next: (u) => this.emailStatus.set(u.emailStatus),
     });
+
+    if (environment.facebookAppId) {
+      this.loadFbSdk(environment.facebookAppId);
+    }
+  }
+
+  private loadFbSdk(appId: string): void {
+    const initAndReady = () => {
+      (window as any).FB.init({ appId, cookie: true, xfbml: false, version: 'v22.0' });
+      this.fbReady.set(true);
+    };
+
+    if ((window as any).FB) {
+      initAndReady();
+      return;
+    }
+
+    (window as any).fbAsyncInit = initAndReady;
+
+    if (!document.getElementById('facebook-jssdk')) {
+      const js = document.createElement('script');
+      js.id = 'facebook-jssdk';
+      js.src = 'https://connect.facebook.net/en_US/sdk.js';
+      document.head.appendChild(js);
+    }
+  }
+
+  connectFacebook(): void {
+    const FB = (window as any).FB;
+    if (!FB) return;
+    this.fbLinking.set(true);
+    FB.login((response: any) => {
+      if (response.status !== 'connected') {
+        this.fbLinking.set(false);
+        return;
+      }
+      this.authService.linkFacebook(response.authResponse.accessToken).subscribe({
+        next: () => {
+          this.fbLinking.set(false);
+          this.fbLinked.set(true);
+          this.snackBar.open('Facebook account connected!', 'OK', { duration: 3000 });
+        },
+        error: (err) => {
+          this.fbLinking.set(false);
+          const msg = err?.error?.message ?? 'Failed to connect Facebook account.';
+          this.snackBar.open(msg, 'OK', { duration: 5000 });
+        },
+      });
+    }, { scope: 'public_profile,email' });
   }
 
   loadNotifPrefs(): void {
