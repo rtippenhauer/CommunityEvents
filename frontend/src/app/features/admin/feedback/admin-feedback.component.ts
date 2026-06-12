@@ -147,6 +147,21 @@ import {
                   </a>
                 </div>
 
+                <!-- Release note row -->
+                <div class="release-note-row">
+                  <mat-form-field appearance="outline" class="release-note-field">
+                    <mat-label>Release Note</mat-label>
+                    <input
+                      matInput
+                      [value]="item.releaseNote ?? ''"
+                      placeholder="One-line description for release notes…"
+                      maxlength="500"
+                      (blur)="saveReleaseNote(item, $event)"
+                    />
+                    <mat-hint>Used when linking this item to a release</mat-hint>
+                  </mat-form-field>
+                </div>
+
                 <!-- Notes panel -->
                 @if (notePanelId() === item.id) {
                   <div class="notes-panel">
@@ -239,6 +254,8 @@ import {
 
     .card-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
     .status-field { width: 180px; margin-bottom: -1.25em; }
+    .release-note-row { margin-top: 12px; }
+    .release-note-field { width: 100%; margin-bottom: -1.25em; }
 
     .notes-panel {
       margin-top: 16px;
@@ -353,6 +370,17 @@ export class AdminFeedbackComponent implements OnInit {
         this.savingId.set(null);
         this.snackBar.open('Failed to update status', 'OK', { duration: 3000 });
       },
+    });
+  }
+
+  saveReleaseNote(item: FeedbackItem, event: Event): void {
+    const value = ((event.target as HTMLInputElement).value ?? '').trim();
+    const current = item.releaseNote ?? '';
+    if (value === current) return;
+    const releaseNote = value || null;
+    this.feedbackService.update(item.id, { releaseNote }).subscribe({
+      next: (updated) => this.patchItem(updated),
+      error: () => this.snackBar.open('Failed to save release note', 'OK', { duration: 3000 }),
     });
   }
 

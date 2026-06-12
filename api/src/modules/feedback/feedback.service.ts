@@ -167,6 +167,7 @@ export class FeedbackService {
     if (!item) throw new NotFoundException(`Feedback ${id} not found`);
     if (dto.status !== undefined) item.status = dto.status;
     if (dto.adminNote !== undefined) item.adminNote = dto.adminNote ?? null;
+    if (dto.releaseNote !== undefined) item.releaseNote = dto.releaseNote ?? null;
     return this.feedbackRepo.save(item);
   }
 

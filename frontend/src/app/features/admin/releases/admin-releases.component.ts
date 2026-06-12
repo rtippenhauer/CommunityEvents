@@ -104,6 +104,11 @@ import {
                         <span class="fb-title">{{ fb.title ?? '(no title)' }}</span>
                         <span class="fb-user">— {{ fb.user?.fullName ?? 'Unknown' }}</span>
                         @if (fb.isPrivate) { <mat-icon class="lock-icon" matTooltip="Private">lock</mat-icon> }
+                        @if (fb.releaseNote) {
+                          <span class="fb-release-note" matTooltip="Release note text">→ {{ fb.releaseNote }}</span>
+                        } @else {
+                          <span class="fb-release-note missing">no release note</span>
+                        }
                       </span>
                     </label>
                   }
@@ -206,6 +211,7 @@ import {
     .fb-title { color: #333; }
     .fb-user { color: #aaa; font-size: 0.8rem; }
     .lock-icon { font-size: 0.8rem; width: 0.8rem; height: 0.8rem; color: #aaa; }
+    .fb-release-note { font-size: 0.78rem; color: #1565c0; font-style: italic; &.missing { color: #ccc; } }
 
     .credit-preview {
       display: flex; align-items: flex-start; gap: 8px; background: #f3f8ff;
@@ -304,9 +310,9 @@ export class AdminReleasesComponent implements OnInit {
 
   private generateBody(): string {
     const linked = this.resolvedFeedback()
-      .filter((fb) => this.linkedIds().has(fb.id) && fb.title);
+      .filter((fb) => this.linkedIds().has(fb.id) && (fb.releaseNote || fb.title));
     if (linked.length === 0) return '';
-    return '<ul>' + linked.map((fb) => `<li>${fb.title}</li>`).join('') + '</ul>';
+    return '<ul>' + linked.map((fb) => `<li>${fb.releaseNote ?? fb.title}</li>`).join('') + '</ul>';
   }
 
   creditPreview(): string {

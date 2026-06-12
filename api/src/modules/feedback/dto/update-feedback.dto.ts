@@ -10,4 +10,9 @@ export class UpdateFeedbackDto {
   @MaxLength(5000)
   @IsOptional()
   adminNote?: string | null;
+
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  releaseNote?: string | null;
 }

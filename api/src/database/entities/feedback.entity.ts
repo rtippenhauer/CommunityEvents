@@ -54,6 +54,9 @@ export class FeedbackEntity {
   @Column({ name: 'admin_note', type: 'text', nullable: true })
   adminNote: string | null;
 
+  @Column({ name: 'release_note', type: 'varchar', length: 500, nullable: true })
+  releaseNote: string | null;
+
   @Column({ name: 'is_private', type: 'boolean', default: false })
   isPrivate: boolean;
 

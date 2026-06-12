@@ -30,6 +30,7 @@ export interface FeedbackItem {
   body: string;
   status: FeedbackStatus;
   adminNote: string | null;
+  releaseNote: string | null;
   isPrivate: boolean;
   upvoteCount: number;
   hasUpvoted?: boolean;
@@ -48,6 +49,7 @@ export interface CreateFeedbackDto {
 export interface UpdateFeedbackDto {
   status?: FeedbackStatus;
   adminNote?: string | null;
+  releaseNote?: string | null;
 }
 
 export interface CreateNoteDto {
