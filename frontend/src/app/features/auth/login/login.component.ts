@@ -219,22 +219,34 @@ export class LoginComponent implements OnInit {
   }
 
   private loadFbSdk(appId: string): void {
-    const initAndCheck = () => {
-      const FB = (window as any).FB;
-      FB.init({ appId, cookie: true, xfbml: true, version: 'v22.0' });
-      FB.AppEvents.logPageView();
-      FB.getLoginStatus((response: { status: string }) => {
+    const win = window as any;
+
+    const onReady = () => {
+      if (!win.__fbDone) {
+        win.FB.init({ appId, cookie: true, xfbml: true, version: 'v22.0' });
+        win.__fbDone = true;
+        win.FB.AppEvents.logPageView();
+      }
+      win.FB.getLoginStatus((response: { status: string }) => {
         this.fbStatus.set(response.status as 'connected' | 'not_authorized' | 'unknown');
         this.fbReady.set(true);
       });
     };
 
-    if ((window as any).FB) {
-      initAndCheck();
+    if (win.__fbDone) {
+      win.FB.getLoginStatus((response: { status: string }) => {
+        this.fbStatus.set(response.status as 'connected' | 'not_authorized' | 'unknown');
+        this.fbReady.set(true);
+      });
       return;
     }
 
-    (window as any).fbAsyncInit = initAndCheck;
+    if (win.FB) {
+      onReady();
+      return;
+    }
+
+    win.fbAsyncInit = onReady;
 
     if (!document.getElementById('facebook-jssdk')) {
       const js = document.createElement('script');

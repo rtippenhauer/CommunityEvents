@@ -787,17 +787,30 @@ export class ProfileComponent implements OnInit {
   }
 
   private loadFbSdk(appId: string): void {
-    const initAndReady = () => {
-      (window as any).FB.init({ appId, cookie: true, xfbml: false, version: 'v22.0' });
-      (window as any).FB.getLoginStatus(() => this.fbReady.set(true));
-    };
+    const win = window as any;
 
-    if ((window as any).FB) {
-      initAndReady();
+    // __fbDone is set only by our own FB.init() call — never trust window.FB alone
+    if (win.__fbDone) {
+      this.fbReady.set(true);
       return;
     }
 
-    (window as any).fbAsyncInit = initAndReady;
+    const onReady = () => {
+      if (!win.__fbDone) {
+        win.FB.init({ appId, cookie: true, xfbml: false, version: 'v22.0' });
+        win.__fbDone = true;
+      }
+      this.fbReady.set(true);
+    };
+
+    // SDK script sets window.FB before calling fbAsyncInit (deferred tick).
+    // If window.FB already exists here, fbAsyncInit already fired — run onReady directly.
+    if (win.FB) {
+      onReady();
+      return;
+    }
+
+    win.fbAsyncInit = onReady;
 
     if (!document.getElementById('facebook-jssdk')) {
       const js = document.createElement('script');
@@ -808,10 +821,14 @@ export class ProfileComponent implements OnInit {
   }
 
   connectFacebook(): void {
-    const FB = (window as any).FB;
-    if (!FB) return;
+    const win = window as any;
+    if (!win.FB || !win.__fbDone) {
+      this.fbReady.set(false);
+      this.loadFbSdk(environment.facebookAppId!);
+      return;
+    }
     this.fbLinking.set(true);
-    FB.login((response: any) => {
+    win.FB.login((response: any) => {
       if (response.status !== 'connected') {
         this.fbLinking.set(false);
         return;
