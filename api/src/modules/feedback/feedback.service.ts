@@ -149,7 +149,7 @@ export class FeedbackService {
 
   async findAll(): Promise<FeedbackEntity[]> {
     return this.feedbackRepo.find({
-      relations: ['user'],
+      relations: ['user', 'releases'],
       order: { createdAt: 'DESC' },
     });
   }

@@ -3,6 +3,7 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
+  ManyToMany,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -11,6 +12,7 @@ import {
 import { UserEntity } from './user.entity';
 import { FeedbackNoteEntity } from './feedback-note.entity';
 import { FeedbackUpvoteEntity } from './feedback-upvote.entity';
+import { ReleaseEntity } from './release.entity';
 
 export enum FeedbackCategory {
   BUG = 'bug',
@@ -71,6 +73,9 @@ export class FeedbackEntity {
 
   @OneToMany(() => FeedbackUpvoteEntity, (upvote) => upvote.feedback, { eager: false })
   upvotes: FeedbackUpvoteEntity[];
+
+  @ManyToMany(() => ReleaseEntity, (r) => r.linkedFeedback, { eager: false })
+  releases: ReleaseEntity[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

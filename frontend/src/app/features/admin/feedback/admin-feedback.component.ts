@@ -18,12 +18,14 @@ import { QuillModule } from 'ngx-quill';
 import {
   FeedbackService,
   FeedbackItem,
+  FeedbackLinkedRelease,
   FeedbackStatus,
   FeedbackNote,
   STATUS_LABELS,
   STATUS_COLORS,
   CATEGORY_LABELS,
   CATEGORY_COLORS,
+  getLinkedRelease,
 } from '../../../core/services/feedback.service';
 
 @Component({
@@ -105,6 +107,12 @@ import {
                     }
                     @if (!item.seenAt) {
                       <span class="new-badge">New</span>
+                    }
+                    @if (linkedRelease(item); as rel) {
+                      <span class="linked-release-badge" [class.draft]="!rel.publishedAt">
+                        <mat-icon>rocket_launch</mat-icon>
+                        v{{ rel.version }}{{ rel.publishedAt ? '' : ' (draft)' }}
+                      </span>
                     }
                   </div>
                   <div class="meta">
@@ -236,6 +244,13 @@ import {
       text-transform: uppercase; letter-spacing: 0.05em;
     }
     .private-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; color: #aaa; }
+    .linked-release-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+      background: #e8f5e9; color: #2e7d32; text-transform: uppercase; letter-spacing: 0.04em;
+      mat-icon { font-size: 0.75rem; width: 0.75rem; height: 0.75rem; }
+      &.draft { background: #fff8e1; color: #f57f17; }
+    }
     .new-badge {
       font-size: 0.68rem; font-weight: 800; padding: 2px 7px; border-radius: 10px;
       background: #e3f2fd; color: #1565c0; text-transform: uppercase; letter-spacing: 0.05em;
@@ -333,6 +348,7 @@ export class AdminFeedbackComponent implements OnInit {
   categoryLabel(c: string): string { return CATEGORY_LABELS[c as keyof typeof CATEGORY_LABELS] ?? c; }
   categoryColor(c: string): string { return CATEGORY_COLORS[c as keyof typeof CATEGORY_COLORS] ?? '#555'; }
   safeHtml(html: string): SafeHtml { return this.sanitizer.bypassSecurityTrustHtml(html); }
+  linkedRelease(item: FeedbackItem): FeedbackLinkedRelease | null { return getLinkedRelease(item); }
 
   ngOnInit(): void {
     this.feedbackService.getAll().subscribe({

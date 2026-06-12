@@ -36,7 +36,7 @@ export class ReleaseEntity {
   @JoinColumn({ name: 'created_by' })
   author: UserEntity;
 
-  @ManyToMany(() => FeedbackEntity, { eager: false })
+  @ManyToMany(() => FeedbackEntity, (fb) => fb.releases, { eager: false })
   @JoinTable({
     name: 'release_feedback',
     joinColumn: { name: 'release_id', referencedColumnName: 'id' },

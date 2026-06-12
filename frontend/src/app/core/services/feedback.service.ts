@@ -21,6 +21,13 @@ export interface FeedbackNote {
   createdAt: string;
 }
 
+export interface FeedbackLinkedRelease {
+  id: number;
+  version: string;
+  title: string;
+  publishedAt: string | null;
+}
+
 export interface FeedbackItem {
   id: number;
   userId: number;
@@ -31,12 +38,17 @@ export interface FeedbackItem {
   status: FeedbackStatus;
   adminNote: string | null;
   releaseNote: string | null;
+  releases?: FeedbackLinkedRelease[];
   isPrivate: boolean;
   upvoteCount: number;
   hasUpvoted?: boolean;
   seenAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export function getLinkedRelease(item: FeedbackItem): FeedbackLinkedRelease | null {
+  return item.releases?.find((r) => r.publishedAt != null) ?? item.releases?.[0] ?? null;
 }
 
 export interface CreateFeedbackDto {

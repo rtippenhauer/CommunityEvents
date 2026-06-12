@@ -28,6 +28,9 @@
         <a mat-list-item routerLink="/feedback" (click)="sidenav.close()">
           <mat-icon matListItemIcon>feedback</mat-icon> Feedback
         </a>
+        <a mat-list-item routerLink="/updates" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>new_releases</mat-icon> What's New
+        </a>
         <a mat-list-item routerLink="/invite" (click)="sidenav.close()">
           <mat-icon matListItemIcon>group_add</mat-icon> Invite
         </a>
@@ -103,6 +106,7 @@
           @if (isLoggedIn()) {
             <a mat-button routerLink="/members" routerLinkActive="nav-active">Members</a>
             <a mat-button routerLink="/feedback" routerLinkActive="nav-active">Feedback</a>
+            <a mat-button routerLink="/updates" routerLinkActive="nav-active">What's New</a>
             <a mat-button routerLink="/invite" routerLinkActive="nav-active">Invite</a>
           }
           @if (isAdmin()) {
