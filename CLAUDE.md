@@ -36,6 +36,8 @@ dinnerbears/
 **Phase 7 — Push Notifications & Announcements:** Web Push with VAPID, notification bell, SSE/polling, announcements with city scope, content flagging and moderation queue.
 See PHASES.md for full phase breakdown and definitions of done.
 
+**Queued next:** Phase 7.5 (Non-Validated Members & Event Invite Links) and Phase 7.6 (Facebook Event Sharing) have been designed and added to PHASES.md — ready to implement after Phase 7.
+
 ## Completed Phases
 Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6 ✓ — see PHASES.md for details.
 

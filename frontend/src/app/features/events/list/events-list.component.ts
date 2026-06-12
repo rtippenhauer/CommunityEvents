@@ -114,6 +114,12 @@ interface City {
               @if (e.status === 'draft') {
                 <div class="draft-overlay">DRAFT</div>
               }
+              @if (e.status === 'published' && e.goingCount > 0) {
+                <div class="going-badge">
+                  <mat-icon class="going-badge-icon">people</mat-icon>
+                  {{ e.goingCount }} going
+                </div>
+              }
             </div>
             <mat-card-content class="card-body">
               <div class="event-date">
@@ -197,6 +203,22 @@ interface City {
       justify-content: center;
       font-size: 3rem;
     }
+    .going-badge {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      border-radius: 20px;
+      padding: 3px 10px 3px 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      backdrop-filter: blur(2px);
+    }
+    .going-badge-icon { font-size: 0.95rem; width: 0.95rem; height: 0.95rem; }
     .cancelled-overlay {
       position: absolute;
       inset: 0;

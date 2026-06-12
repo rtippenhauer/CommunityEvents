@@ -262,26 +262,74 @@ flagged content appears in moderation queue.
 
 ---
 
-## Phase 7.5 — Public Event Interest & Invite Approval
+## Phase 7.5 — Non-Validated Members & Event Invite Links
 
-- DB: `event_interest` table (id, event_id FK, name varchar 150, email varchar 150,
-  status enum[pending|approved|rejected], created_at; UNIQUE on event_id + email)
-- Public endpoint `GET /api/v1/events/:id/info` — safe event summary (date, restaurant
-  area/name, description, going-count); no auth, no member names exposed
-- Public endpoint `POST /api/v1/events/:id/interest` — name + email → pending row;
-  rate-limited; duplicate email+event updates existing row rather than creating a second
-- Admin endpoint `GET /api/v1/admin/events/:id/interest` — list submissions with status
-- Admin endpoint `PATCH /api/v1/admin/events/:id/interest/:iid` — approve (fires existing
-  invite email flow) or reject
-- Public Angular page `/events/:id/info` — event card + name/email form, no login required;
-  shareable URL suitable for Facebook posts
-- Admin event detail: "Interest" panel listing submissions with Approve / Reject buttons
-- Approved submission triggers the existing member invite email
+Replaces the earlier Public Event Interest concept. Non-Validated users are real accounts
+with limited access — suitable for public Facebook posts where membership can't be
+pre-screened.
 
-**Definition of done:** Shareable public event URL shows event info and accepts interest
-submissions. Admin can approve (sends invite) or reject from the event detail panel.
-Duplicate submissions from the same email update the existing row. Rate limiting prevents
-spam.
+### Non-Validated User Status
+- DB: add `non_validated` to `UserStatus` enum via migration
+- Non-Validated users can: view upcoming events, RSVP (Going/Maybe/Not Going),
+  view release notes (`/updates`)
+- Non-Validated users cannot: invite +1s, invite members, submit feedback,
+  post comments or notes on any content
+- API guards enforce all restrictions server-side (not just UI)
+- Moderator/admin member profile page: shows "Self-Invited" badge instead of
+  "Invited By" when `invite_source = 'non_validated_link'`
+- Moderator/admin can upgrade Non-Validated → Member via a "Validate Member" button;
+  validator must confirm they are vouching for the person (confirmation dialog)
+- Admin can also upgrade from the admin users list
+
+### Multi-Use Event Invite Links
+- DB: extend `invites` table — add `event_id` FK (nullable), `invite_flavor`
+  enum[`member`|`non_validated`]
+- Admin-only: generate a multi-use invite link tied to a specific event;
+  choose flavor (Member or Non-Validated); set optional use cap and expiry
+- Link URL pattern: `/join/:code` — on arrival, shows event card + OAuth signup
+- On signup via Non-Validated link: account created with `non_validated` status,
+  `invite_source = 'non_validated_link'`, `invite_id` set
+- On signup via Member link: standard member account (existing invite flow),
+  lineage tracked to event
+- Admin event detail: "Invite Links" panel — generate, copy, revoke per-event links
+
+### Maybe RSVP
+- Add `maybe` as a valid RSVP status alongside `going` and `not_going`
+- RSVP UI: three-option toggle (Going / Maybe / Not Going) for all users
+- Event detail: Maybe count displayed separately from Going count
+- Cutoff logic (Phase 4.4): only `going` RSVPs count toward venue seat numbers;
+  Maybe is informational only
+- Non-Validated users can RSVP Going or Maybe (not blocked from RSVPs)
+
+**Definition of done:** Non-Validated accounts can be created via event invite links,
+can RSVP and view events/releases, cannot post or invite. Moderators can validate
+them to full Member with a vouch confirmation. Maybe RSVP option available to all
+users; only Going counts at cutoff. Admin can generate and revoke per-event invite
+links for both flavors.
+
+---
+
+## Phase 7.6 — Facebook Event Sharing
+
+Enhances the existing share/copy flow (Phase 4.3) with event-specific formatting
+and, eventually, direct Page posting.
+
+- **Copy Event Post** button on event detail (admin/mod): generates formatted
+  announcement text including event date, restaurant name, and the Non-Validated
+  invite link for that event; copies to clipboard
+- **Share to Facebook Page** button (admin only): posts the announcement text to
+  the configured DinnerBears Facebook Page using a stored Page access token;
+  requires `pages_manage_posts` permission — deferred until Meta business
+  verification is approved; button is hidden until token is configured
+- **Page access token setup**: admin settings page — "Connect Facebook Page" flow
+  that exchanges user token for a long-lived page token and stores it server-side
+- Admin can generate a Member invite link and a Non-Validated invite link for any
+  event; both are shown in the sharing panel for easy copy/paste into Facebook
+  groups or direct messages
+
+**Definition of done:** Admin can copy a formatted event post with the correct
+invite links in one click. Page posting works when a page token is configured.
+Member and Non-Validated invite links are accessible from the event sharing panel.
 
 ---
 

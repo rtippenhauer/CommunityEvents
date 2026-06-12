@@ -40,13 +40,14 @@ export class EventsService {
     private readonly config: ConfigService,
   ) {}
 
-  async findAll(filters: EventFilters): Promise<EventEntity[]> {
+  async findAll(filters: EventFilters): Promise<(EventEntity & { goingCount: number })[]> {
     const qb = this.eventRepo
       .createQueryBuilder('e')
       .leftJoinAndSelect('e.city', 'city')
       .leftJoinAndSelect('e.restaurant', 'restaurant')
       .leftJoinAndSelect('restaurant.photos', 'photos')
-      .leftJoinAndSelect('e.createdByUser', 'createdByUser');
+      .leftJoinAndSelect('e.createdByUser', 'createdByUser')
+      .loadRelationCountAndMap('e.goingCount', 'e.rsvps');
 
     if (filters.cityId) {
       qb.andWhere('e.cityId = :cityId', { cityId: filters.cityId });
@@ -71,7 +72,7 @@ export class EventsService {
       }
     }
 
-    return qb.getMany();
+    return qb.getMany() as Promise<(EventEntity & { goingCount: number })[]>;
   }
 
   async findOne(id: number): Promise<EventEntity & { publicRsvps: Pick<EventGuestLinkEntity, 'id' | 'recipientName' | 'cancelledAt'>[] }> {

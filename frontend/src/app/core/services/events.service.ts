@@ -65,6 +65,7 @@ export interface Event {
   createdByUser: { id: number; fullName: string; profilePhotoPath: string | null };
   rsvps: Rsvp[];
   publicRsvps: PublicRsvp[];
+  goingCount: number;
   createdAt: string;
   updatedAt: string;
 }
