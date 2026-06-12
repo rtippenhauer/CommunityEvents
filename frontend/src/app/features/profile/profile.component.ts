@@ -803,9 +803,14 @@ export class ProfileComponent implements OnInit {
         console.log('[FB] calling FB.init()');
         win.FB.init({ appId, cookie: true, xfbml: false, version: 'v22.0' });
         win.__fbDone = true;
-        console.log('[FB] FB.init() completed, __fbDone=true');
+        console.log('[FB] FB.init() called, waiting for async completion via getLoginStatus');
+        win.FB.getLoginStatus(() => {
+          console.log('[FB] getLoginStatus callback — SDK fully ready');
+          this.fbReady.set(true);
+        });
+      } else {
+        this.fbReady.set(true);
       }
-      this.fbReady.set(true);
     };
 
     if (win.FB) {
