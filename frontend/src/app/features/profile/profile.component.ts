@@ -789,37 +789,26 @@ export class ProfileComponent implements OnInit {
   private loadFbSdk(appId: string): void {
     const win = window as any;
 
-    console.log('[FB] loadFbSdk', { fbExists: !!win.FB, fbDone: win.__fbDone });
-
     if (win.__fbDone) {
-      console.log('[FB] already done, setting ready');
       this.fbReady.set(true);
       return;
     }
 
     const onReady = () => {
-      console.log('[FB] onReady', { fbExists: !!win.FB, fbDone: win.__fbDone });
       if (!win.__fbDone) {
-        console.log('[FB] calling FB.init()');
         win.FB.init({ appId, cookie: true, xfbml: false, version: 'v22.0' });
         win.__fbDone = true;
-        console.log('[FB] FB.init() called, waiting for async completion via getLoginStatus');
-        win.FB.getLoginStatus(() => {
-          console.log('[FB] getLoginStatus callback — SDK fully ready');
-          this.fbReady.set(true);
-        });
+        win.FB.getLoginStatus(() => this.fbReady.set(true));
       } else {
         this.fbReady.set(true);
       }
     };
 
     if (win.FB) {
-      console.log('[FB] FB already exists, calling onReady directly');
       onReady();
       return;
     }
 
-    console.log('[FB] setting fbAsyncInit and adding script');
     win.fbAsyncInit = onReady;
 
     if (!document.getElementById('facebook-jssdk')) {
@@ -832,15 +821,12 @@ export class ProfileComponent implements OnInit {
 
   connectFacebook(): void {
     const win = window as any;
-    console.log('[FB] connectFacebook', { fbExists: !!win.FB, fbDone: win.__fbDone, fbReady: this.fbReady() });
     if (!win.FB || !win.__fbDone) {
-      console.log('[FB] not ready, re-loading SDK');
       this.fbReady.set(false);
       this.loadFbSdk(environment.facebookAppId!);
       return;
     }
     this.fbLinking.set(true);
-    console.log('[FB] calling FB.login()');
     win.FB.login((response: any) => {
       if (response.status !== 'connected') {
         this.fbLinking.set(false);
