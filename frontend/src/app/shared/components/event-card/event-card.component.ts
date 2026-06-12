@@ -36,10 +36,10 @@ import { Event } from '../../../core/services/events.service';
         <div class="card-restaurant" [class.muted]="event.status === 'cancelled'">
           {{ event.restaurantName }}
         </div>
-        @if (event.status !== 'cancelled' && event.rsvps?.length) {
+        @if (event.status !== 'cancelled' && goingCount > 0) {
           <div class="card-going">
             <mat-icon class="going-icon">people</mat-icon>
-            {{ event.rsvps.length }} going
+            {{ goingCount }} going
           </div>
         }
       </div>
@@ -132,6 +132,8 @@ import { Event } from '../../../core/services/events.service';
 export class EventCardComponent {
   @Input({ required: true }) event!: Event;
   @Input() compact = false;
+
+  get goingCount: number { return this.event.goingCount ?? this.event.rsvps?.length ?? 0; }
 
   formatTime(time: string): string {
     const [h, m] = time.split(':').map(Number);
