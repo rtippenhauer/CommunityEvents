@@ -63,6 +63,14 @@
     Description="Google OAuth Client Secret" Type="Variable"
     Display="always" Required="true" Mask="true"></Config>
 
+  <!-- ==================== FACEBOOK ==================== -->
+  <Config Name="Facebook App ID" Target="FACEBOOK_APP_ID" Default="" Mode=""
+    Description="Facebook App ID for JS SDK login" Type="Variable"
+    Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Facebook App Secret" Target="FACEBOOK_APP_SECRET" Default="" Mode=""
+    Description="Facebook App Secret — used to verify data deletion signed requests" Type="Variable"
+    Display="always" Required="false" Mask="true"></Config>
+
   <!-- ==================== GEOCODING ==================== -->
   <Config Name="Geocoding API Key" Target="GEOCODING_API_KEY" Default="" Mode=""
     Description="Google Maps or other geocoding provider API key" Type="Variable"

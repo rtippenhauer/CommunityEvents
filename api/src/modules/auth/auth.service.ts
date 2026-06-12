@@ -258,6 +258,23 @@ export class AuthService {
     });
   }
 
+  async handleFacebookDeletion(facebookUserId: string): Promise<string> {
+    const account = await this.oauthRepo.findOne({
+      where: { provider: OAuthProvider.FACEBOOK, providerId: facebookUserId },
+    });
+    if (account) {
+      await this.auditService.log({
+        userId: account.userId,
+        action: 'user.facebook_data_deletion',
+        entityType: 'user',
+        entityId: account.userId,
+      });
+      await this.oauthRepo.remove(account);
+    }
+    // Return a confirmation code — first 12 chars of a UUID
+    return randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase();
+  }
+
   async issueTokens(
     user: UserEntity,
     ctx: SessionContext,

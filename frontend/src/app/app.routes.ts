@@ -109,6 +109,14 @@ export const routes: Routes = [
       import('./features/feedback/feedback-detail.component').then((m) => m.FeedbackDetailComponent),
     canActivate: [authGuard],
   },
+  // Facebook data deletion status — no auth required
+  {
+    path: 'facebook-data-deletion',
+    loadComponent: () =>
+      import('./features/facebook-deletion/facebook-deletion.component').then(
+        (m) => m.FacebookDeletionComponent,
+      ),
+  },
   // Public changelog — no auth required
   {
     path: 'updates',

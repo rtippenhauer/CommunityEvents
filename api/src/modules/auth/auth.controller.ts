@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GoogleCallbackGuard } from '../../common/guards/google-callback.guard';
@@ -12,12 +13,14 @@ import { FacebookAuthDto } from './dto/facebook-auth.dto';
 @Controller('auth')
 export class AuthController {
   private readonly frontendUrl: string;
+  private readonly fbAppSecret: string;
 
   constructor(
     private readonly authService: AuthService,
     configService: ConfigService,
   ) {
     this.frontendUrl = configService.get<string>('APP_URL', 'http://localhost:8081');
+    this.fbAppSecret = configService.get<string>('FACEBOOK_APP_SECRET', '');
   }
 
   @Get('google')
@@ -99,6 +102,36 @@ export class AuthController {
 
     await this.authService.linkFacebook(user.id, fbUser.id, fbUser.email ?? null);
     return { message: 'Facebook account linked' };
+  }
+
+  @Get('facebook/deletion')
+  facebookDeletionVerify(): { status: string } {
+    return { status: 'ok' };
+  }
+
+  @Post('facebook/deletion')
+  @HttpCode(200)
+  async facebookDeletion(@Body('signed_request') signedRequest: string): Promise<{ url: string; confirmation_code: string }> {
+    if (!signedRequest) throw new UnauthorizedException('Missing signed_request');
+
+    const parts = signedRequest.split('.');
+    if (parts.length !== 2) throw new UnauthorizedException('Malformed signed_request');
+    const [encodedSig, payload] = parts;
+
+    // Verify HMAC-SHA256 signature
+    const expected = createHmac('sha256', this.fbAppSecret).update(payload).digest();
+    const actual = Buffer.from(encodedSig.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      throw new UnauthorizedException('Invalid signed_request signature');
+    }
+
+    const data = JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as { user_id: string };
+    const confirmationCode = await this.authService.handleFacebookDeletion(data.user_id);
+
+    return {
+      url: `${this.frontendUrl}/facebook-data-deletion?code=${confirmationCode}`,
+      confirmation_code: confirmationCode,
+    };
   }
 
   @Get('me')
