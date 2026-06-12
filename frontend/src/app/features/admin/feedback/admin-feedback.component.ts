@@ -149,17 +149,18 @@ import {
 
                 <!-- Release note row -->
                 <div class="release-note-row">
-                  <mat-form-field appearance="outline" class="release-note-field">
-                    <mat-label>Release Note</mat-label>
-                    <input
-                      matInput
-                      [value]="item.releaseNote ?? ''"
-                      placeholder="One-line description for release notes…"
-                      maxlength="500"
-                      (blur)="saveReleaseNote(item, $event)"
-                    />
-                    <mat-hint>Used when linking this item to a release</mat-hint>
-                  </mat-form-field>
+                  <span class="release-note-label">
+                    <mat-icon class="rn-icon">sell</mat-icon>
+                    Release Note
+                  </span>
+                  <input
+                    class="release-note-input"
+                    type="text"
+                    [value]="item.releaseNote ?? ''"
+                    placeholder="One-line description for release notes…"
+                    maxlength="500"
+                    (blur)="saveReleaseNote(item, $event)"
+                  />
                 </div>
 
                 <!-- Notes panel -->
@@ -254,8 +255,22 @@ import {
 
     .card-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
     .status-field { width: 180px; margin-bottom: -1.25em; }
-    .release-note-row { margin-top: 12px; }
-    .release-note-field { width: 100%; margin-bottom: -1.25em; }
+    .release-note-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-top: 14px; padding: 8px 12px;
+      background: #f0f4ff; border: 1px solid #c5d0f0; border-radius: 6px;
+    }
+    .release-note-label {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 0.78rem; font-weight: 600; color: #1565c0;
+      white-space: nowrap; flex-shrink: 0;
+      .rn-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; }
+    }
+    .release-note-input {
+      flex: 1; border: none; background: transparent;
+      font-size: 0.88rem; color: #333; outline: none; min-width: 0;
+      &::placeholder { color: #aaa; }
+    }
 
     .notes-panel {
       margin-top: 16px;

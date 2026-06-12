@@ -787,17 +787,20 @@ export class ProfileComponent implements OnInit {
   }
 
   private loadFbSdk(appId: string): void {
-    const initAndReady = () => {
-      (window as any).FB.init({ appId, cookie: true, xfbml: false, version: 'v22.0' });
-      this.fbReady.set(true);
+    const markReady = () => {
+      (window as any).FB.getLoginStatus(() => this.fbReady.set(true));
     };
 
     if ((window as any).FB) {
-      initAndReady();
+      // SDK already initialized by login page — never call FB.init() again
+      markReady();
       return;
     }
 
-    (window as any).fbAsyncInit = initAndReady;
+    (window as any).fbAsyncInit = () => {
+      (window as any).FB.init({ appId, cookie: true, xfbml: false, version: 'v22.0' });
+      markReady();
+    };
 
     if (!document.getElementById('facebook-jssdk')) {
       const js = document.createElement('script');
