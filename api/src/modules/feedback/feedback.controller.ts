@@ -1,64 +1,76 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { FeedbackService } from './feedback.service';
 import { CreateFeedbackDto } from './dto/create-feedback.dto';
-import { UpdateFeedbackDto } from './dto/update-feedback.dto';
+import { CreateNoteDto } from './dto/create-note.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { FeedbackCategory } from '../../database/entities/feedback.entity';
 
 @Controller('feedback')
+@UseGuards(JwtAuthGuard)
 export class FeedbackController {
   constructor(private readonly feedbackService: FeedbackService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
   create(@Body() dto: CreateFeedbackDto, @CurrentUser() user: UserEntity) {
     return this.feedbackService.create(dto, user.id);
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  findAll() {
-    return this.feedbackService.findAll();
+  findAll(
+    @CurrentUser() user: UserEntity,
+    @Query('category') category?: FeedbackCategory,
+    @Query('sort') sort?: 'newest' | 'upvotes',
+  ) {
+    return this.feedbackService.findPublic(user.id, category, sort ?? 'newest');
   }
 
-  @Get('unseen-count')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async getUnseenCount(): Promise<{ count: number }> {
-    const count = await this.feedbackService.getUnseenCount();
-    return { count };
+  @Get('mine')
+  findMine(@CurrentUser() user: UserEntity) {
+    return this.feedbackService.findMine(user.id);
+  }
+
+  @Get('my-stats')
+  getMyStats(@CurrentUser() user: UserEntity) {
+    return this.feedbackService.getMemberStats(user.id);
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.feedbackService.findOne(id);
+  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+    const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    return this.feedbackService.findOne(id, user.id, isAdmin);
   }
 
-  @Patch('mark-all-seen')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  async markAllSeen(): Promise<{ count: number }> {
-    await this.feedbackService.markAllSeen();
-    return { count: 0 };
+  @Post(':id/upvote')
+  toggleUpvote(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+    return this.feedbackService.toggleUpvote(id, user.id);
   }
 
-  @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateFeedbackDto) {
-    return this.feedbackService.update(id, dto);
+  @Get(':id/notes')
+  getNotes(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+    const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    return this.feedbackService.getNotes(id, isAdmin);
   }
 
-  @Patch(':id/seen')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
-  markSeen(@Param('id', ParseIntPipe) id: number) {
-    return this.feedbackService.markSeen(id);
+  @Post(':id/notes')
+  addNote(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateNoteDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    return this.feedbackService.addNote(id, user.id, dto, isAdmin);
   }
 }

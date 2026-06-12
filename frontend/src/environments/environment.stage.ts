@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
   apiUrl: '/api/v1',
-  facebookAppId: null as string | null,
+  facebookAppId: 'REPLACE_WITH_YOUR_FB_APP_ID' as string | null,
 };

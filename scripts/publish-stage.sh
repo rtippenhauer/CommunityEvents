@@ -11,6 +11,7 @@ echo "==> Building $IMAGE"
 docker build \
   --platform linux/amd64 \
   $EXTRA_FLAGS \
+  --build-arg ANGULAR_CONFIG=stage \
   -t "$IMAGE" \
   .
 

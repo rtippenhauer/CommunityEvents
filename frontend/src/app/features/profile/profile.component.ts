@@ -19,6 +19,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
+import { FeedbackService, MemberFeedbackStats } from '../../core/services/feedback.service';
 import { PhotoCropDialogComponent } from '../../shared/components/photo-crop-dialog/photo-crop-dialog.component';
 
 interface City {
@@ -327,90 +328,46 @@ interface AvatarEntry { path: string; label: string; }
         </mat-card-content>
       </mat-card>
 
-      <!-- Invites card -->
-      <mat-card class="invites-card">
-        <button class="collapsible-header" type="button" (click)="invitesOpen.set(!invitesOpen())">
-          <div class="collapsible-header-text">
-            <span class="collapsible-title">Invite a Friend</span>
-            <span class="collapsible-sub">Send someone a personal invite link to join DinnerBears</span>
+      <!-- Invite shortcut -->
+      <mat-card class="invite-shortcut-card">
+        <mat-card-content>
+          <div class="invite-shortcut">
+            <mat-icon class="invite-shortcut-icon">group_add</mat-icon>
+            <div class="invite-shortcut-text">
+              <span class="invite-shortcut-title">Invite a Friend</span>
+              <span class="invite-shortcut-sub">Send a personal invite link to join DinnerBears</span>
+            </div>
+            <a mat-raised-button color="primary" routerLink="/invite">
+              <mat-icon>add_link</mat-icon> Invite
+            </a>
           </div>
-          <mat-icon class="collapsible-chevron">{{ invitesOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
-        </button>
-
-        @if (invitesOpen()) {
-          <mat-card-content>
-            <form [formGroup]="inviteForm" (ngSubmit)="createInvite()" class="invite-form">
-              <mat-form-field appearance="outline">
-                <mat-label>Their Email</mat-label>
-                <input matInput formControlName="boundToEmail" type="email" />
-                <mat-hint>The link will only work for this address</mat-hint>
-                <mat-error>A valid email is required</mat-error>
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Their Name (optional)</mat-label>
-                <input matInput formControlName="boundToName" />
-              </mat-form-field>
-              <div>
-                <button mat-raised-button color="primary" type="submit" [disabled]="inviteForm.invalid || creatingInvite()">
-                  <mat-icon>add_link</mat-icon>
-                  Generate Invite Link
-                </button>
-              </div>
-            </form>
-
-            @if (newInviteUrl()) {
-              <div class="new-link-banner">
-                <mat-icon color="primary">check_circle</mat-icon>
-                <span class="new-link-url">{{ newInviteUrl() }}</span>
-                <button mat-icon-button (click)="copyNewLink()" aria-label="Copy link" title="Copy">
-                  <mat-icon>content_copy</mat-icon>
-                </button>
-              </div>
-            }
-
-            @if (myInvites().length > 0) {
-              <mat-divider class="section-divider" />
-              <h3 class="invites-history-title">Your Invites</h3>
-              <div class="invite-list">
-                @for (invite of myInvites(); track invite.id) {
-                  <div class="invite-row">
-                    <div class="invite-row-info">
-                      <span class="invite-email">{{ invite.boundToEmail ?? '—' }}</span>
-                      @if (invite.boundToName) {
-                        <span class="invite-name">{{ invite.boundToName }}</span>
-                      }
-                      <span class="invite-meta">Expires {{ invite.expiresAt | date: 'shortDate' }}</span>
-                    </div>
-                    <div class="invite-row-status">
-                      @if (invite.isRevoked) {
-                        <mat-chip class="chip-revoked">Revoked</mat-chip>
-                      } @else if (invite.redeemedAt) {
-                        <mat-chip class="chip-used">Joined!</mat-chip>
-                      } @else if (isExpired(invite)) {
-                        <mat-chip class="chip-expired">Expired</mat-chip>
-                      } @else {
-                        <mat-chip class="chip-active">Pending</mat-chip>
-                        <button mat-icon-button matTooltip="Copy invite link" (click)="copyToken(invite.token)">
-                          <mat-icon>content_copy</mat-icon>
-                        </button>
-                        <button mat-icon-button matTooltip="Revoke invite" class="revoke-btn"
-                          [disabled]="revokingId() === invite.id"
-                          (click)="revokeInvite(invite.id)">
-                          @if (revokingId() === invite.id) {
-                            <mat-spinner diameter="16" />
-                          } @else {
-                            <mat-icon>link_off</mat-icon>
-                          }
-                        </button>
-                      }
-                    </div>
-                  </div>
-                }
-              </div>
-            }
-          </mat-card-content>
-        }
+        </mat-card-content>
       </mat-card>
+
+      <!-- Feedback stats card -->
+      @if (feedbackStats()) {
+        <mat-card class="stats-card">
+          <mat-card-header>
+            <mat-card-title>Your Contributions</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="stats-row">
+              <a class="stat-item" routerLink="/feedback">
+                <span class="stat-value">{{ feedbackStats()!.bugsReported }}</span>
+                <span class="stat-label">Bugs Reported</span>
+              </a>
+              <a class="stat-item" routerLink="/feedback">
+                <span class="stat-value">{{ feedbackStats()!.featuresRequested }}</span>
+                <span class="stat-label">Features Requested</span>
+              </a>
+              <a class="stat-item shipped" routerLink="/updates">
+                <span class="stat-value">{{ feedbackStats()!.shippedCount }}</span>
+                <span class="stat-label">Ideas Shipped</span>
+              </a>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      }
     </div>
   `,
   styles: [
@@ -628,94 +585,15 @@ interface AvatarEntry { path: string; label: string; }
         flex-shrink: 0;
       }
 
-      /* Invites card */
-      .invites-card mat-card-content {
-        padding-top: 8px;
-        border-top: 1px solid #f0ebe3;
-      }
-      .invite-form {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        padding: 8px 0 16px;
-      }
-      .new-link-banner {
+      /* Invite shortcut card */
+      .invite-shortcut {
         display: flex;
         align-items: center;
-        gap: 10px;
-        background: #e8f5e9;
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 8px;
-        flex-wrap: wrap;
-      }
-      .new-link-url {
-        font-family: monospace;
-        font-size: 0.8rem;
-        word-break: break-all;
-        flex: 1;
-      }
-      .section-divider {
-        margin: 16px 0 12px;
-      }
-      .invites-history-title {
-        font-size: 0.9rem;
-        font-weight: 600;
-        margin: 0 0 10px;
-        color: #555;
-      }
-      .invite-list {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .invite-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        padding: 8px 4px;
-        border-bottom: 1px solid #f0f0f0;
-      }
-      .invite-row-info {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-      .invite-email {
-        font-size: 0.9rem;
-        font-weight: 500;
-      }
-      .invite-name {
-        font-size: 0.8rem;
-        color: #666;
-      }
-      .invite-meta {
-        font-size: 0.75rem;
-        color: #999;
-      }
-      .revoke-btn { color: #c62828 !important; opacity: 0.7; &:hover { opacity: 1; } }
-      .invite-row-status {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        flex-shrink: 0;
-      }
-      mat-chip {
-        font-size: 0.72rem !important;
-        min-height: 22px !important;
-      }
-      .chip-active {
-        background: #c8e6c9 !important;
-      }
-      .chip-used {
-        background: #bbdefb !important;
-      }
-      .chip-expired {
-        background: #e0e0e0 !important;
-      }
-      .chip-revoked {
-        background: #ffccbc !important;
+        gap: 14px;
+        .invite-shortcut-icon { font-size: 2rem; width: 2rem; height: 2rem; color: var(--db-blue, #1E4D8C); flex-shrink: 0; }
+        .invite-shortcut-text { flex: 1; }
+        .invite-shortcut-title { display: block; font-size: 0.95rem; font-weight: 600; color: #222; }
+        .invite-shortcut-sub { display: block; font-size: 0.8rem; color: #888; margin-top: 2px; }
       }
 
       /* Notifications card */
@@ -771,6 +649,30 @@ interface AvatarEntry { path: string; label: string; }
         font-size: 0.85rem;
         color: #888;
       }
+      .stats-card mat-card-content { padding-top: 8px; }
+      .stats-row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .stat-item {
+        flex: 1;
+        min-width: 90px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 16px 8px;
+        border-radius: 10px;
+        background: #f5f5f5;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s;
+        &:hover { background: #e8f4fd; }
+        &.shipped { background: #e8f5e9; &:hover { background: #c8e6c9; } }
+      }
+      .stat-value { font-size: 1.75rem; font-weight: 800; color: var(--db-blue, #1E4D8C); line-height: 1; margin-bottom: 4px; }
+      .stat-item.shipped .stat-value { color: #2e7d32; }
+      .stat-label { font-size: 0.75rem; color: #888; text-align: center; }
     `,
   ],
 })
@@ -781,6 +683,7 @@ export class ProfileComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
   private readonly clipboard = inject(Clipboard);
+  private readonly feedbackService = inject(FeedbackService);
 
   readonly presetAvatars = signal<AvatarEntry[]>([]);
   readonly cities = signal<City[]>([]);
@@ -802,6 +705,7 @@ export class ProfileComponent implements OnInit {
   readonly notifPrefs = signal<NotifPrefs | null>(null);
   readonly savingPrefs = signal(false);
   readonly emailStatus = signal<string | null>(null);
+  readonly feedbackStats = signal<MemberFeedbackStats | null>(null);
 
   readonly inviteForm = this.fb.group({
     boundToEmail: ['', [Validators.required, Validators.email]],
@@ -825,6 +729,10 @@ export class ProfileComponent implements OnInit {
     this.loadMyInvites();
     this.loadMyProfile();
     this.loadNotifPrefs();
+    this.feedbackService.getMyStats().subscribe({
+      next: (stats) => this.feedbackStats.set(stats),
+      error: () => {},
+    });
     this.http.get<{ emailStatus: string }>('/api/v1/users/me').subscribe({
       next: (u) => this.emailStatus.set(u.emailStatus),
     });

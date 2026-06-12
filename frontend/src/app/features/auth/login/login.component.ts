@@ -4,6 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { AuthService } from '../../../core/services/auth.service';
+import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-login',
@@ -41,6 +42,15 @@ import { AuthService } from '../../../core/services/auth.service';
             </svg>
             Continue with Google
           </button>
+
+          @if (fbReady()) {
+            <button mat-raised-button class="fb-btn" (click)="signInWithFacebook()">
+              <svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="white" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+              </svg>
+              {{ fbStatus() === 'connected' ? 'Continue with Facebook' : 'Continue with Facebook' }}
+            </button>
+          }
 
           <p class="invite-help">
             Don't have an invite? Contact a DinnerBears member to get one.
@@ -130,7 +140,7 @@ import { AuthService } from '../../../core/services/auth.service';
       text-align: left;
     }
 
-    .google-btn {
+    .google-btn, .fb-btn {
       width: 100%;
       display: flex;
       align-items: center;
@@ -139,15 +149,30 @@ import { AuthService } from '../../../core/services/auth.service';
       padding: 10px 20px;
       font-size: 1rem;
       font-weight: 500;
+      border-radius: 8px !important;
+    }
+
+    .google-btn {
       background: #fff !important;
       color: var(--db-text-dark) !important;
       border: 1px solid #dadce0 !important;
       box-shadow: 0 1px 3px rgba(0,0,0,.12) !important;
-      border-radius: 8px !important;
+      margin-bottom: 12px;
+      &:hover { box-shadow: 0 2px 6px rgba(0,0,0,.18) !important; }
+    }
 
-      &:hover {
-        box-shadow: 0 2px 6px rgba(0,0,0,.18) !important;
-      }
+    .fb-btn {
+      background: #1877F2 !important;
+      color: #fff !important;
+      border: none !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,.2) !important;
+      &:hover { background: #166fe5 !important; box-shadow: 0 2px 6px rgba(0,0,0,.3) !important; }
+    }
+
+    .fb-icon {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
     }
 
     .google-icon {
@@ -169,6 +194,8 @@ export class LoginComponent implements OnInit {
   private readonly authService = inject(AuthService);
 
   readonly inviteToken = signal<string | null>(null);
+  readonly fbReady = signal(false);
+  readonly fbStatus = signal<'connected' | 'not_authorized' | 'unknown'>('unknown');
 
   ngOnInit(): void {
     if (this.authService.isLoggedIn()) {
@@ -177,9 +204,55 @@ export class LoginComponent implements OnInit {
     }
     const token = this.route.snapshot.queryParamMap.get('token');
     this.inviteToken.set(token);
+
+    if (environment.facebookAppId) {
+      this.loadFbSdk(environment.facebookAppId);
+    }
+  }
+
+  private loadFbSdk(appId: string): void {
+    if (document.getElementById('facebook-jssdk')) return;
+    (window as any).fbAsyncInit = () => {
+      (window as any).FB.init({ appId, cookie: true, xfbml: true, version: 'v22.0' });
+      (window as any).FB.AppEvents.logPageView();
+      (window as any).FB.getLoginStatus((response: { status: string }) => {
+        this.fbStatus.set(response.status as 'connected' | 'not_authorized' | 'unknown');
+        this.fbReady.set(true);
+      });
+    };
+    const js = document.createElement('script');
+    js.id = 'facebook-jssdk';
+    js.src = 'https://connect.facebook.net/en_US/sdk.js';
+    document.head.appendChild(js);
   }
 
   signInWithGoogle(): void {
     this.authService.loginWithGoogle(this.inviteToken() ?? undefined);
+  }
+
+  signInWithFacebook(): void {
+    const FB = (window as any).FB;
+    if (!FB) return;
+
+    if (this.fbStatus() === 'connected') {
+      FB.getLoginStatus((response: any) => {
+        if (response.status === 'connected') {
+          this.handleFbToken(response.authResponse.accessToken);
+        }
+      });
+    } else {
+      FB.login((response: any) => {
+        if (response.status === 'connected') {
+          this.fbStatus.set('connected');
+          this.handleFbToken(response.authResponse.accessToken);
+        }
+      }, { scope: 'public_profile,email' });
+    }
+  }
+
+  private handleFbToken(accessToken: string): void {
+    // Phase 11: send accessToken to backend, receive DinnerBears JWT
+    // this.authService.loginWithFacebook(accessToken, this.inviteToken() ?? undefined);
+    console.log('FB token ready for Phase 11 backend:', accessToken);
   }
 }

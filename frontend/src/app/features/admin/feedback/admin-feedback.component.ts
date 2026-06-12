@@ -1,6 +1,8 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -9,39 +11,20 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { FeedbackService, FeedbackItem, FeedbackStatus } from '../../../core/services/feedback.service';
-
-const STATUS_LABELS: Record<FeedbackStatus, string> = {
-  new: 'New',
-  under_review: 'Under Review',
-  in_progress: 'In Progress',
-  released: 'Released',
-  wont_do: "Won't Do",
-  duplicate: 'Duplicate',
-};
-
-const STATUS_COLORS: Record<FeedbackStatus, string> = {
-  new: '#1565c0',
-  under_review: '#6a1b9a',
-  in_progress: '#e65100',
-  released: '#2e7d32',
-  wont_do: '#757575',
-  duplicate: '#9e9e9e',
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  bug: 'Bug',
-  feature_request: 'Feature Request',
-  comment: 'Comment',
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  bug: '#c62828',
-  feature_request: '#1565c0',
-  comment: '#555',
-};
+import { QuillModule } from 'ngx-quill';
+import {
+  FeedbackService,
+  FeedbackItem,
+  FeedbackStatus,
+  FeedbackNote,
+  STATUS_LABELS,
+  STATUS_COLORS,
+  CATEGORY_LABELS,
+  CATEGORY_COLORS,
+} from '../../../core/services/feedback.service';
 
 @Component({
   selector: 'app-admin-feedback',
@@ -49,6 +32,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   imports: [
     DatePipe,
     FormsModule,
+    ReactiveFormsModule,
+    RouterLink,
     MatButtonModule,
     MatCardModule,
     MatChipsModule,
@@ -57,13 +42,20 @@ const CATEGORY_COLORS: Record<string, string> = {
     MatInputModule,
     MatSelectModule,
     MatProgressSpinnerModule,
+    MatSlideToggleModule,
     MatTooltipModule,
+    QuillModule,
   ],
   template: `
     <div class="feedback-admin">
       <div class="page-header">
         <h1>Feedback</h1>
-        <span class="item-count">{{ filtered().length }} item{{ filtered().length === 1 ? '' : 's' }}</span>
+        <div class="header-actions">
+          <span class="item-count">{{ filtered().length }} item{{ filtered().length === 1 ? '' : 's' }}</span>
+          <button mat-stroked-button routerLink="/admin/releases/new">
+            <mat-icon>rocket_launch</mat-icon> New Release
+          </button>
+        </div>
       </div>
 
       <!-- Filters -->
@@ -99,7 +91,7 @@ const CATEGORY_COLORS: Record<string, string> = {
             <mat-card class="feedback-card" [class.expanded]="expandedId() === item.id">
               <mat-card-content>
 
-                <!-- Top row: badges + meta -->
+                <!-- Top row -->
                 <div class="card-top">
                   <div class="badges">
                     <span class="category-chip" [style.background]="categoryColor(item.category) + '22'" [style.color]="categoryColor(item.category)">
@@ -108,31 +100,33 @@ const CATEGORY_COLORS: Record<string, string> = {
                     <span class="status-chip" [style.background]="statusColor(item.status) + '22'" [style.color]="statusColor(item.status)">
                       {{ statusLabel(item.status) }}
                     </span>
+                    @if (item.isPrivate) {
+                      <mat-icon class="private-icon" matTooltip="Private ticket">lock</mat-icon>
+                    }
+                    @if (!item.seenAt) {
+                      <span class="new-badge">New</span>
+                    }
                   </div>
                   <div class="meta">
                     <span class="submitter">{{ item.user.fullName }}</span>
                     <span class="dot">&middot;</span>
                     <span class="date">{{ item.createdAt | date: 'MMM d, y' }}</span>
+                    <span class="dot">&middot;</span>
+                    <mat-icon class="upvote-meta-icon" matTooltip="Upvotes">arrow_upward</mat-icon>
+                    <span>{{ item.upvoteCount }}</span>
                   </div>
                 </div>
 
-                <!-- Body -->
-                <p class="body-text" [class.truncated]="expandedId() !== item.id">{{ item.body }}</p>
-                @if (item.body.length > 200) {
-                  <button mat-button class="expand-btn" (click)="toggleExpand(item.id)">
-                    {{ expandedId() === item.id ? 'Show less' : 'Show more' }}
-                  </button>
+                <!-- Title + body -->
+                @if (item.title) {
+                  <div class="item-title">{{ item.title }}</div>
                 }
+                <div class="body-text" [class.truncated]="expandedId() !== item.id" [innerHTML]="safeHtml(item.body)"></div>
+                <button mat-button class="expand-btn" (click)="toggleExpand(item.id)">
+                  {{ expandedId() === item.id ? 'Show less' : 'Show more' }}
+                </button>
 
-                <!-- Admin note (if set) -->
-                @if (item.adminNote) {
-                  <div class="admin-note-display">
-                    <mat-icon class="note-icon">sticky_note_2</mat-icon>
-                    <span>{{ item.adminNote }}</span>
-                  </div>
-                }
-
-                <!-- Actions -->
+                <!-- Actions row -->
                 <div class="card-actions">
                   <mat-form-field appearance="outline" class="status-field">
                     <mat-label>Status</mat-label>
@@ -143,26 +137,53 @@ const CATEGORY_COLORS: Record<string, string> = {
                     </mat-select>
                   </mat-form-field>
 
-                  <button mat-stroked-button (click)="openNoteEditor(item)" matTooltip="Add or edit admin note">
-                    <mat-icon>edit_note</mat-icon>
-                    {{ item.adminNote ? 'Edit note' : 'Add note' }}
+                  <button mat-stroked-button (click)="toggleNotePanel(item.id)" matTooltip="View / add notes">
+                    <mat-icon>chat_bubble_outline</mat-icon>
+                    Notes
                   </button>
+
+                  <a mat-stroked-button [routerLink]="['/feedback', item.id]" matTooltip="View member view">
+                    <mat-icon>open_in_new</mat-icon>
+                  </a>
                 </div>
 
-                <!-- Inline note editor -->
-                @if (editingNoteId() === item.id) {
-                  <div class="note-editor">
-                    <mat-form-field appearance="outline" class="note-field">
-                      <mat-label>Admin note (internal)</mat-label>
-                      <textarea matInput [(ngModel)]="noteText" rows="3"></textarea>
-                    </mat-form-field>
-                    <div class="note-actions">
-                      <button mat-button (click)="cancelNote()">Cancel</button>
-                      <button mat-raised-button color="primary" (click)="saveNote(item)" [disabled]="savingId() === item.id">
-                        @if (savingId() === item.id) { <mat-spinner diameter="16" /> }
-                        @else { Save note }
-                      </button>
-                    </div>
+                <!-- Notes panel -->
+                @if (notePanelId() === item.id) {
+                  <div class="notes-panel">
+                    @if (loadingNotes()) {
+                      <mat-spinner diameter="24" />
+                    } @else {
+                      @if (itemNotes().length === 0) {
+                        <p class="no-notes">No notes yet.</p>
+                      } @else {
+                        @for (note of itemNotes(); track note.id) {
+                          <div class="note-row" [class.admin-only]="note.isAdminOnly">
+                            <span class="note-author">{{ note.author.fullName }}</span>
+                            @if (note.isAdminOnly) { <span class="admin-badge">Admin only</span> }
+                            <span class="note-date">{{ note.createdAt | date:'MMM d, h:mm a' }}</span>
+                            <div class="note-body" [innerHTML]="safeHtml(note.content)"></div>
+                          </div>
+                        }
+                      }
+                      <!-- Add note -->
+                      <div class="add-note-form">
+                        <div class="quill-wrap">
+                          <quill-editor
+                            [(ngModel)]="newNoteContent"
+                            placeholder="Add admin note…"
+                            [modules]="quillModules"
+                            class="note-quill"
+                          ></quill-editor>
+                        </div>
+                        <div class="note-form-row">
+                          <mat-slide-toggle [(ngModel)]="newNoteAdminOnly" color="warn">Admin only</mat-slide-toggle>
+                          <button mat-raised-button color="primary" (click)="saveNote(item.id)" [disabled]="savingNote()">
+                            @if (savingNote()) { <mat-spinner diameter="16" /> }
+                            @else { Post note }
+                          </button>
+                        </div>
+                      </div>
+                    }
                   </div>
                 }
 
@@ -174,113 +195,112 @@ const CATEGORY_COLORS: Record<string, string> = {
     </div>
   `,
   styles: [`
-    .feedback-admin { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
+    .feedback-admin { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
     .page-header {
-      display: flex;
-      align-items: baseline;
-      gap: 12px;
-      margin-bottom: 20px;
+      display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap;
+      gap: 12px; margin-bottom: 20px;
       h1 { margin: 0; font-size: 1.75rem; color: var(--db-brown-dark); }
     }
+    .header-actions { display: flex; align-items: center; gap: 12px; }
     .item-count { font-size: 0.9rem; color: #888; }
     .filters { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
     .filter-field { width: 200px; margin-bottom: -1.25em; }
     .center { display: flex; justify-content: center; padding: 48px; }
     .empty { text-align: center; color: #999; padding: 48px 0; }
-
     .feedback-list { display: flex; flex-direction: column; gap: 16px; }
-
     .feedback-card { border-radius: 10px; }
 
     .card-top {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 10px;
+      display: flex; align-items: flex-start; justify-content: space-between;
+      flex-wrap: wrap; gap: 8px; margin-bottom: 10px;
     }
-    .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+    .badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .category-chip, .status-chip {
-      font-size: 0.72rem;
-      font-weight: 700;
-      padding: 3px 10px;
-      border-radius: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 12px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .private-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; color: #aaa; }
+    .new-badge {
+      font-size: 0.68rem; font-weight: 800; padding: 2px 7px; border-radius: 10px;
+      background: #e3f2fd; color: #1565c0; text-transform: uppercase; letter-spacing: 0.05em;
     }
     .meta { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #888; }
     .submitter { font-weight: 600; color: #555; }
     .dot { color: #ccc; }
+    .upvote-meta-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; }
 
+    .item-title { font-weight: 700; font-size: 0.95rem; color: #222; margin-bottom: 4px; }
     .body-text {
-      font-size: 0.92rem;
-      color: #333;
-      line-height: 1.55;
-      margin: 0 0 4px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      &.truncated {
-        display: -webkit-box;
-        -webkit-line-clamp: 4;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-      }
+      font-size: 0.9rem; color: #444; line-height: 1.55; margin: 0 0 4px;
+      &.truncated { max-height: 4.65em; overflow: hidden; }
+      ::ng-deep p { margin: 0 0 8px; &:last-child { margin-bottom: 0; } }
     }
     .expand-btn { font-size: 0.78rem; padding: 0; min-width: 0; height: auto; margin-bottom: 8px; }
 
-    .admin-note-display {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      background: #fff8e1;
-      border-left: 3px solid #f9a825;
-      border-radius: 0 6px 6px 0;
-      padding: 8px 12px;
-      margin: 8px 0;
-      font-size: 0.85rem;
-      color: #5d4037;
-      .note-icon { font-size: 1rem; width: 1rem; height: 1rem; color: #f9a825; flex-shrink: 0; margin-top: 1px; }
-    }
-
-    .card-actions {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-top: 12px;
-      flex-wrap: wrap;
-    }
+    .card-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
     .status-field { width: 180px; margin-bottom: -1.25em; }
 
-    .note-editor { margin-top: 12px; }
-    .note-field { width: 100%; }
-    .note-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+    .notes-panel {
+      margin-top: 16px;
+      border-top: 1px solid #eee;
+      padding-top: 16px;
+    }
+    .no-notes { font-size: 0.85rem; color: #aaa; margin: 0 0 12px; }
+    .note-row {
+      background: #fafafa; border: 1px solid #eee; border-radius: 6px;
+      padding: 10px 12px; margin-bottom: 10px;
+      &.admin-only { background: #fff8e1; border-color: #ffe082; }
+    }
+    .note-author { font-size: 0.82rem; font-weight: 600; color: #333; margin-right: 8px; }
+    .admin-badge {
+      font-size: 0.68rem; font-weight: 700; padding: 2px 6px; border-radius: 8px;
+      background: #ffe082; color: #5d4037; text-transform: uppercase; margin-right: 8px;
+    }
+    .note-date { font-size: 0.75rem; color: #aaa; }
+    .note-body { font-size: 0.85rem; color: #444; margin-top: 6px; line-height: 1.5; ::ng-deep p { margin: 0; } }
+
+    .add-note-form { margin-top: 12px; }
+    .quill-wrap {
+      border: 1px solid rgba(0,0,0,0.23); border-radius: 4px; margin-bottom: 8px;
+      &:focus-within { border-color: var(--db-blue, #1E4D8C); }
+    }
+    .note-quill { display: block; }
+    ::ng-deep .note-quill .ql-container { border: none; min-height: 80px; font-size: 0.9rem; }
+    ::ng-deep .note-quill .ql-toolbar { border: none; border-bottom: 1px solid rgba(0,0,0,0.12); }
+    .note-form-row { display: flex; align-items: center; justify-content: space-between; }
   `],
 })
 export class AdminFeedbackComponent implements OnInit {
   private readonly feedbackService = inject(FeedbackService);
+  private readonly sanitizer = inject(DomSanitizer);
   private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal(true);
   readonly savingId = signal<number | null>(null);
+  readonly savingNote = signal(false);
+  readonly loadingNotes = signal(false);
   readonly expandedId = signal<number | null>(null);
-  readonly editingNoteId = signal<number | null>(null);
-
+  readonly notePanelId = signal<number | null>(null);
   readonly items = signal<FeedbackItem[]>([]);
   readonly filtered = signal<FeedbackItem[]>([]);
+  readonly itemNotes = signal<FeedbackNote[]>([]);
 
   filterStatus: FeedbackStatus | null = null;
   filterCategory: string | null = null;
-  noteText = '';
+  newNoteContent = '';
+  newNoteAdminOnly = false;
 
-  readonly allStatuses: FeedbackStatus[] = [
-    'new', 'under_review', 'in_progress', 'released', 'wont_do', 'duplicate',
-  ];
+  readonly quillModules = {
+    toolbar: [['bold', 'italic'], [{ list: 'bullet' }], ['link'], ['clean']],
+  };
 
-  statusLabel(s: FeedbackStatus): string { return STATUS_LABELS[s]; }
-  statusColor(s: FeedbackStatus): string { return STATUS_COLORS[s]; }
-  categoryLabel(c: string): string { return CATEGORY_LABELS[c] ?? c; }
-  categoryColor(c: string): string { return CATEGORY_COLORS[c] ?? '#555'; }
+  readonly allStatuses: FeedbackStatus[] = ['open', 'in_progress', 'resolved', 'shipped', 'closed', 'wont_fix'];
+
+  statusLabel(s: string): string { return STATUS_LABELS[s as FeedbackStatus] ?? s; }
+  statusColor(s: string): string { return STATUS_COLORS[s as FeedbackStatus] ?? '#555'; }
+  categoryLabel(c: string): string { return CATEGORY_LABELS[c as keyof typeof CATEGORY_LABELS] ?? c; }
+  categoryColor(c: string): string { return CATEGORY_COLORS[c as keyof typeof CATEGORY_COLORS] ?? '#555'; }
+  safeHtml(html: string): SafeHtml { return this.sanitizer.bypassSecurityTrustHtml(html); }
 
   ngOnInit(): void {
     this.feedbackService.getAll().subscribe({
@@ -304,18 +324,21 @@ export class AdminFeedbackComponent implements OnInit {
   }
 
   toggleExpand(id: number): void {
-    const isOpening = this.expandedId() !== id;
-    this.expandedId.set(isOpening ? id : null);
+    this.expandedId.set(this.expandedId() === id ? null : id);
+  }
 
-    if (isOpening) {
-      const item = this.items().find((i) => i.id === id);
-      if (item && !item.seenAt) {
-        this.feedbackService.markSeen(id).subscribe({
-          next: (updated) => this.patchItem(updated),
-          error: () => {},
-        });
-      }
+  toggleNotePanel(id: number): void {
+    if (this.notePanelId() === id) {
+      this.notePanelId.set(null);
+      return;
     }
+    this.notePanelId.set(id);
+    this.itemNotes.set([]);
+    this.loadingNotes.set(true);
+    this.feedbackService.getNotes(id).subscribe({
+      next: (notes) => { this.itemNotes.set(notes); this.loadingNotes.set(false); },
+      error: () => this.loadingNotes.set(false),
+    });
   }
 
   updateStatus(item: FeedbackItem, status: FeedbackStatus): void {
@@ -333,30 +356,24 @@ export class AdminFeedbackComponent implements OnInit {
     });
   }
 
-  openNoteEditor(item: FeedbackItem): void {
-    this.editingNoteId.set(item.id);
-    this.noteText = item.adminNote ?? '';
-  }
-
-  cancelNote(): void {
-    this.editingNoteId.set(null);
-    this.noteText = '';
-  }
-
-  saveNote(item: FeedbackItem): void {
-    this.savingId.set(item.id);
-    const adminNote = this.noteText.trim() || null;
-    this.feedbackService.update(item.id, { adminNote }).subscribe({
-      next: (updated) => {
-        this.patchItem(updated);
-        this.savingId.set(null);
-        this.editingNoteId.set(null);
-        this.noteText = '';
-        this.snackBar.open('Note saved', 'OK', { duration: 2000 });
+  saveNote(feedbackId: number): void {
+    const raw = this.newNoteContent.replace(/<[^>]*>/g, '').trim();
+    if (!raw) return;
+    this.savingNote.set(true);
+    this.feedbackService.addAdminNote(feedbackId, {
+      content: this.newNoteContent,
+      isAdminOnly: this.newNoteAdminOnly,
+    }).subscribe({
+      next: (note) => {
+        this.itemNotes.update((list) => [...list, note]);
+        this.newNoteContent = '';
+        this.newNoteAdminOnly = false;
+        this.savingNote.set(false);
+        this.snackBar.open('Note posted', 'OK', { duration: 2000 });
       },
       error: () => {
-        this.savingId.set(null);
-        this.snackBar.open('Failed to save note', 'OK', { duration: 3000 });
+        this.savingNote.set(false);
+        this.snackBar.open('Failed to post note', 'OK', { duration: 3000 });
       },
     });
   }

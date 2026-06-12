@@ -4,10 +4,13 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { UserEntity } from './user.entity';
+import { FeedbackNoteEntity } from './feedback-note.entity';
+import { FeedbackUpvoteEntity } from './feedback-upvote.entity';
 
 export enum FeedbackCategory {
   BUG = 'bug',
@@ -16,12 +19,12 @@ export enum FeedbackCategory {
 }
 
 export enum FeedbackStatus {
-  NEW = 'new',
-  UNDER_REVIEW = 'under_review',
+  OPEN = 'open',
   IN_PROGRESS = 'in_progress',
-  RELEASED = 'released',
-  WONT_DO = 'wont_do',
-  DUPLICATE = 'duplicate',
+  RESOLVED = 'resolved',
+  SHIPPED = 'shipped',
+  CLOSED = 'closed',
+  WONT_FIX = 'wont_fix',
 }
 
 @Entity('feedback')
@@ -36,20 +39,35 @@ export class FeedbackEntity {
   @JoinColumn({ name: 'user_id' })
   user: UserEntity;
 
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  title: string | null;
+
   @Column({ type: 'enum', enum: FeedbackCategory })
   category: FeedbackCategory;
 
   @Column({ type: 'text' })
   body: string;
 
-  @Column({ type: 'enum', enum: FeedbackStatus, default: FeedbackStatus.NEW })
+  @Column({ type: 'enum', enum: FeedbackStatus, default: FeedbackStatus.OPEN })
   status: FeedbackStatus;
 
   @Column({ name: 'admin_note', type: 'text', nullable: true })
   adminNote: string | null;
 
+  @Column({ name: 'is_private', type: 'boolean', default: false })
+  isPrivate: boolean;
+
+  @Column({ name: 'upvote_count', type: 'int', unsigned: true, default: 0 })
+  upvoteCount: number;
+
   @Column({ name: 'seen_at', type: 'datetime', nullable: true })
   seenAt: Date | null;
+
+  @OneToMany(() => FeedbackNoteEntity, (note) => note.feedback, { eager: false })
+  notes: FeedbackNoteEntity[];
+
+  @OneToMany(() => FeedbackUpvoteEntity, (upvote) => upvote.feedback, { eager: false })
+  upvotes: FeedbackUpvoteEntity[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

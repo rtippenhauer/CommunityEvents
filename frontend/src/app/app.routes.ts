@@ -85,6 +85,38 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'invite',
+    loadComponent: () =>
+      import('./features/invite/invite.component').then((m) => m.InviteComponent),
+    canActivate: [authGuard],
+  },
+  // Feedback board
+  {
+    path: 'feedback',
+    loadComponent: () =>
+      import('./features/feedback/feedback-board.component').then((m) => m.FeedbackBoardComponent),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'feedback/new',
+    loadComponent: () =>
+      import('./features/feedback/feedback-new.component').then((m) => m.FeedbackNewComponent),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'feedback/:id',
+    loadComponent: () =>
+      import('./features/feedback/feedback-detail.component').then((m) => m.FeedbackDetailComponent),
+    canActivate: [authGuard],
+  },
+  // Public changelog — no auth required
+  {
+    path: 'updates',
+    loadComponent: () =>
+      import('./features/updates/updates.component').then((m) => m.UpdatesComponent),
+  },
+  // Admin
+  {
     path: 'admin/invites',
     loadComponent: () =>
       import('./features/admin/invites/admin-invites.component').then(
@@ -117,12 +149,12 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
-    path: 'feedback',
+    path: 'admin/releases/new',
     loadComponent: () =>
-      import('./features/feedback/feedback-submit.component').then(
-        (m) => m.FeedbackSubmitComponent,
+      import('./features/admin/releases/admin-releases.component').then(
+        (m) => m.AdminReleasesComponent,
       ),
-    canActivate: [authGuard],
+    canActivate: [authGuard, adminGuard],
   },
   {
     path: '**',

@@ -262,6 +262,29 @@ flagged content appears in moderation queue.
 
 ---
 
+## Phase 7.5 — Public Event Interest & Invite Approval
+
+- DB: `event_interest` table (id, event_id FK, name varchar 150, email varchar 150,
+  status enum[pending|approved|rejected], created_at; UNIQUE on event_id + email)
+- Public endpoint `GET /api/v1/events/:id/info` — safe event summary (date, restaurant
+  area/name, description, going-count); no auth, no member names exposed
+- Public endpoint `POST /api/v1/events/:id/interest` — name + email → pending row;
+  rate-limited; duplicate email+event updates existing row rather than creating a second
+- Admin endpoint `GET /api/v1/admin/events/:id/interest` — list submissions with status
+- Admin endpoint `PATCH /api/v1/admin/events/:id/interest/:iid` — approve (fires existing
+  invite email flow) or reject
+- Public Angular page `/events/:id/info` — event card + name/email form, no login required;
+  shareable URL suitable for Facebook posts
+- Admin event detail: "Interest" panel listing submissions with Approve / Reject buttons
+- Approved submission triggers the existing member invite email
+
+**Definition of done:** Shareable public event URL shows event info and accepts interest
+submissions. Admin can approve (sends invite) or reject from the event detail panel.
+Duplicate submissions from the same email update the existing row. Rate limiting prevents
+spam.
+
+---
+
 ## Phase 8 — Venue Moderator Tools
 
 - Add `moderator_notes` (longtext, nullable) to `restaurants` table via migration

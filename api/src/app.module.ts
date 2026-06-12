@@ -19,6 +19,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { EmailModule } from './modules/email/email.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
+import { ReleasesModule } from './modules/releases/releases.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     StatsModule,
     EmailModule,
     FeedbackModule,
+    ReleasesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

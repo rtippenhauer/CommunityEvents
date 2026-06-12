@@ -28,6 +28,9 @@
         <a mat-list-item routerLink="/feedback" (click)="sidenav.close()">
           <mat-icon matListItemIcon>feedback</mat-icon> Feedback
         </a>
+        <a mat-list-item routerLink="/invite" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>group_add</mat-icon> Invite
+        </a>
         @if (isAdmin()) {
           <mat-divider />
           <div class="sidenav-section-label">Admin</div>
@@ -100,6 +103,7 @@
           @if (isLoggedIn()) {
             <a mat-button routerLink="/members" routerLinkActive="nav-active">Members</a>
             <a mat-button routerLink="/feedback" routerLinkActive="nav-active">Feedback</a>
+            <a mat-button routerLink="/invite" routerLinkActive="nav-active">Invite</a>
           }
           @if (isAdmin()) {
             <button mat-button [matMenuTriggerFor]="adminMenu" class="admin-menu-btn">

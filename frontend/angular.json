@@ -36,7 +36,10 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles.scss"],
+            "styles": [
+              "node_modules/quill/dist/quill.snow.css",
+              "src/styles.scss"
+            ],
             "scripts": []
           },
           "configurations": {
@@ -54,6 +57,19 @@
                 }
               ],
               "outputHashing": "all"
+            },
+            "stage": {
+              "budgets": [
+                { "type": "initial", "maximumWarning": "1mb", "maximumError": "2mb" },
+                { "type": "anyComponentStyle", "maximumWarning": "6kB", "maximumError": "12kB" }
+              ],
+              "outputHashing": "all",
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.stage.ts"
+                }
+              ]
             },
             "development": {
               "optimization": false,
@@ -90,7 +106,10 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/styles.scss"],
+            "styles": [
+              "node_modules/quill/dist/quill.snow.css",
+              "src/styles.scss"
+            ],
             "scripts": []
           }
         }
