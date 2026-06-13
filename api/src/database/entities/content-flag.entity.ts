@@ -37,7 +37,7 @@ export class ContentFlagEntity {
   @JoinColumn({ name: 'reported_by' })
   reporter: UserEntity;
 
-  @Column({ length: 500, nullable: true })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   reason: string | null;
 
   @Column({ type: 'enum', enum: FlagStatus, default: FlagStatus.PENDING })

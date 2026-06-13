@@ -16,11 +16,15 @@
   --mdc-list-list-item-leading-icon-color: var(--db-cream);
   --mdc-list-list-item-hover-label-text-color: var(--db-cream);
   --mdc-list-list-item-hover-leading-icon-color: var(--db-cream);
-  --mat-list-active-indicator-color: rgba(255,255,255,0.1);
+  --mdc-list-list-item-selected-label-text-color: var(--db-cream);
+  --mdc-list-list-item-selected-leading-icon-color: var(--db-cream);
+  --mdc-list-list-item-focus-label-text-color: var(--db-cream);
+  --mat-list-active-indicator-color: rgba(255,255,255,0.12);
 
   .mat-mdc-list-item {
     opacity: 0.9;
     &:hover { opacity: 1; }
+    &.mdc-list-item--activated { opacity: 1; }
   }
 }
 
@@ -63,6 +67,7 @@
   box-shadow: 0 2px 8px rgba(61, 28, 5, 0.5);
   padding: 0 12px;
   gap: 8px;
+  --mdc-icon-button-icon-color: var(--db-cream);
 }
 
 .app-logo-link {
