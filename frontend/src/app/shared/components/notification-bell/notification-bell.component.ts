@@ -24,7 +24,6 @@ import { AuthService } from '../../../core/services/auth.service';
       <mat-icon
         [matBadge]="unreadCount() || null"
         matBadgeColor="warn"
-        matBadgeSize="small"
         [matBadgeHidden]="unreadCount() === 0"
       >notifications</mat-icon>
     </button>

@@ -9,9 +9,8 @@ import { MatIconModule } from '@angular/material/icon';
   template: `
     @if (show()) {
       <div class="ios-banner">
-        <mat-icon class="banner-icon">ios_share</mat-icon>
         <span class="banner-text">
-          To install: tap Safari's <strong>Share button</strong> <mat-icon class="inline-icon">ios_share</mat-icon> at the bottom of your browser, then tap <strong>Add to Home Screen</strong>
+          <strong>Get push notifications</strong> — tap <strong>Share ↑</strong> in Safari's toolbar, then <strong>Add to Home Screen</strong>
         </span>
         <button mat-icon-button class="dismiss-btn" (click)="dismiss()" aria-label="Dismiss">
           <mat-icon>close</mat-icon>

@@ -155,15 +155,20 @@ export class AnnouncementsService {
       select: ['id'],
     });
     await Promise.all(
-      mods.map((mod) =>
-        this.notificationsService.create({
+      mods.map(async (mod) => {
+        await this.notificationsService.create({
           userId: mod.id,
           type: 'content_flag',
           title: 'Content flagged for review',
           body: dto.reason ?? undefined,
           actionUrl: '/admin/moderation',
-        }),
-      ),
+        });
+        await this.pushService.sendToUser(mod.id, {
+          title: 'Content flagged for review',
+          body: dto.reason ?? 'A member flagged content for moderation.',
+          url: '/admin/moderation',
+        });
+      }),
     );
 
     return saved;

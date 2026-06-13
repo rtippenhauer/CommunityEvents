@@ -16,16 +16,15 @@ export class PushNotificationService {
 
   async requestSubscription(): Promise<void> {
     if (!this.swPush.isEnabled || !environment.vapidPublicKey) return;
-    try {
-      const sub = await this.swPush.requestSubscription({ serverPublicKey: environment.vapidPublicKey });
-      const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-      await this.http.post('/api/v1/notifications/push/subscribe', {
-        endpoint: json.endpoint,
-        keys: json.keys,
-      }).toPromise();
-    } catch {
-      // User denied or SW not ready — silently ignore
+    if (Notification.permission === 'denied') {
+      throw new Error('PERMISSION_DENIED');
     }
+    const sub = await this.swPush.requestSubscription({ serverPublicKey: environment.vapidPublicKey });
+    const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+    await this.http.post('/api/v1/notifications/push/subscribe', {
+      endpoint: json.endpoint,
+      keys: json.keys,
+    }).toPromise();
   }
 
   async unsubscribe(): Promise<void> {

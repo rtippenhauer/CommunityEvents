@@ -872,7 +872,15 @@ export class ProfileComponent implements OnInit {
   }
 
   async enablePush(): Promise<void> {
-    await this.pushService.requestSubscription();
+    try {
+      await this.pushService.requestSubscription();
+      this.snackBar.open('Push notifications enabled!', 'OK', { duration: 3000 });
+    } catch (err: any) {
+      const msg = err?.message === 'PERMISSION_DENIED'
+        ? 'Notifications are blocked — open your browser\'s site settings and allow notifications for this site, then try again.'
+        : 'Could not enable push notifications. Please try again.';
+      this.snackBar.open(msg, 'OK', { duration: 7000 });
+    }
   }
 
   loadNotifPrefs(): void {

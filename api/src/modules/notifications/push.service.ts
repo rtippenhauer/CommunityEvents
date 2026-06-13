@@ -75,10 +75,17 @@ export class PushService implements OnModuleInit {
     subs: PushSubscriptionEntity[],
     payload: PushPayload,
   ): Promise<void> {
+    if (!subs.length) {
+      this.logger.debug('sendToSubscriptions: no subscriptions to notify');
+      return;
+    }
+    this.logger.log(`Sending push to ${subs.length} subscription(s): "${payload.title}"`);
     const body = JSON.stringify({
       notification: {
         title: payload.title,
         body: payload.body,
+        icon: '/assets/logo.png',
+        badge: '/assets/logo.png',
         ...(payload.url && { data: { url: payload.url } }),
       },
     });
@@ -90,11 +97,15 @@ export class PushService implements OnModuleInit {
             { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
             body,
           );
+          this.logger.debug(`Push delivered to sub ${sub.id} (user ${sub.userId})`);
         } catch (err: any) {
           if (err?.statusCode === 410 || err?.statusCode === 404) {
+            this.logger.log(`Push sub ${sub.id} expired (${err.statusCode}), removing`);
             stale.push(sub.id);
           } else {
-            this.logger.warn(`Push failed for sub ${sub.id}: ${err?.message}`);
+            this.logger.warn(
+              `Push failed for sub ${sub.id} (user ${sub.userId}): HTTP ${err?.statusCode} — ${err?.message}`,
+            );
           }
         }
       }),

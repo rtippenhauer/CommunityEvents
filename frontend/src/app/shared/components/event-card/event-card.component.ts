@@ -23,6 +23,12 @@ import { Event } from '../../../core/services/events.service';
         @if (event.status === 'draft') {
           <div class="draft-overlay">DRAFT</div>
         }
+        @if (event.status === 'published' && goingCount > 0) {
+          <div class="going-badge">
+            <mat-icon class="going-badge-icon">people</mat-icon>
+            {{ goingCount }} going
+          </div>
+        }
         <div class="card-photo-fade"></div>
       </div>
 
@@ -31,17 +37,11 @@ import { Event } from '../../../core/services/events.service';
           {{ event.eventDate | date:'EEE, MMM d' }} &middot; {{ formatTime(event.eventTime) }}
         </div>
         @if (!compact) {
-          <div class="card-city">{{ event.city?.name }}</div>
+          <div class="card-city">{{ event.city.name }}</div>
         }
         <div class="card-restaurant" [class.muted]="event.status === 'cancelled'">
           {{ event.restaurantName }}
         </div>
-        @if (event.status !== 'cancelled' && goingCount > 0) {
-          <div class="card-going">
-            <mat-icon class="going-icon">people</mat-icon>
-            {{ goingCount }} going
-          </div>
-        }
       </div>
     </a>
   `,
@@ -72,6 +72,23 @@ import { Event } from '../../../core/services/events.service';
     }
 
     .card-photo-placeholder { width: 100%; height: 100%; }
+
+    .going-badge {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      border-radius: 12px;
+      padding: 3px 8px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      backdrop-filter: blur(4px);
+    }
+    .going-badge-icon { font-size: 13px; width: 13px; height: 13px; }
 
     .card-photo-fade {
       position: absolute;
@@ -119,14 +136,6 @@ import { Event } from '../../../core/services/events.service';
       &.muted { color: #b00000; }
     }
 
-    .card-going {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 0.75rem;
-      color: #888;
-      .going-icon { font-size: 14px; width: 14px; height: 14px; }
-    }
   `],
 })
 export class EventCardComponent {
