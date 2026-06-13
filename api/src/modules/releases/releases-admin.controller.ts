@@ -4,11 +4,13 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { ReleasesService } from './releases.service';
 import { CreateReleaseDto } from './dto/create-release.dto';
+import { UpdateReleaseDto } from './dto/update-release.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -39,6 +41,11 @@ export class ReleasesAdminController {
   @Post()
   create(@Body() dto: CreateReleaseDto, @CurrentUser() user: UserEntity) {
     return this.releasesService.create(dto, user.id);
+  }
+
+  @Patch(':id')
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReleaseDto) {
+    return this.releasesService.update(id, dto);
   }
 
   @Post(':id/publish')

@@ -1,9 +1,10 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { ReleaseEntity } from '../../database/entities/release.entity';
 import { FeedbackEntity, FeedbackStatus } from '../../database/entities/feedback.entity';
 import { CreateReleaseDto } from './dto/create-release.dto';
+import { UpdateReleaseDto } from './dto/update-release.dto';
 import * as sanitizeHtml from 'sanitize-html';
 
 const ALLOWED_HTML = {
@@ -86,6 +87,31 @@ export class ReleasesService {
         where: { id: In(dto.feedbackIds) },
       });
       release.linkedFeedback = feedbackItems;
+    }
+
+    return this.releaseRepo.save(release);
+  }
+
+  async update(id: number, dto: UpdateReleaseDto): Promise<ReleaseEntity> {
+    const release = await this.releaseRepo.findOne({
+      where: { id },
+      relations: ['linkedFeedback'],
+    });
+    if (!release) throw new NotFoundException(`Release ${id} not found`);
+    if (release.publishedAt) throw new BadRequestException('Cannot edit a published release');
+
+    if (dto.version !== undefined) {
+      const conflict = await this.releaseRepo.findOne({ where: { version: dto.version } });
+      if (conflict && conflict.id !== id) throw new ConflictException(`Version ${dto.version} already exists`);
+      release.version = dto.version;
+    }
+    if (dto.title !== undefined) release.title = dto.title;
+    if (dto.body !== undefined) release.body = sanitizeHtml(dto.body, ALLOWED_HTML);
+
+    if (dto.feedbackIds !== undefined) {
+      release.linkedFeedback = dto.feedbackIds.length
+        ? await this.feedbackRepo.find({ where: { id: In(dto.feedbackIds) } })
+        : [];
     }
 
     return this.releaseRepo.save(release);

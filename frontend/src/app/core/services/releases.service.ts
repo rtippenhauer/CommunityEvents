@@ -49,6 +49,10 @@ export class ReleasesService {
     return this.http.post<Release>('/api/v1/admin/releases', dto);
   }
 
+  update(id: number, dto: Partial<CreateReleaseDto>): Observable<Release> {
+    return this.http.patch<Release>(`/api/v1/admin/releases/${id}`, dto);
+  }
+
   publish(id: number): Observable<Release> {
     return this.http.post<Release>(`/api/v1/admin/releases/${id}/publish`, {});
   }

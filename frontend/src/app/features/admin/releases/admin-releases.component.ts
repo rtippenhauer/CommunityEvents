@@ -50,10 +50,17 @@ import {
       </div>
 
       <div class="layout">
-        <!-- Create form -->
+        <!-- Create / Edit form -->
         <section class="create-panel">
-          <h2>New Release</h2>
-          <form [formGroup]="form" (ngSubmit)="create()" class="release-form">
+          <div class="panel-header">
+            <h2>{{ editingId() ? 'Edit Draft' : 'New Release' }}</h2>
+            @if (editingId()) {
+              <button mat-button type="button" (click)="cancelEdit()">
+                <mat-icon>add</mat-icon> New release
+              </button>
+            }
+          </div>
+          <form [formGroup]="form" (ngSubmit)="save()" class="release-form">
 
             <mat-form-field appearance="outline">
               <mat-label>Version</mat-label>
@@ -128,7 +135,7 @@ import {
               <button mat-button type="button" routerLink="/admin/feedback">Cancel</button>
               <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
                 @if (saving()) { <mat-spinner diameter="18" /> }
-                @else { Save Draft }
+                @else { {{ editingId() ? 'Update Draft' : 'Save Draft' }} }
               </button>
             </div>
 
@@ -152,6 +159,9 @@ import {
                       <span class="pub-date">{{ r.publishedAt | date:'MMM d, y' }}</span>
                     } @else {
                       <span class="draft-badge">Draft</span>
+                      <button mat-stroked-button class="edit-btn" (click)="startEdit(r)" [disabled]="editingId() === r.id">
+                        <mat-icon>edit</mat-icon> Edit
+                      </button>
                       <button mat-stroked-button class="publish-btn" (click)="publish(r)" [disabled]="publishingId() === r.id">
                         @if (publishingId() === r.id) { <mat-spinner diameter="14" /> }
                         @else { <ng-container><mat-icon>rocket_launch</mat-icon> Publish</ng-container> }
@@ -174,6 +184,10 @@ import {
     .layout { display: grid; grid-template-columns: 1fr 360px; gap: 24px; align-items: start; }
     @media (max-width: 768px) { .layout { grid-template-columns: 1fr; } }
 
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;
+      h2 { margin: 0; font-size: 1.1rem; color: #444; }
+    }
     h2 { margin: 0 0 20px; font-size: 1.1rem; color: #444; }
 
     .create-panel, .releases-panel {
@@ -236,7 +250,7 @@ import {
       font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 8px;
       background: #ffe082; color: #5d4037; text-transform: uppercase;
     }
-    .publish-btn { height: 28px; font-size: 0.8rem; mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; } }
+    .edit-btn, .publish-btn { height: 28px; font-size: 0.8rem; mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; } }
     .release-row-title { font-size: 0.9rem; font-weight: 600; color: #333; }
     .empty-releases { font-size: 0.85rem; color: #aaa; margin: 0; }
   `],
@@ -253,6 +267,7 @@ export class AdminReleasesComponent implements OnInit {
   readonly loadingFeedback = signal(true);
   readonly loadingReleases = signal(true);
   readonly publishingId = signal<number | null>(null);
+  readonly editingId = signal<number | null>(null);
   readonly resolvedFeedback = signal<FeedbackItem[]>([]);
   readonly releases = signal<Release[]>([]);
   readonly linkedIds = signal<Set<number>>(new Set());
@@ -331,27 +346,58 @@ export class AdminReleasesComponent implements OnInit {
     return map[c] ?? '#555';
   }
 
-  create(): void {
+  startEdit(release: Release): void {
+    this.editingId.set(release.id);
+    this.form.setValue({
+      version: release.version,
+      title: release.title,
+      body: release.body,
+    });
+    const ids = new Set((release.linkedFeedback ?? []).map((fb) => fb.id));
+    this.linkedIds.set(ids);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  cancelEdit(): void {
+    this.editingId.set(null);
+    this.form.reset();
+    this.linkedIds.set(new Set());
+  }
+
+  save(): void {
     this.form.markAllAsTouched();
     if (this.form.invalid) return;
     this.saving.set(true);
     const val = this.form.getRawValue();
-    this.releasesService.create({
+    const payload = {
       version: val.version.trim(),
       title: val.title.trim(),
       body: val.body,
       feedbackIds: [...this.linkedIds()],
-    }).subscribe({
+    };
+
+    const editId = this.editingId();
+    const req$ = editId
+      ? this.releasesService.update(editId, payload)
+      : this.releasesService.create(payload);
+
+    req$.subscribe({
       next: (release) => {
-        this.releases.update((list) => [release, ...list]);
+        this.releases.update((list) =>
+          editId
+            ? list.map((r) => (r.id === release.id ? release : r))
+            : [release, ...list],
+        );
         this.saving.set(false);
+        this.editingId.set(null);
         this.form.reset();
         this.linkedIds.set(new Set());
-        this.snackBar.open(`Release v${release.version} saved as draft`, 'OK', { duration: 3000 });
+        const verb = editId ? 'updated' : 'saved as draft';
+        this.snackBar.open(`Release v${release.version} ${verb}`, 'OK', { duration: 3000 });
       },
       error: (err) => {
         this.saving.set(false);
-        const msg = err?.error?.message ?? 'Failed to create release';
+        const msg = err?.error?.message ?? (editId ? 'Failed to update release' : 'Failed to create release');
         this.snackBar.open(msg, 'OK', { duration: 4000 });
       },
     });
