@@ -40,7 +40,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!session) throw new UnauthorizedException('Session expired');
 
     const user = await this.userRepo.findOne({ where: { id: payload.sub } });
-    if (!user || user.status !== UserStatus.ACTIVE) {
+    if (!user || user.status === UserStatus.SUSPENDED || user.status === UserStatus.DELETED) {
       throw new UnauthorizedException('Account not active');
     }
 
