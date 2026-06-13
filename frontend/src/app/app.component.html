@@ -12,31 +12,39 @@
       <a mat-list-item routerLink="/events" (click)="sidenav.close()">
         <mat-icon matListItemIcon>event</mat-icon> Events
       </a>
-      <a mat-list-item routerLink="/calendar" (click)="sidenav.close()">
-        <mat-icon matListItemIcon>calendar_month</mat-icon> Calendar
-      </a>
-      <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
-        <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
-      </a>
-      @if (isLoggedIn()) {
-        <a mat-list-item routerLink="/members" (click)="sidenav.close()">
-          <mat-icon matListItemIcon>group</mat-icon> Members
+      @if (isLoggedIn() && !isNonValidated()) {
+        <a mat-list-item routerLink="/calendar" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>calendar_month</mat-icon> Calendar
         </a>
+        <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
+        </a>
+      }
+      @if (isLoggedIn()) {
+        @if (!isNonValidated()) {
+          <a mat-list-item routerLink="/members" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>group</mat-icon> Members
+          </a>
+        }
         <a mat-list-item routerLink="/announcements" (click)="sidenav.close()">
           <mat-icon matListItemIcon>campaign</mat-icon> Announcements
         </a>
         <a mat-list-item routerLink="/profile" (click)="sidenav.close()">
           <mat-icon matListItemIcon>person</mat-icon> Profile
         </a>
-        <a mat-list-item routerLink="/feedback" (click)="sidenav.close()">
-          <mat-icon matListItemIcon>feedback</mat-icon> Feedback
-        </a>
+        @if (!isNonValidated()) {
+          <a mat-list-item routerLink="/feedback" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>feedback</mat-icon> Feedback
+          </a>
+        }
         <a mat-list-item routerLink="/updates" (click)="sidenav.close()">
           <mat-icon matListItemIcon>new_releases</mat-icon> What's New
         </a>
-        <a mat-list-item routerLink="/invite" (click)="sidenav.close()">
-          <mat-icon matListItemIcon>group_add</mat-icon> Invite
-        </a>
+        @if (!isNonValidated()) {
+          <a mat-list-item routerLink="/invite" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>group_add</mat-icon> Invite
+          </a>
+        }
         @if (isAdmin()) {
           <mat-divider />
           <div class="sidenav-section-label">Admin</div>
@@ -110,14 +118,22 @@
             Home
           </a>
           <a mat-button routerLink="/events" routerLinkActive="nav-active">Events</a>
-          <a mat-button routerLink="/calendar" routerLinkActive="nav-active">Calendar</a>
-          <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">Restaurants</a>
+          @if (!isNonValidated()) {
+            <a mat-button routerLink="/calendar" routerLinkActive="nav-active">Calendar</a>
+            <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">Restaurants</a>
+          }
           @if (isLoggedIn()) {
-            <a mat-button routerLink="/members" routerLinkActive="nav-active">Members</a>
+            @if (!isNonValidated()) {
+              <a mat-button routerLink="/members" routerLinkActive="nav-active">Members</a>
+            }
             <a mat-button routerLink="/announcements" routerLinkActive="nav-active">Announcements</a>
-            <a mat-button routerLink="/feedback" routerLinkActive="nav-active">Feedback</a>
+            @if (!isNonValidated()) {
+              <a mat-button routerLink="/feedback" routerLinkActive="nav-active">Feedback</a>
+            }
             <a mat-button routerLink="/updates" routerLinkActive="nav-active">What's New</a>
-            <a mat-button routerLink="/invite" routerLinkActive="nav-active">Invite</a>
+            @if (!isNonValidated()) {
+              <a mat-button routerLink="/invite" routerLinkActive="nav-active">Invite</a>
+            }
           }
           @if (isAdmin()) {
             <button mat-button [matMenuTriggerFor]="adminMenu" class="admin-menu-btn">

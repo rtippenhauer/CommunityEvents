@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -6,6 +6,7 @@ import { DatePipe, SlicePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
@@ -35,6 +36,7 @@ interface City {
     SlicePipe,
     MatButtonModule,
     MatCardModule,
+    MatCheckboxModule,
     MatChipsModule,
     MatDatepickerModule,
     MatFormFieldModule,
@@ -83,16 +85,20 @@ interface City {
       <button mat-stroked-button class="today-btn" (click)="resetToToday()">
         Today
       </button>
+
+      @if (isLoggedIn()) {
+        <mat-checkbox [checked]="myOnly()" (change)="myOnly.set($event.checked)" class="my-only-check">My events only</mat-checkbox>
+      }
     </div>
 
     <!-- Events -->
     @if (loading()) {
       <div class="center"><mat-spinner /></div>
-    } @else if (events().length === 0) {
+    } @else if (displayEvents().length === 0) {
       <p class="empty">No events found from this date.</p>
     } @else {
       <div class="events-grid">
-        @for (e of events(); track e.id) {
+        @for (e of displayEvents(); track e.id) {
           <mat-card
             class="event-card"
             [class.cancelled]="e.status === 'cancelled'"
@@ -268,6 +274,7 @@ interface City {
     .inline-icon { font-size: 1rem; width: 1rem; height: 1rem; }
     .event-city { margin: 0 0 8px; font-size: 0.8rem; color: #888; }
     .event-desc { margin: 0; font-size: 0.85rem; color: #555; line-height: 1.4; }
+    .my-only-check { font-size: 0.85rem; white-space: nowrap; }
     .center { display: flex; justify-content: center; padding: 48px; }
     .empty { text-align: center; color: #999; padding: 48px 0; }
   `],
@@ -286,6 +293,14 @@ export class EventsListComponent implements OnInit {
 
   readonly fromDateCtrl = new FormControl<Date>(new Date(), { nonNullable: true });
   readonly cityCtrl = new FormControl<number | null>(null);
+  readonly myOnly = signal(false);
+
+  readonly displayEvents = computed(() => {
+    if (!this.myOnly()) return this.events();
+    const uid = this.authService.currentUser()?.id;
+    if (!uid) return this.events();
+    return this.events().filter((e) => e.rsvps.some((r) => r.userId === uid));
+  });
 
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((c) => this.cities.set(c));

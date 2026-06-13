@@ -69,6 +69,10 @@ export class AppComponent {
     () => this.authService.currentUser()?.role === 'admin',
   );
 
+  readonly isNonValidated = computed<boolean>(
+    () => this.authService.currentUser()?.status === 'non_validated',
+  );
+
   constructor() {
     effect(() => {
       if (this.isAdmin()) {

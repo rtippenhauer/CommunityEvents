@@ -62,7 +62,7 @@ import { AuthService } from '../../core/services/auth.service';
             }
           </h2>
 
-          @if (isLoggedIn()) {
+          @if (isLoggedIn() && !isNonValidated()) {
             <form class="comment-form" (submit)="submitComment()">
               <mat-form-field appearance="outline" class="comment-field">
                 <mat-label>Add a comment</mat-label>
@@ -157,6 +157,7 @@ export class AnnouncementDetailComponent implements OnInit {
   }
 
   isLoggedIn(): boolean { return this.authService.isLoggedIn(); }
+  isNonValidated(): boolean { return this.authService.isNonValidated(); }
 
   canDelete(c: AnnouncementComment): boolean {
     const user = this.authService.currentUser();

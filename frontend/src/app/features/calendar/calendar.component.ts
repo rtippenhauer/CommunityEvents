@@ -1,9 +1,11 @@
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, Event } from '../../core/services/events.service';
+import { AuthService } from '../../core/services/auth.service';
 import { EventCardComponent } from '../../shared/components/event-card/event-card.component';
 
 interface CalendarDay {
@@ -19,6 +21,7 @@ interface CalendarDay {
   imports: [
     DatePipe,
     MatButtonModule,
+    MatCheckboxModule,
     MatIconModule,
     MatProgressSpinnerModule,
     EventCardComponent,
@@ -68,6 +71,9 @@ interface CalendarDay {
           </div>
 
           <button mat-button class="today-btn" (click)="goToday()">Today</button>
+          @if (isLoggedIn()) {
+            <mat-checkbox [checked]="myOnly()" (change)="myOnly.set($event.checked)" class="my-only-check">My events only</mat-checkbox>
+          }
         </aside>
 
         <!-- Event list -->
@@ -228,6 +234,14 @@ interface CalendarDay {
       color: var(--db-amber) !important;
     }
 
+    .my-only-check {
+      display: flex;
+      width: 100%;
+      font-size: 0.78rem;
+      margin-top: 4px;
+      padding: 0 2px;
+    }
+
     // ── Event list ────────────────────────────────────────────────────────────
 
     .event-list { min-height: 200px; }
@@ -275,11 +289,13 @@ interface CalendarDay {
 })
 export class CalendarComponent implements OnInit {
   private readonly eventsService = inject(EventsService);
+  private readonly authService = inject(AuthService);
 
   readonly DOW_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
   readonly allEvents = signal<Event[]>([]);
   readonly loading = signal(true);
+  readonly myOnly = signal(false);
 
   private readonly today = new Date();
   readonly viewYear = signal(this.today.getFullYear());
@@ -294,7 +310,12 @@ export class CalendarComponent implements OnInit {
 
   readonly monthEvents = computed(() => {
     const prefix = this.monthPrefix();
-    return this.allEvents().filter((e) => e.eventDate.startsWith(prefix));
+    const uid = this.myOnly() ? this.authService.currentUser()?.id : null;
+    return this.allEvents().filter((e) => {
+      if (!e.eventDate.startsWith(prefix)) return false;
+      if (uid) return e.rsvps.some((r) => r.userId === uid);
+      return true;
+    });
   });
 
   readonly visibleEvents = computed(() => {
@@ -384,6 +405,8 @@ export class CalendarComponent implements OnInit {
       document.getElementById(`day-${dateStr}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   }
+
+  isLoggedIn(): boolean { return this.authService.isLoggedIn(); }
 
   private monthPrefix(): string {
     return `${this.viewYear()}-${String(this.viewMonth() + 1).padStart(2, '0')}`;

@@ -58,6 +58,20 @@ interface Member {
 
       @if (loading()) {
         <div class="loading"><mat-spinner diameter="40" /></div>
+      } @else if (isNonValidated()) {
+        <p class="mystery-hint">Member profiles are visible to full members. Get vouched in to see who's here!</p>
+        <div class="members-grid">
+          @for (member of members(); track member.id) {
+            <div class="member-card mystery-card">
+              <div class="avatar avatar-mystery">
+                <img src="/avatars/bear-default.jpg" alt="Mystery Bear" />
+              </div>
+              <div class="member-info">
+                <span class="member-name mystery-name">Mystery Bear</span>
+              </div>
+            </div>
+          }
+        </div>
       } @else {
         <div class="members-grid">
           @for (member of filtered(); track member.id) {
@@ -243,6 +257,24 @@ interface Member {
     .role-admin { --mdc-chip-label-text-color: #fff; background: #1E4D8C !important; }
     .role-moderator { --mdc-chip-label-text-color: #fff; background: #C9933A !important; }
     .chip-banned { background: #ffccbc !important; }
+    .mystery-hint {
+      color: #888;
+      font-size: 0.85rem;
+      font-style: italic;
+      margin-bottom: 16px;
+    }
+    .mystery-card {
+      cursor: default;
+      pointer-events: none;
+      &:hover { box-shadow: 0 1px 4px rgba(0,0,0,.08); transform: none; }
+    }
+    .avatar-mystery {
+      filter: grayscale(1);
+      opacity: 0.45;
+      cursor: default;
+      &:hover { box-shadow: none; }
+    }
+    .mystery-name { color: #bbb; font-style: italic; }
   `],
 })
 export class MembersComponent implements OnInit {
@@ -255,6 +287,8 @@ export class MembersComponent implements OnInit {
   readonly roleFilter = signal('');
   readonly lightboxSrc = signal<string | null>(null);
   readonly lightboxName = signal<string | null>(null);
+
+  readonly isNonValidated = computed(() => this.authService.currentUser()?.status === 'non_validated');
 
   readonly showRoles = computed(() => {
     const role = this.authService.currentUser()?.role;

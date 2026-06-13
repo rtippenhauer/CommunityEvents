@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { adminGuard } from './core/guards/admin.guard';
 import { moderatorGuard } from './core/guards/moderator.guard';
+import { validatedMemberGuard } from './core/guards/validated-member.guard';
 
 export const routes: Routes = [
   {
@@ -37,7 +38,7 @@ export const routes: Routes = [
       import('./features/restaurants/list/restaurants-list.component').then(
         (m) => m.RestaurantsListComponent,
       ),
-    canActivate: [authGuard],
+    canActivate: [validatedMemberGuard],
   },
   {
     path: 'restaurants/:id',
@@ -45,12 +46,13 @@ export const routes: Routes = [
       import('./features/restaurants/detail/restaurant-detail.component').then(
         (m) => m.RestaurantDetailComponent,
       ),
-    canActivate: [authGuard],
+    canActivate: [validatedMemberGuard],
   },
   {
     path: 'calendar',
     loadComponent: () =>
       import('./features/calendar/calendar.component').then((m) => m.CalendarComponent),
+    canActivate: [validatedMemberGuard],
   },
   {
     path: 'rsvp-guest',
@@ -83,13 +85,13 @@ export const routes: Routes = [
     path: 'members/:id',
     loadComponent: () =>
       import('./features/members/member-profile.component').then((m) => m.MemberProfileComponent),
-    canActivate: [authGuard],
+    canActivate: [validatedMemberGuard],
   },
   {
     path: 'invite',
     loadComponent: () =>
       import('./features/invite/invite.component').then((m) => m.InviteComponent),
-    canActivate: [authGuard],
+    canActivate: [validatedMemberGuard],
   },
   {
     path: 'join/:code',
@@ -101,19 +103,19 @@ export const routes: Routes = [
     path: 'feedback',
     loadComponent: () =>
       import('./features/feedback/feedback-board.component').then((m) => m.FeedbackBoardComponent),
-    canActivate: [authGuard],
+    canActivate: [validatedMemberGuard],
   },
   {
     path: 'feedback/new',
     loadComponent: () =>
       import('./features/feedback/feedback-new.component').then((m) => m.FeedbackNewComponent),
-    canActivate: [authGuard],
+    canActivate: [validatedMemberGuard],
   },
   {
     path: 'feedback/:id',
     loadComponent: () =>
       import('./features/feedback/feedback-detail.component').then((m) => m.FeedbackDetailComponent),
-    canActivate: [authGuard],
+    canActivate: [validatedMemberGuard],
   },
   // Facebook data deletion status — no auth required
   {

@@ -188,7 +188,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                           </mat-button-toggle>
                         </mat-button-toggle-group>
 
-                        @if (myRsvp()!.status === 'going') {
+                        @if (myRsvp()!.status === 'going' && !isNonValidated()) {
                           <mat-select [formControl]="guestsCtrl" class="guests-select" (selectionChange)="updateGuests($event.value)">
                             <mat-option [value]="0">Just me</mat-option>
                             @for (n of guestOptions.slice(1); track n) {
@@ -199,7 +199,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                       </div>
 
                       <!-- Guest panel -->
-                      @if (myRsvp()!.additionalGuests > 0) {
+                      @if (myRsvp()!.additionalGuests > 0 && !isNonValidated()) {
                         <div class="guest-panel">
                           <div class="guest-panel-header">
                             <mat-icon class="guest-panel-icon">group_add</mat-icon>
@@ -348,6 +348,19 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                 <!-- Attendee list -->
                 @if (event()!.rsvps.length === 0 && event()!.publicRsvps.length === 0) {
                   <p class="no-rsvps">No RSVPs yet — be the first!</p>
+                } @else if (isNonValidated()) {
+                  <ul class="attendee-list">
+                    @for (r of event()!.rsvps; track r.id) {
+                      <li class="attendee-row attendee-mystery">
+                        <div class="attendee-avatar attendee-avatar-mystery">
+                          <img src="/avatars/bear-default.jpg" alt="Mystery Bear" />
+                        </div>
+                        <div class="attendee-info">
+                          <span class="attendee-name mystery-name">Mystery Bear</span>
+                        </div>
+                      </li>
+                    }
+                  </ul>
                 } @else {
                   <ul class="attendee-list">
                     @for (r of event()!.rsvps; track r.id) {
@@ -866,6 +879,12 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       background: #e8e0d6;
       .guest-avatar-icon { color: #999; font-size: 1.2rem; width: 1.2rem; height: 1.2rem; }
     }
+    .attendee-avatar-mystery {
+      filter: grayscale(1);
+      opacity: 0.4;
+    }
+    .attendee-mystery { pointer-events: none; }
+    .mystery-name { color: #bbb; font-style: italic; }
     .attendee-guest-badge {
       font-size: 0.68rem;
       font-weight: 600;
@@ -1273,6 +1292,10 @@ export class EventDetailComponent implements OnInit {
 
   isLoggedIn(): boolean {
     return this.authService.isLoggedIn();
+  }
+
+  isNonValidated(): boolean {
+    return this.authService.isNonValidated();
   }
 
   initials(name: string): string {

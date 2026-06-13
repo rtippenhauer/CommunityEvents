@@ -9,6 +9,7 @@ export interface CurrentUser {
   fullName: string;
   email: string;
   role: string;
+  status: string;
   cityId: number;
   profilePhotoPath: string | null;
 }
@@ -84,5 +85,9 @@ export class AuthService {
 
   isLoggedIn(): boolean {
     return this.currentUser() !== null;
+  }
+
+  isNonValidated(): boolean {
+    return this.currentUser()?.status === 'non_validated';
   }
 }
