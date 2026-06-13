@@ -131,7 +131,7 @@ export class UsersController {
   }
 
   @Patch(':id/validate')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   validateMember(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.validateMember(id);

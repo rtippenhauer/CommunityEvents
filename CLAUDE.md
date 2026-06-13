@@ -33,13 +33,13 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 7.5 — Non-Validated Members & Event Invite Links:** New `non_validated` user status with limited access for public signups, moderator vouching to upgrade to Member, multi-use event invite links, and a Maybe RSVP option.
+**Phase 7.6 — Facebook Event Sharing:** Copy formatted event post + invite links for sharing to Facebook. Eventual direct Page posting once Meta business verification is approved.
 See PHASES.md for full phase breakdown and definitions of done.
 
-**Queued next:** Phase 7.6 (Facebook Event Sharing) — copy formatted event post + invite links.
+**Queued next:** Phase 8 (Venue Moderator Tools) — private moderator notes and contact info on restaurants.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

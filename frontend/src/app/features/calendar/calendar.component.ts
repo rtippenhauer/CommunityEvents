@@ -310,10 +310,9 @@ export class CalendarComponent implements OnInit {
 
   readonly monthEvents = computed(() => {
     const prefix = this.monthPrefix();
-    const uid = this.myOnly() ? this.authService.currentUser()?.id : null;
     return this.allEvents().filter((e) => {
       if (!e.eventDate.startsWith(prefix)) return false;
-      if (uid) return e.rsvps.some((r) => r.userId === uid);
+      if (this.myOnly()) return e.myRsvpStatus === 'going' || e.myRsvpStatus === 'maybe';
       return true;
     });
   });

@@ -118,7 +118,7 @@
             Home
           </a>
           <a mat-button routerLink="/events" routerLinkActive="nav-active">Events</a>
-          @if (!isNonValidated()) {
+          @if (isLoggedIn() && !isNonValidated()) {
             <a mat-button routerLink="/calendar" routerLinkActive="nav-active">Calendar</a>
             <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">Restaurants</a>
           }
@@ -221,7 +221,7 @@
         <span class="footer-dot">&middot;</span>
         <a href="/terms.html">Terms</a>
       </div>
-      <p class="footer-copy">&copy; {{ currentYear }} DinnerBears</p>
+      <p class="footer-copy">&copy; {{ currentYear }} DinnerBears.Com, LLC</p>
     </footer>
 
   </mat-sidenav-content>

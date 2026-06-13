@@ -1,6 +1,8 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
+import { Router } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { MatChipsModule } from '@angular/material/chips';
@@ -32,6 +34,7 @@ interface AdminUser {
   standalone: true,
   imports: [
     DatePipe,
+    RouterLink,
     MatCardModule,
     MatTableModule,
     MatChipsModule,
@@ -77,9 +80,9 @@ interface AdminUser {
 
                 <ng-container matColumnDef="name">
                   <th mat-header-cell *matHeaderCellDef>Name</th>
-                  <td mat-cell *matCellDef="let u">
+                  <td mat-cell *matCellDef="let u" (click)="$event.stopPropagation()">
                     <div class="name-cell">
-                      <span class="name">{{ u.fullName }}</span>
+                      <a class="name-link" [routerLink]="['/members', u.id]">{{ u.fullName }}</a>
                       <span class="email">{{ u.email }}</span>
                     </div>
                   </td>
@@ -95,7 +98,7 @@ interface AdminUser {
                 <ng-container matColumnDef="status">
                   <th mat-header-cell *matHeaderCellDef>Status</th>
                   <td mat-cell *matCellDef="let u">
-                    <mat-chip [class]="'status-' + u.status">{{ u.status }}</mat-chip>
+                    <mat-chip [class]="'status-' + u.status">{{ statusLabel(u.status) }}</mat-chip>
                   </td>
                 </ng-container>
 
@@ -125,33 +128,55 @@ interface AdminUser {
 
                 <ng-container matColumnDef="actions">
                   <th mat-header-cell *matHeaderCellDef></th>
-                  <td mat-cell *matCellDef="let u">
-                    @if (u.role !== 'admin') {
-                      @if (confirmDeleteId() === u.id) {
-                        <div class="confirm-row">
-                          <span class="confirm-label">Delete?</span>
-                          <button mat-icon-button class="confirm-yes" (click)="confirmDelete(u.id)"
-                            matTooltip="Yes, dev delete" [disabled]="deletingId() === u.id">
-                            <mat-icon>check</mat-icon>
+                  <td mat-cell *matCellDef="let u" (click)="$event.stopPropagation()">
+                    <div class="actions-row">
+                      <!-- Vouch (non_validated only) -->
+                      @if (u.status === 'non_validated') {
+                        @if (confirmVouchId() === u.id) {
+                          <div class="confirm-row">
+                            <span class="confirm-vouch-label">Vouch?</span>
+                            <button mat-icon-button class="confirm-vouch-yes" (click)="confirmVouch(u.id)"
+                              matTooltip="Yes, vouch this member" [disabled]="vouchingId() === u.id">
+                              <mat-icon>check</mat-icon>
+                            </button>
+                            <button mat-icon-button (click)="cancelVouch()" matTooltip="Cancel">
+                              <mat-icon>close</mat-icon>
+                            </button>
+                          </div>
+                        } @else {
+                          <button mat-icon-button class="vouch-btn" (click)="requestVouch(u.id)"
+                            matTooltip="Vouch — upgrade to full member">
+                            <mat-icon>how_to_reg</mat-icon>
                           </button>
-                          <button mat-icon-button (click)="cancelDelete()"
-                            matTooltip="Cancel">
-                            <mat-icon>close</mat-icon>
-                          </button>
-                        </div>
-                      } @else {
-                        <button mat-icon-button class="dev-delete-btn"
-                          (click)="requestDelete(u.id)"
-                          matTooltip="Dev Delete — anonymizes email, removes OAuth, frees account for re-invite">
-                          <mat-icon>delete_forever</mat-icon>
-                        </button>
+                        }
                       }
-                    }
+
+                      <!-- Delete -->
+                      @if (u.role !== 'admin') {
+                        @if (confirmDeleteId() === u.id) {
+                          <div class="confirm-row">
+                            <span class="confirm-label">Delete?</span>
+                            <button mat-icon-button class="confirm-yes" (click)="confirmDelete(u.id)"
+                              matTooltip="Yes, dev delete" [disabled]="deletingId() === u.id">
+                              <mat-icon>check</mat-icon>
+                            </button>
+                            <button mat-icon-button (click)="cancelDelete()" matTooltip="Cancel">
+                              <mat-icon>close</mat-icon>
+                            </button>
+                          </div>
+                        } @else {
+                          <button mat-icon-button class="dev-delete-btn" (click)="requestDelete(u.id)"
+                            matTooltip="Dev Delete — anonymizes email, removes OAuth, frees account for re-invite">
+                            <mat-icon>delete_forever</mat-icon>
+                          </button>
+                        }
+                      }
+                    </div>
                   </td>
                 </ng-container>
 
                 <tr mat-header-row *matHeaderRowDef="columns"></tr>
-                <tr mat-row *matRowDef="let row; columns: columns;"></tr>
+                <tr mat-row *matRowDef="let row; columns: columns;" class="user-row" (click)="viewProfile(row.id)"></tr>
               </table>
             </div>
           }
@@ -173,22 +198,14 @@ interface AdminUser {
       gap: 8px;
       padding-bottom: 8px;
     }
-    .header-actions {
-      margin-left: auto;
-    }
-    .search-field {
-      width: 240px;
-    }
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 48px;
-    }
-    .table-wrapper {
-      overflow-x: auto;
-    }
-    .users-table {
-      width: 100%;
+    .header-actions { margin-left: auto; }
+    .search-field { width: 240px; }
+    .loading { display: flex; justify-content: center; padding: 48px; }
+    .table-wrapper { overflow-x: auto; }
+    .users-table { width: 100%; }
+    .user-row {
+      cursor: pointer;
+      &:hover { background: #fafafa; }
     }
     .avatar {
       width: 36px;
@@ -200,24 +217,20 @@ interface AdminUser {
       justify-content: center;
       background: #f0f0f0;
       font-size: 1.2rem;
-
-      img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      }
+      img { width: 100%; height: 100%; object-fit: cover; }
     }
     .name-cell {
       display: flex;
       flex-direction: column;
-      .name { font-weight: 500; }
-      .email { font-size: 0.75rem; color: #888; }
     }
-    .login-count {
-      font-size: 0.75rem;
-      color: #aaa;
-      margin-left: 4px;
+    .name-link {
+      font-weight: 500;
+      color: var(--db-brown-dark);
+      text-decoration: none;
+      &:hover { color: var(--db-amber); text-decoration: underline; }
     }
+    .email { font-size: 0.75rem; color: #888; }
+    .login-count { font-size: 0.75rem; color: #aaa; margin-left: 4px; }
     mat-chip {
       font-size: 0.75rem !important;
       min-height: 22px !important;
@@ -227,24 +240,27 @@ interface AdminUser {
     .role-member { background: #e0e0e0 !important; }
     .status-active { background: #c8e6c9 !important; }
     .status-suspended { background: #ffccbc !important; }
-    .dev-delete-btn { color: #c62828; opacity: 0.5; }
-    .dev-delete-btn:hover { opacity: 1; }
-    .confirm-row {
+    .status-non_validated { background: #fff9c4 !important; --mdc-chip-label-text-color: #7a6200 !important; }
+    .actions-row {
       display: flex;
       align-items: center;
       gap: 2px;
     }
-    .confirm-label {
-      font-size: 0.75rem;
-      color: #c62828;
-      font-weight: 500;
-    }
+    .dev-delete-btn { color: #c62828; opacity: 0.5; }
+    .dev-delete-btn:hover { opacity: 1; }
+    .vouch-btn { color: #2e7d32; opacity: 0.7; }
+    .vouch-btn:hover { opacity: 1; }
+    .confirm-row { display: flex; align-items: center; gap: 2px; }
+    .confirm-label { font-size: 0.75rem; color: #c62828; font-weight: 500; }
     .confirm-yes { color: #c62828; }
+    .confirm-vouch-label { font-size: 0.75rem; color: #2e7d32; font-weight: 500; }
+    .confirm-vouch-yes { color: #2e7d32; }
   `],
 })
 export class AdminUsersComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly router = inject(Router);
 
   readonly columns = ['photo', 'name', 'role', 'status', 'invitedBy', 'joined', 'lastLogin', 'actions'];
   readonly loading = signal(true);
@@ -252,6 +268,8 @@ export class AdminUsersComponent implements OnInit {
   readonly filtered = signal<AdminUser[]>([]);
   readonly confirmDeleteId = signal<number | null>(null);
   readonly deletingId = signal<number | null>(null);
+  readonly confirmVouchId = signal<number | null>(null);
+  readonly vouchingId = signal<number | null>(null);
 
   ngOnInit(): void {
     this.http.get<AdminUser[]>('/api/v1/admin/users').subscribe({
@@ -275,7 +293,48 @@ export class AdminUsersComponent implements OnInit {
     );
   }
 
+  viewProfile(id: number): void {
+    void this.router.navigate(['/members', id]);
+  }
+
+  statusLabel(status: string): string {
+    return status === 'non_validated' ? 'pending' : status;
+  }
+
+  // ── Vouch ────────────────────────────────────────────────────────────────────
+
+  requestVouch(id: number): void {
+    this.confirmDeleteId.set(null);
+    this.confirmVouchId.set(id);
+  }
+
+  cancelVouch(): void {
+    this.confirmVouchId.set(null);
+  }
+
+  confirmVouch(id: number): void {
+    this.vouchingId.set(id);
+    this.http.patch(`/api/v1/users/${id}/validate`, {}).subscribe({
+      next: () => {
+        this.vouchingId.set(null);
+        this.confirmVouchId.set(null);
+        const update = (u: AdminUser) => u.id === id ? { ...u, status: 'active' } : u;
+        this.users.update((us) => us.map(update));
+        this.filtered.update((us) => us.map(update));
+        this.snackBar.open('Member vouched — status upgraded to active', 'OK', { duration: 4000 });
+      },
+      error: (err) => {
+        this.vouchingId.set(null);
+        this.confirmVouchId.set(null);
+        this.snackBar.open(err?.error?.message ?? 'Vouch failed', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  // ── Delete ────────────────────────────────────────────────────────────────────
+
   requestDelete(id: number): void {
+    this.confirmVouchId.set(null);
     this.confirmDeleteId.set(id);
   }
 

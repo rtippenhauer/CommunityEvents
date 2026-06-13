@@ -57,6 +57,7 @@ export class EventsController {
       upcoming: fromDate ? undefined : (upcoming === 'true' ? true : upcoming === 'false' ? false : undefined),
       status: isAdminOrMod ? status : undefined,
       isAdminOrMod,
+      userId: user?.id,
     });
   }
 

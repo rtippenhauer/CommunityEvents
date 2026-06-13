@@ -23,6 +23,7 @@ export interface EventFilters {
   fromDate?: string;
   status?: EventStatus;
   isAdminOrMod?: boolean;
+  userId?: number;
 }
 
 @Injectable()
@@ -40,16 +41,13 @@ export class EventsService {
     private readonly config: ConfigService,
   ) {}
 
-  async findAll(filters: EventFilters): Promise<(EventEntity & { goingCount: number })[]> {
+  async findAll(filters: EventFilters): Promise<(EventEntity & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[]> {
     const qb = this.eventRepo
       .createQueryBuilder('e')
       .leftJoinAndSelect('e.city', 'city')
       .leftJoinAndSelect('e.restaurant', 'restaurant')
       .leftJoinAndSelect('restaurant.photos', 'photos')
-      .leftJoinAndSelect('e.createdByUser', 'createdByUser')
-      .loadRelationCountAndMap('e.goingCount', 'e.rsvps', 'rsvpCount', (qb) =>
-        qb.where('rsvpCount.status = :going', { going: RsvpStatus.GOING }),
-      );
+      .leftJoinAndSelect('e.createdByUser', 'createdByUser');
 
     if (filters.cityId) {
       qb.andWhere('e.cityId = :cityId', { cityId: filters.cityId });
@@ -74,7 +72,70 @@ export class EventsService {
       }
     }
 
-    return qb.getMany() as Promise<(EventEntity & { goingCount: number })[]>;
+    const events = await qb.getMany();
+    if (events.length === 0) {
+      return events as (EventEntity & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[];
+    }
+
+    const ids = events.map((e) => e.id);
+
+    // One query: all going+maybe RSVPs with user names for counts and avatar snippet
+    const rsvpRows = await this.rsvpRepo
+      .createQueryBuilder('r')
+      .leftJoin('r.user', 'u')
+      .select('r.eventId', 'eventId')
+      .addSelect('r.status', 'status')
+      .addSelect('r.additionalGuests', 'additionalGuests')
+      .addSelect('u.fullName', 'fullName')
+      .addSelect('u.profilePhotoPath', 'profilePhotoPath')
+      .where('r.eventId IN (:...ids)', { ids })
+      .andWhere('r.status IN (:...statuses)', { statuses: [RsvpStatus.GOING, RsvpStatus.MAYBE] })
+      .orderBy('r.status', 'ASC')   // 'going' < 'maybe' — going first
+      .addOrderBy('r.createdAt', 'ASC')
+      .getRawMany<{ eventId: string; status: string; additionalGuests: string; fullName: string; profilePhotoPath: string | null }>();
+
+    const goingCountMap = new Map<number, number>();
+    const totalMap = new Map<number, number>();
+    const snippetMap = new Map<number, { fullName: string; profilePhotoPath: string | null }[]>();
+
+    for (const row of rsvpRows) {
+      const eid = Number(row.eventId);
+      const guests = Number(row.additionalGuests) || 0;
+      const seats = row.status === RsvpStatus.GOING ? 1 + guests : 1;
+
+      if (row.status === RsvpStatus.GOING) {
+        goingCountMap.set(eid, (goingCountMap.get(eid) ?? 0) + seats);
+      }
+      totalMap.set(eid, (totalMap.get(eid) ?? 0) + seats);
+
+      const snippet = snippetMap.get(eid) ?? [];
+      if (snippet.length < 3) {
+        snippet.push({ fullName: row.fullName, profilePhotoPath: row.profilePhotoPath });
+        snippetMap.set(eid, snippet);
+      }
+    }
+
+    // Current user's RSVP status per event
+    let myRsvpMap = new Map<number, string>();
+    if (filters.userId) {
+      const myRows = await this.rsvpRepo
+        .createQueryBuilder('r')
+        .select('r.eventId', 'eventId')
+        .addSelect('r.status', 'status')
+        .where('r.eventId IN (:...ids)', { ids })
+        .andWhere('r.userId = :userId', { userId: filters.userId })
+        .getRawMany<{ eventId: string; status: string }>();
+      myRsvpMap = new Map(myRows.map((r) => [Number(r.eventId), r.status]));
+    }
+
+    return events.map((e) =>
+      Object.assign(e, {
+        goingCount: goingCountMap.get(e.id) ?? 0,
+        totalAttending: totalMap.get(e.id) ?? 0,
+        attendeeSnippet: snippetMap.get(e.id) ?? [],
+        myRsvpStatus: myRsvpMap.get(e.id) ?? null,
+      }),
+    );
   }
 
   async findOne(id: number): Promise<EventEntity & { publicRsvps: Pick<EventGuestLinkEntity, 'id' | 'recipientName' | 'cancelledAt'>[] }> {
@@ -389,6 +450,17 @@ export class EventsService {
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
       throw new BadRequestException('Can only RSVP to published events');
+    }
+
+    // Block RSVPs to events that have already passed
+    const nowParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date());
+    const getPart = (type: string) => nowParts.find((p) => p.type === type)?.value ?? '0';
+    const todayEastern = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+    if (event.eventDate < todayEastern) {
+      throw new BadRequestException('Cannot RSVP to a past event');
     }
 
     const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });

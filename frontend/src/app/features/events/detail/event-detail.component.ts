@@ -169,7 +169,12 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                 <!-- RSVP action for logged-in members -->
                 @if (isLoggedIn()) {
                   <div class="rsvp-action">
-                    @if (myRsvp()) {
+                    @if (isPastEvent()) {
+                      <div class="cutoff-banner">
+                        <mat-icon>event_busy</mat-icon>
+                        <span>This event has already passed</span>
+                      </div>
+                    } @else if (myRsvp()) {
                       <div class="rsvp-controls">
                         <!-- Three-state toggle -->
                         <mat-button-toggle-group
@@ -1179,6 +1184,14 @@ export class EventDetailComponent implements OnInit {
     const e = this.event();
     if (!e) return 0;
     return e.rsvps.filter((r) => r.status === 'maybe').length;
+  });
+
+  readonly isPastEvent = computed<boolean>(() => {
+    const e = this.event();
+    if (!e) return false;
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return e.eventDate < todayStr;
   });
 
   readonly isPastCutoff = computed<boolean>(() => {

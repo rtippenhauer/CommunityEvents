@@ -69,6 +69,9 @@ export interface Event {
   rsvps: Rsvp[];
   publicRsvps: PublicRsvp[];
   goingCount: number;
+  totalAttending?: number;
+  attendeeSnippet?: Array<{ fullName: string; profilePhotoPath: string | null }>;
+  myRsvpStatus?: 'going' | 'maybe' | null;
   createdAt: string;
   updatedAt: string;
 }
