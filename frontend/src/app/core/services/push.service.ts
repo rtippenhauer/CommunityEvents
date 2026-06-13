@@ -12,6 +12,8 @@ export class PushNotificationService {
     return this.swPush.isEnabled && !!environment.vapidPublicKey;
   }
 
+  readonly subscription$ = this.swPush.subscription;
+
   async requestSubscription(): Promise<void> {
     if (!this.swPush.isEnabled || !environment.vapidPublicKey) return;
     try {

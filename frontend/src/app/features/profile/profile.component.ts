@@ -20,6 +20,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
 import { FeedbackService, MemberFeedbackStats } from '../../core/services/feedback.service';
+import { PushNotificationService } from '../../core/services/push.service';
 import { PhotoCropDialogComponent } from '../../shared/components/photo-crop-dialog/photo-crop-dialog.component';
 import { environment } from '../../../environments/environment';
 
@@ -302,6 +303,13 @@ interface AvatarEntry { path: string; label: string; }
 
             <div class="notif-section">
               <h3 class="notif-section-title">Push Notifications</h3>
+              @if (pushService.isSupported && !pushSubscribed()) {
+                <div class="push-subscribe-banner">
+                  <mat-icon>notifications_off</mat-icon>
+                  <span>Browser notifications are not enabled yet.</span>
+                  <button mat-stroked-button color="primary" (click)="enablePush()">Enable</button>
+                </div>
+              }
               <div class="notif-row">
                 <span class="notif-label">New events published</span>
                 <mat-slide-toggle [checked]="prefs.pushEventPublished" (change)="togglePref('pushEventPublished', $event.checked)" [disabled]="savingPrefs()" />
@@ -642,6 +650,19 @@ interface AvatarEntry { path: string; label: string; }
       .complained-banner {
         background: #fce4ec;
       }
+      .push-subscribe-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: #fff8e1;
+        font-size: 0.875rem;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+        mat-icon { color: #f9a825; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
+        span { flex: 1; }
+      }
       .notif-section {
         padding: 8px 0;
       }
@@ -718,6 +739,7 @@ interface AvatarEntry { path: string; label: string; }
 })
 export class ProfileComponent implements OnInit {
   readonly authService = inject(AuthService);
+  readonly pushService = inject(PushNotificationService);
   private readonly http = inject(HttpClient);
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly snackBar = inject(MatSnackBar);
@@ -745,6 +767,7 @@ export class ProfileComponent implements OnInit {
   readonly notifPrefs = signal<NotifPrefs | null>(null);
   readonly savingPrefs = signal(false);
   readonly emailStatus = signal<string | null>(null);
+  readonly pushSubscribed = signal(false);
   readonly feedbackStats = signal<MemberFeedbackStats | null>(null);
   readonly fbReady = signal(false);
   readonly fbLinked = signal(false);
@@ -773,6 +796,7 @@ export class ProfileComponent implements OnInit {
     this.loadMyInvites();
     this.loadMyProfile();
     this.loadNotifPrefs();
+    this.pushService.subscription$.subscribe((sub) => this.pushSubscribed.set(!!sub));
     this.feedbackService.getMyStats().subscribe({
       next: (stats) => this.feedbackStats.set(stats),
       error: () => {},
@@ -845,6 +869,10 @@ export class ProfileComponent implements OnInit {
         },
       });
     }, { scope: 'public_profile,email' });
+  }
+
+  async enablePush(): Promise<void> {
+    await this.pushService.requestSubscription();
   }
 
   loadNotifPrefs(): void {

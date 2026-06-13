@@ -75,7 +75,13 @@ export class PushService implements OnModuleInit {
     subs: PushSubscriptionEntity[],
     payload: PushPayload,
   ): Promise<void> {
-    const body = JSON.stringify(payload);
+    const body = JSON.stringify({
+      notification: {
+        title: payload.title,
+        body: payload.body,
+        ...(payload.url && { data: { url: payload.url } }),
+      },
+    });
     const stale: number[] = [];
     await Promise.allSettled(
       subs.map(async (sub) => {

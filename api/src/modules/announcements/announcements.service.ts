@@ -4,16 +4,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { AnnouncementEntity, AnnouncementStatus } from '../../database/entities/announcement.entity';
 import { AnnouncementCommentEntity } from '../../database/entities/announcement-comment.entity';
 import { ContentFlagEntity, FlagContentType, FlagStatus } from '../../database/entities/content-flag.entity';
+import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PushService } from '../notifications/push.service';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FlagContentDto } from './dto/flag-content.dto';
-import { UserRole } from '../../database/entities/user.entity';
 
 @Injectable()
 export class AnnouncementsService {
@@ -24,6 +24,8 @@ export class AnnouncementsService {
     private readonly commentRepo: Repository<AnnouncementCommentEntity>,
     @InjectRepository(ContentFlagEntity)
     private readonly flagRepo: Repository<ContentFlagEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly notificationsService: NotificationsService,
     private readonly pushService: PushService,
   ) {}
@@ -148,7 +150,22 @@ export class AnnouncementsService {
     });
     const saved = await this.flagRepo.save(flag);
 
-    // In-app notification to all moderators/admins happens via a separate query
+    const mods = await this.userRepo.find({
+      where: { role: In([UserRole.ADMIN, UserRole.MODERATOR]) },
+      select: ['id'],
+    });
+    await Promise.all(
+      mods.map((mod) =>
+        this.notificationsService.create({
+          userId: mod.id,
+          type: 'content_flag',
+          title: 'Content flagged for review',
+          body: dto.reason ?? undefined,
+          actionUrl: '/admin/moderation',
+        }),
+      ),
+    );
+
     return saved;
   }
 
