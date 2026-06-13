@@ -22,6 +22,9 @@
         <a mat-list-item routerLink="/members" (click)="sidenav.close()">
           <mat-icon matListItemIcon>group</mat-icon> Members
         </a>
+        <a mat-list-item routerLink="/announcements" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>campaign</mat-icon> Announcements
+        </a>
         <a mat-list-item routerLink="/profile" (click)="sidenav.close()">
           <mat-icon matListItemIcon>person</mat-icon> Profile
         </a>
@@ -52,6 +55,12 @@
             @if (feedbackService.unseenCount() > 0) {
               <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
             }
+          </a>
+          <a mat-list-item routerLink="/admin/announcements" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>campaign</mat-icon> Announcements
+          </a>
+          <a mat-list-item routerLink="/admin/moderation" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>flag</mat-icon> Moderation
           </a>
         }
         <mat-divider />
@@ -105,6 +114,7 @@
           <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">Restaurants</a>
           @if (isLoggedIn()) {
             <a mat-button routerLink="/members" routerLinkActive="nav-active">Members</a>
+            <a mat-button routerLink="/announcements" routerLinkActive="nav-active">Announcements</a>
             <a mat-button routerLink="/feedback" routerLinkActive="nav-active">Feedback</a>
             <a mat-button routerLink="/updates" routerLinkActive="nav-active">What's New</a>
             <a mat-button routerLink="/invite" routerLinkActive="nav-active">Invite</a>
@@ -132,6 +142,12 @@
                   <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
                 }
               </a>
+              <a mat-menu-item routerLink="/admin/announcements">
+                <mat-icon>campaign</mat-icon> Announcements
+              </a>
+              <a mat-menu-item routerLink="/admin/moderation">
+                <mat-icon>flag</mat-icon> Moderation
+              </a>
             </mat-menu>
           }
         </nav>
@@ -149,6 +165,11 @@
             </button>
           }
         </div>
+      }
+
+      <!-- Notification bell (logged-in only) -->
+      @if (isLoggedIn()) {
+        <app-notification-bell />
       }
 
       <!-- User avatar or Sign in -->
@@ -173,6 +194,8 @@
     <main class="app-content">
       <router-outlet />
     </main>
+
+    <app-ios-install-banner />
 
     <footer class="app-footer">
       <img src="assets/logo.png" height="32" alt="DinnerBears" class="footer-logo" />

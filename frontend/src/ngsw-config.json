@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/@angular/service-worker/config/schema.json",
+  "index": "/index.html",
+  "assetGroups": [
+    {
+      "name": "app-shell",
+      "installMode": "prefetch",
+      "resources": {
+        "files": ["/favicon.ico", "/index.html", "/*.css", "/*.js"]
+      }
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": ["/assets/**", "/avatars/**", "/images/**"]
+      }
+    }
+  ],
+  "dataGroups": [
+    {
+      "name": "api-events",
+      "urls": ["/api/v1/events**"],
+      "cacheConfig": {
+        "maxSize": 20,
+        "maxAge": "5m",
+        "strategy": "freshness"
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { adminGuard } from './core/guards/admin.guard';
+import { moderatorGuard } from './core/guards/moderator.guard';
 
 export const routes: Routes = [
   {
@@ -117,6 +118,21 @@ export const routes: Routes = [
         (m) => m.FacebookDeletionComponent,
       ),
   },
+  // Announcements — public read, no auth required
+  {
+    path: 'announcements',
+    loadComponent: () =>
+      import('./features/announcements/announcements-list.component').then(
+        (m) => m.AnnouncementsListComponent,
+      ),
+  },
+  {
+    path: 'announcements/:id',
+    loadComponent: () =>
+      import('./features/announcements/announcement-detail.component').then(
+        (m) => m.AnnouncementDetailComponent,
+      ),
+  },
   // Public changelog — no auth required
   {
     path: 'updates',
@@ -163,6 +179,22 @@ export const routes: Routes = [
         (m) => m.AdminReleasesComponent,
       ),
     canActivate: [authGuard, adminGuard],
+  },
+  {
+    path: 'admin/announcements',
+    loadComponent: () =>
+      import('./features/admin/announcements/admin-announcements.component').then(
+        (m) => m.AdminAnnouncementsComponent,
+      ),
+    canActivate: [authGuard, moderatorGuard],
+  },
+  {
+    path: 'admin/moderation',
+    loadComponent: () =>
+      import('./features/admin/moderation/admin-moderation.component').then(
+        (m) => m.AdminModerationComponent,
+      ),
+    canActivate: [authGuard, moderatorGuard],
   },
   {
     path: '**',

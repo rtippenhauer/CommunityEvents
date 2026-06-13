@@ -20,6 +20,7 @@ import { StatsModule } from './modules/stats/stats.module';
 import { EmailModule } from './modules/email/email.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { ReleasesModule } from './modules/releases/releases.module';
+import { AnnouncementsModule } from './modules/announcements/announcements.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { ReleasesModule } from './modules/releases/releases.module';
     EmailModule,
     FeedbackModule,
     ReleasesModule,
+    AnnouncementsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

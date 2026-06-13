@@ -13,6 +13,8 @@ import { map } from 'rxjs/operators';
 import { AuthService } from './core/services/auth.service';
 import { CityService, CitySlug } from './core/services/city.service';
 import { FeedbackService } from './core/services/feedback.service';
+import { NotificationBellComponent } from './shared/components/notification-bell/notification-bell.component';
+import { IosInstallBannerComponent } from './shared/components/ios-install-banner/ios-install-banner.component';
 
 @Component({
   selector: 'app-root',
@@ -28,6 +30,8 @@ import { FeedbackService } from './core/services/feedback.service';
     MatListModule,
     MatMenuModule,
     MatDividerModule,
+    NotificationBellComponent,
+    IosInstallBannerComponent,
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',

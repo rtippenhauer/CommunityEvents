@@ -133,7 +133,7 @@ export class EventCardComponent {
   @Input({ required: true }) event!: Event;
   @Input() compact = false;
 
-  get goingCount: number { return this.event.goingCount ?? this.event.rsvps?.length ?? 0; }
+  get goingCount(): number { return this.event.goingCount ?? this.event.rsvps?.length ?? 0; }
 
   formatTime(time: string): string {
     const [h, m] = time.split(':').map(Number);

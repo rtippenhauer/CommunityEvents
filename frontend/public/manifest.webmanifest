@@ -1,0 +1,21 @@
+{
+  "name": "DinnerBears",
+  "short_name": "DinnerBears",
+  "description": "Good food. Great company. Bear memories.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDFAF5",
+  "theme_color": "#1E4D8C",
+  "icons": [
+    {
+      "src": "assets/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
