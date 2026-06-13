@@ -76,7 +76,7 @@ import { AuthService } from '../../core/services/auth.service';
           }
 
           @if (visibleComments.length === 0) {
-            <p class="no-comments">No comments yet. Be the first!</p>
+            <p class="no-comments">{{ isNonValidated() ? 'No comments yet.' : 'No comments yet. Be the first!' }}</p>
           } @else {
             <div class="comments-list">
               @for (c of visibleComments; track c.id) {

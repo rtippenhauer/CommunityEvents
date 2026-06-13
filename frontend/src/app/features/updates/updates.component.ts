@@ -6,6 +6,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ReleasesService, Release } from '../../core/services/releases.service';
+import { AuthService } from '../../core/services/auth.service';
 
 @Component({
   selector: 'app-updates',
@@ -24,9 +25,11 @@ import { ReleasesService, Release } from '../../core/services/releases.service';
           <h1>Release Notes</h1>
           <p class="subtitle">What's new in DinnerBears.</p>
         </div>
-        <button mat-stroked-button routerLink="/feedback">
-          <mat-icon>feedback</mat-icon> Give Feedback
-        </button>
+        @if (!isNonValidated()) {
+          <button mat-stroked-button routerLink="/feedback">
+            <mat-icon>feedback</mat-icon> Give Feedback
+          </button>
+        }
       </div>
 
       @if (loading()) {
@@ -138,6 +141,9 @@ import { ReleasesService, Release } from '../../core/services/releases.service';
 export class UpdatesComponent implements OnInit {
   private readonly releasesService = inject(ReleasesService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly authService = inject(AuthService);
+
+  isNonValidated(): boolean { return this.authService.isNonValidated(); }
 
   readonly loading = signal(true);
   readonly releases = signal<Release[]>([]);
