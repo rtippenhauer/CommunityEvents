@@ -2,6 +2,14 @@
 # Fix permissions on mounted volumes
 chmod 777 /app/uploads /app/appdata 2>/dev/null || true
 
+# Load secrets from persistent appdata .env (never commit secrets to git)
+if [ -f /app/appdata/.env ]; then
+  echo "[entrypoint] Loading /app/appdata/.env"
+  set -a
+  . /app/appdata/.env
+  set +a
+fi
+
 # Run database migrations before starting the app
 echo "[entrypoint] Running database migrations..."
 node /app/node_modules/typeorm/cli.js migration:run \

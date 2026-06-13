@@ -46,9 +46,9 @@
 
   <Config Name="Email Suppression Salt" Target="EMAIL_SUPPRESSION_SALT" Default="" Mode="" Description="Random salt for email hash suppression. Generate: openssl rand -hex 32" Type="Variable" Display="advanced" Required="true" Mask="true"></Config>
 
-  <Config Name="VAPID Public Key" Target="VAPID_PUBLIC_KEY" Default="" Mode="" Description="VAPID public key for Web Push. Generate: npx web-push generate-vapid-keys" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="VAPID Public Key" Target="VAPID_PUBLIC_KEY" Default="" Mode="" Description="VAPID public key for Web Push. Generate: npx web-push generate-vapid-keys" Type="Variable" Display="advanced" Required="false" Mask="false">BNgDaojnW0stGPCXsvdx-T8e26JOc7btJ_6djRqcueiDm1eNrZ1YtK39tazAypAughyLJVJsgS8q3KK5nKx6EJw</Config>
   <Config Name="VAPID Private Key" Target="VAPID_PRIVATE_KEY" Default="" Mode="" Description="VAPID private key for Web Push" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
-  <Config Name="VAPID Subject" Target="VAPID_SUBJECT" Default="mailto:admin@dinnerbears.com" Mode="" Description="VAPID subject (mailto or URL)" Type="Variable" Display="advanced" Required="false" Mask="false">mailto:admin@dinnerbears.com</Config>
+  <Config Name="VAPID Subject" Target="VAPID_SUBJECT" Default="mailto:rtippenhauer@gmail.com" Mode="" Description="VAPID subject (mailto or URL)" Type="Variable" Display="advanced" Required="false" Mask="false">mailto:rtippenhauer@gmail.com</Config>
 
   <Config Name="Geocoding API Key" Target="GEOCODING_API_KEY" Default="" Mode="" Description="Google Maps or other geocoding API key" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
 
