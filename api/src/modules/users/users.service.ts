@@ -119,7 +119,21 @@ export class UsersService {
       joinedAt: user.createdAt,
       invitedBy: invitedByInfo,
       ...(isSelf || isElevated ? { invitedMembers } : {}),
-      ...(isElevated ? { role: user.role, status: user.status } : {}),
+      ...(isElevated ? {
+        role: user.role,
+        status: user.status,
+        inviteSource: user.inviteSource,
+      } : {}),
     };
+  }
+
+  async validateMember(targetId: number): Promise<{ message: string }> {
+    const user = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.status !== UserStatus.NON_VALIDATED) {
+      return { message: 'User is already validated' };
+    }
+    await this.userRepo.update(targetId, { status: UserStatus.ACTIVE });
+    return { message: 'Member validated successfully' };
   }
 }

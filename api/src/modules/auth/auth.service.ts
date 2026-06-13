@@ -13,7 +13,7 @@ import { InvitesService } from '../invites/invites.service';
 import { CitiesService } from '../cities/cities.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { InviteType } from '../../database/entities/invite.entity';
+import { InviteFlavor, InviteType } from '../../database/entities/invite.entity';
 
 export interface SessionContext {
   userAgent?: string;
@@ -49,7 +49,7 @@ export class AuthService {
       relations: ['user'],
     });
     if (existing) {
-      if (existing.user.status !== UserStatus.ACTIVE) {
+      if (existing.user.status === UserStatus.SUSPENDED || existing.user.status === UserStatus.DELETED) {
         throw new AuthFlowError('not_active');
       }
       return existing.user;
@@ -96,6 +96,9 @@ export class AuthService {
 
     const defaultCity = await this.citiesService.findAll().then((cities) => cities[0]);
 
+    const isEventInvite = invite?.type === InviteType.EVENT_INVITE;
+    const isNonValidatedInvite = isEventInvite && invite?.inviteFlavor === InviteFlavor.NON_VALIDATED;
+
     const user = this.userRepo.create({
       fullName: displayName,
       email: email.toLowerCase(),
@@ -103,12 +106,15 @@ export class AuthService {
       emailVerifiedAt: new Date(),
       cityId: defaultCity.id,
       role: isAdminBootstrap ? UserRole.ADMIN : UserRole.MEMBER,
+      status: isNonValidatedInvite ? UserStatus.NON_VALIDATED : UserStatus.ACTIVE,
       inviteId: invite?.id ?? null,
       invitedBy: invite?.createdBy ?? null,
       inviteSource: invite
         ? invite.type === InviteType.CAMPAIGN_FACEBOOK
           ? InviteSource.FACEBOOK_GROUP
-          : InviteSource.GOOGLE_OAUTH
+          : isNonValidatedInvite
+            ? InviteSource.NON_VALIDATED_LINK
+            : InviteSource.GOOGLE_OAUTH
         : null,
     });
     await this.userRepo.save(user);
@@ -152,7 +158,9 @@ export class AuthService {
       relations: ['user'],
     });
     if (existing) {
-      if (existing.user.status !== UserStatus.ACTIVE) throw new AuthFlowError('not_active');
+      if (existing.user.status === UserStatus.SUSPENDED || existing.user.status === UserStatus.DELETED) {
+        throw new AuthFlowError('not_active');
+      }
       return existing.user;
     }
 
@@ -162,7 +170,9 @@ export class AuthService {
         where: { email: email.toLowerCase() },
       });
       if (existingByEmail) {
-        if (existingByEmail.status !== UserStatus.ACTIVE) throw new AuthFlowError('not_active');
+        if (existingByEmail.status === UserStatus.SUSPENDED || existingByEmail.status === UserStatus.DELETED) {
+          throw new AuthFlowError('not_active');
+        }
         await this.oauthRepo.save(
           this.oauthRepo.create({
             userId: existingByEmail.id,
@@ -192,6 +202,9 @@ export class AuthService {
 
     const defaultCity = await this.citiesService.findAll().then((cities) => cities[0]);
 
+    const isFbEventInvite = invite?.type === InviteType.EVENT_INVITE;
+    const isFbNonValidated = isFbEventInvite && invite?.inviteFlavor === InviteFlavor.NON_VALIDATED;
+
     const user = this.userRepo.create({
       fullName: displayName,
       email: email ? email.toLowerCase() : `fb_${facebookId}@placeholder.invalid`,
@@ -199,9 +212,14 @@ export class AuthService {
       emailVerifiedAt: email ? new Date() : undefined,
       cityId: defaultCity.id,
       role: UserRole.MEMBER,
+      status: isFbNonValidated ? UserStatus.NON_VALIDATED : UserStatus.ACTIVE,
       inviteId: invite?.id ?? null,
       invitedBy: invite?.createdBy ?? null,
-      inviteSource: InviteSource.GOOGLE_OAUTH,
+      inviteSource: invite?.type === InviteType.CAMPAIGN_FACEBOOK
+        ? InviteSource.FACEBOOK_GROUP
+        : isFbNonValidated
+          ? InviteSource.NON_VALIDATED_LINK
+          : InviteSource.GOOGLE_OAUTH,
     });
     await this.userRepo.save(user);
 

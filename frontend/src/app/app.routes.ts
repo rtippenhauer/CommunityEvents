@@ -91,6 +91,11 @@ export const routes: Routes = [
       import('./features/invite/invite.component').then((m) => m.InviteComponent),
     canActivate: [authGuard],
   },
+  {
+    path: 'join/:code',
+    loadComponent: () =>
+      import('./features/join/join.component').then((m) => m.JoinComponent),
+  },
   // Feedback board
   {
     path: 'feedback',

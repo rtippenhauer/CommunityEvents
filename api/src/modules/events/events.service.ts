@@ -10,7 +10,7 @@ import { IsNull, Repository } from 'typeorm';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
 import { UserRole } from '../../database/entities/user.entity';
 import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
-import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
+import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -47,7 +47,9 @@ export class EventsService {
       .leftJoinAndSelect('e.restaurant', 'restaurant')
       .leftJoinAndSelect('restaurant.photos', 'photos')
       .leftJoinAndSelect('e.createdByUser', 'createdByUser')
-      .loadRelationCountAndMap('e.goingCount', 'e.rsvps');
+      .loadRelationCountAndMap('e.goingCount', 'e.rsvps', 'rsvpCount', (qb) =>
+        qb.where('rsvpCount.status = :going', { going: RsvpStatus.GOING }),
+      );
 
     if (filters.cityId) {
       qb.andWhere('e.cityId = :cityId', { cityId: filters.cityId });
@@ -378,6 +380,7 @@ export class EventsService {
   async upsertRsvp(
     eventId: number,
     userId: number,
+    status: RsvpStatus,
     additionalGuests: number,
     guestNames?: string[],
     userRole?: UserRole,
@@ -390,12 +393,15 @@ export class EventsService {
 
     const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
 
-    if (!existing && this.isPastRsvpCutoff(event.eventDate, event.eventTime) &&
+    // Cutoff only blocks new GOING RSVPs; existing RSVPs and Maybe/Not Going changes are allowed
+    if (!existing && status === RsvpStatus.GOING &&
+        this.isPastRsvpCutoff(event.eventDate, event.eventTime) &&
         userRole !== UserRole.ADMIN && userRole !== UserRole.MODERATOR) {
       throw new ForbiddenException('RSVP is closed — the deadline has passed');
     }
 
     if (existing) {
+      existing.status = status;
       existing.additionalGuests = additionalGuests;
       if (guestNames !== undefined) {
         existing.guestNames = guestNames.length > 0 ? guestNames : null;
@@ -407,6 +413,7 @@ export class EventsService {
       this.rsvpRepo.create({
         eventId,
         userId,
+        status,
         additionalGuests,
         guestNames: guestNames && guestNames.length > 0 ? guestNames : null,
       }),

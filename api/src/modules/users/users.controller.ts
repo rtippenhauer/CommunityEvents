@@ -10,6 +10,8 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import type { Request } from 'express';
@@ -21,7 +23,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SetAvatarDto } from './dto/set-avatar.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
+import { UserEntity, EmailStatus, UserRole } from '../../database/entities/user.entity';
 import { EmailService } from '../email/email.service';
 import { SuppressionReason } from '../../database/entities/email-suppression.entity';
 
@@ -126,5 +128,12 @@ export class UsersController {
     await this.usersService.updateEmailStatus(user.id, EmailStatus.ACTIVE);
     await this.emailService.removeSuppression(user.email);
     return { message: 'You have been resubscribed to DinnerBears emails.' };
+  }
+
+  @Patch(':id/validate')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  validateMember(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.validateMember(id);
   }
 }

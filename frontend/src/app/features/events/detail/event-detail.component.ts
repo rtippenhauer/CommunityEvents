@@ -5,6 +5,7 @@ import { DatePipe, TitleCasePipe } from '@angular/common';
 import { FormArray, FormControl, NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog } from '@angular/material/dialog';
@@ -17,8 +18,9 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { EventsService, Event, GuestLink, PublicRsvp, Rsvp } from '../../../core/services/events.service';
+import { EventsService, Event, GuestLink, PublicRsvp, Rsvp, RsvpStatus } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { InvitesService, EventInviteLink } from '../../../core/services/invites.service';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 
 @Component({
@@ -30,6 +32,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
     ReactiveFormsModule,
     RouterLink,
     MatButtonModule,
+    MatButtonToggleModule,
     MatCardModule,
     MatChipsModule,
     MatDividerModule,
@@ -147,7 +150,12 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
               <mat-card-content>
                 <div class="rsvp-header">
                   <h3>Who's coming</h3>
-                  <span class="seat-count">{{ totalSeats() }} seat{{ totalSeats() === 1 ? '' : 's' }} needed</span>
+                  <div class="rsvp-counts">
+                    <span class="seat-count">{{ totalSeats() }} seat{{ totalSeats() === 1 ? '' : 's' }} needed</span>
+                    @if (maybeCount() > 0) {
+                      <span class="maybe-count">{{ maybeCount() }} maybe</span>
+                    }
+                  </div>
                 </div>
 
                 <!-- Timing & deadline info -->
@@ -163,17 +171,31 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                   <div class="rsvp-action">
                     @if (myRsvp()) {
                       <div class="rsvp-controls">
-                        <mat-icon class="going-icon">check_circle</mat-icon>
-                        <span class="going-label">You're going!</span>
-                        <mat-select [formControl]="guestsCtrl" class="guests-select" (selectionChange)="updateGuests($event.value)">
-                          <mat-option [value]="0">Just me</mat-option>
-                          @for (n of guestOptions.slice(1); track n) {
-                            <mat-option [value]="n">+{{ n }} guest{{ n === 1 ? '' : 's' }}</mat-option>
-                          }
-                        </mat-select>
-                        <button mat-stroked-button color="warn" class="cancel-rsvp-btn" (click)="removeRsvp()" [disabled]="rsvpLoading()">
-                          Can't make it
-                        </button>
+                        <!-- Three-state toggle -->
+                        <mat-button-toggle-group
+                          [value]="myRsvp()!.status"
+                          (change)="onRsvpStatusChange($event.value)"
+                          [disabled]="rsvpLoading()"
+                          class="rsvp-toggle">
+                          <mat-button-toggle value="going" class="toggle-going">
+                            <mat-icon>check_circle</mat-icon> Going
+                          </mat-button-toggle>
+                          <mat-button-toggle value="maybe" class="toggle-maybe">
+                            <mat-icon>help_outline</mat-icon> Maybe
+                          </mat-button-toggle>
+                          <mat-button-toggle value="not_going" class="toggle-not-going">
+                            <mat-icon>cancel</mat-icon> Not Going
+                          </mat-button-toggle>
+                        </mat-button-toggle-group>
+
+                        @if (myRsvp()!.status === 'going') {
+                          <mat-select [formControl]="guestsCtrl" class="guests-select" (selectionChange)="updateGuests($event.value)">
+                            <mat-option [value]="0">Just me</mat-option>
+                            @for (n of guestOptions.slice(1); track n) {
+                              <mat-option [value]="n">+{{ n }} guest{{ n === 1 ? '' : 's' }}</mat-option>
+                            }
+                          </mat-select>
+                        }
                       </div>
 
                       <!-- Guest panel -->
@@ -272,9 +294,16 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                           <span>RSVP closed — deadline was {{ cutoffTimeLabel() }} today</span>
                         </div>
                       } @else {
-                        <button mat-raised-button color="primary" (click)="addRsvp()" [disabled]="rsvpLoading()">
-                          <mat-icon>how_to_reg</mat-icon> RSVP
-                        </button>
+                        <div class="rsvp-initial-toggle">
+                          <mat-button-toggle-group class="rsvp-toggle" [disabled]="rsvpLoading()">
+                            <mat-button-toggle value="going" class="toggle-going" (click)="addRsvp('going')">
+                              <mat-icon>check_circle</mat-icon> Going
+                            </mat-button-toggle>
+                            <mat-button-toggle value="maybe" class="toggle-maybe" (click)="addRsvp('maybe')">
+                              <mat-icon>help_outline</mat-icon> Maybe
+                            </mat-button-toggle>
+                          </mat-button-toggle-group>
+                        </div>
                       }
                     }
                   </div>
@@ -322,7 +351,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                 } @else {
                   <ul class="attendee-list">
                     @for (r of event()!.rsvps; track r.id) {
-                      <li class="attendee-row">
+                      <li class="attendee-row" [class.attendee-maybe]="r.status === 'maybe'">
                         <div class="attendee-avatar">
                           @if (r.user.profilePhotoPath) {
                             <img [src]="r.user.profilePhotoPath" [alt]="r.user.fullName" />
@@ -331,8 +360,13 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                           }
                         </div>
                         <div class="attendee-info">
-                          <span class="attendee-name">{{ r.user.fullName }}</span>
-                          @if (r.additionalGuests > 0) {
+                          <div class="attendee-name-row">
+                            <span class="attendee-name">{{ r.user.fullName }}</span>
+                            @if (r.status === 'maybe') {
+                              <span class="maybe-badge">Maybe</span>
+                            }
+                          </div>
+                          @if (r.additionalGuests > 0 && r.status === 'going') {
                             <span class="attendee-guests">
                               +{{ r.additionalGuests }}
                               @if (namedGuests(r.guestNames)) {
@@ -378,6 +412,80 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                     </button>
                   </div>
                 </div>
+              </mat-card-content>
+            </mat-card>
+          }
+
+          <!-- Invite Links (admin/mod, published events) -->
+          @if (event()!.status === 'published' && isAdminOrMod()) {
+            <mat-card class="invite-links-card">
+              <mat-card-content>
+                <div class="invite-links-header">
+                  <h4 class="invite-links-title">
+                    <mat-icon>link</mat-icon> Event Invite Links
+                  </h4>
+                  @if (isAdmin()) {
+                    <button mat-stroked-button class="new-link-btn" (click)="showNewLinkForm.set(!showNewLinkForm())">
+                      <mat-icon>add</mat-icon> New Link
+                    </button>
+                  }
+                </div>
+
+                @if (showNewLinkForm()) {
+                  <div class="new-link-form">
+                    <mat-button-toggle-group [value]="newLinkFlavor()" (change)="newLinkFlavor.set($event.value)" class="flavor-toggle">
+                      <mat-button-toggle value="non_validated">Guest Member</mat-button-toggle>
+                      <mat-button-toggle value="member">Full Member</mat-button-toggle>
+                    </mat-button-toggle-group>
+                    <mat-form-field appearance="outline" class="link-field">
+                      <mat-label>Max Uses (blank = unlimited)</mat-label>
+                      <input matInput type="number" [formControl]="newLinkMaxUsesCtrl" min="1" />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline" class="link-field">
+                      <mat-label>Expires in (days)</mat-label>
+                      <input matInput type="number" [formControl]="newLinkExpiryCtrl" min="1" max="90" />
+                    </mat-form-field>
+                    <button mat-raised-button color="primary" (click)="createInviteLink()" [disabled]="creatingLink()">
+                      @if (creatingLink()) { <mat-spinner diameter="16" /> }
+                      Generate Link
+                    </button>
+                  </div>
+                }
+
+                @if (inviteLinksLoading()) {
+                  <div class="links-spinner"><mat-spinner diameter="24" /></div>
+                } @else if (inviteLinks().length === 0) {
+                  <p class="no-links">No invite links yet.</p>
+                } @else {
+                  <div class="invite-links-list">
+                    @for (link of inviteLinks(); track link.id) {
+                      <div class="invite-link-row" [class.link-revoked]="link.isRevoked">
+                        <div class="link-info">
+                          <span class="link-flavor-badge" [class.flavor-member]="link.inviteFlavor === 'member'" [class.flavor-nv]="link.inviteFlavor === 'non_validated'">
+                            {{ link.inviteFlavor === 'member' ? 'Member' : 'Guest Member' }}
+                          </span>
+                          <span class="link-uses">{{ link.useCount }}{{ link.maxUses ? '/' + link.maxUses : '' }} uses</span>
+                          <span class="link-expiry">exp. {{ link.expiresAt | date: 'MMM d' }}</span>
+                          @if (link.isRevoked) {
+                            <span class="link-revoked-badge">Revoked</span>
+                          }
+                        </div>
+                        <div class="link-actions">
+                          @if (!link.isRevoked) {
+                            <button mat-icon-button matTooltip="Copy link" (click)="copyInviteLink(link.token)">
+                              <mat-icon>content_copy</mat-icon>
+                            </button>
+                            @if (isAdmin()) {
+                              <button mat-icon-button matTooltip="Revoke" color="warn" (click)="revokeInviteLink(link.id)">
+                                <mat-icon>block</mat-icon>
+                              </button>
+                            }
+                          }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
               </mat-card-content>
             </mat-card>
           }
@@ -768,6 +876,146 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       align-self: flex-start;
     }
 
+    // ── RSVP toggle ──────────────────────────────────────────────────────────
+
+    .rsvp-counts {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .maybe-count {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--db-amber-dark, #e65100);
+      background: #fff3e0;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .rsvp-toggle {
+      .mat-button-toggle-button { font-size: 0.85rem; }
+      .toggle-going.mat-button-toggle-checked { background: #e8f5e9; color: #2e7d32; }
+      .toggle-maybe.mat-button-toggle-checked { background: #fff3e0; color: #e65100; }
+      .toggle-not-going.mat-button-toggle-checked { background: #ffebee; color: #c62828; }
+      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; vertical-align: middle; margin-right: 4px; }
+    }
+
+    .rsvp-initial-toggle { margin-bottom: 4px; }
+
+    .attendee-maybe { opacity: 0.75; }
+
+    .attendee-name-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .maybe-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: #fff3e0;
+      color: #e65100;
+    }
+
+    // ── Invite Links panel ────────────────────────────────────────────────────
+
+    .invite-links-card { margin-bottom: 24px; }
+
+    .invite-links-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .invite-links-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--db-brown-dark);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; color: var(--db-amber); }
+    }
+
+    .new-link-btn { font-size: 0.8rem; height: 32px !important; }
+
+    .new-link-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      background: #faf7f2;
+      border-radius: 8px;
+      margin-bottom: 16px;
+
+      .link-field {
+        width: 180px;
+        font-size: 0.88rem;
+        .mat-mdc-form-field-subscript-wrapper { display: none; }
+      }
+
+      .flavor-toggle .mat-button-toggle-button { font-size: 0.8rem; }
+    }
+
+    .links-spinner { display: flex; justify-content: center; padding: 16px; }
+    .no-links { color: #999; font-size: 0.88rem; margin: 0; }
+
+    .invite-links-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .invite-link-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border: 1px solid #e8e0d6;
+      border-radius: 8px;
+      background: #fdfaf5;
+
+      &.link-revoked { opacity: 0.5; }
+    }
+
+    .link-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 0.82rem;
+      color: #666;
+    }
+
+    .link-flavor-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      &.flavor-member { background: #e3f2fd; color: #1565c0; }
+      &.flavor-nv { background: #f3e5f5; color: #6a1b9a; }
+    }
+
+    .link-revoked-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    .link-actions {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      .mat-mdc-icon-button { width: 32px; height: 32px; padding: 4px; }
+    }
+
     // ── Share & Calendar ──────────────────────────────────────────────────────
 
     .share-card { margin-bottom: 24px; }
@@ -830,6 +1078,7 @@ export class EventDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly eventsService = inject(EventsService);
+  private readonly invitesService = inject(InvitesService);
   private readonly authService = inject(AuthService);
   private readonly clipboard = inject(Clipboard);
   private readonly dialog = inject(MatDialog);
@@ -847,6 +1096,15 @@ export class EventDetailComponent implements OnInit {
   readonly publicRsvpLoading = signal(false);
   readonly publicRsvpDone = signal(false);
   readonly publicRsvpError = signal<string | null>(null);
+
+  // Invite links state
+  readonly inviteLinks = signal<EventInviteLink[]>([]);
+  readonly inviteLinksLoading = signal(false);
+  readonly showNewLinkForm = signal(false);
+  readonly newLinkFlavor = signal<'member' | 'non_validated'>('non_validated');
+  readonly newLinkMaxUsesCtrl = new FormControl<number | null>(null);
+  readonly newLinkExpiryCtrl = new FormControl<number>(30, { nonNullable: true });
+  readonly creatingLink = signal(false);
 
   readonly editingGuestIndex = signal<number | null>(null);
 
@@ -887,12 +1145,21 @@ export class EventDetailComponent implements OnInit {
   readonly totalSeats = computed<number>(() => {
     const e = this.event();
     if (!e) return 0;
-    const memberSeats = e.rsvps.reduce((sum, r) => {
-      const cancelled = (r.guestLinks ?? []).filter((l) => l.cancelledAt).length;
-      return sum + 1 + r.additionalGuests - cancelled;
-    }, 0);
+    // Only Going RSVPs count toward venue seat numbers
+    const memberSeats = e.rsvps
+      .filter((r) => r.status === 'going')
+      .reduce((sum, r) => {
+        const cancelled = (r.guestLinks ?? []).filter((l) => l.cancelledAt).length;
+        return sum + 1 + r.additionalGuests - cancelled;
+      }, 0);
     const publicSeats = (e.publicRsvps ?? []).length;
     return memberSeats + publicSeats;
+  });
+
+  readonly maybeCount = computed<number>(() => {
+    const e = this.event();
+    if (!e) return 0;
+    return e.rsvps.filter((r) => r.status === 'maybe').length;
   });
 
   readonly isPastCutoff = computed<boolean>(() => {
@@ -930,8 +1197,22 @@ export class EventDetailComponent implements OnInit {
           this.guestsCtrl.setValue(my.additionalGuests);
           this.rebuildNameControls(my.additionalGuests, my.guestNames);
         }
+        if (e.status === 'published' && this.isAdminOrMod()) {
+          this.loadInviteLinks(id);
+        }
       },
       error: () => this.loading.set(false),
+    });
+  }
+
+  private loadInviteLinks(eventId: number): void {
+    this.inviteLinksLoading.set(true);
+    this.invitesService.getEventInviteLinks(eventId).subscribe({
+      next: (links) => {
+        this.inviteLinks.set(links);
+        this.inviteLinksLoading.set(false);
+      },
+      error: () => this.inviteLinksLoading.set(false),
     });
   }
 
@@ -1031,15 +1312,34 @@ export class EventDetailComponent implements OnInit {
     });
   }
 
-  addRsvp(): void {
+  addRsvp(status: RsvpStatus = 'going'): void {
     const id = this.event()!.id;
     this.rsvpLoading.set(true);
-    this.eventsService.rsvp(id, 0).subscribe({
+    this.eventsService.rsvp(id, status, 0).subscribe({
       next: () => {
         this.refreshEvent(id);
-        this.snackBar.open("You're going! 🎉", 'OK', { duration: 3000 });
+        const msg = status === 'going' ? "You're going! 🎉" : "Marked as Maybe!";
+        this.snackBar.open(msg, 'OK', { duration: 3000 });
       },
       error: () => { this.rsvpLoading.set(false); this.snackBar.open('RSVP failed', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  onRsvpStatusChange(newStatus: RsvpStatus): void {
+    if (newStatus === 'not_going') {
+      this.removeRsvp();
+      return;
+    }
+    const id = this.event()!.id;
+    const rsvp = this.myRsvp()!;
+    this.rsvpLoading.set(true);
+    this.eventsService.rsvp(id, newStatus, rsvp.additionalGuests, rsvp.guestNames ?? undefined).subscribe({
+      next: () => {
+        this.refreshEvent(id);
+        const msg = newStatus === 'going' ? "Changed to Going!" : "Changed to Maybe!";
+        this.snackBar.open(msg, 'OK', { duration: 2000 });
+      },
+      error: () => { this.rsvpLoading.set(false); this.snackBar.open('Failed to update', 'OK', { duration: 3000 }); },
     });
   }
 
@@ -1048,7 +1348,8 @@ export class EventDetailComponent implements OnInit {
     const oldCount = this.guestNameControls.length;
     const names = this.guestNameControls.map((c) => c.value);
     const emails = this.guestEmailControls.map((c) => c.value);
-    this.eventsService.rsvp(id, additionalGuests, names).subscribe({
+    const status = this.myRsvp()?.status ?? 'going';
+    this.eventsService.rsvp(id, status, additionalGuests, names).subscribe({
       next: () => this.refreshEvent(id, emails, additionalGuests > oldCount ? additionalGuests - 1 : null),
       error: () => this.snackBar.open('Failed to update guests', 'OK', { duration: 3000 }),
     });
@@ -1060,7 +1361,7 @@ export class EventDetailComponent implements OnInit {
     this.eventsService.unrsvp(id).subscribe({
       next: () => {
         this.refreshEvent(id);
-        this.snackBar.open('RSVP removed', 'OK', { duration: 3000 });
+        this.snackBar.open("RSVP removed", 'OK', { duration: 3000 });
       },
       error: () => { this.rsvpLoading.set(false); this.snackBar.open('Failed to remove RSVP', 'OK', { duration: 3000 }); },
     });
@@ -1072,7 +1373,7 @@ export class EventDetailComponent implements OnInit {
     const names = this.guestNameControls.map((c) => c.value);
     const emails = this.guestEmailControls.map((c) => c.value);
     this.savingNames.set(true);
-    this.eventsService.rsvp(id, rsvp.additionalGuests, names).subscribe({
+    this.eventsService.rsvp(id, rsvp.status, rsvp.additionalGuests, names).subscribe({
       next: () => {
         // Auto-generate links (and queue invite emails) for guests who have an email but no link yet
         const linkTasks = emails
@@ -1247,6 +1548,47 @@ export class EventDetailComponent implements OnInit {
 
   isAdmin(): boolean {
     return this.authService.currentUser()?.role === 'admin';
+  }
+
+  copyInviteLink(token: string): void {
+    const url = `${window.location.origin}/join/${token}`;
+    this.clipboard.copy(url);
+    this.snackBar.open('Invite link copied!', 'OK', { duration: 2000 });
+  }
+
+  createInviteLink(): void {
+    const id = this.event()!.id;
+    this.creatingLink.set(true);
+    this.invitesService.createEventInviteLink(id, {
+      flavor: this.newLinkFlavor(),
+      maxUses: this.newLinkMaxUsesCtrl.value ?? null,
+      expiryDays: this.newLinkExpiryCtrl.value,
+    }).subscribe({
+      next: (link) => {
+        this.inviteLinks.update((links) => [link, ...links]);
+        this.showNewLinkForm.set(false);
+        this.creatingLink.set(false);
+        const url = `${window.location.origin}/join/${link.token}`;
+        this.clipboard.copy(url);
+        this.snackBar.open('Invite link created and copied!', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.creatingLink.set(false);
+        this.snackBar.open('Failed to create invite link', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  revokeInviteLink(inviteId: number): void {
+    if (!window.confirm('Revoke this invite link? Any unactivated links will stop working.')) return;
+    const id = this.event()!.id;
+    this.invitesService.revokeEventInviteLink(id, inviteId).subscribe({
+      next: () => {
+        this.inviteLinks.update((links) => links.map((l) => l.id === inviteId ? { ...l, isRevoked: true } : l));
+        this.snackBar.open('Invite link revoked', 'OK', { duration: 2000 });
+      },
+      error: () => this.snackBar.open('Failed to revoke link', 'OK', { duration: 3000 }),
+    });
   }
 
   goBack(): void {

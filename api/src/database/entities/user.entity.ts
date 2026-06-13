@@ -19,6 +19,7 @@ export enum UserStatus {
   ACTIVE = 'active',
   SUSPENDED = 'suspended',
   DELETED = 'deleted',
+  NON_VALIDATED = 'non_validated',
 }
 
 export enum EmailStatus {
@@ -33,6 +34,7 @@ export enum InviteSource {
   DIRECT = 'direct',
   FACEBOOK_GROUP = 'facebook_group',
   GOOGLE_OAUTH = 'google_oauth',
+  NON_VALIDATED_LINK = 'non_validated_link',
 }
 
 @Entity('users')

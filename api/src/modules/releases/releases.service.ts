@@ -108,7 +108,7 @@ export class ReleasesService {
       await this.feedbackRepo
         .createQueryBuilder()
         .update()
-        .set({ status: FeedbackStatus.SHIPPED })
+        .set({ status: FeedbackStatus.SHIPPED, resolvedAt: () => 'COALESCE(resolved_at, NOW())' })
         .whereInIds(ids)
         .execute();
     }

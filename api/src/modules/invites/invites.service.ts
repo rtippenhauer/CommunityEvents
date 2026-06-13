@@ -3,7 +3,7 @@ import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
-import { InviteEntity, InviteType } from '../../database/entities/invite.entity';
+import { InviteEntity, InviteFlavor, InviteType } from '../../database/entities/invite.entity';
 import { UserEntity } from '../../database/entities/user.entity';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { EmailService } from '../email/email.service';
@@ -134,6 +134,44 @@ export class InvitesService {
     return this.inviteRepo.find({
       where: { createdBy: userId },
       order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createEventInvite(
+    eventId: number,
+    flavor: InviteFlavor,
+    creator: UserEntity,
+    maxUses: number | null,
+    expiryDays: number,
+  ): Promise<InviteEntity> {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + expiryDays);
+
+    const invite = this.inviteRepo.create({
+      token: randomBytes(32).toString('hex'),
+      type: InviteType.EVENT_INVITE,
+      createdBy: creator.id,
+      eventId,
+      inviteFlavor: flavor,
+      expiresAt,
+      maxUses,
+    });
+
+    return this.inviteRepo.save(invite);
+  }
+
+  findByEvent(eventId: number): Promise<InviteEntity[]> {
+    return this.inviteRepo.find({
+      where: { eventId, type: InviteType.EVENT_INVITE },
+      relations: ['creator'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findByToken(token: string): Promise<InviteEntity | null> {
+    return this.inviteRepo.findOne({
+      where: { token },
+      relations: ['event', 'event.restaurant', 'event.restaurant.photos'],
     });
   }
 }

@@ -24,6 +24,7 @@ interface MemberProfile {
   joinedAt: string;
   role?: string;
   status?: string;
+  inviteSource?: string | null;
   invitedBy: MiniMember | null;
   invitedMembers?: MiniMember[];
 }
@@ -70,6 +71,9 @@ interface MemberProfile {
                   @if (showElevated() && profile()!.role && profile()!.role !== 'member') {
                     <mat-chip [class]="'role-' + profile()!.role">{{ profile()!.role }}</mat-chip>
                   }
+                  @if (showElevated() && profile()!.status === 'non_validated') {
+                    <mat-chip class="chip-non-validated">Non-Validated</mat-chip>
+                  }
                   @if (profile()!.status === 'suspended') {
                     <mat-chip class="chip-banned">Banned</mat-chip>
                   }
@@ -86,8 +90,15 @@ interface MemberProfile {
               </div>
             }
 
-            <!-- Invited by -->
-            @if (profile()!.invitedBy) {
+            <!-- Invited by / Self-Invited -->
+            @if (showElevated() && profile()!.inviteSource === 'non_validated_link') {
+              <div class="invited-section">
+                <span class="invited-label">Joined via</span>
+                <span class="self-invited-badge">
+                  <mat-icon class="self-invited-icon">link</mat-icon> Self-Invited via event link
+                </span>
+              </div>
+            } @else if (profile()!.invitedBy) {
               <div class="invited-section">
                 <span class="invited-label">Invited by</span>
                 <a class="mini-member" [routerLink]="['/members', profile()!.invitedBy!.id]">
@@ -132,6 +143,20 @@ interface MemberProfile {
                   <mat-option value="member">Member</mat-option>
                   <mat-option value="moderator">Moderator</mat-option>
                 </mat-select>
+              </div>
+            }
+
+            <!-- Validate Member (mod/admin only, non-validated status) -->
+            @if (showElevated() && !isSelf() && profile()!.status === 'non_validated') {
+              <div class="validate-section">
+                <p class="validate-info">
+                  <mat-icon class="validate-info-icon">info_outline</mat-icon>
+                  This member joined via a self-serve event link. Validate them to grant full membership.
+                </p>
+                <button mat-raised-button color="primary" (click)="validateMember()" [disabled]="validating()">
+                  @if (validating()) { <mat-spinner diameter="18" /> }
+                  <mat-icon>verified_user</mat-icon> Validate Member
+                </button>
               </div>
             }
 
@@ -274,6 +299,52 @@ interface MemberProfile {
     .role-admin { --mdc-chip-label-text-color: #fff; background: #1E4D8C !important; }
     .role-moderator { --mdc-chip-label-text-color: #fff; background: #C9933A !important; }
     .chip-banned { background: #ffccbc !important; }
+    .chip-non-validated { background: #f3e5f5 !important; color: #6a1b9a !important; }
+
+    .self-invited-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.85rem;
+      color: #6a1b9a;
+      background: #f3e5f5;
+      padding: 4px 10px;
+      border-radius: 20px;
+
+      .self-invited-icon {
+        font-size: 0.9rem;
+        width: 0.9rem;
+        height: 0.9rem;
+      }
+    }
+
+    .validate-section {
+      margin-top: 16px;
+      padding: 16px;
+      background: #e8f5e9;
+      border: 1px solid #a5d6a7;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .validate-info {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      margin: 0;
+      font-size: 0.88rem;
+      color: #1b5e20;
+
+      .validate-info-icon {
+        font-size: 1rem;
+        width: 1rem;
+        height: 1rem;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+    }
   `],
 })
 export class MemberProfileComponent implements OnInit {
@@ -284,6 +355,7 @@ export class MemberProfileComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly loading = signal(true);
+  readonly validating = signal(false);
   readonly profile = signal<MemberProfile | null>(null);
 
   ngOnInit(): void {
@@ -375,6 +447,34 @@ export class MemberProfileComponent implements OnInit {
         this.load(p.id);
       },
       error: (e) => this.snackBar.open(e?.error?.message ?? 'Failed to update role', 'OK', { duration: 4000 }),
+    });
+  }
+
+  validateMember(): void {
+    const p = this.profile();
+    if (!p) return;
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Validate Member',
+        message: `Vouching for ${p.fullName} upgrades them to full membership. They'll be able to invite guests, submit feedback, and post comments. Only validate someone you've met in person.`,
+        confirmLabel: 'I vouch for this person',
+        confirmColor: 'primary',
+      },
+    });
+    ref.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) return;
+      this.validating.set(true);
+      this.http.patch(`/api/v1/users/${p.id}/validate`, {}).subscribe({
+        next: () => {
+          this.validating.set(false);
+          this.snackBar.open(`${p.fullName} validated as full member`, 'OK', { duration: 4000 });
+          this.load(p.id);
+        },
+        error: (e) => {
+          this.validating.set(false);
+          this.snackBar.open(e?.error?.message ?? 'Failed to validate member', 'OK', { duration: 4000 });
+        },
+      });
     });
   }
 }

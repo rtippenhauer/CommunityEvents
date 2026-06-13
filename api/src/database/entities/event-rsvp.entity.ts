@@ -12,6 +12,12 @@ import { EventEntity } from './event.entity';
 import { EventGuestLinkEntity } from './event-guest-link.entity';
 import { UserEntity } from './user.entity';
 
+export enum RsvpStatus {
+  GOING = 'going',
+  MAYBE = 'maybe',
+  NOT_GOING = 'not_going',
+}
+
 @Entity('event_rsvps')
 export class EventRsvpEntity {
   @PrimaryGeneratedColumn({ unsigned: true })
@@ -30,6 +36,9 @@ export class EventRsvpEntity {
   @ManyToOne(() => UserEntity, { onDelete: 'CASCADE', eager: false })
   @JoinColumn({ name: 'user_id' })
   user: UserEntity;
+
+  @Column({ type: 'enum', enum: RsvpStatus, default: RsvpStatus.GOING })
+  status: RsvpStatus;
 
   @Column({ name: 'additional_guests', type: 'tinyint', unsigned: true, default: 0 })
   additionalGuests: number;

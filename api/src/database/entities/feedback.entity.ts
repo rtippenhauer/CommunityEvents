@@ -68,6 +68,9 @@ export class FeedbackEntity {
   @Column({ name: 'seen_at', type: 'datetime', nullable: true })
   seenAt: Date | null;
 
+  @Column({ name: 'resolved_at', type: 'datetime', nullable: true })
+  resolvedAt: Date | null;
+
   @OneToMany(() => FeedbackNoteEntity, (note) => note.feedback, { eager: false })
   notes: FeedbackNoteEntity[];
 

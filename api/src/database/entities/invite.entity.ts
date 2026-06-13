@@ -9,6 +9,7 @@ import {
 import { UserEntity } from './user.entity';
 import { CityEntity } from './city.entity';
 import { FacebookGroupConfigEntity } from './facebook-group-config.entity';
+import { EventEntity } from './event.entity';
 
 export enum InviteType {
   MEMBER = 'member',
@@ -16,6 +17,12 @@ export enum InviteType {
   CAMPAIGN_FACEBOOK = 'campaign_facebook',
   GUEST_RSVP = 'guest_rsvp',
   SHAREABLE_RSVP = 'shareable_rsvp',
+  EVENT_INVITE = 'event_invite',
+}
+
+export enum InviteFlavor {
+  MEMBER = 'member',
+  NON_VALIDATED = 'non_validated',
 }
 
 @Entity('invites')
@@ -45,6 +52,18 @@ export class InviteEntity {
 
   @Column({ name: 'event_id', type: 'int', unsigned: true, nullable: true })
   eventId: number | null;
+
+  @ManyToOne(() => EventEntity, { nullable: true })
+  @JoinColumn({ name: 'event_id' })
+  event: EventEntity | null;
+
+  @Column({
+    name: 'invite_flavor',
+    type: 'enum',
+    enum: InviteFlavor,
+    nullable: true,
+  })
+  inviteFlavor: InviteFlavor | null;
 
   @Column({ name: 'facebook_group_id', type: 'int', unsigned: true, nullable: true })
   facebookGroupId: number | null;

@@ -24,11 +24,14 @@ export interface GuestLink {
   createdAt: string;
 }
 
+export type RsvpStatus = 'going' | 'maybe' | 'not_going';
+
 export interface Rsvp {
   id: number;
   eventId: number;
   userId: number;
   user: { id: number; fullName: string; profilePhotoPath: string | null };
+  status: RsvpStatus;
   additionalGuests: number;
   guestNames: string[] | null;
   guestLinks: GuestLink[] | undefined;
@@ -143,8 +146,8 @@ export class EventsService {
     return this.http.delete<void>(`${this.base}/${id}`);
   }
 
-  rsvp(eventId: number, additionalGuests: number, guestNames?: string[]): Observable<Rsvp> {
-    return this.http.post<Rsvp>(`${this.base}/${eventId}/rsvp`, { additionalGuests, guestNames });
+  rsvp(eventId: number, status: RsvpStatus, additionalGuests: number, guestNames?: string[]): Observable<Rsvp> {
+    return this.http.post<Rsvp>(`${this.base}/${eventId}/rsvp`, { status, additionalGuests, guestNames });
   }
 
   unrsvp(eventId: number): Observable<void> {

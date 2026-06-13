@@ -162,10 +162,26 @@ export class FeedbackService {
     });
   }
 
+  async getInProgress(): Promise<FeedbackEntity[]> {
+    return this.feedbackRepo.find({
+      where: { status: FeedbackStatus.IN_PROGRESS },
+      relations: ['user', 'releases'],
+      order: { updatedAt: 'ASC' },
+    });
+  }
+
   async update(id: number, dto: UpdateFeedbackDto): Promise<FeedbackEntity> {
     const item = await this.feedbackRepo.findOne({ where: { id } });
     if (!item) throw new NotFoundException(`Feedback ${id} not found`);
-    if (dto.status !== undefined) item.status = dto.status;
+    if (dto.status !== undefined) {
+      item.status = dto.status;
+      const terminalStatuses = [FeedbackStatus.RESOLVED, FeedbackStatus.SHIPPED];
+      if (terminalStatuses.includes(dto.status) && !item.resolvedAt) {
+        item.resolvedAt = new Date();
+      } else if (!terminalStatuses.includes(dto.status)) {
+        item.resolvedAt = null;
+      }
+    }
     if (dto.adminNote !== undefined) item.adminNote = dto.adminNote ?? null;
     if (dto.releaseNote !== undefined) item.releaseNote = dto.releaseNote ?? null;
     return this.feedbackRepo.save(item);

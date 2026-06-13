@@ -1,6 +1,10 @@
-import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min, ArrayMaxSize } from 'class-validator';
+import { IsArray, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min, ArrayMaxSize } from 'class-validator';
+import { RsvpStatus } from '../../../database/entities/event-rsvp.entity';
 
 export class UpsertRsvpDto {
+  @IsEnum(RsvpStatus)
+  status: RsvpStatus = RsvpStatus.GOING;
+
   @IsInt()
   @Min(0)
   @Max(9)

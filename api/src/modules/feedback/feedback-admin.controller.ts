@@ -33,6 +33,11 @@ export class FeedbackAdminController {
     return this.feedbackService.getOpenBugs();
   }
 
+  @Get('in-progress')
+  getInProgress() {
+    return this.feedbackService.getInProgress();
+  }
+
   @Get('unseen-count')
   async getUnseenCount(): Promise<{ count: number }> {
     const count = await this.feedbackService.getUnseenCount();

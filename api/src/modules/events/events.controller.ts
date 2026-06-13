@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Header,
   Param,
@@ -14,23 +15,28 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { EventsService } from './events.service';
+import { InvitesService } from '../invites/invites.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { UpsertRsvpDto } from './dto/upsert-rsvp.dto';
 import { CreateGuestLinkDto } from './dto/create-guest-link.dto';
 import { CreatePublicRsvpDto } from './dto/create-public-rsvp.dto';
 import { UseGuestLinkDto } from './dto/use-guest-link.dto';
+import { CreateEventInviteDto } from './dto/create-event-invite.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
 import { EventStatus } from '../../database/entities/event.entity';
 
 @Controller('events')
 export class EventsController {
-  constructor(private readonly eventsService: EventsService) {}
+  constructor(
+    private readonly eventsService: EventsService,
+    private readonly invitesService: InvitesService,
+  ) {}
 
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
@@ -145,7 +151,7 @@ export class EventsController {
     @Body() dto: UpsertRsvpDto,
     @CurrentUser() user: UserEntity,
   ) {
-    return this.eventsService.upsertRsvp(id, user.id, dto.additionalGuests, dto.guestNames, user.role);
+    return this.eventsService.upsertRsvp(id, user.id, dto.status, dto.additionalGuests, dto.guestNames, user.role);
   }
 
   @Delete(':id/rsvp')
@@ -161,6 +167,37 @@ export class EventsController {
     @Body() dto: CreateGuestLinkDto,
     @CurrentUser() user: UserEntity,
   ) {
+    if (user.status === UserStatus.NON_VALIDATED) {
+      throw new ForbiddenException('Non-validated members cannot invite guests');
+    }
     return this.eventsService.generateGuestLink(id, user.id, dto.recipientName, dto.recipientEmail);
+  }
+
+  // Event invite links (admin only — for /join/:code flow)
+  @Get(':id/invite-links')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  getEventInviteLinks(@Param('id', ParseIntPipe) id: number) {
+    return this.invitesService.findByEvent(id);
+  }
+
+  @Post(':id/invite-links')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  createEventInviteLink(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateEventInviteDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.invitesService.createEventInvite(id, dto.flavor, user, dto.maxUses, dto.expiryDays);
+  }
+
+  @Patch(':id/invite-links/:inviteId/revoke')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  revokeEventInviteLink(
+    @Param('inviteId', ParseIntPipe) inviteId: number,
+  ) {
+    return this.invitesService.revoke(inviteId);
   }
 }
