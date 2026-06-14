@@ -88,6 +88,6 @@ export class AuthService {
   }
 
   isNonValidated(): boolean {
-    return this.currentUser()?.status === 'non_validated';
+    return this.currentUser()?.role === 'non_validated';
   }
 }

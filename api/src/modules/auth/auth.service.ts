@@ -105,8 +105,8 @@ export class AuthService {
       emailStatus: EmailStatus.ACTIVE,
       emailVerifiedAt: new Date(),
       cityId: defaultCity.id,
-      role: isAdminBootstrap ? UserRole.ADMIN : UserRole.MEMBER,
-      status: isNonValidatedInvite ? UserStatus.NON_VALIDATED : UserStatus.ACTIVE,
+      role: isAdminBootstrap ? UserRole.ADMIN : (isNonValidatedInvite ? UserRole.NON_VALIDATED : UserRole.MEMBER),
+      status: UserStatus.ACTIVE,
       inviteId: invite?.id ?? null,
       invitedBy: invite?.createdBy ?? null,
       inviteSource: invite
@@ -211,8 +211,8 @@ export class AuthService {
       emailStatus: email ? EmailStatus.ACTIVE : EmailStatus.PENDING,
       emailVerifiedAt: email ? new Date() : undefined,
       cityId: defaultCity.id,
-      role: UserRole.MEMBER,
-      status: isFbNonValidated ? UserStatus.NON_VALIDATED : UserStatus.ACTIVE,
+      role: isFbNonValidated ? UserRole.NON_VALIDATED : UserRole.MEMBER,
+      status: UserStatus.ACTIVE,
       inviteId: invite?.id ?? null,
       invitedBy: invite?.createdBy ?? null,
       inviteSource: invite?.type === InviteType.CAMPAIGN_FACEBOOK

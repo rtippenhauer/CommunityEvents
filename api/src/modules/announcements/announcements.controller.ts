@@ -16,7 +16,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { FlagContentDto } from './dto/flag-content.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserStatus } from '../../database/entities/user.entity';
+import { UserEntity, UserRole } from '../../database/entities/user.entity';
 
 @Controller('announcements')
 export class AnnouncementsController {
@@ -39,7 +39,7 @@ export class AnnouncementsController {
     @Body() dto: CreateCommentDto,
     @CurrentUser() user: UserEntity,
   ) {
-    if (user.status === UserStatus.NON_VALIDATED) {
+    if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot post comments');
     }
     return this.announcementsService.addComment(id, user.id, dto);

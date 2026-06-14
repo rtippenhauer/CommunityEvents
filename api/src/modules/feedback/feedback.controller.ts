@@ -16,7 +16,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
+import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { FeedbackCategory } from '../../database/entities/feedback.entity';
 
 @Controller('feedback')
@@ -26,7 +26,7 @@ export class FeedbackController {
 
   @Post()
   create(@Body() dto: CreateFeedbackDto, @CurrentUser() user: UserEntity) {
-    if (user.status === UserStatus.NON_VALIDATED) {
+    if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot submit feedback');
     }
     return this.feedbackService.create(dto, user.id);
@@ -74,7 +74,7 @@ export class FeedbackController {
     @Body() dto: CreateNoteDto,
     @CurrentUser() user: UserEntity,
   ) {
-    if (user.status === UserStatus.NON_VALIDATED) {
+    if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot add notes');
     }
     const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;

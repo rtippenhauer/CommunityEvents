@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
+import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { InviteType } from '../../database/entities/invite.entity';
 
 @Controller('invites')
@@ -15,7 +15,7 @@ export class InvitesController {
   @Post()
   @UseGuards(JwtAuthGuard)
   create(@Body() dto: CreateInviteDto, @CurrentUser() user: UserEntity) {
-    if (user.status === UserStatus.NON_VALIDATED) {
+    if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot send invites');
     }
     const isElevated = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;

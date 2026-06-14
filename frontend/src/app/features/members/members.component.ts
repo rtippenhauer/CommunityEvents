@@ -288,7 +288,7 @@ export class MembersComponent implements OnInit {
   readonly lightboxSrc = signal<string | null>(null);
   readonly lightboxName = signal<string | null>(null);
 
-  readonly isNonValidated = computed(() => this.authService.currentUser()?.status === 'non_validated');
+  readonly isNonValidated = computed(() => this.authService.currentUser()?.role === 'non_validated');
 
   readonly showRoles = computed(() => {
     const role = this.authService.currentUser()?.role;

@@ -28,7 +28,7 @@ import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guar
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
+import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { EventStatus } from '../../database/entities/event.entity';
 
 @Controller('events')
@@ -168,7 +168,7 @@ export class EventsController {
     @Body() dto: CreateGuestLinkDto,
     @CurrentUser() user: UserEntity,
   ) {
-    if (user.status === UserStatus.NON_VALIDATED) {
+    if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot invite guests');
     }
     return this.eventsService.generateGuestLink(id, user.id, dto.recipientName, dto.recipientEmail);

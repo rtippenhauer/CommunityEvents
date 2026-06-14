@@ -10,6 +10,7 @@ import {
 import { CityEntity } from './city.entity';
 
 export enum UserRole {
+  NON_VALIDATED = 'non_validated',
   MEMBER = 'member',
   MODERATOR = 'moderator',
   ADMIN = 'admin',
@@ -19,7 +20,6 @@ export enum UserStatus {
   ACTIVE = 'active',
   SUSPENDED = 'suspended',
   DELETED = 'deleted',
-  NON_VALIDATED = 'non_validated',
 }
 
 export enum EmailStatus {

@@ -130,10 +130,10 @@ export class UsersService {
   async validateMember(targetId: number): Promise<{ message: string }> {
     const user = await this.userRepo.findOne({ where: { id: targetId } });
     if (!user) throw new NotFoundException('User not found');
-    if (user.status !== UserStatus.NON_VALIDATED) {
+    if (user.role !== UserRole.NON_VALIDATED) {
       return { message: 'User is already validated' };
     }
-    await this.userRepo.update(targetId, { status: UserStatus.ACTIVE });
+    await this.userRepo.update(targetId, { role: UserRole.MEMBER });
     return { message: 'Member validated successfully' };
   }
 }

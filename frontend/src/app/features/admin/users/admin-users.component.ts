@@ -131,7 +131,7 @@ interface AdminUser {
                   <td mat-cell *matCellDef="let u" (click)="$event.stopPropagation()">
                     <div class="actions-row">
                       <!-- Vouch (non_validated only) -->
-                      @if (u.status === 'non_validated') {
+                      @if (u.role === 'non_validated') {
                         @if (confirmVouchId() === u.id) {
                           <div class="confirm-row">
                             <span class="confirm-vouch-label">Vouch?</span>
@@ -240,7 +240,7 @@ interface AdminUser {
     .role-member { background: #e0e0e0 !important; }
     .status-active { background: #c8e6c9 !important; }
     .status-suspended { background: #ffccbc !important; }
-    .status-non_validated { background: #fff9c4 !important; --mdc-chip-label-text-color: #7a6200 !important; }
+    .role-non_validated { background: #fff9c4 !important; --mdc-chip-label-text-color: #7a6200 !important; }
     .actions-row {
       display: flex;
       align-items: center;
@@ -298,7 +298,7 @@ export class AdminUsersComponent implements OnInit {
   }
 
   statusLabel(status: string): string {
-    return status === 'non_validated' ? 'pending' : status;
+    return status;
   }
 
   // ── Vouch ────────────────────────────────────────────────────────────────────
@@ -318,10 +318,10 @@ export class AdminUsersComponent implements OnInit {
       next: () => {
         this.vouchingId.set(null);
         this.confirmVouchId.set(null);
-        const update = (u: AdminUser) => u.id === id ? { ...u, status: 'active' } : u;
+        const update = (u: AdminUser) => u.id === id ? { ...u, role: 'member' } : u;
         this.users.update((us) => us.map(update));
         this.filtered.update((us) => us.map(update));
-        this.snackBar.open('Member vouched — status upgraded to active', 'OK', { duration: 4000 });
+        this.snackBar.open('Member vouched — role upgraded to member', 'OK', { duration: 4000 });
       },
       error: (err) => {
         this.vouchingId.set(null);

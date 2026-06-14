@@ -70,7 +70,7 @@ export class AppComponent {
   );
 
   readonly isNonValidated = computed<boolean>(
-    () => this.authService.currentUser()?.status === 'non_validated',
+    () => this.authService.currentUser()?.role === 'non_validated',
   );
 
   constructor() {

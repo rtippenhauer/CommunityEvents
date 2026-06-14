@@ -71,7 +71,7 @@ interface MemberProfile {
                   @if (showElevated() && profile()!.role && profile()!.role !== 'member') {
                     <mat-chip [class]="'role-' + profile()!.role">{{ profile()!.role }}</mat-chip>
                   }
-                  @if (showElevated() && profile()!.status === 'non_validated') {
+                  @if (showElevated() && profile()!.role === 'non_validated') {
                     <mat-chip class="chip-non-validated">Non-Validated</mat-chip>
                   }
                   @if (profile()!.status === 'suspended') {
@@ -147,7 +147,7 @@ interface MemberProfile {
             }
 
             <!-- Validate Member (mod/admin only, non-validated status) -->
-            @if (showElevated() && !isSelf() && profile()!.status === 'non_validated') {
+            @if (showElevated() && !isSelf() && profile()!.role === 'non_validated') {
               <div class="validate-section">
                 <p class="validate-info">
                   <mat-icon class="validate-info-icon">info_outline</mat-icon>
