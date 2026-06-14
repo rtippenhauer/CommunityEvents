@@ -106,6 +106,40 @@ interface PublicStats {
         </div>
       </div>
     </section>
+
+    <!-- Our Story / Map -->
+    <section class="story-section">
+      <div class="story-inner">
+        <div class="story-map">
+          <img src="/story-map.png" alt="Places We've Been — DinnerBears restaurant map" class="map-img" />
+          <p class="map-caption">🐾 Places We've Been — Cincinnati &amp; Dayton</p>
+        </div>
+        <div class="story-copy">
+          <span class="section-label">EST. FEBRUARY 2014</span>
+          <h2 class="story-headline">One simple act.<br>A lifetime of bear memories.</h2>
+          <p class="story-p">
+            On February 22, 2014, a friend helped his karate instructor at a small sushi restaurant in
+            Kentucky. As a thank-you, that instructor introduced them to Chuy's. A month later, two friends
+            started showing up every Tuesday evening in Kenwood — one at 6:30, the other after Tai Chi
+            class — staying for the free queso bar and even better conversation.
+          </p>
+          <p class="story-p">
+            Then a third friend showed up. Then more. The first official DinnerBears event was
+            September 1, 2015, and the community group launched February 21, 2016.
+            What started as two friends at a table is now weekly dinners in Cincinnati, monthly
+            gatherings in Dayton, and friendships that have lasted years.
+          </p>
+          <blockquote class="story-quote">
+            "It's amazing what one simple act of helping someone in a time of need has led to in a few short years."
+          </blockquote>
+          <div class="story-milestones">
+            <div class="milestone"><span class="ms-date">Feb 22, 2014</span><span class="ms-text">First dinner — the Chuy's introduction</span></div>
+            <div class="milestone"><span class="ms-date">Sept 1, 2015</span><span class="ms-text">First official DinnerBears event</span></div>
+            <div class="milestone"><span class="ms-date">Feb 21, 2016</span><span class="ms-text">Community group founded</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
   `,
   styles: [`
     :host {
@@ -276,12 +310,99 @@ interface PublicStats {
     .step h3 { font-size: 1.05rem; font-weight: 600; color: var(--db-brown-dark); margin: 0 0 0.5rem; }
     .step p { font-size: 0.9rem; color: #666; line-height: 1.6; margin: 0; }
 
+    /* OUR STORY */
+    .story-section {
+      background: var(--db-brown-nav);
+      padding: 5rem 2rem;
+    }
+
+    .story-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+    }
+
+    .story-map {
+      text-align: center;
+    }
+
+    .map-img {
+      width: 100%;
+      border-radius: 10px;
+      box-shadow: 0 8px 36px rgba(0,0,0,0.35);
+    }
+
+    .map-caption {
+      margin-top: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--db-cream-muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .story-copy .section-label { color: var(--db-amber); }
+
+    .story-headline {
+      font-family: var(--db-font-display);
+      font-size: 2rem;
+      font-weight: 600;
+      color: var(--db-cream);
+      line-height: 1.2;
+      margin: 0.5rem 0 1.25rem;
+    }
+
+    .story-p {
+      font-size: 0.93rem;
+      color: var(--db-cream-muted);
+      line-height: 1.8;
+      margin: 0 0 1rem;
+    }
+
+    .story-quote {
+      border-left: 3px solid var(--db-amber);
+      padding: 0.65rem 1.1rem;
+      font-style: italic;
+      font-size: 0.92rem;
+      color: var(--db-cream);
+      background: rgba(255,255,255,0.04);
+      border-radius: 0 4px 4px 0;
+      margin: 1.25rem 0 1.5rem;
+    }
+
+    .story-milestones {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .milestone {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.85rem;
+      align-items: baseline;
+    }
+
+    .ms-date {
+      color: var(--db-amber);
+      font-weight: 600;
+      white-space: nowrap;
+      width: 105px;
+      flex-shrink: 0;
+    }
+
+    .ms-text { color: var(--db-cream-muted); line-height: 1.4; }
+
     @media (max-width: 768px) {
       .hero { grid-template-columns: 1fr; padding: 1rem 0 3rem; }
       .steps { grid-template-columns: 1fr; gap: 2rem; }
       .how { padding: 3rem 1rem; }
       .stat { padding: 0 1.5rem; }
       .stat-number { font-size: 1.8rem; }
+      .story-section { padding: 3rem 1.25rem; }
+      .story-inner { grid-template-columns: 1fr; gap: 2rem; }
     }
   `],
 })

@@ -625,7 +625,7 @@ import { Event as DinnerEvent } from '../../../core/services/events.service';
           font-size: 1.4rem;
           width: 1.4rem;
           height: 1.4rem;
-          color: #ddd;
+          color: #bbb;
           &.star-filled { color: var(--db-amber); }
         }
       }

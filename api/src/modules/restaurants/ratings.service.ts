@@ -5,9 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { RestaurantRatingEntity } from '../../database/entities/restaurant-rating.entity';
-import { RestaurantPhotoEntity } from '../../database/entities/restaurant-photo.entity';
 import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { RestaurantsService } from './restaurants.service';
@@ -63,8 +62,6 @@ export class RatingsService {
   constructor(
     @InjectRepository(RestaurantRatingEntity)
     private readonly ratingRepo: Repository<RestaurantRatingEntity>,
-    @InjectRepository(RestaurantPhotoEntity)
-    private readonly photoRepo: Repository<RestaurantPhotoEntity>,
     @InjectRepository(EventEntity)
     private readonly eventRepo: Repository<EventEntity>,
     @InjectRepository(EventRsvpEntity)
@@ -97,48 +94,49 @@ export class RatingsService {
       .createQueryBuilder('r')
       .innerJoin('r.member', 'm')
       .innerJoin('r.event', 'e')
-      .select([
-        'r.id',
-        'r.food',
-        'r.service',
-        'r.value_rating',
-        'r.noise',
-        'r.comment',
-        'r.created_at',
-        'm.fullName',
-        'm.profilePhotoPath',
-        'e.eventDate',
-      ])
+      .select('r.id', 'id')
+      .addSelect('r.food', 'food')
+      .addSelect('r.service', 'service')
+      .addSelect('r.value_rating', 'valueRating')
+      .addSelect('r.noise', 'noise')
+      .addSelect('r.comment', 'comment')
+      .addSelect('r.created_at', 'createdAt')
+      .addSelect('m.fullName', 'memberName')
+      .addSelect('m.profilePhotoPath', 'memberPhoto')
+      .addSelect("DATE_FORMAT(e.event_date, '%Y-%m-%d')", 'eventDate')
       .where('r.restaurant_id = :restaurantId', { restaurantId })
       .orderBy('r.created_at', 'DESC')
       .limit(20)
       .getRawMany<{
-        r_id: number;
-        r_food: number;
-        r_service: number;
-        r_value_rating: number;
-        r_noise: number;
-        r_comment: string | null;
-        r_created_at: Date;
-        m_full_name: string;
-        m_profile_photo_path: string | null;
-        e_event_date: string;
+        id: number;
+        food: number;
+        service: number;
+        valueRating: number;
+        noise: number;
+        comment: string | null;
+        createdAt: Date;
+        memberName: string;
+        memberPhoto: string | null;
+        eventDate: string;
       }>();
 
     const eligibleEvents: EligibleEvent[] = [];
     if (currentUser && currentUser.role !== UserRole.NON_VALIDATED) {
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
 
       const goingRsvps = await this.rsvpRepo
         .createQueryBuilder('rsvp')
         .innerJoin('rsvp.event', 'e')
-        .select(['rsvp.eventId', 'e.title', 'e.eventDate'])
+        .select('rsvp.eventId', 'eventId')
+        .addSelect('e.title', 'title')
+        .addSelect("DATE_FORMAT(e.event_date, '%Y-%m-%d')", 'eventDate')
         .where('rsvp.userId = :userId', { userId: currentUser.id })
         .andWhere('rsvp.status = :status', { status: RsvpStatus.GOING })
         .andWhere('e.restaurantId = :restaurantId', { restaurantId })
-        .andWhere('e.eventDate < :today', { today: todayStr })
-        .getRawMany<{ rsvp_event_id: number; e_title: string; e_event_date: string }>();
+        .andWhere('(e.eventDate < :today OR (e.eventDate = :today AND e.eventTime <= :nowTime))', { today: todayStr, nowTime: nowTimeStr })
+        .getRawMany<{ eventId: number; title: string; eventDate: string }>();
 
       const myRatingEventIds = new Set(
         (await this.ratingRepo.find({
@@ -149,10 +147,10 @@ export class RatingsService {
 
       for (const row of goingRsvps) {
         eligibleEvents.push({
-          id: row.rsvp_event_id,
-          title: row.e_title,
-          eventDate: row.e_event_date,
-          alreadyRated: myRatingEventIds.has(row.rsvp_event_id),
+          id: Number(row.eventId),
+          title: row.title,
+          eventDate: row.eventDate,
+          alreadyRated: myRatingEventIds.has(Number(row.eventId)),
         });
       }
     }
@@ -167,16 +165,16 @@ export class RatingsService {
         avgOverall: aggregate?.avgOverall != null ? parseFloat(aggregate.avgOverall) : null,
       },
       reviews: reviews.map((row) => ({
-        id: row.r_id,
-        memberName: row.m_full_name,
-        memberPhoto: row.m_profile_photo_path,
-        eventDate: row.e_event_date,
-        food: row.r_food,
-        service: row.r_service,
-        valueRating: row.r_value_rating,
-        noise: row.r_noise,
-        comment: row.r_comment,
-        createdAt: row.r_created_at,
+        id: row.id,
+        memberName: row.memberName,
+        memberPhoto: row.memberPhoto,
+        eventDate: row.eventDate,
+        food: row.food,
+        service: row.service,
+        valueRating: row.valueRating,
+        noise: row.noise,
+        comment: row.comment,
+        createdAt: row.createdAt,
       })),
       eligibleEvents,
     };
@@ -193,9 +191,13 @@ export class RatingsService {
       throw new BadRequestException('Event was not held at this restaurant');
     }
 
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    if (event.eventDate >= todayStr) {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+    const eventIsPast =
+      event.eventDate < todayStr ||
+      (event.eventDate === todayStr && (event.eventTime ?? '23:59:59') <= nowTimeStr);
+    if (!eventIsPast) {
       throw new BadRequestException('Can only rate past events');
     }
 
@@ -221,21 +223,27 @@ export class RatingsService {
   }
 
   async getRatingQueue(userId: number): Promise<RatingQueueItem[]> {
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
 
     const rows = await this.rsvpRepo
       .createQueryBuilder('rsvp')
       .innerJoin('rsvp.event', 'e')
+      .leftJoin('e.restaurant', 'r')
       .leftJoin(RestaurantRatingEntity, 'rating', 'rating.memberId = :userId AND rating.eventId = e.id', { userId })
       .select('e.restaurantId', 'restaurantId')
-      .addSelect('e.restaurantName', 'restaurantName')
+      .addSelect('COALESCE(NULLIF(e.restaurant_name, \'\'), r.name)', 'restaurantName')
       .addSelect('e.id', 'eventId')
       .addSelect('e.eventDate', 'eventDate')
       .addSelect('rating.id', 'ratingId')
+      .addSelect(
+        '(SELECT p.file_path FROM restaurant_photos p WHERE p.restaurant_id = e.restaurant_id ORDER BY p.sort_order ASC LIMIT 1)',
+        'photoUrl',
+      )
       .where('rsvp.userId = :userId', { userId })
       .andWhere('rsvp.status = :status', { status: RsvpStatus.GOING })
-      .andWhere('e.eventDate < :today', { today: todayStr })
+      .andWhere('(e.eventDate < :today OR (e.eventDate = :today AND e.eventTime <= :nowTime))', { today: todayStr, nowTime: nowTimeStr })
       .andWhere('e.restaurantId IS NOT NULL')
       .orderBy('e.eventDate', 'DESC')
       .getRawMany<{
@@ -244,24 +252,13 @@ export class RatingsService {
         eventId: number;
         eventDate: string;
         ratingId: number | null;
+        photoUrl: string | null;
       }>();
-
-    if (rows.length === 0) return [];
-
-    const restaurantIds = [...new Set(rows.map((r) => Number(r.restaurantId)))];
-    const photoRows = await this.photoRepo.find({
-      where: { restaurantId: In(restaurantIds) },
-      order: { restaurantId: 'ASC', sortOrder: 'ASC' },
-    });
-    const photoMap = new Map<number, string>();
-    for (const p of photoRows) {
-      if (!photoMap.has(p.restaurantId)) photoMap.set(p.restaurantId, p.filePath);
-    }
 
     return rows.map((r) => ({
       restaurantId: Number(r.restaurantId),
       restaurantName: r.restaurantName ?? 'Unknown Restaurant',
-      restaurantPhotoUrl: photoMap.get(Number(r.restaurantId)) ?? null,
+      restaurantPhotoUrl: r.photoUrl ?? null,
       eventId: Number(r.eventId),
       eventDate: r.eventDate,
       alreadyRated: r.ratingId !== null,

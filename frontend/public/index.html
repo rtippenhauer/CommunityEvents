@@ -343,6 +343,96 @@
       line-height: 1.6;
     }
 
+    /* OUR STORY */
+    .story {
+      padding: 6rem 3rem;
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+    }
+
+    .story-text {}
+
+    .story-text .section-label { display: block; margin-bottom: 0.75rem; }
+
+    .story-text h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.4rem;
+      color: var(--navy);
+      line-height: 1.15;
+      margin-bottom: 1.5rem;
+      letter-spacing: -0.02em;
+    }
+
+    .story-body {
+      font-size: 0.97rem;
+      color: var(--muted);
+      line-height: 1.8;
+      margin-bottom: 1.75rem;
+    }
+
+    .story-quote {
+      border-left: 3px solid var(--gold);
+      padding: 0.75rem 1.25rem;
+      font-style: italic;
+      font-size: 0.95rem;
+      color: var(--navy);
+      margin-bottom: 2rem;
+      background: rgba(201,147,58,0.06);
+      border-radius: 0 4px 4px 0;
+    }
+
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .tl-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      font-size: 0.88rem;
+    }
+
+    .tl-date {
+      font-weight: 600;
+      color: var(--gold);
+      white-space: nowrap;
+      width: 110px;
+      flex-shrink: 0;
+      padding-top: 1px;
+    }
+
+    .tl-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--gold);
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 5px;
+    }
+
+    .tl-desc { color: var(--text); line-height: 1.5; }
+
+    .story-visual img {
+      width: 100%;
+      border-radius: 12px;
+      box-shadow: 0 8px 40px rgba(26,46,74,0.18);
+    }
+
+    .story-visual .map-caption {
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.75rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
     /* FOOTER */
     footer {
       background: var(--cream);
@@ -398,6 +488,8 @@
       .hero { grid-template-columns: 1fr; padding: 7rem 1.5rem 3rem; gap: 2.5rem; }
       .steps { grid-template-columns: 1fr; gap: 2rem; }
       .how, .cities { padding: 4rem 1.5rem; }
+      .story { grid-template-columns: 1fr; padding: 4rem 1.5rem; gap: 2.5rem; }
+      .story-visual { order: -1; }
       footer { padding: 2rem 1.5rem; flex-direction: column; align-items: flex-start; }
     }
   </style>
@@ -414,10 +506,10 @@
     <span class="hero-eyebrow">Cincinnati & Dayton</span>
     <h1>Good food.<br>Good people.<br><em>Every week.</em></h1>
     <p class="hero-sub">DinnerBears is an invite-only community for people who love discovering great restaurants together. Weekly dinners, real connections.</p>
-    <div class="coming-soon-badge">
+    <a href="/app" class="coming-soon-badge" style="text-decoration:none;">
       <span class="dot"></span>
-      Platform launching soon
-    </div>
+      Members sign in
+    </a>
   </div>
 
   <div class="hero-visual">
@@ -469,6 +561,60 @@
       <h3>RSVP & Show Up</h3>
       <p>Claim your spot, show up, and enjoy a great meal with great people.</p>
     </div>
+  </div>
+</section>
+
+<section class="story">
+  <div class="story-text">
+    <span class="section-label">EST. FEBRUARY 2014</span>
+    <h2>One simple act.<br>A lifetime of<br><em style="color:var(--gold);font-style:italic">bear memories.</em></h2>
+    <p class="story-body">
+      On February 22, 2014, a friend helped his karate instructor at a small sushi restaurant in Kentucky.
+      As a thank-you, that instructor introduced them to Chuy's. A month later, two friends started showing
+      up every Tuesday evening in Kenwood — one arriving at 6:30, the other after Tai Chi class — staying
+      for the free queso bar and even better conversation.
+    </p>
+    <p class="story-body" style="margin-top:-0.75rem">
+      Then a third friend showed up. Then more. By fall 2015, the group had grown so much we needed real
+      events to keep track of everyone. On February 21, 2016 — almost two years to the day from that
+      first Kentucky dinner — the DinnerBears community was officially born. What started as two friends
+      at a table has grown into weekly dinners in Cincinnati, monthly gatherings in Dayton, and friendships
+      that have lasted years.
+    </p>
+    <blockquote class="story-quote">
+      "It's amazing what one simple act of helping someone in a time of need has led to in a few short years."
+    </blockquote>
+    <div class="timeline">
+      <div class="tl-item">
+        <span class="tl-date">Feb 22, 2014</span>
+        <span class="tl-dot"></span>
+        <span class="tl-desc">A Kentucky sushi dinner leads to the first Chuy's visit</span>
+      </div>
+      <div class="tl-item">
+        <span class="tl-date">Spring 2014</span>
+        <span class="tl-dot"></span>
+        <span class="tl-desc">Weekly Tuesday dinners begin — two friends become a regular crew</span>
+      </div>
+      <div class="tl-item">
+        <span class="tl-date">Sept 1, 2015</span>
+        <span class="tl-dot"></span>
+        <span class="tl-desc">First official DinnerBears event created</span>
+      </div>
+      <div class="tl-item">
+        <span class="tl-date">Feb 21, 2016</span>
+        <span class="tl-dot"></span>
+        <span class="tl-desc">DinnerBears community group founded, Dayton chapter launches</span>
+      </div>
+      <div class="tl-item">
+        <span class="tl-date">Today</span>
+        <span class="tl-dot"></span>
+        <span class="tl-desc">Two cities, weekly dinners, hundreds of restaurants, lifelong friends</span>
+      </div>
+    </div>
+  </div>
+  <div class="story-visual">
+    <img src="/story-map.png" alt="Places We've Been — DinnerBears restaurant map of Cincinnati and Dayton" />
+    <p class="map-caption">🐾 Places We've Been — Cincinnati &amp; Dayton</p>
   </div>
 </section>
 
