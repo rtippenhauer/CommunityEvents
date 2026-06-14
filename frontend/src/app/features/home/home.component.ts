@@ -229,7 +229,7 @@ interface PublicStats {
       &:hover { text-decoration: underline; }
     }
 
-    /* STATS STRIP */
+    /* STATS STRIP — negative margins break out of app-content padding */
     .stats-strip {
       background: var(--db-brown-nav);
       padding: 2rem;
@@ -237,6 +237,9 @@ interface PublicStats {
       justify-content: center;
       align-items: center;
       gap: 0;
+      margin: 0 -16px;
+
+      @media (min-width: 768px) { margin: 0 -24px; }
     }
 
     .stat {
@@ -311,10 +314,13 @@ interface PublicStats {
     .step h3 { font-size: 1.05rem; font-weight: 600; color: var(--db-brown-dark); margin: 0 0 0.5rem; }
     .step p { font-size: 0.9rem; color: #666; line-height: 1.6; margin: 0; }
 
-    /* OUR STORY */
+    /* OUR STORY — negative margins break out of app-content padding */
     .story-section {
       background: var(--db-brown-nav);
       padding: 5rem 2rem;
+      margin: 0 -16px;
+
+      @media (min-width: 768px) { margin: 0 -24px; }
     }
 
     .story-inner {

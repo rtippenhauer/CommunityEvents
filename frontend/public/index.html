@@ -52,6 +52,12 @@
 
     .logo span { color: var(--gold); }
 
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+
     nav a.nav-link {
       font-size: 0.85rem;
       font-weight: 500;
@@ -63,6 +69,21 @@
     }
 
     nav a.nav-link:hover { color: var(--navy); }
+
+    .nav-signin {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--gold);
+      text-decoration: none;
+      border: 1px solid var(--gold);
+      padding: 0.4rem 1rem;
+      border-radius: 3px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .nav-signin:hover { background: var(--gold); color: #fff; }
 
     /* HERO */
     .hero {
@@ -498,7 +519,10 @@
 
 <nav>
   <a href="/" class="logo">Dinner<span>Bears</span></a>
-  <a href="/privacy.html" class="nav-link">Privacy Policy</a>
+  <div class="nav-links">
+    <a href="/events" class="nav-link">Events</a>
+    <a href="/app" class="nav-signin">Members Sign In</a>
+  </div>
 </nav>
 
 <section class="hero">
