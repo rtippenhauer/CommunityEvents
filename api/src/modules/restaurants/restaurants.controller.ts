@@ -111,6 +111,12 @@ export class RestaurantsController {
     });
   }
 
+  @Get('rating-queue')
+  @UseGuards(JwtAuthGuard)
+  getRatingQueue(@CurrentUser() user: UserEntity) {
+    return this.ratingsService.getRatingQueue(user.id);
+  }
+
   @Get(':id')
   findOne(
     @Param('id', ParseIntPipe) id: number,

@@ -19,6 +19,9 @@
         <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
           <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
         </a>
+        <a mat-list-item routerLink="/ratings" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>star</mat-icon> Rate Visits
+        </a>
       }
       @if (isLoggedIn()) {
         @if (!isNonValidated()) {
@@ -121,6 +124,7 @@
           @if (isLoggedIn() && !isNonValidated()) {
             <a mat-button routerLink="/calendar" routerLinkActive="nav-active">Calendar</a>
             <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">Restaurants</a>
+            <a mat-button routerLink="/ratings" routerLinkActive="nav-active">Rate Visits</a>
           }
           @if (isLoggedIn()) {
             @if (!isNonValidated()) {

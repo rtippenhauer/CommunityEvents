@@ -101,6 +101,15 @@ export interface CreateRatingPayload {
   comment?: string;
 }
 
+export interface RatingQueueItem {
+  restaurantId: number;
+  restaurantName: string;
+  restaurantPhotoUrl: string | null;
+  eventId: number;
+  eventDate: string;
+  alreadyRated: boolean;
+}
+
 export interface ImportDetail {
   name: string;
   status: 'inserted' | 'skipped' | 'error';
@@ -176,6 +185,10 @@ export class RestaurantsService {
 
   submitRating(restaurantId: number, payload: CreateRatingPayload): Observable<unknown> {
     return this.http.post(`${this.base}/${restaurantId}/ratings`, payload);
+  }
+
+  getRatingQueue(): Observable<RatingQueueItem[]> {
+    return this.http.get<RatingQueueItem[]>(`${this.base}/rating-queue`);
   }
 
   googleMapsUrl(restaurant: Restaurant): string | null {

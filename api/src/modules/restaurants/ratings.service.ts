@@ -5,8 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { RestaurantRatingEntity } from '../../database/entities/restaurant-rating.entity';
+import { RestaurantPhotoEntity } from '../../database/entities/restaurant-photo.entity';
 import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { RestaurantsService } from './restaurants.service';
@@ -48,11 +49,22 @@ export interface RatingsResponse {
   eligibleEvents: EligibleEvent[];
 }
 
+export interface RatingQueueItem {
+  restaurantId: number;
+  restaurantName: string;
+  restaurantPhotoUrl: string | null;
+  eventId: number;
+  eventDate: string;
+  alreadyRated: boolean;
+}
+
 @Injectable()
 export class RatingsService {
   constructor(
     @InjectRepository(RestaurantRatingEntity)
     private readonly ratingRepo: Repository<RestaurantRatingEntity>,
+    @InjectRepository(RestaurantPhotoEntity)
+    private readonly photoRepo: Repository<RestaurantPhotoEntity>,
     @InjectRepository(EventEntity)
     private readonly eventRepo: Repository<EventEntity>,
     @InjectRepository(EventRsvpEntity)
@@ -206,5 +218,53 @@ export class RatingsService {
     rating.comment = dto.comment ?? null;
 
     return this.ratingRepo.save(rating);
+  }
+
+  async getRatingQueue(userId: number): Promise<RatingQueueItem[]> {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    const rows = await this.rsvpRepo
+      .createQueryBuilder('rsvp')
+      .innerJoin('rsvp.event', 'e')
+      .leftJoin(RestaurantRatingEntity, 'rating', 'rating.memberId = :userId AND rating.eventId = e.id', { userId })
+      .select('e.restaurantId', 'restaurantId')
+      .addSelect('e.restaurantName', 'restaurantName')
+      .addSelect('e.id', 'eventId')
+      .addSelect('e.eventDate', 'eventDate')
+      .addSelect('rating.id', 'ratingId')
+      .where('rsvp.userId = :userId', { userId })
+      .andWhere('rsvp.status = :status', { status: RsvpStatus.GOING })
+      .andWhere('e.eventDate < :today', { today: todayStr })
+      .andWhere('e.restaurantId IS NOT NULL')
+      .orderBy('e.eventDate', 'DESC')
+      .getRawMany<{
+        restaurantId: number;
+        restaurantName: string | null;
+        eventId: number;
+        eventDate: string;
+        ratingId: number | null;
+      }>();
+
+    if (rows.length === 0) return [];
+
+    const restaurantIds = [...new Set(rows.map((r) => Number(r.restaurantId)))];
+    const photoRows = await this.photoRepo.find({
+      where: { restaurantId: In(restaurantIds) },
+      order: { restaurantId: 'ASC', sortOrder: 'ASC' },
+    });
+    const photoMap = new Map<number, string>();
+    for (const p of photoRows) {
+      if (!photoMap.has(p.restaurantId)) photoMap.set(p.restaurantId, p.filePath);
+    }
+
+    return rows.map((r) => ({
+      restaurantId: Number(r.restaurantId),
+      restaurantName: r.restaurantName ?? 'Unknown Restaurant',
+      restaurantPhotoUrl: photoMap.get(Number(r.restaurantId)) ?? null,
+      eventId: Number(r.eventId),
+      eventDate: r.eventDate,
+      alreadyRated: r.ratingId !== null,
+    }));
   }
 }

@@ -55,6 +55,12 @@ export const routes: Routes = [
     canActivate: [validatedMemberGuard],
   },
   {
+    path: 'ratings',
+    loadComponent: () =>
+      import('./features/ratings/ratings-queue.component').then((m) => m.RatingsQueueComponent),
+    canActivate: [validatedMemberGuard],
+  },
+  {
     path: 'rsvp-guest',
     loadComponent: () =>
       import('./features/events/guest-rsvp/guest-rsvp.component').then(

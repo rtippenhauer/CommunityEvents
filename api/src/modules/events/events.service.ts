@@ -60,15 +60,15 @@ export class EventsService {
     }
 
     if (filters.fromDate) {
-      qb.andWhere('e.eventDate >= :fromDate', { fromDate: filters.fromDate }).orderBy('e.eventDate', 'ASC');
+      qb.andWhere('e.eventDate >= :fromDate', { fromDate: filters.fromDate }).orderBy('e.eventDate', 'ASC').addOrderBy('e.eventTime', 'ASC');
     } else {
       const today = new Date().toISOString().split('T')[0];
       if (filters.upcoming === true) {
-        qb.andWhere('e.eventDate >= :today', { today }).orderBy('e.eventDate', 'ASC');
+        qb.andWhere('e.eventDate >= :today', { today }).orderBy('e.eventDate', 'ASC').addOrderBy('e.eventTime', 'ASC');
       } else if (filters.upcoming === false) {
-        qb.andWhere('e.eventDate < :today', { today }).orderBy('e.eventDate', 'DESC');
+        qb.andWhere('e.eventDate < :today', { today }).orderBy('e.eventDate', 'DESC').addOrderBy('e.eventTime', 'DESC');
       } else {
-        qb.orderBy('e.eventDate', 'DESC');
+        qb.orderBy('e.eventDate', 'DESC').addOrderBy('e.eventTime', 'DESC');
       }
     }
 

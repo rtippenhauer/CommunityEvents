@@ -231,8 +231,7 @@ export class EventsService {
       if (nvInviteLink) {
         lines.push(`\nNot a DinnerBears member yet? Join using this invite link:\n${nvInviteLink}`);
       } else {
-        const cityHost = window.location.hostname;
-        lines.push(`\nNot a member yet? Visit https://${cityHost} to join DinnerBears!`);
+        lines.push(`\nDinnerBears is invite-only. Interested in joining? Ask a member to invite you!`);
       }
       text = lines.join('\n');
     }

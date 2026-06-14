@@ -273,14 +273,20 @@ import { Event as DinnerEvent } from '../../../core/services/events.service';
                   <div class="rating-form">
                     <h4 class="rating-form-title">Rate Your Visit</h4>
 
-                    <mat-form-field appearance="outline" class="event-select">
-                      <mat-label>Which visit?</mat-label>
-                      <mat-select [formControl]="ratingEventCtrl">
-                        @for (e of unratedEligibleEvents(); track e.id) {
-                          <mat-option [value]="e.id">{{ (e.eventDate + 'T12:00:00') | date:'MMM d, y' }} — {{ e.title }}</mat-option>
-                        }
-                      </mat-select>
-                    </mat-form-field>
+                    @if (unratedEligibleEvents().length === 1) {
+                      <p class="single-visit-label">
+                        Rating your visit on <strong>{{ (unratedEligibleEvents()[0].eventDate + 'T12:00:00') | date:'MMMM d, y' }}</strong>
+                      </p>
+                    } @else {
+                      <mat-form-field appearance="outline" class="event-select">
+                        <mat-label>Select your visit date</mat-label>
+                        <mat-select [formControl]="ratingEventCtrl">
+                          @for (e of unratedEligibleEvents(); track e.id) {
+                            <mat-option [value]="e.id">{{ (e.eventDate + 'T12:00:00') | date:'MMMM d, y' }}</mat-option>
+                          }
+                        </mat-select>
+                      </mat-form-field>
+                    }
 
                     @for (dim of ratingFormDims; track dim.key) {
                       <div class="rating-dim">
@@ -598,6 +604,7 @@ import { Event as DinnerEvent } from '../../../core/services/events.service';
         letter-spacing: 0.06em;
       }
       .event-select { width: 100%; font-size: 0.88rem; }
+      .single-visit-label { margin: 0 0 12px; font-size: 0.88rem; color: #555; }
       .rating-dim {
         display: flex;
         align-items: center;

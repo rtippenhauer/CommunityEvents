@@ -338,7 +338,7 @@ export class CalendarComponent implements OnInit {
     }
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([dateStr, events]) => ({ dateStr, events }));
+      .map(([dateStr, events]) => ({ dateStr, events: events.sort((a, b) => a.eventTime.localeCompare(b.eventTime)) }));
   });
 
   readonly calendarDays = computed<CalendarDay[]>(() => {

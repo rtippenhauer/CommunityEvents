@@ -1246,7 +1246,12 @@ export class EventDetailComponent implements OnInit {
     if (!e) return false;
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    return e.eventDate < todayStr;
+    if (e.eventDate < todayStr) return true;
+    if (e.eventDate === todayStr) {
+      const [h, min] = e.eventTime.split(':').map(Number);
+      return now.getHours() * 60 + now.getMinutes() >= h * 60 + min;
+    }
+    return false;
   });
 
   readonly isPastCutoff = computed<boolean>(() => {
@@ -1254,11 +1259,20 @@ export class EventDetailComponent implements OnInit {
     if (!e) return false;
     const now = new Date();
     const [y, m, d] = e.eventDate.split('-').map(Number);
+    const [h, min] = e.eventTime.split(':').map(Number);
+    const cutoffMinutes = h * 60 + min - 150;
+    if (cutoffMinutes < 0) {
+      // Cutoff is the night before — check if we're past that point on the prior day
+      const prevDay = new Date(y, m - 1, d - 1);
+      const prevDayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      if (prevDay.getTime() === prevDayStart.getTime()) {
+        return now.getHours() * 60 + now.getMinutes() >= cutoffMinutes + 24 * 60;
+      }
+      return now > new Date(y, m - 1, d - 1, 0, 0, 0);
+    }
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const eventDay = new Date(y, m - 1, d);
     if (today.getTime() !== eventDay.getTime()) return false;
-    const [h, min] = e.eventTime.split(':').map(Number);
-    const cutoffMinutes = h * 60 + min - 150; // 2.5 hrs before event
     return now.getHours() * 60 + now.getMinutes() >= cutoffMinutes;
   });
 
@@ -1276,11 +1290,14 @@ export class EventDetailComponent implements OnInit {
     const e = this.event();
     if (!e) return '';
     const [h, min] = e.eventTime.split(':').map(Number);
-    const cm = h * 60 + min - 150;
+    let cm = h * 60 + min - 150;
+    const prevNight = cm < 0;
+    if (prevNight) cm += 24 * 60;
     const ch = Math.floor(cm / 60);
     const cmin = cm % 60;
     const ampm = ch >= 12 ? 'PM' : 'AM';
-    return `${ch % 12 || 12}:${String(cmin).padStart(2, '0')} ${ampm}`;
+    const timeStr = `${ch % 12 || 12}:${String(cmin).padStart(2, '0')} ${ampm}`;
+    return prevNight ? `${timeStr} (night before)` : timeStr;
   });
 
   ngOnInit(): void {
