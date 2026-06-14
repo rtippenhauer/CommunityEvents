@@ -33,8 +33,7 @@
             "assets": [
               {
                 "glob": "**/*",
-                "input": "public",
-                "ignore": ["index.html"]
+                "input": "public"
               }
             ],
             "styles": [
@@ -61,7 +60,10 @@
               "serviceWorker": "src/ngsw-config.json"
             },
             "stage": {
-              "index": "src/index.stage.html",
+              "index": {
+                "input": "src/index.stage.html",
+                "output": "index.html"
+              },
               "budgets": [
                 { "type": "initial", "maximumWarning": "1mb", "maximumError": "2mb" },
                 { "type": "anyComponentStyle", "maximumWarning": "6kB", "maximumError": "12kB" }
@@ -107,8 +109,7 @@
             "assets": [
               {
                 "glob": "**/*",
-                "input": "public",
-                "ignore": ["index.html"]
+                "input": "public"
               }
             ],
             "styles": [

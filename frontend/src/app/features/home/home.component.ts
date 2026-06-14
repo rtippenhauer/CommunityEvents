@@ -118,16 +118,18 @@ interface PublicStats {
           <span class="section-label">EST. FEBRUARY 2014</span>
           <h2 class="story-headline">One simple act.<br>A lifetime of bear memories.</h2>
           <p class="story-p">
-            On February 22, 2014, a friend helped his karate instructor at a small sushi restaurant in
-            Kentucky. As a thank-you, that instructor introduced them to Chuy's. A month later, two friends
-            started showing up every Tuesday evening in Kenwood — one at 6:30, the other after Tai Chi
-            class — staying for the free queso bar and even better conversation.
+            On February 22, 2014, Rob Tippenhauer helped his karate instructor at a small sushi restaurant
+            in Kentucky. As a thank-you, that instructor introduced Rob to Chuy's. The very next Tuesday
+            Rob was back — hooked on the free queso bar. His husband Terry Wachtman walked in at 7:00 PM
+            after Tai Chi class, and neither of them left.
           </p>
           <p class="story-p">
-            Then a third friend showed up. Then more. The first official DinnerBears event was
-            September 1, 2015, and the community group launched February 21, 2016.
-            What started as two friends at a table is now weekly dinners in Cincinnati, monthly
-            gatherings in Dayton, and friendships that have lasted years.
+            Within a few weeks, two other Bears — TJVBear and OhioBear — started joining regularly.
+            Before long, Terry was spending his afternoons reaching out to everyone for a headcount, so
+            they created a Facebook event to track attendance. The group kept growing: the first official
+            DinnerBears event was September 1, 2015, and the community officially launched February 21, 2016.
+            What started as Rob at the queso bar is now weekly dinners in Cincinnati, monthly gatherings
+            in Dayton, and friendships that have lasted years.
           </p>
           <blockquote class="story-quote">
             "It's amazing what one simple act of helping someone in a time of need has led to in a few short years."
