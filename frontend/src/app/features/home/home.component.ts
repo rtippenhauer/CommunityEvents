@@ -136,6 +136,7 @@ interface PublicStats {
             <div class="milestone"><span class="ms-date">Feb 22, 2014</span><span class="ms-text">First dinner — the Chuy's introduction</span></div>
             <div class="milestone"><span class="ms-date">Sept 1, 2015</span><span class="ms-text">First official DinnerBears event</span></div>
             <div class="milestone"><span class="ms-date">Feb 21, 2016</span><span class="ms-text">Community group founded</span></div>
+            <div class="milestone"><span class="ms-date">Aug 3, 2016</span><span class="ms-text">First monthly Dayton dinner launched</span></div>
           </div>
         </div>
       </div>
