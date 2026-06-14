@@ -60,6 +60,7 @@
               "serviceWorker": "src/ngsw-config.json"
             },
             "stage": {
+              "index": "src/index.stage.html",
               "budgets": [
                 { "type": "initial", "maximumWarning": "1mb", "maximumError": "2mb" },
                 { "type": "anyComponentStyle", "maximumWarning": "6kB", "maximumError": "12kB" }

@@ -1,3 +1,6 @@
+@if (isStage) {
+  <div class="stage-banner">⚠ STAGE ENVIRONMENT — Not production</div>
+}
 <mat-sidenav-container class="app-container">
 
   <!-- Mobile sidenav -->
@@ -112,6 +115,9 @@
       <!-- Logo -->
       <a routerLink="/" class="app-logo-link" aria-label="DinnerBears home">
         <img src="assets/logo.png" height="36" alt="DinnerBears" class="app-logo" />
+        @if (isStage) {
+          <span class="stage-badge">STAGE</span>
+        }
       </a>
 
       <!-- Desktop nav links -->

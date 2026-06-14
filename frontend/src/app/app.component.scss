@@ -1,3 +1,35 @@
+// ── Stage environment indicator ───────────────────────────────────────────────
+
+.stage-banner {
+  background: #b34a00;
+  color: #fff;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 0;
+  position: sticky;
+  top: 0;
+  z-index: 1001;
+}
+
+.stage-badge {
+  display: inline-block;
+  background: #b34a00;
+  color: #fff;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 6px;
+  line-height: 1.4;
+}
+
+// ── App container ─────────────────────────────────────────────────────────────
+
 .app-container {
   display: flex;
   flex-direction: column;

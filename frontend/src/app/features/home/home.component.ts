@@ -111,7 +111,7 @@ interface PublicStats {
     <section class="story-section">
       <div class="story-inner">
         <div class="story-map">
-          <img src="/story-map.png" alt="Places We've Been — DinnerBears restaurant map" class="map-img" />
+          <img src="/images/story-map.png" alt="Places We've Been — DinnerBears restaurant map" class="map-img" />
           <p class="map-caption">🐾 Places We've Been — Cincinnati &amp; Dayton</p>
         </div>
         <div class="story-copy">

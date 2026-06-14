@@ -10,6 +10,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
+import { environment } from '../environments/environment';
 import { AuthService } from './core/services/auth.service';
 import { CityService, CitySlug } from './core/services/city.service';
 import { FeedbackService } from './core/services/feedback.service';
@@ -43,6 +44,7 @@ export class AppComponent {
   readonly feedbackService = inject(FeedbackService);
 
   readonly currentYear = new Date().getFullYear();
+  readonly isStage = environment.isStage;
 
   isMobile = toSignal(
     this.breakpointObserver
