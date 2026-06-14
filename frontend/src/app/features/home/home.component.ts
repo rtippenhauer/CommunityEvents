@@ -118,27 +118,29 @@ interface PublicStats {
           <span class="section-label">EST. FEBRUARY 2014</span>
           <h2 class="story-headline">One simple act.<br>A lifetime of bear memories.</h2>
           <p class="story-p">
-            On February 22, 2014, Rob Tippenhauer helped his karate instructor at a small sushi restaurant
-            in Kentucky. As a thank-you, that instructor introduced Rob to Chuy's. The very next Tuesday
-            Rob was back — hooked on the free queso bar. His husband Terry Wachtman walked in at 7:00 PM
-            after Tai Chi class, and neither of them left.
+            On February 22, 2014, Rob Tippenhauer helped his husband Terry Wachtman's old karate instructor
+            at a small sushi restaurant in Kentucky. As a thank-you, the instructor introduced them both to
+            Chuy's. The very next Tuesday Rob was back — hooked on the free queso bar. Terry joined at
+            7:00 PM after Tai Chi class, and neither of them left.
           </p>
           <p class="story-p">
-            Within a few weeks, two other Bears — TJVBear and OhioBear — started joining regularly.
-            Before long, Terry was spending his afternoons reaching out to everyone for a headcount, so
-            they created a Facebook event to track attendance. The group kept growing: the first official
-            DinnerBears event was September 1, 2015, and the community officially launched February 21, 2016.
-            What started as Rob at the queso bar is now weekly dinners in Cincinnati, monthly gatherings
-            in Dayton, and friendships that have lasted years.
+            Within a few weeks, TJVBear and OhioBear started joining regularly. They created Facebook events
+            to track attendance — but when someone declined, they were removed from the event entirely.
+            So on February 21, 2016, Rob created the <em>Cincinnati Tuesday Night Bears</em> Facebook Group.
+            The group nominates restaurants at each dinner, votes for the top pick, whoever suggested it
+            makes the reservation, and Rob creates the event. As the group grew and event formats evolved,
+            managing it all became increasingly complex — so in June 2026, Rob built DinnerBears.com to
+            take its place. That's where we are today.
           </p>
           <blockquote class="story-quote">
             "It's amazing what one simple act of helping someone in a time of need has led to in a few short years."
           </blockquote>
           <div class="story-milestones">
-            <div class="milestone"><span class="ms-date">Feb 22, 2014</span><span class="ms-text">First dinner — the Chuy's introduction</span></div>
-            <div class="milestone"><span class="ms-date">Sept 1, 2015</span><span class="ms-text">First official DinnerBears event</span></div>
-            <div class="milestone"><span class="ms-date">Feb 21, 2016</span><span class="ms-text">Community group founded</span></div>
+            <div class="milestone"><span class="ms-date">Feb 22, 2014</span><span class="ms-text">Rob helps Terry's karate instructor — introduced to Chuy's</span></div>
+            <div class="milestone"><span class="ms-date">Spring 2014</span><span class="ms-text">TJVBear &amp; OhioBear join; Facebook events created to track attendance</span></div>
+            <div class="milestone"><span class="ms-date">Feb 21, 2016</span><span class="ms-text">Cincinnati Tuesday Night Bears Facebook Group founded — voting begins</span></div>
             <div class="milestone"><span class="ms-date">Aug 3, 2016</span><span class="ms-text">First monthly Dayton dinner launched</span></div>
+            <div class="milestone"><span class="ms-date">June 2026</span><span class="ms-text">DinnerBears.com launches — replacing the Facebook events</span></div>
           </div>
         </div>
       </div>
