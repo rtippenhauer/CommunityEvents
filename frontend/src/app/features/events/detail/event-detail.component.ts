@@ -425,10 +425,36 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                       matTooltip="Opens Facebook share dialog — change destination to your DinnerBears group">
                       <mat-icon>open_in_new</mat-icon> Share on Facebook
                     </button>
-                    <button mat-stroked-button (click)="copyPostText()">
+                    <button mat-stroked-button (click)="copyPostText()"
+                      [matTooltip]="activeNvLink() ? 'Copies post text with Guest Member invite link included' : 'Copies post text'">
                       <mat-icon>content_copy</mat-icon> Copy Post Text
                     </button>
                   </div>
+
+                  @if (!inviteLinksLoading() && (activeNvLink() || activeMemberLink())) {
+                    <mat-divider class="share-divider" />
+                    <div class="share-quick-links">
+                      <div class="share-ql-label">Quick Copy Invite Links</div>
+                      @if (activeNvLink()) {
+                        <div class="share-ql-row">
+                          <span class="link-flavor-badge flavor-nv">Guest Member</span>
+                          <span class="share-ql-url">{{ origin }}/join/{{ activeNvLink()!.token }}</span>
+                          <button mat-icon-button matTooltip="Copy link" (click)="copyInviteLink(activeNvLink()!.token)">
+                            <mat-icon>content_copy</mat-icon>
+                          </button>
+                        </div>
+                      }
+                      @if (activeMemberLink()) {
+                        <div class="share-ql-row">
+                          <span class="link-flavor-badge flavor-member">Full Member</span>
+                          <span class="share-ql-url">{{ origin }}/join/{{ activeMemberLink()!.token }}</span>
+                          <button mat-icon-button matTooltip="Copy link" (click)="copyInviteLink(activeMemberLink()!.token)">
+                            <mat-icon>content_copy</mat-icon>
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
                 </div>
               </mat-card-content>
             </mat-card>
@@ -1082,7 +1108,36 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; }
     }
 
-    .share-divider { margin: 16px 0; }
+    .share-divider { margin: 12px 0; }
+
+    .share-quick-links { display: flex; flex-direction: column; gap: 6px; }
+
+    .share-ql-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #999;
+      margin-bottom: 2px;
+    }
+
+    .share-ql-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px 4px 0;
+      .mat-mdc-icon-button { width: 28px; height: 28px; padding: 2px; flex-shrink: 0; }
+    }
+
+    .share-ql-url {
+      flex: 1;
+      font-size: 0.78rem;
+      color: #666;
+      font-family: monospace;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
 
     // ── Admin actions ─────────────────────────────────────────────────────────
 
@@ -1207,6 +1262,16 @@ export class EventDetailComponent implements OnInit {
     return now.getHours() * 60 + now.getMinutes() >= cutoffMinutes;
   });
 
+  readonly activeNvLink = computed(() =>
+    this.inviteLinks().find(l => l.inviteFlavor === 'non_validated' && !l.isRevoked) ?? null
+  );
+
+  readonly activeMemberLink = computed(() =>
+    this.inviteLinks().find(l => l.inviteFlavor === 'member' && !l.isRevoked) ?? null
+  );
+
+  readonly origin = window.location.origin;
+
   readonly cutoffTimeLabel = computed<string>(() => {
     const e = this.event();
     if (!e) return '';
@@ -1298,9 +1363,11 @@ export class EventDetailComponent implements OnInit {
   }
 
   copyPostText(): void {
-    const text = this.eventsService.generatePostText(this.event()!);
+    const nvLink = this.inviteLinks().find(l => l.inviteFlavor === 'non_validated' && !l.isRevoked);
+    const nvUrl = nvLink ? `${window.location.origin}/join/${nvLink.token}` : undefined;
+    const text = this.eventsService.generatePostText(this.event()!, nvUrl);
     this.clipboard.copy(text);
-    this.snackBar.open('Post text copied to clipboard!', 'OK', { duration: 3000 });
+    this.snackBar.open('Post text copied!', 'OK', { duration: 3000 });
   }
 
   isLoggedIn(): boolean {

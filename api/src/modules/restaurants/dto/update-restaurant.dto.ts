@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsEmail,
   IsInt,
   IsOptional,
   IsPositive,
@@ -44,4 +45,27 @@ export class UpdateRestaurantDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @ValidateIf((o: UpdateRestaurantDto) => o.moderatorNotes !== null)
+  @IsString()
+  @IsOptional()
+  moderatorNotes?: string | null;
+
+  @ValidateIf((o: UpdateRestaurantDto) => o.contactName !== null)
+  @IsString()
+  @MaxLength(100)
+  @IsOptional()
+  contactName?: string | null;
+
+  @ValidateIf((o: UpdateRestaurantDto) => o.contactPhone !== null)
+  @IsString()
+  @MaxLength(30)
+  @IsOptional()
+  contactPhone?: string | null;
+
+  @ValidateIf((o: UpdateRestaurantDto) => o.contactEmail !== null)
+  @IsEmail()
+  @MaxLength(150)
+  @IsOptional()
+  contactEmail?: string | null;
 }

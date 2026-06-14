@@ -3,12 +3,14 @@ import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angula
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDividerModule } from '@angular/material/divider';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { Restaurant, RestaurantsService } from '../../../core/services/restaurants.service';
+import { AuthService } from '../../../core/services/auth.service';
 
 export interface RestaurantFormDialogData {
   restaurant?: Restaurant;
@@ -26,6 +28,7 @@ interface City {
     ReactiveFormsModule,
     MatDialogModule,
     MatButtonModule,
+    MatDividerModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
@@ -74,6 +77,32 @@ interface City {
           <mat-label>Description</mat-label>
           <textarea matInput formControlName="description" rows="4"></textarea>
         </mat-form-field>
+
+        @if (isAdminOrMod()) {
+          <mat-divider style="margin: 8px 0" />
+          <div class="mod-section-label">Moderator Info</div>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Moderator Notes</mat-label>
+            <textarea matInput formControlName="moderatorNotes" rows="3"
+              placeholder="Private notes about this venue (visible to mods/admins only)"></textarea>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Contact Name</mat-label>
+            <input matInput formControlName="contactName" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Contact Phone</mat-label>
+            <input matInput formControlName="contactPhone" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Contact Email</mat-label>
+            <input matInput formControlName="contactEmail" type="email" />
+          </mat-form-field>
+        }
       </form>
     </mat-dialog-content>
 
@@ -102,6 +131,14 @@ interface City {
         min-width: min(90vw, 520px);
         padding-top: 8px;
       }
+      .mod-section-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: #9c27b0;
+        margin: 4px 0 4px;
+      }
     `,
   ],
 })
@@ -111,6 +148,7 @@ export class RestaurantFormDialogComponent implements OnInit {
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly http = inject(HttpClient);
   private readonly restaurantsService = inject(RestaurantsService);
+  private readonly authService = inject(AuthService);
   private readonly snackBar = inject(MatSnackBar);
 
   cities: City[] = [];
@@ -123,7 +161,16 @@ export class RestaurantFormDialogComponent implements OnInit {
     phone: [''],
     websiteUrl: [''],
     description: [''],
+    moderatorNotes: [''],
+    contactName: [''],
+    contactPhone: [''],
+    contactEmail: [''],
   });
+
+  isAdminOrMod(): boolean {
+    const role = this.authService.currentUser()?.role;
+    return role === 'admin' || role === 'moderator';
+  }
 
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((cities) => {
@@ -138,6 +185,10 @@ export class RestaurantFormDialogComponent implements OnInit {
         phone: r.phone ?? '',
         websiteUrl: r.websiteUrl ?? '',
         description: r.description ?? '',
+        moderatorNotes: r.moderatorNotes ?? '',
+        contactName: r.contactName ?? '',
+        contactPhone: r.contactPhone ?? '',
+        contactEmail: r.contactEmail ?? '',
       });
     }
   }
@@ -146,6 +197,12 @@ export class RestaurantFormDialogComponent implements OnInit {
     if (this.form.invalid) return;
     this.saving = true;
     const val = this.form.getRawValue();
+    const modFields = this.isAdminOrMod() ? {
+      moderatorNotes: val.moderatorNotes.trim() || null,
+      contactName: val.contactName.trim() || null,
+      contactPhone: val.contactPhone.trim() || null,
+      contactEmail: val.contactEmail.trim() || null,
+    } : {};
     const payload = {
       name: val.name,
       address: val.address,
@@ -153,6 +210,7 @@ export class RestaurantFormDialogComponent implements OnInit {
       phone: val.phone.trim() || null,
       websiteUrl: val.websiteUrl.trim() || null,
       description: val.description.trim() || null,
+      ...modFields,
     };
 
     const req$ = this.data.restaurant

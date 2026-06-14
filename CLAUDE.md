@@ -33,13 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 7.6 — Facebook Event Sharing:** Copy formatted event post + invite links for sharing to Facebook. Eventual direct Page posting once Meta business verification is approved.
-See PHASES.md for full phase breakdown and definitions of done.
-
-**Queued next:** Phase 8 (Venue Moderator Tools) — private moderator notes and contact info on restaurants.
+**Phase 10 (TBD)** — See PHASES.md for next up.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

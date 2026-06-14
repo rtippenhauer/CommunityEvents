@@ -20,9 +20,11 @@ import type { FileFilterCallback } from 'multer';
 import { extname } from 'path';
 import { mkdirSync } from 'fs';
 import { RestaurantsService } from './restaurants.service';
+import { RatingsService } from './ratings.service';
 import { EnrichmentService } from './enrichment.service';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
+import { CreateRatingDto } from './dto/create-rating.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -76,6 +78,7 @@ const jsonFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCall
 export class RestaurantsController {
   constructor(
     private readonly restaurantsService: RestaurantsService,
+    private readonly ratingsService: RatingsService,
     private readonly enrichmentService: EnrichmentService,
   ) {}
 
@@ -109,8 +112,14 @@ export class RestaurantsController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.restaurantsService.findOne(id);
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserEntity,
+  ) {
+    const isModOrAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    return isModOrAdmin
+      ? this.restaurantsService.findOneWithModFields(id)
+      : this.restaurantsService.findOne(id);
   }
 
   @Post()
@@ -196,5 +205,24 @@ export class RestaurantsController {
     const restaurants = await this.restaurantsService.findAll({});
     void this.enrichmentService.bulkEnrich(restaurants, user.id);
     return { started: true, total: restaurants.length };
+  }
+
+  // ── Ratings ──────────────────────────────────────────────────────────────────
+
+  @Get(':id/ratings')
+  getRatings(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.ratingsService.getRatings(id, user);
+  }
+
+  @Post(':id/ratings')
+  submitRating(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateRatingDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.ratingsService.submitRating(id, user, dto);
   }
 }

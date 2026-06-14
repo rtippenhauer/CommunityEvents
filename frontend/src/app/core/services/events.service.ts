@@ -206,8 +206,7 @@ export class EventsService {
     return `https://calendar.google.com/calendar/render?${params.toString()}`;
   }
 
-  generatePostText(event: Event): string {
-    if (event.facebookShareText) return event.facebookShareText;
+  generatePostText(event: Event, nvInviteLink?: string): string {
     const [y, m, d] = event.eventDate.split('-').map(Number);
     const date = new Date(y, m - 1, d);
     const dateStr = date.toLocaleDateString('en-US', {
@@ -216,16 +215,32 @@ export class EventsService {
     const [h, min] = event.eventTime.split(':').map(Number);
     const ampm = h >= 12 ? 'PM' : 'AM';
     const timeStr = `${h % 12 || 12}:${String(min).padStart(2, '0')} ${ampm}`;
-    const lines = [
-      `🐻 DinnerBears Dinner Night!\n`,
-      `🍽️ ${event.restaurantName}`,
-      `📅 ${dateStr} at ${timeStr}`,
-      `📍 ${event.restaurantAddress}`,
-    ];
-    if (event.description) lines.push(`\n${event.description}`);
-    lines.push(`\nRSVP: ${window.location.origin}/events/${event.id}`);
-    const cityHost = window.location.hostname;
-    lines.push(`\nNot a member yet? Visit https://${cityHost} to join DinnerBears!`);
-    return lines.join('\n');
+
+    let text: string;
+    if (event.facebookShareText) {
+      text = event.facebookShareText;
+    } else {
+      const lines = [
+        `🐻 DinnerBears Dinner Night!\n`,
+        `🍽️ ${event.restaurantName}`,
+        `📅 ${dateStr} at ${timeStr}`,
+        `📍 ${event.restaurantAddress}`,
+      ];
+      if (event.description) lines.push(`\n${event.description}`);
+      lines.push(`\nRSVP: ${window.location.origin}/events/${event.id}`);
+      if (nvInviteLink) {
+        lines.push(`\nNot a DinnerBears member yet? Join using this invite link:\n${nvInviteLink}`);
+      } else {
+        const cityHost = window.location.hostname;
+        lines.push(`\nNot a member yet? Visit https://${cityHost} to join DinnerBears!`);
+      }
+      text = lines.join('\n');
+    }
+
+    if (nvInviteLink && event.facebookShareText) {
+      text += `\n\nNot a DinnerBears member yet? Join using this invite link:\n${nvInviteLink}`;
+    }
+
+    return text;
   }
 }

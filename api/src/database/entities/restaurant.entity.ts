@@ -86,4 +86,16 @@ export class RestaurantEntity {
   @ManyToOne(() => UserEntity, { nullable: true, eager: false })
   @JoinColumn({ name: 'updated_by' })
   updatedByUser: UserEntity | null;
+
+  @Column({ name: 'moderator_notes', type: 'longtext', nullable: true, select: false })
+  moderatorNotes: string | null;
+
+  @Column({ name: 'contact_name', type: 'varchar', length: 100, nullable: true, select: false })
+  contactName: string | null;
+
+  @Column({ name: 'contact_phone', type: 'varchar', length: 30, nullable: true, select: false })
+  contactPhone: string | null;
+
+  @Column({ name: 'contact_email', type: 'varchar', length: 150, nullable: true, select: false })
+  contactEmail: string | null;
 }

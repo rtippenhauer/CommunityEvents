@@ -33,6 +33,11 @@ export interface Restaurant {
   enrichedAt: string | null;
   createdByUser: RestaurantUser | null;
   updatedByUser: RestaurantUser | null;
+  // Moderator-only fields (omitted for non-mod users)
+  moderatorNotes?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
 }
 
 export interface CreateRestaurantPayload {
@@ -42,10 +47,58 @@ export interface CreateRestaurantPayload {
   websiteUrl?: string | null;
   description?: string | null;
   cityId: number;
+  moderatorNotes?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
 }
 
 export interface UpdateRestaurantPayload extends Partial<CreateRestaurantPayload> {
   isActive?: boolean;
+}
+
+export interface RatingAggregate {
+  count: number;
+  avgFood: number | null;
+  avgService: number | null;
+  avgValue: number | null;
+  avgNoise: number | null;
+  avgOverall: number | null;
+}
+
+export interface ReviewItem {
+  id: number;
+  memberName: string;
+  memberPhoto: string | null;
+  eventDate: string;
+  food: number;
+  service: number;
+  valueRating: number;
+  noise: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+export interface EligibleEvent {
+  id: number;
+  title: string;
+  eventDate: string;
+  alreadyRated: boolean;
+}
+
+export interface RatingsResponse {
+  aggregate: RatingAggregate;
+  reviews: ReviewItem[];
+  eligibleEvents: EligibleEvent[];
+}
+
+export interface CreateRatingPayload {
+  eventId: number;
+  food: number;
+  service: number;
+  valueRating: number;
+  noise: number;
+  comment?: string;
 }
 
 export interface ImportDetail {
@@ -115,6 +168,14 @@ export class RestaurantsService {
     const form = new FormData();
     form.append('file', file);
     return this.http.post<ImportResult>(`${this.base}/import/facebook?cityId=${cityId}`, form);
+  }
+
+  getRatings(restaurantId: number): Observable<RatingsResponse> {
+    return this.http.get<RatingsResponse>(`${this.base}/${restaurantId}/ratings`);
+  }
+
+  submitRating(restaurantId: number, payload: CreateRatingPayload): Observable<unknown> {
+    return this.http.post(`${this.base}/${restaurantId}/ratings`, payload);
   }
 
   googleMapsUrl(restaurant: Restaurant): string | null {

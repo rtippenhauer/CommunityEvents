@@ -87,6 +87,20 @@ export class RestaurantsService {
     return r;
   }
 
+  async findOneWithModFields(id: number): Promise<RestaurantEntity> {
+    const r = await this.restaurantRepo
+      .createQueryBuilder('r')
+      .addSelect(['r.moderatorNotes', 'r.contactName', 'r.contactPhone', 'r.contactEmail'])
+      .leftJoinAndSelect('r.city', 'city')
+      .leftJoinAndSelect('r.photos', 'photos')
+      .leftJoinAndSelect('r.createdByUser', 'createdByUser')
+      .leftJoinAndSelect('r.updatedByUser', 'updatedByUser')
+      .where('r.id = :id AND r.isActive = 1', { id })
+      .getOne();
+    if (!r) throw new NotFoundException('Restaurant not found');
+    return r;
+  }
+
   async create(dto: CreateRestaurantDto, userId?: number): Promise<RestaurantEntity> {
     const coords = await this.geocodingService.geocode(dto.address);
     const restaurant = this.restaurantRepo.create({

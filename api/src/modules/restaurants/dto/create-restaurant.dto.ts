@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsPositive, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsPositive, IsString, IsUrl, MaxLength } from 'class-validator';
 
 export class CreateRestaurantDto {
   @IsString()
@@ -25,4 +25,23 @@ export class CreateRestaurantDto {
   @IsInt()
   @IsPositive()
   cityId: number;
+
+  @IsString()
+  @IsOptional()
+  moderatorNotes?: string | null;
+
+  @IsString()
+  @MaxLength(100)
+  @IsOptional()
+  contactName?: string | null;
+
+  @IsString()
+  @MaxLength(30)
+  @IsOptional()
+  contactPhone?: string | null;
+
+  @IsEmail()
+  @MaxLength(150)
+  @IsOptional()
+  contactEmail?: string | null;
 }

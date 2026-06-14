@@ -312,24 +312,18 @@ links for both flavors.
 ## Phase 7.6 — Facebook Event Sharing
 
 Enhances the existing share/copy flow (Phase 4.3) with event-specific formatting
-and, eventually, direct Page posting.
+and per-event invite links.
 
 - **Copy Event Post** button on event detail (admin/mod): generates formatted
   announcement text including event date, restaurant name, and the Non-Validated
   invite link for that event; copies to clipboard
-- **Share to Facebook Page** button (admin only): posts the announcement text to
-  the configured DinnerBears Facebook Page using a stored Page access token;
-  requires `pages_manage_posts` permission — deferred until Meta business
-  verification is approved; button is hidden until token is configured
-- **Page access token setup**: admin settings page — "Connect Facebook Page" flow
-  that exchanges user token for a long-lived page token and stores it server-side
 - Admin can generate a Member invite link and a Non-Validated invite link for any
   event; both are shown in the sharing panel for easy copy/paste into Facebook
   groups or direct messages
 
 **Definition of done:** Admin can copy a formatted event post with the correct
-invite links in one click. Page posting works when a page token is configured.
-Member and Non-Validated invite links are accessible from the event sharing panel.
+invite links in one click. Member and Non-Validated invite links are accessible
+from the event sharing panel.
 
 ---
 
@@ -348,23 +342,30 @@ omits them entirely.
 
 ---
 
-## Phase 9 — Attendance Tracking & Restaurant Ratings
+## Phase 9 — Restaurant Ratings (Simplified)
 
-- DB: `attended` boolean (default false) on `event_rsvps` table via migration
-- DB: new `event_ratings` table (member_id, event_id, restaurant_id, food,
-  service, value, noise — each 1–5 int, comment text nullable, created_at)
-- Moderator event admin: mark members as attended after event concludes
-- Attendance probability score per member: (attended events) / (GOING RSVPs);
-  displayed to moderators on the event attendee list only
-- Restaurant detail page: aggregate rating card (avg food/service/value/noise
-  scores across all verified submissions, count of ratings)
-- Event detail page (post-event): rating submission form for attendees only;
-  disabled with tooltip for non-attendees
-- API guards: attendance-gate rating submissions server-side
+Simplified from original spec: skipped moderator attendance tracking and
+attendance probability scores. Rating eligibility is based on a Going RSVP
+to a past event at that restaurant, which is verifiable without separate
+attendance marking.
 
-**Definition of done:** Moderators can mark attendance. Verified attendees can
-submit ratings. Aggregate scores display on restaurant pages. Non-attendees
-cannot submit (blocked at API level). Probability score visible to moderators.
+- DB: new `restaurant_ratings` table (member_id, event_id, restaurant_id,
+  food, service, value_rating, noise — each 1–5 tinyint, comment text nullable,
+  UNIQUE on member_id + event_id)
+- `POST /restaurants/:id/ratings` — auth required, validates: Going RSVP exists
+  for event, event is past, event was at this restaurant, user is not
+  non_validated. Upserts (one rating per member per event).
+- `GET /restaurants/:id/ratings` — returns aggregate averages, recent reviews,
+  and (if authenticated) list of eligible past events with alreadyRated flag
+- Restaurant detail page: aggregate rating card (avg food/service/value/noise,
+  overall score, breakdown bars, recent reviews with member name + date)
+- Restaurant detail page: "Rate Your Experience" button for members with
+  eligible unrated events; 4-dimension star form + optional comment
+
+**Definition of done:** Members with a Going RSVP to a past event at this
+restaurant can submit a 1–5 rating on food, service, value, and noise.
+Aggregate scores and recent reviews display on the restaurant detail page.
+Blocked at API level for non-validated users and non-attendees.
 
 ---
 
