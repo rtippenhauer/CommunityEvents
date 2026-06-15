@@ -963,7 +963,7 @@ export class EventsService {
   async searchMembersForWalkin(eventId: number, query: string): Promise<{ id: number; fullName: string }[]> {
     const qb = this.userRepo
       .createQueryBuilder('u')
-      .select(['u.id', 'u.full_name'])
+      .select(['u.id', 'u.fullName'])
       .where('u.status = :status', { status: 'active' })
       .orderBy('u.full_name', 'ASC')
       .limit(20);

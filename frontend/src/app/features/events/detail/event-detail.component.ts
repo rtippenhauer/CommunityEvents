@@ -537,7 +537,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
           }
 
           <!-- Attendance Panel (mod/admin, past events) -->
-          @if (isAdminOrMod() && isPastEvent()) {
+          @if (isAdminOrMod() && isPastEvent() && event()?.status === 'published') {
             <mat-card class="attendance-card">
               <mat-card-content>
                 <h4 class="section-heading"><mat-icon>how_to_reg</mat-icon> Attendance</h4>
@@ -760,6 +760,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
     .event-datetime {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 8px;
       font-size: 1.05rem;
       color: var(--db-primary);
@@ -768,6 +769,8 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       mat-icon { color: var(--db-primary); }
     }
     .cal-add-btn {
+      flex-shrink: 0;
+      white-space: nowrap;
       height: 28px !important;
       min-height: 28px !important;
       line-height: 26px !important;
@@ -1583,7 +1586,7 @@ export class EventDetailComponent implements OnInit {
         if (e.status === 'published' && this.authService.isLoggedIn()) {
           this.loadComments(id);
         }
-        if (this.isPastEvent() && this.isAdminOrMod()) {
+        if (this.isPastEvent() && this.isAdminOrMod() && e.status === 'published') {
           this.loadAttendance(id);
         }
       },

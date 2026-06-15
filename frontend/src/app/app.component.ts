@@ -10,6 +10,8 @@ import { MatDividerModule } from '@angular/material/divider';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
+import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
+import { filter } from 'rxjs';
 import { environment } from '../environments/environment';
 import { AuthService } from './core/services/auth.service';
 import { CityService, CitySlug } from './core/services/city.service';
@@ -83,6 +85,16 @@ export class AppComponent {
         this.feedbackService.unseenCount.set(0);
       }
     });
+
+    const swUpdate = inject(SwUpdate);
+    if (swUpdate.isEnabled) {
+      swUpdate.versionUpdates.pipe(
+        filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'),
+      ).subscribe(() => {
+        swUpdate.activateUpdate().then(() => document.location.reload());
+      });
+      swUpdate.checkForUpdate();
+    }
   }
 
   isLoggedIn(): boolean {

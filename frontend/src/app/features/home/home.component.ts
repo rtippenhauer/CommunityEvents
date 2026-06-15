@@ -38,6 +38,9 @@ interface PublicStats {
           <a mat-raised-button color="primary" routerLink="/calendar" class="cta-btn">
             <mat-icon>calendar_month</mat-icon> View Calendar
           </a>
+          <a mat-stroked-button class="cta-btn-secondary" (click)="scrollToStory()">
+            <mat-icon>auto_stories</mat-icon> Our Story
+          </a>
           @if (!isLoggedIn()) {
             <a mat-stroked-button routerLink="/login" class="cta-btn-secondary">Sign in</a>
           }
@@ -108,7 +111,7 @@ interface PublicStats {
     </section>
 
     <!-- Our Story / Map -->
-    <section class="story-section">
+    <section class="story-section" id="story">
       <div class="story-inner">
         <div class="story-map" (click)="showMapLightbox.set(true)">
           <img src="/images/story-map.png" alt="Places We've Been — DinnerBears restaurant map" class="map-img" />
@@ -501,5 +504,9 @@ export class HomeComponent implements OnInit {
 
   isLoggedIn(): boolean {
     return this.authService.isLoggedIn();
+  }
+
+  scrollToStory(): void {
+    document.getElementById('story')?.scrollIntoView({ behavior: 'smooth' });
   }
 }
