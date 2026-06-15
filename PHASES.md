@@ -395,6 +395,67 @@ event concludes. Rating eligibility requires attended = true.
 
 ---
 
+## Phase 10.5 — Account Deletion & OAuth Unlinking
+
+Required for Facebook App Review. Full spec in `docs/Dinnerbears_accountDeletion_requirements.md`.
+
+Partial stubs already exist: `POST /auth/facebook/deletion` (HMAC verification) and `facebook/link` endpoint. Full implementation required.
+
+### Connected Accounts (REQ-DEL-01, REQ-DEL-02, REQ-DEL-03)
+- Account Settings page (`/account/settings`) with Connected Accounts section
+- Google and Facebook rows showing link status; **Disconnect** button when other auth method exists; "Only login method" label when not
+- Email/Password row stubbed (wired in Phase 11)
+- `DELETE /api/v1/auth/providers/:provider` — deletes `oauth_accounts` row; clears CDN photo if from that provider (REQ-DEL-07); logs to audit; sends confirmation email; returns `409 ONLY_AUTH_METHOD` if last auth method
+- Confirmation dialog and `409` warning dialog in Angular
+
+### Account Self-Deletion (REQ-DEL-04, REQ-DEL-09)
+- Danger Zone section on Account Settings (red/amber-warn visual treatment)
+- Two-step confirmation: info dialog → type-to-confirm `DELETE` input
+- Hidden for admin role (REQ-DEL-09)
+- `DELETE /api/v1/users/me` — single DB transaction: sets `status=deleted`, `deleted_at`, `hard_delete_at=+30d`; deletes `oauth_accounts`, `login_sessions`, `push_subscriptions`; nulls CDN photo; logs audit; queues deletion email; invalidates session
+- Redirects to `/` with `?deleted=1` toast
+
+### Meta Deletion Callback (REQ-DEL-05)
+- Rename/update existing stub: `POST /api/v1/auth/facebook/deletion-callback` (currently at `/facebook/deletion`)
+- Full processing: verify HMAC-SHA256 signature; look up by Facebook App-Scoped ID; if other auth exists → delete only `oauth_accounts` row; if only auth → full soft-delete; if not found → return success
+- New migration: `facebook_deletion_requests` table (facebook_user_id, confirmation_code UNIQUE, dinnerbears_user_id nullable, status enum[pending|completed], requested_at, completed_at)
+- Status lookup: `GET /account-deletion/status?code=` — public Angular page
+
+### Hard-Delete Cron (REQ-DEL-06)
+- Daily `@Cron` job: users where `hard_delete_at <= NOW()` and `status = 'deleted'`
+- Overwrites PII: `full_name = 'Deleted Member'`, scrambles email, nulls photo/password
+- Deletes local photo file from disk
+- Updates `facebook_deletion_requests` rows to `completed`
+- Logs `account_hard_deleted` to audit
+
+### Public Pages (REQ-DEL-08, REQ-DEL-10)
+- `/account-deletion` — public page with self-service instructions (content per spec)
+- `/account-deletion/status?code=` — public status lookup for Meta callback
+- All auth callbacks reject `status = 'deleted'` before issuing session token
+
+**Definition of done:** Members can disconnect individual OAuth providers (with confirmation) when another auth method exists. Members can delete their account via two-step confirmation. Meta's server-to-server deletion callback processes correctly and returns the required JSON response. Hard-delete cron anonymizes PII after 30 days. Public `/account-deletion` page is accessible without login. Deleted accounts are rejected at all auth entry points.
+
+---
+
+## Phase 10.6 — Content Reporting
+
+Unified system for members to report inappropriate content across all text-input surfaces, replacing the per-module flagging added in Phase 7 for announcements. See earlier discussion for full scope.
+
+- DB: `content_reports` table (id, reporter_id FK, content_type enum[`event_comment`|`event_comment_reply`|`announcement_comment`|`restaurant_rating`|`profile`], content_id int, reason varchar 500 nullable, status enum[`pending`|`reviewed`|`dismissed`], reviewed_by FK nullable, reviewed_at datetime nullable, created_at)
+- One report per member per content item (UNIQUE on reporter_id + content_type + content_id)
+- `POST /api/v1/reports` — auth required, member role minimum; validates content exists and is not already reported by this member
+- `GET /api/v1/admin/reports` — mod/admin only; lists pending reports with content preview, reporter name, content type, timestamp
+- `PATCH /api/v1/admin/reports/:id` — mod/admin only; set status to `reviewed` or `dismissed`; optionally soft-delete the reported content in the same action
+- Moderator in-app notification when a new report is filed
+- Reusable `<app-report-button>` Angular component: flag icon button, confirmation dialog with optional reason text field; hidden on own content
+- Wire report button onto: event comments, event comment replies, announcement comments, restaurant ratings
+- Admin/mod report queue in admin panel: pending count badge, list with content preview, one-click dismiss or delete+dismiss
+- `profile` content type reserved in enum for when bios/display names become editable
+
+**Definition of done:** Any member can report event comments, replies, announcement comments, and restaurant ratings with an optional reason. Reports appear in the mod/admin queue with a content preview and one-click actions. Moderators receive an in-app notification on each new report. Members cannot report their own content. Duplicate reports from the same member are blocked.
+
+---
+
 ## Phase 11 — Facebook OAuth & Email/Password Auth
 
 - Facebook OAuth (same Meta App as Phase 3.5 token)

@@ -94,6 +94,8 @@ import { AuthService } from '../../core/services/auth.service';
       padding: 28px;
       box-shadow: 0 2px 8px rgba(61,28,5,0.07);
       border-left: 4px solid var(--db-blue, #1E4D8C);
+      overflow-wrap: break-word;
+      min-width: 0;
     }
 
     .release-version-row {
