@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
 import { IsNull, Repository } from 'typeorm';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
-import { UserRole } from '../../database/entities/user.entity';
+import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
@@ -37,6 +37,8 @@ export class EventsService {
     private readonly guestLinkRepo: Repository<EventGuestLinkEntity>,
     @InjectRepository(RestaurantEntity)
     private readonly restaurantRepo: Repository<RestaurantEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
   ) {}
@@ -926,5 +928,78 @@ export class EventsService {
         icsUrl,
       }),
     });
+  }
+
+  async getAttendance(eventId: number): Promise<{ userId: number; memberName: string; attended: boolean | null; isWalkin: boolean }[]> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const rsvps = await this.rsvpRepo.find({
+      where: { eventId, status: RsvpStatus.GOING },
+      relations: ['user'],
+      order: { createdAt: 'ASC' },
+    });
+
+    return rsvps.map((r) => ({
+      userId: r.userId,
+      memberName: r.user?.fullName ?? 'Member',
+      attended: r.attended ?? null,
+      isWalkin: r.isWalkin,
+    }));
+  }
+
+  async markAttendance(eventId: number, attendances: { userId: number; attended: boolean }[]): Promise<void> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('Event not found');
+
+    for (const entry of attendances) {
+      await this.rsvpRepo.update(
+        { eventId, userId: entry.userId, status: RsvpStatus.GOING },
+        { attended: entry.attended },
+      );
+    }
+  }
+
+  async searchMembersForWalkin(eventId: number, query: string): Promise<{ id: number; fullName: string }[]> {
+    const qb = this.userRepo
+      .createQueryBuilder('u')
+      .select(['u.id', 'u.full_name'])
+      .where('u.status = :status', { status: 'active' })
+      .orderBy('u.full_name', 'ASC')
+      .limit(20);
+
+    if (query.trim()) {
+      qb.andWhere('u.full_name LIKE :q', { q: `%${query.trim()}%` });
+    }
+
+    const users = await qb.getMany();
+    return users.map((u) => ({ id: u.id, fullName: u.fullName }));
+  }
+
+  async addWalkin(eventId: number, userId: number): Promise<{ userId: number; memberName: string; attended: boolean | null; isWalkin: boolean }> {
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Member not found');
+
+    const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
+    if (existing) {
+      existing.attended = true;
+      existing.isWalkin = true;
+      await this.rsvpRepo.save(existing);
+    } else {
+      const rsvp = this.rsvpRepo.create({
+        eventId,
+        userId,
+        status: RsvpStatus.GOING,
+        attended: true,
+        isWalkin: true,
+        additionalGuests: 0,
+      });
+      await this.rsvpRepo.save(rsvp);
+    }
+
+    return { userId, memberName: user.fullName, attended: true, isWalkin: true };
   }
 }

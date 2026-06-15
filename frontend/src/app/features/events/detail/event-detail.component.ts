@@ -21,6 +21,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { EventsService, Event, GuestLink, PublicRsvp, Rsvp, RsvpStatus } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { InvitesService, EventInviteLink } from '../../../core/services/invites.service';
+import { EventCommentsService, Comment, AttendanceEntry, MemberSearchResult } from '../../../core/services/event-comments.service';
+import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 
 @Component({
@@ -220,8 +222,8 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                                   [class.link-cancelled-icon]="!!guestLinkAt(myRsvp()!, idx)?.cancelledAt">
                                   {{ guestLinkAt(myRsvp()!, idx)?.cancelledAt ? 'person_off' : guestLinkAt(myRsvp()!, idx)?.usedAt ? 'how_to_reg' : guestLinkAt(myRsvp()!, idx) ? 'link' : 'person_outline' }}
                                 </mat-icon>
-                                <span class="guest-compact-name" [class.unnamed]="!guestNameControls[idx]?.value?.trim()">
-                                  {{ guestNameControls[idx]?.value?.trim() || ('Guest ' + (idx + 1)) }}
+                                <span class="guest-compact-name" [class.unnamed]="!guestNameControls[idx].value.trim()">
+                                  {{ guestNameControls[idx].value.trim() || ('Guest ' + (idx + 1)) }}
                                 </span>
                                 @if (guestLinkAt(myRsvp()!, idx); as link) {
                                   <span class="link-status-badge" [class.used]="link.usedAt && !link.cancelledAt" [class.cancelled]="link.cancelledAt">
@@ -532,6 +534,154 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                 }
               </mat-card-content>
             </mat-card>
+          }
+
+          <!-- Attendance Panel (mod/admin, past events) -->
+          @if (isAdminOrMod() && isPastEvent()) {
+            <mat-card class="attendance-card">
+              <mat-card-content>
+                <h4 class="section-heading"><mat-icon>how_to_reg</mat-icon> Attendance</h4>
+                @if (attendanceLoading()) {
+                  <div class="att-loading"><mat-spinner diameter="24" /></div>
+                } @else if (attendanceList().length === 0) {
+                  <p class="no-attendance">No Going RSVPs for this event.</p>
+                } @else {
+                  <div class="attendance-list">
+                    @for (entry of attendanceList(); track entry.userId) {
+                      <div class="attendance-row">
+                        <span class="att-name">
+                          {{ entry.memberName }}
+                          @if (entry.isWalkin) {
+                            <span class="walkin-badge">Walk-in</span>
+                          }
+                        </span>
+                        <div class="att-btns">
+                          <button mat-stroked-button [class.att-yes]="entry.attended === true" (click)="setAttended(entry.userId, true)">
+                            <mat-icon>check</mat-icon> Attended
+                          </button>
+                          <button mat-stroked-button [class.att-no]="entry.attended === false" (click)="setAttended(entry.userId, false)">
+                            <mat-icon>close</mat-icon> No-show
+                          </button>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                  <div class="att-save-row">
+                    <button mat-stroked-button (click)="showWalkinForm.set(!showWalkinForm())">
+                      <mat-icon>person_add</mat-icon> Add Walk-in
+                    </button>
+                    <button mat-raised-button color="primary" (click)="saveAttendance()" [disabled]="savingAttendance()">
+                      @if (savingAttendance()) { <mat-spinner diameter="16" /> } Save Attendance
+                    </button>
+                  </div>
+                  @if (showWalkinForm()) {
+                    <div class="walkin-form">
+                      <mat-form-field appearance="outline" class="walkin-search-field">
+                        <mat-label>Search member by name</mat-label>
+                        <input matInput [value]="walkinSearch()" (input)="onWalkinSearchInput($any($event.target).value)" autocomplete="off" />
+                        <mat-icon matSuffix>search</mat-icon>
+                      </mat-form-field>
+                      @if (walkinResults().length > 0) {
+                        <div class="walkin-results">
+                          @for (m of walkinResults(); track m.id) {
+                            <button mat-button class="walkin-result-row" (click)="selectWalkin(m)" [disabled]="addingWalkin()">
+                              <mat-icon>person</mat-icon> {{ m.fullName }}
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                }
+              </mat-card-content>
+            </mat-card>
+          }
+
+          <!-- Discussion -->
+          @if (isLoggedIn() && event()!.status === 'published') {
+            <div class="discussion-section">
+              <h4 class="section-heading"><mat-icon>forum</mat-icon> Discussion</h4>
+              @if (commentsLoading()) {
+                <div class="att-loading"><mat-spinner diameter="24" /></div>
+              } @else if (comments().length === 0 && isNonValidated()) {
+                <p class="no-comments">No comments yet.</p>
+              } @else {
+                <div class="comments-list">
+                  @for (comment of comments(); track comment.id) {
+                    <div class="comment-block">
+                      @if (comment.deleted) {
+                        <p class="comment-removed"><mat-icon>remove_circle_outline</mat-icon> This comment was removed.</p>
+                      } @else {
+                        <div class="comment-header">
+                          <span class="comment-author">{{ comment.memberName }}</span>
+                          <span class="comment-time">{{ comment.createdAt | date: 'MMM d, y · h:mm a' }}</span>
+                          @if (comment.memberId === currentUserId() || isAdminOrMod()) {
+                            <button mat-icon-button class="comment-delete-btn" matTooltip="Remove" (click)="deleteComment(comment.id)">
+                              <mat-icon>delete_outline</mat-icon>
+                            </button>
+                          }
+                        </div>
+                        <p class="comment-body">{{ comment.body }}</p>
+                        @if (!isNonValidated()) {
+                          <button mat-button class="reply-toggle-btn" (click)="replyingToId.set(replyingToId() === comment.id ? null : comment.id); newReplyBody.set('')">
+                            <mat-icon>reply</mat-icon> Reply
+                          </button>
+                        }
+                      }
+                      @if (comment.replies.length > 0) {
+                        <div class="replies-list">
+                          @for (reply of comment.replies; track reply.id) {
+                            <div class="reply-block">
+                              @if (reply.deleted) {
+                                <p class="comment-removed"><mat-icon>remove_circle_outline</mat-icon> This reply was removed.</p>
+                              } @else {
+                                <div class="comment-header">
+                                  <span class="comment-author">{{ reply.memberName }}</span>
+                                  <span class="comment-time">{{ reply.createdAt | date: 'MMM d, y · h:mm a' }}</span>
+                                  @if (reply.memberId === currentUserId() || isAdminOrMod()) {
+                                    <button mat-icon-button class="comment-delete-btn" matTooltip="Remove" (click)="deleteReply(comment.id, reply.id)">
+                                      <mat-icon>delete_outline</mat-icon>
+                                    </button>
+                                  }
+                                </div>
+                                <p class="comment-body">{{ reply.body }}</p>
+                              }
+                            </div>
+                          }
+                        </div>
+                      }
+                      @if (replyingToId() === comment.id && !isNonValidated()) {
+                        <div class="reply-form">
+                          <mat-form-field appearance="outline" class="comment-field">
+                            <mat-label>Your reply…</mat-label>
+                            <textarea matInput [value]="newReplyBody()" (input)="newReplyBody.set($any($event.target).value)" rows="2" maxlength="2000"></textarea>
+                          </mat-form-field>
+                          <div class="comment-form-actions">
+                            <button mat-button (click)="replyingToId.set(null); newReplyBody.set('')">Cancel</button>
+                            <button mat-raised-button color="primary" (click)="submitReply(comment.id)" [disabled]="!newReplyBody().trim() || submittingReply()">
+                              @if (submittingReply()) { <mat-spinner diameter="16" /> } Post Reply
+                            </button>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+              @if (!isNonValidated()) {
+                <div class="new-comment-form">
+                  <mat-form-field appearance="outline" class="comment-field">
+                    <mat-label>Add a comment…</mat-label>
+                    <textarea matInput [value]="newCommentBody()" (input)="newCommentBody.set($any($event.target).value)" rows="3" maxlength="2000"></textarea>
+                  </mat-form-field>
+                  <div class="comment-form-actions">
+                    <button mat-raised-button color="primary" (click)="submitComment()" [disabled]="!newCommentBody().trim() || submittingComment()">
+                      @if (submittingComment()) { <mat-spinner diameter="16" /> } Post
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
           }
 
           <!-- Admin actions -->
@@ -1151,6 +1301,97 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
       border-radius: 8px;
     }
     .back-row { margin-top: 8px; }
+
+    // ── Attendance Panel ──────────────────────────────────────────────────────
+    .attendance-card { margin-top: 20px; }
+    .att-loading { display: flex; justify-content: center; padding: 16px; }
+    .no-attendance { color: #999; font-size: 0.9rem; margin: 0; }
+    .attendance-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .attendance-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0ebe3;
+      &:last-child { border-bottom: none; }
+    }
+    .att-name { font-size: 0.95rem; font-weight: 500; color: var(--db-brown-dark); flex: 1; }
+    .att-btns { display: flex; gap: 8px; }
+    .att-yes { border-color: #2e7d32 !important; color: #2e7d32 !important; background: #e8f5e9 !important; }
+    .att-no { border-color: #c62828 !important; color: #c62828 !important; background: #ffebee !important; }
+    .att-save-row { display: flex; justify-content: flex-end; gap: 8px; }
+    .walkin-badge {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: #fff3e0;
+      color: var(--db-amber-dark, #b8832e);
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .walkin-form { margin-top: 12px; border-top: 1px dashed #e8e0d6; padding-top: 12px; }
+    .walkin-search-field { width: 100%; }
+    .walkin-results {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid #e8e0d6;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: -8px;
+    }
+    .walkin-result-row {
+      justify-content: flex-start !important;
+      border-radius: 0 !important;
+      border-bottom: 1px solid #f0ebe3;
+      font-size: 0.9rem;
+      &:last-child { border-bottom: none; }
+    }
+
+    // ── Discussion ────────────────────────────────────────────────────────────
+    .section-heading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--db-brown-dark);
+      margin: 0 0 16px;
+      mat-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
+    }
+    .discussion-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e8e0d6; }
+    .no-comments { color: #999; font-size: 0.9rem; margin: 0 0 16px; }
+    .comments-list { display: flex; flex-direction: column; gap: 0; margin-bottom: 20px; }
+    .comment-block {
+      padding: 14px 0;
+      border-bottom: 1px solid #f0ebe3;
+      &:last-child { border-bottom: none; }
+    }
+    .reply-block {
+      padding: 10px 0 10px 16px;
+      border-left: 2px solid #e8e0d6;
+      margin-top: 8px;
+    }
+    .replies-list { margin-top: 4px; display: flex; flex-direction: column; gap: 0; }
+    .comment-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .comment-author { font-weight: 600; font-size: 0.88rem; color: var(--db-brown-dark); }
+    .comment-time { font-size: 0.78rem; color: #999; flex: 1; }
+    .comment-delete-btn { width: 28px; height: 28px; line-height: 28px; mat-icon { font-size: 0.95rem; } color: #bbb !important; &:hover { color: #c62828 !important; } }
+    .comment-body { font-size: 0.92rem; line-height: 1.6; color: #444; margin: 0 0 6px; white-space: pre-wrap; }
+    .comment-removed { display: flex; align-items: center; gap: 6px; font-size: 0.83rem; color: #bbb; font-style: italic; margin: 0; mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; } }
+    .reply-toggle-btn { font-size: 0.8rem; color: #888 !important; padding: 0 4px; min-width: 0; height: 28px; line-height: 28px; mat-icon { font-size: 0.85rem; } }
+    .reply-form, .new-comment-form { margin-top: 12px; }
+    .comment-field { width: 100%; font-size: 0.9rem; }
+    .comment-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: -8px; }
+    .new-comment-form { padding-top: 16px; border-top: 1px dashed #e8e0d6; margin-top: 8px; }
   `],
 })
 export class EventDetailComponent implements OnInit {
@@ -1159,6 +1400,7 @@ export class EventDetailComponent implements OnInit {
   private readonly eventsService = inject(EventsService);
   private readonly invitesService = inject(InvitesService);
   private readonly authService = inject(AuthService);
+  private readonly commentsService = inject(EventCommentsService);
   private readonly clipboard = inject(Clipboard);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
@@ -1184,6 +1426,25 @@ export class EventDetailComponent implements OnInit {
   readonly newLinkMaxUsesCtrl = new FormControl<number | null>(null);
   readonly newLinkExpiryCtrl = new FormControl<number>(30, { nonNullable: true });
   readonly creatingLink = signal(false);
+
+  // Comments state
+  readonly comments = signal<Comment[]>([]);
+  readonly commentsLoading = signal(false);
+  readonly newCommentBody = signal('');
+  readonly submittingComment = signal(false);
+  readonly replyingToId = signal<number | null>(null);
+  readonly newReplyBody = signal('');
+  readonly submittingReply = signal(false);
+
+  // Attendance state
+  readonly attendanceList = signal<AttendanceEntry[]>([]);
+  readonly attendanceLoading = signal(false);
+  readonly savingAttendance = signal(false);
+  readonly showWalkinForm = signal(false);
+  readonly walkinSearch = signal('');
+  readonly walkinResults = signal<MemberSearchResult[]>([]);
+  readonly addingWalkin = signal(false);
+  private readonly walkinSearch$ = new Subject<string>();
 
   readonly editingGuestIndex = signal<number | null>(null);
 
@@ -1302,6 +1563,11 @@ export class EventDetailComponent implements OnInit {
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get('id'));
+    this.walkinSearch$.pipe(
+      debounceTime(250),
+      distinctUntilChanged(),
+      switchMap((q) => this.commentsService.searchMembers(id, q)),
+    ).subscribe((results) => this.walkinResults.set(results));
     this.eventsService.getOne(id).subscribe({
       next: (e) => {
         this.event.set(e);
@@ -1313,6 +1579,12 @@ export class EventDetailComponent implements OnInit {
         }
         if (e.status === 'published' && this.isAdminOrMod()) {
           this.loadInviteLinks(id);
+        }
+        if (e.status === 'published' && this.authService.isLoggedIn()) {
+          this.loadComments(id);
+        }
+        if (this.isPastEvent() && this.isAdminOrMod()) {
+          this.loadAttendance(id);
         }
       },
       error: () => this.loading.set(false),
@@ -1711,7 +1983,130 @@ export class EventDetailComponent implements OnInit {
     });
   }
 
+  onWalkinSearchInput(value: string): void {
+    this.walkinSearch.set(value);
+    this.walkinSearch$.next(value);
+  }
+
+  selectWalkin(member: MemberSearchResult): void {
+    const id = this.event()!.id;
+    this.addingWalkin.set(true);
+    this.commentsService.addWalkin(id, member.id).subscribe({
+      next: (entry) => {
+        this.attendanceList.update((list) => {
+          const existing = list.findIndex((e) => e.userId === entry.userId);
+          if (existing >= 0) {
+            const updated = [...list];
+            updated[existing] = entry;
+            return updated;
+          }
+          return [...list, entry];
+        });
+        this.showWalkinForm.set(false);
+        this.walkinSearch.set('');
+        this.walkinResults.set([]);
+        this.addingWalkin.set(false);
+        this.snackBar.open(`${member.fullName} added as walk-in`, 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.addingWalkin.set(false);
+        this.snackBar.open('Failed to add walk-in', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
   goBack(): void {
     void this.router.navigate(['/events']);
+  }
+
+  currentUserId(): number | null {
+    return this.authService.currentUser()?.id ?? null;
+  }
+
+  private loadComments(eventId: number): void {
+    this.commentsLoading.set(true);
+    this.commentsService.getComments(eventId).subscribe({
+      next: (c) => { this.comments.set(c); this.commentsLoading.set(false); },
+      error: () => this.commentsLoading.set(false),
+    });
+  }
+
+  submitComment(): void {
+    const body = this.newCommentBody().trim();
+    if (!body) return;
+    const id = this.event()!.id;
+    this.submittingComment.set(true);
+    this.commentsService.addComment(id, body).subscribe({
+      next: (c) => {
+        this.comments.update((list) => [...list, c]);
+        this.newCommentBody.set('');
+        this.submittingComment.set(false);
+      },
+      error: () => { this.submittingComment.set(false); this.snackBar.open('Failed to post comment', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  deleteComment(commentId: number): void {
+    if (!window.confirm('Remove this comment?')) return;
+    const id = this.event()!.id;
+    this.commentsService.deleteComment(id, commentId).subscribe({
+      next: () => this.comments.update((list) => list.map((c) => c.id === commentId ? { ...c, body: null, deleted: true } : c)),
+      error: () => this.snackBar.open('Failed to remove comment', 'OK', { duration: 3000 }),
+    });
+  }
+
+  submitReply(commentId: number): void {
+    const body = this.newReplyBody().trim();
+    if (!body) return;
+    const id = this.event()!.id;
+    this.submittingReply.set(true);
+    this.commentsService.addReply(id, commentId, body).subscribe({
+      next: (reply) => {
+        this.comments.update((list) => list.map((c) =>
+          c.id === commentId ? { ...c, replies: [...c.replies, reply] } : c,
+        ));
+        this.newReplyBody.set('');
+        this.replyingToId.set(null);
+        this.submittingReply.set(false);
+      },
+      error: () => { this.submittingReply.set(false); this.snackBar.open('Failed to post reply', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  deleteReply(commentId: number, replyId: number): void {
+    if (!window.confirm('Remove this reply?')) return;
+    const id = this.event()!.id;
+    this.commentsService.deleteReply(id, commentId, replyId).subscribe({
+      next: () => this.comments.update((list) => list.map((c) =>
+        c.id === commentId
+          ? { ...c, replies: c.replies.map((r) => r.id === replyId ? { ...r, body: null, deleted: true } : r) }
+          : c,
+      )),
+      error: () => this.snackBar.open('Failed to remove reply', 'OK', { duration: 3000 }),
+    });
+  }
+
+  private loadAttendance(eventId: number): void {
+    this.attendanceLoading.set(true);
+    this.commentsService.getAttendance(eventId).subscribe({
+      next: (list) => { this.attendanceList.set(list); this.attendanceLoading.set(false); },
+      error: () => this.attendanceLoading.set(false),
+    });
+  }
+
+  setAttended(userId: number, attended: boolean): void {
+    this.attendanceList.update((list) => list.map((e) => e.userId === userId ? { ...e, attended } : e));
+  }
+
+  saveAttendance(): void {
+    const id = this.event()!.id;
+    const attendances = this.attendanceList()
+      .filter((e) => e.attended !== null)
+      .map((e) => ({ userId: e.userId, attended: e.attended as boolean }));
+    this.savingAttendance.set(true);
+    this.commentsService.markAttendance(id, attendances).subscribe({
+      next: () => { this.savingAttendance.set(false); this.snackBar.open('Attendance saved', 'OK', { duration: 2000 }); },
+      error: () => { this.savingAttendance.set(false); this.snackBar.open('Failed to save attendance', 'OK', { duration: 3000 }); },
+    });
   }
 }

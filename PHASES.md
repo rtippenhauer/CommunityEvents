@@ -369,8 +369,9 @@ Blocked at API level for non-validated users and non-attendees.
 
 ---
 
-## Phase 10 — Threaded Event Discussion
+## Phase 10 — Threaded Event Discussion & Attendance Tracking
 
+### Threaded Comments
 - DB: `event_comments` (id, event_id, member_id, body, created_at, deleted_at)
 - DB: `event_comment_replies` (id, comment_id, member_id, body, created_at, deleted_at)
 - Event detail page: discussion section below RSVP panel
@@ -379,9 +380,18 @@ Blocked at API level for non-validated users and non-attendees.
 - Soft delete: members delete own posts; moderators delete any post
 - Discussions persist and remain visible after event concludes
 
+### Attendance Tracking
+- DB migration: add `attended` boolean (default null) to `event_rsvps`
+- Mod/admin attendance panel on event detail: shown only after event concludes;
+  lists all Going RSVPs with checkboxes to mark who actually attended
+- `PATCH /events/:id/attendance` — mod/admin only; accepts `[{userId, attended}]`
+- Update `getRatingQueue` and `submitRating` in ratings.service.ts:
+  require `attended = true` in addition to Going RSVP for rating eligibility
+
 **Definition of done:** Members can comment and reply on event pages.
 Moderators can delete any comment. Deleted comments show a "removed" placeholder.
-Discussions persist post-event.
+Discussions persist post-event. Moderators can mark actual attendance after an
+event concludes. Rating eligibility requires attended = true.
 
 ---
 

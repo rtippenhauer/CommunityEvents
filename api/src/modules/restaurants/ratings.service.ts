@@ -205,7 +205,10 @@ export class RatingsService {
       where: { eventId: dto.eventId, userId: user.id, status: RsvpStatus.GOING },
     });
     if (!rsvp) {
-      throw new ForbiddenException('You must have attended this event (Going RSVP) to submit a rating');
+      throw new ForbiddenException('You must have attended this event to submit a rating');
+    }
+    if (rsvp.attended === false) {
+      throw new ForbiddenException('You must have attended this event to submit a rating');
     }
 
     const existing = await this.ratingRepo.findOne({
@@ -245,6 +248,7 @@ export class RatingsService {
       )
       .where('rsvp.userId = :userId', { userId })
       .andWhere('rsvp.status = :status', { status: RsvpStatus.GOING })
+      .andWhere('(rsvp.attended = 1 OR rsvp.attended IS NULL)')
       .andWhere('(e.eventDate < :today OR (e.eventDate = :today AND e.eventTime <= :nowTime))', { today: todayStr, nowTime: nowTimeStr })
       .andWhere('e.restaurantId IS NOT NULL')
       .orderBy('e.eventDate', 'DESC')

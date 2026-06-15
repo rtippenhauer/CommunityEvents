@@ -1,0 +1,58 @@
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { EventCommentsService } from './event-comments.service';
+import { CreateCommentDto } from './dto/create-comment.dto';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { UserEntity, UserRole } from '../../database/entities/user.entity';
+
+@Controller('events/:eventId/comments')
+@UseGuards(JwtAuthGuard, RolesGuard)
+export class EventCommentsController {
+  constructor(private readonly commentsService: EventCommentsService) {}
+
+  @Get()
+  @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN)
+  getComments(@Param('eventId', ParseIntPipe) eventId: number) {
+    return this.commentsService.getComments(eventId);
+  }
+
+  @Post()
+  @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN)
+  addComment(
+    @Param('eventId', ParseIntPipe) eventId: number,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.commentsService.addComment(eventId, user, dto);
+  }
+
+  @Delete(':commentId')
+  @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN)
+  deleteComment(
+    @Param('commentId', ParseIntPipe) commentId: number,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.commentsService.deleteComment(commentId, user);
+  }
+
+  @Post(':commentId/replies')
+  @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN)
+  addReply(
+    @Param('commentId', ParseIntPipe) commentId: number,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.commentsService.addReply(commentId, user, dto);
+  }
+
+  @Delete(':commentId/replies/:replyId')
+  @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN)
+  deleteReply(
+    @Param('replyId', ParseIntPipe) replyId: number,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.commentsService.deleteReply(replyId, user);
+  }
+}

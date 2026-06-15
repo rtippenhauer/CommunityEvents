@@ -23,6 +23,8 @@ import { CreateGuestLinkDto } from './dto/create-guest-link.dto';
 import { CreatePublicRsvpDto } from './dto/create-public-rsvp.dto';
 import { UseGuestLinkDto } from './dto/use-guest-link.dto';
 import { CreateEventInviteDto } from './dto/create-event-invite.dto';
+import { MarkAttendanceDto } from './dto/mark-attendance.dto';
+import { AddWalkinDto } from './dto/add-walkin.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -200,5 +202,42 @@ export class EventsController {
     @Param('inviteId', ParseIntPipe) inviteId: number,
   ) {
     return this.invitesService.revoke(inviteId);
+  }
+
+  @Get(':id/attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.MODERATOR, UserRole.ADMIN)
+  getAttendance(@Param('id', ParseIntPipe) id: number) {
+    return this.eventsService.getAttendance(id);
+  }
+
+  @Patch(':id/attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.MODERATOR, UserRole.ADMIN)
+  markAttendance(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: MarkAttendanceDto,
+  ) {
+    return this.eventsService.markAttendance(id, dto.attendances);
+  }
+
+  @Post(':id/attendance/walkin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.MODERATOR, UserRole.ADMIN)
+  addWalkin(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddWalkinDto,
+  ) {
+    return this.eventsService.addWalkin(id, dto.userId);
+  }
+
+  @Get(':id/members/search')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.MODERATOR, UserRole.ADMIN)
+  searchMembers(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('q') q: string,
+  ) {
+    return this.eventsService.searchMembersForWalkin(id, q ?? '');
   }
 }

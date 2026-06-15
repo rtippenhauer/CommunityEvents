@@ -21,6 +21,7 @@ import { EmailModule } from './modules/email/email.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { ReleasesModule } from './modules/releases/releases.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
+import { EventCommentsModule } from './modules/event-comments/event-comments.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { AnnouncementsModule } from './modules/announcements/announcements.modul
     FeedbackModule,
     ReleasesModule,
     AnnouncementsModule,
+    EventCommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

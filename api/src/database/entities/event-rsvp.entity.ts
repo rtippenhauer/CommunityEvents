@@ -46,6 +46,12 @@ export class EventRsvpEntity {
   @Column({ name: 'guest_names', type: 'json', nullable: true })
   guestNames: string[] | null;
 
+  @Column({ type: 'tinyint', nullable: true, default: null })
+  attended: boolean | null;
+
+  @Column({ name: 'is_walkin', type: 'tinyint', default: false })
+  isWalkin: boolean;
+
   @OneToMany(() => EventGuestLinkEntity, (l) => l.memberRsvp)
   guestLinks: EventGuestLinkEntity[];
 
