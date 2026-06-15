@@ -110,10 +110,17 @@ interface PublicStats {
     <!-- Our Story / Map -->
     <section class="story-section">
       <div class="story-inner">
-        <div class="story-map">
+        <div class="story-map" (click)="showMapLightbox.set(true)">
           <img src="/images/story-map.png" alt="Places We've Been — DinnerBears restaurant map" class="map-img" />
           <p class="map-caption">🐾 Places We've Been — Cincinnati &amp; Dayton</p>
         </div>
+
+    @if (showMapLightbox()) {
+      <div class="map-lightbox" (click)="showMapLightbox.set(false)">
+        <button class="lightbox-close" (click)="$event.stopPropagation(); showMapLightbox.set(false)">✕</button>
+        <img src="/images/story-map.png" alt="DinnerBears restaurant map — full size" (click)="$event.stopPropagation()" />
+      </div>
+    }
         <div class="story-copy">
           <span class="section-label">EST. FEBRUARY 2014</span>
           <h2 class="story-headline">One simple act.<br>A lifetime of bear memories.</h2>
@@ -121,26 +128,33 @@ interface PublicStats {
             On February 22, 2014, Rob Tippenhauer helped his husband Terry Wachtman's old karate instructor
             at a small sushi restaurant in Kentucky. As a thank-you, the instructor introduced them both to
             Chuy's. The very next Tuesday Rob was back — hooked on the free queso bar. Terry joined at
-            7:00 PM after Tai Chi class, and neither of them left.
+            7:00 PM after Tai Chi class, and neither of them left. Within a few weeks, TJVBear and OhioBear
+            started joining regularly. As the group kept growing, Terry found himself spending afternoons
+            each week tracking down who planned to come — so Rob created a Facebook event to manage
+            attendance and duplicated it week after week.
           </p>
           <p class="story-p">
-            Within a few weeks, TJVBear and OhioBear started joining regularly. They created Facebook events
-            to track attendance — but when someone declined, they were removed from the event entirely.
-            So on February 21, 2016, Rob created the <em>Cincinnati Tuesday Night Bears</em> Facebook Group.
-            The group nominates restaurants at each dinner, votes for the top pick, whoever suggested it
-            makes the reservation, and Rob creates the event. As the group grew and event formats evolved,
-            managing it all became increasingly complex — so in June 2026, Rob built DinnerBears.com to
-            take its place. That's where we are today.
+            After nearly two years of Tuesday nights at Chuy's, the group was ready to branch out. But the
+            Facebook event format had a frustrating flaw: when someone declined, they were dropped from
+            future invites entirely. On February 21, 2016, Rob solved both problems at once by creating the
+            <em>Cincinnati Tuesday Night Bear Dinners</em> private Facebook Group. The process was simple:
+            members nominate restaurants at each dinner, everyone votes, the top vote-getter wins, whoever
+            suggested it makes the reservation, and Rob posts the event to the group. As the restaurant list
+            grew and the weekly write-ups got more elaborate, managing it became a real chore — and members
+            without Facebook were missing out. So in June 2026, Rob built DinnerBears.com to take its place.
+            We're actively adding features: sign-in with Facebook or Google, +1 RSVPs, and restaurant
+            ratings.
           </p>
           <blockquote class="story-quote">
             "It's amazing what one simple act of helping someone in a time of need has led to in a few short years."
           </blockquote>
           <div class="story-milestones">
-            <div class="milestone"><span class="ms-date">Feb 22, 2014</span><span class="ms-text">Rob helps Terry's karate instructor — introduced to Chuy's</span></div>
-            <div class="milestone"><span class="ms-date">Spring 2014</span><span class="ms-text">TJVBear &amp; OhioBear join; Facebook events created to track attendance</span></div>
-            <div class="milestone"><span class="ms-date">Feb 21, 2016</span><span class="ms-text">Cincinnati Tuesday Night Bears Facebook Group founded — voting begins</span></div>
+            <div class="milestone"><span class="ms-date">Feb 22, 2014</span><span class="ms-text">Rob helps Terry's karate instructor — introduced to Chuy's as a thank-you</span></div>
+            <div class="milestone"><span class="ms-date">Spring 2014</span><span class="ms-text">TJVBear &amp; OhioBear join; Facebook events created to track weekly attendance</span></div>
+            <div class="milestone"><span class="ms-date">Sept 1, 2015</span><span class="ms-text">First official Facebook event invite sent to the group</span></div>
+            <div class="milestone"><span class="ms-date">Feb 21, 2016</span><span class="ms-text">Cincinnati Tuesday Night Bear Dinners Group founded — rotating restaurants &amp; voting begins</span></div>
             <div class="milestone"><span class="ms-date">Aug 3, 2016</span><span class="ms-text">First monthly Dayton dinner launched</span></div>
-            <div class="milestone"><span class="ms-date">June 2026</span><span class="ms-text">DinnerBears.com launches — replacing the Facebook events</span></div>
+            <div class="milestone"><span class="ms-date">June 2026</span><span class="ms-text">DinnerBears.com launches — purpose-built home with Google &amp; Facebook login, +1 RSVPs, and restaurant ratings</span></div>
           </div>
         </div>
       </div>
@@ -406,6 +420,52 @@ interface PublicStats {
 
     .ms-text { color: var(--db-cream-muted); line-height: 1.4; }
 
+    /* MAP LIGHTBOX */
+    .story-map {
+      cursor: zoom-in;
+      .map-img { transition: opacity 0.15s; }
+      &:hover .map-img { opacity: 0.88; }
+    }
+
+    .map-lightbox {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      cursor: zoom-out;
+
+      img {
+        max-width: 90vw;
+        max-height: 90vh;
+        border-radius: 8px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        cursor: default;
+      }
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: 1.5rem;
+      right: 1.5rem;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: white;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+      &:hover { background: rgba(255,255,255,0.22); }
+    }
+
     @media (max-width: 768px) {
       .hero { grid-template-columns: 1fr; padding: 1rem 0 3rem; }
       .steps { grid-template-columns: 1fr; gap: 2rem; }
@@ -425,6 +485,7 @@ export class HomeComponent implements OnInit {
   readonly events = signal<Event[]>([]);
   readonly loading = signal(true);
   readonly stats = signal<PublicStats | null>(null);
+  readonly showMapLightbox = signal(false);
 
   ngOnInit(): void {
     this.eventsService.getAll({ upcoming: true }).subscribe({

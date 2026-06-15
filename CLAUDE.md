@@ -33,7 +33,7 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 10 (TBD)** — See PHASES.md for next up.
+**Phase 10 — Threaded Event Discussion** — Members can post comments and one-level-deep replies on event pages; soft delete for members, full moderation for mods.
 
 ## Completed Phases
 Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9 ✓ — see PHASES.md for details.

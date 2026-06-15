@@ -454,6 +454,47 @@
       text-transform: uppercase;
     }
 
+    /* MAP LIGHTBOX */
+    .map-lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      cursor: zoom-out;
+    }
+    .map-lightbox.open { display: flex; }
+    .map-lightbox img {
+      max-width: 90vw;
+      max-height: 90vh;
+      border-radius: 8px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      cursor: default;
+    }
+    .map-lightbox-close {
+      position: absolute;
+      top: 1.5rem;
+      right: 1.5rem;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: white;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    .map-lightbox-close:hover { background: rgba(255,255,255,0.22); }
+    .story-visual img { cursor: zoom-in; transition: opacity 0.15s; }
+    .story-visual img:hover { opacity: 0.88; }
+
     /* FOOTER */
     footer {
       background: var(--cream);
@@ -596,20 +637,25 @@
       On February 22, 2014, Rob Tippenhauer helped his husband Terry Wachtman's old karate instructor at a
       small sushi restaurant in Kentucky. As a thank-you, the instructor introduced them both to Chuy's.
       The very next Tuesday Rob was back — hooked on the free queso bar. Terry joined at 7:00 PM after
-      Tai Chi class, and neither of them left.
+      Tai Chi class, and neither of them left. Within a few weeks, TJVBear and OhioBear started joining
+      regularly. As the group kept growing, Terry found himself spending afternoons each week tracking down
+      who planned to come — so Rob created a Facebook event to manage attendance and duplicated it week
+      after week.
     </p>
     <p class="story-body" style="margin-top:-0.75rem">
-      Within a few weeks, TJVBear and OhioBear started joining regularly. They created Facebook events to
-      track attendance — but the format had a flaw: when someone declined, they were removed from the event
-      entirely. So on February 21, 2016, Rob created the <em>Cincinnati Tuesday Night Bears</em> Facebook
-      Group. The new system was simple: the group nominates restaurants, everyone votes at each dinner, the
-      top vote-getter wins, whoever suggested it makes the reservation, and Rob creates the Facebook event.
+      After nearly two years of Tuesday nights at Chuy's, the group was ready to branch out. But the
+      Facebook event format had a frustrating flaw: when someone declined, they were removed from future
+      invites entirely. On February 21, 2016, Rob solved both problems at once by creating the
+      <em>Cincinnati Tuesday Night Bear Dinners</em> private Facebook Group. The process was straightforward:
+      members nominate restaurants at each dinner, everyone votes, the top vote-getter wins, whoever
+      suggested it makes the reservation, and Rob posts the event to the group.
     </p>
     <p class="story-body" style="margin-top:-0.75rem">
-      After months of Dayton friends making the drive south for Tuesday nights, they earned their own night:
-      the first monthly Dayton dinner launched August 3, 2016, and has run every month since. As the group
-      kept growing and event formats evolved, managing Facebook events became increasingly complex — so in
-      June 2026, Rob built DinnerBears.com to take its place. That's where we are today.
+      As the restaurant list grew and the event write-ups got more elaborate, crafting the weekly post became
+      a real chore. Members without Facebook were missing out entirely. So in June 2026, Rob built
+      DinnerBears.com — a home purpose-built for the group. We're actively adding features to make it even
+      better: sign-in with Facebook or Google, +1 RSVPs for guests, and restaurant ratings so the community
+      can celebrate their favorites.
     </p>
     <blockquote class="story-quote">
       "It's amazing what one simple act of helping someone in a time of need has led to in a few short years."
@@ -618,42 +664,42 @@
       <div class="tl-item">
         <span class="tl-date">Feb 22, 2014</span>
         <span class="tl-dot"></span>
-        <span class="tl-desc">Rob helps Terry's old karate instructor — the instructor introduces them both to Chuy's</span>
+        <span class="tl-desc">Rob helps Terry's old karate instructor — introduced to Chuy's as a thank-you</span>
       </div>
       <div class="tl-item">
         <span class="tl-date">Spring 2014</span>
         <span class="tl-dot"></span>
-        <span class="tl-desc">Rob &amp; Terry return weekly; TJVBear &amp; OhioBear join; Facebook events created to track attendance</span>
+        <span class="tl-desc">TJVBear &amp; OhioBear join the weekly table; Facebook events created to track attendance</span>
       </div>
       <div class="tl-item">
         <span class="tl-date">Sept 1, 2015</span>
         <span class="tl-dot"></span>
-        <span class="tl-desc">First official DinnerBears event created</span>
+        <span class="tl-desc">First official Facebook event invite sent to the group</span>
       </div>
       <div class="tl-item">
         <span class="tl-date">Feb 21, 2016</span>
         <span class="tl-dot"></span>
-        <span class="tl-desc">Cincinnati Tuesday Night Bears Facebook Group founded — restaurant voting begins</span>
+        <span class="tl-desc">Cincinnati Tuesday Night Bear Dinners Group founded — rotating restaurants &amp; voting begins</span>
       </div>
       <div class="tl-item">
         <span class="tl-date">Aug 3, 2016</span>
         <span class="tl-dot"></span>
-        <span class="tl-desc">First monthly Dayton dinner — Dayton Bears had been making the trip to Cincinnati long enough to earn their own night</span>
+        <span class="tl-desc">First monthly Dayton dinner — Dayton friends had been making the drive long enough to earn their own night</span>
       </div>
       <div class="tl-item">
         <span class="tl-date">June 2026</span>
         <span class="tl-dot"></span>
-        <span class="tl-desc">DinnerBears.com launches — replacing Facebook events with a home built for the group</span>
+        <span class="tl-desc">DinnerBears.com launches — purpose-built home with Google &amp; Facebook login, +1 RSVPs, and restaurant ratings</span>
       </div>
       <div class="tl-item">
         <span class="tl-date">Today</span>
         <span class="tl-dot"></span>
-        <span class="tl-desc">Weekly Cincinnati dinners, monthly Dayton gatherings, lifelong friendships</span>
+        <span class="tl-desc">Growing features: Google &amp; Facebook login, +1 RSVPs, restaurant ratings, and more</span>
       </div>
     </div>
   </div>
   <div class="story-visual">
-    <img src="/images/story-map.png" alt="Places We've Been — DinnerBears restaurant map of Cincinnati and Dayton" />
+    <img src="/images/story-map.png" alt="Places We've Been — DinnerBears restaurant map of Cincinnati and Dayton" id="mapThumb" />
     <p class="map-caption">🐾 Places We've Been — Cincinnati &amp; Dayton</p>
   </div>
 </section>
@@ -667,5 +713,15 @@
   <div class="footer-copy">© 2026 DinnerBears.Com, LLC. All rights reserved.</div>
 </footer>
 
+
+<div class="map-lightbox" id="mapLightbox" onclick="this.classList.remove('open')">
+  <button class="map-lightbox-close" onclick="event.stopPropagation();document.getElementById('mapLightbox').classList.remove('open')">✕</button>
+  <img src="/images/story-map.png" alt="DinnerBears restaurant map — full size" onclick="event.stopPropagation()" />
+</div>
+<script>
+  document.getElementById('mapThumb').addEventListener('click', function() {
+    document.getElementById('mapLightbox').classList.add('open');
+  });
+</script>
 </body>
 </html>

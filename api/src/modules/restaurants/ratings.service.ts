@@ -230,12 +230,14 @@ export class RatingsService {
     const rows = await this.rsvpRepo
       .createQueryBuilder('rsvp')
       .innerJoin('rsvp.event', 'e')
-      .leftJoin('e.restaurant', 'r')
       .leftJoin(RestaurantRatingEntity, 'rating', 'rating.memberId = :userId AND rating.eventId = e.id', { userId })
       .select('e.restaurantId', 'restaurantId')
-      .addSelect('COALESCE(NULLIF(e.restaurant_name, \'\'), r.name)', 'restaurantName')
+      .addSelect(
+        `COALESCE(NULLIF(e.restaurant_name, ''), (SELECT res.name FROM restaurants res WHERE res.id = e.restaurant_id LIMIT 1))`,
+        'restaurantName',
+      )
       .addSelect('e.id', 'eventId')
-      .addSelect('e.eventDate', 'eventDate')
+      .addSelect("DATE_FORMAT(e.event_date, '%Y-%m-%d')", 'eventDate')
       .addSelect('rating.id', 'ratingId')
       .addSelect(
         '(SELECT p.file_path FROM restaurant_photos p WHERE p.restaurant_id = e.restaurant_id ORDER BY p.sort_order ASC LIMIT 1)',
@@ -255,13 +257,13 @@ export class RatingsService {
         photoUrl: string | null;
       }>();
 
-    return rows.map((r) => ({
-      restaurantId: Number(r.restaurantId),
-      restaurantName: r.restaurantName ?? 'Unknown Restaurant',
-      restaurantPhotoUrl: r.photoUrl ?? null,
-      eventId: Number(r.eventId),
-      eventDate: r.eventDate,
-      alreadyRated: r.ratingId !== null,
+    return rows.map((row) => ({
+      restaurantId: Number(row.restaurantId),
+      restaurantName: row.restaurantName ?? 'Unknown Restaurant',
+      restaurantPhotoUrl: row.photoUrl ?? null,
+      eventId: Number(row.eventId),
+      eventDate: row.eventDate,
+      alreadyRated: row.ratingId !== null,
     }));
   }
 }
