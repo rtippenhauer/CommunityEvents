@@ -7,6 +7,7 @@ import type { StringValue } from 'ms';
 import { UserEntity } from '../../database/entities/user.entity';
 import { OAuthAccountEntity } from '../../database/entities/oauth-account.entity';
 import { LoginSessionEntity } from '../../database/entities/login-session.entity';
+import { FacebookDeletionRequestEntity } from '../../database/entities/facebook-deletion-request.entity';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { GoogleStrategy } from './strategies/google.strategy';
@@ -16,10 +17,16 @@ import { InvitesModule } from '../invites/invites.module';
 import { CitiesModule } from '../cities/cities.module';
 import { AuditModule } from '../audit/audit.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity, OAuthAccountEntity, LoginSessionEntity]),
+    TypeOrmModule.forFeature([
+      UserEntity,
+      OAuthAccountEntity,
+      LoginSessionEntity,
+      FacebookDeletionRequestEntity,
+    ]),
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -35,6 +42,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     CitiesModule,
     AuditModule,
     NotificationsModule,
+    EmailModule,
   ],
   providers: [AuthService, GoogleStrategy, JwtStrategy, GoogleCallbackGuard],
   controllers: [AuthController],

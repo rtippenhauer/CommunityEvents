@@ -1,11 +1,15 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseIntPipe,
   Patch,
   Post,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -18,6 +22,7 @@ import type { Request } from 'express';
 import type { FileFilterCallback } from 'multer';
 import { extname } from 'path';
 import { mkdirSync } from 'fs';
+import { Response } from 'express';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SetAvatarDto } from './dto/set-avatar.dto';
@@ -41,6 +46,20 @@ export class UsersController {
   @Get('me')
   getProfile(@CurrentUser() user: UserEntity) {
     return this.usersService.findById(user.id);
+  }
+
+  @Delete('me')
+  @HttpCode(204)
+  async deleteSelf(
+    @CurrentUser() user: UserEntity,
+    @Body() body: { confirm?: string },
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    if (body?.confirm !== 'DELETE') {
+      throw new BadRequestException('confirm must be "DELETE"');
+    }
+    await this.usersService.softDeleteSelf(user);
+    res.clearCookie('access_token', { path: '/' });
   }
 
   @Get('members')

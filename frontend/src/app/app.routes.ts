@@ -33,6 +33,25 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'account/settings',
+    loadComponent: () =>
+      import('./features/account/account-settings.component').then((m) => m.AccountSettingsComponent),
+    canActivate: [authGuard],
+  },
+  // Public account deletion info page — no auth required (Meta App Review)
+  {
+    path: 'account-deletion',
+    loadComponent: () =>
+      import('./features/account/account-deletion.component').then((m) => m.AccountDeletionComponent),
+  },
+  {
+    path: 'account-deletion/status',
+    loadComponent: () =>
+      import('./features/facebook-deletion/facebook-deletion.component').then(
+        (m) => m.FacebookDeletionComponent,
+      ),
+  },
+  {
     path: 'restaurants',
     loadComponent: () =>
       import('./features/restaurants/list/restaurants-list.component').then(
@@ -123,13 +142,11 @@ export const routes: Routes = [
       import('./features/feedback/feedback-detail.component').then((m) => m.FeedbackDetailComponent),
     canActivate: [validatedMemberGuard],
   },
-  // Facebook data deletion status — no auth required
+  // Legacy Facebook data deletion URL — redirect to new canonical path
   {
     path: 'facebook-data-deletion',
-    loadComponent: () =>
-      import('./features/facebook-deletion/facebook-deletion.component').then(
-        (m) => m.FacebookDeletionComponent,
-      ),
+    redirectTo: '/account-deletion/status',
+    pathMatch: 'full',
   },
   // Announcements — public read, no auth required
   {

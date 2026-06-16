@@ -79,6 +79,12 @@ export class EmailProviderConfigEntity {
   @Column({ name: 'tmpl_password_reset', type: 'int', unsigned: true, nullable: true })
   tmplPasswordReset: number | null;
 
+  @Column({ name: 'tmpl_provider_disconnected', type: 'int', unsigned: true, nullable: true })
+  tmplProviderDisconnected: number | null;
+
+  @Column({ name: 'tmpl_account_deleted', type: 'int', unsigned: true, nullable: true })
+  tmplAccountDeleted: number | null;
+
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }

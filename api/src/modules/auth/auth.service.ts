@@ -9,10 +9,13 @@ import * as geoip from 'geoip-lite';
 import { UserEntity, EmailStatus, InviteSource, UserRole, UserStatus } from '../../database/entities/user.entity';
 import { OAuthAccountEntity, OAuthProvider } from '../../database/entities/oauth-account.entity';
 import { LoginSessionEntity } from '../../database/entities/login-session.entity';
+import { FacebookDeletionRequestEntity, FacebookDeletionStatus } from '../../database/entities/facebook-deletion-request.entity';
 import { InvitesService } from '../invites/invites.service';
 import { CitiesService } from '../cities/cities.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../email/email.service';
+import { EmailTemplate } from '../email/email.constants';
 import { InviteFlavor, InviteType } from '../../database/entities/invite.entity';
 
 export interface SessionContext {
@@ -20,8 +23,23 @@ export interface SessionContext {
   ipAddress?: string;
 }
 
+const FB_CDN_HOSTS = ['fbcdn.net', 'graph.facebook.com', 'facebook.com'];
+const GOOGLE_CDN_HOSTS = ['googleusercontent.com'];
+
+function isCdnPhoto(path: string | null, hosts: string[]): boolean {
+  if (!path) return false;
+  try {
+    const url = new URL(path);
+    return hosts.some((h) => url.hostname.endsWith(h));
+  } catch {
+    return false;
+  }
+}
+
 @Injectable()
 export class AuthService {
+  private readonly frontendUrl: string;
+
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
@@ -29,13 +47,18 @@ export class AuthService {
     private readonly oauthRepo: Repository<OAuthAccountEntity>,
     @InjectRepository(LoginSessionEntity)
     private readonly sessionRepo: Repository<LoginSessionEntity>,
+    @InjectRepository(FacebookDeletionRequestEntity)
+    private readonly fbDeletionRepo: Repository<FacebookDeletionRequestEntity>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly invitesService: InvitesService,
     private readonly citiesService: CitiesService,
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
-  ) {}
+    private readonly emailService: EmailService,
+  ) {
+    this.frontendUrl = this.configService.get<string>('APP_URL', 'http://localhost:8081');
+  }
 
   async findOrCreateGoogleUser(
     googleId: string,
@@ -56,11 +79,13 @@ export class AuthService {
     }
 
     // Fallback: user row exists (orphaned from a previous partial attempt)
-    // Link the OAuth account and return rather than trying to re-insert.
     const existingByEmail = await this.userRepo.findOne({
       where: { email: email.toLowerCase() },
     });
     if (existingByEmail) {
+      if (existingByEmail.status === UserStatus.DELETED) {
+        throw new AuthFlowError('not_active');
+      }
       await this.oauthRepo.save(
         this.oauthRepo.create({
           userId: existingByEmail.id,
@@ -85,7 +110,7 @@ export class AuthService {
       try {
         invite = await this.invitesService.validate(inviteToken, email);
       } catch (err) {
-        if (err instanceof AuthFlowError) throw err; // already has reason + boundEmail
+        if (err instanceof AuthFlowError) throw err;
         if (err instanceof NotFoundException) throw new AuthFlowError('invalid_invite');
         const msg: string = (err as Error).message ?? '';
         if (msg.includes('expired')) throw new AuthFlowError('invite_expired');
@@ -152,7 +177,6 @@ export class AuthService {
     displayName: string,
     inviteToken?: string,
   ): Promise<UserEntity> {
-    // Primary lookup: existing Facebook OAuth account
     const existing = await this.oauthRepo.findOne({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
       relations: ['user'],
@@ -164,7 +188,6 @@ export class AuthService {
       return existing.user;
     }
 
-    // Email match: link Facebook to existing account
     if (email) {
       const existingByEmail = await this.userRepo.findOne({
         where: { email: email.toLowerCase() },
@@ -185,7 +208,6 @@ export class AuthService {
       }
     }
 
-    // New user — requires invite
     if (!inviteToken) throw new AuthFlowError('no_invite');
 
     let invite = null;
@@ -250,12 +272,11 @@ export class AuthService {
     facebookId: string,
     email: string | null,
   ): Promise<void> {
-    // Reject if this FB account is already linked to any user
     const alreadyLinked = await this.oauthRepo.findOne({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
     });
     if (alreadyLinked) {
-      if (alreadyLinked.userId === userId) return; // already linked to self — no-op
+      if (alreadyLinked.userId === userId) return;
       throw new ConflictException('This Facebook account is already linked to another user');
     }
 
@@ -276,22 +297,150 @@ export class AuthService {
     });
   }
 
+  // --- Connected Accounts ---
+
+  async getConnectedProviders(userId: number): Promise<{
+    google: { email: string | null } | null;
+    facebook: { email: string | null } | null;
+    hasMultipleMethods: boolean;
+  }> {
+    const accounts = await this.oauthRepo.find({ where: { userId } });
+    const google = accounts.find((a) => a.provider === OAuthProvider.GOOGLE) ?? null;
+    const facebook = accounts.find((a) => a.provider === OAuthProvider.FACEBOOK) ?? null;
+    const count = accounts.length;
+    return {
+      google: google ? { email: google.email } : null,
+      facebook: facebook ? { email: facebook.email } : null,
+      hasMultipleMethods: count > 1,
+    };
+  }
+
+  async disconnectProvider(userId: number, provider: OAuthProvider): Promise<void> {
+    const user = await this.userRepo.findOneOrFail({ where: { id: userId } });
+    const accounts = await this.oauthRepo.find({ where: { userId } });
+    const target = accounts.find((a) => a.provider === provider);
+
+    if (!target) throw new NotFoundException(`${provider} is not linked to your account`);
+
+    if (accounts.length <= 1) {
+      // Only auth method — cannot disconnect
+      throw new ConflictException('ONLY_AUTH_METHOD');
+    }
+
+    // Clear CDN photo if it belongs to this provider
+    if (provider === OAuthProvider.FACEBOOK && isCdnPhoto(user.profilePhotoPath, FB_CDN_HOSTS)) {
+      await this.userRepo.update(userId, { profilePhotoPath: null });
+    } else if (provider === OAuthProvider.GOOGLE && isCdnPhoto(user.profilePhotoPath, GOOGLE_CDN_HOSTS)) {
+      await this.userRepo.update(userId, { profilePhotoPath: null });
+    }
+
+    await this.oauthRepo.remove(target);
+
+    await this.auditService.log({
+      userId,
+      action: `${provider}_disconnected`,
+      entityType: 'user',
+      entityId: userId,
+    });
+
+    // Queue confirmation email (best-effort)
+    const providerLabel = provider === OAuthProvider.GOOGLE ? 'Google' : 'Facebook';
+    await this.emailService.queue({
+      toEmail: user.email,
+      toName: user.fullName,
+      subject: `${providerLabel} login removed from DinnerBears`,
+      templateId: EmailTemplate.PROVIDER_DISCONNECTED,
+      templateParams: { provider: providerLabel, name: user.fullName },
+      userId,
+    });
+  }
+
+  // --- Facebook Deletion Callback ---
+
   async handleFacebookDeletion(facebookUserId: string): Promise<string> {
+    const confirmationCode = randomUUID().replace(/-/g, '').slice(0, 16).toUpperCase();
+
     const account = await this.oauthRepo.findOne({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookUserId },
     });
+
+    let dinnerbearsUserId: number | null = null;
+
     if (account) {
-      await this.auditService.log({
-        userId: account.userId,
-        action: 'user.facebook_data_deletion',
-        entityType: 'user',
-        entityId: account.userId,
-      });
-      await this.oauthRepo.remove(account);
+      dinnerbearsUserId = account.userId;
+      const allAccounts = await this.oauthRepo.find({ where: { userId: account.userId } });
+
+      if (allAccounts.length > 1) {
+        // User has other auth methods — just delete the FB OAuth row
+        await this.oauthRepo.remove(account);
+        await this.auditService.log({
+          userId: account.userId,
+          action: 'facebook_disconnected_by_meta_callback',
+          entityType: 'user',
+          entityId: account.userId,
+        });
+      } else {
+        // Facebook was the only auth method — full soft-delete
+        const user = await this.userRepo.findOne({ where: { id: account.userId } });
+        if (user && user.status !== UserStatus.DELETED) {
+          const hardDeleteAt = new Date();
+          hardDeleteAt.setDate(hardDeleteAt.getDate() + 30);
+
+          await this.userRepo.update(user.id, {
+            status: UserStatus.DELETED,
+            deletedAt: new Date(),
+            hardDeleteAt,
+            passwordHash: null,
+            profilePhotoPath: null,
+          });
+          await this.oauthRepo.delete({ userId: user.id });
+
+          await this.auditService.log({
+            userId: user.id,
+            action: 'account_deleted_by_meta_callback',
+            entityType: 'user',
+            entityId: user.id,
+          });
+
+          // Attempt confirmation email — don't fail the callback if this errors
+          if (!user.email.endsWith('@placeholder.invalid')) {
+            try {
+              await this.emailService.queue({
+                toEmail: user.email,
+                toName: user.fullName,
+                subject: 'Your DinnerBears account has been deactivated',
+                templateId: EmailTemplate.ACCOUNT_DELETED,
+                templateParams: { name: user.fullName },
+                userId: user.id,
+              });
+            } catch {
+              // Non-fatal
+            }
+          }
+        }
+      }
     }
-    // Return a confirmation code — first 12 chars of a UUID
-    return randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase();
+
+    // Always persist a deletion request record
+    await this.fbDeletionRepo.save(
+      this.fbDeletionRepo.create({
+        facebookUserId,
+        confirmationCode,
+        dinnerbearsUserId,
+        status: FacebookDeletionStatus.PENDING,
+      }),
+    );
+
+    return confirmationCode;
   }
+
+  async getFacebookDeletionStatus(code: string): Promise<{ status: 'pending' | 'completed' | 'not_found' }> {
+    const record = await this.fbDeletionRepo.findOne({ where: { confirmationCode: code } });
+    if (!record) return { status: 'not_found' };
+    return { status: record.status };
+  }
+
+  // --- Sessions ---
 
   async issueTokens(
     user: UserEntity,

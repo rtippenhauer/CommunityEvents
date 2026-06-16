@@ -10,6 +10,8 @@ export const EmailTemplate = {
   GUEST_RSVP_CONFIRMATION: 'guest_rsvp_confirmation',
   EMAIL_VERIFICATION: 'email_verification',
   PASSWORD_RESET: 'password_reset',
+  PROVIDER_DISCONNECTED: 'provider_disconnected',
+  ACCOUNT_DELETED: 'account_deleted',
 } as const;
 
 export type EmailTemplateName = (typeof EmailTemplate)[keyof typeof EmailTemplate];
@@ -26,6 +28,8 @@ export const TEMPLATE_ENV_KEYS: Record<EmailTemplateName, string> = {
   guest_rsvp_confirmation: 'BREVO_TEMPLATE_GUEST_RSVP_CONFIRMATION',
   email_verification: 'BREVO_TEMPLATE_EMAIL_VERIFICATION',
   password_reset: 'BREVO_TEMPLATE_PASSWORD_RESET',
+  provider_disconnected: 'BREVO_TEMPLATE_PROVIDER_DISCONNECTED',
+  account_deleted: 'BREVO_TEMPLATE_ACCOUNT_DELETED',
 };
 
 export const NOTIFICATION_PREF_KEY: Partial<Record<EmailTemplateName, string>> = {

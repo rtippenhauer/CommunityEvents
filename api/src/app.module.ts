@@ -22,6 +22,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
 import { ReleasesModule } from './modules/releases/releases.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
 import { EventCommentsModule } from './modules/event-comments/event-comments.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { EventCommentsModule } from './modules/event-comments/event-comments.mod
     ReleasesModule,
     AnnouncementsModule,
     EventCommentsModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [AppService],

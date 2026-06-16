@@ -1,4 +1,17 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  ConflictException,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
@@ -8,6 +21,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GoogleCallbackGuard } from '../../common/guards/google-callback.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity } from '../../database/entities/user.entity';
+import { OAuthProvider } from '../../database/entities/oauth-account.entity';
 import { FacebookAuthDto } from './dto/facebook-auth.dto';
 
 @Controller('auth')
@@ -23,6 +37,8 @@ export class AuthController {
     this.fbAppSecret = configService.get<string>('FACEBOOK_APP_SECRET', '');
   }
 
+  // --- Google OAuth ---
+
   @Get('google')
   @UseGuards(AuthGuard('google'))
   googleLogin(): void {
@@ -35,7 +51,7 @@ export class AuthController {
     @Req() req: Request & { user: UserEntity },
     @Res() res: Response,
   ): Promise<void> {
-    if (res.headersSent) return; // guard already redirected to error page
+    if (res.headersSent) return;
 
     const { accessToken } = await this.authService.issueTokens(req.user, {
       userAgent: req.headers['user-agent'],
@@ -52,6 +68,8 @@ export class AuthController {
 
     res.redirect(`${this.frontendUrl}/auth/callback`);
   }
+
+  // --- Facebook OAuth ---
 
   @Post('facebook')
   async facebookLogin(
@@ -104,35 +122,78 @@ export class AuthController {
     return { message: 'Facebook account linked' };
   }
 
-  @Get('facebook/deletion')
-  facebookDeletionVerify(): { status: string } {
-    return { status: 'ok' };
-  }
+  // --- Meta Data Deletion Callback (REQ-DEL-05) ---
 
-  @Post('facebook/deletion')
+  @Post('facebook/deletion-callback')
   @HttpCode(200)
-  async facebookDeletion(@Body('signed_request') signedRequest: string): Promise<{ url: string; confirmation_code: string }> {
+  async facebookDeletionCallback(
+    @Body('signed_request') signedRequest: string,
+  ): Promise<{ url: string; confirmation_code: string }> {
     if (!signedRequest) throw new UnauthorizedException('Missing signed_request');
 
     const parts = signedRequest.split('.');
     if (parts.length !== 2) throw new UnauthorizedException('Malformed signed_request');
     const [encodedSig, payload] = parts;
 
-    // Verify HMAC-SHA256 signature
     const expected = createHmac('sha256', this.fbAppSecret).update(payload).digest();
     const actual = Buffer.from(encodedSig.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       throw new UnauthorizedException('Invalid signed_request signature');
     }
 
-    const data = JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as { user_id: string };
+    const data = JSON.parse(
+      Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'),
+    ) as { user_id: string };
+
     const confirmationCode = await this.authService.handleFacebookDeletion(data.user_id);
 
     return {
-      url: `${this.frontendUrl}/facebook-data-deletion?code=${confirmationCode}`,
+      url: `${this.frontendUrl}/account-deletion/status?code=${confirmationCode}`,
       confirmation_code: confirmationCode,
     };
   }
+
+  @Get('facebook/deletion-status')
+  async facebookDeletionStatus(
+    @Req() req: Request,
+  ): Promise<{ status: 'pending' | 'completed' | 'not_found' }> {
+    const code = (req.query['code'] as string) ?? '';
+    return this.authService.getFacebookDeletionStatus(code);
+  }
+
+  // --- Connected Accounts (REQ-DEL-01) ---
+
+  @Get('providers')
+  @UseGuards(JwtAuthGuard)
+  async getProviders(@CurrentUser() user: UserEntity) {
+    return this.authService.getConnectedProviders(user.id);
+  }
+
+  @Delete('providers/:provider')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(204)
+  async disconnectProvider(
+    @Param('provider') provider: string,
+    @CurrentUser() user: UserEntity,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const normalized = provider.toLowerCase() as OAuthProvider;
+    if (![OAuthProvider.GOOGLE, OAuthProvider.FACEBOOK].includes(normalized)) {
+      throw new UnauthorizedException('Invalid provider');
+    }
+
+    try {
+      await this.authService.disconnectProvider(user.id, normalized);
+    } catch (err) {
+      if (err instanceof ConflictException && (err.message as string) === 'ONLY_AUTH_METHOD') {
+        res.status(409).json({ error: 'ONLY_AUTH_METHOD', message: 'This is your only login method.' });
+        return;
+      }
+      throw err;
+    }
+  }
+
+  // --- Session ---
 
   @Get('me')
   @UseGuards(JwtAuthGuard)

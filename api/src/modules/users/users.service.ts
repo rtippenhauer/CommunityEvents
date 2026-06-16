@@ -1,14 +1,30 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Not, Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { DataSource, Not, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { UserEntity, UserRole, UserStatus, EmailStatus } from '../../database/entities/user.entity';
+import { OAuthAccountEntity } from '../../database/entities/oauth-account.entity';
+import { LoginSessionEntity } from '../../database/entities/login-session.entity';
+import { PushSubscriptionEntity } from '../../database/entities/push-subscription.entity';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { AuditService } from '../audit/audit.service';
+import { EmailService } from '../email/email.service';
+import { EmailTemplate } from '../email/email.constants';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(OAuthAccountEntity)
+    private readonly oauthRepo: Repository<OAuthAccountEntity>,
+    @InjectRepository(LoginSessionEntity)
+    private readonly sessionRepo: Repository<LoginSessionEntity>,
+    @InjectRepository(PushSubscriptionEntity)
+    private readonly pushRepo: Repository<PushSubscriptionEntity>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
+    private readonly auditService: AuditService,
+    private readonly emailService: EmailService,
   ) {}
 
   async findById(id: number): Promise<UserEntity> {
@@ -135,5 +151,53 @@ export class UsersService {
     }
     await this.userRepo.update(targetId, { role: UserRole.MEMBER });
     return { message: 'Member validated successfully' };
+  }
+
+  // REQ-DEL-04 — soft-delete the calling user's own account
+  async softDeleteSelf(user: UserEntity): Promise<void> {
+    if (user.role === UserRole.ADMIN) {
+      throw new ForbiddenException('Admin accounts cannot be self-deleted.');
+    }
+
+    const linkedProviders = await this.oauthRepo.find({ where: { userId: user.id } });
+    const providerNames = linkedProviders.map((p) => p.provider);
+
+    const hardDeleteAt = new Date();
+    hardDeleteAt.setDate(hardDeleteAt.getDate() + 30);
+
+    await this.dataSource.transaction(async (em) => {
+      await em.update(UserEntity, user.id, {
+        status: UserStatus.DELETED,
+        deletedAt: new Date(),
+        hardDeleteAt,
+        passwordHash: null,
+        profilePhotoPath: null,
+      });
+      await em.delete(OAuthAccountEntity, { userId: user.id });
+      await em.delete(LoginSessionEntity, { userId: user.id });
+      await em.delete(PushSubscriptionEntity, { userId: user.id });
+    });
+
+    await this.auditService.log({
+      userId: user.id,
+      action: 'account_deleted',
+      entityType: 'user',
+      entityId: user.id,
+      metadata: { providers: providerNames },
+    });
+
+    // Queue deletion email (before session is cleared by the controller)
+    try {
+      await this.emailService.queue({
+        toEmail: user.email,
+        toName: user.fullName,
+        subject: 'Your DinnerBears account has been deactivated',
+        templateId: EmailTemplate.ACCOUNT_DELETED,
+        templateParams: { name: user.fullName },
+        userId: user.id,
+      });
+    } catch {
+      // Non-fatal
+    }
   }
 }

@@ -27,6 +27,8 @@ const TEMPLATE_DB_KEY: Record<EmailTemplateName, keyof EmailProviderConfigEntity
   guest_rsvp_confirmation: 'tmplGuestRsvpConfirmation',
   email_verification: 'tmplEmailVerification',
   password_reset: 'tmplPasswordReset',
+  provider_disconnected: 'tmplProviderDisconnected',
+  account_deleted: 'tmplAccountDeleted',
 };
 
 const TEMPLATE_ENV_KEY: Record<EmailTemplateName, string> = {
@@ -41,6 +43,8 @@ const TEMPLATE_ENV_KEY: Record<EmailTemplateName, string> = {
   guest_rsvp_confirmation: 'BREVO_TEMPLATE_GUEST_RSVP_CONFIRMATION',
   email_verification: 'BREVO_TEMPLATE_EMAIL_VERIFICATION',
   password_reset: 'BREVO_TEMPLATE_PASSWORD_RESET',
+  provider_disconnected: 'BREVO_TEMPLATE_PROVIDER_DISCONNECTED',
+  account_deleted: 'BREVO_TEMPLATE_ACCOUNT_DELETED',
 };
 
 @Injectable()
