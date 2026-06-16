@@ -1,4 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { unlink } from 'fs/promises';
+import { join } from 'path';
 import { DataSource, Not, Repository } from 'typeorm';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { UserEntity, UserRole, UserStatus, EmailStatus } from '../../database/entities/user.entity';
@@ -165,6 +167,18 @@ export class UsersService {
     const hardDeleteAt = new Date();
     hardDeleteAt.setDate(hardDeleteAt.getDate() + 30);
 
+    // Delete local photo from disk before nulling the path — the hard-delete cron
+    // won't be able to find it once profilePhotoPath is cleared.
+    if (user.profilePhotoPath?.startsWith('/api/uploads/')) {
+      const filename = user.profilePhotoPath.replace('/api/uploads/', '');
+      const uploadPath = process.env.UPLOAD_PATH ?? '/app/uploads';
+      try {
+        await unlink(join(uploadPath, filename));
+      } catch {
+        // Non-fatal — file may already be gone
+      }
+    }
+
     await this.dataSource.transaction(async (em) => {
       await em.update(UserEntity, user.id, {
         status: UserStatus.DELETED,
@@ -178,6 +192,16 @@ export class UsersService {
       await em.delete(OAuthAccountEntity, { userId: user.id });
       await em.delete(LoginSessionEntity, { userId: user.id });
       await em.delete(PushSubscriptionEntity, { userId: user.id });
+      // Cancel RSVPs on upcoming events
+      await em.query(
+        `DELETE FROM event_rsvps WHERE user_id = ? AND event_id IN (SELECT id FROM events WHERE event_date >= CURDATE())`,
+        [user.id],
+      );
+      // Revoke event invite links they created for upcoming events
+      await em.query(
+        `UPDATE invites SET is_revoked = 1 WHERE created_by = ? AND type = 'event_invite' AND event_id IN (SELECT id FROM events WHERE event_date >= CURDATE())`,
+        [user.id],
+      );
     });
 
     await this.auditService.log({

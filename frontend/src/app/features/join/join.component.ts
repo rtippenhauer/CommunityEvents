@@ -1,11 +1,10 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { InvitesService, InvitePreview } from '../../core/services/invites.service';
 import { AuthService } from '../../core/services/auth.service';
 import { environment } from '../../../environments/environment';
@@ -15,7 +14,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
 @Component({
   selector: 'app-join',
   standalone: true,
-  imports: [DatePipe, MatButtonModule, MatCardModule, MatIconModule, MatProgressSpinnerModule, MatSnackBarModule],
+  imports: [DatePipe, MatButtonModule, MatCardModule, MatIconModule, MatProgressSpinnerModule],
   template: `
     <div class="join-page">
       <div class="brand-header">
@@ -332,9 +331,9 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
 })
 export class JoinComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly invitesService = inject(InvitesService);
   private readonly authService = inject(AuthService);
-  private readonly snackBar = inject(MatSnackBar);
 
   readonly state = signal<PageState>('loading');
   readonly preview = signal<InvitePreview | null>(null);
@@ -399,8 +398,8 @@ export class JoinComponent implements OnInit {
         this.authService.loginWithFacebook(accessToken, token).subscribe({
           error: (err) => {
             this.fbLogging.set(false);
-            const msg = (err?.error?.message as string) ?? 'Facebook sign-in failed. Please try again.';
-            this.snackBar.open(msg, 'OK', { duration: 5000 });
+            const reason = (err?.error?.reason as string) ?? 'fb_error';
+            void this.router.navigate(['/auth/error'], { queryParams: { reason } });
           },
         });
       } else {

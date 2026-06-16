@@ -38,11 +38,13 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       console.log(`[BOOTSTRAP] Google ID: ${profile.id}  Email: ${email}`);
 
       const inviteToken = req.query.state ?? undefined;
+      const photo = profile.photos?.[0]?.value ?? null;
       const user = await this.authService.findOrCreateGoogleUser(
         profile.id,
         email,
         profile.displayName ?? email,
         inviteToken,
+        photo,
       );
       done(null, user);
     } catch (err) {

@@ -80,10 +80,16 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
     const fbRes = await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(dto.accessToken)}`,
+      `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${encodeURIComponent(dto.accessToken)}`,
     );
     if (!fbRes.ok) throw new UnauthorizedException('Invalid Facebook token');
-    const fbUser = await fbRes.json() as { id: string; name: string; email?: string };
+    const fbUser = await fbRes.json() as {
+      id: string;
+      name: string;
+      email?: string;
+      picture?: { data?: { url?: string } };
+    };
+    const fbPhoto = fbUser.picture?.data?.url ?? null;
 
     let user;
     try {
@@ -92,16 +98,17 @@ export class AuthController {
         fbUser.email ?? null,
         fbUser.name,
         dto.inviteToken,
+        fbPhoto,
       );
     } catch (err) {
       if (err instanceof AuthFlowError) {
         const reason = err.reason;
-        if (reason === 'not_active') throw new UnauthorizedException('Your account is not active');
-        if (reason === 'no_invite') throw new UnauthorizedException('An invite link is required to join DinnerBears');
-        if (reason === 'invite_expired') throw new BadRequestException('This invite link has expired');
-        if (reason === 'invite_used') throw new BadRequestException('This invite link has already been used');
-        if (reason === 'invite_email_mismatch') throw new BadRequestException('This invite is for a different email address');
-        throw new BadRequestException('Invalid invite link');
+        if (reason === 'not_active') throw new UnauthorizedException({ message: 'Account not active', reason });
+        if (reason === 'no_invite') throw new UnauthorizedException({ message: 'No invite', reason });
+        if (reason === 'invite_expired') throw new BadRequestException({ message: 'Invite expired', reason });
+        if (reason === 'invite_used') throw new BadRequestException({ message: 'Invite used', reason });
+        if (reason === 'invite_email_mismatch') throw new BadRequestException({ message: 'Invite email mismatch', reason });
+        throw new BadRequestException({ message: 'Invalid invite', reason: 'invalid_invite' });
       }
       throw err;
     }

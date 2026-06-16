@@ -13,7 +13,7 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
   no_invite: {
     icon: 'mail_lock',
     title: 'Account not found',
-    body: "We couldn't find a DinnerBears account linked to your Google sign-in. DinnerBears is invite-only — if you've received an invite link, use it to sign up.",
+    body: "We couldn't find a DinnerBears account linked to your sign-in. DinnerBears is invite-only — if you've received an invite link, use it to sign up.",
     showInviteHint: true,
   },
   not_active: {
@@ -25,7 +25,7 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
   invalid_invite: {
     icon: 'link_off',
     title: 'Invalid invite link',
-    body: "That invite link doesn't look right. Make sure you're using the full link from your invitation email.",
+    body: "That invite link doesn't look right. Make sure you're using the full link from your invitation.",
     showInviteHint: false,
   },
   invite_used: {
@@ -42,8 +42,14 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
   },
   invite_email_mismatch: {
     icon: 'person_off',
-    title: 'Wrong Google account',
-    body: "The Google account you signed in with doesn't match the email this invite was sent to. Try again with the correct Google account.",
+    title: 'Wrong account',
+    body: "The account you signed in with doesn't match the email this invite was sent to. Try again with the account your invite was sent to.",
+    showInviteHint: false,
+  },
+  fb_error: {
+    icon: 'cloud_off',
+    title: 'Facebook sign-in failed',
+    body: 'Something went wrong verifying your Facebook account. Please try again, or use Google to sign in instead.',
     showInviteHint: false,
   },
 };

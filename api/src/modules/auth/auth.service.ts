@@ -76,6 +76,7 @@ export class AuthService {
     email: string,
     displayName: string,
     inviteToken?: string,
+    profilePhoto?: string | null,
   ): Promise<UserEntity> {
     // Primary lookup: existing OAuth account
     const existing = await this.oauthRepo.findOne({
@@ -149,6 +150,7 @@ export class AuthService {
       cityId: defaultCity.id,
       role: isAdminBootstrap ? UserRole.ADMIN : (isNonValidatedInvite ? UserRole.NON_VALIDATED : UserRole.MEMBER),
       status: UserStatus.ACTIVE,
+      profilePhotoPath: profilePhoto ?? null,
       inviteId: invite?.id ?? null,
       invitedBy: invite?.createdBy ?? null,
       inviteSource: invite
@@ -193,6 +195,7 @@ export class AuthService {
     email: string | null,
     displayName: string,
     inviteToken?: string,
+    profilePhoto?: string | null,
   ): Promise<UserEntity> {
     const existing = await this.oauthRepo.findOne({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
@@ -258,6 +261,7 @@ export class AuthService {
       cityId: defaultCity.id,
       role: isFbNonValidated ? UserRole.NON_VALIDATED : UserRole.MEMBER,
       status: UserStatus.ACTIVE,
+      profilePhotoPath: profilePhoto ?? null,
       inviteId: invite?.id ?? null,
       invitedBy: invite?.createdBy ?? null,
       inviteSource: invite?.type === InviteType.CAMPAIGN_FACEBOOK
