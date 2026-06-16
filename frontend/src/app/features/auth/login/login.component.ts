@@ -4,14 +4,13 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../../core/services/auth.service';
 import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [MatButtonModule, MatCardModule, MatIconModule, MatSnackBarModule, MatProgressSpinnerModule],
+  imports: [MatButtonModule, MatCardModule, MatIconModule, MatProgressSpinnerModule],
   template: `
     <div class="login-page">
 
@@ -198,7 +197,6 @@ export class LoginComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
-  private readonly snackBar = inject(MatSnackBar);
   readonly fbLogging = signal(false);
 
   readonly inviteToken = signal<string | null>(null);
@@ -285,8 +283,8 @@ export class LoginComponent implements OnInit {
     this.authService.loginWithFacebook(accessToken, this.inviteToken() ?? undefined).subscribe({
       error: (err) => {
         this.fbLogging.set(false);
-        const msg = err?.error?.message ?? 'Facebook sign-in failed. Please try again.';
-        this.snackBar.open(msg, 'OK', { duration: 5000 });
+        const reason = (err?.error?.reason as string) ?? 'fb_error';
+        void this.router.navigate(['/auth/error'], { queryParams: { reason } });
       },
     });
   }
