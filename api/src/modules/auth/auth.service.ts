@@ -60,6 +60,17 @@ export class AuthService {
     this.frontendUrl = this.configService.get<string>('APP_URL', 'http://localhost:8081');
   }
 
+  private async releaseDeletedEmail(email: string): Promise<void> {
+    const deleted = await this.userRepo.findOne({
+      where: { email, status: UserStatus.DELETED },
+    });
+    if (deleted) {
+      await this.userRepo.update(deleted.id, {
+        email: `deleted-${deleted.id}@deleted.dinnerbears.com`,
+      });
+    }
+  }
+
   async findOrCreateGoogleUser(
     googleId: string,
     email: string,
@@ -83,18 +94,21 @@ export class AuthService {
       where: { email: email.toLowerCase() },
     });
     if (existingByEmail) {
-      if (existingByEmail.status === UserStatus.DELETED) {
+      if (existingByEmail.status === UserStatus.SUSPENDED) {
         throw new AuthFlowError('not_active');
       }
-      await this.oauthRepo.save(
-        this.oauthRepo.create({
-          userId: existingByEmail.id,
-          provider: OAuthProvider.GOOGLE,
-          providerId: googleId,
-          email: email.toLowerCase(),
-        }),
-      );
-      return existingByEmail;
+      if (existingByEmail.status !== UserStatus.DELETED) {
+        await this.oauthRepo.save(
+          this.oauthRepo.create({
+            userId: existingByEmail.id,
+            provider: OAuthProvider.GOOGLE,
+            providerId: googleId,
+            email: email.toLowerCase(),
+          }),
+        );
+        return existingByEmail;
+      }
+      // DELETED: fall through — fresh registration; scramble old email before insert
     }
 
     const adminEmail = this.configService.get<string>('ADMIN_EMAIL');
@@ -120,6 +134,9 @@ export class AuthService {
     }
 
     const defaultCity = await this.citiesService.findAll().then((cities) => cities[0]);
+
+    // Free up the email address if a soft-deleted account is still holding it
+    await this.releaseDeletedEmail(email.toLowerCase());
 
     const isEventInvite = invite?.type === InviteType.EVENT_INVITE;
     const isNonValidatedInvite = isEventInvite && invite?.inviteFlavor === InviteFlavor.NON_VALIDATED;
@@ -193,18 +210,21 @@ export class AuthService {
         where: { email: email.toLowerCase() },
       });
       if (existingByEmail) {
-        if (existingByEmail.status === UserStatus.SUSPENDED || existingByEmail.status === UserStatus.DELETED) {
+        if (existingByEmail.status === UserStatus.SUSPENDED) {
           throw new AuthFlowError('not_active');
         }
-        await this.oauthRepo.save(
-          this.oauthRepo.create({
-            userId: existingByEmail.id,
-            provider: OAuthProvider.FACEBOOK,
-            providerId: facebookId,
-            email: email.toLowerCase(),
-          }),
-        );
-        return existingByEmail;
+        if (existingByEmail.status !== UserStatus.DELETED) {
+          await this.oauthRepo.save(
+            this.oauthRepo.create({
+              userId: existingByEmail.id,
+              provider: OAuthProvider.FACEBOOK,
+              providerId: facebookId,
+              email: email.toLowerCase(),
+            }),
+          );
+          return existingByEmail;
+        }
+        // DELETED: fall through — fresh registration; scramble old email before insert
       }
     }
 
@@ -224,6 +244,9 @@ export class AuthService {
 
     const defaultCity = await this.citiesService.findAll().then((cities) => cities[0]);
 
+    // Free up the email address if a soft-deleted account is still holding it
+    if (email) await this.releaseDeletedEmail(email.toLowerCase());
+
     const isFbEventInvite = invite?.type === InviteType.EVENT_INVITE;
     const isFbNonValidated = isFbEventInvite && invite?.inviteFlavor === InviteFlavor.NON_VALIDATED;
 
@@ -241,7 +264,7 @@ export class AuthService {
         ? InviteSource.FACEBOOK_GROUP
         : isFbNonValidated
           ? InviteSource.NON_VALIDATED_LINK
-          : InviteSource.GOOGLE_OAUTH,
+          : InviteSource.DIRECT,
     });
     await this.userRepo.save(user);
 
@@ -390,6 +413,8 @@ export class AuthService {
             status: UserStatus.DELETED,
             deletedAt: new Date(),
             hardDeleteAt,
+            fullName: 'Deleted Member',
+            email: `deleted-${user.id}@deleted.dinnerbears.com`,
             passwordHash: null,
             profilePhotoPath: null,
           });

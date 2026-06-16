@@ -170,6 +170,8 @@ export class UsersService {
         status: UserStatus.DELETED,
         deletedAt: new Date(),
         hardDeleteAt,
+        fullName: 'Deleted Member',
+        email: `deleted-${user.id}@deleted.dinnerbears.com`,
         passwordHash: null,
         profilePhotoPath: null,
       });

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -12,6 +13,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
@@ -83,12 +85,26 @@ export class AuthController {
     if (!fbRes.ok) throw new UnauthorizedException('Invalid Facebook token');
     const fbUser = await fbRes.json() as { id: string; name: string; email?: string };
 
-    const user = await this.authService.findOrCreateFacebookUser(
-      fbUser.id,
-      fbUser.email ?? null,
-      fbUser.name,
-      dto.inviteToken,
-    );
+    let user;
+    try {
+      user = await this.authService.findOrCreateFacebookUser(
+        fbUser.id,
+        fbUser.email ?? null,
+        fbUser.name,
+        dto.inviteToken,
+      );
+    } catch (err) {
+      if (err instanceof AuthFlowError) {
+        const reason = err.reason;
+        if (reason === 'not_active') throw new UnauthorizedException('Your account is not active');
+        if (reason === 'no_invite') throw new UnauthorizedException('An invite link is required to join DinnerBears');
+        if (reason === 'invite_expired') throw new BadRequestException('This invite link has expired');
+        if (reason === 'invite_used') throw new BadRequestException('This invite link has already been used');
+        if (reason === 'invite_email_mismatch') throw new BadRequestException('This invite is for a different email address');
+        throw new BadRequestException('Invalid invite link');
+      }
+      throw err;
+    }
 
     const { accessToken } = await this.authService.issueTokens(user, {
       userAgent: req.headers['user-agent'],
