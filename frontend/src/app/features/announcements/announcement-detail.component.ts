@@ -11,6 +11,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AnnouncementsService, Announcement, AnnouncementComment } from '../../core/services/announcements.service';
 import { AuthService } from '../../core/services/auth.service';
+import { ReportButtonComponent } from '../../shared/components/report-button/report-button.component';
 
 @Component({
   selector: 'app-announcement-detail',
@@ -19,6 +20,7 @@ import { AuthService } from '../../core/services/auth.service';
     DatePipe, RouterLink, ReactiveFormsModule,
     MatButtonModule, MatChipsModule, MatIconModule, MatInputModule,
     MatFormFieldModule, MatProgressSpinnerModule, MatSnackBarModule,
+    ReportButtonComponent,
   ],
   template: `
     @if (loading()) {
@@ -89,9 +91,10 @@ import { AuthService } from '../../core/services/auth.service';
                         <mat-icon>delete_outline</mat-icon>
                       </button>
                     }
-                    <button mat-icon-button class="flag-comment-btn" (click)="flagComment(c.id)">
-                      <mat-icon>flag</mat-icon>
-                    </button>
+                    <app-report-button
+                      contentType="announcement_comment"
+                      [contentId]="c.id"
+                      [authorId]="c.userId" />
                   </div>
                   <p class="comment-body">{{ c.body }}</p>
                 </div>
@@ -128,8 +131,7 @@ import { AuthService } from '../../core/services/auth.service';
     .comment-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
     .comment-author { font-weight: 600; font-size: 0.85rem; color: var(--db-brown-dark); }
     .comment-time { font-size: 0.72rem; color: #aaa; }
-    .del-btn, .flag-comment-btn { width: 28px; height: 28px; font-size: 0.85rem; color: #bbb; margin-left: auto; }
-    .flag-comment-btn { margin-left: 0; }
+    .del-btn { width: 28px; height: 28px; font-size: 0.85rem; color: #bbb; margin-left: auto; }
     .comment-body { margin: 0; font-size: 0.875rem; color: #444; line-height: 1.5; }
   `],
 })
@@ -200,10 +202,5 @@ export class AnnouncementDetailComponent implements OnInit {
     });
   }
 
-  flagComment(commentId: number): void {
-    this.announcementsService.flagContent('announcement_comment', commentId).subscribe({
-      next: () => this.snackBar.open('Comment reported.', 'OK', { duration: 3000 }),
-      error: () => this.snackBar.open('Already reported or failed.', 'OK', { duration: 3000 }),
-    });
-  }
+
 }

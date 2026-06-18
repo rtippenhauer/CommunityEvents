@@ -6,9 +6,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
 import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
@@ -871,6 +871,11 @@ export class EventsService {
     const now = new Date();
     const eventStart = new Date(`${event.eventDate}T${event.eventTime}`);
     if (now >= eventStart) throw new BadRequestException('This event has already started');
+
+    const existingMember = await this.userRepo.findOne({
+      where: { email: email.trim().toLowerCase(), status: Not(UserStatus.DELETED) },
+    });
+    if (existingMember) throw new BadRequestException('already_a_member');
 
     const existing = await this.guestLinkRepo.findOne({
       where: { eventId, recipientEmail: email.toLowerCase(), source: 'public', cancelledAt: IsNull() },

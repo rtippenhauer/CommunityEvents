@@ -23,6 +23,7 @@ import { ReleasesModule } from './modules/releases/releases.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
 import { EventCommentsModule } from './modules/event-comments/event-comments.module';
 import { TasksModule } from './modules/tasks/tasks.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
     AnnouncementsModule,
     EventCommentsModule,
     TasksModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

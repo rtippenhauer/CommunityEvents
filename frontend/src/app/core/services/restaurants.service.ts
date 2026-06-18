@@ -68,6 +68,7 @@ export interface RatingAggregate {
 
 export interface ReviewItem {
   id: number;
+  memberId: number;
   memberName: string;
   memberPhoto: string | null;
   eventDate: string;

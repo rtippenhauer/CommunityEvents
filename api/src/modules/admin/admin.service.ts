@@ -17,6 +17,7 @@ export interface AdminUserRow {
   createdAt: Date;
   lastLoginAt: Date | null;
   loginCount: number;
+  oauthProviders: Array<{ provider: string; providerId: string; email: string | null }>;
 }
 
 @Injectable()
@@ -48,9 +49,20 @@ export class AdminService {
       ])
       .where('u.deleted_at IS NULL')
       .orderBy('u.created_at', 'DESC')
-      .getRawMany<AdminUserRow>();
+      .getRawMany<Omit<AdminUserRow, 'oauthProviders'>>();
 
-    return users;
+    const oauthAccounts = await this.oauthRepo.find({
+      select: ['userId', 'provider', 'providerId', 'email'],
+    });
+
+    const oauthByUser = new Map<number, Array<{ provider: string; providerId: string; email: string | null }>>();
+    for (const acc of oauthAccounts) {
+      const list = oauthByUser.get(acc.userId) ?? [];
+      list.push({ provider: acc.provider, providerId: acc.providerId, email: acc.email });
+      oauthByUser.set(acc.userId, list);
+    }
+
+    return users.map((u) => ({ ...u, oauthProviders: oauthByUser.get(u.id) ?? [] }));
   }
 
   async banUser(targetId: number, actorId: number, actorRole: UserRole): Promise<void> {

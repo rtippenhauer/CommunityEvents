@@ -33,10 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 10.5 — Account Deletion & OAuth Unlinking** — Self-service account deletion, provider disconnect, Meta deletion callback, and hard-delete cron; required for Facebook App Review.
+**Phase 10.6 — Content Reporting** — Unified report-a-post system across event comments, announcement comments, and restaurant ratings; mod/admin review queue with one-click dismiss or delete.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

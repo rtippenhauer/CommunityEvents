@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import { Component, effect, HostListener, inject, OnDestroy, OnInit, signal, computed } from '@angular/core';
 import { forkJoin } from 'rxjs';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe, TitleCasePipe } from '@angular/common';
@@ -24,6 +24,8 @@ import { InvitesService, EventInviteLink } from '../../../core/services/invites.
 import { EventCommentsService, Comment, AttendanceEntry, MemberSearchResult } from '../../../core/services/event-comments.service';
 import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
+import { ReportButtonComponent } from '../../../shared/components/report-button/report-button.component';
+import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
 
 @Component({
   selector: 'app-event-detail',
@@ -45,6 +47,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
     MatProgressSpinnerModule,
     MatSelectModule,
     MatTooltipModule,
+    ReportButtonComponent,
   ],
   template: `
     @if (loading()) {
@@ -620,6 +623,10 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                               <mat-icon>delete_outline</mat-icon>
                             </button>
                           }
+                          <app-report-button
+                            contentType="event_comment"
+                            [contentId]="comment.id"
+                            [authorId]="comment.memberId" />
                         </div>
                         <p class="comment-body">{{ comment.body }}</p>
                         @if (!isNonValidated()) {
@@ -643,6 +650,10 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
                                       <mat-icon>delete_outline</mat-icon>
                                     </button>
                                   }
+                                  <app-report-button
+                                    contentType="event_comment_reply"
+                                    [contentId]="reply.id"
+                                    [authorId]="reply.memberId" />
                                 </div>
                                 <p class="comment-body">{{ reply.body }}</p>
                               }
@@ -1397,7 +1408,7 @@ import { EventFormDialogComponent } from '../form/event-form-dialog.component';
     .new-comment-form { padding-top: 16px; border-top: 1px dashed #e8e0d6; margin-top: 8px; }
   `],
 })
-export class EventDetailComponent implements OnInit {
+export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly eventsService = inject(EventsService);
@@ -1448,6 +1459,21 @@ export class EventDetailComponent implements OnInit {
   readonly walkinResults = signal<MemberSearchResult[]>([]);
   readonly addingWalkin = signal(false);
   private readonly walkinSearch$ = new Subject<string>();
+
+  // Clock signal — ticks every minute so isPastEvent / isPastCutoff recompute reactively
+  private readonly nowSignal = signal(new Date());
+  private clockInterval!: ReturnType<typeof setInterval>;
+
+  // Load attendance when the clock ticks past event start (covers pages open before start time)
+  private readonly _attendanceEffect = effect(() => {
+    const id = this.event()?.id;
+    const status = this.event()?.status;
+    if (id && status === 'published' && this.isPastEvent() && this.isAdminOrMod()) {
+      if (!this.attendanceLoading() && this.attendanceList().length === 0) {
+        this.loadAttendance(id);
+      }
+    }
+  });
 
   readonly editingGuestIndex = signal<number | null>(null);
 
@@ -1508,7 +1534,7 @@ export class EventDetailComponent implements OnInit {
   readonly isPastEvent = computed<boolean>(() => {
     const e = this.event();
     if (!e) return false;
-    const now = new Date();
+    const now = this.nowSignal();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     if (e.eventDate < todayStr) return true;
     if (e.eventDate === todayStr) {
@@ -1521,7 +1547,7 @@ export class EventDetailComponent implements OnInit {
   readonly isPastCutoff = computed<boolean>(() => {
     const e = this.event();
     if (!e) return false;
-    const now = new Date();
+    const now = this.nowSignal();
     const [y, m, d] = e.eventDate.split('-').map(Number);
     const [h, min] = e.eventTime.split(':').map(Number);
     const cutoffMinutes = h * 60 + min - 150;
@@ -1564,7 +1590,29 @@ export class EventDetailComponent implements OnInit {
     return prevNight ? `${timeStr} (night before)` : timeStr;
   });
 
+  hasUnsavedChanges(): boolean {
+    const idx = this.editingGuestIndex();
+    if (idx === null) return false;
+    const email = this.guestEmailControls[idx]?.value?.trim() ?? '';
+    if (email) return true;
+    const savedName = this.myRsvp()?.guestNames?.[idx] ?? '';
+    const currentName = this.guestNameControls[idx]?.value ?? '';
+    return currentName.trim() !== savedName.trim();
+  }
+
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent): void {
+    if (this.hasUnsavedChanges()) {
+      event.preventDefault();
+    }
+  }
+
+  ngOnDestroy(): void {
+    clearInterval(this.clockInterval);
+  }
+
   ngOnInit(): void {
+    this.clockInterval = setInterval(() => this.nowSignal.set(new Date()), 60_000);
     const id = Number(this.route.snapshot.paramMap.get('id'));
     this.walkinSearch$.pipe(
       debounceTime(250),
@@ -1936,7 +1984,12 @@ export class EventDetailComponent implements OnInit {
       },
       error: (err) => {
         this.publicRsvpLoading.set(false);
-        this.publicRsvpError.set(err?.error?.message ?? 'Something went wrong. Please try again.');
+        const msg = err?.error?.message;
+        this.publicRsvpError.set(
+          msg === 'already_a_member'
+            ? 'This email belongs to a DinnerBears member — please log in to RSVP.'
+            : (msg ?? 'Something went wrong. Please try again.'),
+        );
       },
     });
   }

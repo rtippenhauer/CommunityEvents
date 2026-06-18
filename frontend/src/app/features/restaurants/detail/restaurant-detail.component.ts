@@ -26,6 +26,7 @@ import { RestaurantFormDialogComponent } from '../form/restaurant-form-dialog.co
 import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-dialog/photo-crop-dialog.component';
 import { EventFormDialogComponent } from '../../events/form/event-form-dialog.component';
 import { Event as DinnerEvent } from '../../../core/services/events.service';
+import { ReportButtonComponent } from '../../../shared/components/report-button/report-button.component';
 
 @Component({
   selector: 'app-restaurant-detail',
@@ -47,6 +48,7 @@ import { Event as DinnerEvent } from '../../../core/services/events.service';
     MatProgressSpinnerModule,
     MatSelectModule,
     MatSnackBarModule,
+    ReportButtonComponent,
   ],
   template: `
     @if (loading()) {
@@ -252,6 +254,10 @@ import { Event as DinnerEvent } from '../../../core/services/events.service';
                             <span class="review-score">{{ ((review.food + review.service + review.valueRating + review.noise) / 4) | number:'1.1-1' }}</span>
                             <mat-icon class="review-star">star</mat-icon>
                           </div>
+                          <app-report-button
+                            contentType="restaurant_rating"
+                            [contentId]="review.id"
+                            [authorId]="review.memberId" />
                         </div>
                         @if (review.comment) {
                           <p class="review-comment">{{ review.comment }}</p>

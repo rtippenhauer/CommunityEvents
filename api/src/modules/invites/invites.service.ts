@@ -1,10 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { InviteEntity, InviteFlavor, InviteType } from '../../database/entities/invite.entity';
-import { UserEntity } from '../../database/entities/user.entity';
+import { UserEntity, UserStatus } from '../../database/entities/user.entity';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
@@ -15,6 +15,8 @@ export class InvitesService {
   constructor(
     @InjectRepository(InviteEntity)
     private readonly inviteRepo: Repository<InviteEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
   ) {}
@@ -28,6 +30,13 @@ export class InvitesService {
     }
 
     if (dto.type === InviteType.MEMBER && dto.boundToEmail) {
+      const existingMember = await this.userRepo.findOne({
+        where: { email: dto.boundToEmail.toLowerCase(), status: Not(UserStatus.DELETED) },
+      });
+      if (existingMember) {
+        throw new BadRequestException('already_a_member');
+      }
+
       const existing = await this.inviteRepo.findOne({
         where: {
           boundToEmail: dto.boundToEmail,
@@ -37,7 +46,7 @@ export class InvitesService {
         },
       });
       if (existing && existing.expiresAt > new Date()) {
-        throw new BadRequestException('An active invite already exists for this email');
+        throw new BadRequestException('invite_already_exists');
       }
     }
 

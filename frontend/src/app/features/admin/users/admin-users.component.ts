@@ -14,6 +14,12 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
+interface OAuthProvider {
+  provider: 'facebook' | 'google';
+  providerId: string;
+  email: string | null;
+}
+
 interface AdminUser {
   id: number;
   fullName: string;
@@ -27,6 +33,7 @@ interface AdminUser {
   createdAt: string;
   lastLoginAt: string | null;
   loginCount: number;
+  oauthProviders: OAuthProvider[];
 }
 
 @Component({
@@ -84,6 +91,22 @@ interface AdminUser {
                     <div class="name-cell">
                       <a class="name-link" [routerLink]="['/members', u.id]">{{ u.fullName }}</a>
                       <span class="email">{{ u.email }}</span>
+                      @if (u.oauthProviders?.length) {
+                        <div class="provider-badges">
+                          @for (p of u.oauthProviders; track p.provider) {
+                            @if (p.provider === 'facebook') {
+                              <a class="provider-badge badge-fb"
+                                 [href]="'https://www.facebook.com/profile.php?id=' + p.providerId"
+                                 target="_blank" rel="noopener noreferrer"
+                                 matTooltip="View Facebook profile"
+                                 (click)="$event.stopPropagation()">fb</a>
+                            } @else if (p.provider === 'google') {
+                              <span class="provider-badge badge-g"
+                                    [matTooltip]="p.email ? 'Google: ' + p.email : 'Google account linked'">G</span>
+                            }
+                          }
+                        </div>
+                      }
                     </div>
                   </td>
                 </ng-container>
@@ -230,6 +253,10 @@ interface AdminUser {
       &:hover { color: var(--db-amber); text-decoration: underline; }
     }
     .email { font-size: 0.75rem; color: #888; }
+    .provider-badges { display: flex; gap: 4px; margin-top: 2px; }
+    .provider-badge { font-size: 0.62rem; font-weight: 700; padding: 1px 5px; border-radius: 3px; line-height: 1.6; cursor: default; text-decoration: none; user-select: none; }
+    .badge-fb { background: #1877f2; color: #fff; cursor: pointer; &:hover { background: #0f5cbf; } }
+    .badge-g { background: #ea4335; color: #fff; }
     .login-count { font-size: 0.75rem; color: #aaa; margin-left: 4px; }
     mat-chip {
       font-size: 0.75rem !important;

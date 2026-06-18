@@ -101,6 +101,7 @@ export class RatingsService {
       .addSelect('r.noise', 'noise')
       .addSelect('r.comment', 'comment')
       .addSelect('r.created_at', 'createdAt')
+      .addSelect('m.id', 'memberId')
       .addSelect('m.fullName', 'memberName')
       .addSelect('m.profilePhotoPath', 'memberPhoto')
       .addSelect("DATE_FORMAT(e.event_date, '%Y-%m-%d')", 'eventDate')
@@ -115,6 +116,7 @@ export class RatingsService {
         noise: number;
         comment: string | null;
         createdAt: Date;
+        memberId: number;
         memberName: string;
         memberPhoto: string | null;
         eventDate: string;
@@ -166,6 +168,7 @@ export class RatingsService {
       },
       reviews: reviews.map((row) => ({
         id: row.id,
+        memberId: Number(row.memberId),
         memberName: row.memberName,
         memberPhoto: row.memberPhoto,
         eventDate: row.eventDate,

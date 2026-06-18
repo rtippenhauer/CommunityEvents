@@ -198,7 +198,7 @@ export class InviteComponent implements OnInit {
     if (this.form.invalid) return;
     this.creating.set(true);
     const { boundToEmail, boundToName } = this.form.getRawValue();
-    const body: Record<string, string> = { boundToEmail };
+    const body: Record<string, string> = { type: 'member', boundToEmail };
     if (boundToName.trim()) body['boundToName'] = boundToName.trim();
 
     this.http.post<Invite>('/api/v1/invites', body).subscribe({
@@ -210,7 +210,14 @@ export class InviteComponent implements OnInit {
       },
       error: (err) => {
         this.creating.set(false);
-        this.snackBar.open(err?.error?.message ?? 'Failed to create invite', 'OK', { duration: 4000 });
+        const msg = err?.error?.message;
+        if (msg === 'already_a_member') {
+          this.snackBar.open('This person is already a DinnerBears member.', 'OK', { duration: 5000 });
+        } else if (msg === 'invite_already_exists') {
+          this.snackBar.open('An invite was already sent to this email and is still active.', 'OK', { duration: 5000 });
+        } else {
+          this.snackBar.open(msg ?? 'Failed to create invite', 'OK', { duration: 4000 });
+        }
       },
     });
   }
