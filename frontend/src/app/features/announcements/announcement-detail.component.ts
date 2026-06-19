@@ -49,12 +49,6 @@ import { ReportButtonComponent } from '../../shared/components/report-button/rep
 
         <div class="ann-body" [innerHTML]="announcement()!.body"></div>
 
-        <div class="flag-row">
-          <button mat-button class="flag-btn" (click)="flagAnnouncement()">
-            <mat-icon>flag</mat-icon> Report
-          </button>
-        </div>
-
         <!-- Comments -->
         <div class="comments-section">
           <h2 class="comments-title">
@@ -117,9 +111,7 @@ import { ReportButtonComponent } from '../../shared/components/report-button/rep
     .ann-title { margin: 0 0 8px; font-size: 1.6rem; font-weight: 700; color: var(--db-brown-dark); line-height: 1.2; }
     .ann-author { display: flex; align-items: center; gap: 4px; font-size: 0.82rem; color: #888; }
     .author-icon { font-size: 1rem; width: 1rem; height: 1rem; }
-    .ann-body { font-size: 0.95rem; line-height: 1.7; color: var(--db-brown-dark); margin-bottom: 8px; }
-    .flag-row { margin-bottom: 24px; }
-    .flag-btn { font-size: 0.8rem; color: #aaa; min-width: 0; padding: 0 8px; }
+    .ann-body { font-size: 0.95rem; line-height: 1.7; color: var(--db-brown-dark); margin-bottom: 24px; }
     .comments-section { border-top: 1px solid #e8e0d6; padding-top: 24px; }
     .comments-title { font-size: 1.1rem; font-weight: 600; color: var(--db-brown-dark); margin: 0 0 16px; }
     .comment-count { font-weight: 400; color: #888; font-size: 0.9rem; }
@@ -193,14 +185,5 @@ export class AnnouncementDetailComponent implements OnInit {
       error: () => this.snackBar.open('Failed to delete comment', 'OK', { duration: 3000 }),
     });
   }
-
-  flagAnnouncement(): void {
-    const ann = this.announcement()!;
-    this.announcementsService.flagContent('announcement', ann.id).subscribe({
-      next: () => this.snackBar.open('Reported. Thank you.', 'OK', { duration: 3000 }),
-      error: () => this.snackBar.open('Already reported or failed.', 'OK', { duration: 3000 }),
-    });
-  }
-
 
 }
