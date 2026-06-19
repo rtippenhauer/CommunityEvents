@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 export interface ConnectedProviders {
   google: { email: string | null } | null;
   facebook: { email: string | null } | null;
+  hasPassword: boolean;
   hasMultipleMethods: boolean;
 }
 

@@ -1,8 +1,11 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AuthService } from '../../../core/services/auth.service';
 import { environment } from '../../../../environments/environment';
@@ -10,7 +13,16 @@ import { environment } from '../../../../environments/environment';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [MatButtonModule, MatCardModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [
+    ReactiveFormsModule,
+    RouterLink,
+    MatButtonModule,
+    MatCardModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+  ],
   template: `
     <div class="login-page">
 
@@ -30,10 +42,11 @@ import { environment } from '../../../../environments/environment';
 
           @if (inviteToken()) {
             <p class="invite-notice">
-              🐾 You have an invite — sign in to claim your seat at the table.
+              🐾 You have an invite — sign in or create an account to claim your seat at the table.
             </p>
           }
 
+          <!-- OAuth buttons -->
           <button mat-raised-button class="google-btn" (click)="signInWithGoogle()">
             <svg class="google-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -57,6 +70,62 @@ import { environment } from '../../../../environments/environment';
             </button>
           }
 
+          <!-- Divider -->
+          <div class="divider"><span>or</span></div>
+
+          <!-- Email / password form -->
+          @if (showEmailForm()) {
+            <form [formGroup]="form" (ngSubmit)="submitEmailForm()" class="email-form">
+              @if (inviteToken()) {
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Full name</mat-label>
+                  <input matInput formControlName="fullName" autocomplete="name" />
+                </mat-form-field>
+              }
+
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Email</mat-label>
+                <input matInput formControlName="email" type="email" autocomplete="email" />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Password</mat-label>
+                <input matInput formControlName="password" [type]="showPassword() ? 'text' : 'password'"
+                  [autocomplete]="inviteToken() ? 'new-password' : 'current-password'" />
+                <button mat-icon-button matSuffix type="button" (click)="showPassword.set(!showPassword())">
+                  <mat-icon>{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                </button>
+              </mat-form-field>
+
+              @if (inviteToken()) {
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Confirm password</mat-label>
+                  <input matInput formControlName="confirmPassword" [type]="showPassword() ? 'text' : 'password'"
+                    autocomplete="new-password" />
+                </mat-form-field>
+              }
+
+              @if (formError()) {
+                <p class="form-error">{{ formError() }}</p>
+              }
+
+              <button mat-raised-button color="primary" type="submit" class="full-width"
+                [disabled]="form.invalid || submitting()">
+                @if (submitting()) { <mat-spinner diameter="20" /> }
+                @else { {{ inviteToken() ? 'Create account' : 'Sign in' }} }
+              </button>
+
+              @if (!inviteToken()) {
+                <a routerLink="/auth/forgot-password" class="forgot-link">Forgot password?</a>
+              }
+            </form>
+          } @else {
+            <button mat-button class="email-toggle-btn" (click)="showEmailForm.set(true)">
+              <mat-icon>mail</mat-icon>
+              {{ inviteToken() ? 'Sign up with email' : 'Sign in with email' }}
+            </button>
+          }
+
           <p class="invite-help">
             Don't have an invite? Contact a DinnerBears member to get one.
           </p>
@@ -71,7 +140,6 @@ import { environment } from '../../../../environments/environment';
       min-height: calc(100vh - 64px - 52px);
     }
 
-    /* Splash panel — left half on desktop, full-width hero on mobile */
     .splash-panel {
       flex: 1;
       min-height: 400px;
@@ -92,7 +160,6 @@ import { environment } from '../../../../environments/environment';
       display: block;
     }
 
-    /* Login panel — right half on desktop, below hero on mobile */
     .login-panel {
       flex: 0 0 420px;
       display: flex;
@@ -120,7 +187,7 @@ import { environment } from '../../../../environments/environment';
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 20px;
+      gap: 16px;
       width: 100%;
       max-width: 340px;
       text-align: center;
@@ -162,7 +229,6 @@ import { environment } from '../../../../environments/environment';
       color: var(--db-text-dark) !important;
       border: 1px solid #dadce0 !important;
       box-shadow: 0 1px 3px rgba(0,0,0,.12) !important;
-      margin-bottom: 12px;
       &:hover { box-shadow: 0 2px 6px rgba(0,0,0,.18) !important; }
     }
 
@@ -174,16 +240,52 @@ import { environment } from '../../../../environments/environment';
       &:hover { background: #166fe5 !important; box-shadow: 0 2px 6px rgba(0,0,0,.3) !important; }
     }
 
-    .fb-icon {
-      width: 20px;
-      height: 20px;
-      flex-shrink: 0;
+    .fb-icon, .google-icon { width: 20px; height: 20px; flex-shrink: 0; }
+
+    .divider {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #bbb;
+      font-size: 0.8rem;
+
+      &::before, &::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: #ddd;
+      }
     }
 
-    .google-icon {
-      width: 20px;
-      height: 20px;
-      flex-shrink: 0;
+    .email-form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      text-align: left;
+    }
+
+    .full-width { width: 100%; }
+
+    .form-error {
+      color: #c62828;
+      font-size: 0.82rem;
+      margin: 0;
+      text-align: center;
+    }
+
+    .forgot-link {
+      font-size: 0.8rem;
+      color: var(--db-primary);
+      text-decoration: none;
+      text-align: center;
+      &:hover { text-decoration: underline; }
+    }
+
+    .email-toggle-btn {
+      color: var(--db-primary);
+      font-size: 0.9rem;
     }
 
     .invite-help {
@@ -197,11 +299,23 @@ export class LoginComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
-  readonly fbLogging = signal(false);
+  private readonly fb = inject(NonNullableFormBuilder);
 
+  readonly fbLogging = signal(false);
   readonly inviteToken = signal<string | null>(null);
   readonly fbReady = signal(false);
   readonly fbStatus = signal<'connected' | 'not_authorized' | 'unknown'>('unknown');
+  readonly showEmailForm = signal(false);
+  readonly showPassword = signal(false);
+  readonly submitting = signal(false);
+  readonly formError = signal<string | null>(null);
+
+  readonly form = this.fb.group({
+    fullName: [''],
+    email: ['', [Validators.required, Validators.email]],
+    password: ['', [Validators.required, Validators.minLength(8)]],
+    confirmPassword: [''],
+  });
 
   ngOnInit(): void {
     if (this.authService.isLoggedIn()) {
@@ -239,10 +353,7 @@ export class LoginComponent implements OnInit {
       return;
     }
 
-    if (win.FB) {
-      onReady();
-      return;
-    }
+    if (win.FB) { onReady(); return; }
 
     win.fbAsyncInit = onReady;
 
@@ -287,5 +398,48 @@ export class LoginComponent implements OnInit {
         void this.router.navigate(['/auth/error'], { queryParams: { reason } });
       },
     });
+  }
+
+  submitEmailForm(): void {
+    this.formError.set(null);
+    const { fullName, email, password, confirmPassword } = this.form.getRawValue();
+    const token = this.inviteToken();
+
+    if (token) {
+      // Registration
+      if (!fullName.trim()) { this.formError.set('Please enter your name.'); return; }
+      if (password !== confirmPassword) { this.formError.set('Passwords do not match.'); return; }
+
+      this.submitting.set(true);
+      this.authService.registerWithPassword(token, fullName.trim(), email, password).subscribe({
+        next: () => {
+          void this.router.navigate(['/auth/verify-email-sent'], { queryParams: { email } });
+        },
+        error: (err) => {
+          this.submitting.set(false);
+          const reason = err?.error?.reason ?? err?.error?.message ?? '';
+          if (reason === 'email_taken') this.formError.set('An account with that email already exists.');
+          else if (reason === 'invite_expired') this.formError.set('Your invite link has expired. Ask for a new one.');
+          else if (reason === 'invite_used') this.formError.set('This invite link has already been used.');
+          else if (reason === 'invite_email_mismatch') this.formError.set('This invite was sent to a different email address.');
+          else this.formError.set('Registration failed. Please try again.');
+        },
+      });
+    } else {
+      // Login
+      this.submitting.set(true);
+      this.authService.loginWithPassword(email, password).subscribe({
+        next: () => this.submitting.set(false),
+        error: (err) => {
+          this.submitting.set(false);
+          const msg = err?.error?.message ?? '';
+          if (msg === 'email_not_verified') {
+            void this.router.navigate(['/auth/verify-email-sent'], { queryParams: { email, resend: true } });
+          } else {
+            this.formError.set('Invalid email or password.');
+          }
+        },
+      });
+    }
   }
 }

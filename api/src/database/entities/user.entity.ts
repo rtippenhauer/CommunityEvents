@@ -62,6 +62,18 @@ export class UserEntity {
   @Column({ name: 'password_hash', type: 'varchar', length: 255, nullable: true })
   passwordHash: string | null;
 
+  @Column({ name: 'email_verification_token', type: 'varchar', length: 255, nullable: true })
+  emailVerificationToken: string | null;
+
+  @Column({ name: 'email_verification_expires_at', type: 'datetime', nullable: true })
+  emailVerificationExpiresAt: Date | null;
+
+  @Column({ name: 'password_reset_token', type: 'varchar', length: 255, nullable: true })
+  passwordResetToken: string | null;
+
+  @Column({ name: 'password_reset_expires_at', type: 'datetime', nullable: true })
+  passwordResetExpiresAt: Date | null;
+
   @Column({ name: 'city_id', unsigned: true })
   cityId: number;
 

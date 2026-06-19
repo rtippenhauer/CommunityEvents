@@ -7,7 +7,9 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
+  Query,
   Req,
   Res,
   UnauthorizedException,
@@ -25,6 +27,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity } from '../../database/entities/user.entity';
 import { OAuthProvider } from '../../database/entities/oauth-account.entity';
 import { FacebookAuthDto } from './dto/facebook-auth.dto';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -215,6 +222,111 @@ export class AuthController {
       }
       throw err;
     }
+  }
+
+  // --- Email / Password ---
+
+  @Post('register')
+  @HttpCode(201)
+  async register(
+    @Body() dto: RegisterDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ message: string }> {
+    try {
+      await this.authService.registerWithPassword(
+        dto.inviteToken,
+        dto.fullName,
+        dto.email,
+        dto.password,
+      );
+    } catch (err) {
+      if (err instanceof AuthFlowError) {
+        const reason = err.reason;
+        if (reason === 'invite_expired') throw new BadRequestException({ message: 'Invite expired', reason });
+        if (reason === 'invite_used') throw new BadRequestException({ message: 'Invite used', reason });
+        if (reason === 'invite_email_mismatch') throw new BadRequestException({ message: 'Invite email mismatch', reason });
+        throw new BadRequestException({ message: 'Invalid invite', reason: 'invalid_invite' });
+      }
+      throw err;
+    }
+    return { message: 'Registration successful. Check your email to verify your account.' };
+  }
+
+  @Post('login')
+  @HttpCode(200)
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ message: string }> {
+    const { accessToken } = await this.authService.loginWithPassword(dto.email, dto.password, {
+      userAgent: (req as unknown as { headers: Record<string, string> }).headers['user-agent'],
+      ipAddress: (req as unknown as { ip: string }).ip,
+    });
+
+    (res as unknown as { cookie: (...args: unknown[]) => void }).cookie('access_token', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+
+    return { message: 'ok' };
+  }
+
+  @Get('verify-email')
+  async verifyEmail(@Query('token') token: string): Promise<{ message: string }> {
+    if (!token) throw new BadRequestException('Missing token');
+    await this.authService.verifyEmail(token);
+    return { message: 'Email verified' };
+  }
+
+  @Post('resend-verification')
+  @HttpCode(200)
+  async resendVerification(@Body('email') email: string): Promise<{ message: string }> {
+    if (email) await this.authService.resendVerification(email);
+    return { message: 'If that email is registered and unverified, a new link has been sent.' };
+  }
+
+  @Post('forgot-password')
+  @HttpCode(200)
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+    await this.authService.forgotPassword(dto.email);
+    return { message: 'If that email is registered, a reset link has been sent.' };
+  }
+
+  @Post('reset-password')
+  @HttpCode(200)
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ message: string }> {
+    await this.authService.resetPassword(dto.token, dto.password);
+    return { message: 'Password updated' };
+  }
+
+  @Post('set-password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  async setPassword(
+    @Body('email') email: string,
+    @Body('password') password: string,
+    @CurrentUser() user: UserEntity,
+  ): Promise<{ message: string; needsVerification: boolean }> {
+    if (!email) throw new BadRequestException('Email is required');
+    if (!password || password.length < 8) throw new BadRequestException('Password must be at least 8 characters');
+    const result = await this.authService.setPassword(user.id, email, password);
+    return { message: result.needsVerification ? 'Check your email to verify your address.' : 'Password set', ...result };
+  }
+
+  @Patch('password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() user: UserEntity,
+  ): Promise<{ message: string }> {
+    await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    return { message: 'Password updated' };
   }
 
   // --- Session ---

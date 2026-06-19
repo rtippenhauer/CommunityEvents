@@ -1,7 +1,7 @@
 import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { ReactiveFormsModule, FormControl } from '@angular/forms';
+import { NonNullableFormBuilder, ReactiveFormsModule, FormControl, Validators } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -115,15 +115,30 @@ import { environment } from '../../../environments/environment';
 
             <mat-divider></mat-divider>
 
-            <!-- Email/Password — stub for Phase 11 -->
+            <mat-divider></mat-divider>
+
+            <!-- Email/Password -->
             <div class="provider-row">
               <div class="provider-info">
-                <mat-icon class="provider-icon-mat">email</mat-icon>
+                <mat-icon class="provider-icon-mat">lock</mat-icon>
                 <div class="provider-text">
-                  <span class="provider-name">Email / Password</span>
-                  <span class="provider-email not-connected">Available in a future update</span>
+                  <span class="provider-name">Password</span>
+                  @if (providers()!.hasPassword) {
+                    <span class="provider-email">Password set</span>
+                  } @else {
+                    <span class="provider-email not-connected">No password set</span>
+                  }
                 </div>
               </div>
+              @if (providers()!.hasPassword) {
+                @if (providers()!.hasMultipleMethods) {
+                  <button mat-stroked-button (click)="showChangePasswordDialog.set(true)">Change</button>
+                } @else {
+                  <span class="only-method-label">Only login method</span>
+                }
+              } @else {
+                <button mat-stroked-button (click)="openSetPasswordDialog()">Set password</button>
+              }
             </div>
           }
         </mat-card-content>
@@ -155,6 +170,89 @@ import { environment } from '../../../environments/environment';
             </p>
           </mat-card-content>
         </mat-card>
+      }
+
+      <!-- Set password dialog (first time — no current password needed) -->
+      @if (showSetPasswordDialog()) {
+        <div class="dialog-backdrop" (click)="showSetPasswordDialog.set(false)">
+          <div class="dialog-panel" (click)="$event.stopPropagation()">
+            <h2>Set a password</h2>
+            <p>Add a password so you can sign in with email in addition to your connected accounts.</p>
+            <form [formGroup]="setPasswordForm" (ngSubmit)="submitSetPassword()" class="pw-form">
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Email for sign-in</mat-label>
+                <input matInput formControlName="email" type="email" autocomplete="email" />
+                <mat-hint>This is the email you'll use to sign in with a password</mat-hint>
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>New password</mat-label>
+                <input matInput formControlName="newPassword"
+                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="new-password" />
+                <button mat-icon-button matSuffix type="button" (click)="showChangePw.set(!showChangePw())">
+                  <mat-icon>{{ showChangePw() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                </button>
+                <mat-hint>At least 8 characters</mat-hint>
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Confirm password</mat-label>
+                <input matInput formControlName="confirmPassword"
+                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="new-password" />
+              </mat-form-field>
+              @if (changePasswordError()) {
+                <p class="form-error">{{ changePasswordError() }}</p>
+              }
+              <div class="dialog-actions">
+                <button mat-button type="button" (click)="showSetPasswordDialog.set(false)">Cancel</button>
+                <button mat-raised-button color="primary" type="submit"
+                  [disabled]="setPasswordForm.invalid || changingPassword()">
+                  @if (changingPassword()) { <mat-spinner diameter="18" /> }
+                  @else { Set password }
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      }
+
+      <!-- Change password dialog -->
+      @if (showChangePasswordDialog()) {
+        <div class="dialog-backdrop" (click)="showChangePasswordDialog.set(false)">
+          <div class="dialog-panel" (click)="$event.stopPropagation()">
+            <h2>Change password</h2>
+            <form [formGroup]="changePasswordForm" (ngSubmit)="submitChangePassword()" class="pw-form">
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Current password</mat-label>
+                <input matInput formControlName="currentPassword"
+                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="current-password" />
+                <button mat-icon-button matSuffix type="button" (click)="showChangePw.set(!showChangePw())">
+                  <mat-icon>{{ showChangePw() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                </button>
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>New password</mat-label>
+                <input matInput formControlName="newPassword"
+                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="new-password" />
+                <mat-hint>At least 8 characters</mat-hint>
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="full-width">
+                <mat-label>Confirm new password</mat-label>
+                <input matInput formControlName="confirmPassword"
+                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="new-password" />
+              </mat-form-field>
+              @if (changePasswordError()) {
+                <p class="form-error">{{ changePasswordError() }}</p>
+              }
+              <div class="dialog-actions">
+                <button mat-button type="button" (click)="showChangePasswordDialog.set(false)">Cancel</button>
+                <button mat-raised-button color="primary" type="submit"
+                  [disabled]="changePasswordForm.invalid || changingPassword()">
+                  @if (changingPassword()) { <mat-spinner diameter="18" /> }
+                  @else { Update password }
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       }
 
       <!-- Disconnect confirmation dialog -->
@@ -404,6 +502,21 @@ import { environment } from '../../../environments/environment';
       width: 100%;
       margin-top: 4px;
     }
+
+    .pw-form {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 8px;
+    }
+
+    .full-width { width: 100%; }
+
+    .form-error {
+      color: #c62828;
+      font-size: 0.82rem;
+      margin: 4px 0 0;
+    }
   `],
 })
 export class AccountSettingsComponent implements OnInit {
@@ -424,6 +537,25 @@ export class AccountSettingsComponent implements OnInit {
   readonly pendingProvider = signal<'google' | 'facebook' | null>(null);
 
   readonly deleteConfirmCtrl = new FormControl('');
+
+  readonly showChangePasswordDialog = signal(false);
+  readonly showSetPasswordDialog = signal(false);
+  readonly changingPassword = signal(false);
+  readonly changePasswordError = signal<string | null>(null);
+  readonly showChangePw = signal(false);
+
+  private readonly fb = inject(NonNullableFormBuilder);
+  readonly setPasswordForm = this.fb.group({
+    email: ['', [Validators.required, Validators.email]],
+    newPassword: ['', [Validators.required, Validators.minLength(8)]],
+    confirmPassword: ['', Validators.required],
+  });
+
+  readonly changePasswordForm = this.fb.group({
+    currentPassword: ['', Validators.required],
+    newPassword: ['', [Validators.required, Validators.minLength(8)]],
+    confirmPassword: ['', Validators.required],
+  });
 
   readonly facebookEnabled = !!environment.facebookAppId;
   readonly fbReady = signal(false);
@@ -533,6 +665,69 @@ export class AccountSettingsComponent implements OnInit {
       js.src = 'https://connect.facebook.net/en_US/sdk.js';
       document.head.appendChild(js);
     }
+  }
+
+  openSetPasswordDialog(): void {
+    const currentEmail = this.authService.currentUser()?.email ?? '';
+    this.setPasswordForm.reset({ email: currentEmail, newPassword: '', confirmPassword: '' });
+    this.changePasswordError.set(null);
+    this.showSetPasswordDialog.set(true);
+  }
+
+  submitSetPassword(): void {
+    this.changePasswordError.set(null);
+    const { email, newPassword, confirmPassword } = this.setPasswordForm.getRawValue();
+    if (newPassword !== confirmPassword) { this.changePasswordError.set('Passwords do not match.'); return; }
+    this.changingPassword.set(true);
+    this.authService.setPassword(email, newPassword).subscribe({
+      next: (res) => {
+        this.changingPassword.set(false);
+        this.showSetPasswordDialog.set(false);
+        this.setPasswordForm.reset();
+        if (res.needsVerification) {
+          this.snackBar.open(`Password set. Check ${email} to verify your address before signing in with it.`, 'OK', { duration: 7000 });
+        } else {
+          this.snackBar.open('Password set successfully.', 'OK', { duration: 3000 });
+        }
+        this.loadProviders();
+      },
+      error: (err) => {
+        this.changingPassword.set(false);
+        const msg = err?.error?.message ?? '';
+        if (msg === 'email_taken') {
+          this.changePasswordError.set('That email is already associated with another account.');
+        } else {
+          this.changePasswordError.set('Something went wrong. Please try again.');
+        }
+      },
+    });
+  }
+
+  submitChangePassword(): void {
+    this.changePasswordError.set(null);
+    const { currentPassword, newPassword, confirmPassword } = this.changePasswordForm.getRawValue();
+    if (newPassword !== confirmPassword) {
+      this.changePasswordError.set('New passwords do not match.');
+      return;
+    }
+    this.changingPassword.set(true);
+    this.authService.changePassword(currentPassword, newPassword).subscribe({
+      next: () => {
+        this.changingPassword.set(false);
+        this.showChangePasswordDialog.set(false);
+        this.changePasswordForm.reset();
+        this.snackBar.open('Password updated.', 'OK', { duration: 3000 });
+      },
+      error: (err) => {
+        this.changingPassword.set(false);
+        const msg = err?.error?.message ?? '';
+        if (msg === 'invalid_credentials') {
+          this.changePasswordError.set('Current password is incorrect.');
+        } else {
+          this.changePasswordError.set('Something went wrong. Please try again.');
+        }
+      },
+    });
   }
 
   startDeleteFlow(): void {

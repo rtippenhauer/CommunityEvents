@@ -1,10 +1,11 @@
-import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import * as geoip from 'geoip-lite';
 import { UserEntity, EmailStatus, InviteSource, UserRole, UserStatus } from '../../database/entities/user.entity';
 import { OAuthAccountEntity, OAuthProvider } from '../../database/entities/oauth-account.entity';
@@ -323,16 +324,22 @@ export class AuthService {
   async getConnectedProviders(userId: number): Promise<{
     google: { email: string | null } | null;
     facebook: { email: string | null } | null;
+    hasPassword: boolean;
     hasMultipleMethods: boolean;
   }> {
-    const accounts = await this.oauthRepo.find({ where: { userId } });
+    const [accounts, user] = await Promise.all([
+      this.oauthRepo.find({ where: { userId } }),
+      this.userRepo.findOneOrFail({ where: { id: userId } }),
+    ]);
     const google = accounts.find((a) => a.provider === OAuthProvider.GOOGLE) ?? null;
     const facebook = accounts.find((a) => a.provider === OAuthProvider.FACEBOOK) ?? null;
-    const count = accounts.length;
+    const hasPassword = !!user.passwordHash;
+    const methodCount = accounts.length + (hasPassword ? 1 : 0);
     return {
       google: google ? { email: google.email } : null,
       facebook: facebook ? { email: facebook.email } : null,
-      hasMultipleMethods: count > 1,
+      hasPassword,
+      hasMultipleMethods: methodCount > 1,
     };
   }
 
@@ -343,8 +350,9 @@ export class AuthService {
 
     if (!target) throw new NotFoundException(`${provider} is not linked to your account`);
 
-    if (accounts.length <= 1) {
-      // Only auth method — cannot disconnect
+    const hasPassword = !!user.passwordHash;
+    if (accounts.length <= 1 && !hasPassword) {
+      // No other login method — cannot disconnect
       throw new ConflictException('ONLY_AUTH_METHOD');
     }
 
@@ -524,5 +532,245 @@ export class AuthService {
     const { passwordHash: _pw, ...safe } = user as UserEntity & { passwordHash: unknown };
     void _pw;
     return safe;
+  }
+
+  // ── Email / Password ────────────────────────────────────────────────────────
+
+  async registerWithPassword(
+    inviteToken: string,
+    fullName: string,
+    email: string,
+    password: string,
+  ): Promise<UserEntity> {
+    const lowerEmail = email.toLowerCase();
+
+    const existing = await this.userRepo.findOne({
+      where: { email: lowerEmail },
+    });
+    if (existing && existing.status !== UserStatus.DELETED) {
+      throw new ConflictException('email_taken');
+    }
+
+    let invite = null;
+    try {
+      invite = await this.invitesService.validate(inviteToken, lowerEmail);
+    } catch (err) {
+      if (err instanceof AuthFlowError) throw err;
+      if (err instanceof NotFoundException) throw new AuthFlowError('invalid_invite');
+      const msg: string = (err as Error).message ?? '';
+      if (msg.includes('expired')) throw new AuthFlowError('invite_expired');
+      if (msg.includes('already been used') || msg.includes('revoked')) throw new AuthFlowError('invite_used');
+      throw new AuthFlowError('invalid_invite');
+    }
+
+    if (existing?.status === UserStatus.DELETED) {
+      await this.releaseDeletedEmail(lowerEmail);
+    }
+
+    const defaultCity = await this.citiesService.findAll().then((c) => c[0]);
+    const passwordHash = await bcrypt.hash(password, 12);
+    const verificationToken = randomBytes(32).toString('hex');
+    const verificationExpires = new Date();
+    verificationExpires.setHours(verificationExpires.getHours() + 48);
+
+    const user = this.userRepo.create({
+      fullName,
+      email: lowerEmail,
+      passwordHash,
+      emailStatus: EmailStatus.PENDING,
+      emailVerificationToken: verificationToken,
+      emailVerificationExpiresAt: verificationExpires,
+      cityId: defaultCity.id,
+      role: UserRole.MEMBER,
+      status: UserStatus.ACTIVE,
+      inviteId: invite?.id ?? null,
+      invitedBy: invite?.createdBy ?? null,
+      inviteSource: InviteSource.DIRECT,
+    });
+
+    const saved = await this.userRepo.save(user);
+    await this.invitesService.redeem(invite, saved);
+    await this.sendVerificationEmail(saved, verificationToken);
+
+    return saved;
+  }
+
+  async loginWithPassword(
+    email: string,
+    password: string,
+    ctx: SessionContext,
+  ): Promise<{ accessToken: string; jti: string }> {
+    const user = await this.userRepo.findOne({ where: { email: email.toLowerCase() } });
+
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('invalid_credentials');
+    }
+    if (user.status === UserStatus.SUSPENDED || user.status === UserStatus.DELETED) {
+      throw new UnauthorizedException('not_active');
+    }
+
+    const match = await bcrypt.compare(password, user.passwordHash);
+    if (!match) throw new UnauthorizedException('invalid_credentials');
+
+    if (user.emailStatus === EmailStatus.PENDING) {
+      throw new UnauthorizedException('email_not_verified');
+    }
+
+    return this.issueTokens(user, ctx);
+  }
+
+  async verifyEmail(token: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { emailVerificationToken: token } });
+
+    if (!user) throw new BadRequestException('invalid_token');
+    if (!user.emailVerificationExpiresAt || user.emailVerificationExpiresAt < new Date()) {
+      throw new BadRequestException('token_expired');
+    }
+
+    await this.userRepo.update(user.id, {
+      emailStatus: EmailStatus.ACTIVE,
+      emailVerifiedAt: new Date(),
+      emailVerificationToken: null,
+      emailVerificationExpiresAt: null,
+    });
+  }
+
+  async resendVerification(email: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { email: email.toLowerCase() } });
+
+    // Always return success to prevent email enumeration
+    if (!user || user.emailStatus !== EmailStatus.PENDING || !user.passwordHash) return;
+
+    const token = randomBytes(32).toString('hex');
+    const expires = new Date();
+    expires.setHours(expires.getHours() + 48);
+
+    await this.userRepo.update(user.id, {
+      emailVerificationToken: token,
+      emailVerificationExpiresAt: expires,
+    });
+
+    await this.sendVerificationEmail(user, token);
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { email: email.toLowerCase() } });
+
+    // Always return success to prevent email enumeration
+    if (!user || !user.passwordHash || user.status !== UserStatus.ACTIVE) return;
+
+    const token = randomBytes(32).toString('hex');
+    const expires = new Date();
+    expires.setHours(expires.getHours() + 1);
+
+    await this.userRepo.update(user.id, {
+      passwordResetToken: token,
+      passwordResetExpiresAt: expires,
+    });
+
+    const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
+    const resetUrl = `${appUrl}/auth/reset-password?token=${token}`;
+
+    await this.emailService.queue({
+      toEmail: user.email,
+      toName: user.fullName,
+      subject: 'Reset your DinnerBears password',
+      templateId: undefined,
+      htmlBody: `
+        <h2>Password reset request</h2>
+        <p>Hi ${user.fullName},</p>
+        <p>Click the link below to reset your password. This link expires in 1 hour.</p>
+        <p><a href="${resetUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Reset Password</a></p>
+        <p style="color:#888;font-size:0.85em">If you didn't request this, you can safely ignore this email.</p>
+      `,
+    });
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { passwordResetToken: token } });
+
+    if (!user) throw new BadRequestException('invalid_token');
+    if (!user.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
+      throw new BadRequestException('token_expired');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await this.userRepo.update(user.id, {
+      passwordHash,
+      passwordResetToken: null,
+      passwordResetExpiresAt: null,
+    });
+  }
+
+  async setPassword(userId: number, email: string, newPassword: string): Promise<{ needsVerification: boolean }> {
+    const lowerEmail = email.toLowerCase();
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.passwordHash) throw new BadRequestException('password_already_set');
+
+    const emailChanged = lowerEmail !== user.email.toLowerCase();
+
+    if (emailChanged) {
+      const taken = await this.userRepo.findOne({ where: { email: lowerEmail } });
+      if (taken && taken.id !== userId) throw new ConflictException('email_taken');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    if (emailChanged) {
+      const verificationToken = randomBytes(32).toString('hex');
+      const verificationExpires = new Date();
+      verificationExpires.setHours(verificationExpires.getHours() + 48);
+
+      await this.userRepo.update(userId, {
+        email: lowerEmail,
+        passwordHash,
+        emailStatus: EmailStatus.PENDING,
+        emailVerifiedAt: null,
+        emailVerificationToken: verificationToken,
+        emailVerificationExpiresAt: verificationExpires,
+      });
+
+      await this.sendVerificationEmail({ ...user, email: lowerEmail, fullName: user.fullName }, verificationToken);
+      return { needsVerification: true };
+    }
+
+    await this.userRepo.update(userId, {
+      passwordHash,
+      emailStatus: EmailStatus.ACTIVE,
+      emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+    });
+    return { needsVerification: false };
+  }
+
+  async changePassword(userId: number, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user || !user.passwordHash) throw new BadRequestException('no_password');
+
+    const match = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!match) throw new UnauthorizedException('invalid_credentials');
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.userRepo.update(userId, { passwordHash });
+  }
+
+  private async sendVerificationEmail(user: UserEntity, token: string): Promise<void> {
+    const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
+    const verifyUrl = `${appUrl}/auth/verify-email?token=${token}`;
+
+    await this.emailService.queue({
+      toEmail: user.email,
+      toName: user.fullName,
+      subject: 'Verify your DinnerBears email',
+      templateId: undefined,
+      htmlBody: `
+        <h2>Welcome to DinnerBears!</h2>
+        <p>Hi ${user.fullName},</p>
+        <p>Click below to verify your email and activate your account. This link expires in 48 hours.</p>
+        <p><a href="${verifyUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Verify Email</a></p>
+        <p style="color:#888;font-size:0.85em">If you didn't create a DinnerBears account, you can safely ignore this email.</p>
+      `,
+    });
   }
 }

@@ -33,10 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 10.6 — Content Reporting** — Unified report-a-post system across event comments, announcement comments, and restaurant ratings; mod/admin review queue with one-click dismiss or delete.
+**Phase 11 — Email/Password Auth** — Add email+password login alongside existing OAuth, including email verification, password reset, and password change flows (Facebook OAuth already complete).
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

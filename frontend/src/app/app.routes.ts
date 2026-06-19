@@ -28,6 +28,26 @@ export const routes: Routes = [
       import('./features/auth/error/auth-error.component').then((m) => m.AuthErrorComponent),
   },
   {
+    path: 'auth/verify-email',
+    loadComponent: () =>
+      import('./features/auth/verify-email/verify-email.component').then((m) => m.VerifyEmailComponent),
+  },
+  {
+    path: 'auth/verify-email-sent',
+    loadComponent: () =>
+      import('./features/auth/verify-email-sent/verify-email-sent.component').then((m) => m.VerifyEmailSentComponent),
+  },
+  {
+    path: 'auth/forgot-password',
+    loadComponent: () =>
+      import('./features/auth/forgot-password/forgot-password.component').then((m) => m.ForgotPasswordComponent),
+  },
+  {
+    path: 'auth/reset-password',
+    loadComponent: () =>
+      import('./features/auth/reset-password/reset-password.component').then((m) => m.ResetPasswordComponent),
+  },
+  {
     path: 'profile',
     loadComponent: () =>
       import('./features/profile/profile.component').then((m) => m.ProfileComponent),
