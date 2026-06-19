@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -39,6 +40,7 @@ interface Invite {
     ReactiveFormsModule,
     DatePipe,
     MatCardModule,
+    MatCheckboxModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
@@ -101,8 +103,9 @@ interface Invite {
               <div class="limits-row">
                 <mat-form-field appearance="outline" class="limit-field">
                   <mat-label>Expiry (days)</mat-label>
-                  <input matInput type="number" formControlName="expiryDays" min="1" max="30" />
-                  <mat-hint>1–30, default 30</mat-hint>
+                  <input matInput type="number" formControlName="expiryDays" min="1" max="365"
+                    [disabled]="!!form.value.noExpiry" />
+                  <mat-hint>{{ form.value.noExpiry ? 'No expiry (2099)' : '1–365, default 30' }}</mat-hint>
                 </mat-form-field>
                 <mat-form-field appearance="outline" class="limit-field">
                   <mat-label>Max uses</mat-label>
@@ -110,6 +113,7 @@ interface Invite {
                   <mat-hint>Leave blank for unlimited</mat-hint>
                 </mat-form-field>
               </div>
+              <mat-checkbox formControlName="noExpiry">No expiry</mat-checkbox>
             }
 
             <mat-card-actions>
@@ -271,6 +275,7 @@ export class AdminInvitesComponent implements OnInit {
     facebookGroupId: [null as number | null],
     expiryDays: [null as number | null],
     maxUses: [null as number | null],
+    noExpiry: [false],
   });
 
   ngOnInit(): void {
@@ -285,7 +290,7 @@ export class AdminInvitesComponent implements OnInit {
   }
 
   create(): void {
-    const { type, boundToEmail, boundToName, facebookGroupId, expiryDays, maxUses } = this.form.getRawValue();
+    const { type, boundToEmail, boundToName, facebookGroupId, expiryDays, maxUses, noExpiry } = this.form.getRawValue();
     const body: Record<string, unknown> = { type };
     if (type === 'member') {
       body['boundToEmail'] = boundToEmail;
@@ -295,7 +300,8 @@ export class AdminInvitesComponent implements OnInit {
       body['facebookGroupId'] = facebookGroupId;
     }
     if (type !== 'member') {
-      if (expiryDays) body['expiryDays'] = expiryDays;
+      if (noExpiry) body['noExpiry'] = true;
+      else if (expiryDays) body['expiryDays'] = expiryDays;
       if (maxUses) body['maxUses'] = maxUses;
     }
 

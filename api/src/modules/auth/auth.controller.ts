@@ -105,6 +105,7 @@ export class AuthController {
         const reason = err.reason;
         if (reason === 'not_active') throw new UnauthorizedException({ message: 'Account not active', reason });
         if (reason === 'no_invite') throw new UnauthorizedException({ message: 'No invite', reason });
+        if (reason === 'provider_not_linked') throw new UnauthorizedException({ message: 'Facebook not linked to this account', reason });
         if (reason === 'invite_expired') throw new BadRequestException({ message: 'Invite expired', reason });
         if (reason === 'invite_used') throw new BadRequestException({ message: 'Invite used', reason });
         if (reason === 'invite_email_mismatch') throw new BadRequestException({ message: 'Invite email mismatch', reason });

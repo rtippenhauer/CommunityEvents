@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsInt,
@@ -41,7 +42,11 @@ export class CreateInviteDto {
 
   @IsInt()
   @Min(1)
-  @Max(30)
+  @Max(365)
   @IsOptional()
   expiryDays?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  noExpiry?: boolean;
 }

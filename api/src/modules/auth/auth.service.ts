@@ -217,15 +217,9 @@ export class AuthService {
           throw new AuthFlowError('not_active');
         }
         if (existingByEmail.status !== UserStatus.DELETED) {
-          await this.oauthRepo.save(
-            this.oauthRepo.create({
-              userId: existingByEmail.id,
-              provider: OAuthProvider.FACEBOOK,
-              providerId: facebookId,
-              email: email.toLowerCase(),
-            }),
-          );
-          return existingByEmail;
+          // Account exists but Facebook is not linked — it was either never linked or was
+          // disconnected. Do NOT auto-relink; require the user to reconnect via account settings.
+          throw new AuthFlowError('provider_not_linked');
         }
         // DELETED: fall through — fresh registration; scramble old email before insert
       }

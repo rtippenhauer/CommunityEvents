@@ -53,6 +53,8 @@ export class InvitesService {
     const expiresAt = new Date();
     if (dto.type === InviteType.MEMBER) {
       expiresAt.setHours(expiresAt.getHours() + 48);
+    } else if (dto.noExpiry) {
+      expiresAt.setFullYear(2099);
     } else {
       expiresAt.setDate(expiresAt.getDate() + (dto.expiryDays ?? 30));
     }

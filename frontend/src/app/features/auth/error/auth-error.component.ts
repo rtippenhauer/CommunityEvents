@@ -52,6 +52,12 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
     body: 'Something went wrong verifying your Facebook account. Please try again, or use Google to sign in instead.',
     showInviteHint: false,
   },
+  provider_not_linked: {
+    icon: 'link_off',
+    title: 'Facebook login not connected',
+    body: 'Facebook is not linked to your DinnerBears account. Sign in with Google instead, then reconnect Facebook from Account Settings if you want to use it again.',
+    showInviteHint: false,
+  },
 };
 
 const FALLBACK: ErrorContent = {
