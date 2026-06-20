@@ -95,11 +95,8 @@ interface AdminUser {
                         <div class="provider-badges">
                           @for (p of u.oauthProviders; track p.provider) {
                             @if (p.provider === 'facebook') {
-                              <a class="provider-badge badge-fb"
-                                 [href]="'https://www.facebook.com/profile.php?id=' + p.providerId"
-                                 target="_blank" rel="noopener noreferrer"
-                                 matTooltip="View Facebook profile"
-                                 (click)="$event.stopPropagation()">fb</a>
+                              <span class="provider-badge badge-fb"
+                                    matTooltip="Facebook connected">fb</span>
                             } @else if (p.provider === 'google') {
                               <span class="provider-badge badge-g"
                                     [matTooltip]="p.email ? 'Google: ' + p.email : 'Google account linked'">G</span>
@@ -255,7 +252,7 @@ interface AdminUser {
     .email { font-size: 0.75rem; color: #888; }
     .provider-badges { display: flex; gap: 4px; margin-top: 2px; }
     .provider-badge { font-size: 0.62rem; font-weight: 700; padding: 1px 5px; border-radius: 3px; line-height: 1.6; cursor: default; text-decoration: none; user-select: none; }
-    .badge-fb { background: #1877f2; color: #fff; cursor: pointer; &:hover { background: #0f5cbf; } }
+    .badge-fb { background: #1877f2; color: #fff; }
     .badge-g { background: #ea4335; color: #fff; }
     .login-count { font-size: 0.75rem; color: #aaa; margin-left: 4px; }
     mat-chip {

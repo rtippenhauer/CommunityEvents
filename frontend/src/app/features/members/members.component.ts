@@ -19,6 +19,7 @@ interface Member {
   invitedBy: { id: number; fullName: string; profilePhotoPath: string | null } | null;
   role?: string;
   status?: string;
+  hasFacebook?: boolean;
   facebookProfileUrl?: string | null;
   googleEmail?: string | null;
 }
@@ -102,9 +103,14 @@ interface Member {
                 }
                 @if (showRoles()) {
                   <div class="provider-badges" (click)="$event.preventDefault(); $event.stopPropagation()">
-                    @if (member.facebookProfileUrl) {
-                      <a [href]="member.facebookProfileUrl" target="_blank" rel="noopener noreferrer"
-                         class="provider-badge badge-fb" title="View Facebook profile">fb</a>
+                    @if (member.hasFacebook) {
+                      @if (member.facebookProfileUrl) {
+                        <a [href]="member.facebookProfileUrl" target="_blank" rel="noopener noreferrer"
+                           class="provider-badge badge-fb" title="View Facebook profile"
+                           (click)="$event.stopPropagation()">fb</a>
+                      } @else {
+                        <span class="provider-badge badge-fb" title="Facebook connected">fb</span>
+                      }
                     }
                     @if (member.googleEmail) {
                       <a [href]="'mailto:' + member.googleEmail" class="provider-badge badge-g"

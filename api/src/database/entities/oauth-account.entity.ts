@@ -34,6 +34,9 @@ export class OAuthAccountEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   email: string | null;
 
+  @Column({ name: 'profile_url', type: 'varchar', length: 512, nullable: true })
+  profileUrl: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

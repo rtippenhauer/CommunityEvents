@@ -87,7 +87,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
     const fbRes = await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${encodeURIComponent(dto.accessToken)}`,
+      `https://graph.facebook.com/me?fields=id,name,email,picture.type(large),link&access_token=${encodeURIComponent(dto.accessToken)}`,
     );
     if (!fbRes.ok) throw new UnauthorizedException('Invalid Facebook token');
     const fbUser = await fbRes.json() as {
@@ -95,6 +95,7 @@ export class AuthController {
       name: string;
       email?: string;
       picture?: { data?: { url?: string } };
+      link?: string;
     };
     const fbPhoto = fbUser.picture?.data?.url ?? null;
 
@@ -106,6 +107,7 @@ export class AuthController {
         fbUser.name,
         dto.inviteToken,
         fbPhoto,
+        fbUser.link ?? null,
       );
     } catch (err) {
       if (err instanceof AuthFlowError) {
@@ -144,12 +146,12 @@ export class AuthController {
     @CurrentUser() user: UserEntity,
   ): Promise<{ message: string }> {
     const fbRes = await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(dto.accessToken)}`,
+      `https://graph.facebook.com/me?fields=id,name,email,link&access_token=${encodeURIComponent(dto.accessToken)}`,
     );
     if (!fbRes.ok) throw new UnauthorizedException('Invalid Facebook token');
-    const fbUser = await fbRes.json() as { id: string; name: string; email?: string };
+    const fbUser = await fbRes.json() as { id: string; name: string; email?: string; link?: string };
 
-    await this.authService.linkFacebook(user.id, fbUser.id, fbUser.email ?? null);
+    await this.authService.linkFacebook(user.id, fbUser.id, fbUser.email ?? null, fbUser.link ?? null);
     return { message: 'Facebook account linked' };
   }
 

@@ -81,10 +81,11 @@ export class UsersService {
       .orderBy('u.full_name', 'ASC');
 
     if (isElevated) {
-      qb.leftJoin(OAuthAccountEntity, 'fb', "fb.user_id = u.id AND fb.provider = 'facebook'")
-        .leftJoin(OAuthAccountEntity, 'gg', "gg.user_id = u.id AND gg.provider = 'google'")
+      qb.leftJoin(OAuthAccountEntity, 'fb', "fb.userId = u.id AND fb.provider = 'facebook'")
+        .leftJoin(OAuthAccountEntity, 'gg', "gg.userId = u.id AND gg.provider = 'google'")
         .addSelect([
-          'fb.provider_id AS facebookId',
+          'fb.providerId AS facebookId',
+          'fb.profileUrl AS facebookProfileUrl',
           'gg.email AS googleEmail',
         ]);
     }
@@ -104,7 +105,8 @@ export class UsersService {
       ...(isElevated ? {
         role: r.role,
         status: r.status,
-        facebookProfileUrl: r.facebookId ? `https://www.facebook.com/profile.php?id=${r.facebookId}` : null,
+        facebookProfileUrl: r.facebookProfileUrl ?? null,
+        hasFacebook: !!r.facebookId,
         googleEmail: r.googleEmail ?? null,
       } : {}),
     }));
@@ -143,13 +145,15 @@ export class UsersService {
       }));
     }
 
+    let hasFacebook = false;
     let facebookProfileUrl: string | null = null;
     let googleEmail: string | null = null;
     if (isElevated) {
       const oauthAccounts = await this.oauthRepo.find({ where: { userId: id } });
       const fb = oauthAccounts.find((a) => a.provider === 'facebook');
       const gg = oauthAccounts.find((a) => a.provider === 'google');
-      if (fb) facebookProfileUrl = `https://www.facebook.com/profile.php?id=${fb.providerId}`;
+      hasFacebook = !!fb;
+      if (fb) facebookProfileUrl = fb.profileUrl ?? null;
       if (gg) googleEmail = gg.email;
     }
 
@@ -166,6 +170,7 @@ export class UsersService {
         role: user.role,
         status: user.status,
         inviteSource: user.inviteSource,
+        hasFacebook,
         facebookProfileUrl,
         googleEmail,
       } : {}),

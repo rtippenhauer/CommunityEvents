@@ -197,6 +197,7 @@ export class AuthService {
     displayName: string,
     inviteToken?: string,
     profilePhoto?: string | null,
+    profileUrl?: string | null,
   ): Promise<UserEntity> {
     const existing = await this.oauthRepo.findOne({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
@@ -205,6 +206,9 @@ export class AuthService {
     if (existing) {
       if (existing.user.status === UserStatus.SUSPENDED || existing.user.status === UserStatus.DELETED) {
         throw new AuthFlowError('not_active');
+      }
+      if (profileUrl && !existing.profileUrl) {
+        await this.oauthRepo.update(existing.id, { profileUrl });
       }
       return existing.user;
     }
@@ -273,6 +277,7 @@ export class AuthService {
         provider: OAuthProvider.FACEBOOK,
         providerId: facebookId,
         email: email ? email.toLowerCase() : null,
+        profileUrl: profileUrl ?? null,
       }),
     );
 
@@ -293,6 +298,7 @@ export class AuthService {
     userId: number,
     facebookId: string,
     email: string | null,
+    profileUrl?: string | null,
   ): Promise<void> {
     const alreadyLinked = await this.oauthRepo.findOne({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
@@ -308,6 +314,7 @@ export class AuthService {
         provider: OAuthProvider.FACEBOOK,
         providerId: facebookId,
         email: email ? email.toLowerCase() : null,
+        profileUrl: profileUrl ?? null,
       }),
     );
 

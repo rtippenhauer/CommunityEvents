@@ -27,6 +27,7 @@ interface MemberProfile {
   inviteSource?: string | null;
   invitedBy: MiniMember | null;
   invitedMembers?: MiniMember[];
+  hasFacebook?: boolean;
   facebookProfileUrl?: string | null;
   googleEmail?: string | null;
 }
@@ -82,9 +83,13 @@ interface MemberProfile {
                 </div>
                 @if (showElevated()) {
                   <div class="provider-badges">
-                    @if (profile()!.facebookProfileUrl) {
-                      <a [href]="profile()!.facebookProfileUrl!" target="_blank" rel="noopener noreferrer"
-                         class="provider-badge badge-fb" title="View Facebook profile">fb</a>
+                    @if (profile()!.hasFacebook) {
+                      @if (profile()!.facebookProfileUrl) {
+                        <a [href]="profile()!.facebookProfileUrl!" target="_blank" rel="noopener noreferrer"
+                           class="provider-badge badge-fb" title="View Facebook profile">fb</a>
+                      } @else {
+                        <span class="provider-badge badge-fb" title="Facebook connected">fb</span>
+                      }
                     }
                     @if (profile()!.googleEmail) {
                       <a [href]="'mailto:' + profile()!.googleEmail!" class="provider-badge badge-g"
