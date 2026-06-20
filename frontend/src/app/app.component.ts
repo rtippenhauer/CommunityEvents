@@ -73,6 +73,10 @@ export class AppComponent {
     () => this.authService.currentUser()?.role === 'admin',
   );
 
+  readonly isModerator = computed<boolean>(
+    () => this.authService.currentUser()?.role === 'moderator',
+  );
+
   readonly isNonValidated = computed<boolean>(
     () => this.authService.currentUser()?.role === 'non_validated',
   );

@@ -671,11 +671,10 @@ export class AuthService {
     const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
     const resetUrl = `${appUrl}/auth/reset-password?token=${token}`;
 
-    await this.emailService.queue({
+    await this.emailService.sendNow({
       toEmail: user.email,
       toName: user.fullName,
       subject: 'Reset your DinnerBears password',
-      templateId: undefined,
       htmlBody: `
         <h2>Password reset request</h2>
         <p>Hi ${user.fullName},</p>
@@ -759,11 +758,10 @@ export class AuthService {
     const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
     const verifyUrl = `${appUrl}/auth/verify-email?token=${token}`;
 
-    await this.emailService.queue({
+    await this.emailService.sendNow({
       toEmail: user.email,
       toName: user.fullName,
       subject: 'Verify your DinnerBears email',
-      templateId: undefined,
       htmlBody: `
         <h2>Welcome to DinnerBears!</h2>
         <p>Hi ${user.fullName},</p>

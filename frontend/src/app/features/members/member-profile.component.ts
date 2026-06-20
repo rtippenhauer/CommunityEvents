@@ -27,6 +27,8 @@ interface MemberProfile {
   inviteSource?: string | null;
   invitedBy: MiniMember | null;
   invitedMembers?: MiniMember[];
+  facebookProfileUrl?: string | null;
+  googleEmail?: string | null;
 }
 
 @Component({
@@ -78,6 +80,18 @@ interface MemberProfile {
                     <mat-chip class="chip-banned">Banned</mat-chip>
                   }
                 </div>
+                @if (showElevated()) {
+                  <div class="provider-badges">
+                    @if (profile()!.facebookProfileUrl) {
+                      <a [href]="profile()!.facebookProfileUrl!" target="_blank" rel="noopener noreferrer"
+                         class="provider-badge badge-fb" title="View Facebook profile">fb</a>
+                    }
+                    @if (profile()!.googleEmail) {
+                      <a [href]="'mailto:' + profile()!.googleEmail!" class="provider-badge badge-g"
+                         title="Email via Google: {{ profile()!.googleEmail }}">G</a>
+                    }
+                  </div>
+                }
               </div>
             </div>
 
@@ -231,6 +245,17 @@ interface MemberProfile {
     .profile-city { color: #777; font-size: 0.9rem; }
     .profile-joined { color: #aaa; font-size: 0.8rem; }
     .profile-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .provider-badges { display: flex; gap: 4px; margin-top: 4px; }
+    .provider-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-decoration: none;
+      letter-spacing: 0.02em;
+    }
+    .badge-fb { background: #1877f2; color: #fff; }
+    .badge-g { background: #ea4335; color: #fff; }
     .edit-row { margin: 12px 0; }
     .invited-section {
       display: flex;

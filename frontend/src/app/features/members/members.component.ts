@@ -19,6 +19,8 @@ interface Member {
   invitedBy: { id: number; fullName: string; profilePhotoPath: string | null } | null;
   role?: string;
   status?: string;
+  facebookProfileUrl?: string | null;
+  googleEmail?: string | null;
 }
 
 @Component({
@@ -97,6 +99,18 @@ interface Member {
                 }
                 @if (member.invitedBy) {
                   <span class="invited-by">↳ {{ member.invitedBy.fullName }}</span>
+                }
+                @if (showRoles()) {
+                  <div class="provider-badges" (click)="$event.preventDefault(); $event.stopPropagation()">
+                    @if (member.facebookProfileUrl) {
+                      <a [href]="member.facebookProfileUrl" target="_blank" rel="noopener noreferrer"
+                         class="provider-badge badge-fb" title="View Facebook profile">fb</a>
+                    }
+                    @if (member.googleEmail) {
+                      <a [href]="'mailto:' + member.googleEmail" class="provider-badge badge-g"
+                         title="Email via Google: {{ member.googleEmail }}" (click)="$event.stopPropagation()">G</a>
+                    }
+                  </div>
                 }
               </div>
             </a>
@@ -275,6 +289,22 @@ interface Member {
       &:hover { box-shadow: none; }
     }
     .mystery-name { color: #bbb; font-style: italic; }
+    .provider-badges {
+      display: flex;
+      gap: 4px;
+      justify-content: center;
+      margin-top: 2px;
+    }
+    .provider-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      text-decoration: none;
+      letter-spacing: 0.02em;
+    }
+    .badge-fb { background: #1877f2; color: #fff; }
+    .badge-g { background: #ea4335; color: #fff; }
   `],
 })
 export class MembersComponent implements OnInit {

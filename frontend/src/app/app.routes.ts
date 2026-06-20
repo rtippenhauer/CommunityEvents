@@ -206,7 +206,7 @@ export const routes: Routes = [
       import('./features/admin/users/admin-users.component').then(
         (m) => m.AdminUsersComponent,
       ),
-    canActivate: [authGuard, adminGuard],
+    canActivate: [authGuard, moderatorGuard],
   },
   {
     path: 'admin/email',

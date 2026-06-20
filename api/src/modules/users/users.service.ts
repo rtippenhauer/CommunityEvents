@@ -58,7 +58,7 @@ export class UsersService {
   async findMembers(viewerRole: UserRole): Promise<object[]> {
     const isElevated = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
 
-    const rows = await this.userRepo
+    const qb = this.userRepo
       .createQueryBuilder('u')
       .leftJoin(UserEntity, 'inviter', 'inviter.id = u.invited_by')
       .leftJoin('u.city', 'city')
@@ -78,8 +78,18 @@ export class UsersService {
         deleted: UserStatus.DELETED,
         active: UserStatus.ACTIVE,
       })
-      .orderBy('u.full_name', 'ASC')
-      .getRawMany();
+      .orderBy('u.full_name', 'ASC');
+
+    if (isElevated) {
+      qb.leftJoin(OAuthAccountEntity, 'fb', "fb.user_id = u.id AND fb.provider = 'facebook'")
+        .leftJoin(OAuthAccountEntity, 'gg', "gg.user_id = u.id AND gg.provider = 'google'")
+        .addSelect([
+          'fb.provider_id AS facebookId',
+          'gg.email AS googleEmail',
+        ]);
+    }
+
+    const rows = await qb.getRawMany();
 
     return rows.map((r) => ({
       id: r.id,
@@ -91,7 +101,12 @@ export class UsersService {
       invitedBy: r.invitedById
         ? { id: r.invitedById, fullName: r.invitedByName, profilePhotoPath: r.invitedByPhoto }
         : null,
-      ...(isElevated ? { role: r.role, status: r.status } : {}),
+      ...(isElevated ? {
+        role: r.role,
+        status: r.status,
+        facebookProfileUrl: r.facebookId ? `https://www.facebook.com/profile.php?id=${r.facebookId}` : null,
+        googleEmail: r.googleEmail ?? null,
+      } : {}),
     }));
   }
 
@@ -128,6 +143,16 @@ export class UsersService {
       }));
     }
 
+    let facebookProfileUrl: string | null = null;
+    let googleEmail: string | null = null;
+    if (isElevated) {
+      const oauthAccounts = await this.oauthRepo.find({ where: { userId: id } });
+      const fb = oauthAccounts.find((a) => a.provider === 'facebook');
+      const gg = oauthAccounts.find((a) => a.provider === 'google');
+      if (fb) facebookProfileUrl = `https://www.facebook.com/profile.php?id=${fb.providerId}`;
+      if (gg) googleEmail = gg.email;
+    }
+
     return {
       id: user.id,
       fullName: user.fullName,
@@ -141,6 +166,8 @@ export class UsersService {
         role: user.role,
         status: user.status,
         inviteSource: user.inviteSource,
+        facebookProfileUrl,
+        googleEmail,
       } : {}),
     };
   }

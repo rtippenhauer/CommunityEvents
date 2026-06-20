@@ -51,25 +51,27 @@
             <mat-icon matListItemIcon>group_add</mat-icon> Invite
           </a>
         }
-        @if (isAdmin()) {
+        @if (isAdmin() || isModerator()) {
           <mat-divider />
-          <div class="sidenav-section-label">Admin</div>
+          <div class="sidenav-section-label">{{ isAdmin() ? 'Admin' : 'Moderation' }}</div>
           <a mat-list-item routerLink="/admin/users" (click)="sidenav.close()">
             <mat-icon matListItemIcon>manage_accounts</mat-icon> Users
           </a>
-          <a mat-list-item routerLink="/admin/invites" (click)="sidenav.close()">
-            <mat-icon matListItemIcon>link</mat-icon> Invites
-          </a>
-          <a mat-list-item routerLink="/admin/email" (click)="sidenav.close()">
-            <mat-icon matListItemIcon>mail</mat-icon> Email
-          </a>
-          <a mat-list-item routerLink="/admin/feedback" (click)="sidenav.close()">
-            <mat-icon matListItemIcon>feedback</mat-icon>
-            Feedback
-            @if (feedbackService.unseenCount() > 0) {
-              <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
-            }
-          </a>
+          @if (isAdmin()) {
+            <a mat-list-item routerLink="/admin/invites" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>link</mat-icon> Invites
+            </a>
+            <a mat-list-item routerLink="/admin/email" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>mail</mat-icon> Email
+            </a>
+            <a mat-list-item routerLink="/admin/feedback" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>feedback</mat-icon>
+              Feedback
+              @if (feedbackService.unseenCount() > 0) {
+                <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
+              }
+            </a>
+          }
           <a mat-list-item routerLink="/admin/announcements" (click)="sidenav.close()">
             <mat-icon matListItemIcon>campaign</mat-icon> Announcements
           </a>
@@ -145,9 +147,9 @@
               <a mat-button routerLink="/invite" routerLinkActive="nav-active">Invite</a>
             }
           }
-          @if (isAdmin()) {
+          @if (isAdmin() || isModerator()) {
             <button mat-button [matMenuTriggerFor]="adminMenu" class="admin-menu-btn">
-              <mat-icon>admin_panel_settings</mat-icon> Admin
+              <mat-icon>admin_panel_settings</mat-icon> {{ isAdmin() ? 'Admin' : 'Moderation' }}
               @if (feedbackService.unseenCount() > 0) {
                 <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
               }
@@ -156,18 +158,20 @@
               <a mat-menu-item routerLink="/admin/users">
                 <mat-icon>manage_accounts</mat-icon> Users
               </a>
-              <a mat-menu-item routerLink="/admin/invites">
-                <mat-icon>link</mat-icon> Invites
-              </a>
-              <a mat-menu-item routerLink="/admin/email">
-                <mat-icon>mail</mat-icon> Email
-              </a>
-              <a mat-menu-item routerLink="/admin/feedback">
-                <mat-icon>feedback</mat-icon> Feedback
-                @if (feedbackService.unseenCount() > 0) {
-                  <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
-                }
-              </a>
+              @if (isAdmin()) {
+                <a mat-menu-item routerLink="/admin/invites">
+                  <mat-icon>link</mat-icon> Invites
+                </a>
+                <a mat-menu-item routerLink="/admin/email">
+                  <mat-icon>mail</mat-icon> Email
+                </a>
+                <a mat-menu-item routerLink="/admin/feedback">
+                  <mat-icon>feedback</mat-icon> Feedback
+                  @if (feedbackService.unseenCount() > 0) {
+                    <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
+                  }
+                </a>
+              }
               <a mat-menu-item routerLink="/admin/announcements">
                 <mat-icon>campaign</mat-icon> Announcements
               </a>

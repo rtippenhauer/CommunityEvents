@@ -8,6 +8,7 @@ import { EmailSuppressionEntity, SuppressionReason } from '../../database/entiti
 import { NotificationPreferencesEntity } from '../../database/entities/notification-preferences.entity';
 import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
 import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
+import { BrevoService } from './brevo.service';
 
 export interface QueueEmailDto {
   toEmail: string;
@@ -19,6 +20,7 @@ export interface QueueEmailDto {
   textBody?: string | null;
   priority?: number;
   sendAfter?: Date;
+  bypassSuppression?: boolean; // for transactional emails (verification, password reset)
   userId?: number;
 }
 
@@ -37,6 +39,7 @@ export class EmailService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly config: ConfigService,
+    private readonly brevo: BrevoService,
   ) {
     this.suppressionSalt = this.config.get<string>('EMAIL_SUPPRESSION_SALT', 'default-salt');
   }
@@ -77,10 +80,12 @@ export class EmailService {
   }
 
   async queue(dto: QueueEmailDto): Promise<EmailQueueEntity | null> {
-    const suppressed = await this.isSuppressed(dto.toEmail);
-    if (suppressed) {
-      this.logger.debug(`Email to ${dto.toEmail} suppressed`);
-      return null;
+    if (!dto.bypassSuppression) {
+      const suppressed = await this.isSuppressed(dto.toEmail);
+      if (suppressed) {
+        this.logger.warn(`Email to ${dto.toEmail} suppressed — skipping`);
+        return null;
+      }
     }
 
     if (dto.userId && dto.templateId) {
@@ -115,6 +120,21 @@ export class EmailService {
     });
 
     return this.queueRepo.save(entry);
+  }
+
+  async sendNow(dto: QueueEmailDto): Promise<void> {
+    try {
+      await this.brevo.send({
+        toEmail: dto.toEmail,
+        toName: dto.toName,
+        subject: dto.subject,
+        htmlBody: dto.htmlBody,
+        textBody: dto.textBody,
+      });
+    } catch (err) {
+      this.logger.warn(`Immediate send failed for ${dto.toEmail}, falling back to queue: ${(err as Error).message}`);
+      await this.queue({ ...dto, bypassSuppression: true });
+    }
   }
 
   async getQueue(limit = 100): Promise<EmailQueueEntity[]> {

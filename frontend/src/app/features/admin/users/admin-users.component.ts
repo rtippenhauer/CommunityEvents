@@ -1,8 +1,8 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
-import { Router } from '@angular/router';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
+import { AuthService } from '../../../core/services/auth.service';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { MatChipsModule } from '@angular/material/chips';
@@ -174,8 +174,8 @@ interface AdminUser {
                         }
                       }
 
-                      <!-- Delete -->
-                      @if (u.role !== 'admin') {
+                      <!-- Delete — admin only -->
+                      @if (isAdmin() && u.role !== 'admin') {
                         @if (confirmDeleteId() === u.id) {
                           <div class="confirm-row">
                             <span class="confirm-label">Delete?</span>
@@ -288,6 +288,9 @@ export class AdminUsersComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
+  private readonly authService = inject(AuthService);
+
+  readonly isAdmin = () => this.authService.currentUser()?.role === 'admin';
 
   readonly columns = ['photo', 'name', 'role', 'status', 'invitedBy', 'joined', 'lastLogin', 'actions'];
   readonly loading = signal(true);
