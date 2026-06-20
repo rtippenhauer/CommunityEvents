@@ -92,8 +92,9 @@ interface MemberProfile {
                       }
                     }
                     @if (profile()!.googleEmail) {
-                      <a [href]="'mailto:' + profile()!.googleEmail!" class="provider-badge badge-g"
-                         title="Email via Google: {{ profile()!.googleEmail }}">G</a>
+                      <a [href]="'https://mail.google.com/mail/?view=cm&fs=1&to=' + profile()!.googleEmail!"
+                         target="_blank" rel="noopener noreferrer"
+                         class="provider-badge badge-g" title="Send Gmail to {{ profile()!.googleEmail }}">G</a>
                     }
                   </div>
                 }
@@ -250,14 +251,16 @@ interface MemberProfile {
     .profile-city { color: #777; font-size: 0.9rem; }
     .profile-joined { color: #aaa; font-size: 0.8rem; }
     .profile-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-    .provider-badges { display: flex; gap: 4px; margin-top: 4px; }
+    .provider-badges { display: flex; gap: 6px; margin-top: 8px; }
     .provider-badge {
-      font-size: 0.65rem;
+      font-size: 0.8rem;
       font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 3px;
+      padding: 4px 12px;
+      border-radius: 20px;
       text-decoration: none;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.03em;
+      display: inline-flex;
+      align-items: center;
     }
     .badge-fb { background: #1877f2; color: #fff; }
     .badge-g { background: #ea4335; color: #fff; }

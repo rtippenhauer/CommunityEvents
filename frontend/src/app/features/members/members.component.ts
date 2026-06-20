@@ -113,8 +113,10 @@ interface Member {
                       }
                     }
                     @if (member.googleEmail) {
-                      <a [href]="'mailto:' + member.googleEmail" class="provider-badge badge-g"
-                         title="Email via Google: {{ member.googleEmail }}" (click)="$event.stopPropagation()">G</a>
+                      <a [href]="'https://mail.google.com/mail/?view=cm&fs=1&to=' + member.googleEmail"
+                         target="_blank" rel="noopener noreferrer"
+                         class="provider-badge badge-g" title="Send Gmail to {{ member.googleEmail }}"
+                         (click)="$event.stopPropagation()">G</a>
                     }
                   </div>
                 }
@@ -297,17 +299,19 @@ interface Member {
     .mystery-name { color: #bbb; font-style: italic; }
     .provider-badges {
       display: flex;
-      gap: 4px;
+      gap: 6px;
       justify-content: center;
-      margin-top: 2px;
+      margin-top: 6px;
     }
     .provider-badge {
-      font-size: 0.65rem;
+      font-size: 0.75rem;
       font-weight: 700;
-      padding: 1px 5px;
-      border-radius: 3px;
+      padding: 3px 10px;
+      border-radius: 20px;
       text-decoration: none;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.03em;
+      display: inline-flex;
+      align-items: center;
     }
     .badge-fb { background: #1877f2; color: #fff; }
     .badge-g { background: #ea4335; color: #fff; }
