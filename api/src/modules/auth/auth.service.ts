@@ -616,12 +616,51 @@ export class AuthService {
       throw new UnauthorizedException('not_active');
     }
 
+    // Reset stale failure counter — if the last failure was more than 30 min ago, start fresh
+    const STALE_MS = 30 * 60 * 1000;
+    if (user.lastFailedLoginAt && Date.now() - user.lastFailedLoginAt.getTime() > STALE_MS) {
+      await this.userRepo.update(user.id, {
+        failedLoginAttempts: 0,
+        loginLockedUntil: null,
+        lastFailedLoginAt: null,
+      });
+      user.failedLoginAttempts = 0;
+      user.loginLockedUntil = null;
+    }
+
+    // Account lockout check
+    if (user.loginLockedUntil && user.loginLockedUntil > new Date()) {
+      const secondsLeft = Math.ceil((user.loginLockedUntil.getTime() - Date.now()) / 1000);
+      throw new UnauthorizedException({ message: 'account_locked', secondsLeft });
+    }
+
     const match = await bcrypt.compare(password, user.passwordHash);
-    if (!match) throw new UnauthorizedException('invalid_credentials');
+    if (!match) {
+      const attempts = (user.failedLoginAttempts ?? 0) + 1;
+      // Progressive lockout starting at attempt 4: 60s → 120s → 240s → 480s → capped at 600s
+      let lockedUntil: Date | null = null;
+      if (attempts >= 4) {
+        const lockSeconds = Math.min(60 * Math.pow(2, attempts - 4), 600);
+        lockedUntil = new Date(Date.now() + lockSeconds * 1000);
+      }
+      await this.userRepo.update(user.id, {
+        failedLoginAttempts: attempts,
+        loginLockedUntil: lockedUntil,
+        lastFailedLoginAt: new Date(),
+      });
+      throw new UnauthorizedException('invalid_credentials');
+    }
 
     if (user.emailStatus === EmailStatus.PENDING) {
       throw new UnauthorizedException('email_not_verified');
     }
+
+    // Successful login — clear lockout state
+    await this.userRepo.update(user.id, {
+      failedLoginAttempts: 0,
+      loginLockedUntil: null,
+      lastFailedLoginAt: null,
+    });
 
     return this.issueTokens(user, ctx);
   }

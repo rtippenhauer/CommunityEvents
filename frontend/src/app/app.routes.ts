@@ -249,6 +249,30 @@ export const routes: Routes = [
     canActivate: [authGuard, moderatorGuard],
   },
   {
+    path: 'admin/audit',
+    loadComponent: () =>
+      import('./features/admin/audit/admin-audit.component').then(
+        (m) => m.AdminAuditComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
+    path: 'admin/invites/lineage',
+    loadComponent: () =>
+      import('./features/admin/invite-lineage/admin-invite-lineage.component').then(
+        (m) => m.AdminInviteLineageComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
+    path: 'admin/cities',
+    loadComponent: () =>
+      import('./features/admin/cities/admin-cities.component').then(
+        (m) => m.AdminCitiesComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: '**',
     loadComponent: () =>
       import('./features/not-found/not-found.component').then((m) => m.NotFoundComponent),

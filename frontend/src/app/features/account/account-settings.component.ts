@@ -644,7 +644,7 @@ export class AccountSettingsComponent implements OnInit {
           this.snackBar.open(err?.error?.message ?? 'Failed to connect Facebook.', 'OK', { duration: 5000 });
         },
       });
-    }, { scope: 'public_profile,email' });
+    }, { scope: 'public_profile,email,user_link' });
   }
 
   private loadFbSdk(appId: string): void {

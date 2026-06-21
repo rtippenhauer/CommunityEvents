@@ -15,6 +15,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -229,6 +230,7 @@ export class AuthController {
   // --- Email / Password ---
 
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(201)
   async register(
     @Body() dto: RegisterDto,
@@ -256,6 +258,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(200)
   async login(
     @Body() dto: LoginDto,
@@ -286,6 +289,7 @@ export class AuthController {
   }
 
   @Post('resend-verification')
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @HttpCode(200)
   async resendVerification(@Body('email') email: string): Promise<{ message: string }> {
     if (email) await this.authService.resendVerification(email);
@@ -293,6 +297,7 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @HttpCode(200)
   async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
     await this.authService.forgotPassword(dto.email);
@@ -300,6 +305,7 @@ export class AuthController {
   }
 
   @Post('reset-password')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(200)
   async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ message: string }> {
     await this.authService.resetPassword(dto.token, dto.password);

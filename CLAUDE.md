@@ -33,10 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 11 — Email/Password Auth** — Add email+password login alongside existing OAuth, including email verification, password reset, and password change flows (Facebook OAuth already complete).
+**Phase 12 — Admin Panel, Audit Log & Security** — Full audit log viewer, admin user management tools, invite lineage tree, security hardening, and pre-launch OWASP checklist sign-off.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

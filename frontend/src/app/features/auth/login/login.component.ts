@@ -385,7 +385,7 @@ export class LoginComponent implements OnInit {
           this.fbStatus.set('connected');
           this.handleFbToken(response.authResponse.accessToken);
         }
-      }, { scope: 'public_profile,email' });
+      }, { scope: 'public_profile,email,user_link' });
     }
   }
 
@@ -432,9 +432,12 @@ export class LoginComponent implements OnInit {
         next: () => this.submitting.set(false),
         error: (err) => {
           this.submitting.set(false);
-          const msg = err?.error?.message ?? '';
+          const body = err?.error ?? {};
+          const msg = body.message ?? '';
           if (msg === 'email_not_verified') {
             void this.router.navigate(['/auth/verify-email-sent'], { queryParams: { email, resend: true } });
+          } else if (msg === 'account_locked') {
+            this.formError.set('Too many failed attempts. Please try again in a few minutes.');
           } else {
             this.formError.set('Invalid email or password.');
           }

@@ -405,7 +405,7 @@ export class JoinComponent implements OnInit {
       } else {
         this.fbLogging.set(false);
       }
-    }, { scope: 'public_profile,email' });
+    }, { scope: 'public_profile,email,user_link' });
   }
 
   formatTime(time: string): string {

@@ -113,6 +113,15 @@ export class UserEntity {
   @Column({ name: 'login_count', unsigned: true, default: 0 })
   loginCount: number;
 
+  @Column({ name: 'failed_login_attempts', type: 'tinyint', unsigned: true, default: 0 })
+  failedLoginAttempts: number;
+
+  @Column({ name: 'login_locked_until', type: 'datetime', nullable: true })
+  loginLockedUntil: Date | null;
+
+  @Column({ name: 'last_failed_login_at', type: 'datetime', nullable: true })
+  lastFailedLoginAt: Date | null;
+
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt: Date | null;
 

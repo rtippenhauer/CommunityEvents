@@ -1,7 +1,19 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AdminService } from './admin.service';
+import { AdminService, AuditLogFilter } from './admin.service';
 import { EmailService } from '../email/email.service';
 import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -21,7 +33,7 @@ export class AdminController {
   ) {}
 
   @Get('users')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   getUsers() {
     return this.adminService.getUsers();
   }
@@ -43,8 +55,8 @@ export class AdminController {
   @Post('users/:id/unban')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
-  unban(@Param('id', ParseIntPipe) id: number) {
-    return this.adminService.unbanUser(id);
+  unban(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: UserEntity) {
+    return this.adminService.unbanUser(id, actor.id);
   }
 
   @Delete('users/:id')
@@ -66,6 +78,56 @@ export class AdminController {
     @CurrentUser() actor: UserEntity,
   ) {
     return this.adminService.setRole(id, actor.id, role);
+  }
+
+  @Get('users/:id/email-suppressed')
+  @Roles(UserRole.ADMIN)
+  async getEmailSuppressed(@Param('id', ParseIntPipe) id: number) {
+    const suppressed = await this.adminService.isEmailSuppressed(id);
+    return { suppressed };
+  }
+
+  @Post('users/:id/suppress')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  suppressEmail(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: UserEntity) {
+    return this.adminService.suppressUserEmail(id, actor.id);
+  }
+
+  @Delete('users/:id/suppress')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  liftSuppression(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: UserEntity) {
+    return this.adminService.liftEmailSuppression(id, actor.id);
+  }
+
+  @Get('audit')
+  @Roles(UserRole.ADMIN)
+  getAuditLog(
+    @Query('action') action?: string,
+    @Query('userId') userId?: string,
+    @Query('entityType') entityType?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const filter: AuditLogFilter = {
+      action: action || undefined,
+      userId: userId ? parseInt(userId, 10) : undefined,
+      entityType: entityType || undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 50,
+    };
+    return this.adminService.getAuditLog(filter);
+  }
+
+  @Get('invites/lineage')
+  @Roles(UserRole.ADMIN)
+  getInviteLineage() {
+    return this.adminService.getInviteLineage();
   }
 
   @Get('email/queue')
