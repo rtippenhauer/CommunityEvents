@@ -606,7 +606,7 @@ export class AuthService {
     email: string,
     password: string,
     ctx: SessionContext,
-  ): Promise<{ accessToken: string; jti: string }> {
+  ): Promise<{ accessToken: string; jti: string; failedAttemptsSinceLastLogin: number; previousLastLoginAt: Date | null }> {
     const user = await this.userRepo.findOne({ where: { email: email.toLowerCase() } });
 
     if (!user || !user.passwordHash) {
@@ -616,7 +616,7 @@ export class AuthService {
       throw new UnauthorizedException('not_active');
     }
 
-    // Reset stale failure counter — if the last failure was more than 30 min ago, start fresh
+    // Reset stale failure counter — if last failure was more than 30 min ago, start fresh
     const STALE_MS = 30 * 60 * 1000;
     if (user.lastFailedLoginAt && Date.now() - user.lastFailedLoginAt.getTime() > STALE_MS) {
       await this.userRepo.update(user.id, {
@@ -630,8 +630,7 @@ export class AuthService {
 
     // Account lockout check
     if (user.loginLockedUntil && user.loginLockedUntil > new Date()) {
-      const secondsLeft = Math.ceil((user.loginLockedUntil.getTime() - Date.now()) / 1000);
-      throw new UnauthorizedException({ message: 'account_locked', secondsLeft });
+      throw new UnauthorizedException({ message: 'account_locked' });
     }
 
     const match = await bcrypt.compare(password, user.passwordHash);
@@ -648,12 +647,28 @@ export class AuthService {
         loginLockedUntil: lockedUntil,
         lastFailedLoginAt: new Date(),
       });
+      void this.auditService.log({
+        userId: user.id,
+        action: 'user.login_failed',
+        entityType: 'user',
+        entityId: user.id,
+        metadata: { attempt: attempts, locked: attempts >= 4 },
+        ipAddress: ctx.ipAddress,
+      });
+      // On first lockout, alert the user and notify admins/mods — fire and forget
+      if (attempts === 4) {
+        void this.sendLockoutAlerts(user, attempts);
+      }
       throw new UnauthorizedException('invalid_credentials');
     }
 
     if (user.emailStatus === EmailStatus.PENDING) {
       throw new UnauthorizedException('email_not_verified');
     }
+
+    // Capture pre-reset state to return as security info
+    const failedAttemptsSinceLastLogin = user.failedLoginAttempts ?? 0;
+    const previousLastLoginAt = user.lastLoginAt;
 
     // Successful login — clear lockout state
     await this.userRepo.update(user.id, {
@@ -662,7 +677,63 @@ export class AuthService {
       lastFailedLoginAt: null,
     });
 
-    return this.issueTokens(user, ctx);
+    // Persist failed-attempt warning as a notification so it survives past the snackbar
+    if (failedAttemptsSinceLastLogin > 0) {
+      const noun = failedAttemptsSinceLastLogin === 1 ? 'attempt' : 'attempts';
+      void this.notificationsService.create({
+        userId: user.id,
+        type: 'security_failed_logins',
+        title: `${failedAttemptsSinceLastLogin} failed login ${noun} on your account`,
+        body: previousLastLoginAt
+          ? `Since your last login on ${previousLastLoginAt.toLocaleString()}`
+          : 'Since you last logged in',
+        actionUrl: '/account/settings',
+      });
+    }
+
+    const tokens = await this.issueTokens(user, ctx);
+    return { ...tokens, failedAttemptsSinceLastLogin, previousLastLoginAt };
+  }
+
+  private async sendLockoutAlerts(user: UserEntity, attempts: number): Promise<void> {
+    // Email the affected user
+    try {
+      await this.emailService.sendNow({
+        toEmail: user.email,
+        toName: user.fullName,
+        subject: 'Security alert: your DinnerBears account has been locked',
+        htmlBody: `
+          <p>Hi ${user.fullName},</p>
+          <p>We detected <strong>${attempts} failed login attempts</strong> on your DinnerBears account and have temporarily locked it.</p>
+          <p>If this was you, please wait a few minutes and try again.</p>
+          <p>If you don't recognize this activity, <a href="${process.env.FRONTEND_URL ?? 'https://dinnerbears.com'}/auth/forgot-password">reset your password immediately</a>.</p>
+        `,
+        textBody: `Hi ${user.fullName}, we detected ${attempts} failed login attempts and temporarily locked your account. If this wasn't you, reset your password at ${process.env.FRONTEND_URL ?? 'https://dinnerbears.com'}/auth/forgot-password`,
+      });
+    } catch {
+      // Non-fatal
+    }
+
+    // In-app notification to all admins and moderators
+    try {
+      const elevated = await this.userRepo.find({
+        where: [{ role: UserRole.ADMIN }, { role: UserRole.MODERATOR }],
+        select: ['id'],
+      });
+      await Promise.all(
+        elevated.map((admin) =>
+          this.notificationsService.create({
+            userId: admin.id,
+            type: 'security_lockout',
+            title: `Account locked: ${user.fullName}`,
+            body: `${attempts} failed login attempts triggered a temporary lockout.`,
+            actionUrl: `/members/${user.id}`,
+          }),
+        ),
+      );
+    } catch {
+      // Non-fatal
+    }
   }
 
   async verifyEmail(token: string): Promise<void> {

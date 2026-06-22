@@ -106,6 +106,7 @@ export class AdminController {
   getAuditLog(
     @Query('action') action?: string,
     @Query('userId') userId?: string,
+    @Query('userSearch') userSearch?: string,
     @Query('entityType') entityType?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
@@ -115,6 +116,7 @@ export class AdminController {
     const filter: AuditLogFilter = {
       action: action || undefined,
       userId: userId ? parseInt(userId, 10) : undefined,
+      userSearch: userSearch || undefined,
       entityType: entityType || undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,

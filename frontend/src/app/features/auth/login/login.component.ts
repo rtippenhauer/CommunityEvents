@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../../core/services/auth.service';
 import { environment } from '../../../../environments/environment';
 
@@ -22,6 +23,7 @@ import { environment } from '../../../../environments/environment';
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    MatSnackBarModule,
   ],
   template: `
     <div class="login-page">
@@ -300,6 +302,7 @@ export class LoginComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
   private readonly fb = inject(NonNullableFormBuilder);
+  private readonly snackBar = inject(MatSnackBar);
 
   readonly fbLogging = signal(false);
   readonly inviteToken = signal<string | null>(null);
@@ -429,7 +432,24 @@ export class LoginComponent implements OnInit {
       // Login
       this.submitting.set(true);
       this.authService.loginWithPassword(email, password).subscribe({
-        next: () => this.submitting.set(false),
+        next: (res) => {
+          this.submitting.set(false);
+          const lastLogin = res?.previousLastLoginAt
+            ? new Date(res.previousLastLoginAt).toLocaleString()
+            : null;
+          const failed = res?.failedAttemptsSinceLastLogin ?? 0;
+          if (failed > 0) {
+            const noun = failed === 1 ? 'attempt' : 'attempts';
+            const since = lastLogin ? ` since ${lastLogin}` : '';
+            this.snackBar.open(
+              `⚠ ${failed} failed login ${noun}${since}`,
+              'Dismiss',
+              { duration: 12000, panelClass: 'snack-warn' },
+            );
+          } else if (lastLogin) {
+            this.snackBar.open(`Last login: ${lastLogin}`, 'OK', { duration: 5000 });
+          }
+        },
         error: (err) => {
           this.submitting.set(false);
           const body = err?.error ?? {};

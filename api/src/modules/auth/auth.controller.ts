@@ -264,11 +264,12 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ message: string }> {
-    const { accessToken } = await this.authService.loginWithPassword(dto.email, dto.password, {
-      userAgent: (req as unknown as { headers: Record<string, string> }).headers['user-agent'],
-      ipAddress: (req as unknown as { ip: string }).ip,
-    });
+  ): Promise<{ message: string; failedAttemptsSinceLastLogin?: number; previousLastLoginAt?: Date | null }> {
+    const { accessToken, failedAttemptsSinceLastLogin, previousLastLoginAt } =
+      await this.authService.loginWithPassword(dto.email, dto.password, {
+        userAgent: (req as unknown as { headers: Record<string, string> }).headers['user-agent'],
+        ipAddress: (req as unknown as { ip: string }).ip,
+      });
 
     (res as unknown as { cookie: (...args: unknown[]) => void }).cookie('access_token', accessToken, {
       httpOnly: true,
@@ -278,7 +279,11 @@ export class AuthController {
       path: '/',
     });
 
-    return { message: 'ok' };
+    return {
+      message: 'ok',
+      previousLastLoginAt,
+      ...(failedAttemptsSinceLastLogin > 0 ? { failedAttemptsSinceLastLogin } : {}),
+    };
   }
 
   @Get('verify-email')

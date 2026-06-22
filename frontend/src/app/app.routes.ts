@@ -191,6 +191,17 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/updates/updates.component').then((m) => m.UpdatesComponent),
   },
+  // Legal pages — no auth required
+  {
+    path: 'terms',
+    loadComponent: () =>
+      import('./features/legal/terms.component').then((m) => m.TermsComponent),
+  },
+  {
+    path: 'privacy',
+    loadComponent: () =>
+      import('./features/legal/privacy.component').then((m) => m.PrivacyComponent),
+  },
   // Admin
   {
     path: 'admin/invites',

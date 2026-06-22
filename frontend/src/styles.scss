@@ -72,3 +72,8 @@ body {
   --mdc-outlined-button-label-text-color: var(--db-primary);
   --mdc-outlined-button-outline-color: var(--db-primary);
 }
+
+// Member hover card — CDK overlay pane must capture pointer events
+.member-hover-panel {
+  pointer-events: auto;
+}

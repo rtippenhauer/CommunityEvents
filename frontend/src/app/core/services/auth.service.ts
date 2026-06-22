@@ -83,8 +83,8 @@ export class AuthService {
     return this.http.post<{ message: string }>('/api/v1/auth/register', { inviteToken, fullName, email, password });
   }
 
-  loginWithPassword(email: string, password: string): Observable<void> {
-    return this.http.post<void>('/api/v1/auth/login', { email, password }).pipe(
+  loginWithPassword(email: string, password: string): Observable<{ previousLastLoginAt: string | null; failedAttemptsSinceLastLogin?: number }> {
+    return this.http.post<{ message: string; previousLastLoginAt: string | null; failedAttemptsSinceLastLogin?: number }>('/api/v1/auth/login', { email, password }).pipe(
       tap(() => {
         void firstValueFrom(
           this.http.get<CurrentUser>('/api/v1/auth/me').pipe(

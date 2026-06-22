@@ -28,6 +28,7 @@ export interface AdminUserRow {
 export interface AuditLogFilter {
   action?: string;
   userId?: number;
+  userSearch?: string;
   entityType?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -107,8 +108,9 @@ export class AdminService {
         .createQueryBuilder('a')
         .leftJoin(UserEntity, 'u', 'u.id = a.user_id');
       if (filter.userId) qb.andWhere('a.user_id = :userId', { userId: filter.userId });
+      if (filter.userSearch) qb.andWhere('(u.full_name LIKE :search OR u.email LIKE :search)', { search: `%${filter.userSearch}%` });
       if (filter.entityType) qb.andWhere('a.entity_type = :entityType', { entityType: filter.entityType });
-      if (filter.action) qb.andWhere('a.action LIKE :action', { action: `%${filter.action}%` });
+      if (filter.action) qb.andWhere('a.action = :action', { action: filter.action });
       if (filter.dateFrom) qb.andWhere('a.created_at >= :dateFrom', { dateFrom: new Date(filter.dateFrom) });
       if (filter.dateTo) qb.andWhere('a.created_at <= :dateTo', { dateTo: new Date(filter.dateTo) });
       return qb;

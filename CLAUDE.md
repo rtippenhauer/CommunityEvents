@@ -33,10 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Phase 12 — Admin Panel, Audit Log & Security** — Full audit log viewer, admin user management tools, invite lineage tree, security hardening, and pre-launch OWASP checklist sign-off.
+**Phase 13 — CMS Legal Pages** — Admin-editable Terms and Privacy pages served within the site shell, replacing the current static placeholder files.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules
