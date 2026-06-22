@@ -128,6 +128,8 @@
     font-size: 0.88rem;
     font-family: var(--db-font-body);
     letter-spacing: 0.01em;
+    border-radius: 0 !important;
+    --mdc-text-button-container-shape: 0;
 
     &:hover { opacity: 1; }
     &.nav-active {

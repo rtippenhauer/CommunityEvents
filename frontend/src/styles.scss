@@ -77,3 +77,24 @@ body {
 .member-hover-panel {
   pointer-events: auto;
 }
+
+// Nav dropdown menus — square, warm cream background, brown text
+.nav-menu .mat-mdc-menu-panel {
+  border-radius: 0 !important;
+  background: var(--db-cream-dark, #F5EDD8) !important;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(61, 28, 5, 0.18);
+}
+.nav-menu .mat-mdc-menu-item {
+  color: var(--db-brown-dark, #3D1C05) !important;
+  --mat-menu-item-label-text-color: var(--db-brown-dark, #3D1C05);
+}
+.nav-menu .mat-mdc-menu-item .mat-icon {
+  color: var(--db-brown-mid, #7B3F00) !important;
+}
+.nav-menu .mat-mdc-menu-item:hover:not([disabled]) {
+  background: rgba(61, 28, 5, 0.08) !important;
+}
+.nav-menu mat-divider {
+  border-color: rgba(61, 28, 5, 0.15) !important;
+}

@@ -151,7 +151,7 @@
             [class.nav-active]="isEventsMenuActive">
             Events <mat-icon class="menu-chevron">expand_more</mat-icon>
           </button>
-          <mat-menu #eventsMenu="matMenu">
+          <mat-menu #eventsMenu="matMenu" panelClass="nav-menu">
             <a mat-menu-item routerLink="/events">
               <mat-icon>event</mat-icon> Events
             </a>
@@ -171,7 +171,7 @@
               [class.nav-active]="isCommunityMenuActive">
               Community <mat-icon class="menu-chevron">expand_more</mat-icon>
             </button>
-            <mat-menu #communityMenu="matMenu">
+            <mat-menu #communityMenu="matMenu" panelClass="nav-menu">
               @if (!isNonValidated()) {
                 <a mat-menu-item routerLink="/restaurants">
                   <mat-icon>restaurant</mat-icon> Restaurants
@@ -190,7 +190,7 @@
               [class.nav-active]="isUpdatesMenuActive()">
               Updates <mat-icon class="menu-chevron">expand_more</mat-icon>
             </button>
-            <mat-menu #updatesMenu="matMenu">
+            <mat-menu #updatesMenu="matMenu" panelClass="nav-menu">
               <a mat-menu-item routerLink="/announcements">
                 <mat-icon>campaign</mat-icon> Announcements
               </a>
@@ -212,7 +212,7 @@
                 <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
               }
             </button>
-            <mat-menu #adminMenu="matMenu">
+            <mat-menu #adminMenu="matMenu" panelClass="nav-menu">
               <a mat-menu-item routerLink="/admin/users">
                 <mat-icon>manage_accounts</mat-icon> Users
               </a>
@@ -279,7 +279,7 @@
             <span class="avatar-initials">{{ userInitials() }}</span>
           }
         </button>
-        <mat-menu #userMenu="matMenu">
+        <mat-menu #userMenu="matMenu" panelClass="nav-menu">
           <a mat-menu-item routerLink="/profile">
             <mat-icon>person</mat-icon> Profile
           </a>
