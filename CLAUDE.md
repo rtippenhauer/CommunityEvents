@@ -27,16 +27,16 @@ dinnerbears/
 ├── .vscode/                   ← VS Code settings
 ├── docs/                      ← Requirements, schema, setup guides
 ├── frontend/                  ← Angular 19 app
-│   └── public/                ← Static placeholder site (landing, privacy, terms)
+│   └── public/                ← Static assets and legacy placeholder pages
 ├── api/                       ← NestJS API
 └── docker/                    ← Docker Compose and NGINX config
 ```
 
 ## Current Development Phase
-**Phase 13 — CMS Legal Pages** — Admin-editable Terms and Privacy pages served within the site shell, replacing the current static placeholder files.
+**Post-Launch — Phase 14 TBD** — v1.0.0 is live; next phase not yet defined.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

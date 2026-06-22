@@ -122,7 +122,7 @@
   gap: 0;
   margin-left: 8px;
 
-  a {
+  a, button {
     color: var(--db-cream) !important;
     opacity: 0.8;
     font-size: 0.88rem;
@@ -184,7 +184,8 @@
   border-radius: 50%;
   overflow: hidden;
   border: 2px solid var(--db-amber);
-  text-decoration: none;
+  background: none;
+  padding: 0;
   flex-shrink: 0;
   cursor: pointer;
   transition: border-color 0.15s;
@@ -222,6 +223,15 @@
   &:hover { opacity: 1; }
 }
 
+.menu-chevron {
+  font-size: 18px;
+  height: 18px;
+  width: 18px;
+  vertical-align: middle;
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
 .nav-badge {
   display: inline-flex;
   align-items: center;
@@ -242,7 +252,6 @@
 }
 
 
-.logout-btn { color: var(--db-cream) !important; opacity: 0.7; &:hover { opacity: 1; } }
 
 .signin-btn {
   color: var(--db-amber) !important;

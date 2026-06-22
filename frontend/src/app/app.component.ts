@@ -1,5 +1,5 @@
 import { Component, inject, computed, effect } from '@angular/core';
-import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatIconModule } from '@angular/material/icon';
@@ -48,12 +48,37 @@ export class AppComponent {
   readonly currentYear = new Date().getFullYear();
   readonly isStage = environment.isStage;
 
+  private readonly router = inject(Router);
+
   isMobile = toSignal(
     this.breakpointObserver
       .observe([Breakpoints.XSmall, Breakpoints.Small])
       .pipe(map((result) => result.matches)),
     { initialValue: false },
   );
+
+  private readonly currentUrl = toSignal(
+    this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      map((e) => e.urlAfterRedirects),
+    ),
+    { initialValue: this.router.url },
+  );
+
+  readonly isEventsMenuActive = computed(() => {
+    const url = this.currentUrl();
+    return url.startsWith('/events') || url.startsWith('/calendar') || url.startsWith('/ratings');
+  });
+
+  readonly isCommunityMenuActive = computed(() => {
+    const url = this.currentUrl();
+    return url.startsWith('/restaurants') || url.startsWith('/members') || url.startsWith('/invite');
+  });
+
+  readonly isUpdatesMenuActive = computed(() => {
+    const url = this.currentUrl();
+    return url.startsWith('/announcements') || url.startsWith('/feedback') || url.startsWith('/updates');
+  });
 
   readonly userInitials = computed<string>(() => {
     const name = this.authService.currentUser()?.fullName ?? '';

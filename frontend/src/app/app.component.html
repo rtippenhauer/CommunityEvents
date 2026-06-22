@@ -12,6 +12,10 @@
       <a mat-list-item routerLink="/" (click)="sidenav.close()">
         <mat-icon matListItemIcon>home</mat-icon> Home
       </a>
+
+      <!-- Events group -->
+      <mat-divider />
+      <div class="sidenav-section-label">Events</div>
       <a mat-list-item routerLink="/events" (click)="sidenav.close()">
         <mat-icon matListItemIcon>event</mat-icon> Events
       </a>
@@ -19,24 +23,32 @@
         <a mat-list-item routerLink="/calendar" (click)="sidenav.close()">
           <mat-icon matListItemIcon>calendar_month</mat-icon> Calendar
         </a>
-        <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
-          <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
-        </a>
         <a mat-list-item routerLink="/ratings" (click)="sidenav.close()">
           <mat-icon matListItemIcon>star</mat-icon> Rate Visits
         </a>
       }
+
       @if (isLoggedIn()) {
+        <!-- Community group -->
         @if (!isNonValidated()) {
+          <mat-divider />
+          <div class="sidenav-section-label">Community</div>
+          <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
+          </a>
           <a mat-list-item routerLink="/members" (click)="sidenav.close()">
             <mat-icon matListItemIcon>group</mat-icon> Members
           </a>
+          <a mat-list-item routerLink="/invite" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>group_add</mat-icon> Invite
+          </a>
         }
+
+        <!-- Updates group -->
+        <mat-divider />
+        <div class="sidenav-section-label">Updates</div>
         <a mat-list-item routerLink="/announcements" (click)="sidenav.close()">
           <mat-icon matListItemIcon>campaign</mat-icon> Announcements
-        </a>
-        <a mat-list-item routerLink="/profile" (click)="sidenav.close()">
-          <mat-icon matListItemIcon>person</mat-icon> Profile
         </a>
         @if (!isNonValidated()) {
           <a mat-list-item routerLink="/feedback" (click)="sidenav.close()">
@@ -46,11 +58,7 @@
         <a mat-list-item routerLink="/updates" (click)="sidenav.close()">
           <mat-icon matListItemIcon>new_releases</mat-icon> What's New
         </a>
-        @if (!isNonValidated()) {
-          <a mat-list-item routerLink="/invite" (click)="sidenav.close()">
-            <mat-icon matListItemIcon>group_add</mat-icon> Invite
-          </a>
-        }
+
         @if (isAdmin() || isModerator()) {
           <mat-divider />
           <div class="sidenav-section-label">{{ isAdmin() ? 'Admin' : 'Moderation' }}</div>
@@ -137,25 +145,66 @@
           <a mat-button routerLink="/" routerLinkActive="nav-active" [routerLinkActiveOptions]="{ exact: true }">
             Home
           </a>
-          <a mat-button routerLink="/events" routerLinkActive="nav-active">Events</a>
-          @if (isLoggedIn() && !isNonValidated()) {
-            <a mat-button routerLink="/calendar" routerLinkActive="nav-active">Calendar</a>
-            <a mat-button routerLink="/restaurants" routerLinkActive="nav-active">Restaurants</a>
-            <a mat-button routerLink="/ratings" routerLinkActive="nav-active">Rate Visits</a>
-          }
+
+          <!-- Events group -->
+          <button mat-button [matMenuTriggerFor]="eventsMenu"
+            [class.nav-active]="isEventsMenuActive">
+            Events <mat-icon class="menu-chevron">expand_more</mat-icon>
+          </button>
+          <mat-menu #eventsMenu="matMenu">
+            <a mat-menu-item routerLink="/events">
+              <mat-icon>event</mat-icon> Events
+            </a>
+            @if (isLoggedIn() && !isNonValidated()) {
+              <a mat-menu-item routerLink="/calendar">
+                <mat-icon>calendar_month</mat-icon> Calendar
+              </a>
+              <a mat-menu-item routerLink="/ratings">
+                <mat-icon>star</mat-icon> Rate Visits
+              </a>
+            }
+          </mat-menu>
+
+          <!-- Community group -->
           @if (isLoggedIn()) {
-            @if (!isNonValidated()) {
-              <a mat-button routerLink="/members" routerLinkActive="nav-active">Members</a>
-            }
-            <a mat-button routerLink="/announcements" routerLinkActive="nav-active">Announcements</a>
-            @if (!isNonValidated()) {
-              <a mat-button routerLink="/feedback" routerLinkActive="nav-active">Feedback</a>
-            }
-            <a mat-button routerLink="/updates" routerLinkActive="nav-active">What's New</a>
-            @if (!isNonValidated()) {
-              <a mat-button routerLink="/invite" routerLinkActive="nav-active">Invite</a>
-            }
+            <button mat-button [matMenuTriggerFor]="communityMenu"
+              [class.nav-active]="isCommunityMenuActive">
+              Community <mat-icon class="menu-chevron">expand_more</mat-icon>
+            </button>
+            <mat-menu #communityMenu="matMenu">
+              @if (!isNonValidated()) {
+                <a mat-menu-item routerLink="/restaurants">
+                  <mat-icon>restaurant</mat-icon> Restaurants
+                </a>
+                <a mat-menu-item routerLink="/members">
+                  <mat-icon>group</mat-icon> Members
+                </a>
+                <a mat-menu-item routerLink="/invite">
+                  <mat-icon>group_add</mat-icon> Invite
+                </a>
+              }
+            </mat-menu>
+
+            <!-- Updates group -->
+            <button mat-button [matMenuTriggerFor]="updatesMenu"
+              [class.nav-active]="isUpdatesMenuActive()">
+              Updates <mat-icon class="menu-chevron">expand_more</mat-icon>
+            </button>
+            <mat-menu #updatesMenu="matMenu">
+              <a mat-menu-item routerLink="/announcements">
+                <mat-icon>campaign</mat-icon> Announcements
+              </a>
+              @if (!isNonValidated()) {
+                <a mat-menu-item routerLink="/feedback">
+                  <mat-icon>feedback</mat-icon> Feedback
+                </a>
+              }
+              <a mat-menu-item routerLink="/updates">
+                <mat-icon>new_releases</mat-icon> What's New
+              </a>
+            </mat-menu>
           }
+
           @if (isAdmin() || isModerator()) {
             <button mat-button [matMenuTriggerFor]="adminMenu" class="admin-menu-btn">
               <mat-icon>admin_panel_settings</mat-icon> {{ isAdmin() ? 'Admin' : 'Moderation' }}
@@ -222,18 +271,32 @@
 
       <!-- User avatar or Sign in -->
       @if (isLoggedIn()) {
-        <a routerLink="/profile" class="user-avatar" [attr.aria-label]="'Profile: ' + (authService.currentUser()?.fullName ?? '')">
+        <button class="user-avatar" [matMenuTriggerFor]="userMenu"
+          [attr.aria-label]="'Account menu for ' + (authService.currentUser()?.fullName ?? '')">
           @if (userPhoto()) {
             <img [src]="userPhoto()!" alt="Profile photo" class="avatar-photo" />
           } @else {
             <span class="avatar-initials">{{ userInitials() }}</span>
           }
-        </a>
-        @if (!isMobile()) {
-          <button mat-icon-button (click)="logout()" aria-label="Sign out" title="Sign out" class="logout-btn">
-            <mat-icon>logout</mat-icon>
+        </button>
+        <mat-menu #userMenu="matMenu">
+          <a mat-menu-item routerLink="/profile">
+            <mat-icon>person</mat-icon> Profile
+          </a>
+          <a mat-menu-item routerLink="/profile/settings">
+            <mat-icon>settings</mat-icon> Settings
+          </a>
+          <a mat-menu-item routerLink="/account/settings">
+            <mat-icon>link</mat-icon> Linked Accounts
+          </a>
+          <a mat-menu-item routerLink="/invite">
+            <mat-icon>group_add</mat-icon> Invites
+          </a>
+          <mat-divider />
+          <button mat-menu-item (click)="logout()">
+            <mat-icon>logout</mat-icon> Sign out
           </button>
-        }
+        </mat-menu>
       } @else {
         <a mat-stroked-button routerLink="/login" class="signin-btn">Sign in</a>
       }
