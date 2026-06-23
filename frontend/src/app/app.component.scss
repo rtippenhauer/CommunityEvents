@@ -99,46 +99,39 @@
   object-fit: contain;
 }
 
-// ── Desktop nav strip ─────────────────────────────────────────────────────────
-
-.app-nav-bar {
-  display: flex;
-  align-items: stretch;
-  background: var(--db-cream-dark, #F5EDD8);
-  border-bottom: 1px solid rgba(61, 28, 5, 0.12);
-}
+// ── Desktop nav (inline in toolbar) ──────────────────────────────────────────
 
 .nav-item {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0 20px;
-  height: 40px;
+  padding: 0 16px;
+  height: 100%;
   font-size: 0.875rem;
   font-family: var(--db-font-body);
   font-weight: 500;
-  color: var(--db-brown-dark, #3D1C05);
+  color: rgba(255, 255, 255, 0.85);
   background: transparent;
   border: none;
   border-radius: 0;
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 
   &:hover {
-    background: rgba(61, 28, 5, 0.08);
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
   }
 
   &.nav-item-active {
-    background: rgba(61, 28, 5, 0.14);
+    background: rgba(255, 255, 255, 0.18);
     font-weight: 600;
-    color: var(--db-brown-dark, #3D1C05);
+    color: #fff;
   }
 
   &.nav-item-admin {
-    margin-left: auto;
-    color: var(--db-brown-mid, #7B3F00);
+    color: var(--db-amber, #C9933A);
     font-weight: 600;
   }
 }

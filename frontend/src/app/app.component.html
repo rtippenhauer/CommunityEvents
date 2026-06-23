@@ -128,49 +128,8 @@
           }
         </a>
 
-        <span class="toolbar-spacer"></span>
-
-        <!-- Notification bell (logged-in only) -->
-        @if (isLoggedIn()) {
-          <app-notification-bell />
-        }
-
-        <!-- User avatar or Sign in -->
-        @if (isLoggedIn()) {
-          <button class="user-avatar" [matMenuTriggerFor]="userMenu"
-            [attr.aria-label]="'Account menu for ' + (authService.currentUser()?.fullName ?? '')">
-            @if (userPhoto()) {
-              <img [src]="userPhoto()!" alt="Profile photo" class="avatar-photo" />
-            } @else {
-              <span class="avatar-initials">{{ userInitials() }}</span>
-            }
-          </button>
-          <mat-menu #userMenu="matMenu" panelClass="nav-menu">
-            <a mat-menu-item routerLink="/profile">
-              <mat-icon>person</mat-icon> Profile
-            </a>
-            <a mat-menu-item routerLink="/profile/notifications">
-              <mat-icon>notifications</mat-icon> Notifications
-            </a>
-            <a mat-menu-item routerLink="/account/settings">
-              <mat-icon>link</mat-icon> Linked Accounts
-            </a>
-            <a mat-menu-item routerLink="/invite">
-              <mat-icon>group_add</mat-icon> Invites
-            </a>
-            <mat-divider />
-            <button mat-menu-item (click)="logout()">
-              <mat-icon>logout</mat-icon> Sign out
-            </button>
-          </mat-menu>
-        } @else {
-          <a mat-stroked-button routerLink="/login" class="signin-btn">Sign in</a>
-        }
-      </mat-toolbar>
-
-      <!-- Desktop nav strip -->
-      @if (!isMobile()) {
-        <nav class="app-nav-bar">
+        <!-- Desktop nav (inline in toolbar) -->
+        @if (!isMobile()) {
           <a class="nav-item" routerLink="/" routerLinkActive="nav-item-active" [routerLinkActiveOptions]="{ exact: true }">
             Home
           </a>
@@ -233,53 +192,93 @@
               </a>
             </mat-menu>
           }
+        }
 
-          @if (isAdmin() || isModerator()) {
-            <button class="nav-item nav-item-admin" [matMenuTriggerFor]="adminMenu">
-              <mat-icon>admin_panel_settings</mat-icon>
-              {{ isAdmin() ? 'Admin' : 'Moderation' }}
-              @if (feedbackService.unseenCount() > 0) {
-                <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
-              }
-              <mat-icon class="menu-chevron">expand_more</mat-icon>
+        <span class="toolbar-spacer"></span>
+
+        <!-- Admin menu (desktop, right side) -->
+        @if (!isMobile() && (isAdmin() || isModerator())) {
+          <button class="nav-item nav-item-admin" [matMenuTriggerFor]="adminMenu">
+            <mat-icon>admin_panel_settings</mat-icon>
+            {{ isAdmin() ? 'Admin' : 'Moderation' }}
+            @if (feedbackService.unseenCount() > 0) {
+              <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
+            }
+            <mat-icon class="menu-chevron">expand_more</mat-icon>
+          </button>
+          <mat-menu #adminMenu="matMenu" panelClass="nav-menu">
+            <a mat-menu-item routerLink="/admin/users">
+              <mat-icon>manage_accounts</mat-icon> Users
+            </a>
+            @if (isAdmin()) {
+              <a mat-menu-item routerLink="/admin/invites">
+                <mat-icon>link</mat-icon> Invites
+              </a>
+              <a mat-menu-item routerLink="/admin/invites/lineage">
+                <mat-icon>account_tree</mat-icon> Invite Tree
+              </a>
+              <a mat-menu-item routerLink="/admin/email">
+                <mat-icon>mail</mat-icon> Email
+              </a>
+              <a mat-menu-item routerLink="/admin/feedback">
+                <mat-icon>feedback</mat-icon> Feedback
+                @if (feedbackService.unseenCount() > 0) {
+                  <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
+                }
+              </a>
+              <a mat-menu-item routerLink="/admin/audit">
+                <mat-icon>history</mat-icon> Audit Log
+              </a>
+              <a mat-menu-item routerLink="/admin/cities">
+                <mat-icon>location_city</mat-icon> Cities
+              </a>
+            }
+            <a mat-menu-item routerLink="/admin/announcements">
+              <mat-icon>campaign</mat-icon> Announcements
+            </a>
+            <a mat-menu-item routerLink="/admin/moderation">
+              <mat-icon>flag</mat-icon> Moderation
+            </a>
+          </mat-menu>
+        }
+
+        <!-- Notification bell (logged-in only) -->
+        @if (isLoggedIn()) {
+          <app-notification-bell />
+        }
+
+        <!-- User avatar or Sign in -->
+        @if (isLoggedIn()) {
+          <button class="user-avatar" [matMenuTriggerFor]="userMenu"
+            [attr.aria-label]="'Account menu for ' + (authService.currentUser()?.fullName ?? '')">
+            @if (userPhoto()) {
+              <img [src]="userPhoto()!" alt="Profile photo" class="avatar-photo" />
+            } @else {
+              <span class="avatar-initials">{{ userInitials() }}</span>
+            }
+          </button>
+          <mat-menu #userMenu="matMenu" panelClass="nav-menu">
+            <a mat-menu-item routerLink="/profile">
+              <mat-icon>person</mat-icon> Profile
+            </a>
+            <a mat-menu-item routerLink="/profile/notifications">
+              <mat-icon>notifications</mat-icon> Notifications
+            </a>
+            <a mat-menu-item routerLink="/account/settings">
+              <mat-icon>link</mat-icon> Linked Accounts
+            </a>
+            <a mat-menu-item routerLink="/invite">
+              <mat-icon>group_add</mat-icon> Invites
+            </a>
+            <mat-divider />
+            <button mat-menu-item (click)="logout()">
+              <mat-icon>logout</mat-icon> Sign out
             </button>
-            <mat-menu #adminMenu="matMenu" panelClass="nav-menu">
-              <a mat-menu-item routerLink="/admin/users">
-                <mat-icon>manage_accounts</mat-icon> Users
-              </a>
-              @if (isAdmin()) {
-                <a mat-menu-item routerLink="/admin/invites">
-                  <mat-icon>link</mat-icon> Invites
-                </a>
-                <a mat-menu-item routerLink="/admin/invites/lineage">
-                  <mat-icon>account_tree</mat-icon> Invite Tree
-                </a>
-                <a mat-menu-item routerLink="/admin/email">
-                  <mat-icon>mail</mat-icon> Email
-                </a>
-                <a mat-menu-item routerLink="/admin/feedback">
-                  <mat-icon>feedback</mat-icon> Feedback
-                  @if (feedbackService.unseenCount() > 0) {
-                    <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
-                  }
-                </a>
-                <a mat-menu-item routerLink="/admin/audit">
-                  <mat-icon>history</mat-icon> Audit Log
-                </a>
-                <a mat-menu-item routerLink="/admin/cities">
-                  <mat-icon>location_city</mat-icon> Cities
-                </a>
-              }
-              <a mat-menu-item routerLink="/admin/announcements">
-                <mat-icon>campaign</mat-icon> Announcements
-              </a>
-              <a mat-menu-item routerLink="/admin/moderation">
-                <mat-icon>flag</mat-icon> Moderation
-              </a>
-            </mat-menu>
-          }
-        </nav>
-      }
+          </mat-menu>
+        } @else {
+          <a mat-stroked-button routerLink="/login" class="signin-btn">Sign in</a>
+        }
+      </mat-toolbar>
     </header>
 
     <main class="app-content">
