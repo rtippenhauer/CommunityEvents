@@ -81,7 +81,11 @@
   background: linear-gradient(135deg, var(--db-brown-nav) 0%, #4A2208 100%) !important;
   color: var(--db-cream) !important;
   padding: 0 12px;
-  gap: 8px;
+  gap: 0;
+  min-height: 52px !important;
+  height: 52px !important;
+  border-top: 3px solid var(--db-brown-dark, #3D1C05) !important;
+  border-bottom: 3px solid var(--db-brown-dark, #3D1C05) !important;
   --mdc-icon-button-icon-color: var(--db-cream);
 }
 
@@ -90,7 +94,7 @@
   align-items: center;
   text-decoration: none;
   flex-shrink: 0;
-  margin-left: 4px;
+  margin: 0 12px;
   color: var(--db-cream);
 }
 
@@ -99,39 +103,48 @@
   object-fit: contain;
 }
 
-// ── Desktop nav (inline in toolbar) ──────────────────────────────────────────
+// ── Desktop nav (cream band inset in toolbar) ─────────────────────────────────
+
+.toolbar-nav {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  flex: 1;
+  background: var(--db-cream-dark, #F5EDD8);
+  // Override icon button color for elements inside the cream band
+  --mdc-icon-button-icon-color: var(--db-brown-dark, #3D1C05);
+}
 
 .nav-item {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0 16px;
+  padding: 0 18px;
   height: 100%;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   font-family: var(--db-font-body);
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--db-brown-dark, #3D1C05);
   background: transparent;
   border: none;
   border-radius: 0;
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
+    background: rgba(61, 28, 5, 0.08);
   }
 
   &.nav-item-active {
-    background: rgba(255, 255, 255, 0.18);
+    background: rgba(61, 28, 5, 0.14);
     font-weight: 600;
-    color: #fff;
+    color: var(--db-brown-dark, #3D1C05);
   }
 
   &.nav-item-admin {
-    color: var(--db-amber, #C9933A);
+    color: var(--db-brown-mid, #7B3F00);
     font-weight: 600;
   }
 }
@@ -144,14 +157,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   overflow: hidden;
   border: 2px solid var(--db-amber);
   background: none;
   padding: 0;
   flex-shrink: 0;
+  margin-left: 10px;
   cursor: pointer;
   transition: border-color 0.15s;
   &:hover { border-color: #fff; }
