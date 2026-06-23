@@ -82,10 +82,10 @@
   color: var(--db-cream) !important;
   padding: 0 12px;
   gap: 0;
-  min-height: 52px !important;
-  height: 52px !important;
-  border-top: 3px solid var(--db-brown-dark, #3D1C05) !important;
-  border-bottom: 3px solid var(--db-brown-dark, #3D1C05) !important;
+  min-height: 68px !important;
+  height: 68px !important;
+  border-top: 12px solid var(--db-brown-dark, #3D1C05) !important;
+  border-bottom: 12px solid var(--db-brown-dark, #3D1C05) !important;
   --mdc-icon-button-icon-color: var(--db-cream);
 }
 
@@ -111,6 +111,8 @@
   align-self: stretch;
   flex: 1;
   background: var(--db-cream-dark, #F5EDD8);
+  border-radius: 10px;
+  overflow: hidden;
   // Override icon button color for elements inside the cream band
   --mdc-icon-button-icon-color: var(--db-brown-dark, #3D1C05);
 }
