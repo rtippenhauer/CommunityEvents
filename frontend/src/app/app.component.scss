@@ -40,21 +40,21 @@
 
 .app-sidenav {
   width: 260px;
-  background: var(--db-brown-nav);
-  color: var(--db-cream);
+  background: var(--db-cream, #FDFAF5);
+  color: var(--db-brown-dark, #3D1C05);
 
   // Override MDC CSS custom properties directly
-  --mdc-list-list-item-label-text-color: var(--db-cream);
-  --mdc-list-list-item-leading-icon-color: var(--db-cream);
-  --mdc-list-list-item-hover-label-text-color: var(--db-cream);
-  --mdc-list-list-item-hover-leading-icon-color: var(--db-cream);
-  --mdc-list-list-item-selected-label-text-color: var(--db-amber);
-  --mdc-list-list-item-selected-leading-icon-color: var(--db-amber);
-  --mdc-list-list-item-focus-label-text-color: var(--db-amber);
-  --mat-list-active-indicator-color: rgba(201,147,58,0.15);
+  --mdc-list-list-item-label-text-color: var(--db-brown-dark, #3D1C05);
+  --mdc-list-list-item-leading-icon-color: var(--db-brown-dark, #3D1C05);
+  --mdc-list-list-item-hover-label-text-color: var(--db-brown-dark, #3D1C05);
+  --mdc-list-list-item-hover-leading-icon-color: var(--db-brown-dark, #3D1C05);
+  --mdc-list-list-item-selected-label-text-color: var(--db-brown-nav, #5C2D0A);
+  --mdc-list-list-item-selected-leading-icon-color: var(--db-brown-nav, #5C2D0A);
+  --mdc-list-list-item-focus-label-text-color: var(--db-brown-nav, #5C2D0A);
+  --mat-list-active-indicator-color: rgba(61, 28, 5, 0.08);
 
   .mat-mdc-list-item {
-    opacity: 0.9;
+    opacity: 0.85;
     &:hover { opacity: 1; }
     &.mdc-list-item--activated { opacity: 1; }
   }
@@ -62,7 +62,8 @@
 
 .sidenav-header {
   padding: 20px 16px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: var(--db-brown-nav);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
 }
 
 .sidenav-logo { display: block; }
@@ -84,6 +85,7 @@
   gap: 0;
   min-height: 68px !important;
   height: 68px !important;
+  align-items: stretch !important;
   border-top: 12px solid var(--db-brown-dark, #3D1C05) !important;
   border-bottom: 12px solid var(--db-brown-dark, #3D1C05) !important;
   --mdc-icon-button-icon-color: var(--db-cream);
@@ -96,6 +98,7 @@
   flex-shrink: 0;
   margin: 0 12px;
   color: var(--db-cream);
+  align-self: center;
 }
 
 .app-logo {
@@ -115,6 +118,12 @@
   overflow: hidden;
   // Override icon button color for elements inside the cream band
   --mdc-icon-button-icon-color: var(--db-brown-dark, #3D1C05);
+
+  @media (max-width: 959.98px) {
+    background: transparent;
+    border-radius: 0;
+    --mdc-icon-button-icon-color: var(--db-cream);
+  }
 }
 
 .nav-item {
@@ -170,6 +179,7 @@
   margin-left: 10px;
   cursor: pointer;
   transition: border-color 0.15s;
+  align-self: center;
   &:hover { border-color: #fff; }
 }
 
@@ -191,7 +201,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--db-amber, #C9933A);
+  color: var(--db-brown-mid, #7B3F00);
   padding: 8px 16px 2px;
   opacity: 0.9;
 }

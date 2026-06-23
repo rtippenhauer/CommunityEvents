@@ -125,20 +125,10 @@
           }
         </a>
 
-        <!-- Cream band: mobile spacer + bell -->
-        @if (isMobile()) {
-          <div class="toolbar-nav">
-            <span class="toolbar-spacer"></span>
-            @if (isLoggedIn()) {
-              <app-notification-bell />
-            }
-          </div>
-        }
+        <!-- Cream band: always visible; nav items desktop-only -->
+        <div class="toolbar-nav">
 
-        <!-- Cream band: nav + spacer + admin + bell (desktop only) -->
-        @if (!isMobile()) {
-          <div class="toolbar-nav">
-
+          @if (!isMobile()) {
             <a class="nav-item" routerLink="/" routerLinkActive="nav-item-active" [routerLinkActiveOptions]="{ exact: true }">
               Home
             </a>
@@ -199,59 +189,60 @@
               </mat-menu>
             }
 
-            <span class="toolbar-spacer"></span>
+          }
 
-            @if (isAdmin() || isModerator()) {
-              <button class="nav-item nav-item-admin" [matMenuTriggerFor]="adminMenu">
-                <mat-icon>admin_panel_settings</mat-icon>
-                {{ isAdmin() ? 'Admin' : 'Moderation' }}
-                @if (feedbackService.unseenCount() > 0) {
-                  <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
-                }
-                <mat-icon class="menu-chevron">expand_more</mat-icon>
-              </button>
-              <mat-menu #adminMenu="matMenu" panelClass="nav-menu">
-                <a mat-menu-item routerLink="/admin/users">
-                  <mat-icon>manage_accounts</mat-icon> Users
-                </a>
-                @if (isAdmin()) {
-                  <a mat-menu-item routerLink="/admin/invites">
-                    <mat-icon>link</mat-icon> Invites
-                  </a>
-                  <a mat-menu-item routerLink="/admin/invites/lineage">
-                    <mat-icon>account_tree</mat-icon> Invite Tree
-                  </a>
-                  <a mat-menu-item routerLink="/admin/email">
-                    <mat-icon>mail</mat-icon> Email
-                  </a>
-                  <a mat-menu-item routerLink="/admin/feedback">
-                    <mat-icon>feedback</mat-icon> Feedback
-                    @if (feedbackService.unseenCount() > 0) {
-                      <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
-                    }
-                  </a>
-                  <a mat-menu-item routerLink="/admin/audit">
-                    <mat-icon>history</mat-icon> Audit Log
-                  </a>
-                  <a mat-menu-item routerLink="/admin/cities">
-                    <mat-icon>location_city</mat-icon> Cities
-                  </a>
-                }
-                <a mat-menu-item routerLink="/admin/announcements">
-                  <mat-icon>campaign</mat-icon> Announcements
-                </a>
-                <a mat-menu-item routerLink="/admin/moderation">
-                  <mat-icon>flag</mat-icon> Moderation
-                </a>
-              </mat-menu>
-            }
+          <span class="toolbar-spacer"></span>
 
-            @if (isLoggedIn()) {
-              <app-notification-bell />
-            }
+          @if (!isMobile() && (isAdmin() || isModerator())) {
+            <button class="nav-item nav-item-admin" [matMenuTriggerFor]="adminMenu">
+              <mat-icon>admin_panel_settings</mat-icon>
+              {{ isAdmin() ? 'Admin' : 'Moderation' }}
+              @if (feedbackService.unseenCount() > 0) {
+                <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
+              }
+              <mat-icon class="menu-chevron">expand_more</mat-icon>
+            </button>
+            <mat-menu #adminMenu="matMenu" panelClass="nav-menu">
+              <a mat-menu-item routerLink="/admin/users">
+                <mat-icon>manage_accounts</mat-icon> Users
+              </a>
+              @if (isAdmin()) {
+                <a mat-menu-item routerLink="/admin/invites">
+                  <mat-icon>link</mat-icon> Invites
+                </a>
+                <a mat-menu-item routerLink="/admin/invites/lineage">
+                  <mat-icon>account_tree</mat-icon> Invite Tree
+                </a>
+                <a mat-menu-item routerLink="/admin/email">
+                  <mat-icon>mail</mat-icon> Email
+                </a>
+                <a mat-menu-item routerLink="/admin/feedback">
+                  <mat-icon>feedback</mat-icon> Feedback
+                  @if (feedbackService.unseenCount() > 0) {
+                    <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
+                  }
+                </a>
+                <a mat-menu-item routerLink="/admin/audit">
+                  <mat-icon>history</mat-icon> Audit Log
+                </a>
+                <a mat-menu-item routerLink="/admin/cities">
+                  <mat-icon>location_city</mat-icon> Cities
+                </a>
+              }
+              <a mat-menu-item routerLink="/admin/announcements">
+                <mat-icon>campaign</mat-icon> Announcements
+              </a>
+              <a mat-menu-item routerLink="/admin/moderation">
+                <mat-icon>flag</mat-icon> Moderation
+              </a>
+            </mat-menu>
+          }
 
-          </div>
-        }
+          @if (isLoggedIn()) {
+            <app-notification-bell />
+          }
+
+        </div>
 
         <!-- Avatar or Sign in (dark) -->
         @if (isLoggedIn()) {
