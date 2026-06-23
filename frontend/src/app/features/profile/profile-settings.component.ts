@@ -66,12 +66,11 @@ interface AvatarEntry { path: string; label: string; }
                   <img src="/avatars/bear-default.jpg" alt="Bear avatar" class="profile-photo" />
                 }
               </div>
-              <button mat-mini-fab type="button" class="photo-edit-btn"
-                (click)="avatarOpen.set(!avatarOpen())"
-                [attr.aria-label]="avatarOpen() ? 'Close avatar picker' : 'Change photo'">
-                <mat-icon>{{ avatarOpen() ? 'close' : 'photo_camera' }}</mat-icon>
-              </button>
             </div>
+            <button mat-button type="button" class="change-photo-btn" (click)="avatarOpen.set(!avatarOpen())">
+              <mat-icon>{{ avatarOpen() ? 'close' : 'photo_camera' }}</mat-icon>
+              {{ avatarOpen() ? 'Close' : 'Change photo' }}
+            </button>
             @if (photoUrl()) {
               <button mat-button type="button" color="warn" class="remove-photo-btn" (click)="removePhoto()">
                 Remove photo
@@ -269,6 +268,7 @@ interface AvatarEntry { path: string; label: string; }
       box-shadow: 0 1px 4px rgba(0,0,0,0.25);
       mat-icon { font-size: 16px; width: 16px; height: 16px; line-height: 16px; }
     }
+    .change-photo-btn { font-size: 0.82rem !important; }
     .remove-photo-btn { font-size: 0.78rem !important; margin-top: -4px; }
     .avatar-picker { width: 100%; margin-top: 4px; }
     .photo-preview {

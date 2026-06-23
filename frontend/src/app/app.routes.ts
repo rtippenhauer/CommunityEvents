@@ -60,6 +60,12 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'profile/notifications',
+    loadComponent: () =>
+      import('./features/profile/profile-notifications.component').then((m) => m.ProfileNotificationsComponent),
+    canActivate: [authGuard],
+  },
+  {
     path: 'account/settings',
     loadComponent: () =>
       import('./features/account/account-settings.component').then((m) => m.AccountSettingsComponent),

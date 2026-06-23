@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DatePipe } from '@angular/common';
@@ -9,6 +9,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -35,6 +36,7 @@ interface Invite {
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    MatSlideToggleModule,
     MatTooltipModule,
   ],
   template: `
@@ -87,9 +89,15 @@ interface Invite {
       <!-- Invite history -->
       @if (invites().length > 0) {
         <div class="history-card">
-          <h2>Your Invites</h2>
+          <div class="history-header">
+            <h2>Your Invites</h2>
+            <div class="filter-toggles">
+              <mat-slide-toggle [checked]="showExpired()" (change)="showExpired.set($event.checked)">Show expired</mat-slide-toggle>
+              <mat-slide-toggle [checked]="showRevoked()" (change)="showRevoked.set($event.checked)">Show revoked</mat-slide-toggle>
+            </div>
+          </div>
           <div class="invite-list">
-            @for (invite of invites(); track invite.id) {
+            @for (invite of filteredInvites(); track invite.id) {
               <div class="invite-row">
                 <div class="invite-info">
                   <span class="invite-email">{{ invite.boundToEmail ?? '—' }}</span>
@@ -151,7 +159,11 @@ interface Invite {
       .link-url { display: block; font-size: 0.8rem; color: #333; word-break: break-all; }
     }
 
-    .history-card h2 { margin: 0 0 16px; font-size: 1.05rem; color: #444; }
+    .history-header {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;
+      h2 { margin: 0; font-size: 1.05rem; color: #444; }
+    }
+    .filter-toggles { display: flex; gap: 16px; flex-wrap: wrap; margin-left: auto; font-size: 0.85rem; }
     .invite-list { display: flex; flex-direction: column; gap: 0; }
     .invite-row {
       display: flex; align-items: center; gap: 12px; padding: 12px 0;
@@ -181,6 +193,17 @@ export class InviteComponent implements OnInit {
   readonly creating = signal(false);
   readonly revokingId = signal<number | null>(null);
   readonly newInviteUrl = signal<string | null>(null);
+
+  readonly showExpired = signal(false);
+  readonly showRevoked = signal(false);
+
+  readonly filteredInvites = computed(() =>
+    this.invites().filter((inv) => {
+      if (inv.isRevoked && !this.showRevoked()) return false;
+      if (this.isExpired(inv) && !this.showExpired()) return false;
+      return true;
+    })
+  );
 
   readonly form = this.fb.group({
     boundToEmail: ['', [Validators.required, Validators.email]],

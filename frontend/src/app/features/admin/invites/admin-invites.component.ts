@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -12,18 +12,21 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Clipboard } from '@angular/cdk/clipboard';
 
-interface FacebookGroup {
-  id: number;
-  name: string;
-}
+const HIDDEN_INVITES_KEY = 'db_hidden_invites';
+
+interface FacebookGroup { id: number; name: string; }
 
 interface Invite {
   id: number;
   token: string;
   type: string;
+  inviteFlavor: 'member' | 'non_validated' | null;
   boundToEmail: string | null;
   expiresAt: string;
   isRevoked: boolean;
@@ -38,6 +41,7 @@ interface Invite {
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    FormsModule,
     DatePipe,
     MatCardModule,
     MatCheckboxModule,
@@ -50,6 +54,8 @@ interface Invite {
     MatIconModule,
     MatSnackBarModule,
     MatDividerModule,
+    MatSlideToggleModule,
+    MatTooltipModule,
   ],
   template: `
     <div class="admin-invites">
@@ -144,13 +150,42 @@ interface Invite {
       <mat-card class="table-card">
         <mat-card-header>
           <mat-card-title>All Invites</mat-card-title>
+          <div class="filter-toggles">
+            <label class="toggle-label">
+              <mat-slide-toggle [(ngModel)]="showExpired" (change)="applyFilters()">
+                Show expired
+              </mat-slide-toggle>
+            </label>
+            <label class="toggle-label">
+              <mat-slide-toggle [(ngModel)]="showRevoked" (change)="applyFilters()">
+                Show revoked
+              </mat-slide-toggle>
+            </label>
+            <label class="toggle-label">
+              <mat-slide-toggle [(ngModel)]="showHidden" (change)="applyFilters()">
+                Show hidden
+              </mat-slide-toggle>
+            </label>
+          </div>
         </mat-card-header>
         <mat-card-content>
-          <table mat-table [dataSource]="invites()" class="invites-table">
+          <table mat-table [dataSource]="filteredInvites()" class="invites-table">
+
             <ng-container matColumnDef="type">
               <th mat-header-cell *matHeaderCellDef>Type</th>
               <td mat-cell *matCellDef="let row">
-                <mat-chip>{{ row.type }}</mat-chip>
+                <div class="type-cell">
+                  <mat-chip>{{ row.type }}</mat-chip>
+                  @if (row.inviteFlavor) {
+                    <mat-chip class="flavor-chip" [class.flavor-member]="row.inviteFlavor === 'member'"
+                      [class.flavor-nv]="row.inviteFlavor === 'non_validated'">
+                      {{ row.inviteFlavor === 'non_validated' ? 'Non-Validated' : 'Member' }}
+                    </mat-chip>
+                  }
+                  @if (isHidden(row.id)) {
+                    <mat-icon class="hidden-icon" matTooltip="Hidden">visibility_off</mat-icon>
+                  }
+                </div>
               </td>
             </ng-container>
 
@@ -187,22 +222,18 @@ interface Invite {
             <ng-container matColumnDef="actions">
               <th mat-header-cell *matHeaderCellDef></th>
               <td mat-cell *matCellDef="let row">
-                <button
-                  mat-icon-button
-                  (click)="copyToken(row.token)"
-                  aria-label="Copy invite link"
-                  title="Copy link"
-                >
+                <button mat-icon-button (click)="copyToken(row.token)"
+                  aria-label="Copy invite link" title="Copy link">
                   <mat-icon>content_copy</mat-icon>
                 </button>
-                @if (!row.isRevoked && !isExpired(row)) {
-                  <button
-                    mat-icon-button
-                    color="warn"
-                    (click)="revoke(row.id)"
-                    aria-label="Revoke invite"
-                    title="Revoke"
-                  >
+                <button mat-icon-button (click)="toggleHide(row.id)"
+                  [attr.aria-label]="isHidden(row.id) ? 'Unhide' : 'Hide link'"
+                  [title]="isHidden(row.id) ? 'Unhide' : 'Hide (protect from accidental revoke)'">
+                  <mat-icon>{{ isHidden(row.id) ? 'visibility' : 'visibility_off' }}</mat-icon>
+                </button>
+                @if (!row.isRevoked && !isExpired(row) && !isHidden(row.id)) {
+                  <button mat-icon-button color="warn" (click)="revoke(row.id)"
+                    aria-label="Revoke invite" title="Revoke">
                     <mat-icon>block</mat-icon>
                   </button>
                 }
@@ -210,52 +241,97 @@ interface Invite {
             </ng-container>
 
             <tr mat-header-row *matHeaderRowDef="columns"></tr>
-            <tr mat-row *matRowDef="let row; columns: columns"></tr>
+            <tr mat-row *matRowDef="let row; columns: columns"
+              [class.row-hidden]="isHidden(row.id)"
+              [class.row-inactive]="row.isRevoked || isExpired(row)"></tr>
           </table>
+          @if (filteredInvites().length === 0) {
+            <p class="empty-state">No invites match the current filters.</p>
+          }
         </mat-card-content>
       </mat-card>
     </div>
   `,
-  styles: [
-    `
-      .admin-invites {
-        max-width: 960px;
-        margin: 0 auto;
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-      }
-      .create-form {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        padding-top: 8px;
-      }
-      .limits-row {
-        display: flex;
-        gap: 12px;
-        .limit-field { flex: 1; }
-      }
-      .new-link-card {
-        background: #e8f5e9;
-      }
-      .new-link-content {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-      .new-link-url {
-        font-family: monospace;
-        font-size: 0.85rem;
-        word-break: break-all;
-        flex: 1;
-      }
-      .invites-table {
-        width: 100%;
-      }
-    `,
-  ],
+  styles: [`
+    .admin-invites {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      padding: 24px 16px;
+    }
+    .create-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-top: 8px;
+    }
+    .limits-row {
+      display: flex;
+      gap: 12px;
+      .limit-field { flex: 1; }
+    }
+    .new-link-card { background: #e8f5e9; }
+    .new-link-content {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .new-link-url {
+      font-family: monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+      flex: 1;
+    }
+    mat-card-header {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .filter-toggles {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-left: auto;
+      align-items: center;
+    }
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+    .invites-table { width: 100%; }
+    .type-cell {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .flavor-chip {
+      font-size: 0.72rem !important;
+      min-height: 20px !important;
+      height: 20px !important;
+      padding: 0 8px !important;
+      &.flavor-member { background: #e3f2fd !important; color: #1565c0 !important; }
+      &.flavor-nv { background: #fff3e0 !important; color: #e65100 !important; }
+    }
+    .hidden-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: #bbb;
+    }
+    .row-hidden td { opacity: 0.5; }
+    .row-inactive td { color: #aaa; }
+    .empty-state {
+      text-align: center;
+      color: #999;
+      padding: 24px;
+    }
+  `],
 })
 export class AdminInvitesComponent implements OnInit {
   private readonly http = inject(HttpClient);
@@ -267,6 +343,21 @@ export class AdminInvitesComponent implements OnInit {
   readonly fbGroups = signal<FacebookGroup[]>([]);
   readonly newInviteUrl = signal<string | null>(null);
   readonly columns = ['type', 'boundToEmail', 'uses', 'expires', 'status', 'actions'];
+
+  showExpired = false;
+  showRevoked = false;
+  showHidden = false;
+
+  private hiddenIds = new Set<number>(this.loadHiddenIds());
+
+  readonly filteredInvites = computed(() => {
+    return this.invites().filter((inv) => {
+      if (this.isHidden(inv.id) && !this.showHidden) return false;
+      if (inv.isRevoked && !this.showRevoked) return false;
+      if (this.isExpired(inv) && !this.showExpired) return false;
+      return true;
+    });
+  });
 
   readonly form = this.fb.group({
     type: ['member' as 'member' | 'admin' | 'campaign_facebook', Validators.required],
@@ -289,6 +380,11 @@ export class AdminInvitesComponent implements OnInit {
     this.http.get<Invite[]>('/api/v1/invites').subscribe((invites) => this.invites.set(invites));
   }
 
+  applyFilters(): void {
+    // triggers re-render via signal read in filteredInvites computed
+    this.invites.update((v) => [...v]);
+  }
+
   create(): void {
     const { type, boundToEmail, boundToName, facebookGroupId, expiryDays, maxUses, noExpiry } = this.form.getRawValue();
     const body: Record<string, unknown> = { type };
@@ -304,7 +400,6 @@ export class AdminInvitesComponent implements OnInit {
       else if (expiryDays) body['expiryDays'] = expiryDays;
       if (maxUses) body['maxUses'] = maxUses;
     }
-
     this.http.post<Invite>('/api/v1/invites', body).subscribe({
       next: (invite) => {
         const base = window.location.origin;
@@ -329,6 +424,20 @@ export class AdminInvitesComponent implements OnInit {
     });
   }
 
+  toggleHide(id: number): void {
+    if (this.hiddenIds.has(id)) {
+      this.hiddenIds.delete(id);
+    } else {
+      this.hiddenIds.add(id);
+    }
+    this.saveHiddenIds();
+    this.applyFilters();
+  }
+
+  isHidden(id: number): boolean {
+    return this.hiddenIds.has(id);
+  }
+
   copyLink(): void {
     const url = this.newInviteUrl();
     if (url) {
@@ -345,5 +454,15 @@ export class AdminInvitesComponent implements OnInit {
 
   isExpired(invite: Invite): boolean {
     return new Date(invite.expiresAt) < new Date();
+  }
+
+  private loadHiddenIds(): number[] {
+    try {
+      return JSON.parse(localStorage.getItem(HIDDEN_INVITES_KEY) ?? '[]');
+    } catch { return []; }
+  }
+
+  private saveHiddenIds(): void {
+    localStorage.setItem(HIDDEN_INVITES_KEY, JSON.stringify([...this.hiddenIds]));
   }
 }

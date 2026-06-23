@@ -14,7 +14,6 @@ import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs';
 import { environment } from '../environments/environment';
 import { AuthService } from './core/services/auth.service';
-import { CityService, CitySlug } from './core/services/city.service';
 import { FeedbackService } from './core/services/feedback.service';
 import { NotificationBellComponent } from './shared/components/notification-bell/notification-bell.component';
 import { IosInstallBannerComponent } from './shared/components/ios-install-banner/ios-install-banner.component';
@@ -42,7 +41,6 @@ import { IosInstallBannerComponent } from './shared/components/ios-install-banne
 export class AppComponent {
   private readonly breakpointObserver = inject(BreakpointObserver);
   readonly authService = inject(AuthService);
-  readonly cityService = inject(CityService);
   readonly feedbackService = inject(FeedbackService);
 
   readonly currentYear = new Date().getFullYear();
@@ -134,7 +132,4 @@ export class AppComponent {
     this.authService.logout();
   }
 
-  selectCity(slug: CitySlug): void {
-    this.cityService.select(slug);
-  }
 }

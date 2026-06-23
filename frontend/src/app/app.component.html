@@ -107,48 +107,77 @@
       }
     </mat-nav-list>
 
-    <!-- City selector in sidenav -->
-    <div class="sidenav-city">
-      <span class="sidenav-city-label">City</span>
-      <div class="city-pills">
-        @for (city of cityService.cities; track city.slug) {
-          <button class="city-pill" [class.active]="cityService.selected() === city.slug"
-            (click)="selectCity(city.slug)">
-            {{ city.name }}
-          </button>
-        }
-      </div>
-    </div>
   </mat-sidenav>
 
   <mat-sidenav-content>
 
-    <mat-toolbar class="app-toolbar">
-      <!-- Mobile: hamburger -->
-      @if (isMobile()) {
-        <button mat-icon-button (click)="sidenav.toggle()" aria-label="Toggle navigation">
-          <mat-icon>menu</mat-icon>
-        </button>
-      }
-
-      <!-- Logo -->
-      <a routerLink="/" class="app-logo-link" aria-label="DinnerBears home">
-        <img src="assets/logo.png" height="36" alt="DinnerBears" class="app-logo" />
-        @if (isStage) {
-          <span class="stage-badge">STAGE</span>
+    <header class="app-header">
+      <mat-toolbar class="app-toolbar">
+        <!-- Mobile: hamburger -->
+        @if (isMobile()) {
+          <button mat-icon-button (click)="sidenav.toggle()" aria-label="Toggle navigation">
+            <mat-icon>menu</mat-icon>
+          </button>
         }
-      </a>
 
-      <!-- Desktop nav links -->
+        <!-- Logo -->
+        <a routerLink="/" class="app-logo-link" aria-label="DinnerBears home">
+          <img src="assets/logo.png" height="36" alt="DinnerBears" class="app-logo" />
+          @if (isStage) {
+            <span class="stage-badge">STAGE</span>
+          }
+        </a>
+
+        <span class="toolbar-spacer"></span>
+
+        <!-- Notification bell (logged-in only) -->
+        @if (isLoggedIn()) {
+          <app-notification-bell />
+        }
+
+        <!-- User avatar or Sign in -->
+        @if (isLoggedIn()) {
+          <button class="user-avatar" [matMenuTriggerFor]="userMenu"
+            [attr.aria-label]="'Account menu for ' + (authService.currentUser()?.fullName ?? '')">
+            @if (userPhoto()) {
+              <img [src]="userPhoto()!" alt="Profile photo" class="avatar-photo" />
+            } @else {
+              <span class="avatar-initials">{{ userInitials() }}</span>
+            }
+          </button>
+          <mat-menu #userMenu="matMenu" panelClass="nav-menu">
+            <a mat-menu-item routerLink="/profile">
+              <mat-icon>person</mat-icon> Profile
+            </a>
+            <a mat-menu-item routerLink="/profile/notifications">
+              <mat-icon>notifications</mat-icon> Notifications
+            </a>
+            <a mat-menu-item routerLink="/account/settings">
+              <mat-icon>link</mat-icon> Linked Accounts
+            </a>
+            <a mat-menu-item routerLink="/invite">
+              <mat-icon>group_add</mat-icon> Invites
+            </a>
+            <mat-divider />
+            <button mat-menu-item (click)="logout()">
+              <mat-icon>logout</mat-icon> Sign out
+            </button>
+          </mat-menu>
+        } @else {
+          <a mat-stroked-button routerLink="/login" class="signin-btn">Sign in</a>
+        }
+      </mat-toolbar>
+
+      <!-- Desktop nav strip -->
       @if (!isMobile()) {
-        <nav class="desktop-nav">
-          <a mat-button routerLink="/" routerLinkActive="nav-active" [routerLinkActiveOptions]="{ exact: true }">
+        <nav class="app-nav-bar">
+          <a class="nav-item" routerLink="/" routerLinkActive="nav-item-active" [routerLinkActiveOptions]="{ exact: true }">
             Home
           </a>
 
           <!-- Events group -->
-          <button mat-button [matMenuTriggerFor]="eventsMenu"
-            [class.nav-active]="isEventsMenuActive">
+          <button class="nav-item" [matMenuTriggerFor]="eventsMenu"
+            [class.nav-item-active]="isEventsMenuActive()">
             Events <mat-icon class="menu-chevron">expand_more</mat-icon>
           </button>
           <mat-menu #eventsMenu="matMenu" panelClass="nav-menu">
@@ -167,8 +196,8 @@
 
           <!-- Community group -->
           @if (isLoggedIn()) {
-            <button mat-button [matMenuTriggerFor]="communityMenu"
-              [class.nav-active]="isCommunityMenuActive">
+            <button class="nav-item" [matMenuTriggerFor]="communityMenu"
+              [class.nav-item-active]="isCommunityMenuActive()">
               Community <mat-icon class="menu-chevron">expand_more</mat-icon>
             </button>
             <mat-menu #communityMenu="matMenu" panelClass="nav-menu">
@@ -186,8 +215,8 @@
             </mat-menu>
 
             <!-- Updates group -->
-            <button mat-button [matMenuTriggerFor]="updatesMenu"
-              [class.nav-active]="isUpdatesMenuActive()">
+            <button class="nav-item" [matMenuTriggerFor]="updatesMenu"
+              [class.nav-item-active]="isUpdatesMenuActive()">
               Updates <mat-icon class="menu-chevron">expand_more</mat-icon>
             </button>
             <mat-menu #updatesMenu="matMenu" panelClass="nav-menu">
@@ -206,11 +235,13 @@
           }
 
           @if (isAdmin() || isModerator()) {
-            <button mat-button [matMenuTriggerFor]="adminMenu" class="admin-menu-btn">
-              <mat-icon>admin_panel_settings</mat-icon> {{ isAdmin() ? 'Admin' : 'Moderation' }}
+            <button class="nav-item nav-item-admin" [matMenuTriggerFor]="adminMenu">
+              <mat-icon>admin_panel_settings</mat-icon>
+              {{ isAdmin() ? 'Admin' : 'Moderation' }}
               @if (feedbackService.unseenCount() > 0) {
                 <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
               }
+              <mat-icon class="menu-chevron">expand_more</mat-icon>
             </button>
             <mat-menu #adminMenu="matMenu" panelClass="nav-menu">
               <a mat-menu-item routerLink="/admin/users">
@@ -249,58 +280,7 @@
           }
         </nav>
       }
-
-      <span class="toolbar-spacer"></span>
-
-      <!-- City selector (desktop) -->
-      @if (!isMobile()) {
-        <div class="city-toggle">
-          @for (city of cityService.cities; track city.slug) {
-            <button class="city-btn" [class.active]="cityService.selected() === city.slug"
-              (click)="selectCity(city.slug)">
-              {{ city.name }}
-            </button>
-          }
-        </div>
-      }
-
-      <!-- Notification bell (logged-in only) -->
-      @if (isLoggedIn()) {
-        <app-notification-bell />
-      }
-
-      <!-- User avatar or Sign in -->
-      @if (isLoggedIn()) {
-        <button class="user-avatar" [matMenuTriggerFor]="userMenu"
-          [attr.aria-label]="'Account menu for ' + (authService.currentUser()?.fullName ?? '')">
-          @if (userPhoto()) {
-            <img [src]="userPhoto()!" alt="Profile photo" class="avatar-photo" />
-          } @else {
-            <span class="avatar-initials">{{ userInitials() }}</span>
-          }
-        </button>
-        <mat-menu #userMenu="matMenu" panelClass="nav-menu">
-          <a mat-menu-item routerLink="/profile">
-            <mat-icon>person</mat-icon> Profile
-          </a>
-          <a mat-menu-item routerLink="/profile/settings">
-            <mat-icon>settings</mat-icon> Settings
-          </a>
-          <a mat-menu-item routerLink="/account/settings">
-            <mat-icon>link</mat-icon> Linked Accounts
-          </a>
-          <a mat-menu-item routerLink="/invite">
-            <mat-icon>group_add</mat-icon> Invites
-          </a>
-          <mat-divider />
-          <button mat-menu-item (click)="logout()">
-            <mat-icon>logout</mat-icon> Sign out
-          </button>
-        </mat-menu>
-      } @else {
-        <a mat-stroked-button routerLink="/login" class="signin-btn">Sign in</a>
-      }
-    </mat-toolbar>
+    </header>
 
     <main class="app-content">
       <router-outlet />
