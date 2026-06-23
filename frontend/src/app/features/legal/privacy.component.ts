@@ -39,7 +39,7 @@ import { RouterLink } from '@angular/router';
         <h2>4. Information Sharing</h2>
         <p>We do not sell, trade, or share your personal information with third parties except:</p>
         <ul>
-          <li><strong>Service providers:</strong> We use Brevo and Gmail SMTP to send transactional emails on our behalf.</li>
+          <li><strong>Service providers:</strong> We use Brevo and Resend to send transactional emails on our behalf.</li>
           <li><strong>Legal requirements:</strong> We may disclose information if required by law or to protect the rights and safety of our community.</li>
         </ul>
 

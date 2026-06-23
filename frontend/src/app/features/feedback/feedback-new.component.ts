@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -91,11 +91,14 @@ import { FeedbackService, FeedbackCategory } from '../../core/services/feedback.
                 placeholder="Describe the issue or idea in detail…"
                 [modules]="quillModules"
                 class="quill-editor"
+                (onEditorCreated)="onEditorCreated($event)"
               ></quill-editor>
               @if (showBodyError()) {
                 <div class="quill-err-msg">Description must be at least 10 characters</div>
               }
             </div>
+            <input #imageInput type="file" accept="image/jpeg,image/png,image/webp,image/gif"
+              style="display:none" (change)="onImageFileSelected($event)" />
 
             <div class="private-toggle">
               <mat-slide-toggle formControlName="isPrivate" color="primary">
@@ -173,17 +176,25 @@ export class FeedbackNewComponent {
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
 
+  private readonly imageInput = viewChild<ElementRef<HTMLInputElement>>('imageInput');
+  private quillInstance: any = null;
+
   readonly saving = signal(false);
   readonly submitted = signal(false);
   readonly showBodyError = signal(false);
 
   readonly quillModules = {
-    toolbar: [
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ list: 'ordered' }, { list: 'bullet' }],
-      ['link'],
-      ['clean'],
-    ],
+    toolbar: {
+      container: [
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['link', 'image'],
+        ['clean'],
+      ],
+      handlers: {
+        image: () => this.imageInput()?.nativeElement.click(),
+      },
+    },
   };
 
   readonly form = this.fb.group({
@@ -198,10 +209,6 @@ export class FeedbackNewComponent {
     const rawBody = this.form.controls.body.value.replace(/<[^>]*>/g, '').trim();
     if (rawBody.length < 10) {
       this.showBodyError.set(true);
-      return;
-    }
-    if (this.form.controls.body.value.includes('<img')) {
-      this.snackBar.open('Images are not supported — please describe the issue in text instead.', 'OK', { duration: 5000 });
       return;
     }
     this.showBodyError.set(false);
@@ -219,6 +226,44 @@ export class FeedbackNewComponent {
       error: () => {
         this.saving.set(false);
         this.snackBar.open('Failed to send feedback — please try again', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  onEditorCreated(quill: any): void {
+    this.quillInstance = quill;
+    quill.root.addEventListener('paste', (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) this.handleImageFile(file);
+          break;
+        }
+      }
+    });
+  }
+
+  onImageFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) this.handleImageFile(file);
+    input.value = '';
+  }
+
+  private handleImageFile(file: File): void {
+    this.feedbackService.uploadImage(file).subscribe({
+      next: ({ url }) => {
+        if (this.quillInstance) {
+          const range = this.quillInstance.getSelection(true);
+          this.quillInstance.insertEmbed(range.index, 'image', url);
+          this.quillInstance.setSelection(range.index + 1);
+        }
+      },
+      error: () => {
+        this.snackBar.open('Image upload failed — please try again', 'OK', { duration: 4000 });
       },
     });
   }

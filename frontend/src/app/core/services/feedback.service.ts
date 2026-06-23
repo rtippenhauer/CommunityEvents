@@ -117,6 +117,12 @@ export class FeedbackService {
     return this.http.post<FeedbackItem>('/api/v1/feedback', dto);
   }
 
+  uploadImage(file: File): Observable<{ url: string }> {
+    const fd = new FormData();
+    fd.append('image', file);
+    return this.http.post<{ url: string }>('/api/v1/feedback/images', fd);
+  }
+
   getPublicList(category?: FeedbackCategory, sort?: 'newest' | 'upvotes'): Observable<FeedbackItem[]> {
     let params = new HttpParams();
     if (category) params = params.set('category', category);

@@ -125,6 +125,16 @@
           }
         </a>
 
+        <!-- Cream band: mobile spacer + bell -->
+        @if (isMobile()) {
+          <div class="toolbar-nav">
+            <span class="toolbar-spacer"></span>
+            @if (isLoggedIn()) {
+              <app-notification-bell />
+            }
+          </div>
+        }
+
         <!-- Cream band: nav + spacer + admin + bell (desktop only) -->
         @if (!isMobile()) {
           <div class="toolbar-nav">

@@ -10,7 +10,7 @@ Self-hosted on Unraid using Docker Compose. Invite-only membership.
 - **Backend:** NestJS (Node.js, TypeScript), TypeORM, Passport.js
 - **Database:** MySQL 8.x
 - **Auth:** JWT sessions + Google OAuth + Facebook OAuth (Passport strategies)
-- **Email:** Brevo SDK (primary) + Nodemailer/Gmail SMTP (overflow fallback)
+- **Email:** Brevo SDK (primary) + Resend (overflow fallback)
 - **Push:** Web Push API with VAPID keys (@angular/pwa service worker)
 - **Proxy:** NGINX Proxy Manager (Docker)
 - **Containers:** Docker Compose — api and mysql have NO public ports
