@@ -15,6 +15,7 @@
       "Bash(cat *)",
       "Bash(echo *)",
       "Bash(node *)",
+      "Bash(curl *)",
       "Bash(tsc *)"
     ],
     "deny": [
@@ -22,7 +23,7 @@
       "Read(./.env.*)",
       "Read(./secrets/**)",
       "Bash(rm -rf /)",
-      "Bash(curl *)",
+
       "Bash(wget *)"
     ]
   }
