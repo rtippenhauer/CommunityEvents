@@ -127,6 +127,13 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'events/reservation-confirm/:token',
+    loadComponent: () =>
+      import('./features/events/reservation-confirm/reservation-confirm.component').then(
+        (m) => m.ReservationConfirmComponent,
+      ),
+  },
+  {
     path: 'events/:id',
     loadComponent: () =>
       import('./features/events/detail/event-detail.component').then(

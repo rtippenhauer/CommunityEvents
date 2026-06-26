@@ -25,6 +25,7 @@ import { UseGuestLinkDto } from './dto/use-guest-link.dto';
 import { CreateEventInviteDto } from './dto/create-event-invite.dto';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
 import { AddWalkinDto } from './dto/add-walkin.dto';
+import { SetReservationDto } from './dto/set-reservation.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -60,6 +61,7 @@ export class EventsController {
       status: isAdminOrMod ? status : undefined,
       isAdminOrMod,
       userId: user?.id,
+      callerRole: user?.role,
     });
   }
 
@@ -113,8 +115,8 @@ export class EventsController {
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   @Header('Cache-Control', 'no-store')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.eventsService.findOne(id);
+  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: UserEntity) {
+    return this.eventsService.findOne(id, user?.role);
   }
 
   @Post()
@@ -229,6 +231,27 @@ export class EventsController {
     @Body() dto: AddWalkinDto,
   ) {
     return this.eventsService.addWalkin(id, dto.userId);
+  }
+
+  @Get('reservation-confirm/:token')
+  getReservationInfo(@Param('token') token: string) {
+    return this.eventsService.getReservationInfo(token);
+  }
+
+  @Patch(':id/reservation')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  setReservation(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetReservationDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.eventsService.setReservation(id, dto, user.fullName);
+  }
+
+  @Post('reservation-confirm/:token')
+  confirmReservation(@Param('token') token: string) {
+    return this.eventsService.confirmReservation(token);
   }
 
   @Get(':id/members/search')

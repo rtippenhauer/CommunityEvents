@@ -85,6 +85,37 @@ export class EventEntity {
   @Column({ name: 'facebook_share_text', type: 'text', nullable: true })
   facebookShareText: string | null;
 
+  @Column({ name: 'reservation_assignee_id', unsigned: true, nullable: true })
+  reservationAssigneeId: number | null;
+
+  @ManyToOne(() => UserEntity, { nullable: true, eager: false })
+  @JoinColumn({ name: 'reservation_assignee_id' })
+  reservationAssignee: UserEntity | null;
+
+  @Column({ name: 'reservation_contact_name', type: 'varchar', length: 150, nullable: true })
+  reservationContactName: string | null;
+
+  @Column({ name: 'reservation_contact_email', type: 'varchar', length: 255, nullable: true })
+  reservationContactEmail: string | null;
+
+  @Column({ name: 'reservation_confirmed', type: 'tinyint', default: 0 })
+  reservationConfirmed: boolean;
+
+  @Column({ name: 'reservation_confirmed_by', type: 'varchar', length: 255, nullable: true })
+  reservationConfirmedBy: string | null;
+
+  @Column({ name: 'reservation_confirmed_at', type: 'datetime', nullable: true })
+  reservationConfirmedAt: Date | null;
+
+  @Column({ name: 'reservation_confirmed_note', type: 'varchar', length: 500, nullable: true })
+  reservationConfirmedNote: string | null;
+
+  @Column({ name: 'reservation_seats_email_sent', type: 'tinyint', default: 0 })
+  reservationSeatsEmailSent: boolean;
+
+  @Column({ name: 'reservation_confirm_token', type: 'varchar', length: 64, nullable: true, unique: true })
+  reservationConfirmToken: string | null;
+
   @Column({ name: 'created_by', unsigned: true })
   createdById: number;
 

@@ -64,6 +64,14 @@ export interface Event {
   cancelledAt: string | null;
   cancelledReason: string | null;
   facebookShareText: string | null;
+  reservationAssigneeId: number | null;
+  reservationAssignee: { id: number; fullName: string } | null;
+  reservationContactName: string | null;
+  reservationContactEmail: string | null;
+  reservationConfirmed: boolean;
+  reservationConfirmedBy: string | null;
+  reservationConfirmedAt: string | null;
+  reservationConfirmedNote: string | null;
   createdById: number;
   createdByUser: { id: number; fullName: string; profilePhotoPath: string | null };
   rsvps: Rsvp[];
@@ -74,6 +82,13 @@ export interface Event {
   myRsvpStatus?: 'going' | 'maybe' | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReservationConfirmInfo {
+  eventTitle: string;
+  restaurantName: string;
+  eventDate: string;
+  eventTime: string;
 }
 
 export interface GuestLinkInfo {
@@ -241,5 +256,23 @@ export class EventsService {
     }
 
     return text;
+  }
+
+  setReservation(eventId: number, payload: {
+    assigneeId?: number | null;
+    contactName?: string | null;
+    contactEmail?: string | null;
+    confirmed?: boolean;
+    confirmedNote?: string | null;
+  }): Observable<Event> {
+    return this.http.patch<Event>(`${this.base}/${eventId}/reservation`, payload);
+  }
+
+  getReservationInfo(token: string): Observable<ReservationConfirmInfo> {
+    return this.http.get<ReservationConfirmInfo>(`${this.base}/reservation-confirm/${token}`);
+  }
+
+  confirmReservation(token: string): Observable<ReservationConfirmInfo> {
+    return this.http.post<ReservationConfirmInfo>(`${this.base}/reservation-confirm/${token}`, {});
   }
 }

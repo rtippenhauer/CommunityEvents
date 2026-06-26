@@ -125,6 +125,46 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
             </mat-card-content>
           </mat-card>
 
+          <!-- Reservation status — visible to all logged-in members -->
+          @if (isLoggedIn() && event()!.status === 'published') {
+            @if (event()!.reservationConfirmed) {
+              <div class="reservation-confirmed-badge">
+                <mat-icon>check_circle</mat-icon>
+                <div class="res-badge-text">
+                  <span>Reservation Confirmed</span>
+                  @if (event()!.reservationConfirmedBy) {
+                    <span class="res-badge-by">by {{ event()!.reservationConfirmedBy }}</span>
+                  }
+                  @if (event()!.reservationConfirmedNote) {
+                    <span class="res-badge-note">"{{ event()!.reservationConfirmedNote }}"</span>
+                  }
+                </div>
+              </div>
+            } @else if (event()!.reservationAssigneeId || event()!.reservationContactName) {
+              <div class="reservation-pending-badge">
+                <mat-icon>hourglass_empty</mat-icon>
+                <span>
+                  Reservation being handled by
+                  <strong>{{ event()!.reservationAssignee?.fullName ?? event()!.reservationContactName }}</strong>
+                </span>
+              </div>
+            }
+
+            <!-- Assignee self-confirm button (for the logged-in member who was assigned) -->
+            @if (event()!.reservationAssigneeId === currentUserId() && !event()!.reservationConfirmed && !isAdminOrMod()) {
+              <div class="assignee-confirm-banner">
+                <mat-icon>phone</mat-icon>
+                <span>You've been asked to make the reservation for this event.</span>
+                <button mat-raised-button color="primary"
+                  [disabled]="reservationSaving()"
+                  (click)="memberMarkReservationConfirmed()">
+                  @if (reservationSaving()) { <mat-spinner diameter="16" /> } @else { <mat-icon>check</mat-icon> }
+                  I Made the Reservation
+                </button>
+              </div>
+            }
+          }
+
           <!-- Description -->
           @if (event()!.description) {
             <div class="section">
@@ -461,6 +501,143 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                     </div>
                   }
                 </div>
+              </mat-card-content>
+            </mat-card>
+          }
+
+          <!-- Reservation Coordinator panel (admin/mod only) -->
+          @if (event()!.status === 'published' && isAdminOrMod()) {
+            <mat-card class="reservation-card">
+              <mat-card-content>
+                <div class="reservation-header">
+                  <h4 class="reservation-title">
+                    <mat-icon>phone</mat-icon> Reservation Coordinator
+                  </h4>
+                  <div class="res-header-actions">
+                    @if ((event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
+                      <button mat-stroked-button class="res-reassign-btn" (click)="startReassign()">
+                        <mat-icon>swap_horiz</mat-icon> Reassign
+                      </button>
+                    }
+                    @if (event()!.reservationAssigneeId || event()!.reservationContactEmail) {
+                      <button mat-icon-button matTooltip="Clear assignment" color="warn" (click)="clearReservation()">
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    }
+                  </div>
+                </div>
+
+                <!-- Current assignment display -->
+                @if ((event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
+                  <div class="reservation-assigned">
+                    <mat-icon class="res-person-icon">person</mat-icon>
+                    <div class="res-person-info">
+                      <span class="res-person-name">
+                        {{ event()!.reservationAssignee?.fullName ?? event()!.reservationContactName ?? event()!.reservationContactEmail }}
+                      </span>
+                      @if (event()!.reservationContactEmail && !event()!.reservationAssigneeId) {
+                        <span class="res-person-email">{{ event()!.reservationContactEmail }}</span>
+                      }
+                    </div>
+                    <div class="res-status" [class.confirmed]="event()!.reservationConfirmed">
+                      <mat-icon>{{ event()!.reservationConfirmed ? 'check_circle' : 'hourglass_empty' }}</mat-icon>
+                      {{ event()!.reservationConfirmed ? 'Confirmed' : 'Pending' }}
+                    </div>
+                  </div>
+
+                  <!-- Mark confirmed / unconfirm -->
+                  @if (!event()!.reservationConfirmed) {
+                    @if (!showConfirmNoteInput()) {
+                      <div class="res-confirm-toggle">
+                        <button mat-stroked-button color="primary" (click)="showConfirmNoteInput.set(true)">
+                          <mat-icon>check</mat-icon> Mark as Confirmed
+                        </button>
+                      </div>
+                    } @else {
+                      <div class="res-note-form">
+                        <mat-form-field appearance="outline" class="res-field">
+                          <mat-label>Note (optional) — e.g. "Spoke with Jane, confirmed for 22 people"</mat-label>
+                          <textarea matInput rows="2" maxlength="500"
+                            [value]="reservationConfirmNote()"
+                            (input)="reservationConfirmNote.set($any($event.target).value)"></textarea>
+                        </mat-form-field>
+                        <div class="res-note-actions">
+                          <button mat-raised-button color="primary" [disabled]="reservationSaving()"
+                            (click)="toggleReservationConfirmed(true)">
+                            @if (reservationSaving()) { <mat-spinner diameter="16" /> } @else { <mat-icon>check</mat-icon> }
+                            Confirm
+                          </button>
+                          <button mat-button (click)="showConfirmNoteInput.set(false); reservationConfirmNote.set('')">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    }
+                  } @else {
+                    <div class="res-confirm-toggle">
+                      <button mat-stroked-button color="warn" (click)="toggleReservationConfirmed(false)">
+                        <mat-icon>undo</mat-icon> Unmark Confirmed
+                      </button>
+                    </div>
+                  }
+
+                } @else {
+                  <!-- Assignment form (shown when no assignment, or when reassigning) -->
+                  @if (reservationReassigning()) {
+                    <p class="res-reassign-label">Select a new coordinator to replace the current one:</p>
+                  }
+                  <mat-button-toggle-group [value]="reservationMode()" (change)="reservationMode.set($event.value)" class="res-mode-toggle">
+                    <mat-button-toggle value="member">Assign Member</mat-button-toggle>
+                    <mat-button-toggle value="contact">Outside Contact</mat-button-toggle>
+                  </mat-button-toggle-group>
+
+                  @if (reservationMode() === 'member') {
+                    <div class="res-member-search">
+                      <mat-form-field appearance="outline" class="res-search-field">
+                        <mat-label>Search member by name</mat-label>
+                        <input matInput [value]="reservationMemberSearch()"
+                          (input)="onReservationMemberSearch($any($event.target).value)"
+                          autocomplete="off" />
+                        <mat-icon matSuffix>search</mat-icon>
+                      </mat-form-field>
+                      @if (reservationMemberResults().length > 0) {
+                        <div class="res-member-results">
+                          @for (m of reservationMemberResults(); track m.id) {
+                            <button mat-button class="res-member-row" (click)="assignReservationMember(m)"
+                              [disabled]="reservationSaving()">
+                              <mat-icon>person</mat-icon> {{ m.fullName }}
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="res-contact-form">
+                      <mat-form-field appearance="outline" class="res-field">
+                        <mat-label>Contact name</mat-label>
+                        <input matInput [value]="reservationContactName()"
+                          (input)="reservationContactName.set($any($event.target).value)" maxlength="150" />
+                      </mat-form-field>
+                      <mat-form-field appearance="outline" class="res-field">
+                        <mat-label>Email address</mat-label>
+                        <input matInput type="email" [value]="reservationContactEmail()"
+                          (input)="reservationContactEmail.set($any($event.target).value)" maxlength="255" />
+                      </mat-form-field>
+                      <button mat-raised-button color="primary"
+                        [disabled]="reservationSaving() || !reservationContactName().trim() || !reservationContactEmail().trim()"
+                        (click)="sendReservationToContact()">
+                        @if (reservationSaving()) { <mat-spinner diameter="16" /> }
+                        <mat-icon>send</mat-icon> Send Reservation Request
+                      </button>
+                    </div>
+                  }
+
+                  @if (reservationReassigning()) {
+                    <button mat-button class="res-cancel-reassign" (click)="reservationReassigning.set(false)">
+                      Cancel
+                    </button>
+                  }
+                }
               </mat-card-content>
             </mat-card>
           }
@@ -1303,6 +1480,208 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
       white-space: nowrap;
     }
 
+    // ── Reservation status badges ─────────────────────────────────────────────
+
+    .reservation-confirmed-badge {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px 16px;
+      background: #e8f5e9;
+      border: 1px solid #a5d6a7;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      color: #2e7d32;
+      mat-icon { color: #2e7d32; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    }
+
+    .res-badge-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .res-badge-by { font-size: 0.8rem; font-weight: 400; color: #388e3c; }
+
+    .res-badge-note {
+      font-size: 0.8rem;
+      font-weight: 400;
+      font-style: italic;
+      color: #555;
+      margin-top: 2px;
+    }
+
+    .reservation-pending-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 0.88rem;
+      color: #5d4037;
+      mat-icon { color: #e65100; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
+    }
+
+    .assignee-confirm-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 12px 16px;
+      background: #e3f2fd;
+      border: 1px solid #90caf9;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 0.88rem;
+      color: #1565c0;
+      mat-icon { color: #1976d2; font-size: 1.2rem; width: 1.2rem; height: 1.2rem; flex-shrink: 0; }
+      span { flex: 1; min-width: 180px; }
+    }
+
+    // ── Reservation Coordinator panel ─────────────────────────────────────────
+
+    .reservation-card { margin-bottom: 24px; }
+
+    .reservation-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .res-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .res-reassign-btn {
+      font-size: 0.78rem;
+      height: 30px;
+      line-height: 28px;
+      padding: 0 10px;
+      mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; margin-right: 2px; }
+    }
+
+    .reservation-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--db-brown-dark);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; color: var(--db-amber); }
+    }
+
+    .res-reassign-label {
+      font-size: 0.82rem;
+      color: #888;
+      margin: 0 0 10px;
+      font-style: italic;
+    }
+
+    .res-cancel-reassign { margin-top: 4px; }
+
+    .res-mode-toggle {
+      margin-bottom: 14px;
+      .mat-button-toggle-button { font-size: 0.82rem; }
+    }
+
+    .reservation-assigned {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: #faf7f2;
+      border: 1px solid #e8e0d6;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+
+    .res-person-icon { color: var(--db-amber); font-size: 1.3rem; width: 1.3rem; height: 1.3rem; flex-shrink: 0; }
+
+    .res-person-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .res-person-name { font-size: 0.95rem; font-weight: 600; color: var(--db-brown-dark); }
+    .res-person-email { font-size: 0.78rem; color: #888; }
+
+    .res-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #e65100;
+      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; }
+      &.confirmed { color: #2e7d32; }
+    }
+
+    .res-confirm-toggle { display: flex; margin-bottom: 4px; }
+
+    .res-note-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .res-note-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .res-member-search { margin-top: 10px; }
+
+    .res-search-field {
+      width: 100%;
+      font-size: 0.88rem;
+      .mat-mdc-form-field-subscript-wrapper { display: none; }
+    }
+
+    .res-member-results {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #e8e0d6;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: -8px;
+    }
+
+    .res-member-row {
+      justify-content: flex-start !important;
+      border-radius: 0 !important;
+      border-bottom: 1px solid #f0ebe3;
+      font-size: 0.9rem;
+      &:last-child { border-bottom: none; }
+    }
+
+    .res-contact-form {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 10px;
+    }
+
+    .res-field {
+      width: 100%;
+      font-size: 0.88rem;
+      .mat-mdc-form-field-subscript-wrapper { display: none; }
+    }
+
     // ── Admin actions ─────────────────────────────────────────────────────────
 
     .admin-actions {
@@ -1459,6 +1838,18 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly walkinResults = signal<MemberSearchResult[]>([]);
   readonly addingWalkin = signal(false);
   private readonly walkinSearch$ = new Subject<string>();
+
+  // Reservation coordinator state
+  readonly reservationMode = signal<'member' | 'contact'>('member');
+  readonly reservationMemberSearch = signal('');
+  readonly reservationMemberResults = signal<MemberSearchResult[]>([]);
+  readonly reservationContactName = signal('');
+  readonly reservationContactEmail = signal('');
+  readonly reservationSaving = signal(false);
+  readonly reservationReassigning = signal(false);
+  readonly showConfirmNoteInput = signal(false);
+  readonly reservationConfirmNote = signal('');
+  private readonly reservationSearch$ = new Subject<string>();
 
   // Clock signal — ticks every minute so isPastEvent / isPastCutoff recompute reactively
   private readonly nowSignal = signal(new Date());
@@ -1619,6 +2010,11 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
       distinctUntilChanged(),
       switchMap((q) => this.commentsService.searchMembers(id, q)),
     ).subscribe((results) => this.walkinResults.set(results));
+    this.reservationSearch$.pipe(
+      debounceTime(250),
+      distinctUntilChanged(),
+      switchMap((q) => this.commentsService.searchMembers(id, q)),
+    ).subscribe((results) => this.reservationMemberResults.set(results));
     this.eventsService.getOne(id).subscribe({
       next: (e) => {
         this.event.set(e);
@@ -2068,6 +2464,92 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.addingWalkin.set(false);
         this.snackBar.open('Failed to add walk-in', 'OK', { duration: 3000 });
       },
+    });
+  }
+
+  startReassign(): void {
+    this.reservationReassigning.set(true);
+    this.reservationMemberSearch.set('');
+    this.reservationMemberResults.set([]);
+    this.reservationContactName.set('');
+    this.reservationContactEmail.set('');
+  }
+
+  memberMarkReservationConfirmed(): void {
+    const id = this.event()!.id;
+    this.reservationSaving.set(true);
+    this.eventsService.setReservation(id, { confirmed: true }).subscribe({
+      next: (updated) => {
+        this.event.set(updated);
+        this.reservationSaving.set(false);
+        this.snackBar.open('Reservation marked as confirmed!', 'OK', { duration: 2000 });
+      },
+      error: () => { this.reservationSaving.set(false); this.snackBar.open('Failed to update', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  onReservationMemberSearch(value: string): void {
+    this.reservationMemberSearch.set(value);
+    this.reservationSearch$.next(value);
+  }
+
+  assignReservationMember(member: MemberSearchResult): void {
+    const id = this.event()!.id;
+    this.reservationSaving.set(true);
+    this.eventsService.setReservation(id, { assigneeId: member.id }).subscribe({
+      next: (updated) => {
+        this.event.set(updated);
+        this.reservationSaving.set(false);
+        this.reservationReassigning.set(false);
+        this.reservationMemberSearch.set('');
+        this.reservationMemberResults.set([]);
+        this.snackBar.open(`${member.fullName} assigned — email sent`, 'OK', { duration: 3000 });
+      },
+      error: () => { this.reservationSaving.set(false); this.snackBar.open('Failed to assign', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  sendReservationToContact(): void {
+    const name = this.reservationContactName().trim();
+    const email = this.reservationContactEmail().trim();
+    if (!name || !email) return;
+    const id = this.event()!.id;
+    this.reservationSaving.set(true);
+    this.eventsService.setReservation(id, { contactName: name, contactEmail: email }).subscribe({
+      next: (updated) => {
+        this.event.set(updated);
+        this.reservationSaving.set(false);
+        this.reservationReassigning.set(false);
+        this.reservationContactName.set('');
+        this.reservationContactEmail.set('');
+        this.snackBar.open('Contact assigned — email sent', 'OK', { duration: 3000 });
+      },
+      error: () => { this.reservationSaving.set(false); this.snackBar.open('Failed to assign contact', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  clearReservation(): void {
+    if (!window.confirm('Clear the current reservation assignment?')) return;
+    const id = this.event()!.id;
+    this.eventsService.setReservation(id, { assigneeId: null, contactName: null, contactEmail: null }).subscribe({
+      next: (updated) => { this.event.set(updated); this.snackBar.open('Reservation cleared', 'OK', { duration: 2000 }); },
+      error: () => this.snackBar.open('Failed to clear', 'OK', { duration: 3000 }),
+    });
+  }
+
+  toggleReservationConfirmed(confirmed: boolean): void {
+    const id = this.event()!.id;
+    const note = confirmed ? (this.reservationConfirmNote().trim() || null) : null;
+    this.reservationSaving.set(true);
+    this.eventsService.setReservation(id, { confirmed, confirmedNote: note }).subscribe({
+      next: (updated) => {
+        this.event.set(updated);
+        this.reservationSaving.set(false);
+        this.showConfirmNoteInput.set(false);
+        this.reservationConfirmNote.set('');
+        this.snackBar.open(confirmed ? 'Reservation marked as confirmed!' : 'Confirmation cleared', 'OK', { duration: 2000 });
+      },
+      error: () => { this.reservationSaving.set(false); this.snackBar.open('Failed to update', 'OK', { duration: 3000 }); },
     });
   }
 
