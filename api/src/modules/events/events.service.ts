@@ -489,8 +489,9 @@ export class EventsService {
 
     const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
 
-    // Cutoff only blocks new GOING RSVPs; existing RSVPs and Maybe/Not Going changes are allowed
-    if (!existing && status === RsvpStatus.GOING &&
+    // Block upgrading to GOING after cutoff — applies to new RSVPs and existing non-Going RSVPs
+    if (status === RsvpStatus.GOING &&
+        existing?.status !== RsvpStatus.GOING &&
         this.isPastRsvpCutoff(event.eventDate, event.eventTime) &&
         userRole !== UserRole.ADMIN && userRole !== UserRole.MODERATOR) {
       throw new ForbiddenException('RSVP is closed — the deadline has passed');

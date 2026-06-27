@@ -263,7 +263,10 @@ export class EventCardComponent {
   get isPast(): boolean {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    return this.event.eventDate < todayStr;
+    if (this.event.eventDate < todayStr) return true;
+    if (this.event.eventDate > todayStr) return false;
+    const [h, min] = this.event.eventTime.split(':').map(Number);
+    return now.getHours() * 60 + now.getMinutes() >= h * 60 + min - 150;
   }
 
   initials(name: string): string {

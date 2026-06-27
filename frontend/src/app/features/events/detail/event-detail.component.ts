@@ -227,7 +227,8 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                           (change)="onRsvpStatusChange($event.value)"
                           [disabled]="rsvpLoading()"
                           class="rsvp-toggle">
-                          <mat-button-toggle value="going" class="toggle-going">
+                          <mat-button-toggle value="going" class="toggle-going"
+                            [disabled]="!isAdminOrMod() && isPastCutoff() && myRsvp()!.status !== 'going'">
                             <mat-icon>check_circle</mat-icon> Going
                           </mat-button-toggle>
                           <mat-button-toggle value="maybe" class="toggle-maybe">

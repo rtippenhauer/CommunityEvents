@@ -56,6 +56,7 @@ export class UsersService {
   }
 
   async findMembers(viewerRole: UserRole): Promise<object[]> {
+    const isNonValidated = viewerRole === UserRole.NON_VALIDATED;
     const isElevated = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
 
     const qb = this.userRepo
@@ -94,14 +95,14 @@ export class UsersService {
 
     return rows.map((r) => ({
       id: r.id,
-      fullName: r.fullName,
-      profilePhotoPath: r.profilePhotoPath,
+      fullName: isNonValidated ? 'Mystery Bear' : r.fullName,
+      profilePhotoPath: isNonValidated ? null : r.profilePhotoPath,
       cityId: r.cityId,
       cityName: r.cityName ?? null,
       joinedAt: r.joinedAt,
-      invitedBy: r.invitedById
+      invitedBy: isNonValidated ? null : (r.invitedById
         ? { id: r.invitedById, fullName: r.invitedByName, profilePhotoPath: r.invitedByPhoto }
-        : null,
+        : null),
       ...(isElevated ? {
         role: r.role,
         status: r.status,
@@ -117,6 +118,10 @@ export class UsersService {
     viewerId: number,
     viewerRole: UserRole,
   ): Promise<object> {
+    if (viewerRole === UserRole.NON_VALIDATED) {
+      throw new ForbiddenException('Member profiles are not available to non-validated accounts');
+    }
+
     const user = await this.userRepo.findOne({ where: { id }, relations: ['city'] });
     if (!user || user.status === UserStatus.DELETED) throw new NotFoundException('Member not found');
 
