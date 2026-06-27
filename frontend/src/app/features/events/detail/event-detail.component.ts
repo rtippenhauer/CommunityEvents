@@ -514,12 +514,12 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                     <mat-icon>phone</mat-icon> Reservation Coordinator
                   </h4>
                   <div class="res-header-actions">
-                    @if ((event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
+                    @if ((event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
                       <button mat-stroked-button class="res-reassign-btn" (click)="startReassign()">
                         <mat-icon>swap_horiz</mat-icon> Reassign
                       </button>
                     }
-                    @if (event()!.reservationAssigneeId || event()!.reservationContactEmail) {
+                    @if (event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) {
                       <button mat-icon-button matTooltip="Clear assignment" color="warn" (click)="clearReservation()">
                         <mat-icon>close</mat-icon>
                       </button>
@@ -528,7 +528,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                 </div>
 
                 <!-- Current assignment display -->
-                @if ((event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
+                @if ((event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
                   <div class="reservation-assigned">
                     <mat-icon class="res-person-icon">person</mat-icon>
                     <div class="res-person-info">
@@ -582,58 +582,66 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                   }
 
                 } @else {
-                  <!-- Assignment form (shown when no assignment, or when reassigning) -->
-                  @if (reservationReassigning()) {
-                    <p class="res-reassign-label">Select a new coordinator to replace the current one:</p>
-                  }
-                  <mat-button-toggle-group [value]="reservationMode()" (change)="reservationMode.set($event.value)" class="res-mode-toggle">
-                    <mat-button-toggle value="member">Assign Member</mat-button-toggle>
-                    <mat-button-toggle value="contact">Outside Contact</mat-button-toggle>
-                  </mat-button-toggle-group>
-
-                  @if (reservationMode() === 'member') {
-                    <div class="res-member-search">
-                      <mat-form-field appearance="outline" class="res-search-field">
-                        <mat-label>Search member by name</mat-label>
-                        <input matInput [value]="reservationMemberSearch()"
-                          (input)="onReservationMemberSearch($any($event.target).value)"
-                          autocomplete="off" />
-                        <mat-icon matSuffix>search</mat-icon>
-                      </mat-form-field>
-                      @if (reservationMemberResults().length > 0) {
-                        <div class="res-member-results">
-                          @for (m of reservationMemberResults(); track m.id) {
-                            <button mat-button class="res-member-row" (click)="assignReservationMember(m)"
-                              [disabled]="reservationSaving()">
-                              <mat-icon>person</mat-icon> {{ m.fullName }}
-                            </button>
-                          }
-                        </div>
-                      }
-                    </div>
-                  } @else {
-                    <div class="res-contact-form">
-                      <mat-form-field appearance="outline" class="res-field">
-                        <mat-label>Contact name</mat-label>
-                        <input matInput [value]="reservationContactName()"
-                          (input)="reservationContactName.set($any($event.target).value)" maxlength="150" />
-                      </mat-form-field>
-                      <mat-form-field appearance="outline" class="res-field">
-                        <mat-label>Email address</mat-label>
-                        <input matInput type="email" [value]="reservationContactEmail()"
-                          (input)="reservationContactEmail.set($any($event.target).value)" maxlength="255" />
-                      </mat-form-field>
-                      <button mat-raised-button color="primary"
-                        [disabled]="reservationSaving() || !reservationContactName().trim() || !reservationContactEmail().trim()"
-                        (click)="sendReservationToContact()">
-                        @if (reservationSaving()) { <mat-spinner diameter="16" /> }
-                        <mat-icon>send</mat-icon> Send Reservation Request
+                  <!-- No assignment yet: show Assign button, expand to form on click -->
+                  @if (!reservationReassigning() && !showCoordinatorAssignForm()) {
+                    <div class="res-no-assignee">
+                      <button mat-stroked-button (click)="showCoordinatorAssignForm.set(true)">
+                        <mat-icon>person_add</mat-icon> Assign Coordinator
                       </button>
                     </div>
-                  }
+                  } @else {
+                    <!-- Assignment form (shown when no assignment and form open, or when reassigning) -->
+                    @if (reservationReassigning()) {
+                      <p class="res-reassign-label">Select a new coordinator to replace the current one:</p>
+                    }
+                    <mat-button-toggle-group [value]="reservationMode()" (change)="reservationMode.set($event.value)" class="res-mode-toggle">
+                      <mat-button-toggle value="member">Assign Member</mat-button-toggle>
+                      <mat-button-toggle value="contact">Outside Contact</mat-button-toggle>
+                    </mat-button-toggle-group>
 
-                  @if (reservationReassigning()) {
-                    <button mat-button class="res-cancel-reassign" (click)="reservationReassigning.set(false)">
+                    @if (reservationMode() === 'member') {
+                      <div class="res-member-search">
+                        <mat-form-field appearance="outline" class="res-search-field">
+                          <mat-label>Search member by name</mat-label>
+                          <input matInput [value]="reservationMemberSearch()"
+                            (input)="onReservationMemberSearch($any($event.target).value)"
+                            autocomplete="off" />
+                          <mat-icon matSuffix>search</mat-icon>
+                        </mat-form-field>
+                        @if (reservationMemberResults().length > 0) {
+                          <div class="res-member-results">
+                            @for (m of reservationMemberResults(); track m.id) {
+                              <button mat-button class="res-member-row" (click)="assignReservationMember(m)"
+                                [disabled]="reservationSaving()">
+                                <mat-icon>person</mat-icon> {{ m.fullName }}
+                              </button>
+                            }
+                          </div>
+                        }
+                      </div>
+                    } @else {
+                      <div class="res-contact-form">
+                        <mat-form-field appearance="outline" class="res-field">
+                          <mat-label>Contact name</mat-label>
+                          <input matInput [value]="reservationContactName()"
+                            (input)="reservationContactName.set($any($event.target).value)" maxlength="150" />
+                        </mat-form-field>
+                        <mat-form-field appearance="outline" class="res-field">
+                          <mat-label>Email address</mat-label>
+                          <input matInput type="email" [value]="reservationContactEmail()"
+                            (input)="reservationContactEmail.set($any($event.target).value)" maxlength="255" />
+                        </mat-form-field>
+                        <button mat-raised-button color="primary"
+                          [disabled]="reservationSaving() || !reservationContactName().trim() || !reservationContactEmail().trim()"
+                          (click)="sendReservationToContact()">
+                          @if (reservationSaving()) { <mat-spinner diameter="16" /> }
+                          <mat-icon>send</mat-icon> Send Reservation Request
+                        </button>
+                      </div>
+                    }
+
+                    <button mat-button class="res-cancel-reassign"
+                      (click)="reservationReassigning() ? reservationReassigning.set(false) : showCoordinatorAssignForm.set(false)">
                       Cancel
                     </button>
                   }
@@ -1589,6 +1597,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
     }
 
     .res-cancel-reassign { margin-top: 4px; }
+    .res-no-assignee { padding: 4px 0 8px; }
 
     .res-mode-toggle {
       margin-bottom: 14px;
@@ -1849,6 +1858,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly reservationReassigning = signal(false);
   readonly showConfirmNoteInput = signal(false);
   readonly reservationConfirmNote = signal('');
+  readonly showCoordinatorAssignForm = signal(false);
   private readonly reservationSearch$ = new Subject<string>();
 
   // Clock signal — ticks every minute so isPastEvent / isPastCutoff recompute reactively
@@ -2501,6 +2511,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.event.set(updated);
         this.reservationSaving.set(false);
         this.reservationReassigning.set(false);
+        this.showCoordinatorAssignForm.set(false);
         this.reservationMemberSearch.set('');
         this.reservationMemberResults.set([]);
         this.snackBar.open(`${member.fullName} assigned — email sent`, 'OK', { duration: 3000 });
@@ -2520,6 +2531,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.event.set(updated);
         this.reservationSaving.set(false);
         this.reservationReassigning.set(false);
+        this.showCoordinatorAssignForm.set(false);
         this.reservationContactName.set('');
         this.reservationContactEmail.set('');
         this.snackBar.open('Contact assigned — email sent', 'OK', { duration: 3000 });

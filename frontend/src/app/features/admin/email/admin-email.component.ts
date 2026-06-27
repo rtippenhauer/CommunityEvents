@@ -96,6 +96,9 @@ interface EmailConfig {
                   <mat-icon>replay</mat-icon> Retry {{ failedCount() }} Failed
                 </button>
               }
+              <button mat-stroked-button color="primary" (click)="flushQueue()" [disabled]="flushing()">
+                <mat-icon>send</mat-icon> {{ flushing() ? 'Sending…' : 'Send Now' }}
+              </button>
               <button mat-icon-button (click)="loadQueue()" matTooltip="Refresh queue">
                 <mat-icon>refresh</mat-icon>
               </button>
@@ -347,6 +350,7 @@ export class AdminEmailComponent implements OnInit {
   readonly config = signal<EmailConfig | null>(null);
   readonly loading = signal(false);
   readonly retrying = signal(false);
+  readonly flushing = signal(false);
   readonly saving = signal(false);
   readonly failedCount = computed(() => this.queue().filter((e) => e.status === 'failed').length);
 
@@ -463,6 +467,18 @@ export class AdminEmailComponent implements OnInit {
     this.http.patch<EmailConfig>('/api/v1/admin/email/config', val).subscribe({
       next: (cfg) => { this.config.set(cfg); this.saving.set(false); this.snackBar.open('Template IDs saved', 'OK', { duration: 2000 }); },
       error: () => { this.saving.set(false); this.snackBar.open('Failed to save', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  flushQueue(): void {
+    this.flushing.set(true);
+    this.http.post('/api/v1/admin/email/flush', {}).subscribe({
+      next: () => {
+        this.snackBar.open('Queue flushed', 'OK', { duration: 2000 });
+        this.flushing.set(false);
+        this.loadQueue();
+      },
+      error: () => { this.snackBar.open('Flush failed', 'OK', { duration: 3000 }); this.flushing.set(false); },
     });
   }
 

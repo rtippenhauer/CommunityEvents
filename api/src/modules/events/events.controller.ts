@@ -246,7 +246,7 @@ export class EventsController {
     @Body() dto: SetReservationDto,
     @CurrentUser() user: UserEntity,
   ) {
-    return this.eventsService.setReservation(id, dto, user.fullName);
+    return this.eventsService.setReservation(id, dto, user);
   }
 
   @Post('reservation-confirm/:token')

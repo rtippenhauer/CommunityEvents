@@ -1014,17 +1014,25 @@ export class EventsService {
     };
   }
 
-  async setReservation(eventId: number, dto: SetReservationDto, confirmedByName?: string): Promise<EventEntity> {
+  async setReservation(eventId: number, dto: SetReservationDto, callerUser?: UserEntity): Promise<EventEntity> {
     const event = await this.eventRepo.findOne({
       where: { id: eventId },
-      relations: ['restaurant'],
+      relations: ['restaurant', 'reservationAssignee'],
     });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
 
     if (dto.confirmed !== undefined) {
       event.reservationConfirmed = dto.confirmed;
       if (dto.confirmed) {
-        event.reservationConfirmedBy = confirmedByName ?? 'Admin';
+        const assignedName = event.reservationAssignee?.fullName ?? event.reservationContactName;
+        const callerIsAssignee = callerUser != null && event.reservationAssigneeId === callerUser.id;
+        if (assignedName && callerUser && !callerIsAssignee) {
+          // Admin/mod confirming on behalf of the actual assignee — record both
+          event.reservationConfirmedBy = `${assignedName} (confirmed by ${callerUser.fullName})`;
+        } else {
+          // Assignee self-confirmed, or no specific assignee
+          event.reservationConfirmedBy = assignedName ?? callerUser?.fullName ?? 'Admin';
+        }
         event.reservationConfirmedAt = new Date();
         event.reservationConfirmedNote = dto.confirmedNote ?? null;
       } else {
@@ -1103,6 +1111,21 @@ export class EventsService {
       ? `https://www.google.com/maps?q=${event.restaurantLat},${event.restaurantLng}`
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.restaurantAddress)}`;
 
+    const phone = event.restaurant?.phone ?? null;
+    const websiteUrl = event.restaurant?.websiteUrl ?? null;
+    const phoneRow = phone
+      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📞</span>
+        <a href="tel:${phone}" style="color:#C9933A;text-decoration:none">${phone}</a>
+      </td></tr>`
+      : '';
+    const websiteRow = websiteUrl
+      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">🌐</span>
+        <a href="${websiteUrl}" style="color:#C9933A;text-decoration:none">${websiteUrl}</a>
+      </td></tr>`
+      : '';
+
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -1123,10 +1146,12 @@ export class EventsService {
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">📅</span><strong>${dateDisplay}</strong> at ${timeDisplay}
       </td></tr>
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+      <tr><td style="padding:10px 16px;${phone || websiteUrl ? 'border-bottom:1px solid #e8e0d6;' : ''}font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">📍</span>
         <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${event.restaurantName} — ${event.restaurantAddress}</a>
       </td></tr>
+      ${phoneRow}
+      ${websiteRow}
     </table>
     <p style="margin:0 0 12px;font-size:0.9rem;color:#555">
       Please call <strong>${event.restaurantName}</strong> and make a reservation for about
@@ -1195,6 +1220,7 @@ export class EventsService {
 
     const events = await this.eventRepo
       .createQueryBuilder('e')
+      .leftJoinAndSelect('e.restaurant', 'restaurant')
       .where('e.status = :status', { status: EventStatus.PUBLISHED })
       .andWhere('e.reservationSeatsEmailSent = 0')
       .andWhere('(e.reservationAssigneeId IS NOT NULL OR e.reservationContactEmail IS NOT NULL)')
@@ -1249,6 +1275,21 @@ export class EventsService {
       ? `https://www.google.com/maps?q=${event.restaurantLat},${event.restaurantLng}`
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.restaurantAddress)}`;
 
+    const rPhone = event.restaurant?.phone ?? null;
+    const rWebsite = event.restaurant?.websiteUrl ?? null;
+    const rPhoneRow = rPhone
+      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📞</span>
+        <a href="tel:${rPhone}" style="color:#C9933A;text-decoration:none">${rPhone}</a>
+      </td></tr>`
+      : '';
+    const rWebsiteRow = rWebsite
+      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">🌐</span>
+        <a href="${rWebsite}" style="color:#C9933A;text-decoration:none">${rWebsite}</a>
+      </td></tr>`
+      : '';
+
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -1273,6 +1314,8 @@ export class EventsService {
         <span style="color:#C9933A;margin-right:8px">📍</span>
         <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${event.restaurantName} — ${event.restaurantAddress}</a>
       </td></tr>
+      ${rPhoneRow}
+      ${rWebsiteRow}
       <tr><td style="padding:14px 16px;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">👥</span>
         Current confirmed count: <strong>${goingCount}</strong> people

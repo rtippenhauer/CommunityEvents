@@ -15,6 +15,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AdminService, AuditLogFilter } from './admin.service';
 import { EmailService } from '../email/email.service';
+import { EmailDispatcherService } from '../email/email-dispatcher.service';
 import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -28,6 +29,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly emailService: EmailService,
+    private readonly emailDispatcher: EmailDispatcherService,
     @InjectRepository(EmailProviderConfigEntity)
     private readonly providerConfigRepo: Repository<EmailProviderConfigEntity>,
   ) {}
@@ -151,6 +153,14 @@ export class AdminController {
     if (!config) return;
     Object.assign(config, body);
     return this.providerConfigRepo.save(config);
+  }
+
+  @Post('email/flush')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  async flushQueue() {
+    await this.emailDispatcher.dispatchPending();
+    return { ok: true };
   }
 
   @Post('email/retry-failed')

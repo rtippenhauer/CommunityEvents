@@ -23,6 +23,6 @@ import { EmailWebhookController } from './email-webhook.controller';
   ],
   controllers: [EmailWebhookController],
   providers: [EmailService, BrevoService, ResendService, EmailDispatcherService],
-  exports: [EmailService],
+  exports: [EmailService, EmailDispatcherService],
 })
 export class EmailModule {}
