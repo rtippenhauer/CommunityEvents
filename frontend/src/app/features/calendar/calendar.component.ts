@@ -7,6 +7,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, Event } from '../../core/services/events.service';
 import { AuthService } from '../../core/services/auth.service';
 import { EventCardComponent } from '../../shared/components/event-card/event-card.component';
+import { CalendarSubscribeComponent } from '../../shared/components/calendar-subscribe/calendar-subscribe.component';
 
 interface CalendarDay {
   day: number | null;
@@ -25,12 +26,18 @@ interface CalendarDay {
     MatIconModule,
     MatProgressSpinnerModule,
     EventCardComponent,
+    CalendarSubscribeComponent,
   ],
   template: `
     <div class="calendar-page">
       <div class="page-header">
-        <h2 class="page-title">Calendar</h2>
-        <p class="page-sub">Browse upcoming and past DinnerBears events</p>
+        <div>
+          <h2 class="page-title">Calendar</h2>
+          <p class="page-sub">Browse upcoming and past DinnerBears events</p>
+        </div>
+        @if (isLoggedIn()) {
+          <app-calendar-subscribe />
+        }
       </div>
 
       <div class="calendar-layout">
@@ -112,6 +119,11 @@ interface CalendarDay {
     }
 
     .page-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
       padding: 0 0 24px;
       border-bottom: 1px solid var(--db-cream-dark);
       margin-bottom: 28px;

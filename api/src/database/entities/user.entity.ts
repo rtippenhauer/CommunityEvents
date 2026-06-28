@@ -122,6 +122,9 @@ export class UserEntity {
   @Column({ name: 'last_failed_login_at', type: 'datetime', nullable: true })
   lastFailedLoginAt: Date | null;
 
+  @Column({ name: 'calendar_token', type: 'varchar', length: 36, nullable: true, unique: true })
+  calendarToken: string | null;
+
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt: Date | null;
 

@@ -15,6 +15,7 @@ import { EventsService, Event } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { EventCardComponent } from '../../../shared/components/event-card/event-card.component';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
+import { CalendarSubscribeComponent } from '../../../shared/components/calendar-subscribe/calendar-subscribe.component';
 
 interface City {
   id: number;
@@ -36,6 +37,7 @@ interface City {
     MatProgressSpinnerModule,
     MatSelectModule,
     EventCardComponent,
+    CalendarSubscribeComponent,
   ],
   template: `
     @if (!isLoggedIn()) {
@@ -52,6 +54,11 @@ interface City {
         </button>
       }
     </div>
+    @if (isLoggedIn()) {
+      <div class="cal-sub-bar">
+        <app-calendar-subscribe />
+      </div>
+    }
 
     <!-- Filters -->
     <div class="filters">
@@ -108,6 +115,9 @@ interface City {
       justify-content: space-between;
       margin-bottom: 16px;
       h1 { margin: 0; font-size: 1.75rem; color: var(--db-brown-dark); }
+    }
+    .cal-sub-bar {
+      margin-bottom: 16px;
     }
     .filters {
       display: flex;

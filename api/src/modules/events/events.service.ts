@@ -18,6 +18,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { SetReservationDto } from './dto/set-reservation.dto';
 import { EmailService } from '../email/email.service';
+import { CalendarService } from '../calendar/calendar.service';
 import { ConfigService } from '@nestjs/config';
 
 export interface EventFilters {
@@ -46,6 +47,7 @@ export class EventsService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly emailService: EmailService,
+    private readonly calendarService: CalendarService,
     private readonly config: ConfigService,
   ) {}
 
@@ -262,6 +264,7 @@ export class EventsService {
     if (dto.status !== undefined && dto.status !== event.status) {
       if (dto.status === EventStatus.PUBLISHED && !wasPublished) {
         event.publishedAt = new Date();
+        void this.calendarService.invalidateForCity(event.cityId);
       }
       if (dto.status === EventStatus.CANCELLED) {
         event.cancelledAt = new Date();
@@ -277,8 +280,10 @@ export class EventsService {
 
     if (saved.status === EventStatus.CANCELLED && wasPublished) {
       void this.sendCancellationEmails(saved);
+      void this.calendarService.invalidateForEvent(saved.id);
     } else if (wasPublished && saved.status === EventStatus.PUBLISHED && (changedDate || changedTime || changedRestaurant)) {
       void this.sendUpdateEmails(saved);
+      void this.calendarService.invalidateForEvent(saved.id);
     }
 
     return saved;
@@ -511,29 +516,36 @@ export class EventsService {
       throw new ForbiddenException('RSVP is closed — cannot increase guest count after the deadline');
     }
 
+    let saved: EventRsvpEntity;
     if (existing) {
       existing.status = status;
       existing.additionalGuests = additionalGuests;
       if (guestNames !== undefined) {
         existing.guestNames = guestNames.length > 0 ? guestNames : null;
       }
-      return this.rsvpRepo.save(existing);
+      saved = await this.rsvpRepo.save(existing);
+    } else {
+      saved = await this.rsvpRepo.save(
+        this.rsvpRepo.create({
+          eventId,
+          userId,
+          status,
+          additionalGuests,
+          guestNames: guestNames && guestNames.length > 0 ? guestNames : null,
+        }),
+      );
     }
 
-    return this.rsvpRepo.save(
-      this.rsvpRepo.create({
-        eventId,
-        userId,
-        status,
-        additionalGuests,
-        guestNames: guestNames && guestNames.length > 0 ? guestNames : null,
-      }),
-    );
+    this.calendarService.invalidateForUser(userId);
+    return saved;
   }
 
   async removeRsvp(eventId: number, userId: number): Promise<void> {
     const rsvp = await this.rsvpRepo.findOne({ where: { eventId, userId } });
-    if (rsvp) await this.rsvpRepo.remove(rsvp);
+    if (rsvp) {
+      await this.rsvpRepo.remove(rsvp);
+      this.calendarService.invalidateForUser(userId);
+    }
   }
 
   async getGuestLink(token: string) {
@@ -758,36 +770,76 @@ export class EventsService {
   }
 
   private buildIcs(event: EventEntity, descriptionSuffix?: string): string {
-    const [y, m, d] = event.eventDate.split('-').map(Number);
-    const [h, min] = event.eventTime.split(':').map(Number);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const startDt = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
-    const endDt = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const esc = (s: string) =>
       s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+    const pad = (n: number) => String(n).padStart(2, '0');
+
+    // Convert Eastern stored time → UTC for RFC 5545 compliance
+    const [y, m, d] = event.eventDate.split('-').map(Number);
+    const [h, min] = event.eventTime.split(':').map(Number);
+    const approx = new Date(Date.UTC(y, m - 1, d, h, min, 0));
+    const tzParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(approx);
+    const getP = (t: string) => parseInt(tzParts.find((p) => p.type === t)?.value ?? '0', 10);
+    const diffMin = (h * 60 + min) - (getP('hour') % 24 * 60 + getP('minute'));
+    const startUtc = new Date(approx.getTime() + diffMin * 60000);
+    const endUtc = new Date(startUtc.getTime() + 2 * 60 * 60 * 1000);
+    const toUtcStr = (dt: Date) =>
+      `${dt.getUTCFullYear()}${pad(dt.getUTCMonth() + 1)}${pad(dt.getUTCDate())}` +
+      `T${pad(dt.getUTCHours())}${pad(dt.getUTCMinutes())}${pad(dt.getUTCSeconds())}Z`;
+
+    const lastMod = toUtcStr(new Date(event.updatedAt));
+    const sequence = Math.floor(new Date(event.updatedAt).getTime() / 60000) % 999999;
 
     const descParts: string[] = [`🍽️ ${event.restaurantName}`];
-    if (event.description) descParts.push(event.description);
-    if (event.additionalInfo) descParts.push(event.additionalInfo);
-    if (descriptionSuffix) descParts.push(descriptionSuffix);
+    if (event.restaurantAddress) descParts.push(event.restaurantAddress);
+    if (event.description) descParts.push('', event.description);
+    if (event.additionalInfo) descParts.push('', event.additionalInfo);
+    if (descriptionSuffix) descParts.push('', descriptionSuffix);
+
+    const fold = (line: string): string => {
+      const bytes = Buffer.from(line, 'utf-8');
+      if (bytes.length <= 75) return line;
+      const parts: string[] = [];
+      let pos = 0; let first = true;
+      while (pos < bytes.length) {
+        const limit = first ? 75 : 74;
+        let end = Math.min(pos + limit, bytes.length);
+        while (end > pos && (bytes[end] & 0xc0) === 0x80) end--;
+        parts.push(bytes.slice(pos, end).toString('utf-8'));
+        pos = end; first = false;
+      }
+      return parts.join('\r\n ');
+    };
+
+    const location = event.restaurantAddress
+      ? `${event.restaurantName}, ${event.restaurantAddress}`
+      : event.restaurantName;
 
     const lines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//DinnerBears//EN',
+      'PRODID:-//DinnerBears//DinnerBears Calendar//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       'BEGIN:VEVENT',
-      `DTSTART:${startDt}`,
-      `DTEND:${endDt}`,
-      `SUMMARY:${esc(event.title)}`,
-      `LOCATION:${esc(event.restaurantAddress)}`,
-      `UID:event-${event.id}@dinnerbears.com`,
+      `UID:dinnerbears-event-${event.id}@dinnerbears.com`,
+      `DTSTART:${toUtcStr(startUtc)}`,
+      `DTEND:${toUtcStr(endUtc)}`,
+      `LAST-MODIFIED:${lastMod}`,
+      `SEQUENCE:${sequence}`,
+      `STATUS:${event.status === EventStatus.CANCELLED ? 'CANCELLED' : 'CONFIRMED'}`,
+      fold(`SUMMARY:${esc(`DinnerBears Dinner at ${event.restaurantName}`)}`),
+      fold(`LOCATION:${esc(location)}`),
+      fold(`DESCRIPTION:${esc(descParts.join('\n'))}`),
+      fold(`URL:${appUrl}/events/${event.id}`),
+      `ORGANIZER;CN=DinnerBears:mailto:noreply@dinnerbears.com`,
+      'END:VEVENT',
+      'END:VCALENDAR',
     ];
 
-    if (descParts.length) lines.push(`DESCRIPTION:${esc(descParts.join('\n\n'))}`);
-
-    lines.push('END:VEVENT', 'END:VCALENDAR');
     return lines.join('\r\n');
   }
 

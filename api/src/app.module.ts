@@ -26,6 +26,7 @@ import { AnnouncementsModule } from './modules/announcements/announcements.modul
 import { EventCommentsModule } from './modules/event-comments/event-comments.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { CalendarModule } from './modules/calendar/calendar.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     EventCommentsModule,
     TasksModule,
     ReportsModule,
+    CalendarModule,
   ],
   controllers: [AppController],
   providers: [

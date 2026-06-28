@@ -17,6 +17,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
 import { PushNotificationService } from '../../core/services/push.service';
 import { PhotoCropDialogComponent } from '../../shared/components/photo-crop-dialog/photo-crop-dialog.component';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 
 interface City { id: number; name: string; subdomain: string; }
 interface NotifPrefs {
@@ -229,6 +230,43 @@ interface AvatarEntry { path: string; label: string; }
           }
         </mat-card-content>
       </mat-card>
+
+      <!-- Calendar Subscription -->
+      <mat-card>
+        <mat-card-header>
+          <mat-card-title>Calendar Subscription</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <p class="cal-desc">Add your DinnerBears dinners to your calendar. Updates automatically when you RSVP or event details change.</p>
+          @if (calendarUrl()) {
+            <div class="cal-buttons">
+              <a mat-flat-button color="primary" [href]="webcalUrl()" class="cal-subscribe-btn">
+                <mat-icon>event</mat-icon>
+                Apple / Outlook
+              </a>
+              <a mat-stroked-button color="primary" [href]="googleCalUrl()" target="_blank" rel="noopener" class="cal-subscribe-btn">
+                <mat-icon>open_in_new</mat-icon>
+                Google Calendar
+              </a>
+              <button mat-icon-button (click)="copyCalendarUrl()" matTooltip="Copy feed URL for other apps">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+            <div class="cal-regen-row">
+              <button mat-button color="warn" (click)="confirmRegenerateToken()" [disabled]="calendarLoading()">
+                Regenerate link
+              </button>
+            </div>
+          } @else {
+            @if (calendarLoading()) {
+              <mat-spinner diameter="28" />
+            } @else {
+              <p class="cal-hint">Could not load calendar link.</p>
+              <button mat-stroked-button (click)="loadCalendarUrl()">Retry</button>
+            }
+          }
+        </mat-card-content>
+      </mat-card>
     </div>
   `,
   styles: [`
@@ -388,6 +426,11 @@ interface AvatarEntry { path: string; label: string; }
       gap: 8px;
     }
     .unsubscribe-hint { font-size: 0.85rem; color: #888; }
+    .cal-desc { font-size: 0.875rem; color: #555; margin: 0 0 16px; }
+    .cal-buttons { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .cal-subscribe-btn { display: inline-flex; align-items: center; gap: 6px; }
+    .cal-regen-row { margin-top: 12px; display: flex; justify-content: flex-end; }
+    .cal-hint { font-size: 0.82rem; color: #666; margin: 0 0 8px; }
   `],
 })
 export class ProfileSettingsComponent implements OnInit {
@@ -409,6 +452,10 @@ export class ProfileSettingsComponent implements OnInit {
   readonly savingPrefs = signal(false);
   readonly emailStatus = signal<string | null>(null);
   readonly pushSubscribed = signal(false);
+  readonly calendarUrl = signal<string | null>(null);
+  readonly calendarLoading = signal(false);
+  readonly webcalUrl = () => (this.calendarUrl() ?? '').replace(/^https?:\/\//, 'webcal://');
+  readonly googleCalUrl = () => `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(this.webcalUrl())}`;
 
   readonly form = this.fb.group({
     fullName: ['', [Validators.required, Validators.maxLength(200)]],
@@ -427,6 +474,7 @@ export class ProfileSettingsComponent implements OnInit {
       this.photoUrl.set(user.profilePhotoPath ?? null);
     }
     this.loadNotifPrefs();
+    this.loadCalendarUrl();
     this.pushService.subscription$.subscribe((sub) => this.pushSubscribed.set(!!sub));
     this.http.get<{ emailStatus: string }>('/api/v1/users/me').subscribe({
       next: (u) => this.emailStatus.set(u.emailStatus),
@@ -550,6 +598,48 @@ export class ProfileSettingsComponent implements OnInit {
         this.authService.updatePhoto(null);
         this.snackBar.open('Photo removed', 'OK', { duration: 3000 });
       },
+    });
+  }
+
+  loadCalendarUrl(): void {
+    this.calendarLoading.set(true);
+    this.http.get<{ url: string }>('/api/v1/calendar/token').subscribe({
+      next: (res) => { this.calendarUrl.set(res.url); this.calendarLoading.set(false); },
+      error: () => { this.calendarLoading.set(false); },
+    });
+  }
+
+  copyCalendarUrl(): void {
+    const url = this.calendarUrl();
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      this.snackBar.open('Feed URL copied!', 'OK', { duration: 2500 });
+    });
+  }
+
+  confirmRegenerateToken(): void {
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Regenerate Calendar Link?',
+        message: 'Any apps using your current feed URL will stop updating. You will need to re-add the new URL in each calendar app.',
+        confirmLabel: 'Regenerate',
+        confirmColor: 'warn',
+      },
+    });
+    ref.afterClosed().subscribe((confirmed: boolean) => {
+      if (!confirmed) return;
+      this.calendarLoading.set(true);
+      this.http.get<{ url: string }>('/api/v1/calendar/token/regenerate').subscribe({
+        next: (res) => {
+          this.calendarUrl.set(res.url);
+          this.calendarLoading.set(false);
+          this.snackBar.open('Calendar link regenerated', 'OK', { duration: 3000 });
+        },
+        error: () => {
+          this.snackBar.open('Failed to regenerate', 'OK', { duration: 3000 });
+          this.calendarLoading.set(false);
+        },
+      });
     });
   }
 }

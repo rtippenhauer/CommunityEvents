@@ -586,3 +586,38 @@ prevents invite farming for points.
 - **No abuse vectors**: all triggers are server-side events tied to verifiable DB records; no self-reporting
 
 **Definition of done:** Members earn points for attendance, coordinating, invites (on invitee's first attended dinner), and ratings. Coordinator earns double for introducing a new restaurant. Totals and category breakdown display on profiles. Admin can view and correct the ledger.
+
+---
+
+## Phase 16 — iCal Calendar Feed
+
+Full spec: `docs/DinnerBears_iCal_Feed_Requirements.md` (REQ-NEW-16 through REQ-NEW-22)
+
+Members subscribe to a personal iCal feed so upcoming dinners appear automatically in Apple Calendar, Google Calendar, Outlook, or any iCal-compatible app.
+
+### Phase 16a — Subscription Feed (REQ-NEW-16 through REQ-NEW-20)
+
+- DB: add `calendar_token VARCHAR(36) NULL UNIQUE` to `users` table
+- New `CalendarModule` with `GET /api/v1/calendar/feed.ics?token=<calToken>` — no session auth; token in query param (calendar apps cannot send headers)
+- Feed includes all events the member RSVPd to (going/maybe/not_going); excludes cancelled events older than 7 days
+- Upgrade existing `buildIcs` in EventsService to full RFC 5545 compliance:
+  - UTC datetime conversion (`YYYYMMDDTHHMMSSZ`) — current implementation uses local time, no Z suffix
+  - Add missing properties: `STATUS`, `SEQUENCE`, `LAST-MODIFIED`, `URL`, `ORGANIZER`
+  - Line folding at 75 octets per RFC 5545 — currently missing
+- In-memory cache per token (15 min TTL); invalidate on RSVP change, event update, or token regen
+- `POST /api/v1/members/me/calendar-token/regenerate` — generates new UUID, invalidates old token
+- Angular account settings: **Calendar Subscription** section with copyable URL, platform setup guide (Apple/Google/Outlook), regenerate button with confirmation dialog
+
+### Phase 16b — Email .ics Attachment (REQ-NEW-21)
+
+- Attach a `.ics` file (`METHOD:REQUEST`) to event invitation emails
+- Enables Apple Mail's native Accept / Decline / Maybe prompt
+- Include `ATTENDEE;CN={name};RSVP=TRUE:mailto:{email}` in the attachment
+
+### Phase 16c — Inbound RSVP Reply Processing (REQ-NEW-22, optional)
+
+- Configure email routing to forward calendar replies to `POST /api/v1/calendar/rsvp-reply`
+- Parse `METHOD:REPLY` iCal, map `PARTSTAT` to DinnerBears RSVP status
+- Lower priority — deep link in the event description is the primary RSVP path
+
+**Definition of done:** Members can subscribe to a personal iCal feed and see their events in any calendar app. Feed updates within 15 minutes of an event change or RSVP change. RFC 5545 validated. Calendar settings UI in account page. Phase 16b: invitation emails include `.ics` attachment with native prompt in Apple Mail.
