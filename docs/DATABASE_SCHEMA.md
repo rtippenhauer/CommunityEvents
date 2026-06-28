@@ -97,6 +97,8 @@ last_failed_login_at            DATETIME NULL                         -- Phase 1
 -- Deletion
 deleted_at                      DATETIME NULL
 hard_delete_at                  DATETIME NULL               -- deleted_at + 30 days
+-- Calendar integration (Phase 16)
+calendar_token                  VARCHAR(36) NULL UNIQUE     -- iCal feed token; regenerable from Account Settings
 created_at                      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 updated_at                      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 

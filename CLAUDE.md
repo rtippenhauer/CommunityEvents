@@ -33,11 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Post-Launch — Phase 14 TBD** — next formal phase not yet defined.
+**Phase 15 — Community Points System** — gamification layer awarding Bear Points for attendance, coordination, ratings, and successful invites.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14 ✓ — see PHASES.md for details.
-v1.0.2 mobile nav polish: cream sidenav, dark logo header, cream toolbar band hides at hamburger breakpoint (959.98px).
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 16 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

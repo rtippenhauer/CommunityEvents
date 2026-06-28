@@ -589,7 +589,7 @@ prevents invite farming for points.
 
 ---
 
-## Phase 16 — iCal Calendar Feed
+## Phase 16 — iCal Calendar Feed ✅ Complete
 
 Full spec: `docs/DinnerBears_iCal_Feed_Requirements.md` (REQ-NEW-16 through REQ-NEW-22)
 
