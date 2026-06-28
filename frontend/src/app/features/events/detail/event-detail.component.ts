@@ -243,7 +243,10 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                           <mat-select [formControl]="guestsCtrl" class="guests-select" (selectionChange)="updateGuests($event.value)">
                             <mat-option [value]="0">Just me</mat-option>
                             @for (n of guestOptions.slice(1); track n) {
-                              <mat-option [value]="n">+{{ n }} guest{{ n === 1 ? '' : 's' }}</mat-option>
+                              <mat-option [value]="n"
+                                [disabled]="!isAdminOrMod() && isPastCutoff() && n > myRsvp()!.additionalGuests">
+                                +{{ n }} guest{{ n === 1 ? '' : 's' }}
+                              </mat-option>
                             }
                           </mat-select>
                         }
@@ -399,6 +402,10 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                 <!-- Attendee list -->
                 @if (event()!.rsvps.length === 0 && event()!.publicRsvps.length === 0) {
                   <p class="no-rsvps">No RSVPs yet — be the first!</p>
+                } @else if (!isLoggedIn()) {
+                  <p class="no-rsvps">
+                    <a routerLink="/login">Sign in</a> to see who's going.
+                  </p>
                 } @else if (isNonValidated()) {
                   <ul class="attendee-list">
                     @for (r of event()!.rsvps; track r.id) {

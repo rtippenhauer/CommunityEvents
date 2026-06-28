@@ -70,7 +70,11 @@ export class EventsService {
     if (filters.fromDate) {
       qb.andWhere('e.eventDate >= :fromDate', { fromDate: filters.fromDate }).orderBy('e.eventDate', 'ASC').addOrderBy('e.eventTime', 'ASC');
     } else {
-      const today = new Date().toISOString().split('T')[0];
+      const todayParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(new Date());
+      const get = (t: string) => todayParts.find((p) => p.type === t)?.value ?? '0';
+      const today = `${get('year')}-${get('month')}-${get('day')}`;
       if (filters.upcoming === true) {
         qb.andWhere('e.eventDate >= :today', { today }).orderBy('e.eventDate', 'ASC').addOrderBy('e.eventTime', 'ASC');
       } else if (filters.upcoming === false) {
@@ -489,12 +493,22 @@ export class EventsService {
 
     const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
 
+    const isPastCutoff = this.isPastRsvpCutoff(event.eventDate, event.eventTime);
+    const isPrivileged = userRole === UserRole.ADMIN || userRole === UserRole.MODERATOR;
+
     // Block upgrading to GOING after cutoff — applies to new RSVPs and existing non-Going RSVPs
     if (status === RsvpStatus.GOING &&
         existing?.status !== RsvpStatus.GOING &&
-        this.isPastRsvpCutoff(event.eventDate, event.eventTime) &&
-        userRole !== UserRole.ADMIN && userRole !== UserRole.MODERATOR) {
+        isPastCutoff && !isPrivileged) {
       throw new ForbiddenException('RSVP is closed — the deadline has passed');
+    }
+
+    // Block increasing guest count after cutoff — already-Going users can decrease but not add
+    if (status === RsvpStatus.GOING &&
+        existing?.status === RsvpStatus.GOING &&
+        additionalGuests > existing.additionalGuests &&
+        isPastCutoff && !isPrivileged) {
+      throw new ForbiddenException('RSVP is closed — cannot increase guest count after the deadline');
     }
 
     if (existing) {
@@ -839,6 +853,7 @@ export class EventsService {
 
     const saved = await this.guestLinkRepo.save(link);
 
+    // Fire-and-forget — email delivery is best-effort and must not block returning the link
     if (recipientEmail) {
       const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
       const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
@@ -853,7 +868,7 @@ export class EventsService {
       const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
       const inviterName = rsvp.user?.fullName ?? null;
 
-      await this.emailService.queue({
+      void this.emailService.queue({
         toEmail: recipientEmail,
         toName: recipientName ?? undefined,
         subject: `You're invited to a DinnerBears dinner!`,
@@ -876,6 +891,8 @@ export class EventsService {
           googleCalUrl: this.buildGoogleCalendarUrl(event),
           icsUrl,
         }),
+      }).catch((err: unknown) => {
+        this.logger.warn(`Failed to queue guest invite email to ${recipientEmail}: ${(err as Error)?.message}`);
       });
     }
 
