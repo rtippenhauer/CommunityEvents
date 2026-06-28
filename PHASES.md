@@ -4,7 +4,7 @@ Update `CLAUDE.md` "Current Development Phase" when moving to a new phase.
 
 ---
 
-## Phase 1 — Project Foundation & Design System
+## Phase 1 — Project Foundation & Design System ✅ Complete
 
 - Docker Compose scaffold (nginx, angular, nestjs-api, mysql)
 - Angular 19 project init — standalone, routing, SCSS
@@ -25,7 +25,7 @@ responsive at 375px + 1280px, dinnerbears.com live with placeholder site.
 
 ---
 
-## Phase 2 — Google Auth & Invite System
+## Phase 2 — Google Auth & Invite System ✅ Complete
 
 - Google OAuth (Passport strategy, /api/auth/google redirect)
 - Invite link system — all five types:
@@ -52,7 +52,7 @@ that link with correct lineage recorded. Single-use invites expire after
 
 ---
 
-## Phase 3 — Restaurant Database UI
+## Phase 3 — Restaurant Database UI ✅ Complete
 
 - NestJS RestaurantsModule (CRUD, role-gated to admin/moderator)
 - Geocoding integration (address → lat/lng on save)
@@ -68,7 +68,7 @@ Geocoded map links generate from addresses.
 
 ---
 
-## Phase 3.5 — Historical Restaurant Import
+## Phase 3.5 — Historical Restaurant Import ✅ Complete
 
 - Facebook OAuth token setup (admin logs in with Facebook to generate token)
 - One-time script: pull all past events from Group 1 via Facebook Graph API
@@ -87,7 +87,7 @@ Phase 11 when Facebook login is added for members.
 
 ---
 
-## Phase 4.1 — Event Core
+## Phase 4.1 — Event Core ✅ Complete
 
 - NestJS EventsModule — CRUD, restaurant snapshot on creation
 - Event states: draft → published → cancelled
@@ -101,7 +101,7 @@ captured on publish.
 
 ---
 
-## Phase 4.2 — Member RSVP
+## Phase 4.2 — Member RSVP ✅ Complete
 
 - Member RSVP — add/remove, 0–9 additional guests dropdown
 - +1 options: name them, send by email, copy shareable link
@@ -113,7 +113,7 @@ captured on publish.
 
 ---
 
-## Phase 4.3 — Sharing & Calendar Export
+## Phase 4.3 — Sharing & Calendar Export ✅ Complete
 
 - Share to Facebook button (admin only — pre-fills FB composer)
 - Copy Post Text button
@@ -124,7 +124,7 @@ text. All three calendar export formats work correctly.
 
 ---
 
-## Phase 4.4 — Event RSVP Disclaimer & Cutoff
+## Phase 4.4 — Event RSVP Disclaimer & Cutoff ✅ Complete
 
 - Add platform disclaimer constant (not hardcoded in template) to event detail page:
   - GOING by 5:00 PM day-of
@@ -140,7 +140,7 @@ can still adjust RSVPs after cutoff.
 
 ---
 
-## Phase 4.6 — Avatar System (dynamic)
+## Phase 4.6 — Avatar System (dynamic) ✅ Complete
 
 - NestJS `GET /api/v1/avatars` endpoint: scans avatar asset directory for
   `*.png` and `*.jpg`, returns `[{ filename, displayName }]`, no auth required
@@ -158,7 +158,7 @@ correctly from filenames.
 
 ---
 
-## Phase 5 — Email System
+## Phase 5 — Email System ✅ Complete
 
 - Brevo SDK integration (EmailService)
 - MySQL email queue (email_queue table)
@@ -187,7 +187,7 @@ preferences respected, suppression survives hard delete and re-registration.
 
 ---
 
-## Phase 5.5 — Guest RSVP (email-complete)
+## Phase 5.5 — Guest RSVP (email-complete) ✅ Complete
 
 - Guest confirmation email with cancel link + optional DinnerBears invite offer
 - Guest invite link (30-day expiry) generated on confirmation, linked to inviting member for lineage
@@ -201,7 +201,7 @@ the invite offer. Admin sees the full attendee breakdown with lineage.
 
 ---
 
-## Phase 6 — Feedback Board, Release Notes & Versioning
+## Phase 6 — Feedback Board, Release Notes & Versioning ✅ Complete
 
 - DB migrations: add `title` (varchar 200), `is_private` (boolean default false),
   `upvote_count` (int default 0) to existing `feedback` table; reconcile status
@@ -245,7 +245,7 @@ returns current open bug tickets for the agentic workflow.
 
 ---
 
-## Phase 7 — Push Notifications & Announcements
+## Phase 7 — Push Notifications & Announcements ✅ Complete
 
 - Web Push: VAPID key pair, push_subscriptions table, PushService
 - Angular PWA service worker upgrade (push event handler)
@@ -262,7 +262,7 @@ flagged content appears in moderation queue.
 
 ---
 
-## Phase 7.5 — Non-Validated Members & Event Invite Links
+## Phase 7.5 — Non-Validated Members & Event Invite Links ✅ Complete
 
 Replaces the earlier Public Event Interest concept. Non-Validated users are real accounts
 with limited access — suitable for public Facebook posts where membership can't be
@@ -309,7 +309,7 @@ links for both flavors.
 
 ---
 
-## Phase 7.6 — Facebook Event Sharing
+## Phase 7.6 — Facebook Event Sharing ✅ Complete
 
 Enhances the existing share/copy flow (Phase 4.3) with event-specific formatting
 and per-event invite links.
@@ -327,7 +327,7 @@ from the event sharing panel.
 
 ---
 
-## Phase 8 — Venue Moderator Tools
+## Phase 8 — Venue Moderator Tools ✅ Complete
 
 - Add `moderator_notes` (longtext, nullable) to `restaurants` table via migration
 - Add `contact_name` (varchar 100), `contact_phone` (varchar 30),
@@ -342,7 +342,7 @@ omits them entirely.
 
 ---
 
-## Phase 9 — Restaurant Ratings (Simplified)
+## Phase 9 — Restaurant Ratings (Simplified) ✅ Complete
 
 Simplified from original spec: skipped moderator attendance tracking and
 attendance probability scores. Rating eligibility is based on a Going RSVP
@@ -369,7 +369,7 @@ Blocked at API level for non-validated users and non-attendees.
 
 ---
 
-## Phase 10 — Threaded Event Discussion & Attendance Tracking
+## Phase 10 — Threaded Event Discussion & Attendance Tracking ✅ Complete
 
 ### Threaded Comments
 - DB: `event_comments` (id, event_id, member_id, body, created_at, deleted_at)
@@ -395,7 +395,7 @@ event concludes. Rating eligibility requires attended = true.
 
 ---
 
-## Phase 10.5 — Account Deletion & OAuth Unlinking
+## Phase 10.5 — Account Deletion & OAuth Unlinking ✅ Complete
 
 Required for Facebook App Review. Full spec in `docs/Dinnerbears_accountDeletion_requirements.md`.
 
@@ -437,7 +437,7 @@ Partial stubs already exist: `POST /auth/facebook/deletion` (HMAC verification) 
 
 ---
 
-## Phase 10.6 — Content Reporting
+## Phase 10.6 — Content Reporting ✅ Complete
 
 Unified system for members to report inappropriate content across all text-input surfaces, replacing the per-module flagging added in Phase 7 for announcements. See earlier discussion for full scope.
 
@@ -456,7 +456,7 @@ Unified system for members to report inappropriate content across all text-input
 
 ---
 
-## Phase 11 — Facebook OAuth & Email/Password Auth
+## Phase 11 — Facebook OAuth & Email/Password Auth ✅ Complete
 
 - Facebook OAuth (same Meta App as Phase 3.5 token)
 - Account linking (oauth_accounts table, profile Security tab)
@@ -475,7 +475,7 @@ token from Phase 3.5 is reused correctly.
 
 ---
 
-## Phase 12 — Admin Panel, Audit Log & Security
+## Phase 12 — Admin Panel, Audit Log & Security ✅ Complete
 
 - Full audit log viewer (filterable, read-only)
 - Admin Users tab: all members, roles, suspend, delete, email status,
@@ -494,7 +494,7 @@ off, system ready for real users.
 
 ---
 
-## Phase 13 — CMS Legal Pages
+## Phase 13 — CMS Legal Pages ✅ Complete
 
 - DB: `legal_pages` table (id, page_type enum[terms|privacy], content longtext,
   published boolean, created_by FK users, created_at)
@@ -512,7 +512,7 @@ white pages. Each update creates a versioned audit record.
 
 ---
 
-## Phase 14 — Navigation & Invites
+## Phase 14 — Navigation & Invites ✅ Complete
 
 See `memory/project_phase14_nav_invites.md` — completed as v1.0.1.
 
@@ -542,7 +542,7 @@ just the RSVP pill on mobile, or rethink the avatar cluster display.
 
 ---
 
-## Phase 15 — Community Points System
+## Phase 15 — Community Points System 🔄 In Progress
 
 Gamification layer that rewards engagement and creates a visible community
 reputation score ("Bear Points").

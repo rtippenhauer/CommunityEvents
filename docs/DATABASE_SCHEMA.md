@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-06-03_
+_Last updated: 2026-06-28_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -12,30 +12,40 @@ No `synchronize: true`. No manual schema changes.
 | Table | Phase | Purpose |
 |---|---|---|
 | `cities` | 1 | City configuration |
+| `app_config` | 1 | Key/value platform config |
 | `users` | 2 | Member accounts |
-| `email_suppressions` | 5 | Post-deletion email suppression hashes |
 | `oauth_accounts` | 2 | Linked Google/Facebook OAuth |
 | `login_sessions` | 2 | Device-level session tracking |
 | `invites` | 2 | All invite types |
 | `facebook_group_config` | 2 | Configured Facebook groups |
-| `password_reset_tokens` | 6 | Password reset flow |
-| `email_verification_tokens` | 6 | Email verification for new accounts |
+| `audit_log` | 2 | Immutable action log |
 | `restaurants` | 3 | Restaurant records |
 | `restaurant_photos` | 3 | Photos per restaurant |
+| `restaurant_ratings` | 9 | Member ratings per event visit |
 | `events` | 4 | Weekly dinner events |
 | `event_rsvps` | 4 | Member RSVPs |
-| `event_guest_rsvps` | 4 | Guest RSVPs (no account required) |
 | `event_guest_links` | 4 | Shareable/email guest invite links |
+| `event_guest_rsvps` | 5.5 | Guest RSVPs (no account required) |
 | `email_queue` | 5 | Outbound email queue |
 | `email_provider_config` | 5 | Brevo/Gmail toggle and counters |
+| `email_suppressions` | 5 | Post-deletion email suppression hashes |
 | `notification_preferences` | 5 | Per-member email/push opt-ins |
+| `feedback` | 6 | Member-submitted bugs and feature requests |
+| `feedback_notes` | 6 | Threaded admin/member notes on feedback tickets |
+| `feedback_upvotes` | 6 | Member upvotes on feedback tickets |
+| `releases` | 6 | Published release/changelog entries |
+| `release_feedback` | 6 | Join: releases ↔ feedback tickets |
+| `password_reset_tokens` | 11 | Password reset flow (token table) |
+| `email_verification_tokens` | 11 | Email verification for new accounts |
 | `push_subscriptions` | 7 | Web Push VAPID subscriptions |
 | `notifications` | 7 | In-app notification inbox |
 | `announcements` | 7 | Admin/moderator announcements |
 | `announcement_comments` | 7 | Comments on announcements |
-| `content_flags` | 7 | Member-flagged content |
-| `audit_log` | 2 | Immutable action log |
-| `app_config` | 1 | Key/value platform config |
+| `content_flags` | 7 | Legacy per-module content flags (announcements only) |
+| `content_reports` | 10.6 | Unified member content reports (replaces content_flags) |
+| `event_comments` | 10 | Threaded comments on events |
+| `event_comment_replies` | 10 | Replies to event comments (one level deep) |
+| `facebook_deletion_requests` | 10.5 | Meta server-to-server deletion callback log |
 
 ---
 
@@ -56,36 +66,47 @@ Seed rows: Cincinnati (cincinnati), Dayton (dayton)
 ## users
 
 ```sql
-id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-full_name           VARCHAR(200) NOT NULL
-email               VARCHAR(255) NOT NULL UNIQUE
-email_status        ENUM('pending','active','unsubscribed','bounced','complained')
-                    NOT NULL DEFAULT 'pending'
-email_verified_at   DATETIME NULL
-password_hash       VARCHAR(255) NULL           -- NULL for pure OAuth accounts
-city_id             INT UNSIGNED NOT NULL REFERENCES cities(id)
-role                ENUM('member','moderator','admin') NOT NULL DEFAULT 'member'
-profile_photo_path  VARCHAR(500) NULL
-status              ENUM('active','suspended','deleted') NOT NULL DEFAULT 'active'
+id                              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+full_name                       VARCHAR(200) NOT NULL
+email                           VARCHAR(255) NOT NULL UNIQUE
+email_status                    ENUM('pending','active','unsubscribed','bounced','complained')
+                                NOT NULL DEFAULT 'pending'
+email_verified_at               DATETIME NULL
+password_hash                   VARCHAR(255) NULL           -- NULL for pure OAuth accounts
+-- Email/password auth tokens (stored hashed inline, expire quickly)
+email_verification_token        VARCHAR(255) NULL           -- Phase 11
+email_verification_expires_at   DATETIME NULL               -- Phase 11
+password_reset_token            VARCHAR(255) NULL           -- Phase 11
+password_reset_expires_at       DATETIME NULL               -- Phase 11
+city_id                         INT UNSIGNED NOT NULL REFERENCES cities(id)
+role                            ENUM('non_validated','member','moderator','admin')
+                                NOT NULL DEFAULT 'member'
+profile_photo_path              VARCHAR(500) NULL
+status                          ENUM('active','suspended','deleted') NOT NULL DEFAULT 'active'
 -- Invite lineage
-invited_by          INT UNSIGNED NULL REFERENCES users(id)
-invite_id           INT UNSIGNED NULL REFERENCES invites(id)
-invite_source       ENUM('direct','facebook_group','google_oauth') NULL
-invite_source_name  VARCHAR(255) NULL           -- Facebook group name if campaign
+invited_by                      INT UNSIGNED NULL REFERENCES users(id)
+invite_id                       INT UNSIGNED NULL REFERENCES invites(id)
+invite_source                   ENUM('direct','facebook_group','google_oauth','non_validated_link') NULL
+invite_source_name              VARCHAR(255) NULL           -- Facebook group name if campaign
 -- Activity tracking
-last_login_at       DATETIME NULL
-login_count         INT UNSIGNED NOT NULL DEFAULT 0
+last_login_at                   DATETIME NULL
+login_count                     INT UNSIGNED NOT NULL DEFAULT 0
+failed_login_attempts           TINYINT UNSIGNED NOT NULL DEFAULT 0   -- Phase 11 lockout
+login_locked_until              DATETIME NULL                         -- Phase 11 lockout
+last_failed_login_at            DATETIME NULL                         -- Phase 11 lockout
 -- Deletion
-deleted_at          DATETIME NULL
-hard_delete_at      DATETIME NULL               -- deleted_at + 30 days
-created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+deleted_at                      DATETIME NULL
+hard_delete_at                  DATETIME NULL               -- deleted_at + 30 days
+created_at                      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at                      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
 INDEX idx_email_status (email_status)
 INDEX idx_last_login (last_login_at)
 INDEX idx_invited_by (invited_by)
 INDEX idx_status (status)
 ```
+
+**Role notes:** `non_validated` is a role (not a status). Non-validated users can RSVP and view events but cannot invite, post, or submit feedback. Moderators vouch to upgrade them to `member`. Suspended users are blocked at the JWT strategy level on every request.
 
 ---
 
@@ -111,6 +132,7 @@ user_id         INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
 provider        ENUM('google','facebook') NOT NULL
 provider_id     VARCHAR(255) NOT NULL
 email           VARCHAR(255) NULL
+profile_url     VARCHAR(512) NULL               -- Facebook profile URL (Phase 11)
 created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
 UNIQUE KEY uq_provider_account (provider, provider_id)
@@ -140,17 +162,19 @@ INDEX idx_user (user_id)
 
 ## invites
 
-Handles all five invite types in one table.
+Handles all invite types in one table.
 
 ```sql
 id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 token               VARCHAR(100) NOT NULL UNIQUE
 type                ENUM('member','admin','campaign_facebook',
-                         'guest_rsvp','shareable_rsvp') NOT NULL
+                         'guest_rsvp','shareable_rsvp','event_invite') NOT NULL
+invite_flavor       ENUM('member','non_validated') NULL
+                    -- for event_invite type: determines account type on signup
 created_by          INT UNSIGNED NOT NULL REFERENCES users(id)
 city_id             INT UNSIGNED NULL REFERENCES cities(id)
 event_id            INT UNSIGNED NULL REFERENCES events(id)
-                    -- populated for guest_rsvp and shareable_rsvp types
+                    -- populated for guest_rsvp, shareable_rsvp, event_invite
 facebook_group_id   INT UNSIGNED NULL REFERENCES facebook_group_config(id)
                     -- populated for campaign_facebook type
 -- Invitee binding (member type only)
@@ -198,7 +222,7 @@ updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TI
 
 ## password_reset_tokens
 
-Phase 6.
+Phase 11. Token-per-row model (alternative to inline columns on users — both exist; these are the legacy rows).
 
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
@@ -213,7 +237,7 @@ created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
 ## email_verification_tokens
 
-Phase 6.
+Phase 11.
 
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
@@ -229,19 +253,24 @@ created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ## restaurants
 
 ```sql
-id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-name            VARCHAR(255) NOT NULL
-address         VARCHAR(500) NOT NULL
-lat             DECIMAL(10,7) NULL
-lng             DECIMAL(10,7) NULL
-phone           VARCHAR(30) NULL
-website_url     VARCHAR(500) NULL
-description     TEXT NULL
-city_id         INT UNSIGNED NOT NULL REFERENCES cities(id)
-is_active       TINYINT(1) NOT NULL DEFAULT 1
-imported_from   ENUM('manual','facebook_import') NOT NULL DEFAULT 'manual'
-created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+name                VARCHAR(255) NOT NULL
+address             VARCHAR(500) NOT NULL
+lat                 DECIMAL(10,7) NULL
+lng                 DECIMAL(10,7) NULL
+phone               VARCHAR(30) NULL
+website_url         VARCHAR(500) NULL
+description         TEXT NULL
+city_id             INT UNSIGNED NOT NULL REFERENCES cities(id)
+is_active           TINYINT(1) NOT NULL DEFAULT 1
+imported_from       ENUM('manual','facebook_import') NOT NULL DEFAULT 'manual'
+-- Moderator-only fields (Phase 8 — omitted from member API responses)
+moderator_notes     LONGTEXT NULL
+contact_name        VARCHAR(100) NULL
+contact_phone       VARCHAR(30) NULL
+contact_email       VARCHAR(150) NULL
+created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
 INDEX idx_city (city_id)
 FULLTEXT INDEX ft_name (name)
@@ -266,36 +295,73 @@ INDEX idx_restaurant (restaurant_id)
 
 ---
 
+## restaurant_ratings
+
+Phase 9. One rating per member per event (not per restaurant — a member can rate the same restaurant multiple times if they attend multiple events there).
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+member_id       INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+event_id        INT UNSIGNED NOT NULL REFERENCES events(id) ON DELETE CASCADE
+restaurant_id   INT UNSIGNED NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE
+food            TINYINT UNSIGNED NOT NULL       -- 1–5
+service         TINYINT UNSIGNED NOT NULL       -- 1–5
+value_rating    TINYINT UNSIGNED NOT NULL       -- 1–5
+noise           TINYINT UNSIGNED NOT NULL       -- 1–5
+comment         TEXT NULL
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+
+UNIQUE KEY uq_member_event (member_id, event_id)
+```
+
+**Eligibility:** `attended = true` on the corresponding `event_rsvps` row (Phase 10). Non-validated users blocked at API level.
+
+---
+
 ## events
 
 ```sql
-id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-city_id             INT UNSIGNED NOT NULL REFERENCES cities(id)
-restaurant_id       INT UNSIGNED NULL REFERENCES restaurants(id) ON DELETE SET NULL
+id                          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+city_id                     INT UNSIGNED NOT NULL REFERENCES cities(id)
+restaurant_id               INT UNSIGNED NULL REFERENCES restaurants(id) ON DELETE SET NULL
 -- Snapshot fields (copied from restaurant at publish time)
-restaurant_name     VARCHAR(255) NOT NULL
-restaurant_address  VARCHAR(500) NOT NULL
-restaurant_lat      DECIMAL(10,7) NULL
-restaurant_lng      DECIMAL(10,7) NULL
+restaurant_name             VARCHAR(255) NOT NULL
+restaurant_address          VARCHAR(500) NOT NULL
+restaurant_lat              DECIMAL(10,7) NULL
+restaurant_lng              DECIMAL(10,7) NULL
 -- Event fields
-title               VARCHAR(255) NOT NULL
-description         TEXT NULL
-additional_info     TEXT NULL
-event_date          DATE NOT NULL
-event_time          TIME NOT NULL
-status              ENUM('draft','published','cancelled') NOT NULL DEFAULT 'draft'
-published_at        DATETIME NULL
-cancelled_at        DATETIME NULL
-cancelled_reason    TEXT NULL
+title                       VARCHAR(255) NOT NULL
+description                 TEXT NULL
+additional_info             TEXT NULL
+event_date                  DATE NOT NULL
+event_time                  TIME NOT NULL
+status                      ENUM('draft','published','cancelled') NOT NULL DEFAULT 'draft'
+published_at                DATETIME NULL
+cancelled_at                DATETIME NULL
+cancelled_reason            TEXT NULL
 -- Facebook sharing (no API)
-facebook_share_text TEXT NULL
-created_by          INT UNSIGNED NOT NULL REFERENCES users(id)
-created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+facebook_share_text         TEXT NULL
+-- Reservation tracking (Phase 13)
+reservation_assignee_id     INT UNSIGNED NULL REFERENCES users(id) ON DELETE SET NULL
+reservation_contact_name    VARCHAR(150) NULL
+reservation_contact_email   VARCHAR(255) NULL
+reservation_confirmed       TINYINT(1) NOT NULL DEFAULT 0
+reservation_confirmed_by    VARCHAR(255) NULL   -- name/email of confirming contact at venue
+reservation_confirmed_at    DATETIME NULL
+reservation_confirmed_note  VARCHAR(500) NULL
+reservation_confirm_token   VARCHAR(64) NULL UNIQUE
+                            -- token emailed to assignee for one-click confirmation
+reservation_seats_email_sent TINYINT(1) NOT NULL DEFAULT 0
+created_by                  INT UNSIGNED NOT NULL REFERENCES users(id)
+created_at                  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at                  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
 INDEX idx_city_date (city_id, event_date)
 INDEX idx_status (status)
 ```
+
+**Reservation assignee** is the member tagged as coordinator (suggests the restaurant, makes the reservation). See Phase 15 points system — coordinator earns Bear Points when the event concludes.
 
 ---
 
@@ -305,7 +371,13 @@ INDEX idx_status (status)
 id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 event_id            INT UNSIGNED NOT NULL REFERENCES events(id) ON DELETE CASCADE
 user_id             INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
-additional_guests   TINYINT UNSIGNED NOT NULL DEFAULT 0  -- 0-9
+status              ENUM('going','maybe','not_going') NOT NULL DEFAULT 'going'
+additional_guests   TINYINT UNSIGNED NOT NULL DEFAULT 0  -- 0–9
+guest_names         JSON NULL                -- array of named guest strings
+attended            TINYINT(1) NULL DEFAULT NULL
+                    -- NULL = not yet marked; true/false set by mod after event
+is_walkin           TINYINT(1) NOT NULL DEFAULT 0
+                    -- true for members added by mod at the door (no prior RSVP)
 created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
@@ -314,11 +386,43 @@ INDEX idx_event (event_id)
 INDEX idx_user (user_id)
 ```
 
+**Cutoff:** New Going RSVPs and guest count increases are blocked 2.5 hours before event time. Admins and moderators bypass this check.
+
+---
+
+## event_guest_links
+
+Links generated when a member adds +1s via email or shareable link, or when a
+public RSVP link is created for an event.
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+event_id        INT UNSIGNED NOT NULL REFERENCES events(id) ON DELETE CASCADE
+created_by      INT UNSIGNED NULL REFERENCES users(id)
+                -- NULL for public/admin-generated links
+member_rsvp_id  INT UNSIGNED NULL REFERENCES event_rsvps(id) ON DELETE CASCADE
+                -- NULL for public links
+source          ENUM('member','public') NOT NULL DEFAULT 'member'
+delivery_type   ENUM('email','shareable') NOT NULL
+recipient_name  VARCHAR(200) NULL
+recipient_email VARCHAR(255) NULL               -- email delivery only
+token           VARCHAR(100) NOT NULL UNIQUE
+expires_at      DATETIME NOT NULL               -- event datetime
+used_at         DATETIME NULL
+cancelled_at    DATETIME NULL
+guest_rsvp_id   INT UNSIGNED NULL REFERENCES event_guest_rsvps(id)
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+INDEX idx_event (event_id)
+INDEX idx_created_by (created_by)
+INDEX idx_token (token)
+```
+
 ---
 
 ## event_guest_rsvps
 
-No-account RSVPs.
+No-account RSVPs (used by public links and guest invite links).
 
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
@@ -339,31 +443,6 @@ created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
 INDEX idx_event (event_id)
 INDEX idx_email (email)
-```
-
----
-
-## event_guest_links
-
-Links generated when a member adds +1s via email or shareable link.
-
-```sql
-id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-event_id        INT UNSIGNED NOT NULL REFERENCES events(id) ON DELETE CASCADE
-created_by      INT UNSIGNED NOT NULL REFERENCES users(id)
-member_rsvp_id  INT UNSIGNED NOT NULL REFERENCES event_rsvps(id) ON DELETE CASCADE
-delivery_type   ENUM('email','shareable') NOT NULL
-recipient_name  VARCHAR(200) NULL
-recipient_email VARCHAR(255) NULL               -- email delivery only
-token           VARCHAR(100) NOT NULL UNIQUE
-expires_at      DATETIME NOT NULL               -- event datetime
-used_at         DATETIME NULL
-guest_rsvp_id   INT UNSIGNED NULL REFERENCES event_guest_rsvps(id)
-created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-
-INDEX idx_event (event_id)
-INDEX idx_created_by (created_by)
-INDEX idx_token (token)
 ```
 
 ---
@@ -431,6 +510,90 @@ push_event_published        TINYINT(1) NOT NULL DEFAULT 1
 push_event_reminder         TINYINT(1) NOT NULL DEFAULT 1
 push_announcement           TINYINT(1) NOT NULL DEFAULT 1
 updated_at                  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+```
+
+---
+
+## feedback
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+user_id         INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+title           VARCHAR(200) NULL
+category        ENUM('bug','feature_request','comment') NOT NULL
+body            TEXT NOT NULL
+status          ENUM('open','in_progress','resolved','shipped','closed','wont_fix')
+                NOT NULL DEFAULT 'open'
+admin_note      TEXT NULL
+release_note    VARCHAR(500) NULL
+is_private      TINYINT(1) NOT NULL DEFAULT 0
+upvote_count    INT UNSIGNED NOT NULL DEFAULT 0
+seen_at         DATETIME NULL
+resolved_at     DATETIME NULL
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+
+INDEX idx_feedback_status (status)
+INDEX idx_feedback_category (category)
+INDEX idx_feedback_created (created_at)
+```
+
+---
+
+## feedback_notes
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+feedback_id     INT UNSIGNED NOT NULL REFERENCES feedback(id) ON DELETE CASCADE
+author_id       INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+content         TEXT NOT NULL
+is_admin_only   TINYINT(1) NOT NULL DEFAULT 0
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+INDEX idx_fnote_feedback (feedback_id)
+```
+
+---
+
+## feedback_upvotes
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+feedback_id     INT UNSIGNED NOT NULL REFERENCES feedback(id) ON DELETE CASCADE
+member_id       INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+UNIQUE KEY uq_feedback_member (feedback_id, member_id)
+```
+
+---
+
+## releases
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+version         VARCHAR(20) NOT NULL UNIQUE     -- semver e.g. "1.0.2"
+title           VARCHAR(200) NOT NULL
+body            TEXT NOT NULL                   -- rich HTML from Quill
+published_at    DATETIME NULL                   -- NULL = draft
+created_by      INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE RESTRICT
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+
+INDEX idx_release_published (published_at)
+```
+
+---
+
+## release_feedback
+
+Join table linking releases to the feedback tickets they ship.
+
+```sql
+release_id      INT UNSIGNED NOT NULL REFERENCES releases(id) ON DELETE CASCADE
+feedback_id     INT UNSIGNED NOT NULL REFERENCES feedback(id) ON DELETE CASCADE
+
+PRIMARY KEY (release_id, feedback_id)
 ```
 
 ---
@@ -507,6 +670,8 @@ INDEX idx_announcement (announcement_id)
 
 ## content_flags
 
+Legacy Phase 7 flagging (announcement comments only). Superseded by `content_reports` in Phase 10.6 for all other content types.
+
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 flagged_by      INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
@@ -519,6 +684,82 @@ reviewed_at     DATETIME NULL
 created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
 INDEX idx_status (status)
+```
+
+---
+
+## content_reports
+
+Phase 10.6. Unified reporting across all content types. One report per member per content item.
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+reporter_id     INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+content_type    ENUM('event_comment','event_comment_reply',
+                     'announcement_comment','restaurant_rating') NOT NULL
+content_id      INT UNSIGNED NOT NULL
+reason          VARCHAR(500) NULL
+status          ENUM('pending','reviewed','dismissed') NOT NULL DEFAULT 'pending'
+reviewed_by     INT UNSIGNED NULL REFERENCES users(id) ON DELETE SET NULL
+reviewed_at     DATETIME NULL
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+UNIQUE KEY uq_report_per_member (reporter_id, content_type, content_id)
+INDEX idx_report_status (status)
+```
+
+---
+
+## event_comments
+
+Phase 10.
+
+```sql
+id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+event_id    INT UNSIGNED NOT NULL REFERENCES events(id) ON DELETE CASCADE
+member_id   INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+body        TEXT NOT NULL
+created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+deleted_at  DATETIME NULL                   -- soft delete; shows "removed" placeholder
+
+INDEX idx_ec_event (event_id)
+INDEX idx_ec_member (member_id)
+```
+
+---
+
+## event_comment_replies
+
+Phase 10. One level of nesting only.
+
+```sql
+id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+comment_id  INT UNSIGNED NOT NULL REFERENCES event_comments(id) ON DELETE CASCADE
+member_id   INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+body        TEXT NOT NULL
+created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+deleted_at  DATETIME NULL
+
+INDEX idx_ecr_comment (comment_id)
+INDEX idx_ecr_member (member_id)
+```
+
+---
+
+## facebook_deletion_requests
+
+Phase 10.5. Tracks Meta server-to-server deletion callbacks for compliance.
+
+```sql
+id                      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+facebook_user_id        VARCHAR(255) NOT NULL
+confirmation_code       VARCHAR(100) NOT NULL UNIQUE
+dinnerbears_user_id     INT UNSIGNED NULL           -- NULL if user not found
+status                  ENUM('pending','completed') NOT NULL DEFAULT 'pending'
+requested_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+completed_at            DATETIME NULL
+
+INDEX idx_fb_deletion_user_id (facebook_user_id)
 ```
 
 ---
@@ -575,7 +816,7 @@ Seed rows:
 - Use `DATETIME` not `TIMESTAMP` (avoids 2038 problem, no timezone issues)
 - Soft deletes use nullable `deleted_at` datetime, not a boolean
 - JSON columns require MySQL 5.7.8+
-- All migrations in `api/src/migrations/` with timestamp prefix
+- All migrations in `api/src/database/migrations/` with timestamp prefix
 - Seed data in a separate seed migration
 - `email_suppressions` hash: `SHA-256(SECRET_SUPPRESSION_SALT + email.toLowerCase())`
   — salt stored in `.env` as `EMAIL_SUPPRESSION_SALT`
@@ -587,3 +828,10 @@ Seed rows:
   `users.invite_source_name = facebook_group_config.name`
 - Single-use member invites: check `bound_to_email` matches registering
   email before allowing redemption
+- `non_validated` is a **role** not a status — API responses and guards
+  check `user.role === 'non_validated'`, not `user.status`
+- All date/time logic for event cutoffs and "today" filtering uses
+  `Intl.DateTimeFormat` with `timeZone: 'America/New_York'` — never
+  `new Date().toISOString()` which gives UTC
+- RSVP cutoff = 150 minutes (2.5 hours) before event time; admins and
+  moderators bypass this on both client and server
