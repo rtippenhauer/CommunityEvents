@@ -509,3 +509,80 @@ off, system ready for real users.
 **Definition of done:** Moderators can update Terms and Privacy through admin
 UI without a code change. Public pages render within site theme, not as blank
 white pages. Each update creates a versioned audit record.
+
+---
+
+## Phase 14 — Navigation & Invites
+
+See `memory/project_phase14_nav_invites.md` — completed as v1.0.1.
+
+---
+
+## Post-Launch Backlog (unscheduled)
+
+Deferred cleanup items and design spikes. No ordering implied — promote to a
+numbered phase when ready to schedule.
+
+### Uploaded File Auth Gating
+Currently `/api/uploads/*` is served as a static asset with no auth check.
+Profile photo URLs are never leaked to guests or non-validated users via any
+API response, so the practical risk is low (no guessable URL scheme). When
+prioritized, the fix is:
+- Separate restaurant photos and profile photos into `/app/uploads/restaurants/`
+  and `/app/uploads/profiles/` respectively (migration + upload-path update)
+- Replace `useStaticAssets` for the profiles path with a controller endpoint
+  that applies `OptionalJwtAuthGuard` and streams the file only to authenticated users
+- Restaurant photos remain static (intentionally public, used in emails to guests)
+
+### Event Card Cleanup
+The home-page event card is currently too busy — date/city/restaurant/footer
+all compete for attention. Revisit the card layout to simplify the information
+hierarchy. Possible directions: reduce font sizes, collapse the footer to
+just the RSVP pill on mobile, or rethink the avatar cluster display.
+
+---
+
+## Phase 15 — Community Points System
+
+Gamification layer that rewards engagement and creates a visible community
+reputation score ("Bear Points").
+
+### Coordinator Role
+
+The event **coordinator** is the member who suggests the restaurant and makes
+the reservation — these are the same action. When an admin creates or edits
+an event, they tag a coordinator (any member, including themselves).
+
+- DB: add `coordinator_id` FK (nullable) to `events` table
+- Admin event form: "Coordinator" member picker field
+- Coordinator is shown on the event detail page alongside the date/restaurant
+
+### Earning Points (proposed)
+
+| Action | Points | Notes |
+|---|---|---|
+| Attend an event | 1 | Requires `attended = true` (Phase 10) — prevents gaming by RSVPing Going and not showing up |
+| Be event coordinator | 2 | Awarded when the event concludes (past + attended cutoff confirmed) |
+| Be coordinator at a brand-new restaurant | 4 | Double points when the restaurant has never been used in a prior published event — rewards exploration |
+| Successfully invite someone | 1 | Awarded when the invitee attends their **first** dinner (not just account creation) — ensures you brought someone who actually participates |
+| Rate a restaurant | 1 | One point per eligible rating submitted (already gated to attendees only) |
+
+The invite rule is intentionally strict: you only get credit once the person
+you brought shows up in person. This keeps the community quality high and
+prevents invite farming for points.
+
+### Display
+
+- Member profile: "Bear Points" total with a breakdown by category
+- Member list: optional sort by Bear Points (off by default)
+- Admin: full points ledger per member for auditing/adjustments
+
+### Design Considerations
+
+- **DB**: `member_points` table (id, user_id FK, event_type enum[`attendance`|`coordinator`|`coordinator_new_restaurant`|`invite`|`rating`], reference_id int, awarded_at, points int) — ledger model so points can be corrected or audited without reprocessing history
+- **"New restaurant" check**: at event creation time, query whether the restaurant has appeared in any prior `published` event; store the result as a flag on the coordinator point award so it doesn't shift retroactively if the restaurant is later used again
+- **Invite point trigger**: fires when the invitee's first `attended = true` record is written — needs to walk the invite lineage to find the original inviter
+- **Backfill**: attendance and ratings are retroactively calculable; coordinator and invite points require manual review of historical data since `coordinator_id` doesn't exist yet
+- **No abuse vectors**: all triggers are server-side events tied to verifiable DB records; no self-reporting
+
+**Definition of done:** Members earn points for attendance, coordinating, invites (on invitee's first attended dinner), and ratings. Coordinator earns double for introducing a new restaurant. Totals and category breakdown display on profiles. Admin can view and correct the ledger.
