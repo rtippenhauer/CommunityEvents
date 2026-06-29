@@ -20,6 +20,7 @@ import { SetReservationDto } from './dto/set-reservation.dto';
 import { EmailService } from '../email/email.service';
 import { CalendarService } from '../calendar/calendar.service';
 import { PointsService } from '../community/points.service';
+import { AchievementsService } from '../community/achievements.service';
 import { ConfigService } from '@nestjs/config';
 
 export interface EventFilters {
@@ -50,6 +51,7 @@ export class EventsService {
     private readonly emailService: EmailService,
     private readonly calendarService: CalendarService,
     private readonly pointsService: PointsService,
+    private readonly achievementsService: AchievementsService,
     private readonly config: ConfigService,
   ) {}
 
@@ -1063,6 +1065,8 @@ export class EventsService {
         if (coordinatorId === entry.userId) {
           await this.pointsService.awardCoordinator(entry.userId, eventId).catch(() => {});
         }
+        // Award event-specific one-time achievement if this event has one
+        await this.achievementsService.checkEventAchievement(entry.userId, eventId).catch(() => {});
       }
     }
   }
@@ -1455,6 +1459,7 @@ export class EventsService {
     }
 
     await this.pointsService.awardAttendance(userId, eventId).catch(() => {});
+    await this.achievementsService.checkEventAchievement(userId, eventId).catch(() => {});
 
     return { userId, memberName: user.fullName, attended: true, isWalkin: true };
   }

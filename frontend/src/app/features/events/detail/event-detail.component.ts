@@ -20,6 +20,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EventsService, Event, GuestLink, PublicRsvp, Rsvp, RsvpStatus } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { CommunityService, EventAchievement } from '../../../core/services/community.service';
 import { InvitesService, EventInviteLink } from '../../../core/services/invites.service';
 import { EventCommentsService, Comment, AttendanceEntry, MemberSearchResult } from '../../../core/services/event-comments.service';
 import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
@@ -93,6 +94,24 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
               </mat-menu>
             }
           </div>
+
+          <!-- Special dinner achievement badge (public) -->
+          @if (eventAchievement()) {
+            <div class="special-dinner-badge">
+              <mat-icon>local_activity</mat-icon>
+              <div class="special-dinner-text">
+                <span class="special-dinner-label">Special Dinner</span>
+                <span class="special-dinner-name">{{ eventAchievement()!.name }}</span>
+                <span class="special-dinner-desc">{{ eventAchievement()!.description }}</span>
+                @if (eventAchievement()!.title) {
+                  <span class="special-dinner-title">Earns title: "{{ eventAchievement()!.title }}"</span>
+                }
+              </div>
+              @if (eventAchievement()!.imagePath) {
+                <img [src]="eventAchievement()!.imagePath!" class="special-dinner-img" alt="Achievement" />
+              }
+            </div>
+          }
 
           <!-- Restaurant info -->
           <mat-card class="info-card">
@@ -922,6 +941,77 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
             </div>
           }
 
+          <!-- Admin: special dinner achievement -->
+          @if (isAdmin()) {
+            <mat-card class="ach-admin-card">
+              <mat-card-header>
+                <mat-card-title>
+                  <mat-icon>local_activity</mat-icon>
+                  Special Dinner Achievement
+                </mat-card-title>
+              </mat-card-header>
+              <mat-card-content>
+                @if (eventAchievement()) {
+                  <div class="ach-exists">
+                    @if (eventAchievement()!.imagePath) {
+                      <img [src]="eventAchievement()!.imagePath!" class="ach-admin-img" alt="Achievement" />
+                    }
+                    <div class="ach-exists-info">
+                      <div class="ach-exists-name">{{ eventAchievement()!.name }}</div>
+                      <div class="ach-exists-desc">{{ eventAchievement()!.description }}</div>
+                      @if (eventAchievement()!.title) {
+                        <div class="ach-exists-title">Title: "{{ eventAchievement()!.title }}"</div>
+                      }
+                      <div class="ach-exists-pts">+{{ eventAchievement()!.points }} pts</div>
+                    </div>
+                    <label class="ach-upload-btn" [class.uploading]="achImageUploading()">
+                      <mat-icon>photo_camera</mat-icon>
+                      {{ achImageUploading() ? 'Uploading…' : 'Change Image' }}
+                      <input type="file" accept="image/*" style="display:none"
+                        (change)="uploadAchievementImage($event)" [disabled]="achImageUploading()" />
+                    </label>
+                  </div>
+                } @else if (showAchievementForm()) {
+                  <div class="ach-form">
+                    <mat-form-field appearance="outline" class="ach-field">
+                      <mat-label>Achievement Name</mat-label>
+                      <input matInput [value]="achFormName()" (input)="achFormName.set($any($event.target).value)" />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline" class="ach-field">
+                      <mat-label>Description (requirement to display)</mat-label>
+                      <input matInput [value]="achFormDesc()" (input)="achFormDesc.set($any($event.target).value)" />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline" class="ach-field ach-field-sm">
+                      <mat-label>Title (optional)</mat-label>
+                      <input matInput [value]="achFormTitle()" (input)="achFormTitle.set($any($event.target).value)"
+                        placeholder="e.g. Founding Bear" />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline" class="ach-field ach-field-xs">
+                      <mat-label>Points</mat-label>
+                      <input matInput type="number" min="0" max="99"
+                        [value]="achFormPoints()"
+                        (input)="achFormPoints.set(+$any($event.target).value)" />
+                    </mat-form-field>
+                    <div class="ach-form-actions">
+                      <button mat-raised-button color="primary"
+                        [disabled]="achCreating() || !achFormName() || !achFormDesc()"
+                        (click)="createEventAchievement()">
+                        <mat-icon>add</mat-icon>
+                        {{ achCreating() ? 'Creating…' : 'Create Achievement' }}
+                      </button>
+                      <button mat-button (click)="showAchievementForm.set(false)">Cancel</button>
+                    </div>
+                  </div>
+                } @else {
+                  <p class="ach-empty">No special achievement for this event.</p>
+                  <button mat-stroked-button (click)="showAchievementForm.set(true)">
+                    <mat-icon>add</mat-icon> Add Achievement
+                  </button>
+                }
+              </mat-card-content>
+            </mat-card>
+          }
+
           <!-- Back -->
           <div class="back-row">
             <button mat-button (click)="goBack()">
@@ -1712,6 +1802,48 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
     }
     .back-row { margin-top: 8px; }
 
+    // ── Special Dinner Achievement Badge ──────────────────────────────────────
+    .special-dinner-badge {
+      display: flex; align-items: flex-start; gap: 14px;
+      background: linear-gradient(135deg, #1E4D8C 0%, #2a6bbf 100%);
+      color: #fff; border-radius: 12px; padding: 14px 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 10px rgba(30,77,140,0.25);
+      mat-icon { color: #C9933A; font-size: 2rem; width: 2rem; height: 2rem; flex-shrink: 0; margin-top: 2px; }
+    }
+    .special-dinner-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+    .special-dinner-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; }
+    .special-dinner-name { font-size: 1rem; font-weight: 700; }
+    .special-dinner-desc { font-size: 0.82rem; opacity: 0.85; }
+    .special-dinner-title { font-size: 0.78rem; color: #C9933A; font-weight: 600; font-style: italic; }
+    .special-dinner-img { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.3); }
+
+    // ── Admin Achievement Panel ───────────────────────────────────────────────
+    .ach-admin-card { margin-top: 20px; }
+    .ach-admin-card mat-card-title { display: flex; align-items: center; gap: 8px; font-size: 1rem; mat-icon { color: #C9933A; } }
+    .ach-exists { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .ach-admin-img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+    .ach-exists-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+    .ach-exists-name { font-weight: 700; font-size: 1rem; }
+    .ach-exists-desc { font-size: 0.85rem; color: #555; }
+    .ach-exists-title { font-size: 0.8rem; color: #C9933A; font-weight: 600; font-style: italic; }
+    .ach-exists-pts { font-size: 0.8rem; color: #1E4D8C; font-weight: 700; }
+    .ach-upload-btn {
+      display: flex; align-items: center; gap: 6px; cursor: pointer;
+      background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px;
+      padding: 8px 14px; font-size: 0.82rem; font-weight: 600; color: #555;
+      transition: background 0.15s; white-space: nowrap;
+      &:hover { background: #ebebeb; }
+      &.uploading { opacity: 0.6; cursor: wait; }
+      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; }
+    }
+    .ach-form { display: flex; flex-direction: column; gap: 8px; }
+    .ach-field { width: 100%; }
+    .ach-field-sm { max-width: 260px; }
+    .ach-field-xs { max-width: 120px; }
+    .ach-form-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+    .ach-empty { color: #999; font-size: 0.9rem; margin: 0 0 12px; }
+
     // ── Attendance Panel ──────────────────────────────────────────────────────
     .attendance-card { margin-top: 20px; }
     .att-loading { display: flex; justify-content: center; padding: 16px; }
@@ -1810,6 +1942,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   private readonly eventsService = inject(EventsService);
   private readonly invitesService = inject(InvitesService);
   private readonly authService = inject(AuthService);
+  private readonly communityService = inject(CommunityService);
   private readonly commentsService = inject(EventCommentsService);
   private readonly clipboard = inject(Clipboard);
   private readonly dialog = inject(MatDialog);
@@ -1868,6 +2001,16 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly reservationConfirmNote = signal('');
   readonly showCoordinatorAssignForm = signal(false);
   private readonly reservationSearch$ = new Subject<string>();
+
+  // Event achievement state
+  readonly eventAchievement = signal<EventAchievement | null>(null);
+  readonly achFormName = signal('');
+  readonly achFormDesc = signal('');
+  readonly achFormTitle = signal('');
+  readonly achFormPoints = signal(1);
+  readonly achCreating = signal(false);
+  readonly achImageUploading = signal(false);
+  readonly showAchievementForm = signal(false);
 
   // Clock signal — ticks every minute so isPastEvent / isPastCutoff recompute reactively
   private readonly nowSignal = signal(new Date());
@@ -2033,6 +2176,10 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
       distinctUntilChanged(),
       switchMap((q) => this.commentsService.searchMembers(id, q)),
     ).subscribe((results) => this.reservationMemberResults.set(results));
+    this.communityService.getEventAchievement(id).subscribe({
+      next: (a) => this.eventAchievement.set(a),
+      error: () => {},
+    });
     this.eventsService.getOne(id).subscribe({
       next: (e) => {
         this.event.set(e);
@@ -2665,6 +2812,45 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     this.commentsService.markAttendance(id, attendances).subscribe({
       next: () => { this.savingAttendance.set(false); this.snackBar.open('Attendance saved', 'OK', { duration: 2000 }); },
       error: () => { this.savingAttendance.set(false); this.snackBar.open('Failed to save attendance', 'OK', { duration: 3000 }); },
+    });
+  }
+
+  createEventAchievement(): void {
+    const id = this.event()!.id;
+    this.achCreating.set(true);
+    this.communityService.adminCreateEventAchievement(id, {
+      name: this.achFormName(),
+      description: this.achFormDesc(),
+      title: this.achFormTitle() || undefined,
+      points: this.achFormPoints(),
+    }).subscribe({
+      next: (ach) => {
+        this.eventAchievement.set(ach);
+        this.showAchievementForm.set(false);
+        this.achCreating.set(false);
+        this.snackBar.open('Achievement created!', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.achCreating.set(false);
+        this.snackBar.open('Failed to create achievement', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  uploadAchievementImage(ev: globalThis.Event): void {
+    const file = (ev.target as HTMLInputElement).files?.[0];
+    if (!file || !this.eventAchievement()) return;
+    this.achImageUploading.set(true);
+    this.communityService.adminUploadAchievementImage(this.eventAchievement()!.id, file).subscribe({
+      next: ({ imagePath }) => {
+        this.eventAchievement.update((a) => a ? { ...a, imagePath } : a);
+        this.achImageUploading.set(false);
+        this.snackBar.open('Image uploaded!', 'OK', { duration: 2000 });
+      },
+      error: () => {
+        this.achImageUploading.set(false);
+        this.snackBar.open('Image upload failed', 'OK', { duration: 3000 });
+      },
     });
   }
 }

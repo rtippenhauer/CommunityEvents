@@ -1,7 +1,13 @@
 import {
-  Controller, Get, Patch, Body, Query, Param, ParseIntPipe,
-  UseGuards, Request, ForbiddenException, BadRequestException,
+  Controller, Get, Post, Patch, Body, Query, Param, ParseIntPipe,
+  UseGuards, UseInterceptors, UploadedFile, Request, ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { mkdirSync } from 'fs';
+import type { FileFilterCallback } from 'multer';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -9,6 +15,30 @@ import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guar
 import { PointsService } from './points.service';
 import { AchievementsService } from './achievements.service';
 import { UserRole } from '../../database/entities/user.entity';
+
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+
+const achievementImageStorage = diskStorage({
+  destination: (_req, _file, cb) => {
+    const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'achievements');
+    mkdirSync(dest, { recursive: true });
+    cb(null, dest);
+  },
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}${extname(file.originalname)}`);
+  },
+});
+
+const imageFilter = (_req: any, file: Express.Multer.File, cb: FileFilterCallback): void => {
+  const ext = extname(file.originalname).toLowerCase();
+  if (ALLOWED_MIME.includes(file.mimetype) && ALLOWED_EXT.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only JPEG, PNG, WebP, and GIF images are allowed'));
+  }
+};
 
 @Controller()
 export class CommunityController {
@@ -37,15 +67,7 @@ export class CommunityController {
   @Get('members/me/achievements')
   @UseGuards(JwtAuthGuard)
   async getMyAchievements(@Request() req: any) {
-    const [earned, all] = await Promise.all([
-      this.achievementsService.getMemberAchievements(req.user.id),
-      this.achievementsService.getAllAchievements(),
-    ]);
-    const earnedIds = new Set(earned.map((ma) => ma.achievementId));
-    return {
-      earned: earned.map((ma) => ({ ...ma.achievement, earnedAt: ma.earnedAt })),
-      locked: all.filter((a) => !earnedIds.has(a.id) && !a.isSecret),
-    };
+    return this.achievementsService.getAchievementsWithProgress(req.user.id);
   }
 
   @Patch('members/me/title')
@@ -70,15 +92,16 @@ export class CommunityController {
   @Get('members/:id/achievements')
   @UseGuards(OptionalJwtAuthGuard)
   async getMemberAchievements(@Param('id', ParseIntPipe) id: number) {
-    const [earned, all] = await Promise.all([
-      this.achievementsService.getMemberAchievements(id),
-      this.achievementsService.getAllAchievements(),
-    ]);
-    const earnedIds = new Set(earned.map((ma) => ma.achievementId));
-    return {
-      earned: earned.map((ma) => ({ ...ma.achievement, earnedAt: ma.earnedAt })),
-      locked: all.filter((a) => !earnedIds.has(a.id) && !a.isSecret),
-    };
+    return this.achievementsService.getAchievementsWithProgress(id);
+  }
+
+  // ── Event achievement (public read) ──────────────────────────────────────────
+
+  @Get('events/:eventId/achievement')
+  @UseGuards(OptionalJwtAuthGuard)
+  async getEventAchievement(@Param('eventId', ParseIntPipe) eventId: number) {
+    const ach = await this.achievementsService.getEventAchievement(eventId);
+    return ach ?? null;
   }
 
   // ── Admin ────────────────────────────────────────────────────────────────────
@@ -94,7 +117,7 @@ export class CommunityController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   async adminGetAchievements(@Param('id', ParseIntPipe) id: number) {
-    return this.achievementsService.getMemberAchievements(id);
+    return this.achievementsService.getAchievementsWithProgress(id);
   }
 
   @Patch('admin/members/:id/achievements/grant')
@@ -122,5 +145,47 @@ export class CommunityController {
   async adminRemovePoint(@Param('pointId', ParseIntPipe) pointId: number) {
     await this.pointsService.adminRemovePoints(pointId);
     return { ok: true };
+  }
+
+  // ── Admin: event-specific one-time achievements ──────────────────────────────
+
+  @Post('admin/events/:eventId/achievement')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async createEventAchievement(
+    @Param('eventId', ParseIntPipe) eventId: number,
+    @Body() body: { name: string; description: string; title?: string; points: number },
+  ) {
+    if (!body.name || !body.description) {
+      throw new BadRequestException('name and description are required');
+    }
+    const ach = await this.achievementsService.createEventAchievement({
+      eventId,
+      name: body.name,
+      description: body.description,
+      title: body.title,
+      points: body.points ?? 0,
+    });
+    return ach;
+  }
+
+  @Post('admin/achievements/:id/image')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: achievementImageStorage,
+      fileFilter: imageFilter,
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async uploadAchievementImage(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No image uploaded');
+    const imagePath = `/api/uploads/achievements/${file.filename}`;
+    await this.achievementsService.updateAchievementImage(id, imagePath);
+    return { imagePath };
   }
 }

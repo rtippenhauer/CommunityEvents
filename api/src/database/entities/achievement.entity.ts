@@ -1,6 +1,16 @@
 import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { MemberAchievementEntity } from './member-achievement.entity';
 
+export enum ProgressType {
+  ATTENDANCE = 'attendance',
+  COORDINATOR = 'coordinator',
+  NEW_RESTAURANT_COORDINATOR = 'new_restaurant_coordinator',
+  INVITE = 'invite',
+  RATING = 'rating',
+  FOUNDING = 'founding',
+  EVENT = 'event',
+}
+
 @Entity('achievements')
 export class AchievementEntity {
   @PrimaryGeneratedColumn({ unsigned: true })
@@ -17,6 +27,21 @@ export class AchievementEntity {
 
   @Column({ length: 80, default: 'emoji_events' })
   icon: string;
+
+  @Column({ name: 'image_path', type: 'varchar', length: 500, nullable: true })
+  imagePath: string | null;
+
+  @Column({ name: 'progress_type', type: 'enum', enum: ProgressType, nullable: true })
+  progressType: ProgressType | null;
+
+  @Column({ name: 'progress_target', type: 'int', unsigned: true, nullable: true })
+  progressTarget: number | null;
+
+  @Column({ name: 'event_id', type: 'int', unsigned: true, nullable: true })
+  eventId: number | null;
+
+  @Column({ type: 'tinyint', default: 0 })
+  points: number;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   title: string | null;

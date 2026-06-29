@@ -5,13 +5,15 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { DatePipe } from '@angular/common';
 import { AuthService } from '../../core/services/auth.service';
 import { FeedbackService, MemberFeedbackStats } from '../../core/services/feedback.service';
-import { CommunityService, PointSummary, AchievementsResponse } from '../../core/services/community.service';
+import { CommunityService, PointSummary, Achievement } from '../../core/services/community.service';
 
 interface MiniMember {
   id: number;
@@ -24,15 +26,27 @@ interface MyProfile {
   invitedMembers: MiniMember[];
 }
 
+const PROGRESS_LABELS: Record<string, string> = {
+  attendance: 'Dinners Attended',
+  coordinator: 'Events Coordinated',
+  new_restaurant_coordinator: 'New Restaurants Coordinated',
+  invite: 'Members Invited',
+  rating: 'Restaurant Ratings',
+  founding: 'Founding Member',
+  event: 'Special Dinner',
+};
+
 @Component({
   selector: 'app-profile',
   standalone: true,
   imports: [
     RouterLink,
+    DatePipe,
     MatCardModule,
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    MatProgressBarModule,
     MatSelectModule,
     MatFormFieldModule,
     MatTooltipModule,
@@ -167,11 +181,11 @@ interface MyProfile {
         </mat-card>
       }
 
-      <!-- Achievements card -->
+      <!-- Achievements -->
       @if (achievements()) {
-        <mat-card class="achievements-card">
-          <mat-card-header>
-            <mat-card-title>Achievements</mat-card-title>
+        <div class="achievements-section">
+          <div class="achievements-header">
+            <h3 class="section-title">Achievements</h3>
             @if (earnedTitles().length > 0) {
               <mat-form-field appearance="outline" class="title-picker" subscriptSizing="dynamic">
                 <mat-label>Active Title</mat-label>
@@ -183,30 +197,55 @@ interface MyProfile {
                 </mat-select>
               </mat-form-field>
             }
-          </mat-card-header>
-          <mat-card-content>
-            <div class="achievements-grid">
-              @for (a of achievements()!.earned; track a.id) {
-                <div class="achievement-chip earned" [matTooltip]="a.description">
-                  <mat-icon class="ach-icon">{{ a.icon }}</mat-icon>
-                  <span>{{ a.name }}</span>
+          </div>
+
+          <div class="achievements-grid">
+            @for (a of achievements()!; track a.id) {
+              <div class="ach-card" [class.earned]="a.earned" [class.locked]="!a.earned">
+                <div class="ach-graphic">
+                  @if (a.imagePath) {
+                    <img [src]="a.imagePath" [alt]="a.name" class="ach-image" />
+                  } @else {
+                    <mat-icon class="ach-icon">{{ a.earned ? a.icon : 'lock' }}</mat-icon>
+                  }
                 </div>
-              }
-              @for (a of achievements()!.locked; track a.id) {
-                <div class="achievement-chip locked" [matTooltip]="a.description">
-                  <mat-icon class="ach-icon">lock</mat-icon>
-                  <span>{{ a.name }}</span>
+                <div class="ach-body">
+                  <div class="ach-name">{{ a.name }}</div>
+                  @if (a.title) {
+                    <div class="ach-title-badge">Title: {{ a.title }}</div>
+                  }
+                  @if (a.points > 0) {
+                    <div class="ach-points">+{{ a.points }} pts</div>
+                  }
+                  <div class="ach-description">{{ a.description }}</div>
+
+                  @if (!a.earned && a.progressTarget && a.progressType !== 'founding' && a.progressType !== 'event') {
+                    <div class="ach-progress">
+                      <mat-progress-bar
+                        mode="determinate"
+                        [value]="progressPct(a)"
+                        [color]="'primary'">
+                      </mat-progress-bar>
+                      <div class="ach-progress-label">
+                        {{ a.progressCurrent }} of {{ a.progressTarget }} {{ progressLabel(a.progressType) }}
+                      </div>
+                    </div>
+                  }
+
+                  @if (a.earned && a.earnedAt) {
+                    <div class="ach-earned-date">Earned {{ a.earnedAt | date:'mediumDate' }}</div>
+                  }
                 </div>
-              }
-            </div>
-          </mat-card-content>
-        </mat-card>
+              </div>
+            }
+          </div>
+        </div>
       }
     </div>
   `,
   styles: [`
     .profile-container {
-      max-width: 600px;
+      max-width: 680px;
       margin: 0 auto;
       padding: 24px 16px;
       display: flex;
@@ -234,48 +273,19 @@ interface MyProfile {
       object-position: center top;
       display: block;
     }
-    .profile-info {
-      flex: 1;
-      min-width: 0;
-    }
-    .profile-name {
-      font-size: 1.2rem;
-      font-weight: 700;
-      margin: 0 0 4px;
-      color: #1a1a1a;
-    }
-    .profile-email {
-      font-size: 0.875rem;
-      color: #888;
-      margin: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .edit-btn {
-      flex-shrink: 0;
-    }
-    .connections-card mat-card-content {
-      padding: 12px 16px;
-    }
+    .profile-info { flex: 1; min-width: 0; }
+    .profile-name { font-size: 1.2rem; font-weight: 700; margin: 0 0 4px; color: #1a1a1a; }
+    .profile-email { font-size: 0.875rem; color: #888; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .edit-btn { flex-shrink: 0; }
+    .connections-card mat-card-content { padding: 12px 16px; }
     .connection-row {
       display: flex;
       flex-direction: column;
       gap: 8px;
       & + .connection-row { margin-top: 16px; }
     }
-    .connection-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #999;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .mini-members-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
+    .connection-label { font-size: 0.75rem; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.04em; }
+    .mini-members-list { display: flex; flex-wrap: wrap; gap: 8px; }
     .mini-member {
       display: flex;
       align-items: center;
@@ -290,79 +300,96 @@ interface MyProfile {
       &:hover { background: #ebebeb; }
     }
     .mini-avatar {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      overflow: hidden;
-      background: #e0e0e0;
-      flex-shrink: 0;
+      width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: #e0e0e0; flex-shrink: 0;
       img { width: 100%; height: 100%; object-fit: cover; }
     }
     .stats-card mat-card-content { padding-top: 8px; }
-    .stats-row {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
+    .stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
     .stat-item {
-      flex: 1;
-      min-width: 90px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 16px 8px;
-      border-radius: 10px;
-      background: #f5f5f5;
-      text-decoration: none;
-      color: inherit;
-      transition: background 0.15s;
+      flex: 1; min-width: 90px;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 16px 8px; border-radius: 10px; background: #f5f5f5;
+      text-decoration: none; color: inherit; transition: background 0.15s;
       &:hover { background: #e8f4fd; }
       &.shipped { background: #e8f5e9; &:hover { background: #c8e6c9; } }
     }
     .stat-value { font-size: 1.75rem; font-weight: 800; color: var(--db-blue, #1E4D8C); line-height: 1; margin-bottom: 4px; }
     .stat-item.shipped .stat-value { color: #2e7d32; }
     .stat-label { font-size: 0.75rem; color: #888; text-align: center; }
-    mat-card-title {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+    mat-card-title { display: flex; align-items: center; gap: 10px; }
     .points-total-badge {
-      font-size: 0.9rem;
-      font-weight: 800;
-      background: #1E4D8C;
-      color: #fff;
-      border-radius: 12px;
-      padding: 2px 10px;
+      font-size: 0.9rem; font-weight: 800;
+      background: #1E4D8C; color: #fff;
+      border-radius: 12px; padding: 2px 10px;
     }
-    .achievements-card mat-card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding-bottom: 8px;
+
+    /* Achievements section */
+    .achievements-section { display: flex; flex-direction: column; gap: 12px; }
+    .achievements-header {
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
     }
+    .section-title { margin: 0; font-size: 1.1rem; font-weight: 700; color: #333; }
     .title-picker { width: 200px; }
+
     .achievements-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
     }
-    .achievement-chip {
+
+    .ach-card {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: default;
-      &.earned { background: #EAF0FA; color: #1E4D8C; }
-      &.locked { background: #f0f0f0; color: #aaa; }
+      border-radius: 12px;
+      padding: 16px 12px 12px;
+      text-align: center;
+      border: 2px solid transparent;
+      transition: box-shadow 0.15s, border-color 0.15s;
+      &.earned {
+        background: #f0f5ff;
+        border-color: #1E4D8C;
+        box-shadow: 0 2px 8px rgba(30,77,140,0.12);
+      }
+      &.locked {
+        background: #fafafa;
+        border-color: #e0e0e0;
+        opacity: 0.72;
+      }
     }
-    .ach-icon { font-size: 1rem; width: 1rem; height: 1rem; }
+
+    .ach-graphic {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      background: #fff;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    .ach-image { width: 100%; height: 100%; object-fit: cover; }
+    .ach-icon {
+      font-size: 2.2rem; width: 2.2rem; height: 2.2rem;
+      .earned & { color: #C9933A; }
+      .locked & { color: #ccc; }
+    }
+
+    .ach-body { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
+    .ach-name { font-weight: 700; font-size: 0.9rem; color: #222; }
+    .ach-title-badge {
+      font-size: 0.72rem; font-weight: 600;
+      background: #C9933A; color: #fff;
+      border-radius: 8px; padding: 2px 8px;
+    }
+    .ach-points { font-size: 0.75rem; color: #1E4D8C; font-weight: 700; }
+    .ach-description { font-size: 0.78rem; color: #777; line-height: 1.35; margin-top: 2px; }
+    .ach-progress { width: 100%; margin-top: 8px; }
+    .ach-progress-label { font-size: 0.72rem; color: #888; margin-top: 4px; }
+    .ach-earned-date { font-size: 0.72rem; color: #999; margin-top: 6px; }
+
+    @media (max-width: 480px) {
+      .achievements-grid { grid-template-columns: 1fr 1fr; }
+    }
   `],
 })
 export class ProfileComponent implements OnInit {
@@ -376,13 +403,13 @@ export class ProfileComponent implements OnInit {
   readonly myProfile = signal<MyProfile | null>(null);
   readonly feedbackStats = signal<MemberFeedbackStats | null>(null);
   readonly points = signal<PointSummary | null>(null);
-  readonly achievements = signal<AchievementsResponse | null>(null);
+  readonly achievements = signal<Achievement[] | null>(null);
   readonly activeTitle = signal<string | null>(null);
 
   readonly earnedTitles = computed(() =>
-    (this.achievements()?.earned ?? [])
-      .map((a) => a.title)
-      .filter((t): t is string => !!t),
+    (this.achievements() ?? [])
+      .filter((a) => a.earned && a.title)
+      .map((a) => a.title as string),
   );
 
   ngOnInit(): void {
@@ -417,6 +444,15 @@ export class ProfileComponent implements OnInit {
       },
       error: () => this.snackBar.open('Could not update title', 'OK', { duration: 3000 }),
     });
+  }
+
+  progressPct(a: Achievement): number {
+    if (!a.progressTarget || a.progressTarget === 0) return 0;
+    return Math.min(100, Math.round((a.progressCurrent / a.progressTarget) * 100));
+  }
+
+  progressLabel(type: string | null): string {
+    return type ? (PROGRESS_LABELS[type] ?? type) : '';
   }
 
   private loadMyProfile(): void {

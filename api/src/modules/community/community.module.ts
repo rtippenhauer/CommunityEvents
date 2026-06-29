@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { MulterModule } from '@nestjs/platform-express';
 import { MemberPointEntity } from '../../database/entities/member-point.entity';
 import { AchievementEntity } from '../../database/entities/achievement.entity';
 import { MemberAchievementEntity } from '../../database/entities/member-achievement.entity';
@@ -13,6 +14,7 @@ import { CommunityController } from './community.controller';
 
 @Module({
   imports: [
+    MulterModule.register({}),
     TypeOrmModule.forFeature([
       MemberPointEntity,
       AchievementEntity,

@@ -31,17 +31,17 @@
       }
 
       @if (isLoggedIn()) {
+        <mat-divider />
+        <div class="sidenav-section-label">Community</div>
+        <a mat-list-item routerLink="/leaderboard" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>emoji_events</mat-icon> Leaderboard
+        </a>
         @if (!isNonValidated()) {
-          <mat-divider />
-          <div class="sidenav-section-label">Community</div>
           <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
             <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
           </a>
           <a mat-list-item routerLink="/members" (click)="sidenav.close()">
             <mat-icon matListItemIcon>group</mat-icon> Members
-          </a>
-          <a mat-list-item routerLink="/leaderboard" (click)="sidenav.close()">
-            <mat-icon matListItemIcon>emoji_events</mat-icon> Leaderboard
           </a>
           <a mat-list-item routerLink="/invite" (click)="sidenav.close()">
             <mat-icon matListItemIcon>group_add</mat-icon> Invite
@@ -157,24 +157,28 @@
               }
             </mat-menu>
 
+            <button class="nav-item" [matMenuTriggerFor]="communityMenu"
+              [class.nav-item-active]="isCommunityMenuActive()">
+              Community <mat-icon class="menu-chevron">expand_more</mat-icon>
+            </button>
+            <mat-menu #communityMenu="matMenu" panelClass="nav-menu">
+              <a mat-menu-item routerLink="/leaderboard">
+                <mat-icon>emoji_events</mat-icon> Leaderboard
+              </a>
+              @if (isLoggedIn() && !isNonValidated()) {
+                <a mat-menu-item routerLink="/restaurants">
+                  <mat-icon>restaurant</mat-icon> Restaurants
+                </a>
+                <a mat-menu-item routerLink="/members">
+                  <mat-icon>group</mat-icon> Members
+                </a>
+                <a mat-menu-item routerLink="/invite">
+                  <mat-icon>group_add</mat-icon> Invite
+                </a>
+              }
+            </mat-menu>
+
             @if (isLoggedIn()) {
-              <button class="nav-item" [matMenuTriggerFor]="communityMenu"
-                [class.nav-item-active]="isCommunityMenuActive()">
-                Community <mat-icon class="menu-chevron">expand_more</mat-icon>
-              </button>
-              <mat-menu #communityMenu="matMenu" panelClass="nav-menu">
-                @if (!isNonValidated()) {
-                  <a mat-menu-item routerLink="/restaurants">
-                    <mat-icon>restaurant</mat-icon> Restaurants
-                  </a>
-                  <a mat-menu-item routerLink="/members">
-                    <mat-icon>group</mat-icon> Members
-                  </a>
-                  <a mat-menu-item routerLink="/invite">
-                    <mat-icon>group_add</mat-icon> Invite
-                  </a>
-                }
-              </mat-menu>
 
               <button class="nav-item" [matMenuTriggerFor]="updatesMenu"
                 [class.nav-item-active]="isUpdatesMenuActive()">
