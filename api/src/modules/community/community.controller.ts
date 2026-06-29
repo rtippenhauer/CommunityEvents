@@ -2,10 +2,10 @@ import {
   Controller, Get, Patch, Body, Query, Param, ParseIntPipe,
   UseGuards, Request, ForbiddenException, BadRequestException,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { PointsService } from './points.service';
 import { AchievementsService } from './achievements.service';
 import { UserRole } from '../../database/entities/user.entity';
