@@ -3,7 +3,7 @@ FROM node:20-alpine AS frontend-build
 ARG ANGULAR_CONFIG=production
 WORKDIR /app
 COPY frontend/package*.json frontend/.npmrc ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --fetch-timeout=120000
 COPY frontend/ .
 RUN npm run build -- --configuration $ANGULAR_CONFIG
 
@@ -11,7 +11,7 @@ RUN npm run build -- --configuration $ANGULAR_CONFIG
 FROM node:20-alpine AS api-build
 WORKDIR /app
 COPY api/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --fetch-timeout=120000
 COPY api/ .
 RUN npm run build
 RUN npm prune --omit=dev

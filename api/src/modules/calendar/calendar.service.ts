@@ -1,11 +1,18 @@
 import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, IsNull, Repository } from 'typeorm';
+import { Not, IsNull, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { UserEntity } from '../../database/entities/user.entity';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
 import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
+
+export interface CalendarSettingsResponse {
+  url: string;
+  cityFilter: 'all' | 'city';
+  rsvpOnly: boolean;
+  cityName: string;
+}
 
 interface CacheEntry {
   ics: string;
@@ -15,8 +22,8 @@ interface CacheEntry {
 @Injectable()
 export class CalendarService {
   private readonly logger = new Logger(CalendarService.name);
-  private readonly cache = new Map<string, CacheEntry>();       // token → cached feed
-  private readonly userTokenMap = new Map<number, string>();    // userId → token (for invalidation)
+  private readonly cache = new Map<string, CacheEntry>();
+  private readonly userTokenMap = new Map<number, string>();
   private readonly TTL_MS = 15 * 60 * 1000;
 
   constructor(
@@ -46,7 +53,6 @@ export class CalendarService {
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    // Evict old token from cache
     if (user.calendarToken) {
       this.cache.delete(user.calendarToken);
       this.userTokenMap.delete(userId);
@@ -63,7 +69,41 @@ export class CalendarService {
     return `${appUrl}/api/v1/calendar/feed.ics?token=${token}`;
   }
 
-  // ── Feed generation ─────────────────────────────────────────────────────────
+  // ── Settings ─────────────────────────────────────────────────────────────────
+
+  async getSettings(userId: number): Promise<CalendarSettingsResponse> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['city'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const token = await this.getOrCreateToken(userId);
+    return {
+      url: this.feedUrl(token),
+      cityFilter: user.calendarCityFilter ?? 'all',
+      rsvpOnly: user.calendarRsvpOnly ?? false,
+      cityName: user.city?.name ?? 'My city',
+    };
+  }
+
+  async updateSettings(
+    userId: number,
+    dto: { cityFilter?: 'all' | 'city'; rsvpOnly?: boolean },
+  ): Promise<CalendarSettingsResponse> {
+    const updates: Partial<UserEntity> = {};
+    if (dto.cityFilter !== undefined) updates.calendarCityFilter = dto.cityFilter;
+    if (dto.rsvpOnly !== undefined) updates.calendarRsvpOnly = dto.rsvpOnly;
+
+    if (Object.keys(updates).length > 0) {
+      await this.userRepo.update(userId, updates);
+      this.invalidateForUser(userId);
+    }
+
+    return this.getSettings(userId);
+  }
+
+  // ── Feed generation ──────────────────────────────────────────────────────────
 
   async getFeed(token: string): Promise<string> {
     const cached = this.cache.get(token);
@@ -86,28 +126,37 @@ export class CalendarService {
   private async buildFeed(user: UserEntity): Promise<string> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
 
-    // Load user's RSVPs so we can show their status on each event
     const rsvps = await this.rsvpRepo.find({
       where: { userId: user.id },
       select: ['eventId', 'status'],
     });
     const rsvpMap = new Map(rsvps.map((r) => [r.eventId, r.status]));
 
-    // All published events for the user's city, plus cancelled ones from the last 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const cutoffDate = sevenDaysAgo.toISOString().split('T')[0];
 
-    const events = await this.eventRepo
+    const cityFilter = user.calendarCityFilter ?? 'all';
+    const rsvpOnly = user.calendarRsvpOnly ?? false;
+
+    let qb = this.eventRepo
       .createQueryBuilder('e')
-      .where('e.cityId = :cityId', { cityId: user.cityId })
-      .andWhere(
+      .where(
         '(e.status = :published OR (e.status = :cancelled AND e.eventDate >= :cutoff))',
         { published: EventStatus.PUBLISHED, cancelled: EventStatus.CANCELLED, cutoff: cutoffDate },
       )
       .orderBy('e.eventDate', 'ASC')
-      .addOrderBy('e.eventTime', 'ASC')
-      .getMany();
+      .addOrderBy('e.eventTime', 'ASC');
+
+    if (cityFilter === 'city') {
+      qb = qb.andWhere('e.cityId = :cityId', { cityId: user.cityId });
+    }
+
+    let events = await qb.getMany();
+
+    if (rsvpOnly) {
+      events = events.filter((e) => rsvpMap.has(e.id));
+    }
 
     if (events.length === 0) return this.emptyFeed();
 
@@ -123,7 +172,7 @@ export class CalendarService {
       'X-WR-CALDESC:Your upcoming DinnerBears dinners',
       'REFRESH-INTERVAL;VALUE=DURATION:PT15M',
       'X-PUBLISHED-TTL:PT15M',
-      `X-WR-TIMEZONE:America/New_York`,
+      'X-WR-TIMEZONE:America/New_York',
       ...vevents.flat(),
       'END:VCALENDAR',
     ];
@@ -216,38 +265,27 @@ export class CalendarService {
     ].join('\r\n');
   }
 
-  // ── Cache invalidation ──────────────────────────────────────────────────────
+  // ── Cache invalidation ────────────────────────────────────────────────────────
 
   invalidateForUser(userId: number): void {
     const token = this.userTokenMap.get(userId);
     if (token) this.cache.delete(token);
   }
 
-  async invalidateForEvent(eventId: number): Promise<void> {
-    const rsvps = await this.rsvpRepo.find({
-      where: { eventId },
-      select: ['userId'],
-    });
-    for (const r of rsvps) this.invalidateForUser(r.userId);
-  }
-
-  async invalidateForCity(cityId: number): Promise<void> {
+  async invalidateAll(): Promise<void> {
     const users = await this.userRepo.find({
-      where: { cityId, calendarToken: Not(IsNull()) },
+      where: { calendarToken: Not(IsNull()) },
       select: ['id'],
     });
     for (const u of users) this.invalidateForUser(u.id);
   }
 
-  // ── iCal helpers ────────────────────────────────────────────────────────────
+  // ── iCal helpers ─────────────────────────────────────────────────────────────
 
   private eventToUtc(dateStr: string, timeStr: string): Date {
     const [y, m, d] = dateStr.split('-').map(Number);
     const [h, min] = timeStr.split(':').map(Number);
 
-    // Treat the stored date/time as America/New_York and convert to UTC.
-    // Method: start with naïve UTC, find what Eastern time that maps to,
-    // then correct by the difference — handles DST automatically.
     const approx = new Date(Date.UTC(y, m - 1, d, h, min, 0));
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
@@ -268,7 +306,6 @@ export class CalendarService {
     );
   }
 
-  // RFC 5545 line folding: max 75 octets per line, continuation with CRLF + space
   private fold(line: string): string {
     const bytes = Buffer.from(line, 'utf-8');
     if (bytes.length <= 75) return line;
@@ -280,7 +317,6 @@ export class CalendarService {
     while (pos < bytes.length) {
       const limit = first ? 75 : 74;
       let end = Math.min(pos + limit, bytes.length);
-      // Walk back to a valid UTF-8 boundary (don't split multi-byte sequences)
       while (end > pos && (bytes[end] & 0xc0) === 0x80) end--;
       parts.push(bytes.slice(pos, end).toString('utf-8'));
       pos = end;
@@ -290,7 +326,7 @@ export class CalendarService {
     return parts.join('\r\n ');
   }
 
-  // ── Build a standalone .ics for email attachment (Phase 16b) ───────────────
+  // ── Email attachment (.ics for Phase 16b) ────────────────────────────────────
 
   buildInviteAttachment(
     event: EventEntity,

@@ -264,7 +264,7 @@ export class EventsService {
     if (dto.status !== undefined && dto.status !== event.status) {
       if (dto.status === EventStatus.PUBLISHED && !wasPublished) {
         event.publishedAt = new Date();
-        void this.calendarService.invalidateForCity(event.cityId);
+        void this.calendarService.invalidateAll();
       }
       if (dto.status === EventStatus.CANCELLED) {
         event.cancelledAt = new Date();
@@ -280,10 +280,10 @@ export class EventsService {
 
     if (saved.status === EventStatus.CANCELLED && wasPublished) {
       void this.sendCancellationEmails(saved);
-      void this.calendarService.invalidateForEvent(saved.id);
+      void this.calendarService.invalidateAll();
     } else if (wasPublished && saved.status === EventStatus.PUBLISHED && (changedDate || changedTime || changedRestaurant)) {
       void this.sendUpdateEmails(saved);
-      void this.calendarService.invalidateForEvent(saved.id);
+      void this.calendarService.invalidateAll();
     }
 
     return saved;

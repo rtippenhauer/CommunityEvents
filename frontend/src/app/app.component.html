@@ -22,6 +22,9 @@
         <a mat-list-item routerLink="/calendar" (click)="sidenav.close()">
           <mat-icon matListItemIcon>calendar_month</mat-icon> Calendar
         </a>
+        <a mat-list-item routerLink="/profile/calendar" (click)="sidenav.close()">
+          <mat-icon matListItemIcon>event_note</mat-icon> Calendar Settings
+        </a>
         <a mat-list-item routerLink="/ratings" (click)="sidenav.close()">
           <mat-icon matListItemIcon>star</mat-icon> Rate Visits
         </a>
@@ -256,16 +259,19 @@
           </button>
           <mat-menu #userMenu="matMenu" panelClass="nav-menu">
             <a mat-menu-item routerLink="/profile">
-              <mat-icon>person</mat-icon> Profile
+              <mat-icon>person</mat-icon> My Profile
             </a>
             <a mat-menu-item routerLink="/profile/notifications">
               <mat-icon>notifications</mat-icon> Notifications
             </a>
+            @if (!isNonValidated()) {
+              <a mat-menu-item routerLink="/profile/calendar">
+                <mat-icon>event_note</mat-icon> Calendar
+              </a>
+            }
+            <mat-divider />
             <a mat-menu-item routerLink="/account/settings">
-              <mat-icon>link</mat-icon> Linked Accounts
-            </a>
-            <a mat-menu-item routerLink="/invite">
-              <mat-icon>group_add</mat-icon> Invites
+              <mat-icon>security</mat-icon> Security
             </a>
             <mat-divider />
             <button mat-menu-item (click)="logout()">

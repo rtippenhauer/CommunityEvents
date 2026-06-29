@@ -125,6 +125,12 @@ export class UserEntity {
   @Column({ name: 'calendar_token', type: 'varchar', length: 36, nullable: true, unique: true })
   calendarToken: string | null;
 
+  @Column({ name: 'calendar_city_filter', type: 'enum', enum: ['all', 'city'], default: 'all' })
+  calendarCityFilter: 'all' | 'city';
+
+  @Column({ name: 'calendar_rsvp_only', type: 'tinyint', default: 0 })
+  calendarRsvpOnly: boolean;
+
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt: Date | null;
 
