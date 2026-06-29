@@ -19,6 +19,7 @@ import { UpdateEventDto } from './dto/update-event.dto';
 import { SetReservationDto } from './dto/set-reservation.dto';
 import { EmailService } from '../email/email.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { PointsService } from '../community/points.service';
 import { ConfigService } from '@nestjs/config';
 
 export interface EventFilters {
@@ -48,6 +49,7 @@ export class EventsService {
     private readonly userRepo: Repository<UserEntity>,
     private readonly emailService: EmailService,
     private readonly calendarService: CalendarService,
+    private readonly pointsService: PointsService,
     private readonly config: ConfigService,
   ) {}
 
@@ -1054,6 +1056,14 @@ export class EventsService {
         { eventId, userId: entry.userId, status: RsvpStatus.GOING },
         { attended: entry.attended },
       );
+      if (entry.attended) {
+        await this.pointsService.awardAttendance(entry.userId, eventId).catch(() => {});
+        // Award coordinator if this member made the reservation
+        const coordinatorId = event.reservationAssigneeId ?? null;
+        if (coordinatorId === entry.userId) {
+          await this.pointsService.awardCoordinator(entry.userId, eventId).catch(() => {});
+        }
+      }
     }
   }
 
@@ -1443,6 +1453,8 @@ export class EventsService {
       });
       await this.rsvpRepo.save(rsvp);
     }
+
+    await this.pointsService.awardAttendance(userId, eventId).catch(() => {});
 
     return { userId, memberName: user.fullName, attended: true, isWalkin: true };
   }

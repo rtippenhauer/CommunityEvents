@@ -10,6 +10,7 @@ import { RestaurantRatingEntity } from '../../database/entities/restaurant-ratin
 import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { RestaurantsService } from './restaurants.service';
+import { PointsService } from '../community/points.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 
@@ -67,6 +68,7 @@ export class RatingsService {
     @InjectRepository(EventRsvpEntity)
     private readonly rsvpRepo: Repository<EventRsvpEntity>,
     private readonly restaurantsService: RestaurantsService,
+    private readonly pointsService: PointsService,
   ) {}
 
   async getRatings(restaurantId: number, currentUser?: UserEntity): Promise<RatingsResponse> {
@@ -218,6 +220,7 @@ export class RatingsService {
       where: { memberId: user.id, eventId: dto.eventId },
     });
 
+    const isNew = !existing;
     const rating = existing ?? this.ratingRepo.create({ memberId: user.id, eventId: dto.eventId, restaurantId });
     rating.food = dto.food;
     rating.service = dto.service;
@@ -225,7 +228,11 @@ export class RatingsService {
     rating.noise = dto.noise;
     rating.comment = dto.comment ?? null;
 
-    return this.ratingRepo.save(rating);
+    const saved = await this.ratingRepo.save(rating);
+    if (isNew) {
+      await this.pointsService.awardRating(user.id, restaurantId).catch(() => {});
+    }
+    return saved;
   }
 
   async getRatingQueue(userId: number): Promise<RatingQueueItem[]> {

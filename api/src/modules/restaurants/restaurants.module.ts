@@ -11,16 +11,20 @@ import { RatingsService } from './ratings.service';
 import { RestaurantsController } from './restaurants.controller';
 import { GeocodingService } from './geocoding.service';
 import { EnrichmentService } from './enrichment.service';
+import { CommunityModule } from '../community/community.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([
-    RestaurantEntity,
-    RestaurantPhotoEntity,
-    RestaurantRatingEntity,
-    CityEntity,
-    EventEntity,
-    EventRsvpEntity,
-  ])],
+  imports: [
+    TypeOrmModule.forFeature([
+      RestaurantEntity,
+      RestaurantPhotoEntity,
+      RestaurantRatingEntity,
+      CityEntity,
+      EventEntity,
+      EventRsvpEntity,
+    ]),
+    CommunityModule,
+  ],
   providers: [RestaurantsService, RatingsService, GeocodingService, EnrichmentService],
   controllers: [RestaurantsController],
   exports: [RestaurantsService],

@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Res,
   UploadedFile,
   UseGuards,
@@ -63,8 +64,9 @@ export class UsersController {
   }
 
   @Get('members')
-  getMembers(@CurrentUser() user: UserEntity) {
-    return this.usersService.findMembers(user.role);
+  getMembers(@CurrentUser() user: UserEntity, @Query('sort') sort?: string) {
+    const sortParam = sort === 'alpha' ? 'alpha' : 'newest';
+    return this.usersService.findMembers(user.role, sortParam);
   }
 
   @Get(':id')

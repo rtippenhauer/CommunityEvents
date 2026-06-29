@@ -131,6 +131,9 @@ export class UserEntity {
   @Column({ name: 'calendar_rsvp_only', type: 'tinyint', default: 0 })
   calendarRsvpOnly: boolean;
 
+  @Column({ name: 'selected_title', type: 'varchar', length: 100, nullable: true })
+  selectedTitle: string | null;
+
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt: Date | null;
 

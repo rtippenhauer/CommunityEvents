@@ -148,6 +148,11 @@ export const routes: Routes = [
     canDeactivate: [unsavedChangesGuard],
   },
   {
+    path: 'leaderboard',
+    loadComponent: () =>
+      import('./features/leaderboard/leaderboard.component').then((m) => m.LeaderboardComponent),
+  },
+  {
     path: 'members',
     loadComponent: () =>
       import('./features/members/members.component').then((m) => m.MembersComponent),
@@ -307,6 +312,14 @@ export const routes: Routes = [
         (m) => m.AdminCitiesComponent,
       ),
     canActivate: [authGuard, adminGuard],
+  },
+  {
+    path: 'admin/members/:id/community',
+    loadComponent: () =>
+      import('./features/admin/community/admin-community.component').then(
+        (m) => m.AdminCommunityComponent,
+      ),
+    canActivate: [authGuard, moderatorGuard],
   },
   {
     path: '**',

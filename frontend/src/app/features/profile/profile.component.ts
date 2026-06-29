@@ -1,12 +1,17 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../core/services/auth.service';
 import { FeedbackService, MemberFeedbackStats } from '../../core/services/feedback.service';
+import { CommunityService, PointSummary, AchievementsResponse } from '../../core/services/community.service';
 
 interface MiniMember {
   id: number;
@@ -28,6 +33,10 @@ interface MyProfile {
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    MatSelectModule,
+    MatFormFieldModule,
+    MatTooltipModule,
+    MatSnackBarModule,
   ],
   template: `
     <div class="profile-container">
@@ -113,6 +122,82 @@ interface MyProfile {
                 <span class="stat-value">{{ feedbackStats()!.shippedCount }}</span>
                 <span class="stat-label">Ideas Shipped</span>
               </a>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      }
+
+      <!-- Bear Points card -->
+      @if (points()) {
+        <mat-card class="stats-card">
+          <mat-card-header>
+            <mat-card-title>
+              <span>Bear Points</span>
+              <span class="points-total-badge">{{ points()!.total }}</span>
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="stats-row">
+              @if ((points()!.byType['attendance'] ?? 0) > 0) {
+                <div class="stat-item">
+                  <span class="stat-value">{{ points()!.byType['attendance'] }}</span>
+                  <span class="stat-label">Attendance</span>
+                </div>
+              }
+              @if (((points()!.byType['coordinator'] ?? 0) + (points()!.byType['coordinator_new_restaurant'] ?? 0)) > 0) {
+                <div class="stat-item">
+                  <span class="stat-value">{{ (points()!.byType['coordinator'] ?? 0) + (points()!.byType['coordinator_new_restaurant'] ?? 0) }}</span>
+                  <span class="stat-label">Coordinator</span>
+                </div>
+              }
+              @if ((points()!.byType['invite'] ?? 0) > 0) {
+                <div class="stat-item">
+                  <span class="stat-value">{{ points()!.byType['invite'] }}</span>
+                  <span class="stat-label">Invites</span>
+                </div>
+              }
+              @if ((points()!.byType['rating'] ?? 0) > 0) {
+                <div class="stat-item">
+                  <span class="stat-value">{{ points()!.byType['rating'] }}</span>
+                  <span class="stat-label">Ratings</span>
+                </div>
+              }
+            </div>
+          </mat-card-content>
+        </mat-card>
+      }
+
+      <!-- Achievements card -->
+      @if (achievements()) {
+        <mat-card class="achievements-card">
+          <mat-card-header>
+            <mat-card-title>Achievements</mat-card-title>
+            @if (earnedTitles().length > 0) {
+              <mat-form-field appearance="outline" class="title-picker" subscriptSizing="dynamic">
+                <mat-label>Active Title</mat-label>
+                <mat-select [value]="activeTitle()" (selectionChange)="setTitle($event.value)">
+                  <mat-option [value]="null">None</mat-option>
+                  @for (t of earnedTitles(); track t) {
+                    <mat-option [value]="t">{{ t }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+            }
+          </mat-card-header>
+          <mat-card-content>
+            <div class="achievements-grid">
+              @for (a of achievements()!.earned; track a.id) {
+                <div class="achievement-chip earned" [matTooltip]="a.description">
+                  <mat-icon class="ach-icon">{{ a.icon }}</mat-icon>
+                  <span>{{ a.name }}</span>
+                </div>
+              }
+              @for (a of achievements()!.locked; track a.id) {
+                <div class="achievement-chip locked" [matTooltip]="a.description">
+                  <mat-icon class="ach-icon">lock</mat-icon>
+                  <span>{{ a.name }}</span>
+                </div>
+              }
             </div>
           </mat-card-content>
         </mat-card>
@@ -237,16 +322,68 @@ interface MyProfile {
     .stat-value { font-size: 1.75rem; font-weight: 800; color: var(--db-blue, #1E4D8C); line-height: 1; margin-bottom: 4px; }
     .stat-item.shipped .stat-value { color: #2e7d32; }
     .stat-label { font-size: 0.75rem; color: #888; text-align: center; }
+    mat-card-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .points-total-badge {
+      font-size: 0.9rem;
+      font-weight: 800;
+      background: #1E4D8C;
+      color: #fff;
+      border-radius: 12px;
+      padding: 2px 10px;
+    }
+    .achievements-card mat-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-bottom: 8px;
+    }
+    .title-picker { width: 200px; }
+    .achievements-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-top: 8px;
+    }
+    .achievement-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: default;
+      &.earned { background: #EAF0FA; color: #1E4D8C; }
+      &.locked { background: #f0f0f0; color: #aaa; }
+    }
+    .ach-icon { font-size: 1rem; width: 1rem; height: 1rem; }
   `],
 })
 export class ProfileComponent implements OnInit {
   readonly authService = inject(AuthService);
   private readonly http = inject(HttpClient);
   private readonly feedbackService = inject(FeedbackService);
+  private readonly communityService = inject(CommunityService);
+  private readonly snackBar = inject(MatSnackBar);
 
   readonly photoUrl = signal<string | null>(null);
   readonly myProfile = signal<MyProfile | null>(null);
   readonly feedbackStats = signal<MemberFeedbackStats | null>(null);
+  readonly points = signal<PointSummary | null>(null);
+  readonly achievements = signal<AchievementsResponse | null>(null);
+  readonly activeTitle = signal<string | null>(null);
+
+  readonly earnedTitles = computed(() =>
+    (this.achievements()?.earned ?? [])
+      .map((a) => a.title)
+      .filter((t): t is string => !!t),
+  );
 
   ngOnInit(): void {
     const user = this.authService.currentUser();
@@ -257,6 +394,28 @@ export class ProfileComponent implements OnInit {
     this.feedbackService.getMyStats().subscribe({
       next: (stats) => this.feedbackStats.set(stats),
       error: () => {},
+    });
+    this.communityService.getMyPoints().subscribe({
+      next: (p) => this.points.set(p),
+      error: () => {},
+    });
+    this.communityService.getMyAchievements().subscribe({
+      next: (a) => this.achievements.set(a),
+      error: () => {},
+    });
+    this.http.get<{ selectedTitle: string | null }>('/api/v1/users/me').subscribe({
+      next: (r) => this.activeTitle.set(r.selectedTitle),
+      error: () => {},
+    });
+  }
+
+  setTitle(title: string | null): void {
+    this.communityService.selectTitle(title).subscribe({
+      next: () => {
+        this.activeTitle.set(title);
+        this.snackBar.open(title ? `Title set to "${title}"` : 'Title cleared', 'OK', { duration: 3000 });
+      },
+      error: () => this.snackBar.open('Could not update title', 'OK', { duration: 3000 }),
     });
   }
 

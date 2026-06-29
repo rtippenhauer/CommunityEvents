@@ -13,9 +13,11 @@ interface Member {
   id: number;
   fullName: string;
   profilePhotoPath: string | null;
+  selectedTitle: string | null;
   cityId: number;
   cityName: string | null;
   joinedAt: string;
+  isNew: boolean;
   invitedBy: { id: number; fullName: string; profilePhotoPath: string | null } | null;
   role?: string;
   status?: string;
@@ -44,6 +46,13 @@ interface Member {
           <mat-form-field appearance="outline" class="search-field">
             <mat-label>Search</mat-label>
             <input matInput (input)="onSearch($event)" placeholder="Search by name…" />
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="sort-field">
+            <mat-label>Sort</mat-label>
+            <mat-select [value]="sort()" (selectionChange)="setSort($event.value)">
+              <mat-option value="newest">Newest First</mat-option>
+              <mat-option value="alpha">Alphabetical</mat-option>
+            </mat-select>
           </mat-form-field>
           @if (showRoles()) {
             <mat-form-field appearance="outline" class="role-field">
@@ -88,7 +97,15 @@ interface Member {
                 }
               </div>
               <div class="member-info">
-                <span class="member-name">{{ member.fullName }}</span>
+                <span class="member-name">
+                  {{ member.fullName }}
+                  @if (member.isNew) {
+                    <span class="new-badge">New</span>
+                  }
+                </span>
+                @if (member.selectedTitle) {
+                  <span class="member-title">{{ member.selectedTitle }}</span>
+                }
                 @if (member.cityName) {
                   <span class="member-city">{{ member.cityName }}</span>
                 }
@@ -159,6 +176,7 @@ interface Member {
       align-items: center;
     }
     .search-field { width: 220px; }
+    .sort-field { width: 160px; }
     .role-field { width: 160px; }
     .loading {
       display: flex;
@@ -297,6 +315,21 @@ interface Member {
       &:hover { box-shadow: none; }
     }
     .mystery-name { color: #bbb; font-style: italic; }
+    .new-badge {
+      font-size: 0.62rem;
+      font-weight: 700;
+      background: #1E4D8C;
+      color: #fff;
+      border-radius: 10px;
+      padding: 1px 7px;
+      letter-spacing: 0.04em;
+      vertical-align: middle;
+    }
+    .member-title {
+      font-size: 0.72rem;
+      color: #C9933A;
+      font-style: italic;
+    }
     .provider-badges {
       display: flex;
       gap: 6px;
@@ -324,6 +357,7 @@ export class MembersComponent implements OnInit {
   readonly loading = signal(true);
   readonly members = signal<Member[]>([]);
   readonly query = signal('');
+  readonly sort = signal<'newest' | 'alpha'>('newest');
   readonly roleFilter = signal('');
   readonly lightboxSrc = signal<string | null>(null);
   readonly lightboxName = signal<string | null>(null);
@@ -346,13 +380,23 @@ export class MembersComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    this.http.get<Member[]>('/api/v1/users/members').subscribe({
+    this.loadMembers();
+  }
+
+  loadMembers(): void {
+    this.loading.set(true);
+    this.http.get<Member[]>(`/api/v1/users/members?sort=${this.sort()}`).subscribe({
       next: (members) => {
         this.members.set(members);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
     });
+  }
+
+  setSort(value: 'newest' | 'alpha'): void {
+    this.sort.set(value);
+    this.loadMembers();
   }
 
   onSearch(event: Event): void {

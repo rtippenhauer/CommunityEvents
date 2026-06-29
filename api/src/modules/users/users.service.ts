@@ -55,9 +55,10 @@ export class UsersService {
     await this.userRepo.update(userId, { emailStatus: status });
   }
 
-  async findMembers(viewerRole: UserRole): Promise<object[]> {
+  async findMembers(viewerRole: UserRole, sort: 'newest' | 'alpha' = 'newest'): Promise<object[]> {
     const isNonValidated = viewerRole === UserRole.NON_VALIDATED;
     const isElevated = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
+    const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
     const qb = this.userRepo
       .createQueryBuilder('u')
@@ -67,9 +68,11 @@ export class UsersService {
         'u.id AS id',
         'u.full_name AS fullName',
         'u.profile_photo_path AS profilePhotoPath',
+        'u.selected_title AS selectedTitle',
         'u.city_id AS cityId',
         'city.name AS cityName',
         'u.created_at AS joinedAt',
+        `IF(u.created_at >= :twa, 1, 0) AS isNew`,
         'u.invited_by AS invitedById',
         'inviter.full_name AS invitedByName',
         'inviter.profile_photo_path AS invitedByPhoto',
@@ -79,7 +82,13 @@ export class UsersService {
         deleted: UserStatus.DELETED,
         active: UserStatus.ACTIVE,
       })
-      .orderBy('u.full_name', 'ASC');
+      .setParameter('twa', twoWeeksAgo);
+
+    if (sort === 'alpha') {
+      qb.orderBy('u.full_name', 'ASC');
+    } else {
+      qb.orderBy('u.created_at', 'DESC').addOrderBy('u.full_name', 'ASC');
+    }
 
     if (isElevated) {
       qb.leftJoin(OAuthAccountEntity, 'fb', "fb.userId = u.id AND fb.provider = 'facebook'")
@@ -97,9 +106,11 @@ export class UsersService {
       id: r.id,
       fullName: isNonValidated ? 'Mystery Bear' : r.fullName,
       profilePhotoPath: isNonValidated ? null : r.profilePhotoPath,
+      selectedTitle: isNonValidated ? null : (r.selectedTitle ?? null),
       cityId: r.cityId,
       cityName: r.cityName ?? null,
       joinedAt: r.joinedAt,
+      isNew: Boolean(r.isNew),
       invitedBy: isNonValidated ? null : (r.invitedById
         ? { id: r.invitedById, fullName: r.invitedByName, profilePhotoPath: r.invitedByPhoto }
         : null),
