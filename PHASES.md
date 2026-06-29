@@ -542,50 +542,85 @@ just the RSVP pill on mobile, or rethink the avatar cluster display.
 
 ---
 
-## Phase 15 — Community Points System 🔄 In Progress
+## Phase 15 — Community Points, Achievements & Leaderboard 🔄 In Progress
 
-Gamification layer that rewards engagement and creates a visible community
-reputation score ("Bear Points").
+Gamification layer that rewards engagement with Bear Points, unlockable
+Achievements, earnable Titles, and a community Leaderboard.
 
-### Coordinator Role
+### Coordinator Role ✅ Already built
 
-The event **coordinator** is the member who suggests the restaurant and makes
-the reservation — these are the same action. When an admin creates or edits
-an event, they tag a coordinator (any member, including themselves).
+The reservation coordinator is the member who arranges the venue. Already
+implemented: `reservation_assignee_id` FK on `events`, contact info fields,
+confirmation token, and admin/mod assign/reassign UI on the event detail page.
 
-- DB: add `coordinator_id` FK (nullable) to `events` table
-- Admin event form: "Coordinator" member picker field
-- Coordinator is shown on the event detail page alongside the date/restaurant
+### Bear Points
 
-### Earning Points (proposed)
+Points are awarded server-side only — no self-reporting. All triggers are
+tied to verifiable DB records.
 
 | Action | Points | Notes |
 |---|---|---|
-| Attend an event | 1 | Requires `attended = true` (Phase 10) — prevents gaming by RSVPing Going and not showing up |
-| Be event coordinator | 2 | Awarded when the event concludes (past + attended cutoff confirmed) |
-| Be coordinator at a brand-new restaurant | 4 | Double points when the restaurant has never been used in a prior published event — rewards exploration |
-| Successfully invite someone | 1 | Awarded when the invitee attends their **first** dinner (not just account creation) — ensures you brought someone who actually participates |
-| Rate a restaurant | 1 | One point per eligible rating submitted (already gated to attendees only) |
+| Attend an event | 1 | Requires `attended = true` (Phase 10) |
+| Be event coordinator | 2 | Awarded when event concludes |
+| Coordinate at a brand-new restaurant | 4 | Restaurant never used in a prior published event — snapshot flag stored at award time so it doesn't shift retroactively |
+| Successfully invite someone | 1 | Fires when the invitee's first `attended = true` is recorded; walks invite lineage to find the original inviter |
+| Submit a restaurant rating | 1 | One point per eligible rating |
 
-The invite rule is intentionally strict: you only get credit once the person
-you brought shows up in person. This keeps the community quality high and
-prevents invite farming for points.
+- **DB**: `member_points` (id, user_id FK, point_type enum[`attendance`|`coordinator`|`coordinator_new_restaurant`|`invite`|`rating`], reference_id int, points int, awarded_at) — ledger model for auditability and corrections
+- **Backfill**: attendance and ratings are retroactively calculable from existing data; coordinator and invite points require a one-time admin review script
 
-### Display
+### Achievements & Titles
 
-- Member profile: "Bear Points" total with a breakdown by category
-- Member list: optional sort by Bear Points (off by default)
-- Admin: full points ledger per member for auditing/adjustments
+Achievements are milestone unlocks. Some grant a **Title** the member can
+display. Members pick their active title from all titles they've earned.
 
-### Design Considerations
+- **DB**: `achievements` (id, key varchar UNIQUE, name, description, icon varchar, title varchar NULL, is_secret tinyint, created_at)
+- **DB**: `member_achievements` (id, member_id FK, achievement_id FK, earned_at; UNIQUE on member_id + achievement_id)
+- **DB**: add `selected_title` varchar(100) NULL to `users` — stores the text of the chosen title
+- Achievements are evaluated server-side on relevant trigger events (same hooks as points); secret achievements hidden in UI until earned
+- `PATCH /api/v1/members/me/title` — member selects active title from earned list; validated server-side that they hold the achievement
 
-- **DB**: `member_points` table (id, user_id FK, event_type enum[`attendance`|`coordinator`|`coordinator_new_restaurant`|`invite`|`rating`], reference_id int, awarded_at, points int) — ledger model so points can be corrected or audited without reprocessing history
-- **"New restaurant" check**: at event creation time, query whether the restaurant has appeared in any prior `published` event; store the result as a flag on the coordinator point award so it doesn't shift retroactively if the restaurant is later used again
-- **Invite point trigger**: fires when the invitee's first `attended = true` record is written — needs to walk the invite lineage to find the original inviter
-- **Backfill**: attendance and ratings are retroactively calculable; coordinator and invite points require manual review of historical data since `coordinator_id` doesn't exist yet
-- **No abuse vectors**: all triggers are server-side events tied to verifiable DB records; no self-reporting
+**Seed achievements:**
 
-**Definition of done:** Members earn points for attendance, coordinating, invites (on invitee's first attended dinner), and ratings. Coordinator earns double for introducing a new restaurant. Totals and category breakdown display on profiles. Admin can view and correct the ledger.
+| Key | Name | Title Granted | Trigger |
+|---|---|---|---|
+| `founding_bear` | Founding Bear | "Founding Bear" | Backfilled at launch for all active members |
+| `first_dinner` | First Dinner | — | First `attended = true` |
+| `regular` | Regular | "Regular" | 5 attended dinners |
+| `veteran` | Veteran | "Veteran" | 25 attended dinners |
+| `first_coordinator` | Coordinator | — | First event coordinated |
+| `scout` | Scout | "Scout" | Coordinate at 3 different new restaurants |
+| `connector` | Connector | — | First successful invite (invitee attends) |
+| `critic` | Critic | — | Submit 5 restaurant ratings |
+
+- **Founding Bear** is awarded via migration backfill at the time this phase deploys — all members with `status = 'active'` at that moment receive it; new members after deploy cannot earn it
+- Profile page: earned achievements grid with icons; locked achievements shown as silhouettes (non-secret only)
+- Profile page: title picker dropdown (only titles from earned achievements)
+- Member's active title shown on their profile card, member list row, and leaderboard entry
+
+### Leaderboard
+
+Dedicated `/leaderboard` page — no auth required to view.
+
+- Global by default; city filter dropdown (Cincinnati / Dayton / All)
+- Columns: rank, avatar + display name + active title, total Bear Points, top-earning category badge
+- Logged-in member's own row highlighted
+- Paginated or top-50 initially
+
+### Member List Updates
+
+- Default sort: **alphabetical**
+- Additional sort option: **Newest First** (by `created_at`)
+- Points-based sort removed — leaderboard handles that use case
+- **"New" badge** on member cards for accounts where `created_at >= NOW() - 14 days` — flag computed server-side in the member list API response
+
+### Admin
+
+- Full `member_points` ledger view per member with manual add/remove capability
+- Achievement grant/revoke controls per member
+- Leaderboard visible in admin with same city filter
+
+**Definition of done:** Members earn Bear Points for attendance, coordinating, invites, and ratings. Founding Bear achievement backfilled at deploy. Achievement unlocks and title selection work end-to-end. Leaderboard is public, global by default, city-filterable. Member list has "New" badge and alphabetical/newest sort. Admin can audit and correct the points ledger and achievement grants.
 
 ---
 
