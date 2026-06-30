@@ -51,9 +51,12 @@ export class AchievementsService {
     const count = await this.pointRepo.count({
       where: { userId, pointType: PointType.ATTENDANCE },
     });
-    if (count >= 1) await this.grant(userId, 'first_dinner');
-    if (count >= 5) await this.grant(userId, 'regular');
-    if (count >= 25) await this.grant(userId, 'veteran');
+    if (count >= 1)   await this.grant(userId, 'first_dinner');
+    if (count >= 5)   await this.grant(userId, 'regular');
+    if (count >= 10)  await this.grant(userId, 'table_familiar');
+    if (count >= 25)  await this.grant(userId, 'veteran');
+    if (count >= 50)  await this.grant(userId, 'devoted_diner');
+    if (count >= 100) await this.grant(userId, 'legend_of_the_table');
   }
 
   async checkCoordinatorAchievements(userId: number): Promise<void> {
@@ -63,12 +66,18 @@ export class AchievementsService {
         { userId, pointType: PointType.COORDINATOR_NEW_RESTAURANT },
       ],
     });
-    if (totalCoord >= 1) await this.grant(userId, 'first_coordinator');
+    if (totalCoord >= 1)  await this.grant(userId, 'first_coordinator');
+    if (totalCoord >= 5)  await this.grant(userId, 'gracious_host');
+    if (totalCoord >= 10) await this.grant(userId, 'maitre_d');
+    if (totalCoord >= 25) await this.grant(userId, 'banquet_captain');
+    if (totalCoord >= 50) await this.grant(userId, 'grand_maestro');
 
     const newRestaurantCount = await this.pointRepo.count({
       where: { userId, pointType: PointType.COORDINATOR_NEW_RESTAURANT },
     });
-    if (newRestaurantCount >= 3) await this.grant(userId, 'scout');
+    if (newRestaurantCount >= 3)  await this.grant(userId, 'scout');
+    if (newRestaurantCount >= 8)  await this.grant(userId, 'culinary_explorer');
+    if (newRestaurantCount >= 20) await this.grant(userId, 'trailblazer');
   }
 
   async checkRatingAchievements(userId: number): Promise<void> {
