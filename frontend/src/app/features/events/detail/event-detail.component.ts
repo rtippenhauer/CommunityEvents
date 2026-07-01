@@ -770,6 +770,10 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                             <span class="walkin-badge">Walk-in</span>
                           }
                         </span>
+                        <label class="att-out-of-town">
+                          <input type="checkbox" [checked]="entry.fromOtherCity" (change)="setFromOtherCity(entry.userId, $any($event.target).checked)" />
+                          Out of town
+                        </label>
                         <div class="att-btns">
                           <button mat-stroked-button [class.att-yes]="entry.attended === true" (click)="setAttended(entry.userId, true)">
                             <mat-icon>check</mat-icon> Attended
@@ -1309,7 +1313,6 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
     .guest-row-actions {
       display: flex;
       align-items: center;
-      gap: 0;
       flex-shrink: 0;
       .mat-mdc-icon-button { width: 32px; height: 32px; padding: 4px; }
     }
@@ -1343,7 +1346,6 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
       margin-top: -4px;
       display: flex;
       flex-direction: column;
-      gap: 0;
     }
 
     .guest-name-field, .guest-email-field {
@@ -1550,7 +1552,6 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
     .link-actions {
       display: flex;
       align-items: center;
-      gap: 0;
       .mat-mdc-icon-button { width: 32px; height: 32px; padding: 4px; }
     }
 
@@ -1906,6 +1907,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
       &:last-child { border-bottom: none; }
     }
     .att-name { font-size: 0.95rem; font-weight: 500; color: var(--db-brown-dark); flex: 1; }
+    .att-out-of-town { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #555; white-space: nowrap; }
     .att-btns { display: flex; gap: 8px; }
     .att-yes { border-color: #2e7d32 !important; color: #2e7d32 !important; background: #e8f5e9 !important; }
     .att-no { border-color: #c62828 !important; color: #c62828 !important; background: #ffebee !important; }
@@ -1926,7 +1928,6 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
     .walkin-results {
       display: flex;
       flex-direction: column;
-      gap: 0;
       border: 1px solid #e8e0d6;
       border-radius: 4px;
       overflow: hidden;
@@ -1953,7 +1954,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
     }
     .discussion-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e8e0d6; }
     .no-comments { color: #999; font-size: 0.9rem; margin: 0 0 16px; }
-    .comments-list { display: flex; flex-direction: column; gap: 0; margin-bottom: 20px; }
+    .comments-list { display: flex; flex-direction: column; margin-bottom: 20px; }
     .comment-block {
       padding: 14px 0;
       border-bottom: 1px solid #f0ebe3;
@@ -1964,7 +1965,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
       border-left: 2px solid #e8e0d6;
       margin-top: 8px;
     }
-    .replies-list { margin-top: 4px; display: flex; flex-direction: column; gap: 0; }
+    .replies-list { margin-top: 4px; display: flex; flex-direction: column; }
     .comment-header {
       display: flex;
       align-items: center;
@@ -2853,11 +2854,15 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     this.attendanceList.update((list) => list.map((e) => e.userId === userId ? { ...e, attended } : e));
   }
 
+  setFromOtherCity(userId: number, fromOtherCity: boolean): void {
+    this.attendanceList.update((list) => list.map((e) => e.userId === userId ? { ...e, fromOtherCity } : e));
+  }
+
   saveAttendance(): void {
     const id = this.event()!.id;
     const attendances = this.attendanceList()
       .filter((e) => e.attended !== null)
-      .map((e) => ({ userId: e.userId, attended: e.attended as boolean }));
+      .map((e) => ({ userId: e.userId, attended: e.attended as boolean, fromOtherCity: e.fromOtherCity }));
     this.savingAttendance.set(true);
     this.commentsService.markAttendance(id, attendances).subscribe({
       next: () => { this.savingAttendance.set(false); this.snackBar.open('Attendance saved', 'OK', { duration: 2000 }); },

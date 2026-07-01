@@ -64,6 +64,7 @@ export interface Event {
   cancelledAt: string | null;
   cancelledReason: string | null;
   facebookShareText: string | null;
+  isSecret: boolean;
   reservationAssigneeId: number | null;
   reservationAssignee: { id: number; fullName: string } | null;
   reservationContactName: string | null;
@@ -115,9 +116,11 @@ export interface CreateEventPayload {
   title: string;
   description?: string | null;
   additionalInfo?: string | null;
+  facebookShareText?: string | null;
   eventDate: string;
   eventTime: string;
   status?: EventStatus;
+  isSecret?: boolean;
 }
 
 export interface UpdateEventPayload {
@@ -131,6 +134,7 @@ export interface UpdateEventPayload {
   eventTime?: string;
   status?: EventStatus;
   cancelledReason?: string | null;
+  isSecret?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

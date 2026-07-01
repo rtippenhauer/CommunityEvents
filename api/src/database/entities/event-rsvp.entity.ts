@@ -52,6 +52,9 @@ export class EventRsvpEntity {
   @Column({ name: 'is_walkin', type: 'tinyint', default: false })
   isWalkin: boolean;
 
+  @Column({ name: 'from_other_city', type: 'tinyint', default: false })
+  fromOtherCity: boolean;
+
   @OneToMany(() => EventGuestLinkEntity, (l) => l.memberRsvp)
   guestLinks: EventGuestLinkEntity[];
 

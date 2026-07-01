@@ -56,22 +56,23 @@ export class PointsService {
 
   async awardCoordinator(userId: number, eventId: number): Promise<void> {
     const exists = await this.pointRepo.findOne({
-      where: { userId, pointType: PointType.COORDINATOR, referenceId: eventId },
+      where: [
+        { userId, pointType: PointType.COORDINATOR, referenceId: eventId },
+        { userId, pointType: PointType.COORDINATOR_NEW_RESTAURANT, referenceId: eventId },
+      ],
     });
     if (exists) return;
 
     const event = await this.eventRepo.findOne({ where: { id: eventId }, relations: ['restaurant'] });
     if (!event) return;
 
-    // Check if this restaurant is new (never used in a prior published event)
-    const priorUse = await this.eventRepo
-      .createQueryBuilder('e')
-      .where('e.restaurant_id = :rid', { rid: event['restaurantId'] ?? (event as any).restaurantId })
-      .andWhere('e.status = :s', { s: 'published' })
-      .andWhere('e.id != :eid', { eid: eventId })
-      .getCount();
-
-    const isNewRestaurant = priorUse === 0;
+    // Scout credit: restaurant was added to DinnerBears within the last week —
+    // meaning the coordinator suggested this new place and added it themselves.
+    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const restaurantAge = event.restaurant?.createdAt
+      ? Date.now() - new Date(event.restaurant.createdAt).getTime()
+      : Infinity;
+    const isNewRestaurant = restaurantAge < ONE_WEEK_MS;
     const pointType = isNewRestaurant ? PointType.COORDINATOR_NEW_RESTAURANT : PointType.COORDINATOR;
     const points = isNewRestaurant ? 4 : 2;
 
@@ -160,6 +161,7 @@ export class PointsService {
       .leftJoin('cities', 'c', 'c.id = u.city_id')
       .leftJoin('member_points', 'mp', 'mp.user_id = u.id')
       .where('u.status = :status', { status: 'active' })
+      .andWhere('u.role != :adminRole', { adminRole: 'admin' })
       .setParameter('twa', twoWeeksAgo)
       .groupBy('u.id')
       .orderBy('totalPoints', 'DESC')
@@ -229,5 +231,27 @@ export class PointsService {
 
   async adminRemovePoints(pointId: number): Promise<void> {
     await this.pointRepo.delete(pointId);
+  }
+
+  async awardCityHopper(userId: number, eventId: number): Promise<void> {
+    const exists = await this.pointRepo.findOne({
+      where: { userId, pointType: PointType.CITY_HOPPER, referenceId: eventId },
+    });
+    if (exists) return;
+    await this.pointRepo.save(
+      this.pointRepo.create({ userId, pointType: PointType.CITY_HOPPER, referenceId: eventId, points: 1 }),
+    );
+    await this.achievementsService.checkCityHopperAchievements(userId);
+  }
+
+  async awardSecretDinner(userId: number, eventId: number): Promise<void> {
+    const exists = await this.pointRepo.findOne({
+      where: { userId, pointType: PointType.SECRET_DINNER, referenceId: eventId },
+    });
+    if (exists) return;
+    await this.pointRepo.save(
+      this.pointRepo.create({ userId, pointType: PointType.SECRET_DINNER, referenceId: eventId, points: 1 }),
+    );
+    await this.achievementsService.checkSecretDinnerAchievements(userId);
   }
 }

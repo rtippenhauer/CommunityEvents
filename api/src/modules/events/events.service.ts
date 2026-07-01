@@ -219,6 +219,7 @@ export class EventsService {
       eventDate: dto.eventDate,
       eventTime: dto.eventTime,
       status: dto.status ?? EventStatus.DRAFT,
+      isSecret: dto.isSecret ?? false,
       createdById: userId,
     });
 
@@ -265,6 +266,7 @@ export class EventsService {
     if ('description' in dto) event.description = dto.description ?? null;
     if ('additionalInfo' in dto) event.additionalInfo = dto.additionalInfo ?? null;
     if ('facebookShareText' in dto) event.facebookShareText = dto.facebookShareText ?? null;
+    if (dto.isSecret !== undefined) event.isSecret = dto.isSecret;
     if (dto.eventDate !== undefined) event.eventDate = dto.eventDate;
     if (dto.eventTime !== undefined) event.eventTime = dto.eventTime;
 
@@ -1034,7 +1036,7 @@ export class EventsService {
     });
   }
 
-  async getAttendance(eventId: number): Promise<{ userId: number; memberName: string; attended: boolean | null; isWalkin: boolean }[]> {
+  async getAttendance(eventId: number): Promise<{ userId: number; memberName: string; attended: boolean | null; isWalkin: boolean; fromOtherCity: boolean }[]> {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
 
@@ -1049,17 +1051,21 @@ export class EventsService {
       memberName: r.user?.fullName ?? 'Member',
       attended: r.attended ?? null,
       isWalkin: r.isWalkin,
+      fromOtherCity: r.fromOtherCity,
     }));
   }
 
-  async markAttendance(eventId: number, attendances: { userId: number; attended: boolean }[]): Promise<void> {
+  async markAttendance(eventId: number, attendances: { userId: number; attended: boolean; fromOtherCity?: boolean }[]): Promise<void> {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
 
     for (const entry of attendances) {
+      const update: Partial<EventRsvpEntity> = { attended: entry.attended };
+      if (entry.fromOtherCity !== undefined) update.fromOtherCity = entry.fromOtherCity;
+
       await this.rsvpRepo.update(
         { eventId, userId: entry.userId, status: RsvpStatus.GOING },
-        { attended: entry.attended },
+        update,
       );
       if (entry.attended) {
         await this.pointsService.awardAttendance(entry.userId, eventId).catch(() => {});
@@ -1070,6 +1076,14 @@ export class EventsService {
         }
         // Award event-specific one-time achievement if this event has one
         await this.achievementsService.checkEventAchievement(entry.userId, eventId).catch(() => {});
+        // City Hopper: mark as from another city
+        if (entry.fromOtherCity) {
+          await this.pointsService.awardCityHopper(entry.userId, eventId).catch(() => {});
+        }
+        // Secret Dinner: award if this event is marked secret
+        if (event.isSecret) {
+          await this.pointsService.awardSecretDinner(entry.userId, eventId).catch(() => {});
+        }
       }
     }
   }

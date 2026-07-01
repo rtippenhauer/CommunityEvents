@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -58,4 +59,8 @@ export class UpdateEventDto {
   @IsString()
   @IsOptional()
   facebookShareText?: string | null;
+
+  @IsBoolean()
+  @IsOptional()
+  isSecret?: boolean;
 }

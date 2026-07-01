@@ -28,6 +28,7 @@ export interface AttendanceEntry {
   memberName: string;
   attended: boolean | null;
   isWalkin: boolean;
+  fromOtherCity: boolean;
 }
 
 export interface MemberSearchResult {
@@ -63,7 +64,7 @@ export class EventCommentsService {
     return this.http.get<AttendanceEntry[]>(`/api/v1/events/${eventId}/attendance`);
   }
 
-  markAttendance(eventId: number, attendances: { userId: number; attended: boolean }[]): Observable<void> {
+  markAttendance(eventId: number, attendances: { userId: number; attended: boolean; fromOtherCity?: boolean }[]): Observable<void> {
     return this.http.patch<void>(`/api/v1/events/${eventId}/attendance`, { attendances });
   }
 

@@ -45,6 +45,16 @@ export class AchievementsService {
     await this.memberAchievementRepo.save(
       this.memberAchievementRepo.create({ memberId: userId, achievementId: achievement.id }),
     );
+    if (achievement.points > 0) {
+      await this.pointRepo.save(
+        this.pointRepo.create({
+          userId,
+          pointType: PointType.ACHIEVEMENT,
+          referenceId: achievement.id,
+          points: achievement.points,
+        }),
+      );
+    }
   }
 
   async checkAttendanceAchievements(userId: number): Promise<void> {
@@ -66,32 +76,72 @@ export class AchievementsService {
         { userId, pointType: PointType.COORDINATOR_NEW_RESTAURANT },
       ],
     });
-    if (totalCoord >= 1)  await this.grant(userId, 'first_coordinator');
-    if (totalCoord >= 5)  await this.grant(userId, 'gracious_host');
-    if (totalCoord >= 10) await this.grant(userId, 'maitre_d');
-    if (totalCoord >= 25) await this.grant(userId, 'banquet_captain');
-    if (totalCoord >= 50) await this.grant(userId, 'grand_maestro');
+    if (totalCoord >= 1)   await this.grant(userId, 'first_coordinator');
+    if (totalCoord >= 5)   await this.grant(userId, 'gracious_host');
+    if (totalCoord >= 10)  await this.grant(userId, 'maitre_d');
+    if (totalCoord >= 25)  await this.grant(userId, 'banquet_captain');
+    if (totalCoord >= 50)  await this.grant(userId, 'grand_maestro');
+    if (totalCoord >= 100) await this.grant(userId, 'legendary_maestro');
 
     const newRestaurantCount = await this.pointRepo.count({
       where: { userId, pointType: PointType.COORDINATOR_NEW_RESTAURANT },
     });
-    if (newRestaurantCount >= 3)  await this.grant(userId, 'scout');
-    if (newRestaurantCount >= 8)  await this.grant(userId, 'culinary_explorer');
-    if (newRestaurantCount >= 20) await this.grant(userId, 'trailblazer');
+    if (newRestaurantCount >= 1)   await this.grant(userId, 'scout');
+    if (newRestaurantCount >= 5)   await this.grant(userId, 'culinary_explorer');
+    if (newRestaurantCount >= 10)  await this.grant(userId, 'trailblazer');
+    if (newRestaurantCount >= 25)  await this.grant(userId, 'culinary_pioneer');
+    if (newRestaurantCount >= 50)  await this.grant(userId, 'master_explorer');
+    if (newRestaurantCount >= 100) await this.grant(userId, 'legendary_scout');
   }
 
   async checkRatingAchievements(userId: number): Promise<void> {
     const count = await this.pointRepo.count({
       where: { userId, pointType: PointType.RATING },
     });
-    if (count >= 5) await this.grant(userId, 'critic');
+    if (count >= 1)   await this.grant(userId, 'first_review');
+    if (count >= 5)   await this.grant(userId, 'critic');
+    if (count >= 10)  await this.grant(userId, 'food_connoisseur');
+    if (count >= 25)  await this.grant(userId, 'dining_authority');
+    if (count >= 50)  await this.grant(userId, 'master_critic');
+    if (count >= 100) await this.grant(userId, 'legendary_critic');
   }
 
   async checkInviteAchievements(userId: number): Promise<void> {
     const count = await this.pointRepo.count({
       where: { userId, pointType: PointType.INVITE },
     });
-    if (count >= 1) await this.grant(userId, 'connector');
+    if (count >= 1)   await this.grant(userId, 'connector');
+    if (count >= 5)   await this.grant(userId, 'social_butterfly');
+    if (count >= 10)  await this.grant(userId, 'networker');
+    if (count >= 25)  await this.grant(userId, 'ambassador');
+    if (count >= 50)  await this.grant(userId, 'community_builder');
+    if (count >= 100) await this.grant(userId, 'legendary_connector');
+  }
+
+  async checkCityHopperAchievements(userId: number): Promise<void> {
+    const count = await this.pointRepo.count({
+      where: { userId, pointType: PointType.CITY_HOPPER },
+    });
+    if (count >= 1)   await this.grant(userId, 'city_hopper_1');
+    if (count >= 3)   await this.grant(userId, 'city_hopper_3');
+    if (count >= 5)   await this.grant(userId, 'city_hopper_5');
+    if (count >= 10)  await this.grant(userId, 'city_hopper_10');
+    if (count >= 25)  await this.grant(userId, 'city_hopper_25');
+    if (count >= 50)  await this.grant(userId, 'city_hopper_50');
+    if (count >= 100) await this.grant(userId, 'city_hopper_100');
+  }
+
+  async checkSecretDinnerAchievements(userId: number): Promise<void> {
+    const count = await this.pointRepo.count({
+      where: { userId, pointType: PointType.SECRET_DINNER },
+    });
+    if (count >= 1)   await this.grant(userId, 'secret_dinner_1');
+    if (count >= 3)   await this.grant(userId, 'secret_dinner_3');
+    if (count >= 5)   await this.grant(userId, 'secret_dinner_5');
+    if (count >= 10)  await this.grant(userId, 'secret_dinner_10');
+    if (count >= 25)  await this.grant(userId, 'secret_dinner_25');
+    if (count >= 50)  await this.grant(userId, 'secret_dinner_50');
+    if (count >= 100) await this.grant(userId, 'secret_dinner_100');
   }
 
   async checkEventAchievement(userId: number, eventId: number): Promise<void> {
@@ -100,17 +150,6 @@ export class AchievementsService {
     });
     if (!achievement) return;
     await this.grant(userId, achievement.key);
-    // Award points if the achievement has points configured
-    if (achievement.points > 0) {
-      await this.pointRepo.save(
-        this.pointRepo.create({
-          userId,
-          pointType: PointType.ATTENDANCE,
-          referenceId: eventId,
-          points: achievement.points,
-        }),
-      );
-    }
   }
 
   async getAchievementsWithProgress(userId: number): Promise<AchievementWithProgress[]> {
@@ -133,6 +172,8 @@ export class AchievementsService {
     const newRestaurantCount = countMap['coordinator_new_restaurant'] ?? 0;
     const inviteCount = countMap['invite'] ?? 0;
     const ratingCount = countMap['rating'] ?? 0;
+    const cityHopperCount = countMap['city_hopper'] ?? 0;
+    const secretDinnerCount = countMap['secret_dinner'] ?? 0;
 
     const earnedMap = new Map(earned.map((ma) => [ma.achievementId, ma]));
 
@@ -147,6 +188,8 @@ export class AchievementsService {
           case ProgressType.NEW_RESTAURANT_COORDINATOR: progressCurrent = newRestaurantCount; break;
           case ProgressType.INVITE: progressCurrent = inviteCount; break;
           case ProgressType.RATING: progressCurrent = ratingCount; break;
+          case ProgressType.CITY_HOPPER: progressCurrent = cityHopperCount; break;
+          case ProgressType.SECRET_DINNER: progressCurrent = secretDinnerCount; break;
           case ProgressType.FOUNDING: progressCurrent = ma ? 1 : 0; break;
           case ProgressType.EVENT: progressCurrent = ma ? 1 : 0; break;
           default: progressCurrent = 0;

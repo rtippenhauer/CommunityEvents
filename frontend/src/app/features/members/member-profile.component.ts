@@ -24,6 +24,7 @@ interface MemberProfile {
   profilePhotoPath: string | null;
   cityName: string | null;
   joinedAt: string;
+  isAdmin?: boolean;
   role?: string;
   status?: string;
   inviteSource?: string | null;
@@ -50,13 +51,15 @@ const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = 
   new_restaurant_coordinator: { label: 'Scout', icon: 'travel_explore' },
   invite: { label: 'Invites', icon: 'person_add' },
   rating: { label: 'Ratings', icon: 'star' },
+  city_hopper: { label: 'City Hopper', icon: 'flight' },
+  secret_dinner: { label: 'Secret Dinners', icon: 'lock' },
   founding: { label: 'Founding Bear', icon: 'history_edu' },
   event: { label: 'Special Dinners', icon: 'celebration' },
 };
 
 const ACHIEVEMENT_CATEGORY_ORDER = [
   'attendance', 'coordinator', 'new_restaurant_coordinator',
-  'invite', 'rating', 'founding', 'event',
+  'invite', 'rating', 'city_hopper', 'secret_dinner', 'founding', 'event',
 ];
 
 interface AchievementGroup {
@@ -94,7 +97,7 @@ interface AchievementGroup {
 
         <!-- Profile card with paw badge -->
         <div class="card-wrap">
-          @if ((points()?.total ?? 0) > 0) {
+          @if ((points()?.total ?? 0) > 0 && !profile()?.isAdmin) {
             <div class="paw-badge">
               <svg viewBox="0 0 56 54" xmlns="http://www.w3.org/2000/svg" class="paw-svg">
                 <circle cx="10" cy="20" r="7" fill="#8B5E3C"/>

@@ -73,6 +73,9 @@ export class EventEntity {
   })
   status: EventStatus;
 
+  @Column({ name: 'is_secret', type: 'tinyint', default: 0 })
+  isSecret: boolean;
+
   @Column({ name: 'published_at', type: 'datetime', nullable: true })
   publishedAt: Date | null;
 

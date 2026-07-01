@@ -13,23 +13,26 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CommunityService, AdminAchievement } from '../../../core/services/community.service';
 
-const CATEGORY_META: Record<string, { label: string; icon: string; isProgressive: boolean }> = {
-  attendance:                 { label: 'Attendance',             icon: 'local_dining',     isProgressive: true },
-  coordinator:                { label: 'Coordinator',            icon: 'event_available',  isProgressive: true },
-  new_restaurant_coordinator: { label: 'Scout',                  icon: 'travel_explore',   isProgressive: true },
-  invite:                     { label: 'Invites',                icon: 'person_add',       isProgressive: true },
-  rating:                     { label: 'Ratings',                icon: 'star',             isProgressive: true },
-  founding:                   { label: 'Founding Bear',          icon: 'history_edu',      isProgressive: false },
-  event:                      { label: 'Special Dinners',        icon: 'celebration',      isProgressive: false },
+const CATEGORY_META: Record<string, { label: string; icon: string; isProgressive: boolean; description: string }> = {
+  attendance:                 { label: 'Attendance',             icon: 'local_dining',     isProgressive: true,  description: 'Earned by showing up to dinners. One point awarded per event attended.' },
+  coordinator:                { label: 'Coordinator',            icon: 'event_available',  isProgressive: true,  description: 'Earned by organizing dinners and making the reservation. Bonus points for introducing the group to a brand-new restaurant.' },
+  new_restaurant_coordinator: { label: 'Scout',                  icon: 'travel_explore',   isProgressive: true,  description: 'A subset of coordination — tracks how many times a coordinator brought the group to a restaurant we\'d never visited before.' },
+  invite:                     { label: 'Invites',                icon: 'person_add',       isProgressive: true,  description: 'Awarded to the member who invited someone, once that invitee attends their first dinner.' },
+  rating:                     { label: 'Ratings',                icon: 'star',             isProgressive: true,  description: 'Earned by submitting restaurant ratings after a dinner. Encourages feedback that helps coordinators pick great spots.' },
+  city_hopper:                { label: 'City Hopper',            icon: 'flight',           isProgressive: true,  description: 'Awarded when a member travels to attend a dinner outside their home city. Marked by the coordinator in the attendance panel.' },
+  secret_dinner:              { label: 'Secret Dinners',         icon: 'lock',             isProgressive: true,  description: 'Earned by attending events flagged as secret — where the restaurant isn\'t revealed until the day of the dinner.' },
+  founding:                   { label: 'Founding Bear',          icon: 'history_edu',      isProgressive: false, description: 'A one-time badge granted to members who were part of DinnerBears before the platform launched. Backfilled at deploy.' },
+  event:                      { label: 'Special Dinners',        icon: 'celebration',      isProgressive: false, description: 'One-off achievements tied to a specific event. Created per-event in the event detail panel and awarded to attendees.' },
 };
 
-const CATEGORY_ORDER = ['attendance','coordinator','new_restaurant_coordinator','invite','rating','founding','event'];
+const CATEGORY_ORDER = ['attendance','coordinator','new_restaurant_coordinator','invite','rating','city_hopper','secret_dinner','founding','event'];
 
 interface AchGroup {
   type: string;
   label: string;
   icon: string;
   isProgressive: boolean;
+  description: string;
   achievements: AdminAchievement[];
 }
 
@@ -70,6 +73,9 @@ interface AddForm extends EditForm {
       <div class="page-header">
         <a mat-button routerLink="/admin/users"><mat-icon>arrow_back</mat-icon> Admin</a>
         <h1 class="page-title">Achievement Management</h1>
+        <a mat-stroked-button href="https://fonts.google.com/icons" target="_blank" rel="noopener" class="icons-link">
+          <mat-icon>open_in_new</mat-icon> Material Icons
+        </a>
       </div>
 
       @if (loading()) {
@@ -82,6 +88,7 @@ interface AddForm extends EditForm {
               <div class="group-title">
                 <mat-card-title>{{ group.label }}</mat-card-title>
                 <mat-card-subtitle>{{ group.achievements.length }} tier{{ group.achievements.length === 1 ? '' : 's' }}</mat-card-subtitle>
+                <p class="group-desc">{{ group.description }}</p>
               </div>
             </mat-card-header>
             <mat-card-content>
@@ -239,13 +246,15 @@ interface AddForm extends EditForm {
   styles: [`
     .page { max-width: 1000px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 24px; }
     .page-header { display: flex; align-items: center; gap: 12px; }
-    .page-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
+    .page-title { font-size: 1.4rem; font-weight: 700; margin: 0; flex: 1; }
+    .icons-link { margin-left: auto; }
     .center-spinner { display: flex; justify-content: center; padding: 48px; }
 
-    .group-card mat-card-header { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; }
-    .group-icon { font-size: 1.4rem; width: 1.4rem; height: 1.4rem; color: #C9933A; flex-shrink: 0; }
+    .group-card mat-card-header { display: flex; align-items: flex-start; gap: 12px; padding-bottom: 12px; }
+    .group-icon { font-size: 1.4rem; width: 1.4rem; height: 1.4rem; color: #C9933A; flex-shrink: 0; margin-top: 2px; }
     .group-title mat-card-title { font-size: 1rem; margin: 0; }
     .group-title mat-card-subtitle { margin: 0; }
+    .group-desc { margin: 6px 0 0; font-size: 0.82rem; color: #666; line-height: 1.4; max-width: 680px; }
 
     .ach-table-wrap { overflow-x: auto; margin-bottom: 12px; }
     .ach-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
@@ -310,6 +319,7 @@ export class AdminAchievementsComponent implements OnInit {
         label: CATEGORY_META[t]?.label ?? t,
         icon: CATEGORY_META[t]?.icon ?? 'emoji_events',
         isProgressive: CATEGORY_META[t]?.isProgressive ?? false,
+        description: CATEGORY_META[t]?.description ?? '',
         achievements: map.get(t)!,
       }));
   });

@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -44,4 +45,8 @@ export class CreateEventDto {
   @IsEnum(EventStatus)
   @IsOptional()
   status?: EventStatus;
+
+  @IsBoolean()
+  @IsOptional()
+  isSecret?: boolean;
 }

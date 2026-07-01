@@ -131,6 +131,11 @@ interface Restaurant { id: number; name: string; cityId: number; }
           <mat-hint>Pre-filled text for sharing to Facebook. Auto-generated if empty.</mat-hint>
         </mat-form-field>
 
+        <label class="secret-toggle">
+          <input type="checkbox" formControlName="isSecret" />
+          Secret dinner (attendees earn a surprise bonus achievement after the event)
+        </label>
+
       </form>
     </mat-dialog-content>
 
@@ -162,6 +167,11 @@ interface Restaurant { id: number; name: string; cityId: number; }
       .date-field { flex: 2; }
       .time-field { flex: 1; }
     }
+    .secret-toggle {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.9rem; color: #555; padding: 4px 0;
+      input[type=checkbox] { width: 16px; height: 16px; }
+    }
   `],
 })
 export class EventFormDialogComponent implements OnInit {
@@ -187,6 +197,7 @@ export class EventFormDialogComponent implements OnInit {
     additionalInfo: [''],
     facebookShareText: [''],
     status: ['draft' as EventStatus],
+    isSecret: [false],
   });
 
   ngOnInit(): void {
@@ -235,6 +246,7 @@ export class EventFormDialogComponent implements OnInit {
         additionalInfo: e.additionalInfo ?? '',
         facebookShareText: e.facebookShareText ?? '',
         status: e.status === 'cancelled' ? 'published' : e.status,
+        isSecret: e.isSecret ?? false,
       });
     } else if (this.data.preset) {
       const p = this.data.preset;
@@ -271,6 +283,7 @@ export class EventFormDialogComponent implements OnInit {
       additionalInfo: val.additionalInfo.trim() || null,
       facebookShareText: val.facebookShareText.trim() || null,
       status: val.status as EventStatus,
+      isSecret: val.isSecret ?? false,
     };
 
     const op = this.data.event

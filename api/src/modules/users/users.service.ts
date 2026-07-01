@@ -175,6 +175,7 @@ export class UsersService {
       if (gg) googleEmail = gg.email;
     }
 
+    const isAdmin = user.role === UserRole.ADMIN;
     return {
       id: user.id,
       fullName: user.fullName,
@@ -182,6 +183,7 @@ export class UsersService {
       cityId: user.cityId,
       cityName: user.city?.name ?? null,
       joinedAt: user.createdAt,
+      isAdmin,
       invitedBy: invitedByInfo,
       ...(isSelf || isElevated ? { invitedMembers } : {}),
       ...(isElevated ? {

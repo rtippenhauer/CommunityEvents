@@ -9,6 +9,8 @@ export enum ProgressType {
   RATING = 'rating',
   FOUNDING = 'founding',
   EVENT = 'event',
+  CITY_HOPPER = 'city_hopper',
+  SECRET_DINNER = 'secret_dinner',
 }
 
 @Entity('achievements')

@@ -7,6 +7,9 @@ export enum PointType {
   COORDINATOR_NEW_RESTAURANT = 'coordinator_new_restaurant',
   INVITE = 'invite',
   RATING = 'rating',
+  CITY_HOPPER = 'city_hopper',
+  SECRET_DINNER = 'secret_dinner',
+  ACHIEVEMENT = 'achievement',
 }
 
 @Entity('member_points')

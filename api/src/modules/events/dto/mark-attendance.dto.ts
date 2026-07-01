@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsInt, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsOptional, ValidateNested } from 'class-validator';
 
 export class AttendanceEntryDto {
   @IsInt()
@@ -7,6 +7,10 @@ export class AttendanceEntryDto {
 
   @IsBoolean()
   attended: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  fromOtherCity?: boolean;
 }
 
 export class MarkAttendanceDto {
