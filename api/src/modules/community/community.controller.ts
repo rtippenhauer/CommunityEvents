@@ -169,6 +169,58 @@ export class CommunityController {
     return ach;
   }
 
+  @Get('admin/achievements')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  adminListAchievements() {
+    return this.achievementsService.adminListAchievements();
+  }
+
+  @Post('admin/achievements')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async adminCreateAchievement(
+    @Body() body: {
+      key: string; name: string; description: string; icon: string;
+      progressType: string; progressTarget?: number | null;
+      points: number; title?: string | null; isSecret?: boolean;
+    },
+  ) {
+    if (!body.key || !body.name || !body.description || !body.progressType) {
+      throw new BadRequestException('key, name, description, and progressType are required');
+    }
+    return this.achievementsService.adminCreateAchievement({
+      ...body,
+      progressType: body.progressType as any,
+      progressTarget: body.progressTarget ?? null,
+      isSecret: body.isSecret ?? false,
+    });
+  }
+
+  @Patch('admin/achievements/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async updateAchievement(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: {
+      name: string; description: string; icon?: string;
+      title?: string | null; points: number; isSecret: boolean;
+      progressTarget?: number | null;
+    },
+  ) {
+    if (!body.name || !body.description) throw new BadRequestException('name and description are required');
+    await this.achievementsService.adminFullUpdate(id, {
+      name: body.name,
+      description: body.description,
+      icon: body.icon ?? 'emoji_events',
+      points: body.points,
+      title: body.title,
+      isSecret: body.isSecret,
+      progressTarget: body.progressTarget,
+    });
+    return { ok: true };
+  }
+
   @Post('admin/achievements/:id/image')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)

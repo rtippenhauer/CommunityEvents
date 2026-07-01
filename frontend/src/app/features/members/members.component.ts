@@ -18,6 +18,7 @@ interface Member {
   cityName: string | null;
   joinedAt: string;
   isNew: boolean;
+  totalPoints: number;
   invitedBy: { id: number; fullName: string; profilePhotoPath: string | null } | null;
   role?: string;
   status?: string;
@@ -88,6 +89,19 @@ interface Member {
         <div class="members-grid">
           @for (member of filtered(); track member.id) {
             <a class="member-card" [routerLink]="['/members', member.id]">
+              @if (member.totalPoints > 0) {
+                <div class="paw-badge">
+                  <svg viewBox="0 0 56 54" xmlns="http://www.w3.org/2000/svg" class="paw-svg">
+                    <circle cx="10" cy="20" r="7" fill="#8B5E3C"/>
+                    <circle cx="21" cy="13" r="7" fill="#8B5E3C"/>
+                    <circle cx="35" cy="13" r="7" fill="#8B5E3C"/>
+                    <circle cx="46" cy="20" r="7" fill="#8B5E3C"/>
+                    <circle cx="28" cy="38" r="14" fill="#8B5E3C"/>
+                    <text x="28" y="38" text-anchor="middle" dominant-baseline="central"
+                          fill="white" font-size="13" font-weight="800" font-family="system-ui,sans-serif">{{ member.totalPoints }}</text>
+                  </svg>
+                </div>
+              }
               <div class="avatar" [class.avatar-banned]="member.status === 'suspended'"
                    (click)="openLightbox(member, $event)">
                 @if (member.profilePhotoPath) {
@@ -189,6 +203,7 @@ interface Member {
       gap: 16px;
     }
     .member-card {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -206,6 +221,16 @@ interface Member {
         box-shadow: 0 4px 12px rgba(0,0,0,.15);
         transform: translateY(-2px);
       }
+    }
+    .paw-badge {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+    }
+    .paw-svg {
+      width: 46px;
+      height: 46px;
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.18));
     }
     .avatar {
       width: 108px;

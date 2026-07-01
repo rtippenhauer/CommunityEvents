@@ -8,6 +8,8 @@ import { UserEntity } from '../../database/entities/user.entity';
 import { OAuthAccountEntity } from '../../database/entities/oauth-account.entity';
 import { LoginSessionEntity } from '../../database/entities/login-session.entity';
 import { FacebookDeletionRequestEntity } from '../../database/entities/facebook-deletion-request.entity';
+import { EventEntity } from '../../database/entities/event.entity';
+import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { GoogleStrategy } from './strategies/google.strategy';
@@ -26,6 +28,8 @@ import { EmailModule } from '../email/email.module';
       OAuthAccountEntity,
       LoginSessionEntity,
       FacebookDeletionRequestEntity,
+      EventEntity,
+      EventRsvpEntity,
     ]),
     PassportModule,
     JwtModule.registerAsync({

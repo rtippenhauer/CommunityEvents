@@ -76,6 +76,7 @@ export class UsersService {
         'u.invited_by AS invitedById',
         'inviter.full_name AS invitedByName',
         'inviter.profile_photo_path AS invitedByPhoto',
+        '(SELECT COALESCE(SUM(mp.points), 0) FROM member_points mp WHERE mp.user_id = u.id) AS totalPoints',
         ...(isElevated ? ['u.role AS role', 'u.status AS status'] : []),
       ])
       .where(isElevated ? 'u.status != :deleted' : 'u.status = :active', {
@@ -111,6 +112,7 @@ export class UsersService {
       cityName: r.cityName ?? null,
       joinedAt: r.joinedAt,
       isNew: Boolean(r.isNew),
+      totalPoints: Number(r.totalPoints) || 0,
       invitedBy: isNonValidated ? null : (r.invitedById
         ? { id: r.invitedById, fullName: r.invitedByName, profilePhotoPath: r.invitedByPhoto }
         : null),

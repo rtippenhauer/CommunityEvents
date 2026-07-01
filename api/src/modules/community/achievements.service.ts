@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { AchievementEntity, ProgressType } from '../../database/entities/achievement.entity';
@@ -211,6 +211,19 @@ export class AchievementsService {
     return this.achievementRepo.save(achievement);
   }
 
+  async updateEventAchievement(
+    id: number,
+    dto: { name: string; description: string; title?: string | null; points: number; isSecret: boolean },
+  ): Promise<void> {
+    await this.achievementRepo.update(id, {
+      name: dto.name,
+      description: dto.description,
+      title: dto.title ?? null,
+      points: dto.points,
+      isSecret: dto.isSecret,
+    });
+  }
+
   async updateAchievementImage(achievementId: number, imagePath: string): Promise<void> {
     await this.achievementRepo.update(achievementId, { imagePath });
   }
@@ -244,5 +257,66 @@ export class AchievementsService {
 
   async adminRevokeAchievement(userId: number, achievementId: number): Promise<void> {
     await this.memberAchievementRepo.delete({ memberId: userId, achievementId });
+  }
+
+  async adminListAchievements(): Promise<(AchievementEntity & { earnedCount: number })[]> {
+    return this.achievementRepo
+      .createQueryBuilder('a')
+      .loadRelationCountAndMap('a.earnedCount', 'a.memberAchievements')
+      .orderBy('ISNULL(a.progressType)', 'ASC')
+      .addOrderBy('a.progressType', 'ASC')
+      .addOrderBy('ISNULL(a.progressTarget)', 'ASC')
+      .addOrderBy('a.progressTarget', 'ASC')
+      .addOrderBy('a.id', 'ASC')
+      .getMany() as Promise<(AchievementEntity & { earnedCount: number })[]>;
+  }
+
+  async adminCreateAchievement(dto: {
+    key: string;
+    name: string;
+    description: string;
+    icon: string;
+    progressType: ProgressType;
+    progressTarget: number | null;
+    points: number;
+    title?: string | null;
+    isSecret: boolean;
+  }): Promise<AchievementEntity> {
+    const existing = await this.achievementRepo.findOne({ where: { key: dto.key } });
+    if (existing) throw new ConflictException(`Key '${dto.key}' already exists`);
+    return this.achievementRepo.save(this.achievementRepo.create({
+      key: dto.key,
+      name: dto.name,
+      description: dto.description,
+      icon: dto.icon || 'emoji_events',
+      progressType: dto.progressType,
+      progressTarget: dto.progressTarget ?? null,
+      eventId: null,
+      points: dto.points,
+      title: dto.title ?? null,
+      isSecret: dto.isSecret ?? false,
+      imagePath: null,
+    }));
+  }
+
+  async adminFullUpdate(id: number, dto: {
+    name: string;
+    description: string;
+    icon: string;
+    points: number;
+    title?: string | null;
+    isSecret: boolean;
+    progressTarget?: number | null;
+  }): Promise<void> {
+    const update: Partial<AchievementEntity> = {
+      name: dto.name,
+      description: dto.description,
+      icon: dto.icon,
+      points: dto.points,
+      title: dto.title ?? null,
+      isSecret: dto.isSecret,
+    };
+    if (dto.progressTarget !== undefined) update.progressTarget = dto.progressTarget ?? null;
+    await this.achievementRepo.update(id, update);
   }
 }

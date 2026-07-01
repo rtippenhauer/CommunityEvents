@@ -314,6 +314,14 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    path: 'admin/achievements',
+    loadComponent: () =>
+      import('./features/admin/achievements/admin-achievements.component').then(
+        (m) => m.AdminAchievementsComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/members/:id/community',
     loadComponent: () =>
       import('./features/admin/community/admin-community.component').then(

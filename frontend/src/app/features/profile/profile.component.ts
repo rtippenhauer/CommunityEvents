@@ -36,6 +36,31 @@ const PROGRESS_LABELS: Record<string, string> = {
   event: 'Special Dinner',
 };
 
+const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = {
+  attendance: { label: 'Attendance', icon: 'local_dining' },
+  coordinator: { label: 'Coordinator', icon: 'event_available' },
+  new_restaurant_coordinator: { label: 'Scout', icon: 'travel_explore' },
+  invite: { label: 'Invites', icon: 'person_add' },
+  rating: { label: 'Ratings', icon: 'star' },
+  founding: { label: 'Founding Bear', icon: 'history_edu' },
+  event: { label: 'Special Dinners', icon: 'celebration' },
+};
+
+const ACHIEVEMENT_CATEGORY_ORDER = [
+  'attendance', 'coordinator', 'new_restaurant_coordinator',
+  'invite', 'rating', 'founding', 'event',
+];
+
+interface AchievementGroup {
+  category: string;
+  label: string;
+  icon: string;
+  earned: Achievement[];
+  next: Achievement | null;
+  allComplete: boolean;
+  isProgressive: boolean;
+}
+
 @Component({
   selector: 'app-profile',
   standalone: true,
@@ -56,6 +81,19 @@ const PROGRESS_LABELS: Record<string, string> = {
     <div class="profile-container">
       <!-- Profile header card -->
       <mat-card class="profile-card">
+        @if ((points()?.total ?? 0) > 0) {
+          <div class="paw-badge">
+            <svg viewBox="0 0 56 54" xmlns="http://www.w3.org/2000/svg" class="paw-svg">
+              <circle cx="10" cy="20" r="7" fill="#8B5E3C"/>
+              <circle cx="21" cy="13" r="7" fill="#8B5E3C"/>
+              <circle cx="35" cy="13" r="7" fill="#8B5E3C"/>
+              <circle cx="46" cy="20" r="7" fill="#8B5E3C"/>
+              <circle cx="28" cy="38" r="14" fill="#8B5E3C"/>
+              <text x="28" y="38" text-anchor="middle" dominant-baseline="central"
+                    fill="white" font-size="13" font-weight="800" font-family="system-ui,sans-serif">{{ points()!.total }}</text>
+            </svg>
+          </div>
+        }
         <mat-card-content class="profile-header">
           <div class="profile-photo-wrap">
             @if (photoUrl()) {
@@ -141,48 +179,8 @@ const PROGRESS_LABELS: Record<string, string> = {
         </mat-card>
       }
 
-      <!-- Bear Points card -->
-      @if (points()) {
-        <mat-card class="stats-card">
-          <mat-card-header>
-            <mat-card-title>
-              <span>Bear Points</span>
-              <span class="points-total-badge">{{ points()!.total }}</span>
-            </mat-card-title>
-          </mat-card-header>
-          <mat-card-content>
-            <div class="stats-row">
-              @if ((points()!.byType['attendance'] ?? 0) > 0) {
-                <div class="stat-item">
-                  <span class="stat-value">{{ points()!.byType['attendance'] }}</span>
-                  <span class="stat-label">Attendance</span>
-                </div>
-              }
-              @if (((points()!.byType['coordinator'] ?? 0) + (points()!.byType['coordinator_new_restaurant'] ?? 0)) > 0) {
-                <div class="stat-item">
-                  <span class="stat-value">{{ (points()!.byType['coordinator'] ?? 0) + (points()!.byType['coordinator_new_restaurant'] ?? 0) }}</span>
-                  <span class="stat-label">Coordinator</span>
-                </div>
-              }
-              @if ((points()!.byType['invite'] ?? 0) > 0) {
-                <div class="stat-item">
-                  <span class="stat-value">{{ points()!.byType['invite'] }}</span>
-                  <span class="stat-label">Invites</span>
-                </div>
-              }
-              @if ((points()!.byType['rating'] ?? 0) > 0) {
-                <div class="stat-item">
-                  <span class="stat-value">{{ points()!.byType['rating'] }}</span>
-                  <span class="stat-label">Ratings</span>
-                </div>
-              }
-            </div>
-          </mat-card-content>
-        </mat-card>
-      }
-
       <!-- Achievements -->
-      @if (achievements()) {
+      @if (groupedAchievements().length > 0) {
         <div class="achievements-section">
           <div class="achievements-header">
             <h3 class="section-title">Achievements</h3>
@@ -199,46 +197,63 @@ const PROGRESS_LABELS: Record<string, string> = {
             }
           </div>
 
-          <div class="achievements-grid">
-            @for (a of achievements()!; track a.id) {
-              <div class="ach-card" [class.earned]="a.earned" [class.locked]="!a.earned">
-                <div class="ach-graphic">
-                  @if (a.imagePath) {
-                    <img [src]="a.imagePath" [alt]="a.name" class="ach-image" />
-                  } @else {
-                    <mat-icon class="ach-icon">{{ a.earned ? a.icon : 'lock' }}</mat-icon>
+          @for (group of groupedAchievements(); track group.category) {
+            <mat-card class="ach-group-card">
+              <div class="ach-group-header">
+                <mat-icon class="ach-group-icon">{{ group.icon }}</mat-icon>
+                <span class="ach-group-label">{{ group.label }}</span>
+                @if (group.isProgressive && group.allComplete) {
+                  <span class="ach-complete-badge">All unlocked</span>
+                }
+              </div>
+
+              @if (group.earned.length > 0) {
+                <div class="ach-earned-list">
+                  @for (a of group.earned; track a.id) {
+                    <div class="ach-earned-row">
+                      @if (a.imagePath) {
+                        <img [src]="a.imagePath" [alt]="a.name" class="ach-row-img" />
+                      } @else {
+                        <mat-icon class="ach-check-icon">check_circle</mat-icon>
+                      }
+                      <div class="ach-earned-info">
+                        <span class="ach-earned-name">{{ a.name }}</span>
+                        @if (a.title) {
+                          <span class="ach-title-badge">{{ a.title }}</span>
+                        }
+                      </div>
+                      @if (a.earnedAt) {
+                        <span class="ach-earned-when">{{ a.earnedAt | date:'MMM d, y' }}</span>
+                      }
+                    </div>
                   }
                 </div>
-                <div class="ach-body">
-                  <div class="ach-name">{{ a.name }}</div>
-                  @if (a.title) {
-                    <div class="ach-title-badge">Title: {{ a.title }}</div>
-                  }
-                  @if (a.points > 0) {
-                    <div class="ach-points">+{{ a.points }} pts</div>
-                  }
-                  <div class="ach-description">{{ a.description }}</div>
+              }
 
-                  @if (!a.earned && a.progressTarget && a.progressType !== 'founding' && a.progressType !== 'event') {
-                    <div class="ach-progress">
-                      <mat-progress-bar
-                        mode="determinate"
-                        [value]="progressPct(a)"
-                        [color]="'primary'">
-                      </mat-progress-bar>
+              @if (group.next; as next) {
+                <div class="ach-next" [class.with-divider]="group.earned.length > 0">
+                  <div class="ach-next-row">
+                    <mat-icon class="ach-lock-icon">lock</mat-icon>
+                    <div class="ach-next-info">
+                      <span class="ach-next-name">{{ next.name }}</span>
+                      @if (next.title) {
+                        <span class="ach-next-title-hint">Unlocks title: {{ next.title }}</span>
+                      }
+                      <span class="ach-next-desc">{{ next.description }}</span>
+                    </div>
+                  </div>
+                  @if (next.progressTarget && next.progressType !== 'founding' && next.progressType !== 'event') {
+                    <div class="ach-next-progress">
+                      <mat-progress-bar mode="determinate" [value]="progressPct(next)"></mat-progress-bar>
                       <div class="ach-progress-label">
-                        {{ a.progressCurrent }} of {{ a.progressTarget }} {{ progressLabel(a.progressType) }}
+                        {{ next.progressCurrent }} of {{ next.progressTarget }} {{ progressLabel(next.progressType) }}
                       </div>
                     </div>
                   }
-
-                  @if (a.earned && a.earnedAt) {
-                    <div class="ach-earned-date">Earned {{ a.earnedAt | date:'mediumDate' }}</div>
-                  }
                 </div>
-              </div>
-            }
-          </div>
+              }
+            </mat-card>
+          }
         </div>
       }
     </div>
@@ -317,11 +332,11 @@ const PROGRESS_LABELS: Record<string, string> = {
     .stat-item.shipped .stat-value { color: #2e7d32; }
     .stat-label { font-size: 0.75rem; color: #888; text-align: center; }
     mat-card-title { display: flex; align-items: center; gap: 10px; }
-    .points-total-badge {
-      font-size: 0.9rem; font-weight: 800;
-      background: #1E4D8C; color: #fff;
-      border-radius: 12px; padding: 2px 10px;
-    }
+
+    /* Paw badge on profile card */
+    .profile-card { position: relative; overflow: visible !important; }
+    .paw-badge { position: absolute; top: -12px; right: 12px; z-index: 1; }
+    .paw-svg { width: 46px; height: 46px; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.18)); }
 
     /* Achievements section */
     .achievements-section { display: flex; flex-direction: column; gap: 12px; }
@@ -331,65 +346,56 @@ const PROGRESS_LABELS: Record<string, string> = {
     .section-title { margin: 0; font-size: 1.1rem; font-weight: 700; color: #333; }
     .title-picker { width: 200px; }
 
-    .achievements-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 12px;
-    }
+    /* Group card */
+    .ach-group-card { padding: 0 !important; overflow: hidden; }
 
-    .ach-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      border-radius: 12px;
-      padding: 16px 12px 12px;
-      text-align: center;
-      border: 2px solid transparent;
-      transition: box-shadow 0.15s, border-color 0.15s;
-      &.earned {
-        background: #f0f5ff;
-        border-color: #1E4D8C;
-        box-shadow: 0 2px 8px rgba(30,77,140,0.12);
-      }
-      &.locked {
-        background: #fafafa;
-        border-color: #e0e0e0;
-        opacity: 0.72;
-      }
+    .ach-group-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px;
+      background: #1E4D8C;
+      color: #fff;
     }
-
-    .ach-graphic {
-      width: 72px; height: 72px;
-      border-radius: 50%;
-      overflow: hidden;
-      display: flex; align-items: center; justify-content: center;
-      background: #fff;
-      margin-bottom: 10px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-    }
-    .ach-image { width: 100%; height: 100%; object-fit: cover; }
-    .ach-icon {
-      font-size: 2.2rem; width: 2.2rem; height: 2.2rem;
-      .earned & { color: #C9933A; }
-      .locked & { color: #ccc; }
-    }
-
-    .ach-body { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
-    .ach-name { font-weight: 700; font-size: 0.9rem; color: #222; }
-    .ach-title-badge {
-      font-size: 0.72rem; font-weight: 600;
+    .ach-group-icon { font-size: 1.2rem; width: 1.2rem; height: 1.2rem; flex-shrink: 0; opacity: 0.9; }
+    .ach-group-label { font-weight: 700; font-size: 0.95rem; flex: 1; }
+    .ach-complete-badge {
+      font-size: 0.7rem; font-weight: 700;
       background: #C9933A; color: #fff;
-      border-radius: 8px; padding: 2px 8px;
+      border-radius: 10px; padding: 2px 8px;
+      white-space: nowrap;
     }
-    .ach-points { font-size: 0.75rem; color: #1E4D8C; font-weight: 700; }
-    .ach-description { font-size: 0.78rem; color: #777; line-height: 1.35; margin-top: 2px; }
-    .ach-progress { width: 100%; margin-top: 8px; }
-    .ach-progress-label { font-size: 0.72rem; color: #888; margin-top: 4px; }
-    .ach-earned-date { font-size: 0.72rem; color: #999; margin-top: 6px; }
 
-    @media (max-width: 480px) {
-      .achievements-grid { grid-template-columns: 1fr 1fr; }
+    /* Earned rows */
+    .ach-earned-list { padding: 4px 0; }
+    .ach-earned-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 16px;
+      &:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
     }
+    .ach-check-icon { color: #2e7d32; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
+    .ach-row-img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+    .ach-earned-info { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap; }
+    .ach-earned-name { font-size: 0.88rem; font-weight: 600; color: #222; }
+    .ach-title-badge {
+      font-size: 0.68rem; font-weight: 700;
+      background: #C9933A; color: #fff;
+      border-radius: 8px; padding: 1px 7px;
+    }
+    .ach-earned-when { font-size: 0.72rem; color: #aaa; white-space: nowrap; flex-shrink: 0; margin-left: auto; }
+
+    /* Next tier */
+    .ach-next {
+      padding: 10px 16px 12px;
+      background: #fafafa;
+      &.with-divider { border-top: 2px dashed #e8e8e8; }
+    }
+    .ach-next-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+    .ach-lock-icon { color: #bbb; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+    .ach-next-info { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+    .ach-next-name { font-size: 0.88rem; font-weight: 600; color: #555; }
+    .ach-next-title-hint { font-size: 0.7rem; color: #C9933A; font-weight: 600; }
+    .ach-next-desc { font-size: 0.78rem; color: #999; line-height: 1.35; }
+    .ach-next-progress { padding-left: 21px; }
+    .ach-progress-label { font-size: 0.72rem; color: #888; margin-top: 4px; }
   `],
 })
 export class ProfileComponent implements OnInit {
@@ -411,6 +417,50 @@ export class ProfileComponent implements OnInit {
       .filter((a) => a.earned && a.title)
       .map((a) => a.title as string),
   );
+
+  readonly groupedAchievements = computed<AchievementGroup[]>(() => {
+    const all = this.achievements();
+    if (!all) return [];
+
+    const byType = new Map<string, Achievement[]>();
+    for (const a of all) {
+      if (a.isSecret && !a.earned) continue;
+      const key = a.progressType ?? 'other';
+      if (!byType.has(key)) byType.set(key, []);
+      byType.get(key)!.push(a);
+    }
+
+    const groups: AchievementGroup[] = [];
+
+    for (const cat of ACHIEVEMENT_CATEGORY_ORDER) {
+      const items = byType.get(cat);
+      if (!items || items.length === 0) continue;
+
+      const sorted = [...items].sort((a, b) => (a.progressTarget ?? 0) - (b.progressTarget ?? 0));
+      const earned = sorted.filter((a) => a.earned);
+      const unearned = sorted.filter((a) => !a.earned);
+      const next = unearned[0] ?? null;
+      const isProgressive = cat !== 'founding' && cat !== 'event';
+
+      if (earned.length === 0) {
+        if (!isProgressive) continue;
+        if ((next?.progressCurrent ?? 0) === 0) continue;
+      }
+
+      const config = ACHIEVEMENT_CATEGORIES[cat] ?? { label: cat, icon: 'emoji_events' };
+      groups.push({
+        category: cat,
+        label: config.label,
+        icon: config.icon,
+        earned,
+        next,
+        allComplete: unearned.length === 0,
+        isProgressive,
+      });
+    }
+
+    return groups;
+  });
 
   ngOnInit(): void {
     const user = this.authService.currentUser();

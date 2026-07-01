@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEntity } from '../../database/entities/event.entity';
 import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
 import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
+import { InviteEntity } from '../../database/entities/invite.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
 import { UserEntity } from '../../database/entities/user.entity';
 import { EventsService } from './events.service';
@@ -14,7 +15,7 @@ import { CommunityModule } from '../community/community.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([EventEntity, EventRsvpEntity, EventGuestLinkEntity, RestaurantEntity, UserEntity]),
+    TypeOrmModule.forFeature([EventEntity, EventRsvpEntity, EventGuestLinkEntity, InviteEntity, RestaurantEntity, UserEntity]),
     EmailModule,
     InvitesModule,
     CalendarModule,

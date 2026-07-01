@@ -84,7 +84,12 @@ interface NotifPrefs {
 
             <div class="notif-section">
               <h3 class="notif-section-title">Push Notifications</h3>
-              @if (pushService.isSupported && !pushSubscribed()) {
+              @if (pushService.isIosNonStandalone) {
+                <div class="push-subscribe-banner ios-hint-banner">
+                  <mat-icon>add_to_home_screen</mat-icon>
+                  <span>To enable push notifications on iPhone, tap <strong>Share → Add to Home Screen</strong> first, then open the app from your home screen.</span>
+                </div>
+              } @else if (pushService.isSupported && !pushSubscribed()) {
                 <div class="push-subscribe-banner">
                   <mat-icon>notifications_off</mat-icon>
                   <span>Browser notifications are not enabled yet.</span>
@@ -147,6 +152,7 @@ interface NotifPrefs {
     }
     .unsubscribed-banner { background: #fff3e0; }
     .complained-banner { background: #fce4ec; }
+    .ios-hint-banner { background: #e8f4fd; align-items: flex-start; line-height: 1.4; }
     .push-subscribe-banner {
       display: flex;
       align-items: center;

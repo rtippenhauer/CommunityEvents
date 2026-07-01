@@ -48,6 +48,23 @@ export interface EventAchievement {
   points: number;
 }
 
+export interface AdminAchievement {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  imagePath: string | null;
+  title: string | null;
+  points: number;
+  progressType: string | null;
+  progressTarget: number | null;
+  eventId: number | null;
+  isSecret: boolean;
+  earnedCount: number;
+  createdAt: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CommunityService {
   private readonly http = inject(HttpClient);
@@ -103,6 +120,29 @@ export class CommunityService {
     dto: { name: string; description: string; title?: string; points: number },
   ): Observable<EventAchievement> {
     return this.http.post<EventAchievement>(`/api/v1/admin/events/${eventId}/achievement`, dto);
+  }
+
+  adminListAchievements(): Observable<AdminAchievement[]> {
+    return this.http.get<AdminAchievement[]>('/api/v1/admin/achievements');
+  }
+
+  adminCreateAchievement(dto: {
+    key: string; name: string; description: string; icon: string;
+    progressType: string; progressTarget?: number | null;
+    points: number; title?: string | null; isSecret: boolean;
+  }): Observable<AdminAchievement> {
+    return this.http.post<AdminAchievement>('/api/v1/admin/achievements', dto);
+  }
+
+  adminUpdateAchievement(
+    id: number,
+    dto: {
+      name: string; description: string; icon: string;
+      title?: string | null; points: number; isSecret: boolean;
+      progressTarget?: number | null;
+    },
+  ): Observable<{ ok: boolean }> {
+    return this.http.patch<{ ok: boolean }>(`/api/v1/admin/achievements/${id}`, dto);
   }
 
   adminUploadAchievementImage(achievementId: number, file: File): Observable<{ imagePath: string }> {

@@ -48,6 +48,15 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
                 <span>{{ (info()!.eventDate + 'T12:00:00') | date: 'EEEE, MMMM d, y' }} at {{ formatTime(info()!.eventTime) }}</span>
               </div>
             </div>
+            @if (info()!.inviteToken) {
+              <div class="join-cta">
+                <p class="join-heading">New to DinnerBears?</p>
+                <p class="join-sub">Create your account and you'll be added to this dinner automatically.</p>
+                <a mat-raised-button color="primary" [href]="'/login?token=' + info()!.inviteToken">
+                  <mat-icon>person_add</mat-icon> Create My Account
+                </a>
+              </div>
+            }
           </div>
 
         } @else {
@@ -164,6 +173,20 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
       mat-spinner { display: inline-block; }
     }
     .confirm-hint { font-size: 0.78rem; color: #999; }
+    .join-cta {
+      margin-top: 8px;
+      padding: 16px;
+      background: #e8f0fb;
+      border: 1px solid #c5d5f0;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+    .join-heading { font-size: 0.95rem; font-weight: 700; color: #1E4D8C; margin: 0; }
+    .join-sub { font-size: 0.85rem; color: #555; margin: 0; max-width: 320px; }
   `],
 })
 export class ReservationConfirmComponent implements OnInit {

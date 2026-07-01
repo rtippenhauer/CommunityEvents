@@ -13,6 +13,7 @@ import { EventEntity, EventStatus } from '../../database/entities/event.entity';
 import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
 import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
+import { InviteEntity, InviteFlavor, InviteType } from '../../database/entities/invite.entity';
 import { RestaurantEntity } from '../../database/entities/restaurant.entity';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -46,6 +47,8 @@ export class EventsService {
     private readonly guestLinkRepo: Repository<EventGuestLinkEntity>,
     @InjectRepository(RestaurantEntity)
     private readonly restaurantRepo: Repository<RestaurantEntity>,
+    @InjectRepository(InviteEntity)
+    private readonly inviteRepo: Repository<InviteEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly emailService: EmailService,
@@ -1087,14 +1090,28 @@ export class EventsService {
     return users.map((u) => ({ id: u.id, fullName: u.fullName }));
   }
 
-  async getReservationInfo(token: string): Promise<{ eventTitle: string; restaurantName: string; eventDate: string; eventTime: string }> {
+  async getReservationInfo(token: string): Promise<{ eventTitle: string; restaurantName: string; eventDate: string; eventTime: string; inviteToken?: string }> {
     const event = await this.eventRepo.findOne({ where: { reservationConfirmToken: token } });
     if (!event) throw new NotFoundException('Confirmation link not found');
+    let inviteToken: string | undefined;
+    if (event.reservationContactEmail) {
+      const invite = await this.inviteRepo.findOne({
+        where: {
+          type: InviteType.EVENT_INVITE,
+          eventId: event.id,
+          boundToEmail: event.reservationContactEmail.toLowerCase(),
+          isRevoked: false,
+          redeemedAt: IsNull(),
+        },
+      });
+      if (invite) inviteToken = invite.token;
+    }
     return {
       eventTitle: event.title,
       restaurantName: event.restaurantName,
       eventDate: event.eventDate,
       eventTime: event.eventTime,
+      ...(inviteToken ? { inviteToken } : {}),
     };
   }
 
@@ -1163,7 +1180,40 @@ export class EventsService {
         event.reservationConfirmToken = token;
         const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
         const confirmUrl = `${appUrl}/events/reservation-confirm/${token}`;
-        await this.sendReservationRequestEmail(event, dto.contactName ?? dto.contactEmail, dto.contactEmail, confirmUrl);
+
+        // Create (or reuse) an EVENT_INVITE so the outside contact can sign up
+        const normalizedEmail = dto.contactEmail.toLowerCase();
+        const existingInvite = await this.inviteRepo.findOne({
+          where: {
+            type: InviteType.EVENT_INVITE,
+            eventId: event.id,
+            boundToEmail: normalizedEmail,
+            isRevoked: false,
+            redeemedAt: IsNull(),
+          },
+        });
+        let inviteToken: string;
+        if (existingInvite) {
+          inviteToken = existingInvite.token;
+        } else {
+          const inviteExpiry = new Date();
+          inviteExpiry.setDate(inviteExpiry.getDate() + 30);
+          const newInvite = await this.inviteRepo.save(this.inviteRepo.create({
+            token: randomBytes(50).toString('hex'),
+            type: InviteType.EVENT_INVITE,
+            eventId: event.id,
+            boundToEmail: normalizedEmail,
+            boundToName: dto.contactName ?? null,
+            inviteFlavor: InviteFlavor.MEMBER,
+            maxUses: 1,
+            expiresAt: inviteExpiry,
+            createdBy: callerUser?.id ?? 1,
+            cityId: event.cityId,
+          }));
+          inviteToken = newInvite.token;
+        }
+        const signupUrl = `${appUrl}/login?token=${inviteToken}`;
+        await this.sendReservationRequestEmail(event, dto.contactName ?? dto.contactEmail, dto.contactEmail, confirmUrl, signupUrl);
       } else {
         event.reservationConfirmToken = null;
       }
@@ -1178,6 +1228,7 @@ export class EventsService {
     recipientName: string,
     recipientEmail: string,
     confirmUrl: string | null,
+    signupUrl?: string,
   ): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const [ey, em, ed] = event.eventDate.split('-').map(Number);
@@ -1251,6 +1302,12 @@ export class EventsService {
     <p style="margin:0;font-size:0.8rem;color:#aaa;text-align:center">
       If you have questions, reply to this email or contact the event organizer.
     </p>
+    ${signupUrl ? `
+    <div style="margin-top:24px;padding:16px;background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;text-align:center">
+      <p style="margin:0 0 10px;font-size:0.88rem;color:#555;font-weight:600">New to DinnerBears?</p>
+      <p style="margin:0 0 12px;font-size:0.85rem;color:#777">Create your account and you'll be auto-RSVPed to this dinner.</p>
+      <a href="${signupUrl}" style="background:#1E4D8C;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.9rem;display:inline-block">Create My Account</a>
+    </div>` : ''}
   </td></tr>
   <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
     <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
@@ -1269,18 +1326,32 @@ export class EventsService {
     });
   }
 
-  async confirmReservation(token: string): Promise<{ eventTitle: string; restaurantName: string; eventDate: string; eventTime: string }> {
+  async confirmReservation(token: string): Promise<{ eventTitle: string; restaurantName: string; eventDate: string; eventTime: string; inviteToken?: string }> {
     const event = await this.eventRepo.findOne({ where: { reservationConfirmToken: token } });
     if (!event) throw new NotFoundException('Confirmation link not found or already used');
     event.reservationConfirmed = true;
     event.reservationConfirmedBy = event.reservationContactName ?? 'Outside Contact';
     event.reservationConfirmedAt = new Date();
     await this.eventRepo.save(event);
+    let inviteToken: string | undefined;
+    if (event.reservationContactEmail) {
+      const invite = await this.inviteRepo.findOne({
+        where: {
+          type: InviteType.EVENT_INVITE,
+          eventId: event.id,
+          boundToEmail: event.reservationContactEmail.toLowerCase(),
+          isRevoked: false,
+          redeemedAt: IsNull(),
+        },
+      });
+      if (invite) inviteToken = invite.token;
+    }
     return {
       eventTitle: event.title,
       restaurantName: event.restaurantName,
       eventDate: event.eventDate,
       eventTime: event.eventTime,
+      ...(inviteToken ? { inviteToken } : {}),
     };
   }
 

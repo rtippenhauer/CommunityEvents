@@ -8,8 +8,26 @@ export class PushNotificationService {
   private readonly http = inject(HttpClient);
   private readonly swPush = inject(SwPush);
 
+  private get isIos(): boolean {
+    return typeof navigator !== 'undefined' &&
+      /iphone|ipad|ipod/i.test(navigator.userAgent);
+  }
+
+  /** True when running as an iOS home-screen PWA (standalone mode). */
+  get isIosStandalone(): boolean {
+    return this.isIos && (navigator as any).standalone === true;
+  }
+
+  /** True on iOS Safari (not yet added to home screen). */
+  get isIosNonStandalone(): boolean {
+    return this.isIos && !(navigator as any).standalone;
+  }
+
   get isSupported(): boolean {
-    return this.swPush.isEnabled && !!environment.vapidPublicKey;
+    if (!environment.vapidPublicKey) return false;
+    // On iOS, Web Push only works in standalone (home-screen) mode, iOS 16.4+
+    if (this.isIos) return this.isIosStandalone && this.swPush.isEnabled;
+    return this.swPush.isEnabled;
   }
 
   readonly subscription$ = this.swPush.subscription;

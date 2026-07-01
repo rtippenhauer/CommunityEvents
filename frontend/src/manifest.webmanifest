@@ -1,0 +1,19 @@
+{
+  "name": "DinnerBears",
+  "short_name": "DinnerBears",
+  "description": "Community dining — group dinners across Cincinnati and Dayton",
+  "theme_color": "#1E4D8C",
+  "background_color": "#FDFAF5",
+  "display": "standalone",
+  "scope": "/",
+  "start_url": "/",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/DinnerBearsIcon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

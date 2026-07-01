@@ -18,6 +18,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
 import { InviteFlavor, InviteType } from '../../database/entities/invite.entity';
+import { EventEntity } from '../../database/entities/event.entity';
+import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 
 export interface SessionContext {
   userAgent?: string;
@@ -50,6 +52,10 @@ export class AuthService {
     private readonly sessionRepo: Repository<LoginSessionEntity>,
     @InjectRepository(FacebookDeletionRequestEntity)
     private readonly fbDeletionRepo: Repository<FacebookDeletionRequestEntity>,
+    @InjectRepository(EventEntity)
+    private readonly eventRepo: Repository<EventEntity>,
+    @InjectRepository(EventRsvpEntity)
+    private readonly rsvpRepo: Repository<EventRsvpEntity>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly invitesService: InvitesService,
@@ -175,6 +181,13 @@ export class AuthService {
 
     if (invite) {
       await this.invitesService.redeem(invite, user);
+      if (invite.type === InviteType.EVENT_INVITE && invite.eventId) {
+        const exists = await this.rsvpRepo.findOne({ where: { userId: user.id, eventId: invite.eventId } });
+        if (!exists) {
+          await this.rsvpRepo.save(this.rsvpRepo.create({ userId: user.id, eventId: invite.eventId, status: RsvpStatus.GOING }));
+        }
+        await this.backfillReservationIfMatch(user, invite.eventId);
+      }
     }
 
     await this.auditService.log({
@@ -281,7 +294,16 @@ export class AuthService {
       }),
     );
 
-    if (invite) await this.invitesService.redeem(invite, user);
+    if (invite) {
+      await this.invitesService.redeem(invite, user);
+      if (invite.type === InviteType.EVENT_INVITE && invite.eventId) {
+        const exists = await this.rsvpRepo.findOne({ where: { userId: user.id, eventId: invite.eventId } });
+        if (!exists) {
+          await this.rsvpRepo.save(this.rsvpRepo.create({ userId: user.id, eventId: invite.eventId, status: RsvpStatus.GOING }));
+        }
+        await this.backfillReservationIfMatch(user, invite.eventId);
+      }
+    }
 
     await this.auditService.log({
       userId: user.id,
@@ -597,9 +619,31 @@ export class AuthService {
 
     const saved = await this.userRepo.save(user);
     await this.invitesService.redeem(invite, saved);
+    if (invite?.type === InviteType.EVENT_INVITE && invite.eventId) {
+      const exists = await this.rsvpRepo.findOne({ where: { userId: saved.id, eventId: invite.eventId } });
+      if (!exists) {
+        await this.rsvpRepo.save(this.rsvpRepo.create({ userId: saved.id, eventId: invite.eventId, status: RsvpStatus.GOING }));
+      }
+      await this.backfillReservationIfMatch(saved, invite.eventId);
+    }
     await this.sendVerificationEmail(saved, verificationToken);
 
     return saved;
+  }
+
+  // If the new user's email matches an event's outside-contact reservation, promote them
+  // to the actual assignee so they get credit for making the reservation.
+  private async backfillReservationIfMatch(user: UserEntity, eventId: number): Promise<void> {
+    if (!user.email) return;
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event?.reservationContactEmail) return;
+    if (event.reservationContactEmail.toLowerCase() !== user.email.toLowerCase()) return;
+    await this.eventRepo.update(eventId, {
+      reservationAssigneeId: user.id,
+      reservationContactName: null,
+      reservationContactEmail: null,
+      reservationConfirmToken: null,
+    });
   }
 
   async loginWithPassword(

@@ -89,6 +89,7 @@ export interface ReservationConfirmInfo {
   restaurantName: string;
   eventDate: string;
   eventTime: string;
+  inviteToken?: string;
 }
 
 export interface GuestLinkInfo {

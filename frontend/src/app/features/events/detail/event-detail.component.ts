@@ -952,25 +952,66 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
               </mat-card-header>
               <mat-card-content>
                 @if (eventAchievement()) {
-                  <div class="ach-exists">
-                    @if (eventAchievement()!.imagePath) {
-                      <img [src]="eventAchievement()!.imagePath!" class="ach-admin-img" alt="Achievement" />
-                    }
-                    <div class="ach-exists-info">
-                      <div class="ach-exists-name">{{ eventAchievement()!.name }}</div>
-                      <div class="ach-exists-desc">{{ eventAchievement()!.description }}</div>
-                      @if (eventAchievement()!.title) {
-                        <div class="ach-exists-title">Title: "{{ eventAchievement()!.title }}"</div>
-                      }
-                      <div class="ach-exists-pts">+{{ eventAchievement()!.points }} pts</div>
+                  @if (achEditMode()) {
+                    <div class="ach-form">
+                      <mat-form-field appearance="outline" class="ach-field">
+                        <mat-label>Achievement Name</mat-label>
+                        <input matInput [value]="achFormName()" (input)="achFormName.set($any($event.target).value)" />
+                      </mat-form-field>
+                      <mat-form-field appearance="outline" class="ach-field">
+                        <mat-label>Description</mat-label>
+                        <input matInput [value]="achFormDesc()" (input)="achFormDesc.set($any($event.target).value)" />
+                      </mat-form-field>
+                      <mat-form-field appearance="outline" class="ach-field ach-field-sm">
+                        <mat-label>Title (optional)</mat-label>
+                        <input matInput [value]="achFormTitle()" (input)="achFormTitle.set($any($event.target).value)" />
+                      </mat-form-field>
+                      <mat-form-field appearance="outline" class="ach-field ach-field-xs">
+                        <mat-label>Points</mat-label>
+                        <input matInput type="number" min="0" max="99"
+                          [value]="achFormPoints()"
+                          (input)="achFormPoints.set(+$any($event.target).value)" />
+                      </mat-form-field>
+                      <label class="ach-secret-toggle">
+                        <input type="checkbox" [checked]="achFormSecret()" (change)="achFormSecret.set($any($event.target).checked)" />
+                        Hidden achievement (secret — not visible until earned)
+                      </label>
+                      <div class="ach-form-actions">
+                        <button mat-raised-button color="primary"
+                          [disabled]="achSaving() || !achFormName() || !achFormDesc()"
+                          (click)="saveEventAchievement()">
+                          <mat-icon>save</mat-icon>
+                          {{ achSaving() ? 'Saving…' : 'Save Changes' }}
+                        </button>
+                        <button mat-button (click)="achEditMode.set(false)">Cancel</button>
+                      </div>
                     </div>
-                    <label class="ach-upload-btn" [class.uploading]="achImageUploading()">
-                      <mat-icon>photo_camera</mat-icon>
-                      {{ achImageUploading() ? 'Uploading…' : 'Change Image' }}
-                      <input type="file" accept="image/*" style="display:none"
-                        (change)="uploadAchievementImage($event)" [disabled]="achImageUploading()" />
-                    </label>
-                  </div>
+                  } @else {
+                    <div class="ach-exists">
+                      @if (eventAchievement()!.imagePath) {
+                        <img [src]="eventAchievement()!.imagePath!" class="ach-admin-img" alt="Achievement" />
+                      }
+                      <div class="ach-exists-info">
+                        <div class="ach-exists-name">{{ eventAchievement()!.name }}</div>
+                        <div class="ach-exists-desc">{{ eventAchievement()!.description }}</div>
+                        @if (eventAchievement()!.title) {
+                          <div class="ach-exists-title">Title: "{{ eventAchievement()!.title }}"</div>
+                        }
+                        <div class="ach-exists-pts">+{{ eventAchievement()!.points }} pts</div>
+                      </div>
+                      <div class="ach-exists-actions">
+                        <button mat-icon-button (click)="startEditAchievement()" matTooltip="Edit achievement">
+                          <mat-icon>edit</mat-icon>
+                        </button>
+                        <label class="ach-upload-btn" [class.uploading]="achImageUploading()">
+                          <mat-icon>photo_camera</mat-icon>
+                          {{ achImageUploading() ? 'Uploading…' : 'Change Image' }}
+                          <input type="file" accept="image/*" style="display:none"
+                            (change)="uploadAchievementImage($event)" [disabled]="achImageUploading()" />
+                        </label>
+                      </div>
+                    </div>
+                  }
                 } @else if (showAchievementForm()) {
                   <div class="ach-form">
                     <mat-form-field appearance="outline" class="ach-field">
@@ -1837,11 +1878,17 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
       &.uploading { opacity: 0.6; cursor: wait; }
       mat-icon { font-size: 1rem; width: 1rem; height: 1rem; }
     }
+    .ach-exists-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
     .ach-form { display: flex; flex-direction: column; gap: 8px; }
     .ach-field { width: 100%; }
     .ach-field-sm { max-width: 260px; }
     .ach-field-xs { max-width: 120px; }
-    .ach-form-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+    .ach-form-actions { display: flex; align-items: center; gap: 12px; }
+    .ach-secret-toggle {
+      display: flex; align-items: center; gap: 8px; cursor: pointer;
+      font-size: 0.85rem; color: #555;
+      input[type=checkbox] { width: 16px; height: 16px; }
+    }
     .ach-empty { color: #999; font-size: 0.9rem; margin: 0 0 12px; }
 
     // ── Attendance Panel ──────────────────────────────────────────────────────
@@ -2008,9 +2055,12 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly achFormDesc = signal('');
   readonly achFormTitle = signal('');
   readonly achFormPoints = signal(1);
+  readonly achFormSecret = signal(false);
   readonly achCreating = signal(false);
+  readonly achSaving = signal(false);
   readonly achImageUploading = signal(false);
   readonly showAchievementForm = signal(false);
+  readonly achEditMode = signal(false);
 
   // Clock signal — ticks every minute so isPastEvent / isPastCutoff recompute reactively
   private readonly nowSignal = signal(new Date());
@@ -2833,6 +2883,47 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
       error: () => {
         this.achCreating.set(false);
         this.snackBar.open('Failed to create achievement', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  startEditAchievement(): void {
+    const a = this.eventAchievement();
+    if (!a) return;
+    this.achFormName.set(a.name);
+    this.achFormDesc.set(a.description);
+    this.achFormTitle.set(a.title ?? '');
+    this.achFormPoints.set(a.points);
+    this.achEditMode.set(true);
+  }
+
+  saveEventAchievement(): void {
+    const a = this.eventAchievement();
+    if (!a) return;
+    this.achSaving.set(true);
+    this.communityService.adminUpdateAchievement(a.id, {
+      name: this.achFormName(),
+      description: this.achFormDesc(),
+      icon: 'emoji_events',
+      title: this.achFormTitle() || null,
+      points: this.achFormPoints(),
+      isSecret: this.achFormSecret(),
+    }).subscribe({
+      next: () => {
+        this.eventAchievement.set({
+          ...a,
+          name: this.achFormName(),
+          description: this.achFormDesc(),
+          title: this.achFormTitle() || null,
+          points: this.achFormPoints(),
+        });
+        this.achEditMode.set(false);
+        this.achSaving.set(false);
+        this.snackBar.open('Achievement updated', 'OK', { duration: 2000 });
+      },
+      error: () => {
+        this.achSaving.set(false);
+        this.snackBar.open('Failed to update achievement', 'OK', { duration: 3000 });
       },
     });
   }
