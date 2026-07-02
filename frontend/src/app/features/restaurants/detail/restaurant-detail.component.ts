@@ -833,6 +833,8 @@ export class RestaurantDetailComponent implements OnInit {
   openEdit(): void {
     const ref = this.dialog.open(RestaurantFormDialogComponent, {
       data: { restaurant: this.restaurant() },
+      width: '560px',
+      maxWidth: '95vw',
     });
     ref.afterClosed().subscribe((updated: Restaurant | undefined) => {
       if (updated) {

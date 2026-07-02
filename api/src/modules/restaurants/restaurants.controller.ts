@@ -103,6 +103,14 @@ export class RestaurantsController {
     return this.restaurantsService.importFacebookEvents(file.buffer, id);
   }
 
+  @Get('place-search')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  placeSearch(@Query('q') q: string) {
+    if (!q?.trim()) return [];
+    return this.enrichmentService.placeSearch(q.trim());
+  }
+
   @Get()
   findAll(@Query('cityId') cityId?: string, @Query('search') search?: string) {
     return this.restaurantsService.findAll({

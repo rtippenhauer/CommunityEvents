@@ -68,6 +68,9 @@ export class EventGuestLinkEntity {
   @Column({ name: 'cancelled_at', type: 'datetime', nullable: true })
   cancelledAt: Date | null;
 
+  @Column({ type: 'tinyint', nullable: true, default: null })
+  attended: boolean | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

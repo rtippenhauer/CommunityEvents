@@ -150,4 +150,8 @@ export class CommunityService {
     fd.append('image', file);
     return this.http.post<{ imagePath: string }>(`/api/v1/admin/achievements/${achievementId}/image`, fd);
   }
+
+  adminBackfillFounders(): Observable<{ granted: number }> {
+    return this.http.post<{ granted: number }>('/api/v1/admin/achievements/backfill-founders', {});
+  }
 }

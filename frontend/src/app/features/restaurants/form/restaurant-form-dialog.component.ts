@@ -1,15 +1,18 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { Restaurant, RestaurantsService } from '../../../core/services/restaurants.service';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { Restaurant, RestaurantsService, PlaceSearchResult } from '../../../core/services/restaurants.service';
 import { AuthService } from '../../../core/services/auth.service';
 
 export interface RestaurantFormDialogData {
@@ -30,121 +33,256 @@ interface City {
     MatButtonModule,
     MatDividerModule,
     MatFormFieldModule,
+    MatIconModule,
     MatInputModule,
     MatSelectModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    MatTooltipModule,
   ],
   template: `
-    <h2 mat-dialog-title>{{ data.restaurant ? 'Edit' : 'Add' }} Restaurant</h2>
+    <h2 mat-dialog-title>
+      @if (savedRestaurant()) { Restaurant Added }
+      @else { {{ data.restaurant ? 'Edit' : 'Add' }} Restaurant }
+    </h2>
 
     <mat-dialog-content>
-      <form [formGroup]="form" class="restaurant-form">
-        <mat-form-field appearance="outline">
-          <mat-label>Name</mat-label>
-          <input matInput formControlName="name" />
-          <mat-error>Name is required</mat-error>
-        </mat-form-field>
 
-        <mat-form-field appearance="outline">
-          <mat-label>Address</mat-label>
-          <input matInput formControlName="address" />
-          <mat-hint>Full street address — used for geocoding</mat-hint>
-          <mat-error>Address is required</mat-error>
-        </mat-form-field>
-
-        <mat-form-field appearance="outline">
-          <mat-label>City</mat-label>
-          <mat-select formControlName="cityId">
-            @for (city of cities; track city.id) {
-              <mat-option [value]="city.id">{{ city.name }}</mat-option>
+      @if (savedRestaurant(); as r) {
+        <!-- ── Read-only saved view ── -->
+        <div class="saved-view">
+          @if (r.photos?.length) {
+            <img class="saved-photo" [src]="r.photos[0].filePath" [alt]="r.name" />
+          }
+          <div class="saved-name">{{ r.name }}</div>
+          <div class="saved-address">
+            <mat-icon>location_on</mat-icon> {{ r.address }}
+          </div>
+          @if (r.description) {
+            <p class="saved-desc">{{ r.description }}</p>
+          }
+          <div class="saved-meta-row">
+            @if (r.phone) {
+              <span class="saved-meta"><mat-icon>phone</mat-icon> {{ r.phone }}</span>
             }
-          </mat-select>
-          <mat-error>City is required</mat-error>
-        </mat-form-field>
+            @if (r.websiteUrl) {
+              <a class="saved-meta saved-link" [href]="r.websiteUrl" target="_blank" rel="noopener">
+                <mat-icon>language</mat-icon> Website
+              </a>
+            }
+          </div>
+          @if (!r.description && !r.phone && !r.websiteUrl) {
+            <p class="saved-no-enrich">Enrichment found no additional data — you can add details manually from the restaurant page.</p>
+          }
+        </div>
 
-        <mat-form-field appearance="outline">
-          <mat-label>Phone</mat-label>
-          <input matInput formControlName="phone" />
-        </mat-form-field>
+      } @else if (enriching()) {
+        <!-- ── Enriching spinner ── -->
+        <div class="enriching-state">
+          <mat-spinner diameter="36" />
+          <p>Saving & enriching with Google Places…</p>
+        </div>
 
-        <mat-form-field appearance="outline">
-          <mat-label>Website URL</mat-label>
-          <input matInput formControlName="websiteUrl" placeholder="https://..." />
-        </mat-form-field>
-
-        <mat-form-field appearance="outline">
-          <mat-label>Description</mat-label>
-          <textarea matInput formControlName="description" rows="4"></textarea>
-        </mat-form-field>
-
-        @if (isAdminOrMod()) {
-          <mat-divider style="margin: 8px 0" />
-          <div class="mod-section-label">Moderator Info</div>
+      } @else {
+        <!-- ── Edit form ── -->
+        <form [formGroup]="form" class="restaurant-form">
+          <div class="name-field-wrap">
+            <mat-form-field appearance="outline" class="name-field">
+              <mat-label>Name</mat-label>
+              <input matInput formControlName="name"
+                class="name-input"
+                (keydown.enter)="$event.preventDefault(); searchPlaces()" />
+              <button mat-icon-button matSuffix type="button"
+                matTooltip="Look up on Google Places"
+                [disabled]="searching()"
+                (click)="searchPlaces()">
+                @if (searching()) { <mat-spinner diameter="18" /> }
+                @else { <mat-icon>search</mat-icon> }
+              </button>
+              <mat-error>Name is required</mat-error>
+            </mat-form-field>
+            @if (placeResults().length) {
+              <div class="place-results">
+                @for (r of placeResults(); track r.placeId) {
+                  <button type="button" class="place-result-row" (click)="pickPlace(r)">
+                    <span class="place-result-name">{{ r.name }}</span>
+                    <span class="place-result-addr">{{ r.address }}</span>
+                  </button>
+                }
+                <button type="button" class="place-results-clear" (click)="placeResults.set([])">
+                  <mat-icon>close</mat-icon> Clear results
+                </button>
+              </div>
+            }
+          </div>
 
           <mat-form-field appearance="outline">
-            <mat-label>Moderator Notes</mat-label>
-            <textarea matInput formControlName="moderatorNotes" rows="3"
-              placeholder="Private notes about this venue (visible to mods/admins only)"></textarea>
+            <mat-label>Address</mat-label>
+            <input matInput formControlName="address" />
+            <mat-hint>Full street address — used for geocoding</mat-hint>
+            <mat-error>Address is required</mat-error>
           </mat-form-field>
 
           <mat-form-field appearance="outline">
-            <mat-label>Contact Name</mat-label>
-            <input matInput formControlName="contactName" />
+            <mat-label>City</mat-label>
+            <mat-select formControlName="cityId">
+              @for (city of cities; track city.id) {
+                <mat-option [value]="city.id">{{ city.name }}</mat-option>
+              }
+            </mat-select>
+            <mat-error>City is required</mat-error>
           </mat-form-field>
 
           <mat-form-field appearance="outline">
-            <mat-label>Contact Phone</mat-label>
-            <input matInput formControlName="contactPhone" />
+            <mat-label>Phone</mat-label>
+            <input matInput formControlName="phone" />
           </mat-form-field>
 
           <mat-form-field appearance="outline">
-            <mat-label>Contact Email</mat-label>
-            <input matInput formControlName="contactEmail" type="email" />
+            <mat-label>Website URL</mat-label>
+            <input matInput formControlName="websiteUrl" placeholder="https://..." />
           </mat-form-field>
-        }
-      </form>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Description</mat-label>
+            <textarea matInput formControlName="description" rows="4"></textarea>
+          </mat-form-field>
+
+          @if (isAdminOrMod()) {
+            <mat-divider style="margin: 8px 0" />
+            <div class="mod-section-label">Moderator Info</div>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Moderator Notes</mat-label>
+              <textarea matInput formControlName="moderatorNotes" rows="3"
+                placeholder="Private notes about this venue (visible to mods/admins only)"></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Contact Name</mat-label>
+              <input matInput formControlName="contactName" />
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Contact Phone</mat-label>
+              <input matInput formControlName="contactPhone" />
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Contact Email</mat-label>
+              <input matInput formControlName="contactEmail" type="email" />
+            </mat-form-field>
+          }
+        </form>
+      }
+
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close>Cancel</button>
-      <button
-        mat-raised-button
-        color="primary"
-        (click)="save()"
-        [disabled]="form.invalid || saving"
-      >
-        @if (saving) {
-          <mat-spinner diameter="20" />
-        } @else {
-          Save
-        }
-      </button>
+      @if (savedRestaurant(); as r) {
+        <button mat-button (click)="close()">Close</button>
+        <button mat-raised-button color="primary" (click)="viewRestaurant(r.id)">
+          <mat-icon>open_in_new</mat-icon> View Restaurant
+        </button>
+      } @else if (enriching()) {
+        <!-- no actions while enriching -->
+      } @else {
+        <button mat-button mat-dialog-close>Cancel</button>
+        <button mat-raised-button color="primary" (click)="save()" [disabled]="form.invalid || saving">
+          @if (saving) { <mat-spinner diameter="20" /> }
+          @else { Save }
+        </button>
+      }
     </mat-dialog-actions>
   `,
-  styles: [
-    `
-      .restaurant-form {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        min-width: min(90vw, 520px);
-        padding-top: 8px;
-      }
-      .mod-section-label {
-        font-size: 0.72rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        color: #9c27b0;
-        margin: 4px 0 4px;
-      }
-    `,
-  ],
+  styles: [`
+    .restaurant-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      padding-top: 8px;
+    }
+    mat-form-field { width: 100%; }
+    .name-field { width: 100%; }
+    .name-input { font-size: 1.05rem; }
+    .mod-section-label {
+      font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.07em; color: #9c27b0; margin: 4px 0;
+    }
+
+    /* ── Place search results ── */
+    .name-field-wrap { position: relative; }
+    .place-results {
+      position: absolute;
+      top: calc(100% - 20px);
+      left: 0; right: 0;
+      background: #fff;
+      border: 1px solid #e0d8cc;
+      border-radius: 0 0 8px 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      z-index: 10;
+      overflow: hidden;
+    }
+    .place-result-row {
+      display: flex; flex-direction: column; align-items: flex-start;
+      width: 100%; padding: 8px 14px;
+      border: none; border-bottom: 1px solid #f0ebe3;
+      background: transparent; cursor: pointer; text-align: left;
+      &:hover { background: #faf7f2; }
+    }
+    .place-result-name { font-size: 0.9rem; font-weight: 600; color: var(--db-brown-dark); }
+    .place-result-addr { font-size: 0.78rem; color: #888; margin-top: 1px; }
+    .place-results-clear {
+      display: flex; align-items: center; gap: 4px;
+      width: 100%; padding: 6px 14px;
+      border: none; background: #f5f5f5;
+      font-size: 0.78rem; color: #999; cursor: pointer;
+      mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; }
+      &:hover { color: #666; }
+    }
+
+    /* ── Enriching spinner ── */
+    .enriching-state {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 16px; padding: 40px 20px;
+      width: 100%;
+      p { color: #888; font-size: 0.9rem; margin: 0; }
+    }
+
+    /* ── Saved read-only view ── */
+    .saved-view {
+      width: 100%;
+      display: flex; flex-direction: column; gap: 10px;
+      padding-top: 4px;
+    }
+    .saved-photo {
+      width: 100%; height: 200px; object-fit: cover;
+      border-radius: 8px; margin-bottom: 4px;
+    }
+    .saved-name {
+      font-size: 1.4rem; font-weight: 700; color: var(--db-brown-dark);
+    }
+    .saved-address {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.9rem; color: #666;
+      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; color: #999; flex-shrink: 0; }
+    }
+    .saved-desc { font-size: 0.9rem; color: #444; line-height: 1.6; margin: 0; }
+    .saved-meta-row { display: flex; gap: 20px; flex-wrap: wrap; }
+    .saved-meta {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 0.88rem; color: #555;
+      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; }
+    }
+    .saved-link { color: var(--db-primary); text-decoration: none; &:hover { text-decoration: underline; } }
+    .saved-no-enrich { font-size: 0.82rem; color: #aaa; font-style: italic; margin: 0; }
+  `],
 })
 export class RestaurantFormDialogComponent implements OnInit {
   readonly data = inject<RestaurantFormDialogData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<RestaurantFormDialogComponent>);
+  private readonly router = inject(Router);
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly http = inject(HttpClient);
   private readonly restaurantsService = inject(RestaurantsService);
@@ -153,6 +291,11 @@ export class RestaurantFormDialogComponent implements OnInit {
 
   cities: City[] = [];
   saving = false;
+  readonly searching = signal(false);
+  readonly enriching = signal(false);
+  readonly placeResults = signal<PlaceSearchResult[]>([]);
+  readonly savedRestaurant = signal<Restaurant | null>(null);
+  private placeSelected = false;
 
   readonly form = this.fb.group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
@@ -193,6 +336,30 @@ export class RestaurantFormDialogComponent implements OnInit {
     }
   }
 
+  searchPlaces(): void {
+    const q = this.form.getRawValue().name.trim();
+    if (!q) return;
+    this.searching.set(true);
+    this.placeResults.set([]);
+    this.restaurantsService.placeSearch(q).subscribe({
+      next: (results) => {
+        this.searching.set(false);
+        this.placeResults.set(results);
+        if (!results.length) this.snackBar.open('No results found', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.searching.set(false);
+        this.snackBar.open('Place search failed', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  pickPlace(r: PlaceSearchResult): void {
+    this.form.patchValue({ name: r.name, address: r.address });
+    this.placeResults.set([]);
+    this.placeSelected = true;
+  }
+
   save(): void {
     if (this.form.invalid) return;
     this.saving = true;
@@ -218,14 +385,39 @@ export class RestaurantFormDialogComponent implements OnInit {
       : this.restaurantsService.create(payload);
 
     req$.subscribe({
-      next: (restaurant) => this.dialogRef.close(restaurant),
+      next: (restaurant) => {
+        this.saving = false;
+        if (this.placeSelected && !this.data.restaurant) {
+          // Auto-enrich then show read-only view
+          this.enriching.set(true);
+          this.restaurantsService.enrich(restaurant.id).subscribe({
+            next: (result) => {
+              this.enriching.set(false);
+              this.savedRestaurant.set(result.restaurant);
+            },
+            error: () => {
+              this.enriching.set(false);
+              this.savedRestaurant.set(restaurant);
+            },
+          });
+        } else {
+          this.dialogRef.close(restaurant);
+        }
+      },
       error: (err: HttpErrorResponse) => {
         this.saving = false;
         const msg = err?.error?.message ?? 'Save failed';
-        this.snackBar.open(typeof msg === 'string' ? msg : JSON.stringify(msg), 'OK', {
-          duration: 5000,
-        });
+        this.snackBar.open(typeof msg === 'string' ? msg : JSON.stringify(msg), 'OK', { duration: 5000 });
       },
     });
+  }
+
+  viewRestaurant(id: number): void {
+    void this.router.navigate(['/restaurants', id]);
+    this.dialogRef.close(this.savedRestaurant());
+  }
+
+  close(): void {
+    this.dialogRef.close(this.savedRestaurant());
   }
 }

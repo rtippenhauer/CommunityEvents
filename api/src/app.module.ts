@@ -52,6 +52,13 @@ import { CommunityModule } from './modules/community/community.module';
         migrationsRun: true,
         retryAttempts: 3,
         retryDelay: 3000,
+        // Keep the connection pool alive so MySQL's wait_timeout doesn't
+        // silently close idle connections between requests.
+        extra: {
+          connectionLimit: 10,
+          enableKeepAlive: true,
+          keepAliveInitialDelay: 10000,
+        },
       }),
       inject: [ConfigService],
     }),

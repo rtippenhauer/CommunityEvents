@@ -272,7 +272,7 @@ export class RestaurantsListComponent implements OnInit {
   }
 
   openCreate(): void {
-    const ref = this.dialog.open(RestaurantFormDialogComponent, { data: {} });
+    const ref = this.dialog.open(RestaurantFormDialogComponent, { data: {}, width: '560px', maxWidth: '95vw' });
     ref.afterClosed().subscribe((r: Restaurant | undefined) => {
       if (r) this.load();
     });

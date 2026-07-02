@@ -24,11 +24,15 @@ export interface Comment {
 }
 
 export interface AttendanceEntry {
-  userId: number;
+  type: 'member' | 'guest';
+  userId?: number;
+  guestLinkId?: number;
   memberName: string;
+  recipientEmail?: string | null;
   attended: boolean | null;
   isWalkin: boolean;
   fromOtherCity: boolean;
+  linkUsed: boolean;
 }
 
 export interface MemberSearchResult {
@@ -70,6 +74,14 @@ export class EventCommentsService {
 
   addWalkin(eventId: number, userId: number): Observable<AttendanceEntry> {
     return this.http.post<AttendanceEntry>(`/api/v1/events/${eventId}/attendance/walkin`, { userId });
+  }
+
+  markGuestAttendance(guestLinkId: number, attended: boolean): Observable<void> {
+    return this.http.patch<void>(`/api/v1/events/guest-links/${guestLinkId}/attendance`, { attended });
+  }
+
+  resendGuestInvite(guestLinkId: number): Observable<void> {
+    return this.http.post<void>(`/api/v1/events/guest-links/${guestLinkId}/resend`, {});
   }
 
   searchMembers(eventId: number, query: string): Observable<MemberSearchResult[]> {

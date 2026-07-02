@@ -362,4 +362,19 @@ export class AchievementsService {
     if (dto.progressTarget !== undefined) update.progressTarget = dto.progressTarget ?? null;
     await this.achievementRepo.update(id, update);
   }
+
+  async adminBackfillFounders(): Promise<{ granted: number }> {
+    const result = await this.dataSource.query(`
+      INSERT INTO member_achievements (member_id, achievement_id, earned_at)
+      SELECT u.id, a.id, NOW()
+      FROM users u
+      JOIN achievements a ON a.\`key\` = 'founding_bear'
+      WHERE u.status = 'active'
+        AND NOT EXISTS (
+          SELECT 1 FROM member_achievements ma
+          WHERE ma.member_id = u.id AND ma.achievement_id = a.id
+        )
+    `);
+    return { granted: (result as { affectedRows: number }).affectedRows };
+  }
 }

@@ -1036,23 +1036,56 @@ export class EventsService {
     });
   }
 
-  async getAttendance(eventId: number): Promise<{ userId: number; memberName: string; attended: boolean | null; isWalkin: boolean; fromOtherCity: boolean }[]> {
+  async getAttendance(eventId: number): Promise<{
+    type: 'member' | 'guest';
+    userId?: number;
+    guestLinkId?: number;
+    memberName: string;
+    recipientEmail?: string | null;
+    attended: boolean | null;
+    isWalkin: boolean;
+    fromOtherCity: boolean;
+    linkUsed: boolean;
+  }[]> {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
 
-    const rsvps = await this.rsvpRepo.find({
-      where: { eventId, status: RsvpStatus.GOING },
-      relations: ['user'],
-      order: { createdAt: 'ASC' },
-    });
+    const [rsvps, guestLinks] = await Promise.all([
+      this.rsvpRepo.find({
+        where: { eventId, status: RsvpStatus.GOING },
+        relations: ['user'],
+        order: { createdAt: 'ASC' },
+      }),
+      this.guestLinkRepo.find({
+        where: { eventId },
+        order: { createdAt: 'ASC' },
+      }),
+    ]);
 
-    return rsvps.map((r) => ({
+    const members = rsvps.map((r) => ({
+      type: 'member' as const,
       userId: r.userId,
       memberName: r.user?.fullName ?? 'Member',
       attended: r.attended ?? null,
       isWalkin: r.isWalkin,
       fromOtherCity: r.fromOtherCity,
+      linkUsed: false,
     }));
+
+    const guests = guestLinks
+      .filter((l) => !l.cancelledAt)
+      .map((l) => ({
+        type: 'guest' as const,
+        guestLinkId: l.id,
+        memberName: l.recipientName ?? l.recipientEmail ?? 'Guest',
+        recipientEmail: l.recipientEmail,
+        attended: l.attended ?? null,
+        isWalkin: false,
+        fromOtherCity: false,
+        linkUsed: !!l.usedAt,
+      }));
+
+    return [...members, ...guests];
   }
 
   async markAttendance(eventId: number, attendances: { userId: number; attended: boolean; fromOtherCity?: boolean }[]): Promise<void> {
@@ -1086,6 +1119,60 @@ export class EventsService {
         }
       }
     }
+  }
+
+  async markGuestAttendance(guestLinkId: number, attended: boolean): Promise<void> {
+    const link = await this.guestLinkRepo.findOne({ where: { id: guestLinkId } });
+    if (!link) throw new NotFoundException('Guest link not found');
+    await this.guestLinkRepo.update(guestLinkId, { attended });
+  }
+
+  async resendGuestInvite(guestLinkId: number): Promise<void> {
+    const link = await this.guestLinkRepo.findOne({
+      where: { id: guestLinkId },
+      relations: ['event', 'event.restaurant', 'event.restaurant.photos', 'memberRsvp', 'memberRsvp.user'],
+    });
+    if (!link) throw new NotFoundException('Guest link not found');
+    if (!link.recipientEmail) throw new BadRequestException('This guest link has no email address to resend to');
+
+    const event = link.event;
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const manageUrl = `${appUrl}/rsvp-guest?token=${link.token}`;
+    const icsUrl = `${appUrl}/api/v1/events/guest-ics/${link.token}`;
+
+    const [ey, em, ed] = event.eventDate.split('-').map(Number);
+    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const eventDateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    });
+    const eventTimeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
+    const inviterName = link.memberRsvp?.user?.fullName ?? null;
+
+    await this.emailService.queue({
+      toEmail: link.recipientEmail,
+      toName: link.recipientName ?? undefined,
+      subject: `You're invited to a DinnerBears dinner!`,
+      htmlBody: this.buildGuestEmail({
+        appUrl,
+        recipientName: link.recipientName ?? link.recipientEmail,
+        inviterName,
+        subject: `You're invited to a DinnerBears dinner!`,
+        eventTitle: event.title,
+        eventDateDisplay,
+        eventTimeDisplay,
+        restaurantName: event.restaurantName ?? '',
+        restaurantAddress: event.restaurantAddress ?? '',
+        restaurantLat: event.restaurantLat ?? null,
+        restaurantLng: event.restaurantLng ?? null,
+        photoUrl,
+        description: event.description ?? null,
+        additionalInfo: event.additionalInfo ?? null,
+        manageUrl,
+        googleCalUrl: this.buildGoogleCalendarUrl(event),
+        icsUrl,
+      }),
+    });
   }
 
   async searchMembersForWalkin(eventId: number, query: string): Promise<{ id: number; fullName: string }[]> {
@@ -1519,7 +1606,7 @@ export class EventsService {
     });
   }
 
-  async addWalkin(eventId: number, userId: number): Promise<{ userId: number; memberName: string; attended: boolean | null; isWalkin: boolean }> {
+  async addWalkin(eventId: number, userId: number): Promise<{ type: 'member'; userId: number; memberName: string; attended: boolean | null; isWalkin: boolean; fromOtherCity: boolean; linkUsed: boolean }> {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
 
@@ -1546,6 +1633,6 @@ export class EventsService {
     await this.pointsService.awardAttendance(userId, eventId).catch(() => {});
     await this.achievementsService.checkEventAchievement(userId, eventId).catch(() => {});
 
-    return { userId, memberName: user.fullName, attended: true, isWalkin: true };
+    return { type: 'member' as const, userId, memberName: user.fullName, attended: true, isWalkin: true, fromOtherCity: false, linkUsed: false };
   }
 }

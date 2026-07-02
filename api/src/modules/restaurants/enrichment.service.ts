@@ -55,6 +55,24 @@ interface PlaceSearchResponse {
   status: string;
 }
 
+interface TextSearchResponse {
+  results: Array<{
+    place_id: string;
+    name: string;
+    formatted_address: string;
+    geometry: { location: { lat: number; lng: number } };
+  }>;
+  status: string;
+}
+
+export interface PlaceSearchResult {
+  placeId: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
 interface AddressComponent {
   long_name: string;
   types: string[];
@@ -164,13 +182,29 @@ export class EnrichmentService {
         if (placeData.website) {
           result.website = placeData.website;
         }
-        if (restaurant.photos.length === 0 && placeData.photos?.length) {
-          result.photoAdded = await this.downloadPlacePhoto(
+        if (placeData.photos?.length) {
+          const needed = Math.max(0, 5 - restaurant.photos.length);
+          if (needed > 0) {
+            const refs = placeData.photos.slice(0, needed).map((p) => p.photo_reference);
+            const added = await this.downloadPlacePhotos(restaurant.id, refs, uploaderId, restaurant.photos.length);
+            result.photoAdded = added > 0;
+          }
+        }
+        // Street View fallback for addresses with no Places photos (e.g. private homes)
+        if (!result.photoAdded && restaurant.photos.length === 0) {
+          result.photoAdded = await this.downloadStreetViewPhoto(
             restaurant.id,
-            placeData.photos[0].photo_reference,
+            restaurant.address,
             uploaderId,
           );
         }
+      } else if (restaurant.photos.length === 0) {
+        // No Places match at all — try Street View directly
+        result.photoAdded = await this.downloadStreetViewPhoto(
+          restaurant.id,
+          restaurant.address,
+          uploaderId,
+        );
       }
     }
 
@@ -269,12 +303,14 @@ export class EnrichmentService {
         else if (restaurant.websiteUrl) diagnosis.willSkip.push(`website (already set)`);
         else diagnosis.willSkip.push('website (not in Places result)');
 
-        if ((restaurant.photos?.length ?? 0) === 0 && photoCount > 0) {
-          diagnosis.willUpdate.push('photo (will download first Places photo)');
-        } else if ((restaurant.photos?.length ?? 0) > 0) {
-          diagnosis.willSkip.push(`photo (restaurant already has ${restaurant.photos.length} photo(s))`);
+        const currentPhotos = restaurant.photos?.length ?? 0;
+        const canAdd = Math.max(0, 5 - currentPhotos);
+        if (canAdd > 0 && photoCount > 0) {
+          diagnosis.willUpdate.push(`photos (will download up to ${Math.min(canAdd, photoCount)} of ${photoCount} Places photo(s))`);
+        } else if (currentPhotos >= 5) {
+          diagnosis.willSkip.push(`photo (already has ${currentPhotos} photo(s) — at limit)`);
         } else {
-          diagnosis.willSkip.push('photo (no photos in Places result)');
+          diagnosis.willSkip.push('photo (no photos in Places result — will try Street View)');
         }
       }
     }
@@ -367,22 +403,69 @@ export class EnrichmentService {
     }
   }
 
-  private async downloadPlacePhoto(
+  private async downloadPlacePhotos(
     restaurantId: number,
-    photoReference: string,
+    photoReferences: string[],
+    uploaderId: number,
+    startSortOrder: number,
+  ): Promise<number> {
+    let added = 0;
+    for (let i = 0; i < photoReferences.length; i++) {
+      try {
+        const url =
+          `https://maps.googleapis.com/maps/api/place/photo` +
+          `?maxwidth=1200&photo_reference=${photoReferences[i]}&key=${this.googleKey}`;
+
+        const res = await fetch(url);
+        if (!res.ok) continue;
+
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`;
+
+        mkdirSync(this.uploadPath, { recursive: true });
+        await writeFile(join(this.uploadPath, filename), buffer);
+
+        const photo = this.photoRepo.create({
+          restaurantId,
+          filePath: `/api/uploads/${filename}`,
+          fileName: filename,
+          mimeType: 'image/jpeg',
+          sortOrder: startSortOrder + i,
+          uploadedBy: uploaderId,
+        });
+        await this.photoRepo.save(photo);
+        added++;
+      } catch (err) {
+        this.logger.error(`[Enrich] Places photo ${i + 1} download failed`, err);
+      }
+    }
+    return added;
+  }
+
+  private async downloadStreetViewPhoto(
+    restaurantId: number,
+    address: string,
     uploaderId: number,
   ): Promise<boolean> {
+    if (!this.googleKey) return false;
     try {
+      const location = encodeURIComponent(address);
       const url =
-        `https://maps.googleapis.com/maps/api/place/photo` +
-        `?maxwidth=1200&photo_reference=${photoReference}&key=${this.googleKey}`;
+        `https://maps.googleapis.com/maps/api/streetview` +
+        `?size=1200x800&location=${location}&key=${this.googleKey}`;
 
       const res = await fetch(url);
       if (!res.ok) return false;
 
-      const buffer = Buffer.from(await res.arrayBuffer());
-      const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`;
+      // Street View returns a grey placeholder image (200 OK) when no imagery is available.
+      // The x-response-code header distinguishes a real result from an empty one.
+      const responseCode = res.headers.get('x-response-code') ?? res.headers.get('X-Google-Response-Code');
+      if (responseCode && responseCode !== 'OK') return false;
 
+      const buffer = Buffer.from(await res.arrayBuffer());
+      if (buffer.length < 5000) return false; // placeholder images are tiny
+
+      const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`;
       mkdirSync(this.uploadPath, { recursive: true });
       await writeFile(join(this.uploadPath, filename), buffer);
 
@@ -397,8 +480,30 @@ export class EnrichmentService {
       await this.photoRepo.save(photo);
       return true;
     } catch (err) {
-      this.logger.error('[Enrich] Photo download failed', err);
+      this.logger.error('[Enrich] Street View photo failed', err);
       return false;
+    }
+  }
+
+  async placeSearch(q: string): Promise<PlaceSearchResult[]> {
+    if (!this.googleKey) return [];
+    try {
+      const url =
+        `https://maps.googleapis.com/maps/api/place/textsearch/json` +
+        `?query=${encodeURIComponent(q)}&key=${this.googleKey}`;
+      const res = await fetch(url);
+      const data = (await res.json()) as TextSearchResponse;
+      if (data.status !== 'OK') return [];
+      return data.results.slice(0, 6).map((r) => ({
+        placeId: r.place_id,
+        name: r.name,
+        address: r.formatted_address,
+        lat: r.geometry.location.lat,
+        lng: r.geometry.location.lng,
+      }));
+    } catch (err) {
+      this.logger.error('[PlaceSearch] Google Places error', err);
+      return [];
     }
   }
 

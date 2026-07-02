@@ -73,6 +73,12 @@ interface AddForm extends EditForm {
       <div class="page-header">
         <a mat-button routerLink="/admin/users"><mat-icon>arrow_back</mat-icon> Admin</a>
         <h1 class="page-title">Achievement Management</h1>
+        <button mat-stroked-button (click)="backfillFounders()" [disabled]="backfilling()"
+          matTooltip="Grant Founding Bear to all active members who don't already have it">
+          @if (backfilling()) { <mat-spinner diameter="16" /> }
+          @else { <mat-icon>group_add</mat-icon> }
+          Re-run Founder Check
+        </button>
         <a mat-stroked-button href="https://fonts.google.com/icons" target="_blank" rel="noopener" class="icons-link">
           <mat-icon>open_in_new</mat-icon> Material Icons
         </a>
@@ -298,6 +304,7 @@ export class AdminAchievementsComponent implements OnInit {
 
   readonly loading = signal(true);
   readonly saving = signal(false);
+  readonly backfilling = signal(false);
   readonly achievements = signal<AdminAchievement[]>([]);
   readonly editingId = signal<number | null>(null);
   readonly addingToType = signal<string | null>(null);
@@ -443,6 +450,23 @@ export class AdminAchievementsComponent implements OnInit {
       : 1;
     const prefix = type === 'new_restaurant_coordinator' ? 'scout' : type;
     return `${prefix}_${nextTarget}`;
+  }
+
+  backfillFounders(): void {
+    this.backfilling.set(true);
+    this.communityService.adminBackfillFounders().subscribe({
+      next: ({ granted }) => {
+        this.backfilling.set(false);
+        const msg = granted > 0
+          ? `Founding Bear granted to ${granted} new member(s)`
+          : 'All active members already have Founding Bear';
+        this.snackBar.open(msg, 'OK', { duration: 4000 });
+      },
+      error: () => {
+        this.backfilling.set(false);
+        this.snackBar.open('Backfill failed', 'OK', { duration: 3000 });
+      },
+    });
   }
 
   private blankEdit(): EditForm {

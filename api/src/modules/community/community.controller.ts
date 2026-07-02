@@ -221,6 +221,13 @@ export class CommunityController {
     return { ok: true };
   }
 
+  @Post('admin/achievements/backfill-founders')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async backfillFounders() {
+    return this.achievementsService.adminBackfillFounders();
+  }
+
   @Post('admin/achievements/:id/image')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)

@@ -223,6 +223,23 @@ export class EventsController {
     return this.eventsService.markAttendance(id, dto.attendances);
   }
 
+  @Patch('guest-links/:guestLinkId/attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.MODERATOR, UserRole.ADMIN)
+  markGuestAttendance(
+    @Param('guestLinkId', ParseIntPipe) guestLinkId: number,
+    @Body() body: { attended: boolean },
+  ) {
+    return this.eventsService.markGuestAttendance(guestLinkId, body.attended);
+  }
+
+  @Post('guest-links/:guestLinkId/resend')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.MODERATOR, UserRole.ADMIN)
+  resendGuestInvite(@Param('guestLinkId', ParseIntPipe) guestLinkId: number) {
+    return this.eventsService.resendGuestInvite(guestLinkId);
+  }
+
   @Post(':id/attendance/walkin')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.MODERATOR, UserRole.ADMIN)

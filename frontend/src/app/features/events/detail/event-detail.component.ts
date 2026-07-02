@@ -762,26 +762,48 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                   <p class="no-attendance">No Going RSVPs for this event.</p>
                 } @else {
                   <div class="attendance-list">
-                    @for (entry of attendanceList(); track entry.userId) {
-                      <div class="attendance-row">
+                    @for (entry of attendanceList(); track (entry.type === 'member' ? 'm' + entry.userId : 'g' + entry.guestLinkId)) {
+                      <div class="attendance-row" [class.att-guest-row]="entry.type === 'guest'">
                         <span class="att-name">
                           {{ entry.memberName }}
                           @if (entry.isWalkin) {
                             <span class="walkin-badge">Walk-in</span>
                           }
+                          @if (entry.type === 'guest') {
+                            <span class="guest-badge">Guest</span>
+                            @if (!entry.linkUsed) {
+                              <span class="guest-pending-badge">Link not used</span>
+                            }
+                          }
                         </span>
-                        <label class="att-out-of-town">
-                          <input type="checkbox" [checked]="entry.fromOtherCity" (change)="setFromOtherCity(entry.userId, $any($event.target).checked)" />
-                          Out of town
-                        </label>
-                        <div class="att-btns">
-                          <button mat-stroked-button [class.att-yes]="entry.attended === true" (click)="setAttended(entry.userId, true)">
-                            <mat-icon>check</mat-icon> Attended
-                          </button>
-                          <button mat-stroked-button [class.att-no]="entry.attended === false" (click)="setAttended(entry.userId, false)">
-                            <mat-icon>close</mat-icon> No-show
-                          </button>
-                        </div>
+                        @if (entry.type === 'member') {
+                          <label class="att-out-of-town">
+                            <input type="checkbox" [checked]="entry.fromOtherCity" (change)="setFromOtherCity(entry.userId!, $any($event.target).checked)" />
+                            Out of town
+                          </label>
+                          <div class="att-btns">
+                            <button mat-stroked-button [class.att-yes]="entry.attended === true" (click)="setAttended(entry.userId!, true)">
+                              <mat-icon>check</mat-icon> Attended
+                            </button>
+                            <button mat-stroked-button [class.att-no]="entry.attended === false" (click)="setAttended(entry.userId!, false)">
+                              <mat-icon>close</mat-icon> No-show
+                            </button>
+                          </div>
+                        } @else {
+                          <div class="att-btns">
+                            <button mat-stroked-button [class.att-yes]="entry.attended === true" (click)="setGuestAttended(entry.guestLinkId!, true)">
+                              <mat-icon>check</mat-icon> Attended
+                            </button>
+                            <button mat-stroked-button [class.att-no]="entry.attended === false" (click)="setGuestAttended(entry.guestLinkId!, false)">
+                              <mat-icon>close</mat-icon> No-show
+                            </button>
+                            @if (entry.recipientEmail) {
+                              <button mat-icon-button matTooltip="Resend invite email" (click)="resendGuestInvite(entry.guestLinkId!)">
+                                <mat-icon>send</mat-icon>
+                              </button>
+                            }
+                          </div>
+                        }
                       </div>
                     }
                   </div>
@@ -1912,17 +1934,19 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
     .att-yes { border-color: #2e7d32 !important; color: #2e7d32 !important; background: #e8f5e9 !important; }
     .att-no { border-color: #c62828 !important; color: #c62828 !important; background: #ffebee !important; }
     .att-save-row { display: flex; justify-content: flex-end; gap: 8px; }
-    .walkin-badge {
+    .walkin-badge, .guest-badge, .guest-pending-badge {
       display: inline-block;
       font-size: 0.68rem;
       font-weight: 600;
       padding: 2px 7px;
       border-radius: 10px;
-      background: #fff3e0;
-      color: var(--db-amber-dark, #b8832e);
       margin-left: 6px;
       vertical-align: middle;
     }
+    .walkin-badge { background: #fff3e0; color: var(--db-amber-dark, #b8832e); }
+    .guest-badge { background: #e3f2fd; color: #1565c0; }
+    .guest-pending-badge { background: #fce4ec; color: #c62828; }
+    .att-guest-row { background: #fafcff; border-radius: 4px; padding-left: 6px; }
     .walkin-form { margin-top: 12px; border-top: 1px dashed #e8e0d6; padding-top: 12px; }
     .walkin-search-field { width: 100%; }
     .walkin-results {
@@ -2858,11 +2882,29 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     this.attendanceList.update((list) => list.map((e) => e.userId === userId ? { ...e, fromOtherCity } : e));
   }
 
+  setGuestAttended(guestLinkId: number, attended: boolean): void {
+    this.commentsService.markGuestAttendance(guestLinkId, attended).subscribe({
+      next: () => {
+        this.attendanceList.update((list) =>
+          list.map((e) => e.guestLinkId === guestLinkId ? { ...e, attended } : e),
+        );
+      },
+      error: () => this.snackBar.open('Failed to update guest attendance', 'OK', { duration: 3000 }),
+    });
+  }
+
+  resendGuestInvite(guestLinkId: number): void {
+    this.commentsService.resendGuestInvite(guestLinkId).subscribe({
+      next: () => this.snackBar.open('Invite resent!', 'OK', { duration: 2500 }),
+      error: () => this.snackBar.open('Failed to resend invite', 'OK', { duration: 3000 }),
+    });
+  }
+
   saveAttendance(): void {
     const id = this.event()!.id;
     const attendances = this.attendanceList()
-      .filter((e) => e.attended !== null)
-      .map((e) => ({ userId: e.userId, attended: e.attended as boolean, fromOtherCity: e.fromOtherCity }));
+      .filter((e) => e.type === 'member' && e.attended !== null)
+      .map((e) => ({ userId: e.userId!, attended: e.attended as boolean, fromOtherCity: e.fromOtherCity }));
     this.savingAttendance.set(true);
     this.commentsService.markAttendance(id, attendances).subscribe({
       next: () => { this.savingAttendance.set(false); this.snackBar.open('Attendance saved', 'OK', { duration: 2000 }); },

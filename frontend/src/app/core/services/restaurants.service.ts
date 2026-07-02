@@ -111,6 +111,14 @@ export interface RatingQueueItem {
   alreadyRated: boolean;
 }
 
+export interface PlaceSearchResult {
+  placeId: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
 export interface ImportDetail {
   name: string;
   status: 'inserted' | 'skipped' | 'error';
@@ -186,6 +194,10 @@ export class RestaurantsService {
 
   submitRating(restaurantId: number, payload: CreateRatingPayload): Observable<unknown> {
     return this.http.post(`${this.base}/${restaurantId}/ratings`, payload);
+  }
+
+  placeSearch(q: string): Observable<PlaceSearchResult[]> {
+    return this.http.get<PlaceSearchResult[]>(`${this.base}/place-search`, { params: { q } });
   }
 
   getRatingQueue(): Observable<RatingQueueItem[]> {
