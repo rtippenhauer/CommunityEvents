@@ -195,6 +195,7 @@ export class EnrichmentService {
           result.photoAdded = await this.downloadStreetViewPhoto(
             restaurant.id,
             restaurant.address,
+            restaurant.city?.name,
             uploaderId,
           );
         }
@@ -203,6 +204,7 @@ export class EnrichmentService {
         result.photoAdded = await this.downloadStreetViewPhoto(
           restaurant.id,
           restaurant.address,
+          restaurant.city?.name,
           uploaderId,
         );
       }
@@ -445,11 +447,27 @@ export class EnrichmentService {
   private async downloadStreetViewPhoto(
     restaurantId: number,
     address: string,
+    cityName: string | undefined,
     uploaderId: number,
   ): Promise<boolean> {
     if (!this.googleKey) return false;
     try {
-      const location = encodeURIComponent(address);
+      const alreadyHasCity = cityName && address.toLowerCase().includes(cityName.toLowerCase());
+      const query = cityName && !alreadyHasCity ? `${address}, ${cityName}` : address;
+      const location = encodeURIComponent(query);
+
+      // Check metadata first — Street View always returns 200 with a grey placeholder
+      // when no imagery exists, so we must confirm coverage before downloading.
+      const metaUrl =
+        `https://maps.googleapis.com/maps/api/streetview/metadata` +
+        `?location=${location}&key=${this.googleKey}`;
+      const metaRes = await fetch(metaUrl);
+      const meta = (await metaRes.json()) as { status: string };
+      if (meta.status !== 'OK') {
+        this.logger.log(`[Enrich] No Street View coverage for: ${query} (status: ${meta.status})`);
+        return false;
+      }
+
       const url =
         `https://maps.googleapis.com/maps/api/streetview` +
         `?size=1200x800&location=${location}&key=${this.googleKey}`;
@@ -457,13 +475,7 @@ export class EnrichmentService {
       const res = await fetch(url);
       if (!res.ok) return false;
 
-      // Street View returns a grey placeholder image (200 OK) when no imagery is available.
-      // The x-response-code header distinguishes a real result from an empty one.
-      const responseCode = res.headers.get('x-response-code') ?? res.headers.get('X-Google-Response-Code');
-      if (responseCode && responseCode !== 'OK') return false;
-
       const buffer = Buffer.from(await res.arrayBuffer());
-      if (buffer.length < 5000) return false; // placeholder images are tiny
 
       const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`;
       mkdirSync(this.uploadPath, { recursive: true });
