@@ -185,7 +185,8 @@ export class EnrichmentService {
         if (placeData.photos?.length) {
           const needed = Math.max(0, 5 - restaurant.photos.length);
           if (needed > 0) {
-            const refs = placeData.photos.slice(0, needed).map((p) => p.photo_reference);
+            const start = restaurant.photos.length; // skip photos already downloaded in prior enrichments
+            const refs = placeData.photos.slice(start, start + needed).map((p) => p.photo_reference);
             const added = await this.downloadPlacePhotos(restaurant.id, refs, uploaderId, restaurant.photos.length);
             result.photoAdded = added > 0;
           }

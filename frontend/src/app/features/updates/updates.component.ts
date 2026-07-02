@@ -121,9 +121,13 @@ import { AuthService } from '../../core/services/auth.service';
       font-size: 0.95rem;
       line-height: 1.7;
       color: #333;
-      ::ng-deep p { margin: 0 0 10px; &:last-child { margin-bottom: 0; } }
+      white-space: normal;
+      overflow-wrap: normal;
+      word-break: normal;
+      ::ng-deep p { margin: 0 0 10px; white-space: normal; &:last-child { margin-bottom: 0; } }
       ::ng-deep ul, ::ng-deep ol { padding-left: 20px; margin: 0 0 10px; }
       ::ng-deep h2, ::ng-deep h3 { margin: 16px 0 8px; color: var(--db-brown-dark); }
+      ::ng-deep .ql-editor { white-space: normal; word-wrap: normal; }
     }
 
     .community-credit {
