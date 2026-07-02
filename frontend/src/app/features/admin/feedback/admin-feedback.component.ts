@@ -15,6 +15,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { QuillModule } from 'ngx-quill';
+import { normalizeNbsp } from '../../../shared/utils/normalize-nbsp';
 import {
   FeedbackService,
   FeedbackItem,
@@ -347,7 +348,7 @@ export class AdminFeedbackComponent implements OnInit {
   statusColor(s: string): string { return STATUS_COLORS[s as FeedbackStatus] ?? '#555'; }
   categoryLabel(c: string): string { return CATEGORY_LABELS[c as keyof typeof CATEGORY_LABELS] ?? c; }
   categoryColor(c: string): string { return CATEGORY_COLORS[c as keyof typeof CATEGORY_COLORS] ?? '#555'; }
-  safeHtml(html: string): SafeHtml { return this.sanitizer.bypassSecurityTrustHtml(html); }
+  safeHtml(html: string): SafeHtml { return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(html)); }
   linkedRelease(item: FeedbackItem): FeedbackLinkedRelease | null { return getLinkedRelease(item); }
 
   ngOnInit(): void {
@@ -420,7 +421,7 @@ export class AdminFeedbackComponent implements OnInit {
     if (!raw) return;
     this.savingNote.set(true);
     this.feedbackService.addAdminNote(feedbackId, {
-      content: this.newNoteContent,
+      content: normalizeNbsp(this.newNoteContent),
       isAdminOnly: this.newNoteAdminOnly,
     }).subscribe({
       next: (note) => {

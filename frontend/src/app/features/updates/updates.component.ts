@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ReleasesService, Release } from '../../core/services/releases.service';
 import { AuthService } from '../../core/services/auth.service';
+import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
 
 @Component({
   selector: 'app-updates',
@@ -122,12 +123,12 @@ import { AuthService } from '../../core/services/auth.service';
       line-height: 1.7;
       color: #333;
       overflow-wrap: break-word;
-      word-break: break-word;
+      word-break: normal;
+      hyphens: none;
       min-width: 0;
       ::ng-deep p { margin: 0 0 10px; &:last-child { margin-bottom: 0; } }
       ::ng-deep ul, ::ng-deep ol { padding-left: 20px; margin: 0 0 10px; }
       ::ng-deep h2, ::ng-deep h3 { margin: 16px 0 8px; color: var(--db-brown-dark); }
-      ::ng-deep .ql-editor { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
     }
 
     .community-credit {
@@ -162,7 +163,7 @@ export class UpdatesComponent implements OnInit {
   }
 
   safeHtml(content: string): SafeHtml {
-    return this.sanitizer.bypassSecurityTrustHtml(content);
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(content));
   }
 
   creditedItems(release: Release): Release['linkedFeedback'] {

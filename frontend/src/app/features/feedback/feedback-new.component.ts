@@ -11,6 +11,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatIconModule } from '@angular/material/icon';
 import { QuillModule } from 'ngx-quill';
 import { FeedbackService, FeedbackCategory } from '../../core/services/feedback.service';
+import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
 
 @Component({
   selector: 'app-feedback-new',
@@ -219,7 +220,7 @@ export class FeedbackNewComponent {
     this.feedbackService.submit({
       category: val.category,
       title: val.title.trim(),
-      body: val.body,
+      body: normalizeNbsp(val.body),
       isPrivate: val.isPrivate,
     }).subscribe({
       next: () => { this.saving.set(false); this.submitted.set(true); },

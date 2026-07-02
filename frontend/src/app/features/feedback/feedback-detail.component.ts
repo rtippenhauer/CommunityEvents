@@ -22,6 +22,7 @@ import {
   CATEGORY_COLORS,
 } from '../../core/services/feedback.service';
 import { ReleasesService, Release } from '../../core/services/releases.service';
+import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
 import { switchMap } from 'rxjs';
 
 @Component({
@@ -306,11 +307,11 @@ export class FeedbackDetailComponent implements OnInit {
   }
 
   safeBody(): SafeHtml {
-    return this.sanitizer.bypassSecurityTrustHtml(this.item()?.body ?? '');
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(this.item()?.body ?? ''));
   }
 
   safeHtml(content: string): SafeHtml {
-    return this.sanitizer.bypassSecurityTrustHtml(content);
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(content));
   }
 
   toggleUpvote(): void {
@@ -338,7 +339,7 @@ export class FeedbackDetailComponent implements OnInit {
     if (!current) return;
 
     this.feedbackService.addNote(current.id, {
-      content: val.content,
+      content: normalizeNbsp(val.content),
       isAdminOnly: val.isAdminOnly,
     }).subscribe({
       next: (note) => {

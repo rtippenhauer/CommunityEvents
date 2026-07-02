@@ -15,6 +15,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { QuillModule } from 'ngx-quill';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ReleasesService, Release } from '../../../core/services/releases.service';
+import { normalizeNbsp } from '../../../shared/utils/normalize-nbsp';
 import {
   FeedbackService,
   FeedbackItem,
@@ -372,7 +373,7 @@ export class AdminReleasesComponent implements OnInit {
     const payload = {
       version: val.version.trim(),
       title: val.title.trim(),
-      body: val.body,
+      body: normalizeNbsp(val.body),
       feedbackIds: [...this.linkedIds()],
     };
 
