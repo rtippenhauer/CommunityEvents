@@ -518,7 +518,7 @@ See `memory/project_phase14_nav_invites.md` — completed as v1.0.1.
 
 ---
 
-## Post-Launch Backlog (unscheduled)
+## Post-Launch Backlog 🔄 In Progress
 
 Deferred cleanup items and design spikes. No ordering implied — promote to a
 numbered phase when ready to schedule.
@@ -542,7 +542,7 @@ just the RSVP pill on mobile, or rethink the avatar cluster display.
 
 ---
 
-## Phase 15 — Community Points, Achievements & Leaderboard 🔄 In Progress
+## Phase 15 — Community Points, Achievements & Leaderboard ✅ Complete
 
 Gamification layer that rewards engagement with Bear Points, unlockable
 Achievements, earnable Titles, and a community Leaderboard.

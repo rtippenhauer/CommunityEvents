@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-06-28_
+_Last updated: 2026-07-01_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -46,6 +46,9 @@ No `synchronize: true`. No manual schema changes.
 | `event_comments` | 10 | Threaded comments on events |
 | `event_comment_replies` | 10 | Replies to event comments (one level deep) |
 | `facebook_deletion_requests` | 10.5 | Meta server-to-server deletion callback log |
+| `achievements` | 15 | Achievement definitions (keys, icons, titles, progress rules) |
+| `member_achievements` | 15 | Earned achievements per member |
+| `member_points` | 15 | Bear Points ledger (one row per award event) |
 
 ---
 
@@ -97,6 +100,8 @@ last_failed_login_at            DATETIME NULL                         -- Phase 1
 -- Deletion
 deleted_at                      DATETIME NULL
 hard_delete_at                  DATETIME NULL               -- deleted_at + 30 days
+-- Community (Phase 15)
+selected_title                  VARCHAR(100) NULL           -- active title chosen from earned achievements
 -- Calendar integration (Phase 16)
 calendar_token                  VARCHAR(36) NULL UNIQUE     -- iCal feed token; regenerable from Calendar Settings
 calendar_city_filter            ENUM('all','city') NOT NULL DEFAULT 'all'
@@ -273,6 +278,7 @@ moderator_notes     LONGTEXT NULL
 contact_name        VARCHAR(100) NULL
 contact_phone       VARCHAR(30) NULL
 contact_email       VARCHAR(150) NULL
+enriched_at         DATETIME NULL                   -- Phase 15: last Google Places enrichment run
 created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
@@ -414,6 +420,7 @@ token           VARCHAR(100) NOT NULL UNIQUE
 expires_at      DATETIME NOT NULL               -- event datetime
 used_at         DATETIME NULL
 cancelled_at    DATETIME NULL
+attended        TINYINT(1) NULL DEFAULT NULL    -- Phase 15: mod-marked attendance for guests without accounts
 guest_rsvp_id   INT UNSIGNED NULL REFERENCES event_guest_rsvps(id)
 created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
@@ -764,6 +771,66 @@ requested_at            DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 completed_at            DATETIME NULL
 
 INDEX idx_fb_deletion_user_id (facebook_user_id)
+```
+
+---
+
+## achievements
+
+Phase 15. Defines all available achievements. Managed via admin UI.
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+key             VARCHAR(64) NOT NULL UNIQUE     -- e.g. "founding_bear", "regular"
+name            VARCHAR(120) NOT NULL
+description     VARCHAR(500) NOT NULL
+icon            VARCHAR(80) NOT NULL DEFAULT 'emoji_events'  -- Material icon name
+image_path      VARCHAR(500) NULL               -- optional uploaded image
+progress_type   ENUM('attendance','coordinator','new_restaurant_coordinator',
+                     'invite','rating','founding','event','city_hopper',
+                     'secret_dinner') NULL       -- NULL = one-time/manual grant
+progress_target INT UNSIGNED NULL               -- threshold for progressive achievements
+event_id        INT UNSIGNED NULL               -- for event-specific one-time achievements
+points          TINYINT NOT NULL DEFAULT 0      -- Bear Points awarded on unlock
+title           VARCHAR(100) NULL               -- earnable title text; NULL = no title
+is_secret       TINYINT(1) NOT NULL DEFAULT 0   -- hidden until earned
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+```
+
+---
+
+## member_achievements
+
+Phase 15. Records which achievements each member has earned.
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+member_id       INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+achievement_id  INT UNSIGNED NOT NULL REFERENCES achievements(id) ON DELETE CASCADE
+earned_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+UNIQUE KEY uq_member_achievement (member_id, achievement_id)
+INDEX idx_member (member_id)
+```
+
+---
+
+## member_points
+
+Phase 15. Ledger of all Bear Points awarded. One row per award event for auditability and correction.
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+user_id         INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+point_type      ENUM('attendance','coordinator','coordinator_new_restaurant',
+                     'invite','rating','city_hopper','secret_dinner',
+                     'achievement') NOT NULL
+reference_id    INT UNSIGNED NULL               -- event_id, rating_id, etc. for audit
+points          TINYINT NOT NULL DEFAULT 1
+awarded_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+INDEX idx_user (user_id)
+INDEX idx_type (point_type)
 ```
 
 ---
