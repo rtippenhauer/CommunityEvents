@@ -1,4 +1,4 @@
-import { Component, effect, HostListener, inject, OnDestroy, OnInit, signal, computed } from '@angular/core';
+import { Component, HostListener, inject, OnDestroy, OnInit, signal, computed } from '@angular/core';
 import { forkJoin } from 'rxjs';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe, TitleCasePipe } from '@angular/common';
@@ -21,12 +21,14 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { EventsService, Event, GuestLink, PublicRsvp, Rsvp, RsvpStatus } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CommunityService, EventAchievement } from '../../../core/services/community.service';
-import { InvitesService, EventInviteLink } from '../../../core/services/invites.service';
-import { EventCommentsService, Comment, AttendanceEntry, MemberSearchResult } from '../../../core/services/event-comments.service';
+import { EventCommentsService, Comment, MemberSearchResult } from '../../../core/services/event-comments.service';
 import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 import { ReportButtonComponent } from '../../../shared/components/report-button/report-button.component';
 import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
+import { ShareInvitesDialogComponent } from './share-invites-dialog.component';
+import { AttendanceDialogComponent } from './attendance-dialog.component';
+import { AchievementAdminDialogComponent } from './achievement-admin-dialog.component';
 
 @Component({
   selector: 'app-event-detail',
@@ -82,21 +84,18 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
               </button>
               <mat-menu #adminMenu="matMenu">
                 @if (event()!.status === 'published') {
-                  <button mat-menu-item (click)="showShareInvitesPanel.set(!showShareInvitesPanel())">
-                    <mat-icon>share</mat-icon>
-                    {{ showShareInvitesPanel() ? 'Hide' : 'Show' }} Share &amp; Invite Links
+                  <button mat-menu-item (click)="openShareInvitesDialog()">
+                    <mat-icon>share</mat-icon> Share &amp; Invite Links
                   </button>
                 }
                 @if (isPastEvent() && event()!.status === 'published') {
-                  <button mat-menu-item (click)="showAttendancePanel.set(!showAttendancePanel())">
-                    <mat-icon>how_to_reg</mat-icon>
-                    {{ showAttendancePanel() ? 'Hide' : 'Show' }} Attendance
+                  <button mat-menu-item (click)="openAttendanceDialog()">
+                    <mat-icon>how_to_reg</mat-icon> Attendance
                   </button>
                 }
                 @if (isAdmin()) {
-                  <button mat-menu-item (click)="showAchievementAdminPanel.set(!showAchievementAdminPanel())">
-                    <mat-icon>local_activity</mat-icon>
-                    {{ showAchievementAdminPanel() ? 'Hide' : 'Show' }} Special Dinner Achievement
+                  <button mat-menu-item (click)="openAchievementAdminDialog()">
+                    <mat-icon>local_activity</mat-icon> Special Dinner Achievement
                   </button>
                 }
               </mat-menu>
@@ -512,74 +511,28 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
             </mat-card>
           }
 
-          <!-- Sharing (admin/mod only, published events only) -->
-          @if (event()!.status === 'published' && isAdminOrMod() && showShareInvitesPanel()) {
-            <mat-card class="share-card">
-              <mat-card-content>
-                <div class="share-section">
-                  <h4 class="share-section-title">
-                    <mat-icon>share</mat-icon> Share
-                  </h4>
-                  <div class="share-btn-row">
-                    <button mat-stroked-button class="fb-btn" (click)="shareToFacebook()"
-                      matTooltip="Opens Facebook share dialog — change destination to your DinnerBears group">
-                      <mat-icon>open_in_new</mat-icon> Share on Facebook
-                    </button>
-                    <button mat-stroked-button (click)="copyPostText()"
-                      [matTooltip]="activeNvLink() ? 'Copies post text with Guest Member invite link included' : 'Copies post text'">
-                      <mat-icon>content_copy</mat-icon> Copy Post Text
-                    </button>
-                  </div>
-
-                  @if (!inviteLinksLoading() && (activeNvLink() || activeMemberLink())) {
-                    <mat-divider class="share-divider" />
-                    <div class="share-quick-links">
-                      <div class="share-ql-label">Quick Copy Invite Links</div>
-                      @if (activeNvLink()) {
-                        <div class="share-ql-row">
-                          <span class="link-flavor-badge flavor-nv">Guest Member</span>
-                          <span class="share-ql-url">{{ origin }}/join/{{ activeNvLink()!.token }}</span>
-                          <button mat-icon-button matTooltip="Copy link" (click)="copyInviteLink(activeNvLink()!.token)">
-                            <mat-icon>content_copy</mat-icon>
-                          </button>
-                        </div>
-                      }
-                      @if (activeMemberLink()) {
-                        <div class="share-ql-row">
-                          <span class="link-flavor-badge flavor-member">Full Member</span>
-                          <span class="share-ql-url">{{ origin }}/join/{{ activeMemberLink()!.token }}</span>
-                          <button mat-icon-button matTooltip="Copy link" (click)="copyInviteLink(activeMemberLink()!.token)">
-                            <mat-icon>content_copy</mat-icon>
-                          </button>
-                        </div>
-                      }
-                    </div>
-                  }
-                </div>
-              </mat-card-content>
-            </mat-card>
-          }
-
-          <!-- Reservation Coordinator panel (admin/mod only) -->
-          @if (event()!.status === 'published' && isAdminOrMod()) {
+          <!-- Reservation Coordinator panel (visible to everyone; assign/manage is admin/mod only) -->
+          @if (event()!.status === 'published') {
             <mat-card class="reservation-card">
               <mat-card-content>
                 <div class="reservation-header">
                   <h4 class="reservation-title">
                     <mat-icon>phone</mat-icon> Reservation Coordinator
                   </h4>
-                  <div class="res-header-actions">
-                    @if ((event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
-                      <button mat-stroked-button class="res-reassign-btn" (click)="startReassign()">
-                        <mat-icon>swap_horiz</mat-icon> Reassign
-                      </button>
-                    }
-                    @if (event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) {
-                      <button mat-icon-button matTooltip="Clear assignment" color="warn" (click)="clearReservation()">
-                        <mat-icon>close</mat-icon>
-                      </button>
-                    }
-                  </div>
+                  @if (isAdminOrMod()) {
+                    <div class="res-header-actions">
+                      @if ((event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
+                        <button mat-stroked-button class="res-reassign-btn" (click)="startReassign()">
+                          <mat-icon>swap_horiz</mat-icon> Reassign
+                        </button>
+                      }
+                      @if (event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) {
+                        <button mat-icon-button matTooltip="Clear assignment" color="warn" (click)="clearReservation()">
+                          <mat-icon>close</mat-icon>
+                        </button>
+                      }
+                    </div>
+                  }
                 </div>
 
                 <!-- Current assignment display -->
@@ -590,7 +543,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                       <span class="res-person-name">
                         {{ event()!.reservationAssignee?.fullName ?? event()!.reservationContactName ?? event()!.reservationContactEmail }}
                       </span>
-                      @if (event()!.reservationContactEmail && !event()!.reservationAssigneeId) {
+                      @if (isAdminOrMod() && event()!.reservationContactEmail && !event()!.reservationAssigneeId) {
                         <span class="res-person-email">{{ event()!.reservationContactEmail }}</span>
                       }
                     </div>
@@ -600,43 +553,45 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                     </div>
                   </div>
 
-                  <!-- Mark confirmed / unconfirm -->
-                  @if (!event()!.reservationConfirmed) {
-                    @if (!showConfirmNoteInput()) {
-                      <div class="res-confirm-toggle">
-                        <button mat-stroked-button color="primary" (click)="showConfirmNoteInput.set(true)">
-                          <mat-icon>check</mat-icon> Mark as Confirmed
-                        </button>
-                      </div>
-                    } @else {
-                      <div class="res-note-form">
-                        <mat-form-field appearance="outline" class="res-field">
-                          <mat-label>Note (optional) — e.g. "Spoke with Jane, confirmed for 22 people"</mat-label>
-                          <textarea matInput rows="2" maxlength="500"
-                            [value]="reservationConfirmNote()"
-                            (input)="reservationConfirmNote.set($any($event.target).value)"></textarea>
-                        </mat-form-field>
-                        <div class="res-note-actions">
-                          <button mat-raised-button color="primary" [disabled]="reservationSaving()"
-                            (click)="toggleReservationConfirmed(true)">
-                            @if (reservationSaving()) { <mat-spinner diameter="16" /> } @else { <mat-icon>check</mat-icon> }
-                            Confirm
-                          </button>
-                          <button mat-button (click)="showConfirmNoteInput.set(false); reservationConfirmNote.set('')">
-                            Cancel
+                  @if (isAdminOrMod()) {
+                    <!-- Mark confirmed / unconfirm -->
+                    @if (!event()!.reservationConfirmed) {
+                      @if (!showConfirmNoteInput()) {
+                        <div class="res-confirm-toggle">
+                          <button mat-stroked-button color="primary" (click)="showConfirmNoteInput.set(true)">
+                            <mat-icon>check</mat-icon> Mark as Confirmed
                           </button>
                         </div>
+                      } @else {
+                        <div class="res-note-form">
+                          <mat-form-field appearance="outline" class="res-field">
+                            <mat-label>Note (optional) — e.g. "Spoke with Jane, confirmed for 22 people"</mat-label>
+                            <textarea matInput rows="2" maxlength="500"
+                              [value]="reservationConfirmNote()"
+                              (input)="reservationConfirmNote.set($any($event.target).value)"></textarea>
+                          </mat-form-field>
+                          <div class="res-note-actions">
+                            <button mat-raised-button color="primary" [disabled]="reservationSaving()"
+                              (click)="toggleReservationConfirmed(true)">
+                              @if (reservationSaving()) { <mat-spinner diameter="16" /> } @else { <mat-icon>check</mat-icon> }
+                              Confirm
+                            </button>
+                            <button mat-button (click)="showConfirmNoteInput.set(false); reservationConfirmNote.set('')">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      }
+                    } @else {
+                      <div class="res-confirm-toggle">
+                        <button mat-stroked-button color="warn" (click)="toggleReservationConfirmed(false)">
+                          <mat-icon>undo</mat-icon> Unmark Confirmed
+                        </button>
                       </div>
                     }
-                  } @else {
-                    <div class="res-confirm-toggle">
-                      <button mat-stroked-button color="warn" (click)="toggleReservationConfirmed(false)">
-                        <mat-icon>undo</mat-icon> Unmark Confirmed
-                      </button>
-                    </div>
                   }
 
-                } @else {
+                } @else if (isAdminOrMod()) {
                   <!-- No assignment yet: show Assign button, expand to form on click -->
                   @if (!reservationReassigning() && !showCoordinatorAssignForm()) {
                     <div class="res-no-assignee">
@@ -700,171 +655,13 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
                       Cancel
                     </button>
                   }
-                }
-              </mat-card-content>
-            </mat-card>
-          }
-
-          <!-- Invite Links (admin/mod, published events) -->
-          @if (event()!.status === 'published' && isAdminOrMod() && showShareInvitesPanel()) {
-            <mat-card class="invite-links-card">
-              <mat-card-content>
-                <div class="invite-links-header">
-                  <h4 class="invite-links-title">
-                    <mat-icon>link</mat-icon> Event Invite Links
-                  </h4>
-                  @if (isAdmin()) {
-                    <button mat-stroked-button class="new-link-btn" (click)="showNewLinkForm.set(!showNewLinkForm())">
-                      <mat-icon>add</mat-icon> New Link
-                    </button>
-                  }
-                </div>
-
-                @if (showNewLinkForm()) {
-                  <div class="new-link-form">
-                    <mat-button-toggle-group [value]="newLinkFlavor()" (change)="newLinkFlavor.set($event.value)" class="flavor-toggle">
-                      <mat-button-toggle value="non_validated">Guest Member</mat-button-toggle>
-                      <mat-button-toggle value="member">Full Member</mat-button-toggle>
-                    </mat-button-toggle-group>
-                    <mat-form-field appearance="outline" class="link-field">
-                      <mat-label>Max Uses (blank = unlimited)</mat-label>
-                      <input matInput type="number" [formControl]="newLinkMaxUsesCtrl" min="1" />
-                    </mat-form-field>
-                    <mat-form-field appearance="outline" class="link-field">
-                      <mat-label>Expires in (days)</mat-label>
-                      <input matInput type="number" [formControl]="newLinkExpiryCtrl" min="1" max="90" />
-                    </mat-form-field>
-                    <button mat-raised-button color="primary" (click)="createInviteLink()" [disabled]="creatingLink()">
-                      @if (creatingLink()) { <mat-spinner diameter="16" /> }
-                      Generate Link
-                    </button>
-                  </div>
-                }
-
-                @if (inviteLinksLoading()) {
-                  <div class="links-spinner"><mat-spinner diameter="24" /></div>
-                } @else if (inviteLinks().length === 0) {
-                  <p class="no-links">No invite links yet.</p>
                 } @else {
-                  <div class="invite-links-list">
-                    @for (link of inviteLinks(); track link.id) {
-                      <div class="invite-link-row" [class.link-revoked]="link.isRevoked">
-                        <div class="link-info">
-                          <span class="link-flavor-badge" [class.flavor-member]="link.inviteFlavor === 'member'" [class.flavor-nv]="link.inviteFlavor === 'non_validated'">
-                            {{ link.inviteFlavor === 'member' ? 'Member' : 'Guest Member' }}
-                          </span>
-                          <span class="link-uses">{{ link.useCount }}{{ link.maxUses ? '/' + link.maxUses : '' }} uses</span>
-                          <span class="link-expiry">exp. {{ link.expiresAt | date: 'MMM d' }}</span>
-                          @if (link.isRevoked) {
-                            <span class="link-revoked-badge">Revoked</span>
-                          }
-                        </div>
-                        <div class="link-actions">
-                          @if (!link.isRevoked) {
-                            <button mat-icon-button matTooltip="Copy link" (click)="copyInviteLink(link.token)">
-                              <mat-icon>content_copy</mat-icon>
-                            </button>
-                            @if (isAdmin()) {
-                              <button mat-icon-button matTooltip="Revoke" color="warn" (click)="revokeInviteLink(link.id)">
-                                <mat-icon>block</mat-icon>
-                              </button>
-                            }
-                          }
-                        </div>
-                      </div>
-                    }
-                  </div>
+                  <p class="res-no-assignee-text">No coordinator assigned yet.</p>
                 }
               </mat-card-content>
             </mat-card>
           }
 
-          <!-- Attendance Panel (mod/admin, past events) -->
-          @if (isAdminOrMod() && isPastEvent() && event()?.status === 'published' && showAttendancePanel()) {
-            <mat-card class="attendance-card">
-              <mat-card-content>
-                <h4 class="section-heading"><mat-icon>how_to_reg</mat-icon> Attendance</h4>
-                @if (attendanceLoading()) {
-                  <div class="att-loading"><mat-spinner diameter="24" /></div>
-                } @else if (attendanceList().length === 0) {
-                  <p class="no-attendance">No Going RSVPs for this event.</p>
-                } @else {
-                  <div class="attendance-list">
-                    @for (entry of attendanceList(); track (entry.type === 'member' ? 'm' + entry.userId : 'g' + entry.guestLinkId)) {
-                      <div class="attendance-row" [class.att-guest-row]="entry.type === 'guest'">
-                        <span class="att-name">
-                          {{ entry.memberName }}
-                          @if (entry.isWalkin) {
-                            <span class="walkin-badge">Walk-in</span>
-                          }
-                          @if (entry.type === 'guest') {
-                            <span class="guest-badge">Guest</span>
-                            @if (!entry.linkUsed) {
-                              <span class="guest-pending-badge">Link not used</span>
-                            }
-                          }
-                        </span>
-                        @if (entry.type === 'member') {
-                          <label class="att-out-of-town">
-                            <input type="checkbox" [checked]="entry.fromOtherCity" (change)="setFromOtherCity(entry.userId!, $any($event.target).checked)" />
-                            Out of town
-                          </label>
-                          <div class="att-btns">
-                            <button mat-stroked-button [class.att-yes]="entry.attended === true" (click)="setAttended(entry.userId!, true)">
-                              <mat-icon>check</mat-icon> Attended
-                            </button>
-                            <button mat-stroked-button [class.att-no]="entry.attended === false" (click)="setAttended(entry.userId!, false)">
-                              <mat-icon>close</mat-icon> No-show
-                            </button>
-                          </div>
-                        } @else {
-                          <div class="att-btns">
-                            <button mat-stroked-button [class.att-yes]="entry.attended === true" (click)="setGuestAttended(entry.guestLinkId!, true)">
-                              <mat-icon>check</mat-icon> Attended
-                            </button>
-                            <button mat-stroked-button [class.att-no]="entry.attended === false" (click)="setGuestAttended(entry.guestLinkId!, false)">
-                              <mat-icon>close</mat-icon> No-show
-                            </button>
-                            @if (entry.recipientEmail) {
-                              <button mat-icon-button matTooltip="Resend invite email" (click)="resendGuestInvite(entry.guestLinkId!)">
-                                <mat-icon>send</mat-icon>
-                              </button>
-                            }
-                          </div>
-                        }
-                      </div>
-                    }
-                  </div>
-                  <div class="att-save-row">
-                    <button mat-stroked-button (click)="showWalkinForm.set(!showWalkinForm())">
-                      <mat-icon>person_add</mat-icon> Add Walk-in
-                    </button>
-                    <button mat-raised-button color="primary" (click)="saveAttendance()" [disabled]="savingAttendance()">
-                      @if (savingAttendance()) { <mat-spinner diameter="16" /> } Save Attendance
-                    </button>
-                  </div>
-                  @if (showWalkinForm()) {
-                    <div class="walkin-form">
-                      <mat-form-field appearance="outline" class="walkin-search-field">
-                        <mat-label>Search member by name</mat-label>
-                        <input matInput [value]="walkinSearch()" (input)="onWalkinSearchInput($any($event.target).value)" autocomplete="off" />
-                        <mat-icon matSuffix>search</mat-icon>
-                      </mat-form-field>
-                      @if (walkinResults().length > 0) {
-                        <div class="walkin-results">
-                          @for (m of walkinResults(); track m.id) {
-                            <button mat-button class="walkin-result-row" (click)="selectWalkin(m)" [disabled]="addingWalkin()">
-                              <mat-icon>person</mat-icon> {{ m.fullName }}
-                            </button>
-                          }
-                        </div>
-                      }
-                    </div>
-                  }
-                }
-              </mat-card-content>
-            </mat-card>
-          }
 
           <!-- Discussion -->
           @if (isLoggedIn() && event()!.status === 'published') {
@@ -995,117 +792,6 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
             </div>
           }
 
-          <!-- Admin: special dinner achievement -->
-          @if (isAdmin() && showAchievementAdminPanel()) {
-            <mat-card class="ach-admin-card">
-              <mat-card-header>
-                <mat-card-title>
-                  <mat-icon>local_activity</mat-icon>
-                  Special Dinner Achievement
-                </mat-card-title>
-              </mat-card-header>
-              <mat-card-content>
-                @if (eventAchievement()) {
-                  @if (achEditMode()) {
-                    <div class="ach-form">
-                      <mat-form-field appearance="outline" class="ach-field">
-                        <mat-label>Achievement Name</mat-label>
-                        <input matInput [value]="achFormName()" (input)="achFormName.set($any($event.target).value)" />
-                      </mat-form-field>
-                      <mat-form-field appearance="outline" class="ach-field">
-                        <mat-label>Description</mat-label>
-                        <input matInput [value]="achFormDesc()" (input)="achFormDesc.set($any($event.target).value)" />
-                      </mat-form-field>
-                      <mat-form-field appearance="outline" class="ach-field ach-field-sm">
-                        <mat-label>Title (optional)</mat-label>
-                        <input matInput [value]="achFormTitle()" (input)="achFormTitle.set($any($event.target).value)" />
-                      </mat-form-field>
-                      <mat-form-field appearance="outline" class="ach-field ach-field-xs">
-                        <mat-label>Points</mat-label>
-                        <input matInput type="number" min="0" max="99"
-                          [value]="achFormPoints()"
-                          (input)="achFormPoints.set(+$any($event.target).value)" />
-                      </mat-form-field>
-                      <label class="ach-secret-toggle">
-                        <input type="checkbox" [checked]="achFormSecret()" (change)="achFormSecret.set($any($event.target).checked)" />
-                        Hidden achievement (secret — not visible until earned)
-                      </label>
-                      <div class="ach-form-actions">
-                        <button mat-raised-button color="primary"
-                          [disabled]="achSaving() || !achFormName() || !achFormDesc()"
-                          (click)="saveEventAchievement()">
-                          <mat-icon>save</mat-icon>
-                          {{ achSaving() ? 'Saving…' : 'Save Changes' }}
-                        </button>
-                        <button mat-button (click)="achEditMode.set(false)">Cancel</button>
-                      </div>
-                    </div>
-                  } @else {
-                    <div class="ach-exists">
-                      @if (eventAchievement()!.imagePath) {
-                        <img [src]="eventAchievement()!.imagePath!" class="ach-admin-img" alt="Achievement" />
-                      }
-                      <div class="ach-exists-info">
-                        <div class="ach-exists-name">{{ eventAchievement()!.name }}</div>
-                        <div class="ach-exists-desc">{{ eventAchievement()!.description }}</div>
-                        @if (eventAchievement()!.title) {
-                          <div class="ach-exists-title">Title: "{{ eventAchievement()!.title }}"</div>
-                        }
-                        <div class="ach-exists-pts">+{{ eventAchievement()!.points }} pts</div>
-                      </div>
-                      <div class="ach-exists-actions">
-                        <button mat-icon-button (click)="startEditAchievement()" matTooltip="Edit achievement">
-                          <mat-icon>edit</mat-icon>
-                        </button>
-                        <label class="ach-upload-btn" [class.uploading]="achImageUploading()">
-                          <mat-icon>photo_camera</mat-icon>
-                          {{ achImageUploading() ? 'Uploading…' : 'Change Image' }}
-                          <input type="file" accept="image/*" style="display:none"
-                            (change)="uploadAchievementImage($event)" [disabled]="achImageUploading()" />
-                        </label>
-                      </div>
-                    </div>
-                  }
-                } @else if (showAchievementForm()) {
-                  <div class="ach-form">
-                    <mat-form-field appearance="outline" class="ach-field">
-                      <mat-label>Achievement Name</mat-label>
-                      <input matInput [value]="achFormName()" (input)="achFormName.set($any($event.target).value)" />
-                    </mat-form-field>
-                    <mat-form-field appearance="outline" class="ach-field">
-                      <mat-label>Description (requirement to display)</mat-label>
-                      <input matInput [value]="achFormDesc()" (input)="achFormDesc.set($any($event.target).value)" />
-                    </mat-form-field>
-                    <mat-form-field appearance="outline" class="ach-field ach-field-sm">
-                      <mat-label>Title (optional)</mat-label>
-                      <input matInput [value]="achFormTitle()" (input)="achFormTitle.set($any($event.target).value)"
-                        placeholder="e.g. Founding Bear" />
-                    </mat-form-field>
-                    <mat-form-field appearance="outline" class="ach-field ach-field-xs">
-                      <mat-label>Points</mat-label>
-                      <input matInput type="number" min="0" max="99"
-                        [value]="achFormPoints()"
-                        (input)="achFormPoints.set(+$any($event.target).value)" />
-                    </mat-form-field>
-                    <div class="ach-form-actions">
-                      <button mat-raised-button color="primary"
-                        [disabled]="achCreating() || !achFormName() || !achFormDesc()"
-                        (click)="createEventAchievement()">
-                        <mat-icon>add</mat-icon>
-                        {{ achCreating() ? 'Creating…' : 'Create Achievement' }}
-                      </button>
-                      <button mat-button (click)="showAchievementForm.set(false)">Cancel</button>
-                    </div>
-                  </div>
-                } @else {
-                  <p class="ach-empty">No special achievement for this event.</p>
-                  <button mat-stroked-button (click)="showAchievementForm.set(true)">
-                    <mat-icon>add</mat-icon> Add Achievement
-                  </button>
-                }
-              </mat-card-content>
-            </mat-card>
-          }
 
           <!-- Back -->
           <div class="back-row">
@@ -1521,173 +1207,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
       color: #e65100;
     }
 
-    // ── Invite Links panel ────────────────────────────────────────────────────
-
-    .invite-links-card { margin-bottom: 24px; }
-
-    .invite-links-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-
-    .invite-links-title {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin: 0;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--db-brown-dark);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; color: var(--db-amber); }
-    }
-
-    .new-link-btn { font-size: 0.8rem; height: 32px !important; }
-
-    .new-link-form {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-      padding: 12px;
-      background: #faf7f2;
-      border-radius: 8px;
-      margin-bottom: 16px;
-
-      .link-field {
-        width: 180px;
-        font-size: 0.88rem;
-        .mat-mdc-form-field-subscript-wrapper { display: none; }
-      }
-
-      .flavor-toggle .mat-button-toggle-button { font-size: 0.8rem; }
-    }
-
-    .links-spinner { display: flex; justify-content: center; padding: 16px; }
-    .no-links { color: #999; font-size: 0.88rem; margin: 0; }
-
-    .invite-links-list { display: flex; flex-direction: column; gap: 8px; }
-
-    .invite-link-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 12px;
-      border: 1px solid #e8e0d6;
-      border-radius: 8px;
-      background: #fdfaf5;
-
-      &.link-revoked { opacity: 0.5; }
-    }
-
-    .link-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      font-size: 0.82rem;
-      color: #666;
-    }
-
-    .link-flavor-badge {
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 10px;
-      &.flavor-member { background: #e3f2fd; color: #1565c0; }
-      &.flavor-nv { background: #f3e5f5; color: #6a1b9a; }
-    }
-
-    .link-revoked-badge {
-      font-size: 0.68rem;
-      font-weight: 600;
-      padding: 1px 6px;
-      border-radius: 8px;
-      background: #ffebee;
-      color: #c62828;
-    }
-
-    .link-actions {
-      display: flex;
-      align-items: center;
-      .mat-mdc-icon-button { width: 32px; height: 32px; padding: 4px; }
-    }
-
-    // ── Share & Calendar ──────────────────────────────────────────────────────
-
-    .share-card { margin-bottom: 24px; }
-
-    .share-section {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .share-section-title {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin: 0;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--db-brown-dark);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; color: var(--db-amber); }
-    }
-
-    .share-btn-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .cal-btn, .fb-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      text-decoration: none;
-      height: 28px !important;
-      min-height: 28px !important;
-      line-height: 26px !important;
-      font-size: 0.78rem !important;
-      padding: 0 10px !important;
-      mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; }
-    }
-
-    .share-divider { margin: 12px 0; }
-
-    .share-quick-links { display: flex; flex-direction: column; gap: 6px; }
-
-    .share-ql-label {
-      font-size: 0.72rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      color: #999;
-      margin-bottom: 2px;
-    }
-
-    .share-ql-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 8px 4px 0;
-      .mat-mdc-icon-button { width: 28px; height: 28px; padding: 2px; flex-shrink: 0; }
-    }
-
-    .share-ql-url {
-      flex: 1;
-      font-size: 0.78rem;
-      color: #666;
-      font-family: monospace;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+    .res-no-assignee-text { color: #999; font-size: 0.88rem; margin: 0; }
 
     // ── Reservation status badges ─────────────────────────────────────────────
 
@@ -1921,88 +1441,6 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
     .special-dinner-title { font-size: 0.78rem; color: #C9933A; font-weight: 600; font-style: italic; }
     .special-dinner-img { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.3); }
 
-    // ── Admin Achievement Panel ───────────────────────────────────────────────
-    .ach-admin-card { margin-top: 20px; }
-    .ach-admin-card mat-card-title { display: flex; align-items: center; gap: 8px; font-size: 1rem; mat-icon { color: #C9933A; } }
-    .ach-exists { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-    .ach-admin-img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-    .ach-exists-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
-    .ach-exists-name { font-weight: 700; font-size: 1rem; }
-    .ach-exists-desc { font-size: 0.85rem; color: #555; }
-    .ach-exists-title { font-size: 0.8rem; color: #C9933A; font-weight: 600; font-style: italic; }
-    .ach-exists-pts { font-size: 0.8rem; color: #1E4D8C; font-weight: 700; }
-    .ach-upload-btn {
-      display: flex; align-items: center; gap: 6px; cursor: pointer;
-      background: #f5f5f5; border: 1px solid #ddd; border-radius: 8px;
-      padding: 8px 14px; font-size: 0.82rem; font-weight: 600; color: #555;
-      transition: background 0.15s; white-space: nowrap;
-      &:hover { background: #ebebeb; }
-      &.uploading { opacity: 0.6; cursor: wait; }
-      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; }
-    }
-    .ach-exists-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
-    .ach-form { display: flex; flex-direction: column; gap: 8px; }
-    .ach-field { width: 100%; }
-    .ach-field-sm { max-width: 260px; }
-    .ach-field-xs { max-width: 120px; }
-    .ach-form-actions { display: flex; align-items: center; gap: 12px; }
-    .ach-secret-toggle {
-      display: flex; align-items: center; gap: 8px; cursor: pointer;
-      font-size: 0.85rem; color: #555;
-      input[type=checkbox] { width: 16px; height: 16px; }
-    }
-    .ach-empty { color: #999; font-size: 0.9rem; margin: 0 0 12px; }
-
-    // ── Attendance Panel ──────────────────────────────────────────────────────
-    .attendance-card { margin-top: 20px; }
-    .att-loading { display: flex; justify-content: center; padding: 16px; }
-    .no-attendance { color: #999; font-size: 0.9rem; margin: 0; }
-    .attendance-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
-    .attendance-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 8px 0;
-      border-bottom: 1px solid #f0ebe3;
-      &:last-child { border-bottom: none; }
-    }
-    .att-name { font-size: 0.95rem; font-weight: 500; color: var(--db-brown-dark); flex: 1; }
-    .att-out-of-town { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #555; white-space: nowrap; }
-    .att-btns { display: flex; gap: 8px; }
-    .att-yes { border-color: #2e7d32 !important; color: #2e7d32 !important; background: #e8f5e9 !important; }
-    .att-no { border-color: #c62828 !important; color: #c62828 !important; background: #ffebee !important; }
-    .att-save-row { display: flex; justify-content: flex-end; gap: 8px; }
-    .walkin-badge, .guest-badge, .guest-pending-badge {
-      display: inline-block;
-      font-size: 0.68rem;
-      font-weight: 600;
-      padding: 2px 7px;
-      border-radius: 10px;
-      margin-left: 6px;
-      vertical-align: middle;
-    }
-    .walkin-badge { background: #fff3e0; color: var(--db-amber-dark, #b8832e); }
-    .guest-badge { background: #e3f2fd; color: #1565c0; }
-    .guest-pending-badge { background: #fce4ec; color: #c62828; }
-    .att-guest-row { background: #fafcff; border-radius: 4px; padding-left: 6px; }
-    .walkin-form { margin-top: 12px; border-top: 1px dashed #e8e0d6; padding-top: 12px; }
-    .walkin-search-field { width: 100%; }
-    .walkin-results {
-      display: flex;
-      flex-direction: column;
-      border: 1px solid #e8e0d6;
-      border-radius: 4px;
-      overflow: hidden;
-      margin-top: -8px;
-    }
-    .walkin-result-row {
-      justify-content: flex-start !important;
-      border-radius: 0 !important;
-      border-bottom: 1px solid #f0ebe3;
-      font-size: 0.9rem;
-      &:last-child { border-bottom: none; }
-    }
 
     // ── Discussion ────────────────────────────────────────────────────────────
     .section-heading {
@@ -2051,7 +1489,6 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly eventsService = inject(EventsService);
-  private readonly invitesService = inject(InvitesService);
   private readonly authService = inject(AuthService);
   private readonly communityService = inject(CommunityService);
   private readonly commentsService = inject(EventCommentsService);
@@ -2072,20 +1509,6 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly publicRsvpDone = signal(false);
   readonly publicRsvpError = signal<string | null>(null);
 
-  // Admin panel visibility (toggled via overflow menu)
-  readonly showShareInvitesPanel = signal(false);
-  readonly showAttendancePanel = signal(false);
-  readonly showAchievementAdminPanel = signal(false);
-
-  // Invite links state
-  readonly inviteLinks = signal<EventInviteLink[]>([]);
-  readonly inviteLinksLoading = signal(false);
-  readonly showNewLinkForm = signal(false);
-  readonly newLinkFlavor = signal<'member' | 'non_validated'>('non_validated');
-  readonly newLinkMaxUsesCtrl = new FormControl<number | null>(null);
-  readonly newLinkExpiryCtrl = new FormControl<number>(30, { nonNullable: true });
-  readonly creatingLink = signal(false);
-
   // Comments state
   readonly comments = signal<Comment[]>([]);
   readonly commentsLoading = signal(false);
@@ -2094,16 +1517,6 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly replyingToId = signal<number | null>(null);
   readonly newReplyBody = signal('');
   readonly submittingReply = signal(false);
-
-  // Attendance state
-  readonly attendanceList = signal<AttendanceEntry[]>([]);
-  readonly attendanceLoading = signal(false);
-  readonly savingAttendance = signal(false);
-  readonly showWalkinForm = signal(false);
-  readonly walkinSearch = signal('');
-  readonly walkinResults = signal<MemberSearchResult[]>([]);
-  readonly addingWalkin = signal(false);
-  private readonly walkinSearch$ = new Subject<string>();
 
   // Reservation coordinator state
   readonly reservationMode = signal<'member' | 'contact'>('member');
@@ -2118,33 +1531,12 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly showCoordinatorAssignForm = signal(false);
   private readonly reservationSearch$ = new Subject<string>();
 
-  // Event achievement state
+  // Event achievement (public badge display; admin management lives in AchievementAdminDialogComponent)
   readonly eventAchievement = signal<EventAchievement | null>(null);
-  readonly achFormName = signal('');
-  readonly achFormDesc = signal('');
-  readonly achFormTitle = signal('');
-  readonly achFormPoints = signal(1);
-  readonly achFormSecret = signal(false);
-  readonly achCreating = signal(false);
-  readonly achSaving = signal(false);
-  readonly achImageUploading = signal(false);
-  readonly showAchievementForm = signal(false);
-  readonly achEditMode = signal(false);
 
   // Clock signal — ticks every minute so isPastEvent / isPastCutoff recompute reactively
   private readonly nowSignal = signal(new Date());
   private clockInterval!: ReturnType<typeof setInterval>;
-
-  // Load attendance when the clock ticks past event start (covers pages open before start time)
-  private readonly _attendanceEffect = effect(() => {
-    const id = this.event()?.id;
-    const status = this.event()?.status;
-    if (id && status === 'published' && this.isPastEvent() && this.isAdminOrMod()) {
-      if (!this.attendanceLoading() && this.attendanceList().length === 0) {
-        this.loadAttendance(id);
-      }
-    }
-  });
 
   readonly editingGuestIndex = signal<number | null>(null);
 
@@ -2237,16 +1629,6 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     return now.getHours() * 60 + now.getMinutes() >= cutoffMinutes;
   });
 
-  readonly activeNvLink = computed(() =>
-    this.inviteLinks().find(l => l.inviteFlavor === 'non_validated' && !l.isRevoked) ?? null
-  );
-
-  readonly activeMemberLink = computed(() =>
-    this.inviteLinks().find(l => l.inviteFlavor === 'member' && !l.isRevoked) ?? null
-  );
-
-  readonly origin = window.location.origin;
-
   readonly cutoffTimeLabel = computed<string>(() => {
     const e = this.event();
     if (!e) return '';
@@ -2285,11 +1667,6 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   ngOnInit(): void {
     this.clockInterval = setInterval(() => this.nowSignal.set(new Date()), 60_000);
     const id = Number(this.route.snapshot.paramMap.get('id'));
-    this.walkinSearch$.pipe(
-      debounceTime(250),
-      distinctUntilChanged(),
-      switchMap((q) => this.commentsService.searchMembers(id, q)),
-    ).subscribe((results) => this.walkinResults.set(results));
     this.reservationSearch$.pipe(
       debounceTime(250),
       distinctUntilChanged(),
@@ -2308,28 +1685,11 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
           this.guestsCtrl.setValue(my.additionalGuests);
           this.rebuildNameControls(my.additionalGuests, my.guestNames);
         }
-        if (e.status === 'published' && this.isAdminOrMod()) {
-          this.loadInviteLinks(id);
-        }
         if (e.status === 'published' && this.authService.isLoggedIn()) {
           this.loadComments(id);
         }
-        if (this.isPastEvent() && this.isAdminOrMod() && e.status === 'published') {
-          this.loadAttendance(id);
-        }
       },
       error: () => this.loading.set(false),
-    });
-  }
-
-  private loadInviteLinks(eventId: number): void {
-    this.inviteLinksLoading.set(true);
-    this.invitesService.getEventInviteLinks(eventId).subscribe({
-      next: (links) => {
-        this.inviteLinks.set(links);
-        this.inviteLinksLoading.set(false);
-      },
-      error: () => this.inviteLinksLoading.set(false),
     });
   }
 
@@ -2369,25 +1729,6 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   appleCalendarUrl(): string {
     const ics = `${window.location.origin}/api/v1/events/${this.event()!.id}/ics`;
     return `webcal://${ics.replace(/^https?:\/\//, '')}`;
-  }
-
-  shareToFacebook(): void {
-    const e = this.event()!;
-    const url = `${window.location.origin}/events/${e.id}`;
-    const quote = this.eventsService.generatePostText(e);
-    window.open(
-      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(quote)}`,
-      '_blank',
-      'noopener',
-    );
-  }
-
-  copyPostText(): void {
-    const nvLink = this.inviteLinks().find(l => l.inviteFlavor === 'non_validated' && !l.isRevoked);
-    const nvUrl = nvLink ? `${window.location.origin}/join/${nvLink.token}` : undefined;
-    const text = this.eventsService.generatePostText(this.event()!, nvUrl);
-    this.clipboard.copy(text);
-    this.snackBar.open('Post text copied!', 'OK', { duration: 3000 });
   }
 
   isLoggedIn(): boolean {
@@ -2678,79 +2019,6 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     return this.authService.currentUser()?.role === 'admin';
   }
 
-  copyInviteLink(token: string): void {
-    const url = `${window.location.origin}/join/${token}`;
-    this.clipboard.copy(url);
-    this.snackBar.open('Invite link copied!', 'OK', { duration: 2000 });
-  }
-
-  createInviteLink(): void {
-    const id = this.event()!.id;
-    this.creatingLink.set(true);
-    this.invitesService.createEventInviteLink(id, {
-      flavor: this.newLinkFlavor(),
-      maxUses: this.newLinkMaxUsesCtrl.value ?? null,
-      expiryDays: this.newLinkExpiryCtrl.value,
-    }).subscribe({
-      next: (link) => {
-        this.inviteLinks.update((links) => [link, ...links]);
-        this.showNewLinkForm.set(false);
-        this.creatingLink.set(false);
-        const url = `${window.location.origin}/join/${link.token}`;
-        this.clipboard.copy(url);
-        this.snackBar.open('Invite link created and copied!', 'OK', { duration: 3000 });
-      },
-      error: () => {
-        this.creatingLink.set(false);
-        this.snackBar.open('Failed to create invite link', 'OK', { duration: 3000 });
-      },
-    });
-  }
-
-  revokeInviteLink(inviteId: number): void {
-    if (!window.confirm('Revoke this invite link? Any unactivated links will stop working.')) return;
-    const id = this.event()!.id;
-    this.invitesService.revokeEventInviteLink(id, inviteId).subscribe({
-      next: () => {
-        this.inviteLinks.update((links) => links.map((l) => l.id === inviteId ? { ...l, isRevoked: true } : l));
-        this.snackBar.open('Invite link revoked', 'OK', { duration: 2000 });
-      },
-      error: () => this.snackBar.open('Failed to revoke link', 'OK', { duration: 3000 }),
-    });
-  }
-
-  onWalkinSearchInput(value: string): void {
-    this.walkinSearch.set(value);
-    this.walkinSearch$.next(value);
-  }
-
-  selectWalkin(member: MemberSearchResult): void {
-    const id = this.event()!.id;
-    this.addingWalkin.set(true);
-    this.commentsService.addWalkin(id, member.id).subscribe({
-      next: (entry) => {
-        this.attendanceList.update((list) => {
-          const existing = list.findIndex((e) => e.userId === entry.userId);
-          if (existing >= 0) {
-            const updated = [...list];
-            updated[existing] = entry;
-            return updated;
-          }
-          return [...list, entry];
-        });
-        this.showWalkinForm.set(false);
-        this.walkinSearch.set('');
-        this.walkinResults.set([]);
-        this.addingWalkin.set(false);
-        this.snackBar.open(`${member.fullName} added as walk-in`, 'OK', { duration: 3000 });
-      },
-      error: () => {
-        this.addingWalkin.set(false);
-        this.snackBar.open('Failed to add walk-in', 'OK', { duration: 3000 });
-      },
-    });
-  }
-
   startReassign(): void {
     this.reservationReassigning.set(true);
     this.reservationMemberSearch.set('');
@@ -2910,129 +2178,31 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     });
   }
 
-  private loadAttendance(eventId: number): void {
-    this.attendanceLoading.set(true);
-    this.commentsService.getAttendance(eventId).subscribe({
-      next: (list) => { this.attendanceList.set(list); this.attendanceLoading.set(false); },
-      error: () => this.attendanceLoading.set(false),
+  openShareInvitesDialog(): void {
+    this.dialog.open(ShareInvitesDialogComponent, {
+      data: { event: this.event()!, isAdmin: this.isAdmin() },
+      width: '480px',
+      maxWidth: '95vw',
     });
   }
 
-  setAttended(userId: number, attended: boolean): void {
-    this.attendanceList.update((list) => list.map((e) => e.userId === userId ? { ...e, attended } : e));
-  }
-
-  setFromOtherCity(userId: number, fromOtherCity: boolean): void {
-    this.attendanceList.update((list) => list.map((e) => e.userId === userId ? { ...e, fromOtherCity } : e));
-  }
-
-  setGuestAttended(guestLinkId: number, attended: boolean): void {
-    this.commentsService.markGuestAttendance(guestLinkId, attended).subscribe({
-      next: () => {
-        this.attendanceList.update((list) =>
-          list.map((e) => e.guestLinkId === guestLinkId ? { ...e, attended } : e),
-        );
-      },
-      error: () => this.snackBar.open('Failed to update guest attendance', 'OK', { duration: 3000 }),
+  openAttendanceDialog(): void {
+    this.dialog.open(AttendanceDialogComponent, {
+      data: { eventId: this.event()!.id },
+      width: '520px',
+      maxWidth: '95vw',
     });
   }
 
-  resendGuestInvite(guestLinkId: number): void {
-    this.commentsService.resendGuestInvite(guestLinkId).subscribe({
-      next: () => this.snackBar.open('Invite resent!', 'OK', { duration: 2500 }),
-      error: () => this.snackBar.open('Failed to resend invite', 'OK', { duration: 3000 }),
-    });
-  }
-
-  saveAttendance(): void {
-    const id = this.event()!.id;
-    const attendances = this.attendanceList()
-      .filter((e) => e.type === 'member' && e.attended !== null)
-      .map((e) => ({ userId: e.userId!, attended: e.attended as boolean, fromOtherCity: e.fromOtherCity }));
-    this.savingAttendance.set(true);
-    this.commentsService.markAttendance(id, attendances).subscribe({
-      next: () => { this.savingAttendance.set(false); this.snackBar.open('Attendance saved', 'OK', { duration: 2000 }); },
-      error: () => { this.savingAttendance.set(false); this.snackBar.open('Failed to save attendance', 'OK', { duration: 3000 }); },
-    });
-  }
-
-  createEventAchievement(): void {
-    const id = this.event()!.id;
-    this.achCreating.set(true);
-    this.communityService.adminCreateEventAchievement(id, {
-      name: this.achFormName(),
-      description: this.achFormDesc(),
-      title: this.achFormTitle() || undefined,
-      points: this.achFormPoints(),
-    }).subscribe({
-      next: (ach) => {
-        this.eventAchievement.set(ach);
-        this.showAchievementForm.set(false);
-        this.achCreating.set(false);
-        this.snackBar.open('Achievement created!', 'OK', { duration: 3000 });
+  openAchievementAdminDialog(): void {
+    this.dialog.open(AchievementAdminDialogComponent, {
+      data: {
+        eventId: this.event()!.id,
+        achievement: this.eventAchievement(),
+        onChange: (a: EventAchievement) => this.eventAchievement.set(a),
       },
-      error: () => {
-        this.achCreating.set(false);
-        this.snackBar.open('Failed to create achievement', 'OK', { duration: 3000 });
-      },
-    });
-  }
-
-  startEditAchievement(): void {
-    const a = this.eventAchievement();
-    if (!a) return;
-    this.achFormName.set(a.name);
-    this.achFormDesc.set(a.description);
-    this.achFormTitle.set(a.title ?? '');
-    this.achFormPoints.set(a.points);
-    this.achEditMode.set(true);
-  }
-
-  saveEventAchievement(): void {
-    const a = this.eventAchievement();
-    if (!a) return;
-    this.achSaving.set(true);
-    this.communityService.adminUpdateAchievement(a.id, {
-      name: this.achFormName(),
-      description: this.achFormDesc(),
-      icon: 'emoji_events',
-      title: this.achFormTitle() || null,
-      points: this.achFormPoints(),
-      isSecret: this.achFormSecret(),
-    }).subscribe({
-      next: () => {
-        this.eventAchievement.set({
-          ...a,
-          name: this.achFormName(),
-          description: this.achFormDesc(),
-          title: this.achFormTitle() || null,
-          points: this.achFormPoints(),
-        });
-        this.achEditMode.set(false);
-        this.achSaving.set(false);
-        this.snackBar.open('Achievement updated', 'OK', { duration: 2000 });
-      },
-      error: () => {
-        this.achSaving.set(false);
-        this.snackBar.open('Failed to update achievement', 'OK', { duration: 3000 });
-      },
-    });
-  }
-
-  uploadAchievementImage(ev: globalThis.Event): void {
-    const file = (ev.target as HTMLInputElement).files?.[0];
-    if (!file || !this.eventAchievement()) return;
-    this.achImageUploading.set(true);
-    this.communityService.adminUploadAchievementImage(this.eventAchievement()!.id, file).subscribe({
-      next: ({ imagePath }) => {
-        this.eventAchievement.update((a) => a ? { ...a, imagePath } : a);
-        this.achImageUploading.set(false);
-        this.snackBar.open('Image uploaded!', 'OK', { duration: 2000 });
-      },
-      error: () => {
-        this.achImageUploading.set(false);
-        this.snackBar.open('Image upload failed', 'OK', { duration: 3000 });
-      },
+      width: '480px',
+      maxWidth: '95vw',
     });
   }
 }
