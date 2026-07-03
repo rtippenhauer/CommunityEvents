@@ -21,14 +21,14 @@
 ./dc.sh ps
 ```
 
-The API runs on port 3000 internally; the Angular dev server runs separately on port 8080.
+The API runs on port 3000 internally; the Angular dev server runs separately on port 4200.
 
 ### Start Angular dev server
 
 ```bash
 cd frontend
 npm start
-# → http://localhost:8080
+# → http://localhost:4200
 ```
 
 ### Start NestJS dev server (watch mode)

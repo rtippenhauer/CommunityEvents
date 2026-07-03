@@ -73,7 +73,35 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
           }
 
           <!-- Title & date -->
-          <h1 class="event-title">{{ event()!.title }}</h1>
+          <div class="title-row">
+            <h1 class="event-title">{{ event()!.title }}</h1>
+            @if (isAdminOrMod()) {
+              <button mat-icon-button class="admin-menu-btn" [matMenuTriggerFor]="adminMenu"
+                matTooltip="Admin tools" aria-label="Admin tools menu">
+                <mat-icon>more_vert</mat-icon>
+              </button>
+              <mat-menu #adminMenu="matMenu">
+                @if (event()!.status === 'published') {
+                  <button mat-menu-item (click)="showShareInvitesPanel.set(!showShareInvitesPanel())">
+                    <mat-icon>share</mat-icon>
+                    {{ showShareInvitesPanel() ? 'Hide' : 'Show' }} Share &amp; Invite Links
+                  </button>
+                }
+                @if (isPastEvent() && event()!.status === 'published') {
+                  <button mat-menu-item (click)="showAttendancePanel.set(!showAttendancePanel())">
+                    <mat-icon>how_to_reg</mat-icon>
+                    {{ showAttendancePanel() ? 'Hide' : 'Show' }} Attendance
+                  </button>
+                }
+                @if (isAdmin()) {
+                  <button mat-menu-item (click)="showAchievementAdminPanel.set(!showAchievementAdminPanel())">
+                    <mat-icon>local_activity</mat-icon>
+                    {{ showAchievementAdminPanel() ? 'Hide' : 'Show' }} Special Dinner Achievement
+                  </button>
+                }
+              </mat-menu>
+            }
+          </div>
           <div class="event-datetime">
             <mat-icon>event</mat-icon>
             <span>{{ (event()!.eventDate + 'T12:00:00') | date: 'EEEE, MMMM d, y' }} at {{ formatTime(event()!.eventTime) }}</span>
@@ -485,7 +513,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
           }
 
           <!-- Sharing (admin/mod only, published events only) -->
-          @if (event()!.status === 'published' && isAdminOrMod()) {
+          @if (event()!.status === 'published' && isAdminOrMod() && showShareInvitesPanel()) {
             <mat-card class="share-card">
               <mat-card-content>
                 <div class="share-section">
@@ -678,7 +706,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
           }
 
           <!-- Invite Links (admin/mod, published events) -->
-          @if (event()!.status === 'published' && isAdminOrMod()) {
+          @if (event()!.status === 'published' && isAdminOrMod() && showShareInvitesPanel()) {
             <mat-card class="invite-links-card">
               <mat-card-content>
                 <div class="invite-links-header">
@@ -752,7 +780,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
           }
 
           <!-- Attendance Panel (mod/admin, past events) -->
-          @if (isAdminOrMod() && isPastEvent() && event()?.status === 'published') {
+          @if (isAdminOrMod() && isPastEvent() && event()?.status === 'published' && showAttendancePanel()) {
             <mat-card class="attendance-card">
               <mat-card-content>
                 <h4 class="section-heading"><mat-icon>how_to_reg</mat-icon> Attendance</h4>
@@ -968,7 +996,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
           }
 
           <!-- Admin: special dinner achievement -->
-          @if (isAdmin()) {
+          @if (isAdmin() && showAchievementAdminPanel()) {
             <mat-card class="ach-admin-card">
               <mat-card-header>
                 <mat-card-title>
@@ -1111,12 +1139,23 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
       &.status-draft { background: #e3f2fd; color: #1565c0; }
       &.status-cancelled { background: #ffebee; color: #c62828; }
     }
+    .title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
     .event-title {
       margin: 0 0 12px;
       font-size: 2rem;
       font-weight: 700;
       color: var(--db-brown-dark);
       line-height: 1.2;
+    }
+    .admin-menu-btn {
+      flex-shrink: 0;
+      margin-top: -4px;
+      color: var(--db-brown-dark);
     }
     .event-datetime {
       display: flex;
@@ -2032,6 +2071,11 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly publicRsvpLoading = signal(false);
   readonly publicRsvpDone = signal(false);
   readonly publicRsvpError = signal<string | null>(null);
+
+  // Admin panel visibility (toggled via overflow menu)
+  readonly showShareInvitesPanel = signal(false);
+  readonly showAttendancePanel = signal(false);
+  readonly showAchievementAdminPanel = signal(false);
 
   // Invite links state
   readonly inviteLinks = signal<EventInviteLink[]>([]);

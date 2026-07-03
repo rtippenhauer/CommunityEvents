@@ -34,4 +34,4 @@ src/app/
 - All API responses typed with interfaces
 
 ## Port
-Angular dev server runs on port 8080 (not 4200)
+Angular dev server runs on port 4200 (ng serve default — not overridden)
