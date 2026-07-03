@@ -1,15 +1,23 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal, OnDestroy } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { UnseenAchievement } from '../../../core/services/community.service';
 
-const PATRIOTIC_COLORS = ['#B22234', '#FFFFFF', '#3C3B6E', '#C9933A'];
+export interface AchievementSplashData {
+  achievement: UnseenAchievement;
+  /** Total unseen achievements still queued, including this one. */
+  remaining: number;
+}
+
+// Bright, high-contrast red/white/blue — the flag-blue (#3C3B6E) was too close
+// to the night-sky background to read as "blue" against it.
+const PATRIOTIC_COLORS = ['#FF3B30', '#FFFFFF', '#3B82F6'];
 
 interface Particle {
   id: number;
-  angle: number;
-  dist: number;
+  angle: string;
+  dist: string;
   color: string;
 }
 
@@ -17,23 +25,37 @@ interface Burst {
   id: number;
   x: number;
   y: number;
-  delay: number;
   particles: Particle[];
 }
 
-function buildBursts(): Burst[] {
-  return Array.from({ length: 5 }, (_, i) => ({
-    id: i,
-    x: 10 + Math.random() * 80,
-    y: 10 + Math.random() * 45,
-    delay: i * 300 + Math.random() * 200,
-    particles: Array.from({ length: 16 }, (_, j) => ({
+const MAX_VISIBLE_BURSTS = 8;
+const BURST_INTERVAL_MS = 550;
+
+// The card sits centered over the sky and is opaque, so a burst landing under
+// it is invisible. Keep spawn points in a perimeter around that center zone.
+function randomSpawnPoint(): { x: number; y: number } {
+  const region = Math.floor(Math.random() * 4);
+  switch (region) {
+    case 0: return { x: Math.random() * 100, y: 2 + Math.random() * 14 };        // top strip
+    case 1: return { x: Math.random() * 100, y: 84 + Math.random() * 14 };       // bottom strip
+    case 2: return { x: 2 + Math.random() * 16, y: Math.random() * 100 };        // left strip
+    default: return { x: 82 + Math.random() * 16, y: Math.random() * 100 };      // right strip
+  }
+}
+
+function buildBurst(id: number): Burst {
+  const { x, y } = randomSpawnPoint();
+  return {
+    id,
+    x,
+    y,
+    particles: Array.from({ length: 20 }, (_, j) => ({
       id: j,
-      angle: (360 / 16) * j + Math.random() * 12,
-      dist: 55 + Math.random() * 45,
+      angle: `${(360 / 20) * j + Math.random() * 12}deg`,
+      dist: `${60 + Math.random() * 70}px`,
       color: PATRIOTIC_COLORS[Math.floor(Math.random() * PATRIOTIC_COLORS.length)],
     })),
-  }));
+  };
 }
 
 @Component({
@@ -44,19 +66,15 @@ function buildBursts(): Burst[] {
     <div class="splash" [class.patriotic]="isPatriotic">
       @if (isPatriotic) {
         <div class="fireworks">
-          @for (burst of bursts; track burst.id) {
-            <div
-              class="burst"
-              [style.left.%]="burst.x"
-              [style.top.%]="burst.y"
-              [style.animation-delay.ms]="burst.delay"
-            >
+          @for (burst of bursts(); track burst.id) {
+            <div class="burst" [style.left.%]="burst.x" [style.top.%]="burst.y">
               @for (p of burst.particles; track p.id) {
                 <span
                   class="particle"
-                  [style.--angle.deg]="p.angle"
-                  [style.--dist.px]="p.dist"
+                  [style.--angle]="p.angle"
+                  [style.--dist]="p.dist"
                   [style.background]="p.color"
+                  [style.color]="p.color"
                 ></span>
               }
             </div>
@@ -65,23 +83,30 @@ function buildBursts(): Burst[] {
       }
 
       <div class="splash-card">
+        @if (data.remaining > 1) {
+          <div class="splash-counter">+{{ data.remaining - 1 }} more waiting</div>
+        }
         <div class="splash-icon">
-          @if (data.imagePath) {
-            <img [src]="data.imagePath" [alt]="data.name" />
+          @if (achievement.imagePath) {
+            <img [src]="achievement.imagePath" [alt]="achievement.name" />
+          } @else if (isImgIcon(achievement.icon)) {
+            <img [src]="imgIconSrc(achievement.icon)" [alt]="achievement.name" />
           } @else {
-            <mat-icon>{{ data.icon }}</mat-icon>
+            <mat-icon>{{ achievement.icon }}</mat-icon>
           }
         </div>
         <div class="splash-label">Achievement Unlocked</div>
-        <h2 class="splash-name">{{ data.name }}</h2>
-        <p class="splash-desc">{{ data.description }}</p>
-        @if (data.points > 0) {
-          <div class="splash-points">+{{ data.points }} Bear Points</div>
+        <h2 class="splash-name">{{ achievement.name }}</h2>
+        <p class="splash-desc">{{ achievement.description }}</p>
+        @if (achievement.points > 0) {
+          <div class="splash-points">+{{ achievement.points }} Bear Points</div>
         }
-        @if (data.title) {
-          <div class="splash-title-hint">New title unlocked: "{{ data.title }}"</div>
+        @if (achievement.title) {
+          <div class="splash-title-hint">New title unlocked: "{{ achievement.title }}"</div>
         }
-        <button mat-raised-button color="primary" (click)="close()">Nice!</button>
+        <button mat-raised-button color="primary" (click)="close()">
+          {{ data.remaining > 1 ? 'Next' : 'Nice!' }}
+        </button>
       </div>
     </div>
   `,
@@ -95,6 +120,16 @@ function buildBursts(): Burst[] {
       max-width: 420px;
       padding: 8px;
       overflow: hidden;
+    }
+    .splash.patriotic {
+      /* Explicit size (not just extra padding) so the fireworks sky is a real
+         2-3x-larger frame around the card, not capped by the compact
+         max-width above — the card stays its normal size and floats in
+         the middle via flex centering. */
+      width: min(92vw, 820px);
+      height: min(80vh, 680px);
+      max-width: none;
+      padding: 16px;
     }
     .splash-card {
       position: relative;
@@ -121,6 +156,16 @@ function buildBursts(): Burst[] {
       margin-bottom: 6px;
       mat-icon { font-size: 44px; width: 44px; height: 44px; color: #C9933A; }
       img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+    }
+    .splash-counter {
+      align-self: flex-end;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #999;
+      background: #f0ebe4;
+      padding: 2px 10px;
+      border-radius: 999px;
+      margin-bottom: -4px;
     }
     .splash-label {
       font-size: 0.75rem;
@@ -159,14 +204,14 @@ function buildBursts(): Burst[] {
     }
     .particle {
       position: absolute;
-      width: 6px;
-      height: 6px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       left: 0;
       top: 0;
-      transform: rotate(var(--angle)) translateX(0);
+      box-shadow: 0 0 8px 2px currentColor;
+      transform: rotate(var(--angle, 0deg)) translateX(0);
       animation: particle-fly 900ms ease-out forwards;
-      animation-delay: inherit;
     }
     @keyframes burst-appear {
       0% { opacity: 0; }
@@ -175,19 +220,49 @@ function buildBursts(): Burst[] {
       100% { opacity: 0; }
     }
     @keyframes particle-fly {
-      0% { transform: rotate(var(--angle)) translateX(0); opacity: 1; }
-      100% { transform: rotate(var(--angle)) translateX(var(--dist)); opacity: 0; }
+      0% { transform: rotate(var(--angle, 0deg)) translateX(0); opacity: 1; }
+      100% { transform: rotate(var(--angle, 0deg)) translateX(var(--dist, 60px)); opacity: 0; }
     }
   `],
 })
-export class AchievementSplashComponent {
-  readonly data = inject<UnseenAchievement>(MAT_DIALOG_DATA);
+export class AchievementSplashComponent implements OnDestroy {
+  readonly data = inject<AchievementSplashData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<AchievementSplashComponent>);
 
-  readonly isPatriotic = this.data.key === 'patriotic_bear';
-  readonly bursts = this.isPatriotic ? buildBursts() : [];
+  readonly achievement = this.data.achievement;
+  readonly isPatriotic = this.achievement.key === 'patriotic_bear';
+  readonly bursts = signal<Burst[]>([]);
+
+  private nextBurstId = 0;
+  private burstInterval: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    if (this.isPatriotic) {
+      // Fire a few right away so it doesn't look sparse the instant the dialog opens.
+      this.spawnBurst();
+      this.spawnBurst();
+      this.spawnBurst();
+      this.burstInterval = setInterval(() => this.spawnBurst(), BURST_INTERVAL_MS);
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (this.burstInterval) clearInterval(this.burstInterval);
+  }
+
+  private spawnBurst(): void {
+    this.bursts.update((b) => [...b, buildBurst(this.nextBurstId++)].slice(-MAX_VISIBLE_BURSTS));
+  }
 
   close(): void {
     this.dialogRef.close();
+  }
+
+  isImgIcon(icon: string): boolean {
+    return icon.startsWith('img:');
+  }
+
+  imgIconSrc(icon: string): string {
+    return icon.slice(4);
   }
 }

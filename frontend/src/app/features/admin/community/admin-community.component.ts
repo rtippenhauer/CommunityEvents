@@ -9,7 +9,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { CommunityService } from '../../../core/services/community.service';
+import { CommunityService, Achievement } from '../../../core/services/community.service';
 
 interface LedgerRow {
   id: number;
@@ -17,13 +17,6 @@ interface LedgerRow {
   points: number;
   referenceId: number | null;
   awardedAt: string;
-}
-
-interface EarnedAchievement {
-  id: number;
-  achievementId: number;
-  achievement: { key: string; name: string; title: string | null };
-  earnedAt: string;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -84,8 +77,8 @@ const TYPE_LABELS: Record<string, string> = {
                   <td mat-cell *matCellDef="let row">{{ row.points }}</td>
                 </ng-container>
                 <ng-container matColumnDef="ref">
-                  <th mat-header-cell *matHeaderCellDef>Ref ID</th>
-                  <td mat-cell *matCellDef="let row">{{ row.referenceId ?? '—' }}</td>
+                  <th mat-header-cell *matHeaderCellDef>Reference</th>
+                  <td mat-cell *matCellDef="let row">{{ referenceLabel(row) }}</td>
                 </ng-container>
                 <ng-container matColumnDef="date">
                   <th mat-header-cell *matHeaderCellDef>Awarded</th>
@@ -119,12 +112,12 @@ const TYPE_LABELS: Record<string, string> = {
               <div class="ach-list">
                 @for (ea of earnedAchievements(); track ea.id) {
                   <div class="ach-row">
-                    <span class="ach-name">{{ ea.achievement.name }}</span>
-                    @if (ea.achievement.title) {
-                      <span class="ach-title-badge">{{ ea.achievement.title }}</span>
+                    <span class="ach-name">{{ ea.name }}</span>
+                    @if (ea.title) {
+                      <span class="ach-title-badge">{{ ea.title }}</span>
                     }
                     <span class="ach-date">{{ ea.earnedAt | date:'mediumDate' }}</span>
-                    <button mat-icon-button color="warn" (click)="revokeAchievement(ea.id, ea.achievement.name)"
+                    <button mat-icon-button color="warn" (click)="revokeAchievement(ea.id, ea.name)"
                             matTooltip="Revoke achievement">
                       <mat-icon>remove_circle</mat-icon>
                     </button>
@@ -157,11 +150,14 @@ export class AdminCommunityComponent implements OnInit {
 
   readonly loading = signal(true);
   readonly ledger = signal<LedgerRow[]>([]);
-  readonly earnedAchievements = signal<EarnedAchievement[]>([]);
+  readonly earnedAchievements = signal<Achievement[]>([]);
   readonly memberId = signal(0);
   readonly ledgerCols = ['id', 'type', 'points', 'ref', 'date', 'actions'];
 
   readonly totalPoints = () => this.ledger().reduce((sum, r) => sum + r.points, 0);
+
+  private readonly achievementNameById = () =>
+    new Map(this.earnedAchievements().map((a) => [a.id, a.name]));
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get('id'));
@@ -176,7 +172,7 @@ export class AdminCommunityComponent implements OnInit {
       this.communityService.getMemberAchievements(id).toPromise(),
     ]).then(([ledger, ach]) => {
       this.ledger.set((ledger ?? []) as LedgerRow[]);
-      this.earnedAchievements.set(((ach as any)?.earned ?? []) as EarnedAchievement[]);
+      this.earnedAchievements.set(((ach ?? []) as Achievement[]).filter((a) => a.earned));
       this.loading.set(false);
     }).catch(() => this.loading.set(false));
   }
@@ -204,5 +200,13 @@ export class AdminCommunityComponent implements OnInit {
 
   typeLabel(type: string): string {
     return TYPE_LABELS[type] ?? type;
+  }
+
+  referenceLabel(row: LedgerRow): string {
+    if (row.referenceId == null) return '—';
+    if (row.pointType === 'achievement') {
+      return this.achievementNameById().get(row.referenceId) ?? `Achievement #${row.referenceId}`;
+    }
+    return String(row.referenceId);
   }
 }

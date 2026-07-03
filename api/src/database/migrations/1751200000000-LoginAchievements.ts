@@ -53,7 +53,7 @@ export class LoginAchievements1751200000000 implements MigrationInterface {
          'emoji_events', 'login', 500, 10, 'DinnerBears Superfan', 1),
 
         ('patriotic_bear', 'Patriotic Bear',
-         'Logged in during the DinnerBears Independence Day week (July 4-11, 2026).',
+         'Logged in during America''s Semiquincentennial celebration — the 250th birthday of the United States (July 4-11, 2026).',
          'celebration', NULL, NULL, 10, NULL, 1)
     `);
   }

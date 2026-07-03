@@ -19,7 +19,7 @@ import { FeedbackService } from './core/services/feedback.service';
 import { AchievementSplashService } from './core/services/achievement-splash.service';
 import { NotificationBellComponent } from './shared/components/notification-bell/notification-bell.component';
 import { IosInstallBannerComponent } from './shared/components/ios-install-banner/ios-install-banner.component';
-import { AchievementSplashComponent } from './shared/components/achievement-splash/achievement-splash.component';
+import { AchievementSplashComponent, AchievementSplashData } from './shared/components/achievement-splash/achievement-splash.component';
 
 @Component({
   selector: 'app-root',
@@ -128,14 +128,20 @@ export class AppComponent {
     });
 
     effect(() => {
-      const next = this.achievementSplashService.queue()[0];
+      const queue = this.achievementSplashService.queue();
+      const next = queue[0];
       if (next && !this.achievementDialogOpen) {
         this.achievementDialogOpen = true;
+        const data: AchievementSplashData = { achievement: next, remaining: queue.length };
         this.dialog
           .open(AchievementSplashComponent, {
-            data: next,
+            data,
             panelClass: 'achievement-splash-panel',
             disableClose: true,
+            // Material defaults dialogs to maxWidth: 80vw, which fights with
+            // the patriotic splash's own (larger) intrinsic sizing — let the
+            // component's own CSS be the only thing constraining its size.
+            maxWidth: 'none',
           })
           .afterClosed()
           .subscribe(() => {
