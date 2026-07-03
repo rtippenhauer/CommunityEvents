@@ -11,6 +11,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CommunityService, CustomIcon } from '../../../core/services/community.service';
 import { PhotoCropDialogComponent } from '../photo-crop-dialog/photo-crop-dialog.component';
+import { removeWhiteBackground } from '../../utils/remove-white-background';
 
 const IMG_PREFIX = 'img:';
 
@@ -280,11 +281,12 @@ export class IconPickerComponent implements OnChanges, OnInit {
       disableClose: true,
       maxWidth: '95vw',
     });
-    ref.afterClosed().subscribe((blob: Blob | null) => {
+    ref.afterClosed().subscribe(async (blob: Blob | null) => {
       if (!blob) return;
-      this.uploadBlob = blob;
+      const cleaned = await removeWhiteBackground(blob);
+      this.uploadBlob = cleaned;
       if (this.uploadPreviewUrl) URL.revokeObjectURL(this.uploadPreviewUrl);
-      this.uploadPreviewUrl = URL.createObjectURL(blob);
+      this.uploadPreviewUrl = URL.createObjectURL(cleaned);
     });
   }
 
