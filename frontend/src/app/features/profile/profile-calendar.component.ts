@@ -123,6 +123,39 @@ import { CalendarService, CalendarSettings } from '../../core/services/calendar.
           </mat-card-content>
         </mat-card>
 
+        <!-- Auto-invite card -->
+        <mat-card class="cal-card">
+          <mat-card-header>
+            <mat-card-title>Auto-Invite Emails</mat-card-title>
+            <mat-card-subtitle>Changes save automatically</mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="setting-group" style="padding-top:8px">
+              <p class="setting-hint" style="margin-bottom:16px">
+                When a new dinner is posted, automatically send you a calendar invite email.
+                Accept to RSVP Going, Decline to mark yourself Not Going — right from your calendar app.
+              </p>
+              <mat-radio-group
+                class="radio-group"
+                [value]="settings()!.autoInvite"
+                (change)="saveAutoInvite($event.value)">
+                <mat-radio-button value="none">
+                  <span class="radio-title">Off</span>
+                  <span class="radio-desc">Don't send automatic calendar invites</span>
+                </mat-radio-button>
+                <mat-radio-button value="city">
+                  <span class="radio-title">My city only</span>
+                  <span class="radio-desc">Send invites for {{ settings()!.cityName }} dinners only</span>
+                </mat-radio-button>
+                <mat-radio-button value="all">
+                  <span class="radio-title">All cities</span>
+                  <span class="radio-desc">Send invites for every new dinner across all chapters</span>
+                </mat-radio-button>
+              </mat-radio-group>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
       }
     </div>
   `,
@@ -297,6 +330,13 @@ export class ProfileCalendarComponent implements OnInit {
 
   saveRsvpOnly(checked: boolean): void {
     this.calendarService.updateSettings({ rsvpOnly: checked }).subscribe({
+      next: (s) => { this.settings.set(s); this.snackBar.open('Saved', '', { duration: 1500 }); },
+      error: () => this.snackBar.open('Failed to save.', 'OK', { duration: 3000 }),
+    });
+  }
+
+  saveAutoInvite(value: 'none' | 'city' | 'all'): void {
+    this.calendarService.updateSettings({ autoInvite: value }).subscribe({
       next: (s) => { this.settings.set(s); this.snackBar.open('Saved', '', { duration: 1500 }); },
       error: () => this.snackBar.open('Failed to save.', 'OK', { duration: 3000 }),
     });

@@ -5,6 +5,12 @@ import { Repository } from 'typeorm';
 import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
 import { EmailTemplateName } from './email.constants';
 
+export interface EmailAttachment {
+  content: string;
+  name: string;
+  contentType?: string;
+}
+
 export interface BrevoSendPayload {
   toEmail: string;
   toName?: string | null;
@@ -13,6 +19,7 @@ export interface BrevoSendPayload {
   templateParams?: Record<string, unknown>;
   htmlBody?: string | null;
   textBody?: string | null;
+  attachments?: EmailAttachment[];
 }
 
 const TEMPLATE_DB_KEY: Record<EmailTemplateName, keyof EmailProviderConfigEntity> = {
@@ -108,6 +115,13 @@ export class BrevoService {
     } else {
       if (payload.htmlBody) body['htmlContent'] = payload.htmlBody;
       if (payload.textBody) body['textContent'] = payload.textBody;
+    }
+
+    if (payload.attachments?.length) {
+      body['attachment'] = payload.attachments.map((a) => ({
+        content: Buffer.from(a.content, 'utf-8').toString('base64'),
+        name: a.name,
+      }));
     }
 
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {

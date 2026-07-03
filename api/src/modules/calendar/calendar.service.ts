@@ -5,12 +5,13 @@ import { Not, IsNull, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { UserEntity } from '../../database/entities/user.entity';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
-import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
+import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 
 export interface CalendarSettingsResponse {
   url: string;
   cityFilter: 'all' | 'city';
   rsvpOnly: boolean;
+  autoInvite: 'none' | 'city' | 'all';
   cityName: string;
 }
 
@@ -83,17 +84,19 @@ export class CalendarService {
       url: this.feedUrl(token),
       cityFilter: user.calendarCityFilter ?? 'all',
       rsvpOnly: user.calendarRsvpOnly ?? false,
+      autoInvite: user.calendarAutoInvite ?? 'none',
       cityName: user.city?.name ?? 'My city',
     };
   }
 
   async updateSettings(
     userId: number,
-    dto: { cityFilter?: 'all' | 'city'; rsvpOnly?: boolean },
+    dto: { cityFilter?: 'all' | 'city'; rsvpOnly?: boolean; autoInvite?: 'none' | 'city' | 'all' },
   ): Promise<CalendarSettingsResponse> {
     const updates: Partial<UserEntity> = {};
     if (dto.cityFilter !== undefined) updates.calendarCityFilter = dto.cityFilter;
     if (dto.rsvpOnly !== undefined) updates.calendarRsvpOnly = dto.rsvpOnly;
+    if (dto.autoInvite !== undefined) updates.calendarAutoInvite = dto.autoInvite;
 
     if (Object.keys(updates).length > 0) {
       await this.userRepo.update(userId, updates);
@@ -121,6 +124,13 @@ export class CalendarService {
   private appName(): string {
     const url = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     return url.includes('stage') ? 'DinnerBears - Stage' : 'DinnerBears';
+  }
+
+  private organizerEmail(): string {
+    const override = this.config.get<string>('CALENDAR_ORGANIZER_EMAIL', '');
+    if (override) return override;
+    const url = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    return url.includes('stage') ? 'calendar-stage@dinnerbears.com' : 'calendar@dinnerbears.com';
   }
 
   private async buildFeed(user: UserEntity): Promise<string> {
@@ -242,7 +252,7 @@ export class CalendarService {
       this.fold(`LOCATION:${esc(location)}`),
       this.fold(`DESCRIPTION:${esc(description)}`),
       this.fold(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=DinnerBears:mailto:noreply@dinnerbears.com`,
+      `ORGANIZER;CN=DinnerBears:mailto:${this.organizerEmail()}`,
       `STATUS:${isCancelled ? 'CANCELLED' : 'CONFIRMED'}`,
       'END:VEVENT',
     ];
@@ -385,7 +395,7 @@ export class CalendarService {
       this.fold(`LOCATION:${esc(location)}`),
       this.fold(`DESCRIPTION:${esc(description)}`),
       this.fold(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=DinnerBears:mailto:noreply@dinnerbears.com`,
+      `ORGANIZER;CN=DinnerBears:mailto:${this.organizerEmail()}`,
       this.fold(`ATTENDEE;CN=${esc(recipient.name)};RSVP=TRUE:mailto:${recipient.email}`),
       'STATUS:CONFIRMED',
       'END:VEVENT',
@@ -393,5 +403,114 @@ export class CalendarService {
     ];
 
     return lines.join('\r\n');
+  }
+
+  // ── Inbound reply processing (Phase 16c) ─────────────────────────────────────
+
+  async processRsvpReply(rawEmail: string): Promise<void> {
+    const ical = this.extractIcalFromEmail(rawEmail);
+    if (!ical) {
+      this.logger.warn('rsvp-reply: no iCal block found in email');
+      return;
+    }
+
+    if (!/METHOD:REPLY/i.test(ical)) {
+      this.logger.debug('rsvp-reply: not a METHOD:REPLY, ignoring');
+      return;
+    }
+
+    const uidMatch = ical.match(/UID:dinnerbears-event-(\d+)@dinnerbears\.com/i);
+    if (!uidMatch) {
+      this.logger.warn('rsvp-reply: unrecognized UID format');
+      return;
+    }
+    const eventId = parseInt(uidMatch[1], 10);
+
+    // Unfold RFC 5545 line continuations then parse ATTENDEE
+    const unfolded = ical.replace(/\r?\n[ \t]/g, '');
+    const attendeeLine = unfolded.match(/^ATTENDEE[^:\r\n]*:[^\r\n]+/im)?.[0] ?? '';
+    const partstatMatch = attendeeLine.match(/PARTSTAT=([A-Z-]+)/i);
+    const emailMatch = attendeeLine.match(/:mailto:([^\s;,\r\n]+)/i);
+
+    if (!partstatMatch || !emailMatch) {
+      this.logger.warn(`rsvp-reply: could not parse ATTENDEE line: ${attendeeLine || '(not found)'}`);
+      this.logger.debug(`rsvp-reply: iCal snippet: ${ical.slice(0, 400)}`);
+      return;
+    }
+
+    const partstat = partstatMatch[1].toUpperCase();
+    const attendeeEmail = emailMatch[1].trim().toLowerCase();
+
+    const statusMap: Record<string, RsvpStatus> = {
+      ACCEPTED: RsvpStatus.GOING,
+      TENTATIVE: RsvpStatus.MAYBE,
+      DECLINED: RsvpStatus.NOT_GOING,
+    };
+    const rsvpStatus = statusMap[partstat];
+    if (!rsvpStatus) {
+      this.logger.debug(`rsvp-reply: unhandled PARTSTAT=${partstat}, ignoring`);
+      return;
+    }
+
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event || event.status !== EventStatus.PUBLISHED) {
+      this.logger.warn(`rsvp-reply: event ${eventId} not found or not published`);
+      return;
+    }
+
+    const user = await this.userRepo.findOne({ where: { email: attendeeEmail } });
+    if (!user) {
+      this.logger.warn(`rsvp-reply: no user found for ${attendeeEmail}`);
+      return;
+    }
+
+    const existing = await this.rsvpRepo.findOne({ where: { eventId, userId: user.id } });
+    if (existing) {
+      if (existing.status === rsvpStatus) return;
+      existing.status = rsvpStatus;
+      await this.rsvpRepo.save(existing);
+    } else {
+      await this.rsvpRepo.save(
+        this.rsvpRepo.create({ eventId, userId: user.id, status: rsvpStatus, additionalGuests: 0 }),
+      );
+    }
+
+    this.invalidateForUser(user.id);
+    this.logger.log(`rsvp-reply: ${attendeeEmail} → ${rsvpStatus} for event ${eventId}`);
+  }
+
+  private extractIcalFromEmail(rawEmail: string): string | null {
+    // Try plain-text first — also handles quoted-printable since BEGIN:VCALENDAR
+    // is readable ASCII. Decode QP afterward so =3D etc. are resolved.
+    const inline = rawEmail.match(/BEGIN:VCALENDAR[\s\S]*?END:VCALENDAR/i);
+    if (inline) return this.decodeQuotedPrintable(inline[0]);
+
+    // Try after full QP decode of the email (catches cases where the iCal section
+    // has soft-line-break folding that obscures the BEGIN: marker)
+    const qpDecoded = this.decodeQuotedPrintable(rawEmail);
+    const qpMatch = qpDecoded.match(/BEGIN:VCALENDAR[\s\S]*?END:VCALENDAR/i);
+    if (qpMatch) return qpMatch[0];
+
+    // Base64-encoded MIME part
+    const b64Parts = rawEmail.match(/Content-Transfer-Encoding:\s*base64[\s\S]*?(?=\n--|\n\n--|$)/gi) ?? [];
+    for (const part of b64Parts) {
+      const b64 = part.match(/\n\n([\w+/=\r\n]+)/)?.[1];
+      if (!b64) continue;
+      try {
+        const decoded = Buffer.from(b64.replace(/[\r\n]/g, ''), 'base64').toString('utf-8');
+        const cal = decoded.match(/BEGIN:VCALENDAR[\s\S]*?END:VCALENDAR/i);
+        if (cal) return cal[0];
+      } catch {
+        // ignore malformed base64
+      }
+    }
+
+    return null;
+  }
+
+  private decodeQuotedPrintable(str: string): string {
+    return str
+      .replace(/=\r?\n/g, '')  // remove QP soft line breaks
+      .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
   }
 }

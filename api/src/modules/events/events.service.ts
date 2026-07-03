@@ -293,6 +293,8 @@ export class EventsService {
     } else if (wasPublished && saved.status === EventStatus.PUBLISHED && (changedDate || changedTime || changedRestaurant)) {
       void this.sendUpdateEmails(saved);
       void this.calendarService.invalidateAll();
+    } else if (!wasPublished && saved.status === EventStatus.PUBLISHED) {
+      void this.sendPublishInvites(saved);
     }
 
     return saved;
@@ -546,7 +548,168 @@ export class EventsService {
     }
 
     this.calendarService.invalidateForUser(userId);
+
+    // Send .ics confirmation when a member newly commits to Going
+    const wasGoingBefore = existing?.status === RsvpStatus.GOING;
+    if (status === RsvpStatus.GOING && !wasGoingBefore) {
+      void this.sendRsvpConfirmation(event, userId);
+    }
+
     return saved;
+  }
+
+  private async sendPublishInvites(event: EventEntity): Promise<void> {
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+
+    const members = await this.userRepo
+      .createQueryBuilder('u')
+      .where('u.status IN (:...statuses)', { statuses: ['active', 'non_validated'] })
+      .andWhere('u.email IS NOT NULL')
+      .andWhere(
+        `(u.calendarAutoInvite = 'all' OR (u.calendarAutoInvite = 'city' AND u.cityId = :cityId))`,
+        { cityId: event.cityId },
+      )
+      .getMany();
+
+    if (members.length === 0) return;
+
+    const existingRsvps = await this.rsvpRepo.find({ where: { eventId: event.id }, select: ['userId'] });
+    const rsvpedIds = new Set(existingRsvps.map((r) => r.userId));
+
+    const [ey, em, ed] = event.eventDate.split('-').map(Number);
+    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric',
+    });
+    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const eventUrl = `${appUrl}/events/${event.id}`;
+
+    for (const member of members) {
+      if (!member.email || rsvpedIds.has(member.id)) continue;
+      if (['bounced', 'complained'].includes(member.emailStatus as string)) continue;
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
+  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+  </td></tr>
+  <tr><td style="padding:32px 36px 24px">
+    <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${member.fullName},</p>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You're invited to dinner! 🐻</h1>
+    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.restaurantName}</strong>
+      </td></tr>
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay} ET
+      </td></tr>
+      ${event.restaurantAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📍</span>${event.restaurantAddress}
+      </td></tr>` : ''}
+    </table>
+    <p style="margin:0 0 24px;font-size:0.9rem;color:#555">Open the attached calendar invite to Accept, Maybe, or Decline — your RSVP will update automatically. Or tap the button below to RSVP on the DinnerBears site.</p>
+    <p style="text-align:center;margin:0 0 24px">
+      <a href="${eventUrl}" style="background:#3D1C05;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View &amp; RSVP</a>
+    </p>
+  </td></tr>
+  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+      const icsContent = this.calendarService.buildInviteAttachment(
+        event,
+        { name: member.fullName, email: member.email },
+        appUrl,
+      );
+
+      await this.emailService.sendNow({
+        toEmail: member.email,
+        toName: member.fullName,
+        subject: `DinnerBears dinner at ${event.restaurantName} — ${dateDisplay}`,
+        htmlBody: html,
+        attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
+      }).catch((err: unknown) => {
+        this.logger.warn(`Publish invite failed for ${member.email}: ${(err as Error)?.message}`);
+      });
+    }
+  }
+
+  private async sendRsvpConfirmation(event: EventEntity, userId: number): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user?.email) return;
+
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const [ey, em, ed] = event.eventDate.split('-').map(Number);
+    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric',
+    });
+    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const eventUrl = `${appUrl}/events/${event.id}`;
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
+  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+  </td></tr>
+  <tr><td style="padding:32px 36px 24px">
+    <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${user.fullName},</p>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You're going! 🎉</h1>
+    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.restaurantName}</strong>
+      </td></tr>
+      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay} ET
+      </td></tr>
+      ${event.restaurantAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📍</span>${event.restaurantAddress}
+      </td></tr>` : ''}
+    </table>
+    <p style="margin:0 0 24px;font-size:0.9rem;color:#555">A calendar invite is attached — open it to add this dinner to your calendar. You can Accept, Maybe, or Decline directly from the invite.</p>
+    <p style="text-align:center;margin:0 0 24px">
+      <a href="${eventUrl}" style="background:#3D1C05;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Event</a>
+    </p>
+  </td></tr>
+  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    const icsContent = this.calendarService.buildInviteAttachment(
+      event,
+      { name: user.fullName, email: user.email },
+      appUrl,
+    );
+
+    await this.emailService.sendNow({
+      toEmail: user.email,
+      toName: user.fullName,
+      subject: `You're going to DinnerBears at ${event.restaurantName}!`,
+      htmlBody: html,
+      attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
+    }).catch((err: unknown) => {
+      this.logger.warn(`RSVP confirmation email failed for user ${userId}: ${(err as Error)?.message}`);
+    });
   }
 
   async removeRsvp(eventId: number, userId: number): Promise<void> {

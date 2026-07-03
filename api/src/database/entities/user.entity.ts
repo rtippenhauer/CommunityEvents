@@ -131,6 +131,9 @@ export class UserEntity {
   @Column({ name: 'calendar_rsvp_only', type: 'tinyint', default: 0 })
   calendarRsvpOnly: boolean;
 
+  @Column({ name: 'calendar_auto_invite', type: 'enum', enum: ['none', 'city', 'all'], default: 'none' })
+  calendarAutoInvite: 'none' | 'city' | 'all';
+
   @Column({ name: 'selected_title', type: 'varchar', length: 100, nullable: true })
   selectedTitle: string | null;
 

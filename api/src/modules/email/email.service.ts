@@ -8,7 +8,7 @@ import { EmailSuppressionEntity, SuppressionReason } from '../../database/entiti
 import { NotificationPreferencesEntity } from '../../database/entities/notification-preferences.entity';
 import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
 import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
-import { BrevoService } from './brevo.service';
+import { BrevoService, EmailAttachment } from './brevo.service';
 
 export interface QueueEmailDto {
   toEmail: string;
@@ -20,8 +20,9 @@ export interface QueueEmailDto {
   textBody?: string | null;
   priority?: number;
   sendAfter?: Date;
-  bypassSuppression?: boolean; // for transactional emails (verification, password reset)
+  bypassSuppression?: boolean;
   userId?: number;
+  attachments?: EmailAttachment[];
 }
 
 @Injectable()
@@ -130,6 +131,7 @@ export class EmailService {
         subject: dto.subject,
         htmlBody: dto.htmlBody,
         textBody: dto.textBody,
+        attachments: dto.attachments,
       });
     } catch (err) {
       this.logger.warn(`Immediate send failed for ${dto.toEmail}, falling back to queue: ${(err as Error).message}`);

@@ -6,6 +6,7 @@ export interface CalendarSettings {
   url: string;
   cityFilter: 'all' | 'city';
   rsvpOnly: boolean;
+  autoInvite: 'none' | 'city' | 'all';
   cityName: string;
 }
 
@@ -17,7 +18,7 @@ export class CalendarService {
     return this.http.get<CalendarSettings>('/api/v1/calendar/settings');
   }
 
-  updateSettings(patch: { cityFilter?: 'all' | 'city'; rsvpOnly?: boolean }): Observable<CalendarSettings> {
+  updateSettings(patch: { cityFilter?: 'all' | 'city'; rsvpOnly?: boolean; autoInvite?: 'none' | 'city' | 'all' }): Observable<CalendarSettings> {
     return this.http.patch<CalendarSettings>('/api/v1/calendar/settings', patch);
   }
 

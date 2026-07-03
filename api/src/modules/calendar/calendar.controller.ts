@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Header, Patch, Query, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, HttpCode, Patch, Post, Query, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
-import { IsEnum, IsBoolean, IsOptional } from 'class-validator';
+import { IsEnum, IsBoolean, IsOptional, IsString } from 'class-validator';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -15,11 +16,23 @@ class UpdateCalendarSettingsDto {
   @IsOptional()
   @IsBoolean()
   rsvpOnly?: boolean;
+
+  @IsOptional()
+  @IsEnum(['none', 'city', 'all'])
+  autoInvite?: 'none' | 'city' | 'all';
+}
+
+class RsvpReplyDto {
+  @IsString()
+  raw!: string;
 }
 
 @Controller('calendar')
 export class CalendarController {
-  constructor(private readonly calendarService: CalendarService) {}
+  constructor(
+    private readonly calendarService: CalendarService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Get('feed.ics')
   @Header('Cache-Control', 'no-store, no-cache')
@@ -62,5 +75,19 @@ export class CalendarController {
   async regenerateToken(@CurrentUser() user: UserEntity): Promise<{ url: string }> {
     const token = await this.calendarService.regenerateToken(user.id);
     return { url: this.calendarService.feedUrl(token) };
+  }
+
+  @Post('rsvp-reply')
+  @HttpCode(200)
+  async rsvpReply(
+    @Headers('x-cloudflare-secret') secret: string | undefined,
+    @Body() dto: RsvpReplyDto,
+  ): Promise<{ ok: boolean }> {
+    const expected = this.config.get<string>('CLOUDFLARE_EMAIL_SECRET', '');
+    if (!expected || secret !== expected) {
+      throw new UnauthorizedException('Invalid Cloudflare secret');
+    }
+    await this.calendarService.processRsvpReply(dto.raw);
+    return { ok: true };
   }
 }

@@ -649,10 +649,26 @@ Members subscribe to a personal iCal feed so upcoming dinners appear automatical
 - Enables Apple Mail's native Accept / Decline / Maybe prompt
 - Include `ATTENDEE;CN={name};RSVP=TRUE:mailto:{email}` in the attachment
 
-### Phase 16c — Inbound RSVP Reply Processing (REQ-NEW-22, optional)
+### Phase 16c — Inbound RSVP Reply Processing (REQ-NEW-22) ✅ Complete
 
-- Configure email routing to forward calendar replies to `POST /api/v1/calendar/rsvp-reply`
-- Parse `METHOD:REPLY` iCal, map `PARTSTAT` to DinnerBears RSVP status
-- Lower priority — deep link in the event description is the primary RSVP path
+**Infrastructure:** Cloudflare Email Routing + Email Workers (free tier). No new Docker containers.
 
-**Definition of done:** Members can subscribe to a personal iCal feed and see their events in any calendar app. Feed updates within 15 minutes of an event change or RSVP change. RFC 5545 validated. Calendar settings UI in account page. Phase 16b: invitation emails include `.ics` attachment with native prompt in Apple Mail.
+Setup steps (one-time, done in Cloudflare dashboard):
+1. Enable Email Routing for dinnerbears.com (Cloudflare adds MX records automatically)
+2. Create routes: `calendar@dinnerbears.com` → Worker (prod); `calendar-stage@dinnerbears.com` → same Worker (stage)
+3. Deploy `cloudflare/email-worker.js` as the Worker; set `CLOUDFLARE_EMAIL_SECRET` env var in Worker settings
+4. Set `CLOUDFLARE_EMAIL_SECRET` in API container env (same value)
+
+**How replies flow:**
+- `buildInviteAttachment()` sets `ORGANIZER:mailto:calendar@dinnerbears.com` so iOS knows where to reply
+- Member RSVPs Going → RSVP confirmation email sent immediately with `.ics` (METHOD:REQUEST) attachment
+- iOS Calendar shows **Accept / Maybe / Decline** buttons on the invite
+- Member taps Accept → iOS sends `METHOD:REPLY` to `calendar@dinnerbears.com`
+- Cloudflare Worker POSTs the raw email (JSON `{ raw }`) to `POST /api/v1/calendar/rsvp-reply`
+- API validates `X-Cloudflare-Secret` header, extracts UID (→ eventId) and ATTENDEE PARTSTAT (→ RSVP status), upserts the RSVP
+
+**UID scheme:** `dinnerbears-event-{eventId}@dinnerbears.com` — unchanged; member is identified by the ATTENDEE email in the reply.
+
+**PARTSTAT mapping:** `ACCEPTED` → Going, `TENTATIVE` → Maybe, `DECLINED` → Not Going.
+
+**Definition of done:** Members can subscribe to a personal iCal feed and see their events in any calendar app. Feed updates within 15 minutes of an event change or RSVP change. RFC 5545 validated. Calendar settings UI in account page. Phase 16b: invitation emails include `.ics` attachment with native prompt in Apple Mail. Phase 16c: tapping Accept/Maybe/Decline in iOS Calendar updates the member's DinnerBears RSVP automatically.
