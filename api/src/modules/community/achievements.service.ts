@@ -237,6 +237,7 @@ export class AchievementsService {
     points: number;
     icon?: string;
     imagePath?: string;
+    isSecret?: boolean;
   }): Promise<AchievementEntity> {
     const key = `event_${dto.eventId}_${Date.now()}`;
     const achievement = this.achievementRepo.create({
@@ -250,7 +251,7 @@ export class AchievementsService {
       eventId: dto.eventId,
       points: dto.points,
       title: dto.title ?? null,
-      isSecret: false,
+      isSecret: dto.isSecret ?? false,
     });
     return this.achievementRepo.save(achievement);
   }

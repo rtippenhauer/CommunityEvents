@@ -119,7 +119,7 @@ export class CommunityService {
 
   adminCreateEventAchievement(
     eventId: number,
-    dto: { name: string; description: string; title?: string; points: number; icon?: string },
+    dto: { name: string; description: string; title?: string; points: number; icon?: string; isSecret?: boolean },
   ): Observable<EventAchievement> {
     return this.http.post<EventAchievement>(`/api/v1/admin/events/${eventId}/achievement`, dto);
   }

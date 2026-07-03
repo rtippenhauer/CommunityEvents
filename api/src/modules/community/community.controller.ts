@@ -154,7 +154,10 @@ export class CommunityController {
   @Roles(UserRole.ADMIN)
   async createEventAchievement(
     @Param('eventId', ParseIntPipe) eventId: number,
-    @Body() body: { name: string; description: string; title?: string; points: number; icon?: string },
+    @Body() body: {
+      name: string; description: string; title?: string; points: number;
+      icon?: string; isSecret?: boolean;
+    },
   ) {
     if (!body.name || !body.description) {
       throw new BadRequestException('name and description are required');
@@ -166,6 +169,7 @@ export class CommunityController {
       title: body.title,
       points: body.points ?? 0,
       icon: body.icon,
+      isSecret: body.isSecret,
     });
     return ach;
   }

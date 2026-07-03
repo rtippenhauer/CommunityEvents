@@ -117,6 +117,10 @@ export interface AchievementAdminDialogData {
               (input)="formPoints.set(+$any($event.target).value)" />
           </mat-form-field>
           <app-icon-picker [icon]="formIcon()" (iconChange)="formIcon.set($event)" />
+          <label class="ach-secret-toggle">
+            <input type="checkbox" [checked]="formSecret()" (change)="formSecret.set($any($event.target).checked)" />
+            Hidden achievement (secret — not visible until earned)
+          </label>
           <div class="ach-form-actions">
             <button mat-raised-button color="primary"
               [disabled]="creating() || !formName() || !formDesc()"
@@ -198,6 +202,7 @@ export class AchievementAdminDialogComponent {
       title: this.formTitle() || undefined,
       points: this.formPoints(),
       icon: this.formIcon(),
+      isSecret: this.formSecret(),
     }).subscribe({
       next: (ach) => {
         this.achievement.set(ach);
