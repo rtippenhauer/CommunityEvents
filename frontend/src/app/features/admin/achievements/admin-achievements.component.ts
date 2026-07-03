@@ -12,6 +12,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CommunityService, AdminAchievement } from '../../../core/services/community.service';
+import { IconPickerComponent } from '../../../shared/components/icon-picker/icon-picker.component';
 
 const CATEGORY_META: Record<string, { label: string; icon: string; isProgressive: boolean; description: string }> = {
   attendance:                 { label: 'Attendance',             icon: 'local_dining',     isProgressive: true,  description: 'Earned by showing up to dinners. One point awarded per event attended.' },
@@ -57,6 +58,7 @@ interface AddForm extends EditForm {
   imports: [
     FormsModule,
     RouterLink,
+    IconPickerComponent,
     MatButtonModule,
     MatCardModule,
     MatCheckboxModule,
@@ -146,10 +148,6 @@ interface AddForm extends EditForm {
                                     <mat-label>Name</mat-label>
                                     <input matInput [(ngModel)]="editForm.name" />
                                   </mat-form-field>
-                                  <mat-form-field appearance="outline" class="field-icon">
-                                    <mat-label>Icon (emoji or material icon)</mat-label>
-                                    <input matInput [(ngModel)]="editForm.icon" />
-                                  </mat-form-field>
                                   <mat-form-field appearance="outline" class="field-pts">
                                     <mat-label>Points</mat-label>
                                     <input matInput type="number" min="0" [(ngModel)]="editForm.points" />
@@ -170,6 +168,7 @@ interface AddForm extends EditForm {
                                     <mat-label>Title (optional)</mat-label>
                                     <input matInput [(ngModel)]="editForm.title" />
                                   </mat-form-field>
+                                  <app-icon-picker class="field-icon" [icon]="editForm.icon" (iconChange)="editForm.icon = $event" />
                                   <mat-checkbox [(ngModel)]="editForm.isSecret" class="secret-check">
                                     Hidden (secret)
                                   </mat-checkbox>
@@ -204,10 +203,6 @@ interface AddForm extends EditForm {
                         <mat-label>Name</mat-label>
                         <input matInput [(ngModel)]="addForm.name" />
                       </mat-form-field>
-                      <mat-form-field appearance="outline" class="field-icon">
-                        <mat-label>Icon</mat-label>
-                        <input matInput [(ngModel)]="addForm.icon" placeholder="emoji_events" />
-                      </mat-form-field>
                     </div>
                     <mat-form-field appearance="outline" class="field-full">
                       <mat-label>Description</mat-label>
@@ -226,7 +221,7 @@ interface AddForm extends EditForm {
                         <mat-label>Title (optional)</mat-label>
                         <input matInput [(ngModel)]="addForm.title" />
                       </mat-form-field>
-                      <mat-checkbox [(ngModel)]="addForm.isSecret" class="secret-check">Hidden</mat-checkbox>
+                      <app-icon-picker class="field-icon" [icon]="addForm.icon" (iconChange)="addForm.icon = $event" />
                       <div class="edit-actions">
                         <button mat-raised-button color="primary" [disabled]="saving()"
                           (click)="saveAdd(group.type)">

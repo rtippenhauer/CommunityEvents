@@ -125,7 +125,7 @@ import { AchievementAdminDialogComponent } from './achievement-admin-dialog.comp
           <!-- Special dinner achievement badge (public) -->
           @if (eventAchievement()) {
             <div class="special-dinner-badge">
-              <mat-icon>local_activity</mat-icon>
+              <mat-icon>{{ eventAchievement()!.icon || 'local_activity' }}</mat-icon>
               <div class="special-dinner-text">
                 <span class="special-dinner-label">Special Dinner</span>
                 <span class="special-dinner-name">{{ eventAchievement()!.name }}</span>

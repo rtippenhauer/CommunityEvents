@@ -43,9 +43,11 @@ export interface EventAchievement {
   key: string;
   name: string;
   description: string;
+  icon: string;
   imagePath: string | null;
   title: string | null;
   points: number;
+  isSecret: boolean;
 }
 
 export interface AdminAchievement {
@@ -117,7 +119,7 @@ export class CommunityService {
 
   adminCreateEventAchievement(
     eventId: number,
-    dto: { name: string; description: string; title?: string; points: number },
+    dto: { name: string; description: string; title?: string; points: number; icon?: string },
   ): Observable<EventAchievement> {
     return this.http.post<EventAchievement>(`/api/v1/admin/events/${eventId}/achievement`, dto);
   }

@@ -8,6 +8,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CommunityService, EventAchievement } from '../../../core/services/community.service';
+import { IconPickerComponent } from '../../../shared/components/icon-picker/icon-picker.component';
 
 export interface AchievementAdminDialogData {
   eventId: number;
@@ -20,6 +21,7 @@ export interface AchievementAdminDialogData {
   selector: 'app-achievement-admin-dialog',
   standalone: true,
   imports: [
+    IconPickerComponent,
     MatButtonModule,
     MatDialogModule,
     MatFormFieldModule,
@@ -52,6 +54,7 @@ export interface AchievementAdminDialogData {
                 [value]="formPoints()"
                 (input)="formPoints.set(+$any($event.target).value)" />
             </mat-form-field>
+            <app-icon-picker [icon]="formIcon()" (iconChange)="formIcon.set($event)" />
             <label class="ach-secret-toggle">
               <input type="checkbox" [checked]="formSecret()" (change)="formSecret.set($any($event.target).checked)" />
               Hidden achievement (secret — not visible until earned)
@@ -113,6 +116,7 @@ export interface AchievementAdminDialogData {
               [value]="formPoints()"
               (input)="formPoints.set(+$any($event.target).value)" />
           </mat-form-field>
+          <app-icon-picker [icon]="formIcon()" (iconChange)="formIcon.set($event)" />
           <div class="ach-form-actions">
             <button mat-raised-button color="primary"
               [disabled]="creating() || !formName() || !formDesc()"
@@ -178,6 +182,7 @@ export class AchievementAdminDialogComponent {
   readonly formDesc = signal('');
   readonly formTitle = signal('');
   readonly formPoints = signal(1);
+  readonly formIcon = signal('local_activity');
   readonly formSecret = signal(false);
   readonly creating = signal(false);
   readonly saving = signal(false);
@@ -192,6 +197,7 @@ export class AchievementAdminDialogComponent {
       description: this.formDesc(),
       title: this.formTitle() || undefined,
       points: this.formPoints(),
+      icon: this.formIcon(),
     }).subscribe({
       next: (ach) => {
         this.achievement.set(ach);
@@ -214,6 +220,8 @@ export class AchievementAdminDialogComponent {
     this.formDesc.set(a.description);
     this.formTitle.set(a.title ?? '');
     this.formPoints.set(a.points);
+    this.formIcon.set(a.icon);
+    this.formSecret.set(a.isSecret);
     this.editMode.set(true);
   }
 
@@ -224,7 +232,7 @@ export class AchievementAdminDialogComponent {
     this.communityService.adminUpdateAchievement(a.id, {
       name: this.formName(),
       description: this.formDesc(),
-      icon: 'emoji_events',
+      icon: this.formIcon(),
       title: this.formTitle() || null,
       points: this.formPoints(),
       isSecret: this.formSecret(),
@@ -236,6 +244,8 @@ export class AchievementAdminDialogComponent {
           description: this.formDesc(),
           title: this.formTitle() || null,
           points: this.formPoints(),
+          icon: this.formIcon(),
+          isSecret: this.formSecret(),
         };
         this.achievement.set(updated);
         this.data.onChange(updated);

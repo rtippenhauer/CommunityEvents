@@ -235,6 +235,7 @@ export class AchievementsService {
     description: string;
     title?: string;
     points: number;
+    icon?: string;
     imagePath?: string;
   }): Promise<AchievementEntity> {
     const key = `event_${dto.eventId}_${Date.now()}`;
@@ -242,7 +243,7 @@ export class AchievementsService {
       key,
       name: dto.name,
       description: dto.description,
-      icon: 'local_activity',
+      icon: dto.icon || 'local_activity',
       imagePath: dto.imagePath ?? null,
       progressType: ProgressType.EVENT,
       progressTarget: 1,
