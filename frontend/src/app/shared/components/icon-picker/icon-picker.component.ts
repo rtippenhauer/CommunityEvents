@@ -93,6 +93,10 @@ const ICON_NAMES: string[] = [
         (click)="showUploadForm.set(!showUploadForm())">
         <mat-icon>add_photo_alternate</mat-icon>
       </button>
+      <button mat-icon-button type="button" matTooltip="Manage custom icons"
+        (click)="showManagePanel.set(!showManagePanel())">
+        <mat-icon>collections</mat-icon>
+      </button>
     </div>
     @if (isImg(icon) && currentUsage() !== null) {
       <p class="usage-hint">Used by {{ currentUsage() }} achievement{{ currentUsage() === 1 ? '' : 's' }}.</p>
@@ -118,6 +122,30 @@ const ICON_NAMES: string[] = [
         <button mat-button type="button" (click)="cancelUpload()">Cancel</button>
       </div>
     }
+    @if (showManagePanel()) {
+      <div class="icon-manage-panel">
+        <div class="manage-panel-title">Custom Icon Library</div>
+        @if (customIcons().length === 0) {
+          <p class="manage-empty">No custom icons uploaded yet.</p>
+        } @else {
+          <div class="manage-list">
+            @for (item of customIcons(); track item.id) {
+              <div class="manage-row">
+                <img class="manage-thumb" [src]="item.imagePath" alt="" />
+                <span class="manage-name">{{ item.name }}</span>
+                <span class="manage-usage">{{ item.usageCount }} use{{ item.usageCount === 1 ? '' : 's' }}</span>
+                <button mat-icon-button type="button" color="warn"
+                  [disabled]="item.usageCount > 0"
+                  [matTooltip]="item.usageCount > 0 ? 'In use — change achievements using it before deleting' : 'Delete'"
+                  (click)="deleteCustomIcon(item)">
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
   `,
   styles: [`
     .icon-picker { display: flex; align-items: center; gap: 10px; }
@@ -140,6 +168,19 @@ const ICON_NAMES: string[] = [
     }
     .upload-name-field { width: 200px; }
     .upload-preview { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+    .icon-manage-panel {
+      margin-top: 6px;
+      padding: 10px;
+      background: #faf7f2;
+      border-radius: 8px;
+    }
+    .manage-panel-title { font-size: 0.8rem; font-weight: 700; color: #666; margin-bottom: 6px; }
+    .manage-empty { color: #999; font-size: 0.85rem; margin: 0; }
+    .manage-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+    .manage-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+    .manage-thumb { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+    .manage-name { flex: 1; font-size: 0.85rem; }
+    .manage-usage { font-size: 0.75rem; color: #999; }
   `],
 })
 export class IconPickerComponent implements OnChanges, OnInit {
@@ -160,6 +201,7 @@ export class IconPickerComponent implements OnChanges, OnInit {
   readonly customIcons = signal<CustomIcon[]>([]);
   readonly filteredCustomIcons = signal<CustomIcon[]>([]);
   readonly showUploadForm = signal(false);
+  readonly showManagePanel = signal(false);
   readonly uploading = signal(false);
   readonly currentUsage = signal<number | null>(null);
 
@@ -234,7 +276,7 @@ export class IconPickerComponent implements OnChanges, OnInit {
     (event.target as HTMLInputElement).value = '';
     if (!file) return;
     const ref = this.dialog.open(PhotoCropDialogComponent, {
-      data: { file, shape: 'circle' },
+      data: { file, shape: 'circle', format: 'png' },
       disableClose: true,
       maxWidth: '95vw',
     });
@@ -271,6 +313,27 @@ export class IconPickerComponent implements OnChanges, OnInit {
   cancelUpload(): void {
     this.showUploadForm.set(false);
     this.resetUploadState();
+  }
+
+  deleteCustomIcon(item: CustomIcon): void {
+    if (item.usageCount > 0) return;
+    if (!window.confirm(`Delete "${item.name}" from the icon library? This can't be undone.`)) return;
+    this.communityService.deleteCustomIcon(item.id).subscribe({
+      next: () => {
+        const updated = this.customIcons().filter((c) => c.id !== item.id);
+        this.customIcons.set(updated);
+        this.filteredCustomIcons.set(
+          this.query.trim()
+            ? updated.filter((c) => c.name.toLowerCase().includes(this.query.trim().toLowerCase()))
+            : updated,
+        );
+        this.snackBar.open('Icon deleted', 'OK', { duration: 2000 });
+      },
+      error: (err) => {
+        const msg = err?.error?.message ?? 'Failed to delete icon';
+        this.snackBar.open(msg, 'OK', { duration: 4000 });
+      },
+    });
   }
 
   private resetUploadState(): void {

@@ -8,6 +8,8 @@ export interface PhotoCropDialogData {
   file: File;
   /** 'circle' for profile avatars (1:1 round), 'rectangle' for restaurant photos (4:3) */
   shape?: 'circle' | 'rectangle';
+  /** Output format — 'png' preserves transparency (e.g. custom icons); defaults to 'jpeg' */
+  format?: 'jpeg' | 'png';
 }
 
 @Component({
@@ -32,7 +34,7 @@ export interface PhotoCropDialogData {
         [resizeToHeight]="isCircle ? 300 : 600"
         [canvasRotation]="0"
         [allowMoveImage]="true"
-        format="jpeg"
+        [format]="data.format ?? 'jpeg'"
         (imageCropped)="onCropped($event)"
         (imageLoaded)="imageLoaded = true"
         class="cropper"

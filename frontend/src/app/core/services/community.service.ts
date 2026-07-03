@@ -172,7 +172,11 @@ export class CommunityService {
   createCustomIcon(name: string, image: Blob): Observable<CustomIcon> {
     const fd = new FormData();
     fd.append('name', name);
-    fd.append('image', image, 'icon.jpg');
+    fd.append('image', image, 'icon.png');
     return this.http.post<CustomIcon>('/api/v1/admin/custom-icons', fd);
+  }
+
+  deleteCustomIcon(id: number): Observable<{ ok: boolean }> {
+    return this.http.delete<{ ok: boolean }>(`/api/v1/admin/custom-icons/${id}`);
   }
 }

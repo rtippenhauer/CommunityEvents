@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Body, Query, Param, ParseIntPipe,
+  Controller, Get, Post, Patch, Delete, Body, Query, Param, ParseIntPipe,
   UseGuards, UseInterceptors, UploadedFile, Request, ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
@@ -296,5 +296,13 @@ export class CommunityController {
     const imagePath = `/api/uploads/custom-icons/${file.filename}`;
     const icon = await this.customIconsService.create(name.trim(), imagePath, req.user.id);
     return { ...icon, usageCount: 0 };
+  }
+
+  @Delete('admin/custom-icons/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async deleteCustomIcon(@Param('id', ParseIntPipe) id: number) {
+    await this.customIconsService.delete(id);
+    return { ok: true };
   }
 }
