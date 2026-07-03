@@ -1,9 +1,16 @@
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, signal } from '@angular/core';
+import { Component, EventEmitter, inject, Input, OnChanges, OnInit, Output, SimpleChanges, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
+import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { CommunityService, CustomIcon } from '../../../core/services/community.service';
+
+const IMG_PREFIX = 'img:';
 
 const ICON_NAMES: string[] = [
   'emoji_events', 'military_tech', 'workspace_premium', 'verified', 'badge', 'stars', 'star', 'grade',
@@ -42,15 +49,33 @@ const ICON_NAMES: string[] = [
 @Component({
   selector: 'app-icon-picker',
   standalone: true,
-  imports: [FormsModule, MatAutocompleteModule, MatFormFieldModule, MatIconModule, MatInputModule],
+  imports: [
+    FormsModule,
+    MatAutocompleteModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+    MatTooltipModule,
+  ],
   template: `
     <div class="icon-picker">
-      <mat-icon class="icon-preview">{{ icon || 'emoji_events' }}</mat-icon>
+      @if (isImg(icon)) {
+        <img class="icon-preview-img" [src]="srcFor(icon)" alt="" />
+      } @else {
+        <mat-icon class="icon-preview">{{ icon || 'emoji_events' }}</mat-icon>
+      }
       <mat-form-field appearance="outline" class="icon-search-field">
         <mat-label>{{ label }}</mat-label>
         <input matInput [(ngModel)]="query" (ngModelChange)="onQueryChange($event)"
-          [matAutocomplete]="auto" autocomplete="off" placeholder="Search icons…" />
+          [matAutocomplete]="auto" autocomplete="off" placeholder="Search icons or custom images…" />
         <mat-autocomplete #auto="matAutocomplete" (optionSelected)="onSelect($event)">
+          @for (item of filteredCustomIcons(); track item.id) {
+            <mat-option [value]="valueFor(item)">
+              <img class="option-img" [src]="item.imagePath" alt="" /> {{ item.name }}
+            </mat-option>
+          }
           @for (name of filtered(); track name) {
             <mat-option [value]="name">
               <mat-icon class="option-icon">{{ name }}</mat-icon> {{ name }}
@@ -58,28 +83,104 @@ const ICON_NAMES: string[] = [
           }
         </mat-autocomplete>
       </mat-form-field>
+      <button mat-icon-button type="button" matTooltip="Upload a custom icon"
+        (click)="showUploadForm.set(!showUploadForm())">
+        <mat-icon>add_photo_alternate</mat-icon>
+      </button>
     </div>
+    @if (showUploadForm()) {
+      <div class="icon-upload-form">
+        <mat-form-field appearance="outline" class="upload-name-field">
+          <mat-label>Icon name</mat-label>
+          <input matInput [(ngModel)]="uploadName" placeholder="e.g. Chips &amp; Salsa" />
+        </mat-form-field>
+        <input #fileInput type="file" accept="image/*" hidden (change)="onUploadFileSelected($event)" />
+        <button mat-stroked-button type="button" (click)="fileInput.click()">
+          <mat-icon>upload</mat-icon> {{ uploadFile ? uploadFile.name : 'Choose Image' }}
+        </button>
+        <button mat-raised-button color="primary" type="button"
+          [disabled]="uploading() || !uploadName.trim() || !uploadFile"
+          (click)="doUpload()">
+          @if (uploading()) { <mat-spinner diameter="16" /> } Add to Library
+        </button>
+        <button mat-button type="button" (click)="cancelUpload()">Cancel</button>
+      </div>
+    }
   `,
   styles: [`
     .icon-picker { display: flex; align-items: center; gap: 10px; }
     .icon-preview { font-size: 1.6rem; width: 1.6rem; height: 1.6rem; color: #C9933A; flex-shrink: 0; }
+    .icon-preview-img { width: 1.6rem; height: 1.6rem; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
     .icon-search-field { flex: 1; min-width: 160px; }
     .option-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; vertical-align: middle; margin-right: 6px; color: #666; }
+    .option-img { width: 1.1rem; height: 1.1rem; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 6px; }
+    .icon-upload-form {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      padding: 10px;
+      background: #faf7f2;
+      border-radius: 8px;
+    }
+    .upload-name-field { width: 200px; }
   `],
 })
-export class IconPickerComponent implements OnChanges {
+export class IconPickerComponent implements OnChanges, OnInit {
+  private readonly communityService = inject(CommunityService);
+  private readonly snackBar = inject(MatSnackBar);
+
   @Input() icon = '';
   @Input() label = 'Icon';
   @Output() iconChange = new EventEmitter<string>();
 
   query = '';
+  uploadName = '';
+  uploadFile: File | null = null;
 
   readonly filtered = signal<string[]>(ICON_NAMES.slice(0, 40));
+  readonly customIcons = signal<CustomIcon[]>([]);
+  readonly filteredCustomIcons = signal<CustomIcon[]>([]);
+  readonly showUploadForm = signal(false);
+  readonly uploading = signal(false);
+
+  ngOnInit(): void {
+    this.communityService.listCustomIcons().subscribe({
+      next: (list) => {
+        this.customIcons.set(list);
+        this.filteredCustomIcons.set(list);
+        this.syncQueryFromIcon();
+      },
+      error: () => {},
+    });
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['icon'] && this.icon !== this.query) {
+    if (changes['icon']) {
+      this.syncQueryFromIcon();
+    }
+  }
+
+  private syncQueryFromIcon(): void {
+    if (this.isImg(this.icon)) {
+      const match = this.customIcons().find((c) => this.valueFor(c) === this.icon);
+      this.query = match ? match.name : this.icon;
+    } else {
       this.query = this.icon;
     }
+  }
+
+  isImg(value: string): boolean {
+    return value.startsWith(IMG_PREFIX);
+  }
+
+  srcFor(value: string): string {
+    return value.slice(IMG_PREFIX.length);
+  }
+
+  valueFor(item: CustomIcon): string {
+    return IMG_PREFIX + item.imagePath;
   }
 
   onQueryChange(value: string): void {
@@ -89,11 +190,51 @@ export class IconPickerComponent implements OnChanges {
     this.filtered.set(
       q ? ICON_NAMES.filter((n) => n.includes(q)).slice(0, 40) : ICON_NAMES.slice(0, 40),
     );
+    this.filteredCustomIcons.set(
+      q ? this.customIcons().filter((c) => c.name.toLowerCase().includes(q)) : this.customIcons(),
+    );
   }
 
   onSelect(event: MatAutocompleteSelectedEvent): void {
-    const name = event.option.value as string;
-    this.query = name;
-    this.iconChange.emit(name);
+    const value = event.option.value as string;
+    if (this.isImg(value)) {
+      const match = this.customIcons().find((c) => this.valueFor(c) === value);
+      this.query = match ? match.name : value;
+    } else {
+      this.query = value;
+    }
+    this.iconChange.emit(value);
+  }
+
+  onUploadFileSelected(event: Event): void {
+    this.uploadFile = (event.target as HTMLInputElement).files?.[0] ?? null;
+  }
+
+  doUpload(): void {
+    if (!this.uploadFile || !this.uploadName.trim()) return;
+    this.uploading.set(true);
+    this.communityService.createCustomIcon(this.uploadName.trim(), this.uploadFile).subscribe({
+      next: (created) => {
+        const updated = [...this.customIcons(), created].sort((a, b) => a.name.localeCompare(b.name));
+        this.customIcons.set(updated);
+        this.filteredCustomIcons.set(updated);
+        this.query = created.name;
+        this.iconChange.emit(this.valueFor(created));
+        this.uploading.set(false);
+        this.showUploadForm.set(false);
+        this.uploadName = '';
+        this.uploadFile = null;
+      },
+      error: () => {
+        this.uploading.set(false);
+        this.snackBar.open('Failed to upload icon', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  cancelUpload(): void {
+    this.showUploadForm.set(false);
+    this.uploadName = '';
+    this.uploadFile = null;
   }
 }

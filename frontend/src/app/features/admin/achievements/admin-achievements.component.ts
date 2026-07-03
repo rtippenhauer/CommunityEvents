@@ -120,7 +120,11 @@ interface AddForm extends EditForm {
                         <tr class="ach-row" [class.is-editing]="editingId() === a.id">
                           <td class="key-cell">{{ a.key }}</td>
                           <td>
-                            <mat-icon class="ach-row-icon">{{ a.icon }}</mat-icon>
+                            @if (isImgIcon(a.icon)) {
+                              <img class="ach-row-icon-img" [src]="imgIconSrc(a.icon)" alt="" />
+                            } @else {
+                              <mat-icon class="ach-row-icon">{{ a.icon }}</mat-icon>
+                            }
                             {{ a.name }}
                           </td>
                           <td class="col-num">{{ a.progressTarget ?? '—' }}</td>
@@ -273,6 +277,7 @@ interface AddForm extends EditForm {
     .col-title { color: #888; font-style: italic; }
     .key-cell { font-family: monospace; font-size: 0.78rem; color: #666; }
     .ach-row-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; vertical-align: middle; color: #C9933A; margin-right: 4px; }
+    .ach-row-icon-img { width: 1.1rem; height: 1.1rem; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 4px; }
     .secret-yes { color: #f57c00; font-size: 1rem; width: 1rem; height: 1rem; }
     .secret-no { color: #ccc; font-size: 1rem; width: 1rem; height: 1rem; }
 
@@ -306,6 +311,14 @@ export class AdminAchievementsComponent implements OnInit {
 
   editForm: EditForm = this.blankEdit();
   addForm: AddForm = this.blankAdd('');
+
+  isImgIcon(icon: string): boolean {
+    return icon.startsWith('img:');
+  }
+
+  imgIconSrc(icon: string): string {
+    return icon.slice(4);
+  }
 
   readonly groups = computed<AchGroup[]>(() => {
     const map = new Map<string, AdminAchievement[]>();

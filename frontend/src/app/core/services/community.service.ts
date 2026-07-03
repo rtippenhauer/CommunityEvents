@@ -50,6 +50,13 @@ export interface EventAchievement {
   isSecret: boolean;
 }
 
+export interface CustomIcon {
+  id: number;
+  name: string;
+  imagePath: string;
+  createdAt: string;
+}
+
 export interface AdminAchievement {
   id: number;
   key: string;
@@ -155,5 +162,16 @@ export class CommunityService {
 
   adminBackfillFounders(): Observable<{ granted: number }> {
     return this.http.post<{ granted: number }>('/api/v1/admin/achievements/backfill-founders', {});
+  }
+
+  listCustomIcons(): Observable<CustomIcon[]> {
+    return this.http.get<CustomIcon[]>('/api/v1/admin/custom-icons');
+  }
+
+  createCustomIcon(name: string, file: File): Observable<CustomIcon> {
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('image', file);
+    return this.http.post<CustomIcon>('/api/v1/admin/custom-icons', fd);
   }
 }

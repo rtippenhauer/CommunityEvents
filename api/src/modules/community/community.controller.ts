@@ -14,6 +14,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { PointsService } from './points.service';
 import { AchievementsService } from './achievements.service';
+import { CustomIconsService } from './custom-icons.service';
 import { UserRole } from '../../database/entities/user.entity';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -22,6 +23,18 @@ const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 const achievementImageStorage = diskStorage({
   destination: (_req, _file, cb) => {
     const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'achievements');
+    mkdirSync(dest, { recursive: true });
+    cb(null, dest);
+  },
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}${extname(file.originalname)}`);
+  },
+});
+
+const customIconStorage = diskStorage({
+  destination: (_req, _file, cb) => {
+    const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'custom-icons');
     mkdirSync(dest, { recursive: true });
     cb(null, dest);
   },
@@ -45,6 +58,7 @@ export class CommunityController {
   constructor(
     private readonly pointsService: PointsService,
     private readonly achievementsService: AchievementsService,
+    private readonly customIconsService: CustomIconsService,
   ) {}
 
   // ── Leaderboard (public) ────────────────────────────────────────────────────
@@ -251,5 +265,35 @@ export class CommunityController {
     const imagePath = `/api/uploads/achievements/${file.filename}`;
     await this.achievementsService.updateAchievementImage(id, imagePath);
     return { imagePath };
+  }
+
+  // ── Custom icon library (reusable across achievements) ───────────────────────
+
+  @Get('admin/custom-icons')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  async listCustomIcons() {
+    return this.customIconsService.list();
+  }
+
+  @Post('admin/custom-icons')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: customIconStorage,
+      fileFilter: imageFilter,
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async createCustomIcon(
+    @Body('name') name: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req: any,
+  ) {
+    if (!file) throw new BadRequestException('No image uploaded');
+    if (!name || !name.trim()) throw new BadRequestException('Name is required');
+    const imagePath = `/api/uploads/custom-icons/${file.filename}`;
+    return this.customIconsService.create(name.trim(), imagePath, req.user.id);
   }
 }

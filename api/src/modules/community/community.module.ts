@@ -8,8 +8,10 @@ import { UserEntity } from '../../database/entities/user.entity';
 import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 import { InviteEntity } from '../../database/entities/invite.entity';
+import { CustomIconEntity } from '../../database/entities/custom-icon.entity';
 import { PointsService } from './points.service';
 import { AchievementsService } from './achievements.service';
+import { CustomIconsService } from './custom-icons.service';
 import { CommunityController } from './community.controller';
 
 @Module({
@@ -23,10 +25,11 @@ import { CommunityController } from './community.controller';
       EventEntity,
       EventRsvpEntity,
       InviteEntity,
+      CustomIconEntity,
     ]),
   ],
-  providers: [PointsService, AchievementsService],
+  providers: [PointsService, AchievementsService, CustomIconsService],
   controllers: [CommunityController],
-  exports: [PointsService, AchievementsService],
+  exports: [PointsService, AchievementsService, CustomIconsService],
 })
 export class CommunityModule {}

@@ -27,7 +27,7 @@ export class AchievementEntity {
   @Column({ length: 500 })
   description: string;
 
-  @Column({ length: 80, default: 'emoji_events' })
+  @Column({ length: 255, default: 'emoji_events' })
   icon: string;
 
   @Column({ name: 'image_path', type: 'varchar', length: 500, nullable: true })

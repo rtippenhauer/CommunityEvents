@@ -125,7 +125,11 @@ import { AchievementAdminDialogComponent } from './achievement-admin-dialog.comp
           <!-- Special dinner achievement badge (public) -->
           @if (eventAchievement()) {
             <div class="special-dinner-badge">
-              <mat-icon>{{ eventAchievement()!.icon || 'local_activity' }}</mat-icon>
+              @if (eventAchievement()!.icon.startsWith('img:')) {
+                <img class="special-dinner-icon-img" [src]="eventAchievement()!.icon.slice(4)" alt="" />
+              } @else {
+                <mat-icon>{{ eventAchievement()!.icon || 'local_activity' }}</mat-icon>
+              }
               <div class="special-dinner-text">
                 <span class="special-dinner-label">Special Dinner</span>
                 <span class="special-dinner-name">{{ eventAchievement()!.name }}</span>
@@ -1434,6 +1438,7 @@ import { AchievementAdminDialogComponent } from './achievement-admin-dialog.comp
       box-shadow: 0 2px 10px rgba(30,77,140,0.25);
       mat-icon { color: #C9933A; font-size: 2rem; width: 2rem; height: 2rem; flex-shrink: 0; margin-top: 2px; }
     }
+    .special-dinner-icon-img { width: 2rem; height: 2rem; border-radius: 50%; object-fit: cover; flex-shrink: 0; margin-top: 2px; }
     .special-dinner-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
     .special-dinner-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; }
     .special-dinner-name { font-size: 1rem; font-weight: 700; }
