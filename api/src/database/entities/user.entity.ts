@@ -113,6 +113,12 @@ export class UserEntity {
   @Column({ name: 'login_count', unsigned: true, default: 0 })
   loginCount: number;
 
+  @Column({ name: 'qualifying_login_count', unsigned: true, default: 0 })
+  qualifyingLoginCount: number;
+
+  @Column({ name: 'last_qualifying_login_at', type: 'datetime', nullable: true })
+  lastQualifyingLoginAt: Date | null;
+
   @Column({ name: 'failed_login_attempts', type: 'tinyint', unsigned: true, default: 0 })
   failedLoginAttempts: number;
 

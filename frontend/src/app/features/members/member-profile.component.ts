@@ -55,11 +55,13 @@ const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = 
   secret_dinner: { label: 'Secret Dinners', icon: 'lock' },
   founding: { label: 'Founding Bear', icon: 'history_edu' },
   event: { label: 'Special Dinners', icon: 'celebration' },
+  login: { label: 'Site Visits', icon: 'login' },
+  other: { label: 'Special', icon: 'emoji_events' },
 };
 
 const ACHIEVEMENT_CATEGORY_ORDER = [
   'attendance', 'coordinator', 'new_restaurant_coordinator',
-  'invite', 'rating', 'city_hopper', 'secret_dinner', 'founding', 'event',
+  'invite', 'rating', 'city_hopper', 'secret_dinner', 'login', 'founding', 'event', 'other',
 ];
 
 interface AchievementGroup {
@@ -577,7 +579,7 @@ export class MemberProfileComponent implements OnInit {
       const earned = sorted.filter((a) => a.earned);
       const unearned = sorted.filter((a) => !a.earned);
       const next = unearned[0] ?? null;
-      const isProgressive = cat !== 'founding' && cat !== 'event';
+      const isProgressive = cat !== 'founding' && cat !== 'event' && cat !== 'other';
 
       if (earned.length === 0) {
         if (!isProgressive) continue;

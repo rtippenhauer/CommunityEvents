@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatListModule } from '@angular/material/list';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatDialog } from '@angular/material/dialog';
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
@@ -15,8 +16,10 @@ import { filter } from 'rxjs';
 import { environment } from '../environments/environment';
 import { AuthService } from './core/services/auth.service';
 import { FeedbackService } from './core/services/feedback.service';
+import { AchievementSplashService } from './core/services/achievement-splash.service';
 import { NotificationBellComponent } from './shared/components/notification-bell/notification-bell.component';
 import { IosInstallBannerComponent } from './shared/components/ios-install-banner/ios-install-banner.component';
+import { AchievementSplashComponent } from './shared/components/achievement-splash/achievement-splash.component';
 
 @Component({
   selector: 'app-root',
@@ -42,6 +45,9 @@ export class AppComponent {
   private readonly breakpointObserver = inject(BreakpointObserver);
   readonly authService = inject(AuthService);
   readonly feedbackService = inject(FeedbackService);
+  private readonly achievementSplashService = inject(AchievementSplashService);
+  private readonly dialog = inject(MatDialog);
+  private achievementDialogOpen = false;
 
   readonly currentYear = new Date().getFullYear();
   readonly isStage = environment.isStage;
@@ -110,6 +116,32 @@ export class AppComponent {
         this.feedbackService.loadUnseenCount();
       } else {
         this.feedbackService.unseenCount.set(0);
+      }
+    });
+
+    effect(() => {
+      if (this.authService.currentUser()) {
+        this.achievementSplashService.startPolling();
+      } else {
+        this.achievementSplashService.stopPolling();
+      }
+    });
+
+    effect(() => {
+      const next = this.achievementSplashService.queue()[0];
+      if (next && !this.achievementDialogOpen) {
+        this.achievementDialogOpen = true;
+        this.dialog
+          .open(AchievementSplashComponent, {
+            data: next,
+            panelClass: 'achievement-splash-panel',
+            disableClose: true,
+          })
+          .afterClosed()
+          .subscribe(() => {
+            this.achievementSplashService.dismiss(next.memberAchievementId);
+            this.achievementDialogOpen = false;
+          });
       }
     });
 

@@ -58,6 +58,18 @@ export interface CustomIcon {
   usageCount: number;
 }
 
+export interface UnseenAchievement {
+  memberAchievementId: number;
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  imagePath: string | null;
+  points: number;
+  title: string | null;
+  earnedAt: string;
+}
+
 export interface AdminAchievement {
   id: number;
   key: string;
@@ -99,6 +111,14 @@ export class CommunityService {
 
   getMemberAchievements(id: number): Observable<Achievement[]> {
     return this.http.get<Achievement[]>(`/api/v1/members/${id}/achievements`);
+  }
+
+  getUnseenAchievements(): Observable<UnseenAchievement[]> {
+    return this.http.get<UnseenAchievement[]>('/api/v1/members/me/achievements/unseen');
+  }
+
+  markAchievementSeen(memberAchievementId: number): Observable<{ ok: boolean }> {
+    return this.http.patch<{ ok: boolean }>(`/api/v1/members/me/achievements/${memberAchievementId}/seen`, {});
   }
 
   selectTitle(title: string | null): Observable<{ ok: boolean }> {

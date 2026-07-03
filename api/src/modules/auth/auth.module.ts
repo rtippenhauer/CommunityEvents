@@ -20,6 +20,7 @@ import { CitiesModule } from '../cities/cities.module';
 import { AuditModule } from '../audit/audit.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { EmailModule } from '../email/email.module';
+import { CommunityModule } from '../community/community.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { EmailModule } from '../email/email.module';
     AuditModule,
     NotificationsModule,
     EmailModule,
+    CommunityModule,
   ],
   providers: [AuthService, GoogleStrategy, JwtStrategy, GoogleCallbackGuard],
   controllers: [AuthController],

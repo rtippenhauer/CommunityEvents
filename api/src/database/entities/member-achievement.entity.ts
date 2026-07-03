@@ -23,4 +23,7 @@ export class MemberAchievementEntity {
 
   @CreateDateColumn({ name: 'earned_at' })
   earnedAt: Date;
+
+  @Column({ name: 'seen_at', type: 'datetime', nullable: true })
+  seenAt: Date | null;
 }

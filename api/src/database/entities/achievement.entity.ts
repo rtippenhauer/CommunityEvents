@@ -11,6 +11,7 @@ export enum ProgressType {
   EVENT = 'event',
   CITY_HOPPER = 'city_hopper',
   SECRET_DINNER = 'secret_dinner',
+  LOGIN = 'login',
 }
 
 @Entity('achievements')

@@ -1,9 +1,17 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { Repository, DataSource, IsNull } from 'typeorm';
 import { AchievementEntity, ProgressType } from '../../database/entities/achievement.entity';
 import { MemberAchievementEntity } from '../../database/entities/member-achievement.entity';
 import { MemberPointEntity, PointType } from '../../database/entities/member-point.entity';
+import { UserEntity } from '../../database/entities/user.entity';
+
+// Independence Day week — the qualifying window for the Patriotic Bear achievement.
+// Starts a day earlier on stage so it can be tested without waiting for July 4.
+const PATRIOTIC_BEAR_START_PROD = new Date('2026-07-04T00:00:00');
+const PATRIOTIC_BEAR_START_STAGE = new Date('2026-07-03T00:00:00');
+const PATRIOTIC_BEAR_END = new Date('2026-07-11T23:59:59.999');
 
 export interface AchievementWithProgress {
   id: number;
@@ -25,6 +33,8 @@ export interface AchievementWithProgress {
 
 @Injectable()
 export class AchievementsService {
+  private readonly patrioticBearStart: Date;
+
   constructor(
     @InjectRepository(AchievementEntity)
     private readonly achievementRepo: Repository<AchievementEntity>,
@@ -32,8 +42,15 @@ export class AchievementsService {
     private readonly memberAchievementRepo: Repository<MemberAchievementEntity>,
     @InjectRepository(MemberPointEntity)
     private readonly pointRepo: Repository<MemberPointEntity>,
+    @InjectRepository(UserEntity)
+    private readonly userRepo: Repository<UserEntity>,
     private readonly dataSource: DataSource,
-  ) {}
+    configService: ConfigService,
+  ) {
+    this.patrioticBearStart = configService.get<string>('IS_STAGE') === 'true'
+      ? PATRIOTIC_BEAR_START_STAGE
+      : PATRIOTIC_BEAR_START_PROD;
+  }
 
   private async grant(userId: number, key: string): Promise<void> {
     const achievement = await this.achievementRepo.findOne({ where: { key } });
@@ -144,6 +161,20 @@ export class AchievementsService {
     if (count >= 100) await this.grant(userId, 'secret_dinner_100');
   }
 
+  async checkLoginAchievements(userId: number, qualifyingLoginCount: number): Promise<void> {
+    if (qualifyingLoginCount >= 25)  await this.grant(userId, 'login_25');
+    if (qualifyingLoginCount >= 50)  await this.grant(userId, 'login_50');
+    if (qualifyingLoginCount >= 100) await this.grant(userId, 'login_100');
+    if (qualifyingLoginCount >= 250) await this.grant(userId, 'login_250');
+    if (qualifyingLoginCount >= 500) await this.grant(userId, 'login_500');
+  }
+
+  async checkPatrioticBearAchievement(userId: number, now: Date): Promise<void> {
+    if (now >= this.patrioticBearStart && now <= PATRIOTIC_BEAR_END) {
+      await this.grant(userId, 'patriotic_bear');
+    }
+  }
+
   async checkEventAchievement(userId: number, eventId: number): Promise<void> {
     const achievement = await this.achievementRepo.findOne({
       where: { eventId, progressType: ProgressType.EVENT },
@@ -153,9 +184,10 @@ export class AchievementsService {
   }
 
   async getAchievementsWithProgress(userId: number): Promise<AchievementWithProgress[]> {
-    const [all, earned] = await Promise.all([
+    const [all, earned, user] = await Promise.all([
       this.achievementRepo.find({ order: { id: 'ASC' } }),
       this.memberAchievementRepo.find({ where: { memberId: userId }, order: { earnedAt: 'ASC' } }),
+      this.userRepo.findOne({ where: { id: userId } }),
     ]);
 
     // Count points by type for progress
@@ -176,9 +208,11 @@ export class AchievementsService {
     const secretDinnerCount = countMap['secret_dinner'] ?? 0;
 
     const earnedMap = new Map(earned.map((ma) => [ma.achievementId, ma]));
+    const loginCount = user?.qualifyingLoginCount ?? 0;
 
     return all
-      .filter((a) => !a.isSecret)
+      // Secret achievements stay hidden until earned, then appear like any other.
+      .filter((a) => !a.isSecret || earnedMap.has(a.id))
       .map((a) => {
         const ma = earnedMap.get(a.id);
         let progressCurrent = 0;
@@ -190,6 +224,7 @@ export class AchievementsService {
           case ProgressType.RATING: progressCurrent = ratingCount; break;
           case ProgressType.CITY_HOPPER: progressCurrent = cityHopperCount; break;
           case ProgressType.SECRET_DINNER: progressCurrent = secretDinnerCount; break;
+          case ProgressType.LOGIN: progressCurrent = loginCount; break;
           case ProgressType.FOUNDING: progressCurrent = ma ? 1 : 0; break;
           case ProgressType.EVENT: progressCurrent = ma ? 1 : 0; break;
           default: progressCurrent = 0;
@@ -212,6 +247,20 @@ export class AchievementsService {
           earnedAt: ma ? ma.earnedAt.toISOString() : null,
         };
       });
+  }
+
+  async getUnseenAchievements(userId: number): Promise<MemberAchievementEntity[]> {
+    return this.memberAchievementRepo.find({
+      where: { memberId: userId, seenAt: IsNull() },
+      order: { earnedAt: 'ASC' },
+    });
+  }
+
+  async markAchievementSeen(userId: number, memberAchievementId: number): Promise<void> {
+    await this.memberAchievementRepo.update(
+      { id: memberAchievementId, memberId: userId },
+      { seenAt: new Date() },
+    );
   }
 
   async getMemberAchievements(userId: number): Promise<MemberAchievementEntity[]> {

@@ -84,6 +84,30 @@ export class CommunityController {
     return this.achievementsService.getAchievementsWithProgress(req.user.id);
   }
 
+  @Get('members/me/achievements/unseen')
+  @UseGuards(JwtAuthGuard)
+  async getMyUnseenAchievements(@Request() req: any) {
+    const unseen = await this.achievementsService.getUnseenAchievements(req.user.id);
+    return unseen.map((ma) => ({
+      memberAchievementId: ma.id,
+      key: ma.achievement.key,
+      name: ma.achievement.name,
+      description: ma.achievement.description,
+      icon: ma.achievement.icon,
+      imagePath: ma.achievement.imagePath,
+      points: ma.achievement.points,
+      title: ma.achievement.title,
+      earnedAt: ma.earnedAt,
+    }));
+  }
+
+  @Patch('members/me/achievements/:id/seen')
+  @UseGuards(JwtAuthGuard)
+  async markAchievementSeen(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    await this.achievementsService.markAchievementSeen(req.user.id, id);
+    return { ok: true };
+  }
+
   @Patch('members/me/title')
   @UseGuards(JwtAuthGuard)
   async selectTitle(@Request() req: any, @Body() body: { title: string | null }) {

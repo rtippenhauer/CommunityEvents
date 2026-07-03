@@ -41,6 +41,7 @@ services:
     container_name: dinnerbears-api
     environment:
       - NODE_ENV=${NODE_ENV:-production}
+      - IS_STAGE=${IS_STAGE:-false}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT:-3306}
       - DB_NAME=${DB_NAME}
