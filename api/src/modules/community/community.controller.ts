@@ -294,6 +294,7 @@ export class CommunityController {
     if (!file) throw new BadRequestException('No image uploaded');
     if (!name || !name.trim()) throw new BadRequestException('Name is required');
     const imagePath = `/api/uploads/custom-icons/${file.filename}`;
-    return this.customIconsService.create(name.trim(), imagePath, req.user.id);
+    const icon = await this.customIconsService.create(name.trim(), imagePath, req.user.id);
+    return { ...icon, usageCount: 0 };
   }
 }

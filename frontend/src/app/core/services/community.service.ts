@@ -55,6 +55,7 @@ export interface CustomIcon {
   name: string;
   imagePath: string;
   createdAt: string;
+  usageCount: number;
 }
 
 export interface AdminAchievement {
@@ -168,10 +169,10 @@ export class CommunityService {
     return this.http.get<CustomIcon[]>('/api/v1/admin/custom-icons');
   }
 
-  createCustomIcon(name: string, file: File): Observable<CustomIcon> {
+  createCustomIcon(name: string, image: Blob): Observable<CustomIcon> {
     const fd = new FormData();
     fd.append('name', name);
-    fd.append('image', file);
+    fd.append('image', image, 'icon.jpg');
     return this.http.post<CustomIcon>('/api/v1/admin/custom-icons', fd);
   }
 }

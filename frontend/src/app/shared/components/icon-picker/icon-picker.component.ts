@@ -2,6 +2,7 @@ import { Component, EventEmitter, inject, Input, OnChanges, OnInit, Output, Simp
 import { FormsModule } from '@angular/forms';
 import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -9,6 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CommunityService, CustomIcon } from '../../../core/services/community.service';
+import { PhotoCropDialogComponent } from '../photo-crop-dialog/photo-crop-dialog.component';
 
 const IMG_PREFIX = 'img:';
 
@@ -73,7 +75,11 @@ const ICON_NAMES: string[] = [
         <mat-autocomplete #auto="matAutocomplete" (optionSelected)="onSelect($event)">
           @for (item of filteredCustomIcons(); track item.id) {
             <mat-option [value]="valueFor(item)">
-              <img class="option-img" [src]="item.imagePath" alt="" /> {{ item.name }}
+              <img class="option-img" [src]="item.imagePath" alt="" />
+              {{ item.name }}
+              @if (item.usageCount > 0) {
+                <span class="option-usage">· used by {{ item.usageCount }}</span>
+              }
             </mat-option>
           }
           @for (name of filtered(); track name) {
@@ -88,6 +94,9 @@ const ICON_NAMES: string[] = [
         <mat-icon>add_photo_alternate</mat-icon>
       </button>
     </div>
+    @if (isImg(icon) && currentUsage() !== null) {
+      <p class="usage-hint">Used by {{ currentUsage() }} achievement{{ currentUsage() === 1 ? '' : 's' }}.</p>
+    }
     @if (showUploadForm()) {
       <div class="icon-upload-form">
         <mat-form-field appearance="outline" class="upload-name-field">
@@ -95,11 +104,14 @@ const ICON_NAMES: string[] = [
           <input matInput [(ngModel)]="uploadName" placeholder="e.g. Chips &amp; Salsa" />
         </mat-form-field>
         <input #fileInput type="file" accept="image/*" hidden (change)="onUploadFileSelected($event)" />
+        @if (uploadPreviewUrl) {
+          <img class="upload-preview" [src]="uploadPreviewUrl" alt="" />
+        }
         <button mat-stroked-button type="button" (click)="fileInput.click()">
-          <mat-icon>upload</mat-icon> {{ uploadFile ? uploadFile.name : 'Choose Image' }}
+          <mat-icon>upload</mat-icon> {{ uploadBlob ? 'Change Image' : 'Choose Image' }}
         </button>
         <button mat-raised-button color="primary" type="button"
-          [disabled]="uploading() || !uploadName.trim() || !uploadFile"
+          [disabled]="uploading() || !uploadName.trim() || !uploadBlob"
           (click)="doUpload()">
           @if (uploading()) { <mat-spinner diameter="16" /> } Add to Library
         </button>
@@ -114,6 +126,8 @@ const ICON_NAMES: string[] = [
     .icon-search-field { flex: 1; min-width: 160px; }
     .option-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; vertical-align: middle; margin-right: 6px; color: #666; }
     .option-img { width: 1.1rem; height: 1.1rem; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 6px; }
+    .option-usage { color: #999; font-size: 0.8em; margin-left: 4px; }
+    .usage-hint { margin: 4px 0 0; font-size: 0.78rem; color: #888; }
     .icon-upload-form {
       display: flex;
       flex-wrap: wrap;
@@ -125,11 +139,13 @@ const ICON_NAMES: string[] = [
       border-radius: 8px;
     }
     .upload-name-field { width: 200px; }
+    .upload-preview { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
   `],
 })
 export class IconPickerComponent implements OnChanges, OnInit {
   private readonly communityService = inject(CommunityService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   @Input() icon = '';
   @Input() label = 'Icon';
@@ -137,13 +153,15 @@ export class IconPickerComponent implements OnChanges, OnInit {
 
   query = '';
   uploadName = '';
-  uploadFile: File | null = null;
+  uploadBlob: Blob | null = null;
+  uploadPreviewUrl: string | null = null;
 
   readonly filtered = signal<string[]>(ICON_NAMES.slice(0, 40));
   readonly customIcons = signal<CustomIcon[]>([]);
   readonly filteredCustomIcons = signal<CustomIcon[]>([]);
   readonly showUploadForm = signal(false);
   readonly uploading = signal(false);
+  readonly currentUsage = signal<number | null>(null);
 
   ngOnInit(): void {
     this.communityService.listCustomIcons().subscribe({
@@ -166,8 +184,10 @@ export class IconPickerComponent implements OnChanges, OnInit {
     if (this.isImg(this.icon)) {
       const match = this.customIcons().find((c) => this.valueFor(c) === this.icon);
       this.query = match ? match.name : this.icon;
+      this.currentUsage.set(match ? match.usageCount : null);
     } else {
       this.query = this.icon;
+      this.currentUsage.set(null);
     }
   }
 
@@ -186,6 +206,7 @@ export class IconPickerComponent implements OnChanges, OnInit {
   onQueryChange(value: string): void {
     this.query = value;
     this.iconChange.emit(value);
+    this.currentUsage.set(null);
     const q = value.trim().toLowerCase();
     this.filtered.set(
       q ? ICON_NAMES.filter((n) => n.includes(q)).slice(0, 40) : ICON_NAMES.slice(0, 40),
@@ -200,30 +221,45 @@ export class IconPickerComponent implements OnChanges, OnInit {
     if (this.isImg(value)) {
       const match = this.customIcons().find((c) => this.valueFor(c) === value);
       this.query = match ? match.name : value;
+      this.currentUsage.set(match ? match.usageCount : null);
     } else {
       this.query = value;
+      this.currentUsage.set(null);
     }
     this.iconChange.emit(value);
   }
 
   onUploadFileSelected(event: Event): void {
-    this.uploadFile = (event.target as HTMLInputElement).files?.[0] ?? null;
+    const file = (event.target as HTMLInputElement).files?.[0];
+    (event.target as HTMLInputElement).value = '';
+    if (!file) return;
+    const ref = this.dialog.open(PhotoCropDialogComponent, {
+      data: { file, shape: 'circle' },
+      disableClose: true,
+      maxWidth: '95vw',
+    });
+    ref.afterClosed().subscribe((blob: Blob | null) => {
+      if (!blob) return;
+      this.uploadBlob = blob;
+      if (this.uploadPreviewUrl) URL.revokeObjectURL(this.uploadPreviewUrl);
+      this.uploadPreviewUrl = URL.createObjectURL(blob);
+    });
   }
 
   doUpload(): void {
-    if (!this.uploadFile || !this.uploadName.trim()) return;
+    if (!this.uploadBlob || !this.uploadName.trim()) return;
     this.uploading.set(true);
-    this.communityService.createCustomIcon(this.uploadName.trim(), this.uploadFile).subscribe({
+    this.communityService.createCustomIcon(this.uploadName.trim(), this.uploadBlob).subscribe({
       next: (created) => {
         const updated = [...this.customIcons(), created].sort((a, b) => a.name.localeCompare(b.name));
         this.customIcons.set(updated);
         this.filteredCustomIcons.set(updated);
         this.query = created.name;
+        this.currentUsage.set(created.usageCount);
         this.iconChange.emit(this.valueFor(created));
         this.uploading.set(false);
         this.showUploadForm.set(false);
-        this.uploadName = '';
-        this.uploadFile = null;
+        this.resetUploadState();
       },
       error: () => {
         this.uploading.set(false);
@@ -234,7 +270,13 @@ export class IconPickerComponent implements OnChanges, OnInit {
 
   cancelUpload(): void {
     this.showUploadForm.set(false);
+    this.resetUploadState();
+  }
+
+  private resetUploadState(): void {
     this.uploadName = '';
-    this.uploadFile = null;
+    this.uploadBlob = null;
+    if (this.uploadPreviewUrl) URL.revokeObjectURL(this.uploadPreviewUrl);
+    this.uploadPreviewUrl = null;
   }
 }
