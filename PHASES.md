@@ -624,7 +624,7 @@ Dedicated `/leaderboard` page — no auth required to view.
 
 ---
 
-## Phase 16 — iCal Calendar Feed ✅ Complete
+## Phase 16 + 16c — iCal Calendar Feed & Calendar Reply RSVP ✅ Complete
 
 Full spec: `docs/DinnerBears_iCal_Feed_Requirements.md` (REQ-NEW-16 through REQ-NEW-22)
 

@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-07-01_
+_Last updated: 2026-07-02_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -102,10 +102,12 @@ deleted_at                      DATETIME NULL
 hard_delete_at                  DATETIME NULL               -- deleted_at + 30 days
 -- Community (Phase 15)
 selected_title                  VARCHAR(100) NULL           -- active title chosen from earned achievements
--- Calendar integration (Phase 16)
+-- Calendar integration (Phase 16 / 16c)
 calendar_token                  VARCHAR(36) NULL UNIQUE     -- iCal feed token; regenerable from Calendar Settings
 calendar_city_filter            ENUM('all','city') NOT NULL DEFAULT 'all'
 calendar_rsvp_only              TINYINT(1) NOT NULL DEFAULT 0
+calendar_auto_invite            ENUM('none','city','all') NOT NULL DEFAULT 'none'
+                                -- send .ics invite email when a new event is published
 created_at                      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 updated_at                      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 
