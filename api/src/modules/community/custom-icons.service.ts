@@ -1,7 +1,7 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { unlink } from 'fs/promises';
+import { rename, unlink } from 'fs/promises';
 import { join } from 'path';
 import { CustomIconEntity } from '../../database/entities/custom-icon.entity';
 import { AchievementEntity } from '../../database/entities/achievement.entity';
@@ -43,6 +43,26 @@ export class CustomIconsService {
   async create(name: string, imagePath: string, createdBy: number): Promise<CustomIconEntity> {
     const icon = this.customIconRepo.create({ name, imagePath, createdBy });
     return this.customIconRepo.save(icon);
+  }
+
+  /**
+   * Overwrites an existing icon's stored image file with a cleaned-up
+   * replacement, keeping the same imagePath/filename so every achievement
+   * already referencing this icon (via `icon: 'img:<path>'`) keeps working
+   * without needing any DB update.
+   */
+  async reprocessImage(id: number, uploadedFilePath: string): Promise<CustomIconEntity> {
+    const icon = await this.customIconRepo.findOne({ where: { id } });
+    if (!icon) throw new NotFoundException('Icon not found');
+    if (!icon.imagePath.startsWith('/api/uploads/')) {
+      throw new BadRequestException('Icon image is not stored locally');
+    }
+
+    const filename = icon.imagePath.replace('/api/uploads/', '');
+    const uploadPath = process.env.UPLOAD_PATH ?? '/app/uploads';
+    await rename(uploadedFilePath, join(uploadPath, filename));
+
+    return icon;
   }
 
   async delete(id: number): Promise<void> {

@@ -1,9 +1,14 @@
 /**
- * Makes a white (or near-white) background transparent by flood-filling from the
- * image edges — only white regions connected to the border are cleared, so white
- * details inside the subject (a plate rim, a highlight) survive untouched.
+ * Makes white (and near-white/light-gray "checkerboard" transparency
+ * placeholder) pixels transparent, anywhere in the image — not just where
+ * connected to the edges. Icon artwork is small and iconic (a logo, a badge),
+ * so an enclosed white/gray hole (the "0" in "250", the inside of an "O") is
+ * background peeking through, not an intentional white detail. AI image
+ * generators sometimes draw a light-gray/white checkerboard instead of real
+ * alpha to represent transparency, so a neutral (R≈G≈B) light color is
+ * treated as background too, whichever shade of the checker it is.
  */
-export function removeWhiteBackground(blob: Blob, threshold = 240): Promise<Blob> {
+export function removeWhiteBackground(blob: Blob, threshold = 195, chromaTolerance = 20): Promise<Blob> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(blob);
     const img = new Image();
@@ -17,42 +22,19 @@ export function removeWhiteBackground(blob: Blob, threshold = 240): Promise<Blob
       if (!ctx) { resolve(blob); return; }
 
       ctx.drawImage(img, 0, 0);
-      const { width, height } = canvas;
-      const imageData = ctx.getImageData(0, 0, width, height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
 
-      const isWhite = (pixelIndex: number): boolean =>
-        data[pixelIndex] >= threshold && data[pixelIndex + 1] >= threshold && data[pixelIndex + 2] >= threshold;
-
-      const visited = new Uint8Array(width * height);
-      const stack: number[] = [];
-      const seed = (x: number, y: number): void => {
-        if (x < 0 || y < 0 || x >= width || y >= height) return;
-        const cellIndex = y * width + x;
-        if (visited[cellIndex]) return;
-        if (!isWhite(cellIndex * 4)) return;
-        visited[cellIndex] = 1;
-        stack.push(cellIndex);
-      };
-
-      for (let x = 0; x < width; x++) {
-        seed(x, 0);
-        seed(x, height - 1);
-      }
-      for (let y = 0; y < height; y++) {
-        seed(0, y);
-        seed(width - 1, y);
-      }
-
-      while (stack.length > 0) {
-        const cellIndex = stack.pop()!;
-        data[cellIndex * 4 + 3] = 0;
-        const x = cellIndex % width;
-        const y = Math.floor(cellIndex / width);
-        seed(x + 1, y);
-        seed(x - 1, y);
-        seed(x, y + 1);
-        seed(x, y - 1);
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const minC = Math.min(r, g, b);
+        const maxC = Math.max(r, g, b);
+        // Near-white or light neutral gray (low saturation, high brightness).
+        if (minC >= threshold && maxC - minC <= chromaTolerance) {
+          data[i + 3] = 0;
+        }
       }
 
       ctx.putImageData(imageData, 0, 0);

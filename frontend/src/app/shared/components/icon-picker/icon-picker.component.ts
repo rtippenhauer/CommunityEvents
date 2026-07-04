@@ -132,9 +132,19 @@ const ICON_NAMES: string[] = [
           <div class="manage-list">
             @for (item of customIcons(); track item.id) {
               <div class="manage-row">
-                <img class="manage-thumb" [src]="item.imagePath" alt="" />
+                <img class="manage-thumb" [src]="thumbSrc(item)" alt="" />
                 <span class="manage-name">{{ item.name }}</span>
                 <span class="manage-usage">{{ item.usageCount }} use{{ item.usageCount === 1 ? '' : 's' }}</span>
+                <button mat-icon-button type="button"
+                  [disabled]="reprocessingId() === item.id"
+                  matTooltip="Remove white/checkered background"
+                  (click)="reprocessIcon(item)">
+                  @if (reprocessingId() === item.id) {
+                    <mat-spinner diameter="18" />
+                  } @else {
+                    <mat-icon>auto_fix_high</mat-icon>
+                  }
+                </button>
                 <button mat-icon-button type="button" color="warn"
                   [disabled]="item.usageCount > 0"
                   [matTooltip]="item.usageCount > 0 ? 'In use — change achievements using it before deleting' : 'Delete'"
@@ -205,6 +215,8 @@ export class IconPickerComponent implements OnChanges, OnInit {
   readonly showManagePanel = signal(false);
   readonly uploading = signal(false);
   readonly currentUsage = signal<number | null>(null);
+  readonly reprocessingId = signal<number | null>(null);
+  private readonly cacheBust = new Map<number, number>();
 
   ngOnInit(): void {
     this.communityService.listCustomIcons().subscribe({
@@ -336,6 +348,35 @@ export class IconPickerComponent implements OnChanges, OnInit {
         this.snackBar.open(msg, 'OK', { duration: 4000 });
       },
     });
+  }
+
+  thumbSrc(item: CustomIcon): string {
+    const v = this.cacheBust.get(item.id);
+    return v ? `${item.imagePath}?v=${v}` : item.imagePath;
+  }
+
+  reprocessIcon(item: CustomIcon): void {
+    this.reprocessingId.set(item.id);
+    fetch(item.imagePath)
+      .then((res) => res.blob())
+      .then((original) => removeWhiteBackground(original))
+      .then((cleaned) => {
+        this.communityService.reprocessCustomIcon(item.id, cleaned).subscribe({
+          next: () => {
+            this.cacheBust.set(item.id, Date.now());
+            this.reprocessingId.set(null);
+            this.snackBar.open(`"${item.name}" cleaned up`, 'OK', { duration: 2000 });
+          },
+          error: () => {
+            this.reprocessingId.set(null);
+            this.snackBar.open('Failed to clean up icon', 'OK', { duration: 3000 });
+          },
+        });
+      })
+      .catch(() => {
+        this.reprocessingId.set(null);
+        this.snackBar.open('Failed to fetch icon for cleanup', 'OK', { duration: 3000 });
+      });
   }
 
   private resetUploadState(): void {

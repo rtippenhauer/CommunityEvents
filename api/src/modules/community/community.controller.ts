@@ -329,4 +329,20 @@ export class CommunityController {
     await this.customIconsService.delete(id);
     return { ok: true };
   }
+
+  @Post('admin/custom-icons/:id/reprocess')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: customIconStorage,
+      fileFilter: imageFilter,
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async reprocessCustomIcon(@Param('id', ParseIntPipe) id: number, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No image uploaded');
+    const icon = await this.customIconsService.reprocessImage(id, file.path);
+    return { ...icon, cacheBust: Date.now() };
+  }
 }

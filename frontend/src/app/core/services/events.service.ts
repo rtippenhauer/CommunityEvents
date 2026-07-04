@@ -4,6 +4,13 @@ import { Observable } from 'rxjs';
 
 export type EventStatus = 'draft' | 'published' | 'cancelled';
 
+export interface PostTextInvite {
+  url: string;
+  flavor: 'member' | 'non_validated';
+  maxUses: number | null;
+  expiresAt: string;
+}
+
 export interface EventRestaurant {
   id: number;
   name: string;
@@ -226,7 +233,7 @@ export class EventsService {
     return `https://calendar.google.com/calendar/render?${params.toString()}`;
   }
 
-  generatePostText(event: Event, nvInviteLink?: string): string {
+  generatePostText(event: Event, invite?: PostTextInvite): string {
     const [y, m, d] = event.eventDate.split('-').map(Number);
     const date = new Date(y, m - 1, d);
     const dateStr = date.toLocaleDateString('en-US', {
@@ -235,6 +242,9 @@ export class EventsService {
     const [h, min] = event.eventTime.split(':').map(Number);
     const ampm = h >= 12 ? 'PM' : 'AM';
     const timeStr = `${h % 12 || 12}:${String(min).padStart(2, '0')} ${ampm}`;
+
+    const inviteBlock = invite ? this.formatInviteBlock(invite) : null;
+    const noInviteLine = `\nDinnerBears is invite-only. Interested in joining? Ask a member to invite you!`;
 
     let text: string;
     if (event.facebookShareText) {
@@ -248,19 +258,30 @@ export class EventsService {
       ];
       if (event.description) lines.push(`\n${event.description}`);
       lines.push(`\nRSVP: ${window.location.origin}/events/${event.id}`);
-      if (nvInviteLink) {
-        lines.push(`\nNot a DinnerBears member yet? Join using this invite link:\n${nvInviteLink}`);
-      } else {
-        lines.push(`\nDinnerBears is invite-only. Interested in joining? Ask a member to invite you!`);
-      }
+      lines.push(inviteBlock ? `\n${inviteBlock}` : noInviteLine);
       text = lines.join('\n');
     }
 
-    if (nvInviteLink && event.facebookShareText) {
-      text += `\n\nNot a DinnerBears member yet? Join using this invite link:\n${nvInviteLink}`;
+    if (invite && event.facebookShareText) {
+      text += `\n\n${inviteBlock}`;
     }
 
     return text;
+  }
+
+  private formatInviteBlock(invite: PostTextInvite): string {
+    const roleLine = invite.flavor === 'non_validated'
+      ? 'Not a DinnerBears member yet? RSVP as a guest using this link:'
+      : 'New here? Join DinnerBears using this invite link:';
+
+    const limits: string[] = [];
+    if (invite.maxUses != null) limits.push(`limited to ${invite.maxUses} uses`);
+    const expiry = new Date(invite.expiresAt);
+    const expiryStr = `${expiry.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${expiry.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    limits.push(`expires ${expiryStr}`);
+    const limitNote = ` (${limits.join(', ')})`;
+
+    return `${roleLine}${limitNote}\n${invite.url}`;
   }
 
   setReservation(eventId: number, payload: {

@@ -37,8 +37,6 @@ export interface EventInviteLink {
 
 export interface CreateEventInviteDto {
   flavor: InviteFlavor;
-  maxUses: number | null;
-  expiryDays: number;
 }
 
 @Injectable({ providedIn: 'root' })

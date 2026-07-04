@@ -322,6 +322,14 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    path: 'admin/icons',
+    loadComponent: () =>
+      import('./features/admin/icons/admin-icons.component').then(
+        (m) => m.AdminIconsComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/members/:id/community',
     loadComponent: () =>
       import('./features/admin/community/admin-community.component').then(

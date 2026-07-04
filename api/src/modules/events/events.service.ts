@@ -23,6 +23,7 @@ import { CalendarService } from '../calendar/calendar.service';
 import { PointsService } from '../community/points.service';
 import { AchievementsService } from '../community/achievements.service';
 import { ConfigService } from '@nestjs/config';
+import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 
 export interface EventFilters {
   cityId?: number;
@@ -465,23 +466,6 @@ export class EventsService {
     await this.eventRepo.remove(event);
   }
 
-  private isPastRsvpCutoff(eventDate: string, eventTime: string): boolean {
-    const now = new Date();
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', hour12: false,
-    });
-    const parts = fmt.formatToParts(now);
-    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '0';
-    const todayEastern = `${get('year')}-${get('month')}-${get('day')}`;
-    if (todayEastern !== eventDate) return false;
-    const [h, min] = eventTime.split(':').map(Number);
-    const cutoffMinutes = h * 60 + min - 150; // 2.5 hrs before event
-    const nowMinutes = parseInt(get('hour'), 10) * 60 + parseInt(get('minute'), 10);
-    return nowMinutes >= cutoffMinutes;
-  }
-
   async upsertRsvp(
     eventId: number,
     userId: number,
@@ -509,7 +493,7 @@ export class EventsService {
 
     const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
 
-    const isPastCutoff = this.isPastRsvpCutoff(event.eventDate, event.eventTime);
+    const isPastCutoff = isPastRsvpCutoff(event.eventDate, event.eventTime);
     const isPrivileged = userRole === UserRole.ADMIN || userRole === UserRole.MODERATOR;
 
     // Block upgrading to GOING after cutoff — applies to new RSVPs and existing non-Going RSVPs

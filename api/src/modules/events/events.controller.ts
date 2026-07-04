@@ -194,7 +194,7 @@ export class EventsController {
     @Body() dto: CreateEventInviteDto,
     @CurrentUser() user: UserEntity,
   ) {
-    return this.invitesService.createEventInvite(id, dto.flavor, user, dto.maxUses, dto.expiryDays);
+    return this.invitesService.createEventInvite(id, dto.flavor, user);
   }
 
   @Patch(':id/invite-links/:inviteId/revoke')

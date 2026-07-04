@@ -5,10 +5,14 @@ import { Not, Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { InviteEntity, InviteFlavor, InviteType } from '../../database/entities/invite.entity';
 import { UserEntity, UserStatus } from '../../database/entities/user.entity';
+import { EventEntity } from '../../database/entities/event.entity';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
 import { ConfigService } from '@nestjs/config';
+import { computeRsvpCutoffAt } from '../../common/utils/rsvp-cutoff.util';
+
+const EVENT_INVITE_MAX_USES = 10;
 
 @Injectable()
 export class InvitesService {
@@ -17,6 +21,8 @@ export class InvitesService {
     private readonly inviteRepo: Repository<InviteEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(EventEntity)
+    private readonly eventRepo: Repository<EventEntity>,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
   ) {}
@@ -152,11 +158,9 @@ export class InvitesService {
     eventId: number,
     flavor: InviteFlavor,
     creator: UserEntity,
-    maxUses: number | null,
-    expiryDays: number,
   ): Promise<InviteEntity> {
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + expiryDays);
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException(`Event ${eventId} not found`);
 
     const invite = this.inviteRepo.create({
       token: randomBytes(32).toString('hex'),
@@ -164,8 +168,8 @@ export class InvitesService {
       createdBy: creator.id,
       eventId,
       inviteFlavor: flavor,
-      expiresAt,
-      maxUses,
+      expiresAt: computeRsvpCutoffAt(event.eventDate, event.eventTime),
+      maxUses: EVENT_INVITE_MAX_USES,
     });
 
     return this.inviteRepo.save(invite);

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { ReleaseEntity } from '../../database/entities/release.entity';
 import { FeedbackEntity, FeedbackStatus } from '../../database/entities/feedback.entity';
+import { UserEntity } from '../../database/entities/user.entity';
 import { CreateReleaseDto } from './dto/create-release.dto';
 import { UpdateReleaseDto } from './dto/update-release.dto';
 import * as sanitizeHtml from 'sanitize-html';
@@ -11,6 +12,25 @@ const ALLOWED_HTML = {
   allowedTags: sanitizeHtml.defaults.allowedTags.concat(['s', 'u']),
   allowedAttributes: { a: ['href', 'target', 'rel'], ...sanitizeHtml.defaults.allowedAttributes },
 };
+
+export interface PublicAuthor {
+  id: number;
+  fullName: string;
+  profilePhotoPath: string | null;
+}
+
+function toPublicAuthor(user: UserEntity | null | undefined): PublicAuthor | null {
+  if (!user) return null;
+  return { id: user.id, fullName: user.fullName, profilePhotoPath: user.profilePhotoPath };
+}
+
+function toPublicRelease(release: ReleaseEntity) {
+  return {
+    ...release,
+    author: toPublicAuthor(release.author),
+    linkedFeedback: (release.linkedFeedback ?? []).map((fb) => ({ ...fb, user: toPublicAuthor(fb.user) })),
+  };
+}
 
 @Injectable()
 export class ReleasesService {
@@ -31,17 +51,18 @@ export class ReleasesService {
     });
   }
 
-  async findPublishedList(): Promise<ReleaseEntity[]> {
+  async findPublishedList(): Promise<ReturnType<typeof toPublicRelease>[]> {
     const qb = this.releaseRepo
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.linkedFeedback', 'fb')
       .leftJoinAndSelect('r.author', 'author')
       .where('r.published_at IS NOT NULL')
       .orderBy('r.published_at', 'DESC');
-    return qb.getMany();
+    const releases = await qb.getMany();
+    return releases.map(toPublicRelease);
   }
 
-  async findOnePublished(id: number): Promise<ReleaseEntity> {
+  async findOnePublished(id: number): Promise<ReturnType<typeof toPublicRelease>> {
     const release = await this.releaseRepo
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.linkedFeedback', 'fb')
@@ -50,7 +71,7 @@ export class ReleasesService {
       .where('r.id = :id AND r.published_at IS NOT NULL', { id })
       .getOne();
     if (!release) throw new NotFoundException(`Release ${id} not found`);
-    return release;
+    return toPublicRelease(release);
   }
 
   // ── Admin ─────────────────────────────────────────────────────────────────

@@ -1,14 +1,11 @@
 import { Component, inject, signal, computed } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatDividerModule } from '@angular/material/divider';
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -25,31 +22,17 @@ export interface ShareInvitesDialogData {
   standalone: true,
   imports: [
     DatePipe,
-    ReactiveFormsModule,
     MatButtonModule,
     MatButtonToggleModule,
     MatDialogModule,
     MatDividerModule,
-    MatFormFieldModule,
     MatIconModule,
-    MatInputModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
   ],
   template: `
     <h2 mat-dialog-title><mat-icon>share</mat-icon> Share &amp; Invite Links</h2>
     <mat-dialog-content>
-      <div class="share-btn-row">
-        <button mat-stroked-button class="fb-btn" (click)="shareToFacebook()"
-          matTooltip="Opens Facebook share dialog — change destination to your DinnerBears group">
-          <mat-icon>open_in_new</mat-icon> Share on Facebook
-        </button>
-        <button mat-stroked-button (click)="copyPostText()"
-          [matTooltip]="activeNvLink() ? 'Copies post text with Guest Member invite link included' : 'Copies post text'">
-          <mat-icon>content_copy</mat-icon> Copy Post Text
-        </button>
-      </div>
-
       @if (!inviteLinksLoading() && (activeNvLink() || activeMemberLink())) {
         <mat-divider class="share-divider" />
         <div class="share-quick-links">
@@ -58,7 +41,7 @@ export interface ShareInvitesDialogData {
             <div class="share-ql-row">
               <span class="link-flavor-badge flavor-nv">Guest Member</span>
               <span class="share-ql-url">{{ origin }}/join/{{ activeNvLink()!.token }}</span>
-              <button mat-icon-button matTooltip="Copy link" (click)="copyInviteLink(activeNvLink()!.token)">
+              <button mat-icon-button matTooltip="Copy link" (click)="copySimpleLink(activeNvLink()!.token)">
                 <mat-icon>content_copy</mat-icon>
               </button>
             </div>
@@ -67,7 +50,7 @@ export interface ShareInvitesDialogData {
             <div class="share-ql-row">
               <span class="link-flavor-badge flavor-member">Full Member</span>
               <span class="share-ql-url">{{ origin }}/join/{{ activeMemberLink()!.token }}</span>
-              <button mat-icon-button matTooltip="Copy link" (click)="copyInviteLink(activeMemberLink()!.token)">
+              <button mat-icon-button matTooltip="Copy link" (click)="copySimpleLink(activeMemberLink()!.token)">
                 <mat-icon>content_copy</mat-icon>
               </button>
             </div>
@@ -94,18 +77,11 @@ export interface ShareInvitesDialogData {
             <mat-button-toggle value="non_validated">Guest Member</mat-button-toggle>
             <mat-button-toggle value="member">Full Member</mat-button-toggle>
           </mat-button-toggle-group>
-          <mat-form-field appearance="outline" class="link-field">
-            <mat-label>Max Uses (blank = unlimited)</mat-label>
-            <input matInput type="number" [formControl]="newLinkMaxUsesCtrl" min="1" />
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="link-field">
-            <mat-label>Expires in (days)</mat-label>
-            <input matInput type="number" [formControl]="newLinkExpiryCtrl" min="1" max="90" />
-          </mat-form-field>
           <button mat-raised-button color="primary" (click)="createInviteLink()" [disabled]="creatingLink()">
             @if (creatingLink()) { <mat-spinner diameter="16" /> }
             Generate Link
           </button>
+          <p class="new-link-hint">Limited to 10 uses, expires when RSVP closes for this event.</p>
         </div>
       }
 
@@ -129,8 +105,11 @@ export interface ShareInvitesDialogData {
               </div>
               <div class="link-actions">
                 @if (!link.isRevoked) {
-                  <button mat-icon-button matTooltip="Copy link" (click)="copyInviteLink(link.token)">
+                  <button mat-icon-button matTooltip="Copy simple link" (click)="copySimpleLink(link.token)">
                     <mat-icon>content_copy</mat-icon>
+                  </button>
+                  <button mat-icon-button matTooltip="Copy as post text (includes a formatted message)" (click)="copyPostTextLink(link)">
+                    <mat-icon>article</mat-icon>
                   </button>
                   @if (data.isAdmin) {
                     <button mat-icon-button matTooltip="Revoke" color="warn" (click)="revokeInviteLink(link.id)">
@@ -150,7 +129,6 @@ export interface ShareInvitesDialogData {
   `,
   styles: [`
     mat-dialog-content { min-width: 320px; }
-    .share-btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
     .share-divider { margin: 16px 0; }
     .share-quick-links { display: flex; flex-direction: column; gap: 6px; }
     .share-ql-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #999; margin-bottom: 2px; }
@@ -172,7 +150,7 @@ export interface ShareInvitesDialogData {
       border-radius: 8px;
     }
     .flavor-toggle { height: 36px; }
-    .link-field { width: 170px; }
+    .new-link-hint { margin: 0; font-size: 0.78rem; color: #888; flex-basis: 100%; }
 
     .links-spinner { display: flex; justify-content: center; padding: 16px; }
     .no-links { color: #999; font-size: 0.88rem; margin: 0; }
@@ -218,8 +196,6 @@ export class ShareInvitesDialogComponent {
   readonly inviteLinksLoading = signal(false);
   readonly showNewLinkForm = signal(false);
   readonly newLinkFlavor = signal<'member' | 'non_validated'>('non_validated');
-  readonly newLinkMaxUsesCtrl = new FormControl<number | null>(null);
-  readonly newLinkExpiryCtrl = new FormControl<number>(30, { nonNullable: true });
   readonly creatingLink = signal(false);
 
   readonly activeNvLink = computed(() =>
@@ -245,45 +221,33 @@ export class ShareInvitesDialogComponent {
     });
   }
 
-  shareToFacebook(): void {
-    const e = this.data.event;
-    const url = `${window.location.origin}/events/${e.id}`;
-    const quote = this.eventsService.generatePostText(e);
-    window.open(
-      `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(quote)}`,
-      '_blank',
-      'noopener',
-    );
-  }
-
-  copyPostText(): void {
-    const nvLink = this.activeNvLink();
-    const nvUrl = nvLink ? `${window.location.origin}/join/${nvLink.token}` : undefined;
-    const text = this.eventsService.generatePostText(this.data.event, nvUrl);
-    this.clipboard.copy(text);
-    this.snackBar.open('Post text copied!', 'OK', { duration: 3000 });
-  }
-
-  copyInviteLink(token: string): void {
+  copySimpleLink(token: string): void {
     const url = `${window.location.origin}/join/${token}`;
     this.clipboard.copy(url);
     this.snackBar.open('Invite link copied!', 'OK', { duration: 2000 });
+  }
+
+  copyPostTextLink(link: EventInviteLink): void {
+    const text = this.eventsService.generatePostText(this.data.event, {
+      url: `${window.location.origin}/join/${link.token}`,
+      flavor: link.inviteFlavor,
+      maxUses: link.maxUses,
+      expiresAt: link.expiresAt,
+    });
+    this.clipboard.copy(text);
+    this.snackBar.open('Post text copied!', 'OK', { duration: 3000 });
   }
 
   createInviteLink(): void {
     this.creatingLink.set(true);
     this.invitesService.createEventInviteLink(this.data.event.id, {
       flavor: this.newLinkFlavor(),
-      maxUses: this.newLinkMaxUsesCtrl.value ?? null,
-      expiryDays: this.newLinkExpiryCtrl.value,
     }).subscribe({
       next: (link) => {
         this.inviteLinks.update((links) => [link, ...links]);
         this.showNewLinkForm.set(false);
         this.creatingLink.set(false);
-        const url = `${window.location.origin}/join/${link.token}`;
-        this.clipboard.copy(url);
-        this.snackBar.open('Invite link created and copied!', 'OK', { duration: 3000 });
+        this.snackBar.open('Invite link created', 'OK', { duration: 2000 });
       },
       error: () => {
         this.creatingLink.set(false);
