@@ -523,6 +523,24 @@ See `memory/project_phase14_nav_invites.md` — completed as v1.0.1.
 Deferred cleanup items and design spikes. No ordering implied — promote to a
 numbered phase when ready to schedule.
 
+### NestJS v11 Upgrade & Calendar Feed Fix (2026-07-04) ✅ Done — released as v1.3.3
+
+- Upgraded `@nestjs/common`, `@nestjs/core`, `@nestjs/platform-express`,
+  `@nestjs/typeorm` to v11; `@nestjs/config` to v4; `@nestjs/throttler` to v6
+  (fixes CVE-2026-35515, an SSE response CRLF-injection bug in
+  `SseStream._transform()` — no live SSE endpoints today, but this closes the
+  gap before the notifications-module SSE work lands)
+- Added Express 5 query-parser insurance (`app.set('query parser', 'extended')`)
+  in `main.ts`
+- Verified `ThrottlerAuditGuard`, `GoogleCallbackGuard`, the calendar `.ics`
+  feed, `GlobalExceptionFilter`, and TypeORM `migrationsRun` behavior against
+  v11 — no code changes required, all compiled and behaved identically
+- Removed the now-redundant `multer` override (v11's `platform-express`
+  ships Multer v2 natively)
+- Fixed the calendar `.ics` feed accumulating every past `PUBLISHED` event
+  forever (only `CANCELLED` events had a 7-day cutoff) — now filters
+  `PUBLISHED` events to `eventDate >= today` so the feed stays bounded
+
 ### Uploaded File Auth Gating
 Currently `/api/uploads/*` is served as a static asset with no auth check.
 Profile photo URLs are never leaked to guests or non-validated users via any
