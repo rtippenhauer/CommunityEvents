@@ -72,7 +72,7 @@ import { removeWhiteBackground } from '../../../shared/utils/remove-white-backgr
             <div class="icon-list">
               @for (item of customIcons(); track item.id) {
                 <div class="icon-row">
-                  <img class="icon-thumb" [src]="thumbSrc(item)" alt="" />
+                  <img class="icon-thumb" [src]="item.imagePath" alt="" />
                   <span class="icon-name">{{ item.name }}</span>
                   <span class="icon-usage">{{ item.usageCount }} use{{ item.usageCount === 1 ? '' : 's' }}</span>
                   <button mat-icon-button type="button"
@@ -128,7 +128,6 @@ export class AdminIconsComponent implements OnInit {
   readonly customIcons = signal<CustomIcon[]>([]);
   readonly uploading = signal(false);
   readonly reprocessingId = signal<number | null>(null);
-  private readonly cacheBust = new Map<number, number>();
 
   uploadName = '';
   uploadBlob: Blob | null = null;
@@ -201,11 +200,6 @@ export class AdminIconsComponent implements OnInit {
     });
   }
 
-  thumbSrc(item: CustomIcon): string {
-    const v = this.cacheBust.get(item.id);
-    return v ? `${item.imagePath}?v=${v}` : item.imagePath;
-  }
-
   reprocessIcon(item: CustomIcon): void {
     this.reprocessingId.set(item.id);
     fetch(item.imagePath)
@@ -213,8 +207,10 @@ export class AdminIconsComponent implements OnInit {
       .then((original) => removeWhiteBackground(original))
       .then((cleaned) => {
         this.communityService.reprocessCustomIcon(item.id, cleaned).subscribe({
-          next: () => {
-            this.cacheBust.set(item.id, Date.now());
+          next: (updated) => {
+            this.customIcons.update((list) =>
+              list.map((c) => (c.id === item.id ? { ...c, imagePath: updated.imagePath } : c)),
+            );
             this.reprocessingId.set(null);
             this.snackBar.open(`"${item.name}" cleaned up`, 'OK', { duration: 2000 });
           },

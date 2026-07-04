@@ -132,7 +132,7 @@ const ICON_NAMES: string[] = [
           <div class="manage-list">
             @for (item of customIcons(); track item.id) {
               <div class="manage-row">
-                <img class="manage-thumb" [src]="thumbSrc(item)" alt="" />
+                <img class="manage-thumb" [src]="item.imagePath" alt="" />
                 <span class="manage-name">{{ item.name }}</span>
                 <span class="manage-usage">{{ item.usageCount }} use{{ item.usageCount === 1 ? '' : 's' }}</span>
                 <button mat-icon-button type="button"
@@ -216,7 +216,6 @@ export class IconPickerComponent implements OnChanges, OnInit {
   readonly uploading = signal(false);
   readonly currentUsage = signal<number | null>(null);
   readonly reprocessingId = signal<number | null>(null);
-  private readonly cacheBust = new Map<number, number>();
 
   ngOnInit(): void {
     this.communityService.listCustomIcons().subscribe({
@@ -350,11 +349,6 @@ export class IconPickerComponent implements OnChanges, OnInit {
     });
   }
 
-  thumbSrc(item: CustomIcon): string {
-    const v = this.cacheBust.get(item.id);
-    return v ? `${item.imagePath}?v=${v}` : item.imagePath;
-  }
-
   reprocessIcon(item: CustomIcon): void {
     this.reprocessingId.set(item.id);
     fetch(item.imagePath)
@@ -362,8 +356,10 @@ export class IconPickerComponent implements OnChanges, OnInit {
       .then((original) => removeWhiteBackground(original))
       .then((cleaned) => {
         this.communityService.reprocessCustomIcon(item.id, cleaned).subscribe({
-          next: () => {
-            this.cacheBust.set(item.id, Date.now());
+          next: (updated) => {
+            const replace = (list: CustomIcon[]) => list.map((c) => (c.id === item.id ? { ...c, imagePath: updated.imagePath } : c));
+            this.customIcons.update(replace);
+            this.filteredCustomIcons.update(replace);
             this.reprocessingId.set(null);
             this.snackBar.open(`"${item.name}" cleaned up`, 'OK', { duration: 2000 });
           },

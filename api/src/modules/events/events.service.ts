@@ -154,9 +154,21 @@ export class EventsService {
     const isValidatedMember =
       filters.callerRole != null &&
       filters.callerRole !== UserRole.NON_VALIDATED;
+    const isPrivileged = filters.callerRole === UserRole.ADMIN || filters.callerRole === UserRole.MODERATOR;
 
     return events.map((e) => {
       (e as any).createdByUser = toPublicUser(e.createdByUser);
+      delete (e as any).reservationConfirmToken;
+      if (!isValidatedMember) {
+        (e as any).reservationAssignee = null;
+        (e as any).reservationContactName = null;
+        (e as any).reservationContactEmail = null;
+        (e as any).reservationConfirmedBy = null;
+        (e as any).reservationConfirmedNote = null;
+      } else {
+        (e as any).reservationAssignee = toPublicUser(e.reservationAssignee);
+        if (!isPrivileged) (e as any).reservationContactEmail = null;
+      }
       return Object.assign(e, {
         goingCount: goingCountMap.get(e.id) ?? 0,
         totalAttending: totalMap.get(e.id) ?? 0,
@@ -200,11 +212,21 @@ export class EventsService {
     (event as any).reservationAssignee = toPublicUser(event.reservationAssignee);
 
     // The confirm token is only used in the email confirm-link flow and should
-    // never appear in a general read. The coordinator's contact email is only
-    // for admins/moderators managing the reservation (frontend already gates
-    // display on this — enforce it server-side too).
+    // never appear in a general read.
     delete (event as any).reservationConfirmToken;
-    if (!isPrivileged) {
+
+    // The whole Reservation Coordinator panel is a members-only feature —
+    // unauthenticated and non-validated (guest) callers get none of it, not
+    // just the contact email.
+    if (!isValidatedMember) {
+      (event as any).reservationAssignee = null;
+      (event as any).reservationContactName = null;
+      (event as any).reservationContactEmail = null;
+      (event as any).reservationConfirmedBy = null;
+      (event as any).reservationConfirmedNote = null;
+    } else if (!isPrivileged) {
+      // Validated members can see who's coordinating, but the contact email
+      // is only for admins/moderators managing the reservation.
       (event as any).reservationContactEmail = null;
     }
 

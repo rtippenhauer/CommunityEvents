@@ -515,8 +515,8 @@ import { AchievementAdminDialogComponent } from './achievement-admin-dialog.comp
             </mat-card>
           }
 
-          <!-- Reservation Coordinator panel (visible to everyone; assign/manage is admin/mod only) -->
-          @if (event()!.status === 'published') {
+          <!-- Reservation Coordinator panel — members only (incl. admin/mod); assign/manage is admin/mod only -->
+          @if (event()!.status === 'published' && isLoggedIn() && !isNonValidated()) {
             <mat-card class="reservation-card">
               <mat-card-content>
                 <div class="reservation-header">

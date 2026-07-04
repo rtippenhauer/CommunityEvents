@@ -601,6 +601,11 @@ export class AuthService {
     const verificationExpires = new Date();
     verificationExpires.setHours(verificationExpires.getHours() + 48);
 
+    // Event invite links carry a flavor (Member vs. Guest Member) that determines
+    // the resulting role — same rule the Google/Facebook signup flows apply.
+    const isEventInvite = invite?.type === InviteType.EVENT_INVITE;
+    const isNonValidatedInvite = isEventInvite && invite?.inviteFlavor === InviteFlavor.NON_VALIDATED;
+
     const user = this.userRepo.create({
       fullName,
       email: lowerEmail,
@@ -609,11 +614,11 @@ export class AuthService {
       emailVerificationToken: verificationToken,
       emailVerificationExpiresAt: verificationExpires,
       cityId: defaultCity.id,
-      role: UserRole.MEMBER,
+      role: isNonValidatedInvite ? UserRole.NON_VALIDATED : UserRole.MEMBER,
       status: UserStatus.ACTIVE,
       inviteId: invite?.id ?? null,
       invitedBy: invite?.createdBy ?? null,
-      inviteSource: InviteSource.DIRECT,
+      inviteSource: isNonValidatedInvite ? InviteSource.NON_VALIDATED_LINK : InviteSource.DIRECT,
     });
 
     const saved = await this.userRepo.save(user);

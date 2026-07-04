@@ -1,9 +1,12 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DatePipe } from '@angular/common';
+import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { InvitesService, InvitePreview } from '../../core/services/invites.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -14,7 +17,16 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
 @Component({
   selector: 'app-join',
   standalone: true,
-  imports: [DatePipe, MatButtonModule, MatCardModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [
+    DatePipe,
+    ReactiveFormsModule,
+    MatButtonModule,
+    MatCardModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+  ],
   template: `
     <div class="join-page">
       <div class="brand-header">
@@ -90,6 +102,50 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
                   </button>
                 }
               </div>
+
+              <div class="divider"><span>or</span></div>
+
+              @if (showEmailForm()) {
+                <form [formGroup]="form" (ngSubmit)="submitEmailForm()" class="email-form">
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Full name</mat-label>
+                    <input matInput formControlName="fullName" autocomplete="name" />
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Email</mat-label>
+                    <input matInput formControlName="email" type="email" autocomplete="email" />
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Password</mat-label>
+                    <input matInput formControlName="password" [type]="showPassword() ? 'text' : 'password'"
+                      autocomplete="new-password" />
+                    <button mat-icon-button matSuffix type="button" (click)="showPassword.set(!showPassword())">
+                      <mat-icon>{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                    </button>
+                  </mat-form-field>
+
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Confirm password</mat-label>
+                    <input matInput formControlName="confirmPassword" [type]="showPassword() ? 'text' : 'password'"
+                      autocomplete="new-password" />
+                  </mat-form-field>
+
+                  @if (formError()) {
+                    <p class="form-error">{{ formError() }}</p>
+                  }
+
+                  <button mat-raised-button color="primary" type="submit" class="auth-btn"
+                    [disabled]="form.invalid || submitting()">
+                    @if (submitting()) { <mat-spinner diameter="20" /> } @else { Create account }
+                  </button>
+                </form>
+              } @else {
+                <button mat-button class="email-toggle-btn" (click)="showEmailForm.set(true)">
+                  <mat-icon>mail</mat-icon> Sign up with email
+                </button>
+              }
 
               <p class="expires-note">
                 This invite expires {{ preview()!.expiresAt | date: 'MMM d, y' }}.
@@ -290,6 +346,42 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
       flex-shrink: 0;
     }
 
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #bbb;
+      font-size: 0.8rem;
+
+      &::before, &::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: #ddd;
+      }
+    }
+
+    .email-form {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      text-align: left;
+    }
+
+    .full-width { width: 100%; }
+
+    .form-error {
+      color: #c62828;
+      font-size: 0.82rem;
+      margin: 0;
+      text-align: center;
+    }
+
+    .email-toggle-btn {
+      color: var(--db-primary);
+      font-size: 0.9rem;
+    }
+
     .expires-note {
       margin: 0;
       font-size: 0.78rem;
@@ -334,11 +426,23 @@ export class JoinComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly invitesService = inject(InvitesService);
   private readonly authService = inject(AuthService);
+  private readonly fb = inject(NonNullableFormBuilder);
 
   readonly state = signal<PageState>('loading');
   readonly preview = signal<InvitePreview | null>(null);
   readonly fbReady = signal(false);
   readonly fbLogging = signal(false);
+  readonly showEmailForm = signal(false);
+  readonly showPassword = signal(false);
+  readonly submitting = signal(false);
+  readonly formError = signal<string | null>(null);
+
+  readonly form = this.fb.group({
+    fullName: ['', Validators.required],
+    email: ['', [Validators.required, Validators.email]],
+    password: ['', [Validators.required, Validators.minLength(8)]],
+    confirmPassword: [''],
+  });
 
   ngOnInit(): void {
     const code = this.route.snapshot.paramMap.get('code') ?? '';
@@ -406,6 +510,31 @@ export class JoinComponent implements OnInit {
         this.fbLogging.set(false);
       }
     }, { scope: 'public_profile,email,user_link' });
+  }
+
+  submitEmailForm(): void {
+    this.formError.set(null);
+    const { fullName, email, password, confirmPassword } = this.form.getRawValue();
+    const token = this.preview()?.token;
+    if (!token) { this.formError.set('This invite link is invalid.'); return; }
+    if (!fullName.trim()) { this.formError.set('Please enter your name.'); return; }
+    if (password !== confirmPassword) { this.formError.set('Passwords do not match.'); return; }
+
+    this.submitting.set(true);
+    this.authService.registerWithPassword(token, fullName.trim(), email, password).subscribe({
+      next: () => {
+        void this.router.navigate(['/auth/verify-email-sent'], { queryParams: { email } });
+      },
+      error: (err) => {
+        this.submitting.set(false);
+        const reason = err?.error?.reason ?? err?.error?.message ?? '';
+        if (reason === 'email_taken') this.formError.set('An account with that email already exists.');
+        else if (reason === 'invite_expired') this.formError.set('Your invite link has expired. Ask for a new one.');
+        else if (reason === 'invite_used') this.formError.set('This invite link has already been used.');
+        else if (reason === 'invite_email_mismatch') this.formError.set('This invite was sent to a different email address.');
+        else this.formError.set('Registration failed. Please try again.');
+      },
+    });
   }
 
   formatTime(time: string): string {

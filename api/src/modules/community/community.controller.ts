@@ -345,7 +345,6 @@ export class CommunityController {
   )
   async reprocessCustomIcon(@Param('id', ParseIntPipe) id: number, @UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No image uploaded');
-    const icon = await this.customIconsService.reprocessImage(id, file.path);
-    return { ...icon, cacheBust: Date.now() };
+    return this.customIconsService.reprocessImage(id, file.filename);
   }
 }

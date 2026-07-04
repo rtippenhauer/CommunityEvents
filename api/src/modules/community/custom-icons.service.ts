@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { rename, unlink } from 'fs/promises';
+import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { CustomIconEntity } from '../../database/entities/custom-icon.entity';
 import { AchievementEntity } from '../../database/entities/achievement.entity';
@@ -46,21 +46,35 @@ export class CustomIconsService {
   }
 
   /**
-   * Overwrites an existing icon's stored image file with a cleaned-up
-   * replacement, keeping the same imagePath/filename so every achievement
-   * already referencing this icon (via `icon: 'img:<path>'`) keeps working
-   * without needing any DB update.
+   * Replaces an icon's stored image with a cleaned-up version at a brand-new
+   * URL (rather than overwriting the same filename in place). An in-place
+   * overwrite left the image vulnerable to being served stale indefinitely
+   * by any caching layer between the browser and this server (browser cache,
+   * or an upstream reverse proxy) that doesn't revalidate on every request —
+   * a new filename can never collide with a previously-cached response.
+   * Achievements referencing the old path (via `icon: 'img:<path>'`) are
+   * repointed to the new one in the same operation.
    */
-  async reprocessImage(id: number, uploadedFilePath: string): Promise<CustomIconEntity> {
+  async reprocessImage(id: number, newFilename: string): Promise<CustomIconEntity> {
     const icon = await this.customIconRepo.findOne({ where: { id } });
     if (!icon) throw new NotFoundException('Icon not found');
     if (!icon.imagePath.startsWith('/api/uploads/')) {
       throw new BadRequestException('Icon image is not stored locally');
     }
 
-    const filename = icon.imagePath.replace('/api/uploads/', '');
+    const oldImagePath = icon.imagePath;
+    const newImagePath = `/api/uploads/custom-icons/${newFilename}`;
+
+    await this.achievementRepo.update({ icon: `img:${oldImagePath}` }, { icon: `img:${newImagePath}` });
+    icon.imagePath = newImagePath;
+    await this.customIconRepo.save(icon);
+
     const uploadPath = process.env.UPLOAD_PATH ?? '/app/uploads';
-    await rename(uploadedFilePath, join(uploadPath, filename));
+    try {
+      await unlink(join(uploadPath, oldImagePath.replace('/api/uploads/', '')));
+    } catch {
+      // Non-fatal — old file may already be gone
+    }
 
     return icon;
   }
