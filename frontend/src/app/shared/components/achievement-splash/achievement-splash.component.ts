@@ -36,10 +36,10 @@ const BURST_INTERVAL_MS = 550;
 function randomSpawnPoint(): { x: number; y: number } {
   const region = Math.floor(Math.random() * 4);
   switch (region) {
-    case 0: return { x: Math.random() * 100, y: 2 + Math.random() * 14 };        // top strip
-    case 1: return { x: Math.random() * 100, y: 84 + Math.random() * 14 };       // bottom strip
-    case 2: return { x: 2 + Math.random() * 16, y: Math.random() * 100 };        // left strip
-    default: return { x: 82 + Math.random() * 16, y: Math.random() * 100 };      // right strip
+    case 0: return { x: Math.random() * 100, y: 2 + Math.random() * 18 };        // top strip
+    case 1: return { x: Math.random() * 100, y: 80 + Math.random() * 18 };       // bottom strip
+    case 2: return { x: 2 + Math.random() * 24, y: Math.random() * 100 };        // left strip
+    default: return { x: 74 + Math.random() * 24, y: Math.random() * 100 };      // right strip
   }
 }
 
@@ -139,6 +139,7 @@ function buildBurst(id: number): Burst {
       align-items: center;
       text-align: center;
       gap: 8px;
+      max-width: 340px;
       padding: 24px 20px 20px;
       background: #fffaf3;
       border-radius: 16px;

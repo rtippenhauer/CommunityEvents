@@ -217,8 +217,10 @@ interface AchievementGroup {
                     <div class="ach-earned-row">
                       @if (a.imagePath) {
                         <img [src]="a.imagePath" [alt]="a.name" class="ach-row-img" />
+                      } @else if (isImgIcon(a.icon)) {
+                        <img [src]="imgIconSrc(a.icon)" [alt]="a.name" class="ach-row-img" />
                       } @else {
-                        <mat-icon class="ach-check-icon">check_circle</mat-icon>
+                        <mat-icon class="ach-icon">{{ a.icon }}</mat-icon>
                       }
                       <div class="ach-earned-info">
                         <span class="ach-earned-name">{{ a.name }}</span>
@@ -375,7 +377,7 @@ interface AchievementGroup {
       padding: 8px 16px;
       &:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
     }
-    .ach-check-icon { color: #2e7d32; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
+    .ach-icon { color: #C9933A; font-size: 1.5rem; width: 1.5rem; height: 1.5rem; flex-shrink: 0; }
     .ach-row-img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
     .ach-earned-info { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap; }
     .ach-earned-name { font-size: 0.88rem; font-weight: 600; color: #222; }
@@ -507,6 +509,14 @@ export class ProfileComponent implements OnInit {
 
   progressLabel(type: string | null): string {
     return type ? (PROGRESS_LABELS[type] ?? type) : '';
+  }
+
+  isImgIcon(icon: string): boolean {
+    return icon.startsWith('img:');
+  }
+
+  imgIconSrc(icon: string): string {
+    return icon.slice(4);
   }
 
   private loadMyProfile(): void {
