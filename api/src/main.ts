@@ -10,6 +10,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  app.set('query parser', 'extended');
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
 
