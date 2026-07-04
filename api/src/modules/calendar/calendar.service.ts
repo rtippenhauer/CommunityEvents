@@ -142,6 +142,8 @@ export class CalendarService {
     });
     const rsvpMap = new Map(rsvps.map((r) => [r.eventId, r.status]));
 
+    const today = new Date().toISOString().split('T')[0];
+
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const cutoffDate = sevenDaysAgo.toISOString().split('T')[0];
@@ -152,8 +154,8 @@ export class CalendarService {
     let qb = this.eventRepo
       .createQueryBuilder('e')
       .where(
-        '(e.status = :published OR (e.status = :cancelled AND e.eventDate >= :cutoff))',
-        { published: EventStatus.PUBLISHED, cancelled: EventStatus.CANCELLED, cutoff: cutoffDate },
+        '((e.status = :published AND e.eventDate >= :today) OR (e.status = :cancelled AND e.eventDate >= :cutoff))',
+        { published: EventStatus.PUBLISHED, cancelled: EventStatus.CANCELLED, today, cutoff: cutoffDate },
       )
       .orderBy('e.eventDate', 'ASC')
       .addOrderBy('e.eventTime', 'ASC');
