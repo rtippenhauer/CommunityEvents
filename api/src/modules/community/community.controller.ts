@@ -61,10 +61,11 @@ export class CommunityController {
     private readonly customIconsService: CustomIconsService,
   ) {}
 
-  // ── Leaderboard (public) ────────────────────────────────────────────────────
+  // ── Leaderboard (validated members only — shows real names) ──────────────────
 
   @Get('leaderboard')
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.MEMBER, UserRole.ADMIN, UserRole.MODERATOR)
   async getLeaderboard(@Query('cityId') cityId?: string) {
     const cid = cityId ? parseInt(cityId, 10) : undefined;
     return this.pointsService.getLeaderboard(cid);

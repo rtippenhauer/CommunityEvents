@@ -175,8 +175,8 @@ import { AchievementAdminDialogComponent } from './achievement-admin-dialog.comp
             </mat-card-content>
           </mat-card>
 
-          <!-- Reservation status — visible to all logged-in members -->
-          @if (isLoggedIn() && event()!.status === 'published') {
+          <!-- Reservation status — members only (not guest/non-validated accounts) -->
+          @if (isLoggedIn() && !isNonValidated() && event()!.status === 'published') {
             @if (event()!.reservationConfirmed) {
               <div class="reservation-confirmed-badge">
                 <mat-icon>check_circle</mat-icon>

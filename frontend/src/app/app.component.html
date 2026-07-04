@@ -33,10 +33,10 @@
       @if (isLoggedIn()) {
         <mat-divider />
         <div class="sidenav-section-label">Community</div>
-        <a mat-list-item routerLink="/leaderboard" (click)="sidenav.close()">
-          <mat-icon matListItemIcon>emoji_events</mat-icon> Leaderboard
-        </a>
         @if (!isNonValidated()) {
+          <a mat-list-item routerLink="/leaderboard" (click)="sidenav.close()">
+            <mat-icon matListItemIcon>emoji_events</mat-icon> Leaderboard
+          </a>
           <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
             <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
           </a>
@@ -168,10 +168,10 @@
               Community <mat-icon class="menu-chevron">expand_more</mat-icon>
             </button>
             <mat-menu #communityMenu="matMenu" panelClass="nav-menu">
-              <a mat-menu-item routerLink="/leaderboard">
-                <mat-icon>emoji_events</mat-icon> Leaderboard
-              </a>
               @if (isLoggedIn() && !isNonValidated()) {
+                <a mat-menu-item routerLink="/leaderboard">
+                  <mat-icon>emoji_events</mat-icon> Leaderboard
+                </a>
                 <a mat-menu-item routerLink="/restaurants">
                   <mat-icon>restaurant</mat-icon> Restaurants
                 </a>

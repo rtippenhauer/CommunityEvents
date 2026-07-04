@@ -151,6 +151,7 @@ export const routes: Routes = [
     path: 'leaderboard',
     loadComponent: () =>
       import('./features/leaderboard/leaderboard.component').then((m) => m.LeaderboardComponent),
+    canActivate: [validatedMemberGuard],
   },
   {
     path: 'members',

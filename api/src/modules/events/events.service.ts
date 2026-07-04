@@ -161,6 +161,7 @@ export class EventsService {
       delete (e as any).reservationConfirmToken;
       if (!isValidatedMember) {
         (e as any).reservationAssignee = null;
+        (e as any).reservationAssigneeId = null;
         (e as any).reservationContactName = null;
         (e as any).reservationContactEmail = null;
         (e as any).reservationConfirmedBy = null;
@@ -220,6 +221,7 @@ export class EventsService {
     // just the contact email.
     if (!isValidatedMember) {
       (event as any).reservationAssignee = null;
+      (event as any).reservationAssigneeId = null;
       (event as any).reservationContactName = null;
       (event as any).reservationContactEmail = null;
       (event as any).reservationConfirmedBy = null;
