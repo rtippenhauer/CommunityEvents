@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-07-02_
+_Last updated: 2026-07-04_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -49,6 +49,7 @@ No `synchronize: true`. No manual schema changes.
 | `achievements` | 15 | Achievement definitions (keys, icons, titles, progress rules) |
 | `member_achievements` | 15 | Earned achievements per member |
 | `member_points` | 15 | Bear Points ledger (one row per award event) |
+| `custom_icons` | 17 | Reusable icon library for achievements |
 
 ---
 
@@ -94,6 +95,8 @@ invite_source_name              VARCHAR(255) NULL           -- Facebook group na
 -- Activity tracking
 last_login_at                   DATETIME NULL
 login_count                     INT UNSIGNED NOT NULL DEFAULT 0
+qualifying_login_count          INT UNSIGNED NOT NULL DEFAULT 0       -- Phase 17: site-access count, deduped by a time window (distinct from login_count, which only counts actual OAuth/password logins)
+last_qualifying_login_at        DATETIME NULL                         -- Phase 17
 failed_login_attempts           TINYINT UNSIGNED NOT NULL DEFAULT 0   -- Phase 11 lockout
 login_locked_until              DATETIME NULL                         -- Phase 11 lockout
 last_failed_login_at            DATETIME NULL                         -- Phase 11 lockout
@@ -209,6 +212,8 @@ INDEX idx_type (type)
 INDEX idx_event (event_id)
 INDEX idx_facebook_group (facebook_group_id)
 ```
+
+**Phase 17:** `event_invite` links no longer accept admin-set `max_uses`/`expires_at` — they're always created with `max_uses = 10` and `expires_at` = the event's RSVP cutoff (event start time minus 150 minutes, Eastern). No schema change, just a server-side default change in `InvitesService.createEventInvite`.
 
 ---
 
@@ -786,18 +791,20 @@ id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 key             VARCHAR(64) NOT NULL UNIQUE     -- e.g. "founding_bear", "regular"
 name            VARCHAR(120) NOT NULL
 description     VARCHAR(500) NOT NULL
-icon            VARCHAR(80) NOT NULL DEFAULT 'emoji_events'  -- Material icon name
-image_path      VARCHAR(500) NULL               -- optional uploaded image
+icon            VARCHAR(255) NOT NULL DEFAULT 'emoji_events'  -- Material icon name, or "img:<path>" referencing a custom_icons row (Phase 17)
+image_path      VARCHAR(500) NULL               -- optional uploaded image (achievement-specific, distinct from the custom icon library)
 progress_type   ENUM('attendance','coordinator','new_restaurant_coordinator',
                      'invite','rating','founding','event','city_hopper',
-                     'secret_dinner') NULL       -- NULL = one-time/manual grant
+                     'secret_dinner','login') NULL   -- NULL = one-time/manual grant; 'login' added Phase 17
 progress_target INT UNSIGNED NULL               -- threshold for progressive achievements
 event_id        INT UNSIGNED NULL               -- for event-specific one-time achievements
 points          TINYINT NOT NULL DEFAULT 0      -- Bear Points awarded on unlock
 title           VARCHAR(100) NULL               -- earnable title text; NULL = no title
-is_secret       TINYINT(1) NOT NULL DEFAULT 0   -- hidden until earned
+is_secret       TINYINT(1) NOT NULL DEFAULT 0   -- hidden until earned; once earned, now shows normally (Phase 17 fix — previously stayed hidden forever)
 created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ```
+
+**Phase 17 seed additions:** `login_25`/`login_50`/`login_100`/`login_250`/`login_500` (hidden, 10 pts each, `progress_type = 'login'`, target = the number in the key) and `patriotic_bear` (hidden, 10 pts, one-time, granted for logging in July 4–11, 2026 — America's Semiquincentennial).
 
 ---
 
@@ -810,10 +817,27 @@ id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 member_id       INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
 achievement_id  INT UNSIGNED NOT NULL REFERENCES achievements(id) ON DELETE CASCADE
 earned_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+seen_at         DATETIME NULL                   -- Phase 17: NULL until the member has seen the achievement-earned splash screen; backfilled to earned_at for pre-existing rows
 
 UNIQUE KEY uq_member_achievement (member_id, achievement_id)
 INDEX idx_member (member_id)
 ```
+
+---
+
+## custom_icons
+
+Phase 17 (table originally added just before this phase; documented here for the first time). Reusable icon library for achievements — an alternative to the built-in Material icon set or achievement-specific `image_path` uploads. Referenced from `achievements.icon` as `img:<image_path>`.
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+name            VARCHAR(100) NOT NULL
+image_path      VARCHAR(500) NOT NULL
+created_by      INT UNSIGNED NULL REFERENCES users(id) ON DELETE SET NULL
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+```
+
+Usage count (how many achievements reference a given icon) is computed on read by matching `achievements.icon = CONCAT('img:', custom_icons.image_path)`, not stored. Icons in use can't be deleted, but can be reprocessed in place (same `image_path`, file overwritten) to strip white/checkerboard backgrounds after upload — see Admin > Custom Icons.
 
 ---
 

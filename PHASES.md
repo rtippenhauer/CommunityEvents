@@ -672,3 +672,36 @@ Setup steps (one-time, done in Cloudflare dashboard):
 **PARTSTAT mapping:** `ACCEPTED` → Going, `TENTATIVE` → Maybe, `DECLINED` → Not Going.
 
 **Definition of done:** Members can subscribe to a personal iCal feed and see their events in any calendar app. Feed updates within 15 minutes of an event change or RSVP change. RFC 5545 validated. Calendar settings UI in account page. Phase 16b: invitation emails include `.ics` attachment with native prompt in Apple Mail. Phase 16c: tapping Accept/Maybe/Decline in iOS Calendar updates the member's DinnerBears RSVP automatically.
+
+---
+
+## Phase 17 — Event Admin Dialogs, Custom Icon Library & Hidden Achievements ✅ Complete
+
+### Event Detail Admin Cleanup
+- Share/Invite Links, Attendance, and Special Dinner Achievement management moved from always-visible inline cards into dialogs opened from an overflow (kebab) menu next to the event title; data preloads so panels aren't empty on open
+- Reservation Coordinator card made visible to all members (assign/manage actions remain admin/mod only)
+
+### Custom Icon Library
+- Searchable icon picker for achievements (Material icon set + reusable custom icons)
+- Admins can upload, crop, and reuse custom icon images across achievements; usage count shown per icon (icons in use can't be deleted)
+- Background cleanup: uploads are scanned for white *and* light-gray "checkerboard" pixels (some AI image generators simulate transparency this way) anywhere in the image, not just connected to the edges — fixes artifacts like a colored ring around a transparent hole
+- Icons can be reprocessed in place after upload (same stored file, backgrounds re-cleaned) without needing to re-upload or touch any achievement referencing it
+- Dedicated **Admin > Custom Icons** page — no longer requires opening an event's achievement editor to manage the library
+- Fixed the nginx default 1MB request body limit, which was silently truncating/rejecting larger icon/photo uploads
+
+### Hidden Achievements
+- Fixed a bug where secret achievements never appeared once earned (a stale filter excluded all `is_secret` rows unconditionally) — they now display normally after being unlocked
+- New hidden login-count achievements: 25/50/100/250/500 site visits, 10 Bear Points each. Visits are deduped by a time window (5 min on stage, 60 min in production) so rapid page loads don't over-count
+- New hidden **Patriotic Bear** achievement — logging in July 4–11, 2026 (America's Semiquincentennial) grants it, 10 Bear Points
+- New achievement-earned splash screen: pops up automatically when a member has unseen achievements since their last visit, queues multiple if several were earned at once, and shows a red/white/blue animated fireworks celebration specifically for Patriotic Bear
+
+### Event Invite Links Rework
+- Removed the "Share on Facebook" button (it never called any DinnerBears backend — pure client-side redirect to Facebook's share dialog)
+- Removed the standalone "Copy Post Text" button; its formatting logic was preserved and generalized to work per-link instead
+- New event invite links are always created with a fixed 10-use cap and now expire at the event's RSVP cutoff (150 minutes before start) instead of an admin-chosen day count
+- Every invite link now offers two copy actions — a plain link and a formatted "post text" version (adapted for Guest vs. Full Member, with the usage/expiry limits noted) — both embed the same token, so either one counts against the same 10-use cap
+
+### Security Fix
+- The public `/api/v1/releases` endpoint (no login required, by design) was serializing the full author `UserEntity` — including `password_hash`, email, and verification tokens — for every release, and the full submitter record for any linked feedback ticket. Now serialized down to `id`, `fullName`, `profilePhotoPath` only.
+
+**Definition of done:** Event admin tools accessible via overflow-menu dialogs; Reservation Coordinator visible to all members. Admins can upload, crop, reuse, and clean up custom achievement icons from a dedicated admin page. Secret achievements display correctly once earned. Login-count and Patriotic Bear achievements grant automatically and surface via a queued splash screen. Event invite links use a fixed 10-use/RSVP-cutoff-expiry model with both plain and post-text copy options sharing one usage cap. Public release notes no longer leak account data.
