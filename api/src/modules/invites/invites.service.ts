@@ -11,6 +11,7 @@ import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
 import { ConfigService } from '@nestjs/config';
 import { computeRsvpCutoffAt } from '../../common/utils/rsvp-cutoff.util';
+import { toPublicUser } from '../../common/utils/public-user.util';
 
 const EVENT_INVITE_MAX_USES = 10;
 
@@ -175,12 +176,13 @@ export class InvitesService {
     return this.inviteRepo.save(invite);
   }
 
-  findByEvent(eventId: number): Promise<InviteEntity[]> {
-    return this.inviteRepo.find({
+  async findByEvent(eventId: number): Promise<InviteEntity[]> {
+    const invites = await this.inviteRepo.find({
       where: { eventId, type: InviteType.EVENT_INVITE },
       relations: ['creator'],
       order: { createdAt: 'DESC' },
     });
+    return invites.map((i) => Object.assign(i, { creator: toPublicUser(i.creator) }));
   }
 
   async findByToken(token: string): Promise<InviteEntity | null> {

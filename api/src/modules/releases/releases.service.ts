@@ -76,20 +76,21 @@ export class ReleasesService {
 
   // ── Admin ─────────────────────────────────────────────────────────────────
 
-  async findAll(): Promise<ReleaseEntity[]> {
-    return this.releaseRepo.find({
+  async findAll(): Promise<ReturnType<typeof toPublicRelease>[]> {
+    const releases = await this.releaseRepo.find({
       relations: ['linkedFeedback', 'author'],
       order: { createdAt: 'DESC' },
     });
+    return releases.map(toPublicRelease);
   }
 
-  async findOneAdmin(id: number): Promise<ReleaseEntity> {
+  async findOneAdmin(id: number): Promise<ReturnType<typeof toPublicRelease>> {
     const release = await this.releaseRepo.findOne({
       where: { id },
       relations: ['linkedFeedback', 'linkedFeedback.user', 'author'],
     });
     if (!release) throw new NotFoundException(`Release ${id} not found`);
-    return release;
+    return toPublicRelease(release);
   }
 
   async create(dto: CreateReleaseDto, authorId: number): Promise<ReleaseEntity> {

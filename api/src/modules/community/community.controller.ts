@@ -137,9 +137,12 @@ export class CommunityController {
 
   @Get('events/:eventId/achievement')
   @UseGuards(OptionalJwtAuthGuard)
-  async getEventAchievement(@Param('eventId', ParseIntPipe) eventId: number) {
+  async getEventAchievement(@Param('eventId', ParseIntPipe) eventId: number, @Request() req: any) {
     const ach = await this.achievementsService.getEventAchievement(eventId);
-    return ach ?? null;
+    if (!ach) return null;
+    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.MODERATOR;
+    if (ach.isSecret && !isPrivileged) return null;
+    return ach;
   }
 
   // ── Admin ────────────────────────────────────────────────────────────────────

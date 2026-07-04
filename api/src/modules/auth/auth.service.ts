@@ -20,6 +20,7 @@ import { EmailTemplate } from '../email/email.constants';
 import { InviteFlavor, InviteType } from '../../database/entities/invite.entity';
 import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
+import { stripUserSecrets } from '../../common/utils/public-user.util';
 
 export interface SessionContext {
   userAgent?: string;
@@ -557,10 +558,8 @@ export class AuthService {
     await this.auditService.log({ userId, action: 'user.logout' });
   }
 
-  me(user: UserEntity): Partial<UserEntity> {
-    const { passwordHash: _pw, ...safe } = user as UserEntity & { passwordHash: unknown };
-    void _pw;
-    return safe;
+  me(user: UserEntity) {
+    return stripUserSecrets(user);
   }
 
   // ── Email / Password ────────────────────────────────────────────────────────

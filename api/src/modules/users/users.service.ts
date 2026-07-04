@@ -11,6 +11,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
+import { stripUserSecrets } from '../../common/utils/public-user.util';
 
 @Injectable()
 export class UsersService {
@@ -29,17 +30,18 @@ export class UsersService {
     private readonly emailService: EmailService,
   ) {}
 
-  async findById(id: number): Promise<UserEntity> {
+  async findById(id: number) {
     const user = await this.userRepo.findOne({ where: { id }, relations: ['city'] });
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    return stripUserSecrets(user);
   }
 
-  async updateProfile(user: UserEntity, dto: UpdateProfileDto): Promise<UserEntity> {
+  async updateProfile(user: UserEntity, dto: UpdateProfileDto) {
     if (dto.fullName) user.fullName = dto.fullName;
     if (dto.cityId) user.cityId = dto.cityId;
     if (dto.profilePhotoPath === null) user.profilePhotoPath = null;
-    return this.userRepo.save(user);
+    const saved = await this.userRepo.save(user);
+    return stripUserSecrets(saved);
   }
 
   async updatePhotoPath(userId: number, path: string): Promise<void> {

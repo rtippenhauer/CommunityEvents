@@ -9,6 +9,7 @@ import { GeocodingService } from './geocoding.service';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { extname } from 'path';
+import { toPublicUser } from '../../common/utils/public-user.util';
 
 export interface RestaurantQuery {
   cityId?: number;
@@ -84,7 +85,7 @@ export class RestaurantsService {
       relations: ['city', 'photos', 'createdByUser', 'updatedByUser'],
     });
     if (!r) throw new NotFoundException('Restaurant not found');
-    return r;
+    return Object.assign(r, { createdByUser: toPublicUser(r.createdByUser), updatedByUser: toPublicUser(r.updatedByUser) });
   }
 
   async findOneWithModFields(id: number): Promise<RestaurantEntity> {
@@ -98,7 +99,7 @@ export class RestaurantsService {
       .where('r.id = :id AND r.isActive = 1', { id })
       .getOne();
     if (!r) throw new NotFoundException('Restaurant not found');
-    return r;
+    return Object.assign(r, { createdByUser: toPublicUser(r.createdByUser), updatedByUser: toPublicUser(r.updatedByUser) });
   }
 
   async create(dto: CreateRestaurantDto, userId?: number): Promise<RestaurantEntity> {

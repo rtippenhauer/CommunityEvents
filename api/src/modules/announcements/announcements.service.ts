@@ -14,6 +14,7 @@ import { PushService } from '../notifications/push.service';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FlagContentDto } from './dto/flag-content.dto';
+import { toPublicUser } from '../../common/utils/public-user.util';
 
 @Injectable()
 export class AnnouncementsService {
@@ -30,7 +31,7 @@ export class AnnouncementsService {
     private readonly pushService: PushService,
   ) {}
 
-  findPublished(cityId?: number) {
+  async findPublished(cityId?: number) {
     const qb = this.announcementRepo
       .createQueryBuilder('a')
       .leftJoinAndSelect('a.city', 'city')
@@ -40,7 +41,8 @@ export class AnnouncementsService {
     if (cityId) {
       qb.andWhere('(a.city_id = :cityId OR a.city_id IS NULL)', { cityId });
     }
-    return qb.getMany();
+    const results = await qb.getMany();
+    return results.map((a) => Object.assign(a, { author: toPublicUser(a.author) }));
   }
 
   async findOne(id: number) {
@@ -50,14 +52,15 @@ export class AnnouncementsService {
     });
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
     a.comments = a.comments.filter((c) => !c.deletedAt);
-    return a;
+    return this.sanitizeAnnouncement(a);
   }
 
-  findAllAdmin() {
-    return this.announcementRepo.find({
+  async findAllAdmin() {
+    const results = await this.announcementRepo.find({
       relations: ['city', 'author'],
       order: { createdAt: 'DESC' },
     });
+    return results.map((a) => Object.assign(a, { author: toPublicUser(a.author) }));
   }
 
   async findOneAdmin(id: number) {
@@ -66,7 +69,14 @@ export class AnnouncementsService {
       relations: ['city', 'author', 'comments', 'comments.user'],
     });
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
-    return a;
+    return this.sanitizeAnnouncement(a);
+  }
+
+  private sanitizeAnnouncement(a: AnnouncementEntity) {
+    for (const c of a.comments ?? []) {
+      (c as any).user = toPublicUser(c.user);
+    }
+    return Object.assign(a, { author: toPublicUser(a.author) });
   }
 
   async create(dto: CreateAnnouncementDto, userId: number) {
@@ -174,19 +184,21 @@ export class AnnouncementsService {
     return saved;
   }
 
-  getPendingFlags() {
-    return this.flagRepo.find({
+  async getPendingFlags() {
+    const flags = await this.flagRepo.find({
       where: { status: FlagStatus.PENDING },
       relations: ['reporter'],
       order: { createdAt: 'ASC' },
     });
+    return flags.map((f) => Object.assign(f, { reporter: toPublicUser(f.reporter) }));
   }
 
-  getAllFlags() {
-    return this.flagRepo.find({
+  async getAllFlags() {
+    const flags = await this.flagRepo.find({
       relations: ['reporter', 'reviewer'],
       order: { createdAt: 'DESC' },
     });
+    return flags.map((f) => Object.assign(f, { reporter: toPublicUser(f.reporter), reviewer: toPublicUser(f.reviewer) }));
   }
 
   async resolveFlag(flagId: number, reviewerId: number, status: FlagStatus) {

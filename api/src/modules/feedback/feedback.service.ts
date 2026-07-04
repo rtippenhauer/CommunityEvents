@@ -13,6 +13,7 @@ import { CreateFeedbackDto } from './dto/create-feedback.dto';
 import { UpdateFeedbackDto } from './dto/update-feedback.dto';
 import { CreateNoteDto } from './dto/create-note.dto';
 import * as sanitizeHtml from 'sanitize-html';
+import { toPublicUser } from '../../common/utils/public-user.util';
 
 const ALLOWED_HTML = {
   allowedTags: sanitizeHtml.defaults.allowedTags.concat(['s', 'u']),
@@ -68,7 +69,9 @@ export class FeedbackService {
     const upvoted = await this.upvoteRepo.find({ where: { memberId: currentUserId } });
     const upvotedSet = new Set(upvoted.map((u) => u.feedbackId));
 
-    return items.map((fb) => Object.assign(fb, { hasUpvoted: upvotedSet.has(fb.id) }));
+    return items.map((fb) =>
+      Object.assign(fb, { user: toPublicUser(fb.user), hasUpvoted: upvotedSet.has(fb.id) }),
+    );
   }
 
   async findMine(userId: number): Promise<FeedbackEntity[]> {
@@ -86,7 +89,7 @@ export class FeedbackService {
     if (item.isPrivate && !isAdmin && item.userId !== currentUserId) {
       throw new ForbiddenException('This ticket is private');
     }
-    return item;
+    return Object.assign(item, { user: toPublicUser(item.user) });
   }
 
   // ── Member: Upvote toggle ─────────────────────────────────────────────────
@@ -115,14 +118,21 @@ export class FeedbackService {
 
   // ── Notes ─────────────────────────────────────────────────────────────────
 
-  async getNotes(feedbackId: number, isAdmin: boolean): Promise<FeedbackNoteEntity[]> {
+  async getNotes(feedbackId: number, currentUserId: number, isAdmin: boolean): Promise<FeedbackNoteEntity[]> {
+    const feedback = await this.feedbackRepo.findOne({ where: { id: feedbackId } });
+    if (!feedback) throw new NotFoundException(`Feedback ${feedbackId} not found`);
+    if (feedback.isPrivate && !isAdmin && feedback.userId !== currentUserId) {
+      throw new ForbiddenException('This ticket is private');
+    }
+
     const qb = this.noteRepo
       .createQueryBuilder('n')
       .leftJoinAndSelect('n.author', 'author')
       .where('n.feedback_id = :fid', { fid: feedbackId });
     if (!isAdmin) qb.andWhere('n.is_admin_only = 0');
     qb.orderBy('n.created_at', 'ASC');
-    return qb.getMany();
+    const notes = await qb.getMany();
+    return notes.map((n) => Object.assign(n, { author: toPublicUser(n.author) }));
   }
 
   async addNote(
@@ -142,32 +152,36 @@ export class FeedbackService {
       isAdminOnly: isAdmin ? (dto.isAdminOnly ?? false) : false,
     });
     const saved = await this.noteRepo.save(note);
-    return this.noteRepo.findOne({ where: { id: saved.id }, relations: ['author'] }) as Promise<FeedbackNoteEntity>;
+    const withAuthor = await this.noteRepo.findOne({ where: { id: saved.id }, relations: ['author'] });
+    return Object.assign(withAuthor!, { author: toPublicUser(withAuthor!.author) });
   }
 
   // ── Admin: List / update ──────────────────────────────────────────────────
 
   async findAll(): Promise<FeedbackEntity[]> {
-    return this.feedbackRepo.find({
+    const items = await this.feedbackRepo.find({
       relations: ['user', 'releases'],
       order: { createdAt: 'DESC' },
     });
+    return items.map((fb) => Object.assign(fb, { user: toPublicUser(fb.user) }));
   }
 
   async getOpenBugs(): Promise<FeedbackEntity[]> {
-    return this.feedbackRepo.find({
+    const items = await this.feedbackRepo.find({
       where: { category: FeedbackCategory.BUG, status: FeedbackStatus.OPEN },
       relations: ['user'],
       order: { createdAt: 'ASC' },
     });
+    return items.map((fb) => Object.assign(fb, { user: toPublicUser(fb.user) }));
   }
 
   async getInProgress(): Promise<FeedbackEntity[]> {
-    return this.feedbackRepo.find({
+    const items = await this.feedbackRepo.find({
       where: { status: FeedbackStatus.IN_PROGRESS },
       relations: ['user', 'releases'],
       order: { updatedAt: 'ASC' },
     });
+    return items.map((fb) => Object.assign(fb, { user: toPublicUser(fb.user) }));
   }
 
   async update(id: number, dto: UpdateFeedbackDto): Promise<FeedbackEntity> {

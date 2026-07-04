@@ -113,7 +113,7 @@ export class FeedbackController {
   @Get(':id/notes')
   getNotes(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
     const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
-    return this.feedbackService.getNotes(id, isAdmin);
+    return this.feedbackService.getNotes(id, user.id, isAdmin);
   }
 
   @Post(':id/notes')

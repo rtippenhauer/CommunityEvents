@@ -24,6 +24,7 @@ import { PointsService } from '../community/points.service';
 import { AchievementsService } from '../community/achievements.service';
 import { ConfigService } from '@nestjs/config';
 import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
+import { toPublicUser } from '../../common/utils/public-user.util';
 
 export interface EventFilters {
   cityId?: number;
@@ -154,14 +155,15 @@ export class EventsService {
       filters.callerRole != null &&
       filters.callerRole !== UserRole.NON_VALIDATED;
 
-    return events.map((e) =>
-      Object.assign(e, {
+    return events.map((e) => {
+      (e as any).createdByUser = toPublicUser(e.createdByUser);
+      return Object.assign(e, {
         goingCount: goingCountMap.get(e.id) ?? 0,
         totalAttending: totalMap.get(e.id) ?? 0,
         attendeeSnippet: isValidatedMember ? (snippetMap.get(e.id) ?? []) : [],
         myRsvpStatus: myRsvpMap.get(e.id) ?? null,
-      }),
-    );
+      });
+    });
   }
 
   async findOne(id: number, callerRole?: UserRole): Promise<EventEntity & { publicRsvps: Pick<EventGuestLinkEntity, 'id' | 'recipientName' | 'cancelledAt'>[] }> {
@@ -181,14 +183,29 @@ export class EventsService {
     if (!event) throw new NotFoundException(`Event ${id} not found`);
 
     const isValidatedMember = callerRole != null && callerRole !== UserRole.NON_VALIDATED;
+    const isPrivileged = callerRole === UserRole.ADMIN || callerRole === UserRole.MODERATOR;
 
-    // Strip member identities for unauthenticated and non-validated callers
-    if (!isValidatedMember && event.rsvps) {
+    // Unauthenticated/non-validated callers don't get to know member identities
+    // at all; validated members can see who's going (name/photo) but never the
+    // other attendee's raw account (password hash, calendar token, etc.).
+    if (event.rsvps) {
       for (const rsvp of event.rsvps) {
-        if (rsvp.user) {
-          (rsvp as any).user = null;
-        }
+        (rsvp as any).user = isValidatedMember ? toPublicUser(rsvp.user) : null;
       }
+    }
+
+    // Never expose the raw createdByUser/reservationAssignee entities (password
+    // hash, calendar token, email, etc.) — reduce to safe display fields.
+    (event as any).createdByUser = toPublicUser(event.createdByUser);
+    (event as any).reservationAssignee = toPublicUser(event.reservationAssignee);
+
+    // The confirm token is only used in the email confirm-link flow and should
+    // never appear in a general read. The coordinator's contact email is only
+    // for admins/moderators managing the reservation (frontend already gates
+    // display on this — enforce it server-side too).
+    delete (event as any).reservationConfirmToken;
+    if (!isPrivileged) {
+      (event as any).reservationContactEmail = null;
     }
 
     const publicRsvps = await this.guestLinkRepo.find({
