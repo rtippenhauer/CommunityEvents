@@ -20,9 +20,9 @@ RUN npm prune --omit=dev
 FROM node:20-alpine
 # Pull latest patched OS packages at build time — the base image tag doesn't
 # always carry the newest security patches (e.g. openssl) for its Alpine release.
-RUN apk update && apk upgrade --no-cache && apk add --no-cache nginx supervisor
+RUN apk update && apk upgrade --no-cache && apk add --no-cache nginx su-exec
 
-# npm/npx/corepack are never invoked at runtime (supervisor runs `node dist/main.js`
+# npm/npx/corepack are never invoked at runtime (entrypoint.sh runs `node dist/main.js`
 # directly) — they just carry their own bundled dependencies (tar, sigstore, older
 # glob/minimatch/cross-spawn) that show up as unpatched CVEs in image scans for no
 # functional benefit. Stripping them removes that surface entirely.
@@ -41,7 +41,6 @@ COPY --from=frontend-build /app/dist/dinnerbears/browser /usr/share/nginx/html
 
 # Config
 COPY docker/nginx/nginx-combined.conf /etc/nginx/http.d/default.conf
-COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN mkdir -p /app/uploads /app/appdata /run/nginx \
