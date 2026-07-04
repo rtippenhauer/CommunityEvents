@@ -18,7 +18,16 @@ RUN npm prune --omit=dev
 
 # ── Stage 3: Production image ──────────────────────────────────────────────────
 FROM node:20-alpine
-RUN apk add --no-cache nginx supervisor
+# Pull latest patched OS packages at build time — the base image tag doesn't
+# always carry the newest security patches (e.g. openssl) for its Alpine release.
+RUN apk update && apk upgrade --no-cache && apk add --no-cache nginx supervisor
+
+# npm/npx/corepack are never invoked at runtime (supervisor runs `node dist/main.js`
+# directly) — they just carry their own bundled dependencies (tar, sigstore, older
+# glob/minimatch/cross-spawn) that show up as unpatched CVEs in image scans for no
+# functional benefit. Stripping them removes that surface entirely.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 RUN addgroup -S nestjs && adduser -S nestjs -G nestjs
 
