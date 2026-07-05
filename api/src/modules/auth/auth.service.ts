@@ -21,6 +21,7 @@ import { InviteFlavor, InviteType } from '../../database/entities/invite.entity'
 import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
+import { AchievementsService } from '../community/achievements.service';
 
 export interface SessionContext {
   userAgent?: string;
@@ -29,6 +30,14 @@ export interface SessionContext {
 
 const FB_CDN_HOSTS = ['fbcdn.net', 'graph.facebook.com', 'facebook.com'];
 const GOOGLE_CDN_HOSTS = ['googleusercontent.com'];
+
+// A page left open in the background keeps making authenticated requests
+// (notification polling etc.), but /auth/me only fires once per real app
+// bootstrap (APP_INITIALIZER) — so gating the qualifying-login count on that,
+// rather than on every request, is what keeps an idle open tab from
+// endlessly racking up visits.
+const STAGE_LOGIN_WINDOW_MS = 5 * 60 * 1000;
+const PROD_LOGIN_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 function isCdnPhoto(path: string | null, hosts: string[]): boolean {
   if (!path) return false;
@@ -43,6 +52,7 @@ function isCdnPhoto(path: string | null, hosts: string[]): boolean {
 @Injectable()
 export class AuthService {
   private readonly frontendUrl: string;
+  private readonly loginWindowMs: number;
 
   constructor(
     @InjectRepository(UserEntity)
@@ -64,8 +74,12 @@ export class AuthService {
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
+    private readonly achievementsService: AchievementsService,
   ) {
     this.frontendUrl = this.configService.get<string>('APP_URL', 'http://localhost:8081');
+    this.loginWindowMs = this.configService.get<string>('IS_STAGE') === 'true'
+      ? STAGE_LOGIN_WINDOW_MS
+      : PROD_LOGIN_WINDOW_MS;
   }
 
   private async releaseDeletedEmail(email: string): Promise<void> {
@@ -558,8 +572,28 @@ export class AuthService {
     await this.auditService.log({ userId, action: 'user.logout' });
   }
 
-  me(user: UserEntity) {
+  async me(user: UserEntity) {
+    await this.trackQualifyingLogin(user);
     return stripUserSecrets(user);
+  }
+
+  private async trackQualifyingLogin(user: UserEntity): Promise<void> {
+    const now = new Date();
+    const last = user.lastQualifyingLoginAt;
+    if (last && now.getTime() - last.getTime() < this.loginWindowMs) return;
+
+    const newCount = user.qualifyingLoginCount + 1;
+    await this.userRepo.update(user.id, {
+      qualifyingLoginCount: newCount,
+      lastQualifyingLoginAt: now,
+      lastLoginAt: now,
+    });
+    user.qualifyingLoginCount = newCount;
+    user.lastQualifyingLoginAt = now;
+    user.lastLoginAt = now;
+
+    await this.achievementsService.checkLoginAchievements(user.id, newCount);
+    await this.achievementsService.checkPatrioticBearAchievement(user.id, now);
   }
 
   // ── Email / Password ────────────────────────────────────────────────────────

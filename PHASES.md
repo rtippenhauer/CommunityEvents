@@ -731,6 +731,7 @@ Setup steps (one-time, done in Cloudflare dashboard):
 ### Hidden Achievements
 - Fixed a bug where secret achievements never appeared once earned (a stale filter excluded all `is_secret` rows unconditionally) — they now display normally after being unlocked
 - New hidden login-count achievements: 25/50/100/250/500 site visits, 10 Bear Points each. Visits are deduped by a time window (5 min on stage, 12 hours in production as of 2026-07-05 — was 60 min) so rapid page loads don't over-count
+- 2026-07-05 fix: visit tracking moved from `JwtStrategy.validate()` (fires on every authenticated request, including background polling from a tab left open) to `AuthService.me()`, which only runs once per real app bootstrap (`APP_INITIALIZER`, i.e. a fresh page load/new tab) — a page left open in the background no longer keeps racking up visits
 - New hidden **Patriotic Bear** achievement — logging in July 4–11, 2026 (America's Semiquincentennial) grants it, 10 Bear Points
 - New achievement-earned splash screen: pops up automatically when a member has unseen achievements since their last visit, queues multiple if several were earned at once, and shows a red/white/blue animated fireworks celebration specifically for Patriotic Bear
 
