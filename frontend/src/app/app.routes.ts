@@ -216,11 +216,12 @@ export const routes: Routes = [
         (m) => m.AnnouncementDetailComponent,
       ),
   },
-  // Public changelog — no auth required
+  // Changelog — validated members and above only (2026-07-05: was public)
   {
     path: 'updates',
     loadComponent: () =>
       import('./features/updates/updates.component').then((m) => m.UpdatesComponent),
+    canActivate: [validatedMemberGuard],
   },
   // Legal pages — no auth required
   {
