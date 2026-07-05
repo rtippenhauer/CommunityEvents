@@ -150,6 +150,7 @@ import { environment } from '../../../../environments/environment';
       @media (max-width: 767px) {
         flex: none;
         height: 240px;
+        min-height: 0;
         width: 100%;
       }
     }
