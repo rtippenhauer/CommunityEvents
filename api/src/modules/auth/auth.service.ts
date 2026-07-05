@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import * as geoip from 'geoip-lite';
 import { UserEntity, EmailStatus, InviteSource, UserRole, UserStatus } from '../../database/entities/user.entity';
@@ -570,6 +570,29 @@ export class AuthService {
   async logout(jti: string, userId: number): Promise<void> {
     await this.sessionRepo.update({ jwtJti: jti }, { isActive: false });
     await this.auditService.log({ userId, action: 'user.logout' });
+  }
+
+  // Issues a real session token for the dedicated automation account (see
+  // AddAutomationRole migration) — never Rob's own admin account. Access from
+  // there on is governed entirely by the normal RolesGuard/@Roles() system,
+  // same as any other login: whatever role that account currently holds.
+  async automationLogin(providedSecret: string, ctx: SessionContext): Promise<{ accessToken: string }> {
+    const expected = this.configService.get<string>('CLAUDE_AUTOMATION_SECRET', '');
+    if (!expected) throw new UnauthorizedException('Automation login is not configured');
+
+    const expectedBuf = Buffer.from(expected);
+    const actualBuf = Buffer.from(providedSecret ?? '');
+    if (expectedBuf.length !== actualBuf.length || !timingSafeEqual(expectedBuf, actualBuf)) {
+      throw new UnauthorizedException('Invalid automation secret');
+    }
+
+    const user = await this.userRepo.findOne({ where: { email: 'automation@dinnerbears.internal' } });
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Automation account not found or inactive');
+    }
+
+    const { accessToken } = await this.issueTokens(user, ctx);
+    return { accessToken };
   }
 
   async me(user: UserEntity) {

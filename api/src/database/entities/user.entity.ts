@@ -14,6 +14,14 @@ export enum UserRole {
   MEMBER = 'member',
   MODERATOR = 'moderator',
   ADMIN = 'admin',
+  // Dedicated account for Claude Code automation (release drafting, feedback
+  // triage) — a real user row, never an impersonation of an admin. Rob can
+  // temporarily reassign it to member/moderator/admin via the normal admin
+  // users UI to let it browse role-gated pages for testing, then flip it
+  // back. While actually in this role, it's excluded from leaderboards and
+  // member lists (once reassigned to member/moderator/admin, it shows up
+  // like any other account of that role would).
+  AUTOMATION = 'automation',
 }
 
 export enum UserStatus {

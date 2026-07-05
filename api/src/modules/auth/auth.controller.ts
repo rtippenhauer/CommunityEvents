@@ -257,6 +257,19 @@ export class AuthController {
     return { message: 'Registration successful. Check your email to verify your account.' };
   }
 
+  @Post('automation-login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @HttpCode(200)
+  async automationLogin(
+    @Body('secret') secret: string,
+    @Req() req: Request,
+  ): Promise<{ accessToken: string }> {
+    return this.authService.automationLogin(secret, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+  }
+
   @Post('login')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(200)

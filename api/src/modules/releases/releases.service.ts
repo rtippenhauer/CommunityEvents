@@ -164,6 +164,33 @@ export class ReleasesService {
     return saved;
   }
 
+  async unpublish(id: number): Promise<ReleaseEntity> {
+    const release = await this.releaseRepo.findOne({
+      where: { id },
+      relations: ['linkedFeedback'],
+    });
+    if (!release) throw new NotFoundException(`Release ${id} not found`);
+    if (!release.publishedAt) return release;
+
+    release.publishedAt = null;
+    const saved = await this.releaseRepo.save(release);
+
+    // Undo the "shipped" marking on any linked feedback tickets so the two
+    // stay consistent with the release no longer being public.
+    if (release.linkedFeedback?.length) {
+      const ids = release.linkedFeedback.map((fb) => fb.id);
+      await this.feedbackRepo
+        .createQueryBuilder()
+        .update()
+        .set({ status: FeedbackStatus.RESOLVED })
+        .whereInIds(ids)
+        .andWhere('status = :shipped', { shipped: FeedbackStatus.SHIPPED })
+        .execute();
+    }
+
+    return saved;
+  }
+
   async getResolvedFeedback(): Promise<FeedbackEntity[]> {
     return this.feedbackRepo.find({
       where: { status: FeedbackStatus.RESOLVED },

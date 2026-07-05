@@ -236,7 +236,13 @@ export class AdminService {
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot change your own role');
     if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot change another admin\'s role');
-    if (role === UserRole.ADMIN) throw new ForbiddenException('Cannot promote to admin — set directly in the database');
+    // The dedicated automation account (see AddAutomationRole migration) is the
+    // one exception — Rob can flip it up to admin via the UI to let it browse
+    // role-gated pages for testing, then flip it back. Regular members still
+    // require a direct DB edit to be promoted to admin.
+    if (role === UserRole.ADMIN && target.role !== UserRole.AUTOMATION) {
+      throw new ForbiddenException('Cannot promote to admin — set directly in the database');
+    }
     const previousRole = target.role;
     await this.userRepo.update(targetId, { role });
     await this.auditService.log({

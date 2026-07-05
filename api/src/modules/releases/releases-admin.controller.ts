@@ -18,38 +18,58 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 
 @Controller('admin/releases')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN)
 export class ReleasesAdminController {
   constructor(private readonly releasesService: ReleasesService) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   findAll() {
     return this.releasesService.findAll();
   }
 
   @Get('resolved-feedback')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   getResolvedFeedback() {
     return this.releasesService.getResolvedFeedback();
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.releasesService.findOneAdmin(id);
   }
 
+  // The one automation-enabled route — draft creation only, via the
+  // dedicated automation account's own login (see AuthService.automationLogin).
+  // Editing, publishing, and unpublishing all stay human/browser-session-only.
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.AUTOMATION)
   create(@Body() dto: CreateReleaseDto, @CurrentUser() user: UserEntity) {
     return this.releasesService.create(dto, user.id);
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReleaseDto) {
     return this.releasesService.update(id, dto);
   }
 
   @Post(':id/publish')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   publish(@Param('id', ParseIntPipe) id: number) {
     return this.releasesService.publish(id);
+  }
+
+  @Post(':id/unpublish')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  unpublish(@Param('id', ParseIntPipe) id: number) {
+    return this.releasesService.unpublish(id);
   }
 }

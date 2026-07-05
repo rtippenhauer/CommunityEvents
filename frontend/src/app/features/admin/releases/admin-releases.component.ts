@@ -158,6 +158,10 @@ import {
                     <span class="version-badge">v{{ r.version }}</span>
                     @if (r.publishedAt) {
                       <span class="pub-date">{{ r.publishedAt | date:'MMM d, y' }}</span>
+                      <button mat-stroked-button class="unpublish-btn" (click)="unpublish(r)" [disabled]="publishingId() === r.id">
+                        @if (publishingId() === r.id) { <mat-spinner diameter="14" /> }
+                        @else { <ng-container><mat-icon>undo</mat-icon> Unpublish</ng-container> }
+                      </button>
                     } @else {
                       <span class="draft-badge">Draft</span>
                       <button mat-stroked-button class="edit-btn" (click)="startEdit(r)" [disabled]="editingId() === r.id">
@@ -251,7 +255,7 @@ import {
       font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 8px;
       background: #ffe082; color: #5d4037; text-transform: uppercase;
     }
-    .edit-btn, .publish-btn { height: 28px; font-size: 0.8rem; mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; } }
+    .edit-btn, .publish-btn, .unpublish-btn { height: 28px; font-size: 0.8rem; mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; } }
     .release-row-title { font-size: 0.9rem; font-weight: 600; color: #333; }
     .empty-releases { font-size: 0.85rem; color: #aaa; margin: 0; }
   `],
@@ -416,6 +420,21 @@ export class AdminReleasesComponent implements OnInit {
       error: () => {
         this.publishingId.set(null);
         this.snackBar.open('Failed to publish release', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  unpublish(release: Release): void {
+    this.publishingId.set(release.id);
+    this.releasesService.unpublish(release.id).subscribe({
+      next: (updated) => {
+        this.releases.update((list) => list.map((r) => (r.id === updated.id ? updated : r)));
+        this.publishingId.set(null);
+        this.snackBar.open(`v${updated.version} moved back to draft`, 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.publishingId.set(null);
+        this.snackBar.open('Failed to unpublish release', 'OK', { duration: 3000 });
       },
     });
   }

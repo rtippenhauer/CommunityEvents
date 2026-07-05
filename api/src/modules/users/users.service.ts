@@ -85,6 +85,7 @@ export class UsersService {
         deleted: UserStatus.DELETED,
         active: UserStatus.ACTIVE,
       })
+      .andWhere('u.role != :automationRole', { automationRole: UserRole.AUTOMATION })
       .setParameter('twa', twoWeeksAgo);
 
     if (sort === 'alpha') {
@@ -195,6 +196,11 @@ export class UsersService {
         hasFacebook,
         facebookProfileUrl,
         googleEmail,
+        // Identifies the dedicated automation account by its fixed email
+        // rather than its (mutable) role, so the admin role-picker can still
+        // offer promoting it back after Rob's temporarily flipped it to
+        // member/moderator/admin for testing.
+        isAutomationAccount: user.email === 'automation@dinnerbears.internal',
       } : {}),
     };
   }

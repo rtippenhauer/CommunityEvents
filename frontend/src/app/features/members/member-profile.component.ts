@@ -33,6 +33,7 @@ interface MemberProfile {
   hasFacebook?: boolean;
   facebookProfileUrl?: string | null;
   googleEmail?: string | null;
+  isAutomationAccount?: boolean;
 }
 
 const PROGRESS_LABELS: Record<string, string> = {
@@ -221,6 +222,10 @@ interface AchievementGroup {
                   <mat-select [value]="profile()!.role" (selectionChange)="setRole($event.value)" class="role-select">
                     <mat-option value="member">Member</mat-option>
                     <mat-option value="moderator">Moderator</mat-option>
+                    @if (profile()!.isAutomationAccount) {
+                      <mat-option value="admin">Admin</mat-option>
+                      <mat-option value="automation">Automation</mat-option>
+                    }
                   </mat-select>
                 </div>
               }

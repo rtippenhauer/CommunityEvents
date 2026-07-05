@@ -5,6 +5,7 @@ import { MemberPointEntity, PointType } from '../../database/entities/member-poi
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { EventEntity } from '../../database/entities/event.entity';
 import { InviteEntity } from '../../database/entities/invite.entity';
+import { UserRole } from '../../database/entities/user.entity';
 import { AchievementsService } from './achievements.service';
 
 export interface PointSummary {
@@ -161,7 +162,7 @@ export class PointsService {
       .leftJoin('cities', 'c', 'c.id = u.city_id')
       .leftJoin('member_points', 'mp', 'mp.user_id = u.id')
       .where('u.status = :status', { status: 'active' })
-      .andWhere('u.role != :adminRole', { adminRole: 'admin' })
+      .andWhere('u.role NOT IN (:...excludedRoles)', { excludedRoles: ['admin', UserRole.AUTOMATION] })
       .setParameter('twa', twoWeeksAgo)
       .groupBy('u.id')
       .orderBy('totalPoints', 'DESC')

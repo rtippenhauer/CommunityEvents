@@ -56,4 +56,8 @@ export class ReleasesService {
   publish(id: number): Observable<Release> {
     return this.http.post<Release>(`/api/v1/admin/releases/${id}/publish`, {});
   }
+
+  unpublish(id: number): Observable<Release> {
+    return this.http.post<Release>(`/api/v1/admin/releases/${id}/unpublish`, {});
+  }
 }
