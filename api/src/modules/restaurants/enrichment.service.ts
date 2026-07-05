@@ -107,7 +107,8 @@ export class EnrichmentService {
     this.googleKey = configService.get<string>('GOOGLE_PLACES_API_KEY');
     const anthropicKey = configService.get<string>('ANTHROPIC_API_KEY');
     this.anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
-    this.uploadPath = configService.get<string>('UPLOAD_PATH') ?? '/app/uploads';
+    // This service only ever writes restaurant photos, so point directly at that subfolder
+    this.uploadPath = join(configService.get<string>('UPLOAD_PATH') ?? '/app/uploads', 'restaurants');
   }
 
   async bulkEnrich(
@@ -430,7 +431,7 @@ export class EnrichmentService {
 
         const photo = this.photoRepo.create({
           restaurantId,
-          filePath: `/api/uploads/${filename}`,
+          filePath: `/api/uploads/restaurants/${filename}`,
           fileName: filename,
           mimeType: 'image/jpeg',
           sortOrder: startSortOrder + i,

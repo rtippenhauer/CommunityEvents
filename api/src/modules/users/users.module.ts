@@ -6,6 +6,7 @@ import { LoginSessionEntity } from '../../database/entities/login-session.entity
 import { PushSubscriptionEntity } from '../../database/entities/push-subscription.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
+import { ProfilePhotosController } from './profile-photos.controller';
 import { EmailModule } from '../email/email.module';
 import { AuditModule } from '../audit/audit.module';
 
@@ -21,7 +22,7 @@ import { AuditModule } from '../audit/audit.module';
     AuditModule,
   ],
   providers: [UsersService],
-  controllers: [UsersController],
+  controllers: [UsersController, ProfilePhotosController],
   exports: [UsersService],
 })
 export class UsersModule {}

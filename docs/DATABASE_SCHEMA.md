@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-07-04_
+_Last updated: 2026-07-05_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -932,3 +932,9 @@ Seed rows:
   `new Date().toISOString()` which gives UTC
 - RSVP cutoff = 150 minutes (2.5 hours) before event time; admins and
   moderators bypass this on both client and server
+- Uploaded file path conventions (2026-07-05): `restaurant_photos.file_path`
+  uses `/api/uploads/restaurants/<filename>` (public, static — used in
+  guest emails and social posts); `users.profile_photo_path` for an uploaded
+  photo uses `/api/v1/uploads/profiles/<filename>` (auth-gated route, 401 if
+  not signed in) — but for a preset avatar it's `/avatars/bear-*.jpg`
+  (static frontend asset, always public, unrelated to `UPLOAD_PATH`)

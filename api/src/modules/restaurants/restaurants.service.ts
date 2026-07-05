@@ -149,7 +149,7 @@ export class RestaurantsService {
       .where('p.restaurant_id = :restaurantId', { restaurantId })
       .getRawOne<{ max: number | null }>();
 
-    const url = `/api/uploads/${file.filename}`;
+    const url = `/api/uploads/restaurants/${file.filename}`;
     const photo = this.photoRepo.create({
       restaurantId,
       filePath: url,

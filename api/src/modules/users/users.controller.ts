@@ -21,7 +21,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import type { Request } from 'express';
 import type { FileFilterCallback } from 'multer';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
 import { Response } from 'express';
 import { UsersService } from './users.service';
@@ -87,7 +87,7 @@ export class UsersController {
     FileInterceptor('photo', {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          const dest = process.env.UPLOAD_PATH ?? '/app/uploads';
+          const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'profiles');
           mkdirSync(dest, { recursive: true });
           cb(null, dest);
         },
@@ -111,7 +111,7 @@ export class UsersController {
     @CurrentUser() user: UserEntity,
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ url: string }> {
-    const url = `/api/uploads/${file.filename}`;
+    const url = `/api/v1/uploads/profiles/${file.filename}`;
     await this.usersService.updatePhotoPath(user.id, url);
     return { url };
   }

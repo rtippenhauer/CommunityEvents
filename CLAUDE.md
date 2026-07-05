@@ -33,7 +33,7 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Post-Launch Backlog** — Deferred improvements: uploaded file auth gating, event card cleanup, and other unscheduled items from the backlog in PHASES.md.
+**Post-Launch Backlog** — both previously-listed items (uploaded file auth gating, event card cleanup) are resolved as of 2026-07-05. No open backlog items right now — see PHASES.md for history; add new deferred items here as they come up.
 
 ## Completed Phases
 Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17 ✓ — see PHASES.md for details.

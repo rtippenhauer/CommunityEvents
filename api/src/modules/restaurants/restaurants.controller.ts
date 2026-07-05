@@ -17,7 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage, memoryStorage } from 'multer';
 import type { Request } from 'express';
 import type { FileFilterCallback } from 'multer';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
 import { RestaurantsService } from './restaurants.service';
 import { RatingsService } from './ratings.service';
@@ -40,7 +40,7 @@ const photoStorage = diskStorage({
     _file: Express.Multer.File,
     cb: (err: Error | null, dest: string) => void,
   ) => {
-    const dest = process.env.UPLOAD_PATH ?? '/app/uploads';
+    const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'restaurants');
     mkdirSync(dest, { recursive: true });
     cb(null, dest);
   },

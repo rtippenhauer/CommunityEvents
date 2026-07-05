@@ -223,11 +223,11 @@ export class UsersService {
 
     // Delete local photo from disk before nulling the path — the hard-delete cron
     // won't be able to find it once profilePhotoPath is cleared.
-    if (user.profilePhotoPath?.startsWith('/api/uploads/')) {
-      const filename = user.profilePhotoPath.replace('/api/uploads/', '');
+    if (user.profilePhotoPath?.startsWith('/api/v1/uploads/profiles/')) {
+      const filename = user.profilePhotoPath.replace('/api/v1/uploads/profiles/', '');
       const uploadPath = process.env.UPLOAD_PATH ?? '/app/uploads';
       try {
-        await unlink(join(uploadPath, filename));
+        await unlink(join(uploadPath, 'profiles', filename));
       } catch {
         // Non-fatal — file may already be gone
       }

@@ -8,7 +8,7 @@ import { UserEntity, UserStatus } from '../../database/entities/user.entity';
 import { FacebookDeletionRequestEntity, FacebookDeletionStatus } from '../../database/entities/facebook-deletion-request.entity';
 import { AuditService } from '../audit/audit.service';
 
-const LOCAL_PHOTO_PREFIX = '/api/uploads/';
+const LOCAL_PHOTO_PREFIX = '/api/v1/uploads/profiles/';
 
 @Injectable()
 export class HardDeleteTask {
@@ -50,7 +50,7 @@ export class HardDeleteTask {
       const filename = user.profilePhotoPath.replace(LOCAL_PHOTO_PREFIX, '');
       const uploadPath = process.env.UPLOAD_PATH ?? '/app/uploads';
       try {
-        await unlink(join(uploadPath, filename));
+        await unlink(join(uploadPath, 'profiles', filename));
       } catch {
         // File may already be gone — not fatal
       }

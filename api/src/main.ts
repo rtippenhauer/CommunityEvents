@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { join } from 'path';
 import cookieParser = require('cookie-parser');
 import session = require('express-session');
 import { AppModule } from './app.module';
@@ -34,8 +35,12 @@ async function bootstrap(): Promise<void> {
 
   const uploadPath = configService.get<string>('UPLOAD_PATH', '/app/uploads');
 
-  // Serve uploaded files at /api/uploads/* (NGINX proxies /api/* to this container)
-  app.useStaticAssets(uploadPath, { prefix: '/api/uploads' });
+  // Public upload categories, served as static assets with no auth check.
+  // Profile photos are intentionally excluded — see ProfilePhotosController,
+  // which gates them behind OptionalJwtAuthGuard instead.
+  app.useStaticAssets(join(uploadPath, 'restaurants'), { prefix: '/api/uploads/restaurants' });
+  app.useStaticAssets(join(uploadPath, 'achievements'), { prefix: '/api/uploads/achievements' });
+  app.useStaticAssets(join(uploadPath, 'custom-icons'), { prefix: '/api/uploads/custom-icons' });
 
   app.useGlobalPipes(
     new ValidationPipe({

@@ -553,22 +553,31 @@ numbered phase when ready to schedule.
   never touched `package.json` in the first place
 - CLAUDE.md's Versioning Workflow updated to reflect this split
 
-### Uploaded File Auth Gating
-Currently `/api/uploads/*` is served as a static asset with no auth check.
-Profile photo URLs are never leaked to guests or non-validated users via any
-API response, so the practical risk is low (no guessable URL scheme). When
-prioritized, the fix is:
-- Separate restaurant photos and profile photos into `/app/uploads/restaurants/`
-  and `/app/uploads/profiles/` respectively (migration + upload-path update)
-- Replace `useStaticAssets` for the profiles path with a controller endpoint
-  that applies `OptionalJwtAuthGuard` and streams the file only to authenticated users
-- Restaurant photos remain static (intentionally public, used in emails to guests)
+### Uploaded File Auth Gating (2026-07-05) ✅ Done
+- Uploads split into per-category subdirectories: `/app/uploads/restaurants/`,
+  `/app/uploads/profiles/`, plus the existing `/app/uploads/achievements/` and
+  `/app/uploads/custom-icons/`
+- Restaurant photos, achievement icons, and custom icons remain public static
+  assets (`/api/uploads/<category>/<filename>`, no auth) — restaurant photos
+  in particular stay public on purpose, since they're reused in guest-facing
+  emails and social/Facebook posts
+- Profile photos moved behind a new `GET /api/v1/uploads/profiles/:filename`
+  route (`ProfilePhotosController`) guarded by `OptionalJwtAuthGuard` — only
+  streamed to signed-in members; anonymous requests get a 401
+- Migration `1751300000000-SeparateUploadDirectories` moves existing files on
+  disk into their new subfolders and rewrites the stored paths in
+  `restaurant_photos.file_path` and `users.profile_photo_path` — runs once
+  automatically via `migrationsRun: true` on next deploy
+- Known edge case: the public `/api/v1/releases` endpoint (Phase 17) serializes
+  a release author's `profilePhotoPath`; if that author uploaded a real photo
+  (rather than using a preset avatar), it'll now 401 for anonymous visitors of
+  `/updates`. Preset avatars (`/avatars/bear-*.jpg`) are unaffected — they're
+  static frontend assets, not uploads.
 
-### Event Card Cleanup
-The home-page event card is currently too busy — date/city/restaurant/footer
-all compete for attention. Revisit the card layout to simplify the information
-hierarchy. Possible directions: reduce font sizes, collapse the footer to
-just the RSVP pill on mobile, or rethink the avatar cluster display.
+### Event Card Cleanup ✅ Resolved
+Addressed separately by moving event card actions into an overflow ("...")
+menu, simplifying the card's information hierarchy without a dedicated
+redesign pass.
 
 ---
 
