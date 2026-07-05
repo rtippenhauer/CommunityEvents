@@ -541,6 +541,18 @@ numbered phase when ready to schedule.
   forever (only `CANCELLED` events had a 7-day cutoff) — now filters
   `PUBLISHED` events to `eventDate >= today` so the feed stays bounded
 
+### `/release` Command Added (2026-07-04) ✅ Done
+
+- New Claude Code command (`.claude/commands/release.md`) that bumps
+  `"version"` in both `frontend/package.json` and `api/package.json`,
+  commits, tags (`v<version>`), pushes to `origin main`, and builds/pushes
+  both the `rtippenhauer/dinnerbears:stage` and `:latest` Docker Hub images
+- Version numbers only change via this command, and only when Rob gives the
+  number explicitly — decoupled from the admin-UI release-notes publish flow
+  (`/admin/releases/new`), which writes to the `releases` DB table only and
+  never touched `package.json` in the first place
+- CLAUDE.md's Versioning Workflow updated to reflect this split
+
 ### Uploaded File Auth Gating
 Currently `/api/uploads/*` is served as a static asset with no auth check.
 Profile photo URLs are never leaked to guests or non-validated users via any
