@@ -17,6 +17,11 @@ node /app/node_modules/typeorm/cli.js migration:run \
   && echo "[entrypoint] Migrations complete." \
   || echo "[entrypoint] WARNING: Migration failed — check logs."
 
+# Migrations run as root and may create new upload subdirectories (e.g. category
+# folders) — reopen permissions afterward so the unprivileged nestjs user (which
+# the app itself runs as, below) can still write into them.
+chmod -R 777 /app/uploads 2>/dev/null || true
+
 # Run nginx and NestJS side by side (no process manager — supervisor pulled in
 # python3/setuptools purely to run two commands, which kept surfacing unrelated
 # CVEs in image scans). NestJS drops to the unprivileged nestjs user via su-exec.
