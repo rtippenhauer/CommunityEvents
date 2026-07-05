@@ -18,6 +18,20 @@ export function toPublicUser(user: UserEntity | null | undefined): PublicUser | 
 }
 
 /**
+ * Same as toPublicUser, but for responses served to fully anonymous callers
+ * (no login at all). Uploaded profile photos require a login to view
+ * (ProfilePhotosController), so serving one here would just 401 in the
+ * visitor's browser — this nulls it out instead. Preset avatars
+ * (/avatars/bear-*.jpg) are static assets and always safe to show.
+ */
+export function toAnonSafeUser(user: UserEntity | null | undefined): PublicUser | null {
+  const pub = toPublicUser(user);
+  if (!pub) return null;
+  const isPresetAvatar = pub.profilePhotoPath?.startsWith('/avatars/') ?? false;
+  return { ...pub, profilePhotoPath: isPresetAvatar ? pub.profilePhotoPath : null };
+}
+
+/**
  * For "my own profile" responses — the caller is allowed to see most of
  * their own row, but there's no reason a profile JSON response should ever
  * carry live secrets: the password hash, active reset/verification tokens,

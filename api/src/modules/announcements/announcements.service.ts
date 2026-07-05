@@ -14,7 +14,7 @@ import { PushService } from '../notifications/push.service';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FlagContentDto } from './dto/flag-content.dto';
-import { toPublicUser } from '../../common/utils/public-user.util';
+import { toPublicUser, toAnonSafeUser } from '../../common/utils/public-user.util';
 
 @Injectable()
 export class AnnouncementsService {
@@ -31,7 +31,7 @@ export class AnnouncementsService {
     private readonly pushService: PushService,
   ) {}
 
-  async findPublished(cityId?: number) {
+  async findPublished(cityId?: number, isAuthenticated = false) {
     const qb = this.announcementRepo
       .createQueryBuilder('a')
       .leftJoinAndSelect('a.city', 'city')
@@ -42,17 +42,18 @@ export class AnnouncementsService {
       qb.andWhere('(a.city_id = :cityId OR a.city_id IS NULL)', { cityId });
     }
     const results = await qb.getMany();
-    return results.map((a) => Object.assign(a, { author: toPublicUser(a.author) }));
+    const toUser = isAuthenticated ? toPublicUser : toAnonSafeUser;
+    return results.map((a) => Object.assign(a, { author: toUser(a.author) }));
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, isAuthenticated = false) {
     const a = await this.announcementRepo.findOne({
       where: { id, status: AnnouncementStatus.PUBLISHED },
       relations: ['city', 'author', 'comments', 'comments.user'],
     });
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
     a.comments = a.comments.filter((c) => !c.deletedAt);
-    return this.sanitizeAnnouncement(a);
+    return this.sanitizeAnnouncement(a, isAuthenticated);
   }
 
   async findAllAdmin() {
@@ -69,14 +70,18 @@ export class AnnouncementsService {
       relations: ['city', 'author', 'comments', 'comments.user'],
     });
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
-    return this.sanitizeAnnouncement(a);
+    return this.sanitizeAnnouncement(a, true);
   }
 
-  private sanitizeAnnouncement(a: AnnouncementEntity) {
+  // isAuthenticated: false means a fully anonymous caller — uploaded profile
+  // photos require a login to view, so those get nulled out here rather than
+  // 401ing in the visitor's browser. Preset avatars are unaffected either way.
+  private sanitizeAnnouncement(a: AnnouncementEntity, isAuthenticated: boolean) {
+    const toUser = isAuthenticated ? toPublicUser : toAnonSafeUser;
     for (const c of a.comments ?? []) {
-      (c as any).user = toPublicUser(c.user);
+      (c as any).user = toUser(c.user);
     }
-    return Object.assign(a, { author: toPublicUser(a.author) });
+    return Object.assign(a, { author: toUser(a.author) });
   }
 
   async create(dto: CreateAnnouncementDto, userId: number) {

@@ -15,6 +15,7 @@ import { AnnouncementsService } from './announcements.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FlagContentDto } from './dto/flag-content.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 
@@ -23,13 +24,15 @@ export class AnnouncementsController {
   constructor(private readonly announcementsService: AnnouncementsService) {}
 
   @Get()
-  findAll(@Query('cityId') cityId?: string) {
-    return this.announcementsService.findPublished(cityId ? Number(cityId) : undefined);
+  @UseGuards(OptionalJwtAuthGuard)
+  findAll(@Query('cityId') cityId?: string, @CurrentUser() user?: UserEntity) {
+    return this.announcementsService.findPublished(cityId ? Number(cityId) : undefined, !!user);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.announcementsService.findOne(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: UserEntity) {
+    return this.announcementsService.findOne(id, !!user);
   }
 
   @Post(':id/comments')
