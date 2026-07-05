@@ -608,6 +608,31 @@ redesign pass.
   (`@angular/cli`, `@angular-devkit/build-angular`, `vite`, etc.) that never
   ships in the final image — only compiled static output does — so they don't
   apply to what Docker Hub scans.
+- Added `scripts/scan-image.sh` — local Trivy scan of a built image
+  (`bash scripts/scan-image.sh [stage|latest] [severity-list]`), independent
+  of Docker Hub/Scout. Cross-checking the two surfaced a real gap: Trivy's
+  Alpine advisory data didn't have the busybox CVE Scout found (Alpine hadn't
+  published a formal advisory for it yet) — worth keeping both.
+- Audited every place the API returns `profilePhotoPath`, following up on a
+  gap the upload auth-gating work introduced: uploaded profile photos now
+  require login to view, but a couple of endpoints were still serving that
+  path to fully anonymous callers, which would 401 in their browser.
+  - `/updates` (`GET /api/v1/releases`, `GET /api/v1/releases/:id`) was fully
+    public and exposed the release author's and any credited feedback
+    submitter's photo. Gated to validated members and above (server-side via
+    `ReleasesController` guards, matching the pattern already used for
+    restaurants/calendar/ratings/leaderboard; client-side via
+    `validatedMemberGuard` on the `/updates` route).
+  - `GET /announcements` and `GET /announcements/:id` have the same exposure
+    (author + every commenter) but stay fully public per Rob — lighter fix
+    instead: new `toAnonSafeUser()` util nulls `profilePhotoPath` unless it's
+    a preset avatar, applied only when `OptionalJwtAuthGuard` shows the caller
+    is actually anonymous (logged-in callers of any role still see the real
+    photo, since their cookie succeeds regardless).
+  - Everywhere else already followed this pattern correctly (events list/
+    detail null out attendee identities for anon/non-validated callers;
+    restaurants, ratings, comments, and the leaderboard all require real
+    authentication at the API level) — no other gaps found.
 
 ---
 
