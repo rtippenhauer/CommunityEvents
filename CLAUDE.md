@@ -74,18 +74,22 @@ When asked to work on bugs, Claude Code should:
 ## Versioning Workflow
 
 `package.json` version and the public release version (`/admin/releases/new`,
-stored in the `releases` table) are separate — publishing a release does
-**not** touch `package.json`. Version numbers only change via the `/release`
-command, and only when Rob gives the number explicitly — never bump it
-proactively.
+stored in the `releases` table) are separate. Version numbers only change via
+the `/release` command, and only when Rob gives the number explicitly — never
+bump it proactively.
 
 When asked to cut a release:
 
 1. Summarize all changes made in the session (features added, bugs fixed)
 2. Recommend a semver bump: patch for bug-only, minor for any new features
-3. Draft release note copy for Rob to review — do not publish automatically
-4. Rob reviews and publishes the changelog entry via the admin UI at `/admin/releases/new`
-5. When Rob gives a version number, run `/release <version>` to bump
-   `package.json` in both workspaces, tag, and build/push the stage and
-   prod Docker images
+3. Draft release note copy for Rob to review
+4. When Rob gives a version number, run `/release <version>`, which:
+   - Creates the release as an **unpublished draft** via `POST
+     /api/v1/admin/releases` against production (cookie-authenticated as
+     admin — never calls the `/publish` endpoint)
+   - Bumps `package.json` version in both workspaces, commits, tags, pushes
+   - Builds/pushes the stage and prod Docker images
+5. Rob reviews the draft and publishes it himself via the admin UI at
+   `/admin/releases/new` — publishing is always a manual, separate action,
+   never done by Claude
 
