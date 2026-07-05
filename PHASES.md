@@ -597,6 +597,17 @@ redesign pass.
   overrode the intended mobile `height: 240px` — pushed the sign-up form
   (submit button ~178px) below the fold on phones. Verified with a headless
   browser at a 390×844 viewport before/after.
+- Fixed remaining Docker Hub scan findings: `@nestjs/platform-express@11.1.27`
+  hard-pins an *exact* `multer@2.1.1`, which has two known DoS advisories
+  (patched in `2.2.0`). Removing the `multer` override during the v11 upgrade
+  was a mistake — re-added it pinned to `^2.2.0`, which cascaded away every
+  other HIGH finding in `npm audit` that was only flagged transitively through
+  the vulnerable multer (`@nestjs/core`, `@nestjs/schedule`, `@nestjs/testing`,
+  `@nestjs/typeorm`). API workspace is now at 0 known `npm audit` vulnerabilities.
+  Frontend's `npm audit` findings are all in build-time-only tooling
+  (`@angular/cli`, `@angular-devkit/build-angular`, `vite`, etc.) that never
+  ships in the final image — only compiled static output does — so they don't
+  apply to what Docker Hub scans.
 
 ---
 
