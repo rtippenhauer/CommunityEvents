@@ -19,7 +19,7 @@ const cookieExtractor = (req: Request): string | null => {
 };
 
 const STAGE_LOGIN_WINDOW_MS = 5 * 60 * 1000;
-const PROD_LOGIN_WINDOW_MS = 60 * 60 * 1000;
+const PROD_LOGIN_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
