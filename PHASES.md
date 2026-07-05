@@ -579,6 +579,25 @@ Addressed separately by moving event card actions into an overflow ("...")
 menu, simplifying the card's information hierarchy without a dedicated
 redesign pass.
 
+### Stage Testing Fixes for Upload Auth Gating (2026-07-05) ✅ Done
+- Fixed photo uploads failing on stage after the upload-directory migration:
+  migrations run as `root` (before the app drops to the unprivileged `nestjs`
+  user), so the new `restaurants/`/`profiles/` subfolders came out root-owned
+  and the app couldn't write into them. `entrypoint.sh` now does a recursive
+  `chmod -R 777 /app/uploads` after migrations run, not just before.
+- Widened the qualifying-login dedup window in production from 1 hour to
+  12 hours (stage stays 5 min), per Rob
+- Fixed visit-count tracking counting background activity (e.g. notification
+  polling from a tab left open) as a site visit — moved the tracking from
+  `JwtStrategy.validate()` (fires on every authenticated request) to
+  `AuthService.me()`, which only runs once per real app bootstrap
+  (`APP_INITIALIZER`) — a backgrounded/idle tab no longer inflates the count
+- Fixed the sign-up page's splash image on mobile: `.splash-panel` had an
+  unconditional `min-height: 400px` outside any media query, which silently
+  overrode the intended mobile `height: 240px` — pushed the sign-up form
+  (submit button ~178px) below the fold on phones. Verified with a headless
+  browser at a 390×844 viewport before/after.
+
 ---
 
 ## Phase 15 — Community Points, Achievements & Leaderboard ✅ Complete
