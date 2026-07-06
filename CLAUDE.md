@@ -33,7 +33,7 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Post-Launch Backlog** — both previously-listed items (uploaded file auth gating, event card cleanup) are resolved as of 2026-07-05. No open backlog items right now — see PHASES.md for history; add new deferred items here as they come up.
+**Post-Launch Backlog** — Claude automation tooling round completed 2026-07-06: dedicated automation-role account with its own scoped endpoints (release read/draft-create/unpublish), Docker build now reports the deployed `package.json` version and git commit via `/api/v1/health`, release 1.3.5 cut. No open backlog items right now — see PHASES.md for phase history; add new deferred items here as they come up.
 
 ## Completed Phases
 Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17 ✓ — see PHASES.md for details.
