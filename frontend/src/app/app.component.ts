@@ -84,6 +84,36 @@ export class AppComponent {
     return url.startsWith('/announcements') || url.startsWith('/feedback') || url.startsWith('/updates');
   });
 
+  readonly isSecurityMenuActive = computed(() => {
+    const url = this.currentUrl();
+    return (
+      url.startsWith('/admin/users') ||
+      url.startsWith('/admin/invites') ||
+      url.startsWith('/admin/audit')
+    );
+  });
+
+  readonly isSettingsMenuActive = computed(() => {
+    const url = this.currentUrl();
+    return url.startsWith('/admin/email') || url.startsWith('/admin/cities');
+  });
+
+  readonly isAdminMembersMenuActive = computed(() => {
+    const url = this.currentUrl();
+    return (
+      url.startsWith('/admin/feedback') ||
+      url.startsWith('/admin/achievements') ||
+      url.startsWith('/admin/icons') ||
+      url.startsWith('/admin/announcements') ||
+      url.startsWith('/admin/moderation')
+    );
+  });
+
+  readonly isReleasesMenuActive = computed(() => {
+    const url = this.currentUrl();
+    return url.startsWith('/admin/releases');
+  });
+
   readonly userInitials = computed<string>(() => {
     const name = this.authService.currentUser()?.fullName ?? '';
     return name
