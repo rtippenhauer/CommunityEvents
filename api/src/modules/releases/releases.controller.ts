@@ -11,7 +11,7 @@ import { UserRole } from '../../database/entities/user.entity';
 // visitor (uploaded photos require a login; preset avatars don't).
 @Controller('releases')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN)
+@Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN, UserRole.AUTOMATION)
 export class ReleasesController {
   constructor(private readonly releasesService: ReleasesService) {}
 

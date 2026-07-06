@@ -21,9 +21,13 @@ import { UserEntity, UserRole } from '../../database/entities/user.entity';
 export class ReleasesAdminController {
   constructor(private readonly releasesService: ReleasesService) {}
 
+  // Read-only listing is automation-accessible so Claude can check what's
+  // published/drafted without needing Rob to elevate its role first — the
+  // role-picker elevation is reserved for browsing role-gated pages that
+  // aren't otherwise automation-scoped.
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.AUTOMATION)
   findAll() {
     return this.releasesService.findAll();
   }
