@@ -9,6 +9,7 @@ export interface HealthStatus {
   timestamp: string;
   database: 'ok' | 'error';
   version: string;
+  gitCommit: string;
 }
 
 // Read once at module load — the container's WORKDIR (/app) always has
@@ -36,6 +37,7 @@ export class HealthService {
       timestamp: new Date().toISOString(),
       database,
       version: appVersion,
+      gitCommit: process.env.GIT_COMMIT ?? 'unknown',
     };
   }
 }

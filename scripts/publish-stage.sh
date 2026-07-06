@@ -8,11 +8,14 @@ if [[ "${1:-}" == "--no-cache" ]]; then
   EXTRA_FLAGS="--no-cache"
 fi
 
-echo "==> Building $IMAGE"
+GIT_COMMIT=$(git rev-parse HEAD)
+
+echo "==> Building $IMAGE (commit $GIT_COMMIT)"
 docker build \
   --platform linux/amd64 \
   $EXTRA_FLAGS \
   --build-arg ANGULAR_CONFIG=stage \
+  --build-arg GIT_COMMIT="$GIT_COMMIT" \
   -t "$IMAGE" \
   .
 

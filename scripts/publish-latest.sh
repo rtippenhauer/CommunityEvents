@@ -4,9 +4,12 @@ set -euo pipefail
 IMAGE="rtippenhauer/dinnerbears:latest"
 START=$(date +%s)
 
-echo "==> Building $IMAGE"
+GIT_COMMIT=$(git rev-parse HEAD)
+
+echo "==> Building $IMAGE (commit $GIT_COMMIT)"
 docker build \
   --platform linux/amd64 \
+  --build-arg GIT_COMMIT="$GIT_COMMIT" \
   -t "$IMAGE" \
   .
 

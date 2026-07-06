@@ -18,6 +18,8 @@ RUN npm prune --omit=dev
 
 # ── Stage 3: Production image ──────────────────────────────────────────────────
 FROM node:20-alpine
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
 # Pull latest patched OS packages at build time — the base image tag doesn't
 # always carry the newest security patches (e.g. openssl) for its Alpine release.
 RUN apk update && apk upgrade --no-cache && apk add --no-cache nginx su-exec
@@ -35,6 +37,7 @@ RUN addgroup -S nestjs && adduser -S nestjs -G nestjs
 WORKDIR /app
 COPY --from=api-build /app/dist ./dist
 COPY --from=api-build /app/node_modules ./node_modules
+COPY --from=api-build /app/package.json ./package.json
 
 # Angular static files → nginx webroot
 COPY --from=frontend-build /app/dist/dinnerbears/browser /usr/share/nginx/html
