@@ -114,6 +114,14 @@ export class AppComponent {
     return url.startsWith('/admin/releases');
   });
 
+  readonly isAdminMenuActive = computed(
+    () =>
+      this.isSecurityMenuActive() ||
+      this.isSettingsMenuActive() ||
+      this.isAdminMembersMenuActive() ||
+      this.isReleasesMenuActive(),
+  );
+
   readonly userInitials = computed<string>(() => {
     const name = this.authService.currentUser()?.fullName ?? '';
     return name

@@ -228,10 +228,37 @@
           <span class="toolbar-spacer"></span>
 
           @if (!isMobile() && (isAdmin() || isModerator())) {
-            <button class="nav-item nav-item-admin" [matMenuTriggerFor]="securityMenu"
-              [class.nav-item-active]="isSecurityMenuActive()">
-              <mat-icon>security</mat-icon> Security <mat-icon class="menu-chevron">expand_more</mat-icon>
+            <button class="nav-item nav-item-admin" [matMenuTriggerFor]="adminMenu"
+              [class.nav-item-active]="isAdminMenuActive()">
+              <mat-icon>admin_panel_settings</mat-icon>
+              {{ isAdmin() ? 'Admin' : 'Moderation' }}
+              @if (isAdmin() && feedbackService.unseenCount() > 0) {
+                <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
+              }
+              <mat-icon class="menu-chevron">expand_more</mat-icon>
             </button>
+            <mat-menu #adminMenu="matMenu" panelClass="nav-menu">
+              <button mat-menu-item [matMenuTriggerFor]="securityMenu">
+                <mat-icon>security</mat-icon> Security
+              </button>
+              @if (isAdmin()) {
+                <button mat-menu-item [matMenuTriggerFor]="settingsMenu">
+                  <mat-icon>settings</mat-icon> Settings
+                </button>
+              }
+              <button mat-menu-item [matMenuTriggerFor]="adminMembersMenu">
+                <mat-icon>groups</mat-icon> Members
+                @if (isAdmin() && feedbackService.unseenCount() > 0) {
+                  <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
+                }
+              </button>
+              @if (isAdmin()) {
+                <a mat-menu-item routerLink="/admin/releases/new">
+                  <mat-icon>rocket_launch</mat-icon> Releases
+                </a>
+              }
+            </mat-menu>
+
             <mat-menu #securityMenu="matMenu" panelClass="nav-menu">
               <a mat-menu-item routerLink="/admin/users">
                 <mat-icon>manage_accounts</mat-icon> Users
@@ -248,13 +275,7 @@
                 </a>
               }
             </mat-menu>
-          }
 
-          @if (!isMobile() && isAdmin()) {
-            <button class="nav-item nav-item-admin" [matMenuTriggerFor]="settingsMenu"
-              [class.nav-item-active]="isSettingsMenuActive()">
-              <mat-icon>settings</mat-icon> Settings <mat-icon class="menu-chevron">expand_more</mat-icon>
-            </button>
             <mat-menu #settingsMenu="matMenu" panelClass="nav-menu">
               <a mat-menu-item routerLink="/admin/email">
                 <mat-icon>mail</mat-icon> Email
@@ -263,17 +284,7 @@
                 <mat-icon>location_city</mat-icon> Cities
               </a>
             </mat-menu>
-          }
 
-          @if (!isMobile() && (isAdmin() || isModerator())) {
-            <button class="nav-item nav-item-admin" [matMenuTriggerFor]="adminMembersMenu"
-              [class.nav-item-active]="isAdminMembersMenuActive()">
-              <mat-icon>groups</mat-icon> Members
-              @if (isAdmin() && feedbackService.unseenCount() > 0) {
-                <span class="nav-badge">{{ feedbackService.unseenCount() }}</span>
-              }
-              <mat-icon class="menu-chevron">expand_more</mat-icon>
-            </button>
             <mat-menu #adminMembersMenu="matMenu" panelClass="nav-menu">
               @if (isAdmin()) {
                 <a mat-menu-item routerLink="/admin/feedback">
@@ -296,13 +307,6 @@
                 <mat-icon>flag</mat-icon> Moderation
               </a>
             </mat-menu>
-          }
-
-          @if (!isMobile() && isAdmin()) {
-            <a class="nav-item nav-item-admin" routerLink="/admin/releases/new"
-              [class.nav-item-active]="isReleasesMenuActive()">
-              <mat-icon>rocket_launch</mat-icon> Releases
-            </a>
           }
 
           @if (isLoggedIn()) {
