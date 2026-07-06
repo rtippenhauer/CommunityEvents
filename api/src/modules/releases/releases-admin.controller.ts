@@ -46,9 +46,10 @@ export class ReleasesAdminController {
     return this.releasesService.findOneAdmin(id);
   }
 
-  // The one automation-enabled route — draft creation only, via the
-  // dedicated automation account's own login (see AuthService.automationLogin).
-  // Editing, publishing, and unpublishing all stay human/browser-session-only.
+  // Draft creation and unpublish are automation-enabled, via the dedicated
+  // automation account's own login (see AuthService.automationLogin).
+  // Editing and publishing stay human/browser-session-only — per CLAUDE.md,
+  // publishing is always a manual, separate action, never done by Claude.
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.AUTOMATION)
@@ -72,7 +73,7 @@ export class ReleasesAdminController {
 
   @Post(':id/unpublish')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.AUTOMATION)
   unpublish(@Param('id', ParseIntPipe) id: number) {
     return this.releasesService.unpublish(id);
   }
