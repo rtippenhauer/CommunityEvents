@@ -800,3 +800,19 @@ Setup steps (one-time, done in Cloudflare dashboard):
 - The public `/api/v1/releases` endpoint (no login required, by design) was serializing the full author `UserEntity` — including `password_hash`, email, and verification tokens — for every release, and the full submitter record for any linked feedback ticket. Now serialized down to `id`, `fullName`, `profilePhotoPath` only.
 
 **Definition of done:** Event admin tools accessible via overflow-menu dialogs; Reservation Coordinator visible to all members. Admins can upload, crop, reuse, and clean up custom achievement icons from a dedicated admin page. Secret achievements display correctly once earned. Login-count and Patriotic Bear achievements grant automatically and surface via a queued splash screen. Event invite links use a fixed 10-use/RSVP-cutoff-expiry model with both plain and post-text copy options sharing one usage cap. Public release notes no longer leak account data.
+
+---
+
+## Phase 18 — Admin Nav Reorganization & Release Tooling ✅ Complete
+
+### Admin Nav Restructure
+- Desktop: the flat Admin/Moderation dropdown is now a single entry point whose menu holds **Security** (Users, Invites, Invite Tree, Audit Log), **Settings** (Email, Cities), and **Members** (Feedback, Achievements, Custom Icons, Announcements, Moderation), each opening as a nested flyout submenu via Material's `matMenuTriggerFor`-from-within-a-menu-item pattern, plus a direct **Releases** link
+- Mobile sidenav mirrors the same four groupings as labeled sections (with dividers) under the existing Admin/Moderation block — no flyouts on mobile, just grouped headers
+- Role gating unchanged: moderators still see Security → Users and Members → Announcements/Moderation only; Settings, the rest of Security/Members, and Releases stay admin-only
+
+### Release Notes Tooling
+- New `docs/NEXT_RELEASE.md` — a running local draft of unreleased, customer-facing notes; purely a staging file, never touches the `releases` table or the production API
+- `/phase-done` now appends its customer-facing summary to `docs/NEXT_RELEASE.md`, commits it with the other phase docs, creates a local-only `phase-<N>` git tag (not pushed), and automatically builds/pushes the `stage` Docker image — `latest` (prod) is untouched
+- `/release` now reads `docs/NEXT_RELEASE.md` as its starting draft, clears it back to empty once the release draft is created, and pushes only the specific `v<version>` tag (rather than `--tags`) so any unpushed local `phase-*` tags aren't swept along
+
+**Definition of done:** Desktop admin nav is a single Admin/Moderation entry with nested Security/Settings/Members submenus and a direct Releases link; mobile sidenav mirrors the same grouping via section labels. `/phase-done` and `/release` keep `docs/NEXT_RELEASE.md` in sync automatically without reconstructing release notes from scratch at cut time, and local phase tags never leak to GitHub via a release push.

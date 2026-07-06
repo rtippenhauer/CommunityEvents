@@ -33,10 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Post-Launch Backlog** — Claude automation tooling round completed 2026-07-06: dedicated automation-role account with its own scoped endpoints (release read/draft-create/unpublish), Docker build now reports the deployed `package.json` version and git commit via `/api/v1/health`, release 1.3.5 cut. No open backlog items right now — see PHASES.md for phase history; add new deferred items here as they come up.
+**Post-Launch Backlog** — Phase 18 (Admin Nav Reorganization & Release Tooling) completed 2026-07-06: desktop Admin menu nests Security/Settings/Members as flyout submenus with a direct Releases link, mobile sidenav mirrors the same grouping; new `docs/NEXT_RELEASE.md` draft-notes file kept in sync automatically by `/phase-done` (local commit + local `phase-<N>` tag + auto stage Docker push) and consumed/cleared by `/release`. No open backlog items right now — see PHASES.md for phase history; add new deferred items here as they come up.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules
@@ -78,16 +78,24 @@ stored in the `releases` table) are separate. Version numbers only change via
 the `/release` command, and only when Rob gives the number explicitly — never
 bump it proactively.
 
+`docs/NEXT_RELEASE.md` is a running draft of unreleased, customer-facing
+changes — updated automatically by `/phase-done` when a phase wraps, and by
+hand for ad hoc work in between (e.g. "add this to the next release notes").
+It's purely a local staging file — appending to it never touches the
+`releases` table or the production API. `/release` reads it as the starting
+draft and clears it back to empty once that release's draft is created.
+
 When asked to cut a release:
 
 1. Summarize all changes made in the session (features added, bugs fixed)
 2. Recommend a semver bump: patch for bug-only, minor for any new features
-3. Draft release note copy for Rob to review
+3. Draft release note copy for Rob to review, starting from `docs/NEXT_RELEASE.md`
 4. When Rob gives a version number, run `/release <version>`, which:
    - Creates the release as an **unpublished draft** via `POST
      /api/v1/admin/releases` against production (cookie-authenticated as
      admin — never calls the `/publish` endpoint)
-   - Bumps `package.json` version in both workspaces, commits, tags, pushes
+   - Bumps `package.json` version in both workspaces, clears
+     `docs/NEXT_RELEASE.md`, commits, tags, pushes
    - Builds/pushes the stage and prod Docker images
 5. Rob reviews the draft and publishes it himself via the admin UI at
    `/admin/releases/new` — publishing is always a manual, separate action,
