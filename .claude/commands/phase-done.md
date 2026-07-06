@@ -1,6 +1,20 @@
 Phase $ARGUMENTS is complete. 
 
 1. Provide a customer-friendly release note summary of everything completed.
+   Append it to `docs/NEXT_RELEASE.md` under a heading for this phase's area
+   (create the file from the template below if it doesn't exist yet). Don't
+   remove or rewrite existing entries already in the file — only add to it.
+   This is a draft accumulator, not a publish action — it does not touch the
+   `releases` table or the production API.
+
+   ```
+   # Next Release — Draft Notes
+
+   Running draft of unreleased, customer-facing changes. Appended to automatically
+   by `/phase-done` when a phase wraps, and by hand for ad hoc work in between.
+   `/release` uses this file as the starting draft and clears it back to empty
+   once that release's draft has been created.
+   ```
 
 2. Update CLAUDE.md:
    - Move the current phase to the completed list (collapsed to a single line)
@@ -18,6 +32,19 @@ Phase $ARGUMENTS is complete.
    - Update the _Last updated_ date at the top
    - Update the Table Index to include new tables
 
-5. Commit all three files with message: "docs: phase $ARGUMENTS complete"
+5. Commit all four files (CLAUDE.md, PHASES.md, docs/DATABASE_SCHEMA.md,
+   docs/NEXT_RELEASE.md) with message: "docs: phase $ARGUMENTS complete"
+
+6. Tag the commit: `git tag -a phase-$ARGUMENTS -m "Phase $ARGUMENTS complete"`.
+   Local tag only — do not `git push` the commit or the tag to GitHub. Pushing
+   to GitHub and publishing a release only happen via `/release`.
+
+7. Build and push the stage image: `bash scripts/publish-stage.sh`. This
+   updates the `stage` tag on Docker Hub only — never touches
+   `rtippenhauer/dinnerbears:latest` (prod), which is exclusively `/release`'s
+   job.
+
+8. Report back a short summary: files updated, local commit + tag created
+   (not pushed), stage image rebuilt and pushed.
 
 When done, run /clear.
