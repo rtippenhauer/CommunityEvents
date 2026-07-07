@@ -22,13 +22,20 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     });
   }
 
+  // Google always redirects back to the single registered callbackURL, so by the
+  // time validate() runs, req.headers.host is that fixed host — never the chapter
+  // subdomain (e.g. dayton.stage.dinnerbears.com) the user actually started from.
+  // The only place that original Host is visible is here, on the initial redirect-
+  // to-Google request, so it's captured into `state` and decoded back out below.
   authenticate(req: Request, options: Record<string, unknown> = {}): void {
     const inviteToken = (req.query as { inviteToken?: string }).inviteToken;
-    super.authenticate(req, { ...options, state: inviteToken ?? '' });
+    const originHost = req.headers.host ?? '';
+    const state = Buffer.from(JSON.stringify({ t: inviteToken ?? '', h: originHost })).toString('base64url');
+    super.authenticate(req, { ...options, state });
   }
 
   async validate(
-    req: { query: { state?: string }; headers: Record<string, string | string[] | undefined> },
+    req: { query: { state?: string } } & { authOriginHost?: string },
     _accessToken: string,
     _refreshToken: string,
     profile: Profile,
@@ -39,12 +46,21 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       if (!email) throw new UnauthorizedException('No email from Google');
       console.log(`[BOOTSTRAP] Google ID: ${profile.id}  Email: ${email}`);
 
-      const inviteToken = req.query.state ?? undefined;
+      let inviteToken: string | undefined;
+      let originHost: string | undefined;
+      try {
+        const decoded = JSON.parse(
+          Buffer.from(req.query.state ?? '', 'base64url').toString('utf8'),
+        ) as { t?: string; h?: string };
+        inviteToken = decoded.t || undefined;
+        originHost = decoded.h || undefined;
+      } catch {
+        // Malformed/missing state — proceed without invite token or origin host.
+      }
+
       const photo = profile.photos?.[0]?.value ?? null;
-      const subdomain = req.headers['x-subdomain'];
-      const city = await this.citiesService.findBySubdomainOrNull(
-        typeof subdomain === 'string' ? subdomain : undefined,
-      );
+      const subdomain = originHost?.split('.')[0];
+      const city = await this.citiesService.findBySubdomainOrNull(subdomain);
       const user = await this.authService.findOrCreateGoogleUser(
         profile.id,
         email,
@@ -53,6 +69,9 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
         photo,
         city?.id,
       );
+      // Passed through (with passReqToCallback) to AuthController.googleCallback,
+      // which validates it against the configured base domain before using it.
+      req.authOriginHost = originHost;
       done(null, user);
     } catch (err) {
       done(err as Error);

@@ -39,6 +39,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 export class AuthController {
   private readonly frontendUrl: string;
   private readonly fbAppSecret: string;
+  private readonly baseDomain: string;
 
   constructor(
     private readonly authService: AuthService,
@@ -47,6 +48,19 @@ export class AuthController {
   ) {
     this.frontendUrl = configService.get<string>('APP_URL', 'http://localhost:8081');
     this.fbAppSecret = configService.get<string>('FACEBOOK_APP_SECRET', '');
+    // City subdomains are siblings of the main app host, not children of it (e.g.
+    // cincinnati.dinnerbears.com sits alongside www.dinnerbears.com, not under it),
+    // so the allowed redirect zone is APP_URL's host with any leading "www." stripped.
+    // Set BASE_DOMAIN explicitly in .env to override this default.
+    const defaultBaseDomain = new URL(this.frontendUrl).hostname.replace(/^www\./, '');
+    this.baseDomain = configService.get<string>('BASE_DOMAIN', defaultBaseDomain);
+  }
+
+  // Only ever used to build a redirect Location header — never trust a bare host
+  // string from request-controlled data (like OAuth `state`) without this check,
+  // or it becomes an open-redirect vector.
+  private isAllowedRedirectHost(host: string): boolean {
+    return host === this.baseDomain || host.endsWith(`.${this.baseDomain}`);
   }
 
   // --- Google OAuth ---
@@ -60,7 +74,7 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(GoogleCallbackGuard)
   async googleCallback(
-    @Req() req: Request & { user: UserEntity },
+    @Req() req: Request & { user: UserEntity; authOriginHost?: string },
     @Res() res: Response,
   ): Promise<void> {
     if (res.headersSent) return;
@@ -78,7 +92,11 @@ export class AuthController {
       path: '/',
     });
 
-    res.redirect(`${this.frontendUrl}/auth/callback`);
+    const originHost = req.authOriginHost;
+    const redirectUrl = originHost && this.isAllowedRedirectHost(originHost)
+      ? `${new URL(this.frontendUrl).protocol}//${originHost}/auth/callback`
+      : `${this.frontendUrl}/auth/callback`;
+    res.redirect(redirectUrl);
   }
 
   // --- Facebook OAuth ---
