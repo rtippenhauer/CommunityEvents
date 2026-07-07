@@ -57,7 +57,13 @@
                 }
               ],
               "outputHashing": "all",
-              "serviceWorker": "src/ngsw-config.json"
+              "serviceWorker": "src/ngsw-config.json",
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.prod.ts"
+                }
+              ]
             },
             "stage": {
               "index": {

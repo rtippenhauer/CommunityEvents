@@ -15,6 +15,7 @@ import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs';
 import { environment } from '../environments/environment';
 import { AuthService } from './core/services/auth.service';
+import { CityService } from './core/services/city.service';
 import { FeedbackService } from './core/services/feedback.service';
 import { AchievementSplashService } from './core/services/achievement-splash.service';
 import { NotificationBellComponent } from './shared/components/notification-bell/notification-bell.component';
@@ -44,6 +45,7 @@ import { AchievementSplashComponent, AchievementSplashData } from './shared/comp
 export class AppComponent {
   private readonly breakpointObserver = inject(BreakpointObserver);
   readonly authService = inject(AuthService);
+  private readonly cityService = inject(CityService);
   readonly feedbackService = inject(FeedbackService);
   private readonly achievementSplashService = inject(AchievementSplashService);
   private readonly dialog = inject(MatDialog);
@@ -149,6 +151,24 @@ export class AppComponent {
   );
 
   constructor() {
+    // Safety net for unrecognized hosts (typo'd DNS entry, a decommissioned
+    // city, someone hitting the wildcard cert directly): city-scoped features
+    // like Facebook login assume the current hostname is either a known
+    // chapter subdomain or the environment's own canonical root. Skipped in
+    // local dev, where the hostname is never one of those anyway.
+    effect(() => {
+      if (!environment.production) return;
+      if (this.cityService.cities().length === 0) return; // wait for the list to load
+
+      const hostname = window.location.hostname.toLowerCase();
+      const rootHostname = new URL(environment.rootUrl).hostname.toLowerCase();
+      const isKnownHost = hostname === rootHostname || this.cityService.currentCity() !== undefined;
+
+      if (!isKnownHost) {
+        window.location.href = environment.rootUrl;
+      }
+    });
+
     effect(() => {
       if (this.isAdmin()) {
         this.feedbackService.loadUnseenCount();
