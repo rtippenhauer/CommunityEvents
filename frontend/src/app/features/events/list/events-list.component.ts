@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
@@ -13,6 +13,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { EventsService, Event } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { CityService } from '../../../core/services/city.service';
 import { EventCardComponent } from '../../../shared/components/event-card/event-card.component';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 import { CalendarSubscribeComponent } from '../../../shared/components/calendar-subscribe/calendar-subscribe.component';
@@ -141,6 +142,7 @@ interface City {
 export class EventsListComponent implements OnInit {
   private readonly eventsService = inject(EventsService);
   private readonly authService = inject(AuthService);
+  private readonly cityService = inject(CityService);
   private readonly dialog = inject(MatDialog);
   private readonly http = inject(HttpClient);
 
@@ -151,6 +153,15 @@ export class EventsListComponent implements OnInit {
   readonly fromDateCtrl = new FormControl<Date>(new Date(), { nonNullable: true });
   readonly cityCtrl = new FormControl<number | null>(null);
   readonly myOnly = signal(false);
+
+  private citySeeded = false;
+  private readonly seedCityEffect = effect(() => {
+    const current = this.cityService.currentCity();
+    if (current && !this.citySeeded && this.cityCtrl.value === null) {
+      this.citySeeded = true;
+      this.cityCtrl.setValue(current.id);
+    }
+  });
 
   readonly displayEvents = computed(() => {
     if (!this.myOnly()) return this.events();

@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal, HostListener } from '@angular/core';
+import { Component, computed, effect, inject, OnInit, signal, HostListener } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -8,6 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AuthService } from '../../core/services/auth.service';
+import { CityService } from '../../core/services/city.service';
 
 interface Member {
   id: number;
@@ -53,6 +54,15 @@ interface Member {
             <mat-select [value]="sort()" (selectionChange)="setSort($event.value)">
               <mat-option value="newest">Newest First</mat-option>
               <mat-option value="alpha">Alphabetical</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="city-field">
+            <mat-label>City</mat-label>
+            <mat-select [value]="cityFilter()" (selectionChange)="cityFilter.set($event.value)">
+              <mat-option [value]="null">All Cities</mat-option>
+              @for (city of cityService.cities(); track city.id) {
+                <mat-option [value]="city.id">{{ city.name }}</mat-option>
+              }
             </mat-select>
           </mat-form-field>
           @if (showRoles()) {
@@ -378,12 +388,14 @@ interface Member {
 export class MembersComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
+  readonly cityService = inject(CityService);
 
   readonly loading = signal(true);
   readonly members = signal<Member[]>([]);
   readonly query = signal('');
   readonly sort = signal<'newest' | 'alpha'>('newest');
   readonly roleFilter = signal('');
+  readonly cityFilter = signal<number | null>(null);
   readonly lightboxSrc = signal<string | null>(null);
   readonly lightboxName = signal<string | null>(null);
 
@@ -394,12 +406,23 @@ export class MembersComponent implements OnInit {
     return role === 'admin' || role === 'moderator';
   });
 
+  private citySeeded = false;
+  private readonly seedCityEffect = effect(() => {
+    const current = this.cityService.currentCity();
+    if (current && !this.citySeeded && this.cityFilter() === null) {
+      this.citySeeded = true;
+      this.cityFilter.set(current.id);
+    }
+  });
+
   readonly filtered = computed(() => {
     const q = this.query().toLowerCase();
     const r = this.roleFilter();
+    const c = this.cityFilter();
     return this.members().filter((m) => {
       if (q && !m.fullName.toLowerCase().includes(q)) return false;
       if (r && m.role !== r) return false;
+      if (c && m.cityId !== c) return false;
       return true;
     });
   });

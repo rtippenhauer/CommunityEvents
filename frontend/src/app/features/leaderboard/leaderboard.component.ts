@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import { Component, effect, inject, OnInit, signal, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -35,7 +35,7 @@ const TYPE_LABELS: Record<string, string> = {
             <mat-label>City</mat-label>
             <mat-select [value]="cityFilter()" (selectionChange)="setCityFilter($event.value)">
               <mat-option [value]="null">All Cities</mat-option>
-              @for (city of cities; track city.id) {
+              @for (city of cities(); track city.id) {
                 <mat-option [value]="city.id">{{ city.name }}</mat-option>
               }
             </mat-select>
@@ -196,6 +196,15 @@ export class LeaderboardComponent implements OnInit {
   readonly cityFilter = signal<number | null>(null);
 
   readonly myId = computed(() => this.authService.currentUser()?.id ?? null);
+
+  private citySeeded = false;
+  private readonly seedCityEffect = effect(() => {
+    const current = this.cityService.currentCity();
+    if (current && !this.citySeeded && this.cityFilter() === null) {
+      this.citySeeded = true;
+      this.setCityFilter(current.id);
+    }
+  });
 
   ngOnInit(): void {
     this.load();

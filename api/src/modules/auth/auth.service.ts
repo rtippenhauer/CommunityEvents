@@ -99,6 +99,7 @@ export class AuthService {
     displayName: string,
     inviteToken?: string,
     profilePhoto?: string | null,
+    subdomainCityId?: number,
   ): Promise<UserEntity> {
     // Primary lookup: existing OAuth account
     const existing = await this.oauthRepo.findOne({
@@ -156,7 +157,7 @@ export class AuthService {
       }
     }
 
-    const defaultCity = await this.citiesService.findAll().then((cities) => cities[0]);
+    const cityId = subdomainCityId ?? await this.citiesService.findAll().then((cities) => cities[0].id);
 
     // Free up the email address if a soft-deleted account is still holding it
     await this.releaseDeletedEmail(email.toLowerCase());
@@ -169,7 +170,7 @@ export class AuthService {
       email: email.toLowerCase(),
       emailStatus: EmailStatus.ACTIVE,
       emailVerifiedAt: new Date(),
-      cityId: defaultCity.id,
+      cityId,
       role: isAdminBootstrap ? UserRole.ADMIN : (isNonValidatedInvite ? UserRole.NON_VALIDATED : UserRole.MEMBER),
       status: UserStatus.ACTIVE,
       profilePhotoPath: profilePhoto ?? null,
@@ -226,6 +227,7 @@ export class AuthService {
     inviteToken?: string,
     profilePhoto?: string | null,
     profileUrl?: string | null,
+    subdomainCityId?: number,
   ): Promise<UserEntity> {
     const existing = await this.oauthRepo.findOne({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
@@ -272,7 +274,7 @@ export class AuthService {
       throw new AuthFlowError('invalid_invite');
     }
 
-    const defaultCity = await this.citiesService.findAll().then((cities) => cities[0]);
+    const cityId = subdomainCityId ?? await this.citiesService.findAll().then((cities) => cities[0].id);
 
     // Free up the email address if a soft-deleted account is still holding it
     if (email) await this.releaseDeletedEmail(email.toLowerCase());
@@ -285,7 +287,7 @@ export class AuthService {
       email: email ? email.toLowerCase() : `fb_${facebookId}@placeholder.invalid`,
       emailStatus: email ? EmailStatus.ACTIVE : EmailStatus.PENDING,
       emailVerifiedAt: email ? new Date() : undefined,
-      cityId: defaultCity.id,
+      cityId,
       role: isFbNonValidated ? UserRole.NON_VALIDATED : UserRole.MEMBER,
       status: UserStatus.ACTIVE,
       profilePhotoPath: profilePhoto ?? null,
@@ -626,6 +628,7 @@ export class AuthService {
     fullName: string,
     email: string,
     password: string,
+    subdomainCityId?: number,
   ): Promise<UserEntity> {
     const lowerEmail = email.toLowerCase();
 
@@ -652,7 +655,7 @@ export class AuthService {
       await this.releaseDeletedEmail(lowerEmail);
     }
 
-    const defaultCity = await this.citiesService.findAll().then((c) => c[0]);
+    const cityId = subdomainCityId ?? await this.citiesService.findAll().then((c) => c[0].id);
     const passwordHash = await bcrypt.hash(password, 12);
     const verificationToken = randomBytes(32).toString('hex');
     const verificationExpires = new Date();
@@ -670,7 +673,7 @@ export class AuthService {
       emailStatus: EmailStatus.PENDING,
       emailVerificationToken: verificationToken,
       emailVerificationExpiresAt: verificationExpires,
-      cityId: defaultCity.id,
+      cityId,
       role: isNonValidatedInvite ? UserRole.NON_VALIDATED : UserRole.MEMBER,
       status: UserStatus.ACTIVE,
       inviteId: invite?.id ?? null,

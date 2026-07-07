@@ -56,7 +56,7 @@ import { CityService } from '../../../core/services/city.service';
               <mat-label>City Scope</mat-label>
               <mat-select formControlName="cityId">
                 <mat-option [value]="null">All Cities</mat-option>
-                @for (city of cityService.cities; track city.slug) {
+                @for (city of cityService.cities(); track city.id) {
                   <mat-option [value]="city.id">{{ city.name }}</mat-option>
                 }
               </mat-select>

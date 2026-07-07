@@ -4,12 +4,14 @@ import { Strategy, VerifyCallback, Profile } from 'passport-google-oauth20';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { AuthService } from '../auth.service';
+import { CitiesService } from '../../cities/cities.service';
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(
     configService: ConfigService,
     private readonly authService: AuthService,
+    private readonly citiesService: CitiesService,
   ) {
     super({
       clientID: configService.getOrThrow<string>('GOOGLE_CLIENT_ID'),
@@ -26,7 +28,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   }
 
   async validate(
-    req: { query: { state?: string } },
+    req: { query: { state?: string }; headers: Record<string, string | string[] | undefined> },
     _accessToken: string,
     _refreshToken: string,
     profile: Profile,
@@ -39,12 +41,17 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 
       const inviteToken = req.query.state ?? undefined;
       const photo = profile.photos?.[0]?.value ?? null;
+      const subdomain = req.headers['x-subdomain'];
+      const city = await this.citiesService.findBySubdomainOrNull(
+        typeof subdomain === 'string' ? subdomain : undefined,
+      );
       const user = await this.authService.findOrCreateGoogleUser(
         profile.id,
         email,
         profile.displayName ?? email,
         inviteToken,
         photo,
+        city?.id,
       );
       done(null, user);
     } catch (err) {

@@ -22,6 +22,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { AuthService } from './auth.service';
+import { CitiesService } from '../cities/cities.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GoogleCallbackGuard } from '../../common/guards/google-callback.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -41,6 +42,7 @@ export class AuthController {
 
   constructor(
     private readonly authService: AuthService,
+    private readonly citiesService: CitiesService,
     configService: ConfigService,
   ) {
     this.frontendUrl = configService.get<string>('APP_URL', 'http://localhost:8081');
@@ -99,6 +101,10 @@ export class AuthController {
       link?: string;
     };
     const fbPhoto = fbUser.picture?.data?.url ?? null;
+    const subdomain = req.headers['x-subdomain'];
+    const city = await this.citiesService.findBySubdomainOrNull(
+      typeof subdomain === 'string' ? subdomain : undefined,
+    );
 
     let user;
     try {
@@ -109,6 +115,7 @@ export class AuthController {
         dto.inviteToken,
         fbPhoto,
         fbUser.link ?? null,
+        city?.id,
       );
     } catch (err) {
       if (err instanceof AuthFlowError) {
@@ -237,12 +244,18 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
+    const subdomain = req.headers['x-subdomain'];
+    const city = await this.citiesService.findBySubdomainOrNull(
+      typeof subdomain === 'string' ? subdomain : undefined,
+    );
+
     try {
       await this.authService.registerWithPassword(
         dto.inviteToken,
         dto.fullName,
         dto.email,
         dto.password,
+        city?.id,
       );
     } catch (err) {
       if (err instanceof AuthFlowError) {

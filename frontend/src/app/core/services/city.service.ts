@@ -1,36 +1,25 @@
-import { Injectable, signal, computed } from '@angular/core';
-
-export type CitySlug = 'cincinnati' | 'dayton';
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 
 export interface City {
   id: number;
   name: string;
-  slug: CitySlug;
-}
-
-const CITIES: City[] = [
-  { id: 1, name: 'Cincinnati', slug: 'cincinnati' },
-  { id: 2, name: 'Dayton', slug: 'dayton' },
-];
-
-function detectSubdomain(): CitySlug {
-  const match = typeof window !== 'undefined'
-    ? window.location.hostname.match(/^([a-z]+)\./)
-    : null;
-  const sub = match?.[1];
-  return sub === 'dayton' ? 'dayton' : 'cincinnati';
+  subdomain: string;
 }
 
 @Injectable({ providedIn: 'root' })
 export class CityService {
-  readonly cities = CITIES;
-  readonly selected = signal<CitySlug>(detectSubdomain());
+  private readonly http = inject(HttpClient);
 
-  readonly selectedCity = computed<City>(
-    () => CITIES.find((c) => c.slug === this.selected()) ?? CITIES[0],
-  );
+  readonly cities = signal<City[]>([]);
 
-  select(slug: CitySlug): void {
-    this.selected.set(slug);
+  readonly currentCity = computed<City | undefined>(() => {
+    const subdomain = window.location.hostname.match(/^([a-z0-9-]+)\./)?.[1]?.toLowerCase();
+    if (!subdomain) return undefined;
+    return this.cities().find((c) => c.subdomain.toLowerCase() === subdomain);
+  });
+
+  constructor() {
+    this.http.get<City[]>('/api/v1/cities').subscribe((cities) => this.cities.set(cities));
   }
 }

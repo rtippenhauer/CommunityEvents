@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, effect, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -16,6 +16,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { RestaurantsService, Restaurant } from '../../../core/services/restaurants.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { CityService } from '../../../core/services/city.service';
 import { RestaurantFormDialogComponent } from '../form/restaurant-form-dialog.component';
 import { FacebookImportDialogComponent } from '../import/facebook-import-dialog.component';
 
@@ -226,6 +227,7 @@ interface City {
 export class RestaurantsListComponent implements OnInit {
   private readonly restaurantsService = inject(RestaurantsService);
   private readonly authService = inject(AuthService);
+  private readonly cityService = inject(CityService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
@@ -238,6 +240,15 @@ export class RestaurantsListComponent implements OnInit {
 
   readonly searchCtrl = new FormControl('');
   readonly cityCtrl = new FormControl<number | null>(null);
+
+  private citySeeded = false;
+  private readonly seedCityEffect = effect(() => {
+    const current = this.cityService.currentCity();
+    if (current && !this.citySeeded && this.cityCtrl.value === null) {
+      this.citySeeded = true;
+      this.cityCtrl.setValue(current.id);
+    }
+  });
 
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((c) => this.cities.set(c));
