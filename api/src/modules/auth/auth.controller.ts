@@ -63,6 +63,21 @@ export class AuthController {
     return host === this.baseDomain || host.endsWith(`.${this.baseDomain}`);
   }
 
+  // Scoped to the shared base domain (not host-only) so a session started on one
+  // chapter subdomain is valid on every other subdomain under the same zone —
+  // required for Google's OAuth round-trip, which lands on a different host
+  // (the fixed callback domain) before redirecting back to the originating one.
+  private accessTokenCookieOptions() {
+    return {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict' as const,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+      domain: this.baseDomain,
+    };
+  }
+
   // --- Google OAuth ---
 
   @Get('google')
@@ -84,13 +99,7 @@ export class AuthController {
       ipAddress: req.ip,
     });
 
-    res.cookie('access_token', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/',
-    });
+    res.cookie('access_token', accessToken, this.accessTokenCookieOptions());
 
     const originHost = req.authOriginHost;
     const redirectUrl = originHost && this.isAllowedRedirectHost(originHost)
@@ -154,13 +163,7 @@ export class AuthController {
       ipAddress: req.ip,
     });
 
-    res.cookie('access_token', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/',
-    });
+    res.cookie('access_token', accessToken, this.accessTokenCookieOptions());
 
     return { message: 'ok' };
   }
@@ -315,13 +318,11 @@ export class AuthController {
         ipAddress: (req as unknown as { ip: string }).ip,
       });
 
-    (res as unknown as { cookie: (...args: unknown[]) => void }).cookie('access_token', accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/',
-    });
+    (res as unknown as { cookie: (...args: unknown[]) => void }).cookie(
+      'access_token',
+      accessToken,
+      this.accessTokenCookieOptions(),
+    );
 
     return {
       message: 'ok',
@@ -407,7 +408,7 @@ export class AuthController {
         await this.authService.logout(payload.jti, req.user.id);
       }
     }
-    res.clearCookie('access_token', { path: '/' });
+    res.clearCookie('access_token', { path: '/', domain: this.baseDomain });
     return { message: 'Logged out' };
   }
 }
