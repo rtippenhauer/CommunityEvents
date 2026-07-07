@@ -7,6 +7,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { AdminCity, CitiesAdminService } from '../../../core/services/cities-admin.service';
 import { CityFormDialogComponent, CityFormDialogData } from './city-form-dialog.component';
+import { environment } from '../../../../environments/environment';
 
 interface AdminUser {
   id: number;
@@ -48,7 +49,7 @@ interface CityRow extends AdminCity {
                   <mat-icon>edit</mat-icon>
                 </button>
               </div>
-              <div class="city-subdomain">{{ city.subdomain }}.dinnerbears.com</div>
+              <div class="city-subdomain">{{ city.subdomain }}.{{ baseDomain }}</div>
               <div class="city-stats">
                 <div class="stat">
                   <span class="stat-value">{{ city.totalMembers }}</span>
@@ -109,6 +110,7 @@ export class AdminCitiesComponent implements OnInit {
   private readonly citiesAdminService = inject(CitiesAdminService);
   private readonly dialog = inject(MatDialog);
 
+  readonly baseDomain = environment.baseDomain;
   readonly loading = signal(true);
   private readonly cities = signal<AdminCity[]>([]);
   private readonly users = signal<AdminUser[]>([]);

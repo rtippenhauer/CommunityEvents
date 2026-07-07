@@ -9,6 +9,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AdminCity, CitiesAdminService } from '../../../core/services/cities-admin.service';
+import { environment } from '../../../../environments/environment';
 
 export interface CityFormDialogData {
   city?: AdminCity;
@@ -41,7 +42,7 @@ export interface CityFormDialogData {
         <mat-form-field appearance="outline">
           <mat-label>Subdomain</mat-label>
           <input matInput formControlName="subdomain" />
-          <mat-hint>{{ form.getRawValue().subdomain || 'subdomain' }}.dinnerbears.com — lowercase letters, numbers, and hyphens only</mat-hint>
+          <mat-hint>{{ form.getRawValue().subdomain || 'subdomain' }}.{{ baseDomain }} — lowercase letters, numbers, and hyphens only</mat-hint>
           <mat-error>Lowercase letters, numbers, and hyphens only</mat-error>
         </mat-form-field>
 
@@ -76,6 +77,7 @@ export class CityFormDialogComponent {
   private readonly citiesAdminService = inject(CitiesAdminService);
   private readonly snackBar = inject(MatSnackBar);
 
+  readonly baseDomain = environment.baseDomain;
   saving = false;
 
   readonly form = this.fb.group({
