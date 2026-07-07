@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, effect, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, Event } from '../../core/services/events.service';
 import { AuthService } from '../../core/services/auth.service';
+import { CityService } from '../../core/services/city.service';
 import { EventCardComponent } from '../../shared/components/event-card/event-card.component';
 
 interface PublicStats {
@@ -483,6 +484,7 @@ interface PublicStats {
 export class HomeComponent implements OnInit {
   private readonly eventsService = inject(EventsService);
   private readonly authService = inject(AuthService);
+  private readonly cityService = inject(CityService);
   private readonly http = inject(HttpClient);
 
   readonly events = signal<Event[]>([]);
@@ -490,12 +492,19 @@ export class HomeComponent implements OnInit {
   readonly stats = signal<PublicStats | null>(null);
   readonly showMapLightbox = signal(false);
 
-  ngOnInit(): void {
-    this.eventsService.getAll({ upcoming: true }).subscribe({
+  private readonly loadEventsEffect = effect(() => {
+    // Re-runs once currentCity() resolves from undefined -> a city (or stays
+    // undefined on www/apex/stage), so the very first fetch already reflects
+    // whichever subdomain the visitor is on.
+    const cityId = this.cityService.currentCity()?.id;
+    this.loading.set(true);
+    this.eventsService.getAll({ upcoming: true, cityId }).subscribe({
       next: (evts) => { this.events.set(evts.slice(0, 3)); this.loading.set(false); },
       error: () => this.loading.set(false),
     });
+  });
 
+  ngOnInit(): void {
     this.http.get<PublicStats>('/api/v1/stats/public').subscribe({
       next: (s) => this.stats.set(s),
       error: () => { /* stats are non-critical, fail silently */ },
