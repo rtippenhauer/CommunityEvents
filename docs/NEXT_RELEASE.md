@@ -9,3 +9,8 @@ once that release's draft has been created.
 
 - Reorganized the admin nav into Security, Settings, and Members submenus
   nested under a single Admin menu, plus a dedicated Releases entry.
+
+## Restaurants
+
+- Admins can now restore a soft-deleted restaurant via a new "Archived"
+  toggle on the Restaurants page.

@@ -148,6 +148,17 @@ export class RestaurantsService {
     return this.http.get<Restaurant>(`${this.base}/${id}`);
   }
 
+  getArchived(cityId?: number, search?: string): Observable<Restaurant[]> {
+    const params: Record<string, string> = {};
+    if (cityId) params['cityId'] = String(cityId);
+    if (search) params['search'] = search;
+    return this.http.get<Restaurant[]>(`${this.base}/archived`, { params });
+  }
+
+  restore(id: number): Observable<Restaurant> {
+    return this.http.patch<Restaurant>(`${this.base}/${id}/restore`, {});
+  }
+
   create(payload: CreateRestaurantPayload): Observable<Restaurant> {
     return this.http.post<Restaurant>(this.base, payload);
   }

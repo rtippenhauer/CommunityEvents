@@ -125,6 +125,17 @@ export class RestaurantsController {
     return this.ratingsService.getRatingQueue(user.id);
   }
 
+  // Must be declared before :id routes to avoid route collision
+  @Get('archived')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  findArchived(@Query('cityId') cityId?: string, @Query('search') search?: string) {
+    return this.restaurantsService.findAllArchived({
+      cityId: cityId ? parseInt(cityId, 10) : undefined,
+      search,
+    });
+  }
+
   @Get(':id')
   findOne(
     @Param('id', ParseIntPipe) id: number,
@@ -159,6 +170,13 @@ export class RestaurantsController {
   @Roles(UserRole.ADMIN)
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.restaurantsService.remove(id);
+  }
+
+  @Patch(':id/restore')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  restore(@Param('id', ParseIntPipe) id: number) {
+    return this.restaurantsService.restore(id);
   }
 
   @Post(':id/photos')

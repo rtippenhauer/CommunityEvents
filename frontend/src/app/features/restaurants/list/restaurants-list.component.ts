@@ -43,9 +43,15 @@ interface City {
   ],
   template: `
     <div class="page-header">
-      <h1>Restaurants</h1>
-      @if (isAdminOrMod()) {
-        <div class="header-actions">
+      <h1>{{ showArchived() ? 'Archived Restaurants' : 'Restaurants' }}</h1>
+      <div class="header-actions">
+        @if (isAdmin()) {
+          <button mat-stroked-button (click)="toggleArchived()">
+            <mat-icon>{{ showArchived() ? 'arrow_back' : 'restore_from_trash' }}</mat-icon>
+            {{ showArchived() ? 'Back to Active' : 'Archived' }}
+          </button>
+        }
+        @if (!showArchived() && isAdminOrMod()) {
           <button mat-stroked-button (click)="openImport()">
             <mat-icon>upload</mat-icon> Import
           </button>
@@ -60,8 +66,8 @@ interface City {
           <button mat-raised-button color="primary" (click)="openCreate()">
             <mat-icon>add</mat-icon> Add Restaurant
           </button>
-        </div>
-      }
+        }
+      </div>
     </div>
 
     <!-- Filters -->
@@ -87,16 +93,17 @@ interface City {
     @if (loading()) {
       <div class="center"><mat-spinner /></div>
     } @else if (restaurants().length === 0) {
-      <p class="empty">No restaurants found.</p>
+      <p class="empty">{{ showArchived() ? 'No archived restaurants.' : 'No restaurants found.' }}</p>
     } @else {
       <div class="restaurant-grid">
         @for (r of restaurants(); track r.id) {
           <mat-card
             class="restaurant-card"
-            (click)="goToDetail(r.id)"
-            role="button"
-            tabindex="0"
-            (keydown.enter)="goToDetail(r.id)"
+            [class.archived-card]="showArchived()"
+            (click)="!showArchived() && goToDetail(r.id)"
+            [attr.role]="showArchived() ? null : 'button'"
+            [attr.tabindex]="showArchived() ? null : 0"
+            (keydown.enter)="!showArchived() && goToDetail(r.id)"
           >
             <div class="card-photo">
               @if (r.photos.length > 0) {
@@ -115,6 +122,13 @@ interface City {
                 </p>
               }
             </mat-card-content>
+            @if (showArchived()) {
+              <mat-card-actions>
+                <button mat-stroked-button color="primary" (click)="restore(r, $event)">
+                  <mat-icon>restore</mat-icon> Restore
+                </button>
+              </mat-card-actions>
+            }
           </mat-card>
         }
       </div>
@@ -165,6 +179,14 @@ interface City {
         &:hover {
           box-shadow: 0 6px 20px rgba(61, 28, 5, 0.18);
           transform: translateY(-2px);
+        }
+      }
+      .archived-card {
+        cursor: default;
+        opacity: 0.75;
+        &:hover {
+          box-shadow: none;
+          transform: none;
         }
       }
       .card-photo {
@@ -237,6 +259,7 @@ export class RestaurantsListComponent implements OnInit {
   readonly cities = signal<City[]>([]);
   readonly loading = signal(true);
   readonly enrichingAll = signal(false);
+  readonly showArchived = signal(false);
 
   readonly searchCtrl = new FormControl('');
   readonly cityCtrl = new FormControl<number | null>(null);
@@ -262,20 +285,43 @@ export class RestaurantsListComponent implements OnInit {
 
   load(): void {
     this.loading.set(true);
-    this.restaurantsService
-      .getAll(this.cityCtrl.value ?? undefined, this.searchCtrl.value ?? undefined)
-      .subscribe({
-        next: (r) => {
-          this.restaurants.set(r);
-          this.loading.set(false);
-        },
-        error: () => this.loading.set(false),
-      });
+    const cityId = this.cityCtrl.value ?? undefined;
+    const search = this.searchCtrl.value ?? undefined;
+    const obs = this.showArchived()
+      ? this.restaurantsService.getArchived(cityId, search)
+      : this.restaurantsService.getAll(cityId, search);
+    obs.subscribe({
+      next: (r) => {
+        this.restaurants.set(r);
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
+    });
   }
 
   isAdminOrMod(): boolean {
     const role = this.authService.currentUser()?.role;
     return role === 'admin' || role === 'moderator';
+  }
+
+  isAdmin(): boolean {
+    return this.authService.currentUser()?.role === 'admin';
+  }
+
+  toggleArchived(): void {
+    this.showArchived.set(!this.showArchived());
+    this.load();
+  }
+
+  restore(r: Restaurant, event: Event): void {
+    event.stopPropagation();
+    this.restaurantsService.restore(r.id).subscribe({
+      next: () => {
+        this.snackBar.open(`${r.name} restored`, 'OK', { duration: 3000 });
+        this.load();
+      },
+      error: () => this.snackBar.open('Failed to restore restaurant', 'OK', { duration: 3000 }),
+    });
   }
 
   goToDetail(id: number): void {

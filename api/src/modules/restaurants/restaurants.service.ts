@@ -79,6 +79,18 @@ export class RestaurantsService {
     });
   }
 
+  async findAllArchived(query: RestaurantQuery): Promise<RestaurantEntity[]> {
+    const where: Record<string, unknown> = { isActive: false };
+    if (query.cityId) where['cityId'] = query.cityId;
+    if (query.search) where['name'] = Like(`%${query.search}%`);
+
+    return this.restaurantRepo.find({
+      where,
+      relations: ['city', 'photos'],
+      order: { name: 'ASC' },
+    });
+  }
+
   async findOne(id: number): Promise<RestaurantEntity> {
     const r = await this.restaurantRepo.findOne({
       where: { id, isActive: true },
@@ -135,6 +147,14 @@ export class RestaurantsService {
 
   async remove(id: number): Promise<void> {
     await this.restaurantRepo.update(id, { isActive: false });
+  }
+
+  async restore(id: number): Promise<RestaurantEntity> {
+    const restaurant = await this.restaurantRepo.findOne({ where: { id, isActive: false } });
+    if (!restaurant) throw new NotFoundException('Archived restaurant not found');
+    restaurant.isActive = true;
+    await this.restaurantRepo.save(restaurant);
+    return this.findOne(id);
   }
 
   async addPhoto(
