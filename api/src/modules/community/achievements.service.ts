@@ -52,6 +52,15 @@ export class AchievementsService {
       : PATRIOTIC_BEAR_START_PROD;
   }
 
+  async hasEarned(userId: number, key: string): Promise<boolean> {
+    const achievement = await this.achievementRepo.findOne({ where: { key } });
+    if (!achievement) return false;
+    const earned = await this.memberAchievementRepo.findOne({
+      where: { memberId: userId, achievementId: achievement.id },
+    });
+    return !!earned;
+  }
+
   private async grant(userId: number, key: string): Promise<void> {
     const achievement = await this.achievementRepo.findOne({ where: { key } });
     if (!achievement) return;
@@ -412,6 +421,39 @@ export class AchievementsService {
     };
     if (dto.progressTarget !== undefined) update.progressTarget = dto.progressTarget ?? null;
     await this.achievementRepo.update(id, update);
+  }
+
+  // member_points snapshots each achievement's point value at the moment it's
+  // granted (see grant() above). If an admin later edits an achievement's
+  // points via adminFullUpdate, every already-earned member_points row keeps
+  // the old value, so totals drift out of sync with the achievement's current
+  // worth. This re-syncs every achievement-sourced row to the current value,
+  // and backfills rows for earned achievements that had 0 points at grant
+  // time but have since been given a point value.
+  async adminRecalculatePoints(): Promise<{ updated: number; inserted: number }> {
+    const updateResult = await this.dataSource.query(`
+      UPDATE member_points mp
+      JOIN achievements a ON a.id = mp.reference_id
+      SET mp.points = a.points
+      WHERE mp.point_type = 'achievement' AND mp.points <> a.points
+    `);
+    const insertResult = await this.dataSource.query(`
+      INSERT INTO member_points (user_id, point_type, reference_id, points, awarded_at)
+      SELECT ma.member_id, 'achievement', ma.achievement_id, a.points, NOW()
+      FROM member_achievements ma
+      JOIN achievements a ON a.id = ma.achievement_id
+      WHERE a.points > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM member_points mp
+          WHERE mp.user_id = ma.member_id
+            AND mp.point_type = 'achievement'
+            AND mp.reference_id = ma.achievement_id
+        )
+    `);
+    return {
+      updated: (updateResult as { affectedRows: number }).affectedRows,
+      inserted: (insertResult as { affectedRows: number }).affectedRows,
+    };
   }
 
   async adminBackfillFounders(): Promise<{ granted: number }> {

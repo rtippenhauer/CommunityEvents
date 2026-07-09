@@ -81,6 +81,12 @@ interface AddForm extends EditForm {
           @else { <mat-icon>group_add</mat-icon> }
           Re-run Founder Check
         </button>
+        <button mat-stroked-button (click)="recalculatePoints()" [disabled]="recalculating()"
+          matTooltip="Re-sync every member's earned-achievement points to each achievement's current point value">
+          @if (recalculating()) { <mat-spinner diameter="16" /> }
+          @else { <mat-icon>calculate</mat-icon> }
+          Recalculate Points
+        </button>
         <a mat-stroked-button href="https://fonts.google.com/icons" target="_blank" rel="noopener" class="icons-link">
           <mat-icon>open_in_new</mat-icon> Material Icons
         </a>
@@ -305,6 +311,7 @@ export class AdminAchievementsComponent implements OnInit {
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly backfilling = signal(false);
+  readonly recalculating = signal(false);
   readonly achievements = signal<AdminAchievement[]>([]);
   readonly editingId = signal<number | null>(null);
   readonly addingToType = signal<string | null>(null);
@@ -473,6 +480,23 @@ export class AdminAchievementsComponent implements OnInit {
       error: () => {
         this.backfilling.set(false);
         this.snackBar.open('Backfill failed', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  recalculatePoints(): void {
+    this.recalculating.set(true);
+    this.communityService.adminRecalculatePoints().subscribe({
+      next: ({ updated, inserted }) => {
+        this.recalculating.set(false);
+        const msg = updated > 0 || inserted > 0
+          ? `Recalculated — ${updated} point row(s) updated, ${inserted} added`
+          : 'All achievement points already up to date';
+        this.snackBar.open(msg, 'OK', { duration: 4000 });
+      },
+      error: () => {
+        this.recalculating.set(false);
+        this.snackBar.open('Recalculation failed', 'OK', { duration: 3000 });
       },
     });
   }

@@ -185,6 +185,13 @@ export class CommunityService {
     return this.http.post<{ granted: number }>('/api/v1/admin/achievements/backfill-founders', {});
   }
 
+  adminRecalculatePoints(): Observable<{ updated: number; inserted: number }> {
+    return this.http.post<{ updated: number; inserted: number }>(
+      '/api/v1/admin/achievements/recalculate-points',
+      {},
+    );
+  }
+
   listCustomIcons(): Observable<CustomIcon[]> {
     return this.http.get<CustomIcon[]>('/api/v1/admin/custom-icons');
   }

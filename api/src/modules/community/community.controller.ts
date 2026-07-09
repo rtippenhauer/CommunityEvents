@@ -275,6 +275,13 @@ export class CommunityController {
     return this.achievementsService.adminBackfillFounders();
   }
 
+  @Post('admin/achievements/recalculate-points')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async recalculatePoints() {
+    return this.achievementsService.adminRecalculatePoints();
+  }
+
   @Post('admin/achievements/:id/image')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
