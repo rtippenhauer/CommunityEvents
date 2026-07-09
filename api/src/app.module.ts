@@ -28,6 +28,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { CommunityModule } from './modules/community/community.module';
+import { MerchModule } from './modules/merch/merch.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { CommunityModule } from './modules/community/community.module';
     ReportsModule,
     CalendarModule,
     CommunityModule,
+    MerchModule,
   ],
   controllers: [AppController],
   providers: [

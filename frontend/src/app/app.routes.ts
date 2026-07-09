@@ -107,6 +107,12 @@ export const routes: Routes = [
     canActivate: [validatedMemberGuard],
   },
   {
+    path: 'merch',
+    loadComponent: () =>
+      import('./features/merch/merch.component').then((m) => m.MerchComponent),
+    canActivate: [validatedMemberGuard],
+  },
+  {
     path: 'calendar',
     loadComponent: () =>
       import('./features/calendar/calendar.component').then((m) => m.CalendarComponent),
@@ -312,6 +318,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/admin/cities/admin-cities.component').then(
         (m) => m.AdminCitiesComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
+    path: 'admin/merch',
+    loadComponent: () =>
+      import('./features/admin/merch/admin-merch.component').then(
+        (m) => m.AdminMerchComponent,
       ),
     canActivate: [authGuard, adminGuard],
   },

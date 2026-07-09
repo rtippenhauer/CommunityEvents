@@ -78,7 +78,12 @@ export class AppComponent {
 
   readonly isCommunityMenuActive = computed(() => {
     const url = this.currentUrl();
-    return url.startsWith('/restaurants') || url.startsWith('/members') || url.startsWith('/invite');
+    return (
+      url.startsWith('/restaurants') ||
+      url.startsWith('/merch') ||
+      url.startsWith('/members') ||
+      url.startsWith('/invite')
+    );
   });
 
   readonly isUpdatesMenuActive = computed(() => {
@@ -97,7 +102,11 @@ export class AppComponent {
 
   readonly isSettingsMenuActive = computed(() => {
     const url = this.currentUrl();
-    return url.startsWith('/admin/email') || url.startsWith('/admin/cities');
+    return (
+      url.startsWith('/admin/email') ||
+      url.startsWith('/admin/cities') ||
+      url.startsWith('/admin/merch')
+    );
   });
 
   readonly isAdminMembersMenuActive = computed(() => {
