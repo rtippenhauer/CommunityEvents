@@ -904,6 +904,7 @@ export class RestaurantDetailComponent implements OnInit {
         if (res.description) parts.push('description added');
         if (res.phone) parts.push('phone added');
         if (res.website) parts.push('website added');
+        if (res.address) parts.push('address updated');
         if (res.photoAdded) parts.push('photo added');
         const msg = parts.length ? parts.join(', ') : 'nothing new to add';
         this.snackBar.open(`Enriched: ${msg}`, 'OK', { duration: 5000 });

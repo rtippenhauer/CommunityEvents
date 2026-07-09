@@ -189,8 +189,8 @@ export class RestaurantsService {
     return this.http.post<{ started: boolean; total: number }>(`${this.base}/enrich/bulk`, {});
   }
 
-  enrich(id: number): Observable<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; photoAdded: boolean; restaurant: Restaurant }> {
-    return this.http.post<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; photoAdded: boolean; restaurant: Restaurant }>(`${this.base}/${id}/enrich`, {});
+  enrich(id: number): Observable<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; address: string | null; photoAdded: boolean; restaurant: Restaurant }> {
+    return this.http.post<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; address: string | null; photoAdded: boolean; restaurant: Restaurant }>(`${this.base}/${id}/enrich`, {});
   }
 
   importFacebook(file: File, cityId: number): Observable<ImportResult> {

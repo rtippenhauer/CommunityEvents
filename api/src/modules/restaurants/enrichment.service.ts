@@ -14,6 +14,7 @@ export interface EnrichResult {
   description: string | null;
   phone: string | null;
   website: string | null;
+  address: string | null;
   photoAdded: boolean;
   placeFound: boolean;
 }
@@ -39,6 +40,7 @@ export interface EnrichDiagnosis {
     editorialSummary: string | null;
     phone: string | null;
     website: string | null;
+    formattedAddress: string | null;
     photoCount: number;
   } | null;
   claude: {
@@ -81,7 +83,9 @@ interface AddressComponent {
 interface PlaceDetailsResponse {
   result: {
     name?: string;
+    formatted_address?: string;
     address_components?: AddressComponent[];
+    geometry?: { location: { lat: number; lng: number } };
     editorial_summary?: { overview: string };
     formatted_phone_number?: string;
     website?: string;
@@ -125,7 +129,8 @@ export class EnrichmentService {
       onProgress?.(i, restaurants.length, restaurant.name);
       try {
         const result = await this.enrich(restaurant, uploaderId);
-        const updated = result.description || result.phone || result.website || result.photoAdded;
+        const updated =
+          result.description || result.phone || result.website || result.address || result.photoAdded;
         if (updated) {
           enriched++;
           this.logger.log(`[Bulk] ${i + 1}/${restaurants.length} enriched: ${restaurant.name}`);
@@ -153,6 +158,7 @@ export class EnrichmentService {
       description: null,
       phone: null,
       website: null,
+      address: null,
       photoAdded: false,
       placeFound: false,
     };
@@ -182,6 +188,9 @@ export class EnrichmentService {
         }
         if (placeData.website) {
           result.website = placeData.website;
+        }
+        if (placeData.formatted_address) {
+          result.address = placeData.formatted_address;
         }
         if (placeData.photos?.length) {
           const needed = Math.max(0, 5 - restaurant.photos.length);
@@ -227,6 +236,13 @@ export class EnrichmentService {
     if (result.description) updates.description = result.description;
     if (result.phone) updates.phone = result.phone;
     if (result.website) updates.websiteUrl = result.website;
+    if (result.address) {
+      updates.address = result.address;
+      if (placeData?.geometry?.location) {
+        updates.lat = placeData.geometry.location.lat;
+        updates.lng = placeData.geometry.location.lng;
+      }
+    }
     await this.restaurantRepo.update(restaurant.id, updates);
 
     return result;
@@ -267,6 +283,7 @@ export class EnrichmentService {
       let editorialSummary: string | null = null;
       let phone: string | null = null;
       let website: string | null = null;
+      let formattedAddress: string | null = null;
       let photoCount = 0;
 
       try {
@@ -276,7 +293,8 @@ export class EnrichmentService {
 
         if (searchData.status === 'OK' && searchData.candidates.length) {
           placeId = searchData.candidates[0].place_id;
-          const fields = 'name,address_components,editorial_summary,formatted_phone_number,website,photos';
+          const fields =
+            'name,formatted_address,address_components,geometry,editorial_summary,formatted_phone_number,website,photos';
           const detailUrl =
             `https://maps.googleapis.com/maps/api/place/details/json` +
             `?place_id=${placeId}&fields=${fields}&key=${this.googleKey}`;
@@ -289,6 +307,7 @@ export class EnrichmentService {
             editorialSummary = detailData.result.editorial_summary?.overview ?? null;
             phone = detailData.result.formatted_phone_number ?? null;
             website = detailData.result.website ?? null;
+            formattedAddress = detailData.result.formatted_address ?? null;
             photoCount = detailData.result.photos?.length ?? 0;
           }
         }
@@ -296,7 +315,17 @@ export class EnrichmentService {
         searchStatus = `FETCH_ERROR: ${(err as Error).message}`;
       }
 
-      diagnosis.places = { query, searchStatus, placeId, detailsStatus, editorialSummary, phone, website, photoCount };
+      diagnosis.places = {
+        query,
+        searchStatus,
+        placeId,
+        detailsStatus,
+        editorialSummary,
+        phone,
+        website,
+        formattedAddress,
+        photoCount,
+      };
 
       if (placeId && detailsStatus === 'OK') {
         if (!restaurant.phone && phone) diagnosis.willUpdate.push(`phone → ${phone}`);
@@ -306,6 +335,14 @@ export class EnrichmentService {
         if (!restaurant.websiteUrl && website) diagnosis.willUpdate.push(`website → ${website}`);
         else if (restaurant.websiteUrl) diagnosis.willSkip.push(`website (already set)`);
         else diagnosis.willSkip.push('website (not in Places result)');
+
+        if (formattedAddress && formattedAddress !== restaurant.address) {
+          diagnosis.willUpdate.push(`address → ${formattedAddress}`);
+        } else if (formattedAddress) {
+          diagnosis.willSkip.push('address (already matches Places result)');
+        } else {
+          diagnosis.willSkip.push('address (not in Places result)');
+        }
 
         const currentPhotos = restaurant.photos?.length ?? 0;
         const canAdd = Math.max(0, 5 - currentPhotos);
@@ -387,7 +424,8 @@ export class EnrichmentService {
       }
 
       const placeId = searchData.candidates[0].place_id;
-      const fields = 'name,address_components,editorial_summary,formatted_phone_number,website,photos';
+      const fields =
+        'name,formatted_address,address_components,geometry,editorial_summary,formatted_phone_number,website,photos';
       const detailUrl =
         `https://maps.googleapis.com/maps/api/place/details/json` +
         `?place_id=${placeId}&fields=${fields}&key=${this.googleKey}`;

@@ -81,6 +81,7 @@ import { MatIconModule } from '@angular/material/icon';
             <div class="row"><b>Editorial summary:</b>&nbsp;{{ data.places.editorialSummary ?? '(none)' }}</div>
             <div class="row"><b>Phone:</b>&nbsp;{{ data.places.phone ?? '(none)' }}</div>
             <div class="row"><b>Website:</b>&nbsp;{{ data.places.website ?? '(none)' }}</div>
+            <div class="row"><b>Address:</b>&nbsp;{{ data.places.formattedAddress ?? '(none)' }}</div>
             <div class="row"><b>Photos available:</b>&nbsp;{{ data.places.photoCount }}</div>
           }
         }
