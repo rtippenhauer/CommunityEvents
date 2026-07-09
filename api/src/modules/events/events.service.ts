@@ -272,8 +272,8 @@ export class EventsService {
     return this.eventRepo.save(event);
   }
 
-  async update(id: number, dto: UpdateEventDto): Promise<EventEntity> {
-    const event = await this.findOne(id);
+  async update(id: number, dto: UpdateEventDto, callerRole?: UserRole): Promise<EventEntity> {
+    const event = await this.findOne(id, callerRole);
 
     const isRestoring = event.status === EventStatus.CANCELLED && dto.status === EventStatus.DRAFT;
     if (event.status === EventStatus.CANCELLED && !isRestoring) {
@@ -327,7 +327,7 @@ export class EventsService {
     await this.eventRepo.save(event);
 
     // Reload with fresh relations so the response reflects any restaurant/city change
-    const saved = await this.findOne(event.id);
+    const saved = await this.findOne(event.id, callerRole);
 
     if (saved.status === EventStatus.CANCELLED && wasPublished) {
       void this.sendCancellationEmails(saved);
@@ -1509,7 +1509,7 @@ export class EventsService {
     }
 
     await this.eventRepo.save(event);
-    return this.findOne(eventId);
+    return this.findOne(eventId, callerUser?.role);
   }
 
   private async sendReservationRequestEmail(

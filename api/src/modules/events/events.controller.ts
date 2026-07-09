@@ -129,8 +129,12 @@ export class EventsController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateEventDto) {
-    return this.eventsService.update(id, dto);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateEventDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    return this.eventsService.update(id, dto, user.role);
   }
 
   @Delete(':id')
