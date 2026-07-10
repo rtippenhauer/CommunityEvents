@@ -16,6 +16,14 @@ import { MerchService, MerchLinks } from '../../core/services/merch.service';
 
       @if (loading()) {
         <div class="center"><mat-spinner /></div>
+      } @else if (!links()?.storeUrl) {
+        <mat-card class="store-card">
+          <mat-card-content>
+            <div class="store-icon">🐻</div>
+            <h3>The DinnerBears Store</h3>
+            <p>The store is closed right now — check back soon!</p>
+          </mat-card-content>
+        </mat-card>
       } @else {
         <mat-card class="store-card">
           <mat-card-content>

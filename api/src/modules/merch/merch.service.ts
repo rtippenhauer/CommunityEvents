@@ -8,7 +8,7 @@ import { UpdateMerchConfigDto } from './dto/update-merch-config.dto';
 const FOUNDING_BEAR_KEY = 'founding_bear';
 
 export interface MerchLinks {
-  storeUrl: string;
+  storeUrl: string | null;
   foundingBearProductUrl: string | null;
 }
 
@@ -22,7 +22,7 @@ export class MerchService {
 
   async getLinksForUser(userId: number): Promise<MerchLinks> {
     const config = await this.merchConfigRepo.findOne({ where: { id: 1 } });
-    const storeUrl = config?.storeUrl ?? 'https://dinnerbears.printful.me/';
+    const storeUrl = config?.storeUrl ?? null;
     if (!config?.foundingBearProductUrl) {
       return { storeUrl, foundingBearProductUrl: null };
     }

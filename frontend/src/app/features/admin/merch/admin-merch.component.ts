@@ -1,5 +1,5 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -38,7 +38,11 @@ import { MerchService } from '../../../core/services/merch.service';
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Main Store URL</mat-label>
                 <input matInput formControlName="storeUrl" placeholder="https://dinnerbears.printful.me/" />
-                <mat-hint>Shown to every member on the Merch page.</mat-hint>
+                <mat-hint>
+                  Shown to every member on the Merch page. Leave blank to close the
+                  store — members will see a "store is closed" message instead of a
+                  buy link.
+                </mat-hint>
               </mat-form-field>
 
               <mat-form-field appearance="outline" class="full-width">
@@ -51,7 +55,7 @@ import { MerchService } from '../../../core/services/merch.service';
                 </mat-hint>
               </mat-form-field>
 
-              <button mat-raised-button color="primary" type="submit" [disabled]="form.invalid || saving()">
+              <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
                 <mat-icon>save</mat-icon> {{ saving() ? 'Saving…' : 'Save' }}
               </button>
             </form>
@@ -92,7 +96,7 @@ export class AdminMerchComponent implements OnInit {
   readonly saving = signal(false);
 
   readonly form = this.fb.group({
-    storeUrl: this.fb.control('', [Validators.required]),
+    storeUrl: this.fb.control<string | null>(null),
     foundingBearProductUrl: this.fb.control<string | null>(null),
   });
 
@@ -110,12 +114,11 @@ export class AdminMerchComponent implements OnInit {
   }
 
   save(): void {
-    if (this.form.invalid) return;
     this.saving.set(true);
     const value = this.form.getRawValue();
     this.merchService
       .updateConfig({
-        storeUrl: value.storeUrl,
+        storeUrl: value.storeUrl?.trim() || null,
         foundingBearProductUrl: value.foundingBearProductUrl?.trim() || null,
       })
       .subscribe({

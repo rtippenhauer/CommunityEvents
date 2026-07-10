@@ -3,19 +3,19 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface MerchLinks {
-  storeUrl: string;
+  storeUrl: string | null;
   foundingBearProductUrl: string | null;
 }
 
 export interface MerchConfig {
   id: number;
-  storeUrl: string;
+  storeUrl: string | null;
   foundingBearProductUrl: string | null;
   updatedAt: string;
 }
 
 export interface UpdateMerchConfigPayload {
-  storeUrl?: string;
+  storeUrl?: string | null;
   foundingBearProductUrl?: string | null;
 }
 

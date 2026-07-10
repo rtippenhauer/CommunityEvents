@@ -5,8 +5,8 @@ export class MerchConfigEntity {
   @PrimaryGeneratedColumn({ unsigned: true })
   id: number;
 
-  @Column({ name: 'store_url', type: 'varchar', length: 500 })
-  storeUrl: string;
+  @Column({ name: 'store_url', type: 'varchar', length: 500, nullable: true })
+  storeUrl: string | null;
 
   @Column({ name: 'founding_bear_product_url', type: 'varchar', length: 500, nullable: true })
   foundingBearProductUrl: string | null;
