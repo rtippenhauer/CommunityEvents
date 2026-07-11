@@ -192,6 +192,13 @@ export class CommunityService {
     );
   }
 
+  adminBackfillInvitePoints(): Observable<{ pointsGranted: number; achievementsGranted: number }> {
+    return this.http.post<{ pointsGranted: number; achievementsGranted: number }>(
+      '/api/v1/admin/achievements/backfill-invites',
+      {},
+    );
+  }
+
   listCustomIcons(): Observable<CustomIcon[]> {
     return this.http.get<CustomIcon[]>('/api/v1/admin/custom-icons');
   }
