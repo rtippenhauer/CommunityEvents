@@ -816,3 +816,32 @@ Setup steps (one-time, done in Cloudflare dashboard):
 - `/release` now reads `docs/NEXT_RELEASE.md` as its starting draft, clears it back to empty once the release draft is created, and pushes only the specific `v<version>` tag (rather than `--tags`) so any unpushed local `phase-*` tags aren't swept along
 
 **Definition of done:** Desktop admin nav is a single Admin/Moderation entry with nested Security/Settings/Members submenus and a direct Releases link; mobile sidenav mirrors the same grouping via section labels. `/phase-done` and `/release` keep `docs/NEXT_RELEASE.md` in sync automatically without reconstructing release notes from scratch at cut time, and local phase tags never leak to GitHub via a release push.
+
+---
+
+## Phase 19 — Admin CRUD Integration Tests ✅ Complete
+
+### Test Harness
+- New ephemeral MySQL test database (`docker/docker-compose.test.yml`), pinned to the same MySQL version as the real Unraid instance (9.7) rather than a lighter substitute like SQLite — entities use MySQL-specific column types (`json`, `enum`, `longtext`, `unsigned` PKs) that don't map cleanly elsewhere, and `synchronize: false` is a hard project rule
+- `api/test/utils/test-app.ts` boots the real `AppModule` end to end — real guards, real DB, real migrations via the existing `migrationsRun: true` — not a trimmed test-only module
+- `api/test/utils/seed.ts` seeds cities/restaurants/users and mints real login sessions (via `AuthService.issueTokens`, not a hand-crafted JWT) so `JwtStrategy`'s session-table check passes like a real login would
+- `bash scripts/run-e2e-tests.sh` — one command: starts the test DB, runs the full suite, always tears down
+
+### CRUD Coverage
+Real-HTTP integration tests (success paths, validation errors, and 401/403 role-guard enforcement) for 11 admin resources: Events, Restaurants, Announcements, Cities, Releases, Achievements, Custom Icons, Event Comments, admin User management (list/ban/unban/role-change/delete), Feedback, and Reports. 202 tests total.
+
+### Pre-Existing Migration Bugs Fixed
+Bootstrapping a genuinely fresh database (never done before this phase — every real environment was already migrated) surfaced two latent bugs, both invisible in practice since already-migrated environments never re-run a migration once it's recorded as applied:
+- `1749000008000-AddRestaurantAuditFields` used `ADD COLUMN IF NOT EXISTS`, which real MySQL doesn't support at any version (confirmed empirically against both 8.0.46 and 9.7.1 — it's a MariaDB-only extension). Rewritten to check `information_schema.COLUMNS` first.
+- `1749000014000-CreateEmailSystem` unconditionally recreated `email_suppressions`, which `CreateUsers` already creates. Same fix pattern.
+
+**Definition of done:** `bash scripts/run-e2e-tests.sh` runs the full migration history and 202-test suite cleanly against a database matching production's exact MySQL version, starting from nothing.
+
+---
+
+## Phase 20 — Cross-Cutting E2E Test Coverage ✅ In Progress
+
+Extends the Phase 19 harness to flows that don't fit inside a single CRUD resource:
+- **Batch 4 — Identity & Access:** auth/OAuth login flows, invites (create/redeem/revoke/lineage/expiration), account lifecycle (self-delete, Facebook data-deletion callback, hard-delete cron)
+- **Batch 5 — Event Engagement & Gamification:** RSVP lifecycle (create/update/remove, guest links, public RSVP, attendance, walk-ins), achievement auto-granting triggers, leaderboard/points aggregation
+- **Batch 6 — Content Delivery:** uploads (restaurant photos, avatars), email/push dispatch, calendar/ICS feed generation

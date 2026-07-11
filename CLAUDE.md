@@ -33,10 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**Post-Launch Backlog** — Phase 18 (Admin Nav Reorganization & Release Tooling) completed 2026-07-06: desktop Admin menu nests Security/Settings/Members as flyout submenus with a direct Releases link, mobile sidenav mirrors the same grouping; new `docs/NEXT_RELEASE.md` draft-notes file kept in sync automatically by `/phase-done` (local commit + local `phase-<N>` tag + auto stage Docker push) and consumed/cleared by `/release`. No open backlog items right now — see PHASES.md for phase history; add new deferred items here as they come up.
+**End-to-End Test Coverage** — Phase 19 (Admin CRUD Integration Tests) completed 2026-07-11: real-HTTP/real-database e2e suite (ephemeral MySQL matching prod's exact version, run via `bash scripts/run-e2e-tests.sh`) covering 11 admin CRUD resources — Events, Restaurants, Announcements, Cities, Releases, Achievements, Custom Icons, Event Comments, admin User management, Feedback, Reports — success paths, validation errors, and role-guard enforcement; also fixed two pre-existing migration bugs (MySQL-incompatible `IF NOT EXISTS` syntax, a duplicate table creation) that only surfaced when bootstrapping a genuinely fresh database. Phase 20 (in progress) extends coverage to cross-cutting flows a single-resource CRUD suite can't reach: Batch 4 — Identity & Access (auth/OAuth, invites, account lifecycle); Batch 5 — Event Engagement & Gamification (RSVP lifecycle, achievement auto-granting, leaderboard points); Batch 6 — Content Delivery (uploads, email/push dispatch, calendar/ICS). Phase 21 (dead code scan) follows once Phase 20 wraps.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules
