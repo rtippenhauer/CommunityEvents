@@ -1,6 +1,6 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { DatePipe } from '@angular/common';
+import { DatePipe, JsonPipe } from '@angular/common';
 import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -22,9 +22,15 @@ interface EmailQueueItem {
   toName: string | null;
   subject: string | null;
   templateId: string | null;
+  templateParams: Record<string, unknown> | null;
+  htmlBody: string | null;
+  textBody: string | null;
   status: string;
   provider: string | null;
   attempts: number;
+  lastAttemptAt: string | null;
+  errorMessage: string | null;
+  brevoStatus: string | null;
   scheduledAt: string | null;
   sentAt: string | null;
   createdAt: string;
@@ -65,6 +71,7 @@ interface EmailConfig {
   standalone: true,
   imports: [
     DatePipe,
+    JsonPipe,
     ReactiveFormsModule,
     MatButtonModule,
     MatCardModule,
@@ -256,7 +263,7 @@ interface EmailConfig {
             } @else if (queue().length === 0) {
               <p class="empty-state">Queue is empty.</p>
             } @else {
-              <table mat-table [dataSource]="queue()" class="queue-table">
+              <table mat-table [dataSource]="queue()" class="queue-table" multiTemplateDataRows>
                 <ng-container matColumnDef="status">
                   <th mat-header-cell *matHeaderCellDef>Status</th>
                   <td mat-cell *matCellDef="let row">
@@ -286,6 +293,9 @@ interface EmailConfig {
                 <ng-container matColumnDef="actions">
                   <th mat-header-cell *matHeaderCellDef></th>
                   <td mat-cell *matCellDef="let row">
+                    <button mat-icon-button (click)="toggleDetail(row.id)" matTooltip="More info">
+                      <mat-icon>{{ expandedRowId() === row.id ? 'expand_less' : 'expand_more' }}</mat-icon>
+                    </button>
                     @if (row.status === 'pending' || row.status === 'failed') {
                       <button mat-icon-button color="warn" (click)="cancelEmail(row.id)" matTooltip="Cancel">
                         <mat-icon>cancel</mat-icon>
@@ -293,8 +303,46 @@ interface EmailConfig {
                     }
                   </td>
                 </ng-container>
+                <ng-container matColumnDef="expandedDetail">
+                  <td mat-cell *matCellDef="let row" [attr.colspan]="displayedColumns.length">
+                    @if (expandedRowId() === row.id) {
+                      <div class="row-detail">
+                        <div class="detail-field"><span>Subject</span><strong>{{ row.subject ?? '—' }}</strong></div>
+                        <div class="detail-field"><span>Last attempt</span><strong>{{ row.lastAttemptAt ? (row.lastAttemptAt | date: 'short') : '—' }}</strong></div>
+                        @if (row.brevoStatus) {
+                          <div class="detail-field"><span>Brevo status</span><strong>{{ row.brevoStatus }}</strong></div>
+                        }
+                        @if (row.errorMessage) {
+                          <div class="detail-field"><span>Error</span><strong class="detail-error">{{ row.errorMessage }}</strong></div>
+                        }
+                        @if (row.templateParams) {
+                          <div class="detail-block">
+                            <span>Template params</span>
+                            <pre>{{ row.templateParams | json }}</pre>
+                          </div>
+                        }
+                        @if (row.htmlBody) {
+                          <div class="detail-block">
+                            <span>HTML body (source)</span>
+                            <pre class="detail-body">{{ row.htmlBody }}</pre>
+                          </div>
+                        }
+                        @if (row.textBody) {
+                          <div class="detail-block">
+                            <span>Text body</span>
+                            <pre class="detail-body">{{ row.textBody }}</pre>
+                          </div>
+                        }
+                        @if (!row.templateParams && !row.htmlBody && !row.textBody) {
+                          <p class="empty-state">No stored content for this email — it may have been sent via provider template only.</p>
+                        }
+                      </div>
+                    }
+                  </td>
+                </ng-container>
                 <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
                 <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: ['expandedDetail']" class="detail-row"></tr>
               </table>
             }
           </mat-card-content>
@@ -333,6 +381,21 @@ interface EmailConfig {
     .templates-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 600px) { .templates-grid { grid-template-columns: 1fr; } }
     .queue-table { width: 100%; }
+    .detail-row td { border-bottom-width: 1px; padding: 0 !important; }
+    .row-detail {
+      display: flex; flex-direction: column; gap: 10px;
+      padding: 12px 16px; background: #f5f5f5;
+    }
+    .detail-field { display: flex; gap: 8px; font-size: 0.85rem; }
+    .detail-field span { color: #777; min-width: 110px; }
+    .detail-error { color: #c62828; }
+    .detail-block { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
+    .detail-block span { color: #777; }
+    .detail-block pre {
+      margin: 0; max-height: 240px; overflow: auto; white-space: pre-wrap;
+      word-break: break-word; background: #fff; border: 1px solid #ddd;
+      border-radius: 4px; padding: 8px; font-size: 0.78rem;
+    }
     .empty-state { color: #999; text-align: center; padding: 24px 0; }
     mat-chip { font-size: 0.72rem !important; min-height: 22px !important; }
     .chip-pending { background: #fff9c4 !important; }
@@ -353,6 +416,7 @@ export class AdminEmailComponent implements OnInit {
   readonly flushing = signal(false);
   readonly saving = signal(false);
   readonly failedCount = computed(() => this.queue().filter((e) => e.status === 'failed').length);
+  readonly expandedRowId = signal<number | null>(null);
 
   readonly displayedColumns = ['status', 'template', 'toEmail', 'provider', 'attempts', 'createdAt', 'actions'];
 
@@ -492,6 +556,10 @@ export class AdminEmailComponent implements OnInit {
       },
       error: () => { this.snackBar.open('Retry failed', 'OK', { duration: 3000 }); this.retrying.set(false); },
     });
+  }
+
+  toggleDetail(id: number): void {
+    this.expandedRowId.set(this.expandedRowId() === id ? null : id);
   }
 
   cancelEmail(id: number): void {

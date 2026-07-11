@@ -35,7 +35,7 @@ import { MerchService } from '../../../core/services/merch.service';
           </mat-card-header>
           <mat-card-content>
             <form [formGroup]="form" (ngSubmit)="save()">
-              <mat-form-field appearance="outline" class="full-width">
+              <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
                 <mat-label>Main Store URL</mat-label>
                 <input matInput formControlName="storeUrl" placeholder="https://dinnerbears.printful.me/" />
                 <mat-hint>
@@ -45,7 +45,7 @@ import { MerchService } from '../../../core/services/merch.service';
                 </mat-hint>
               </mat-form-field>
 
-              <mat-form-field appearance="outline" class="full-width">
+              <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
                 <mat-label>Founding Bear Exclusive Product URL</mat-label>
                 <input matInput formControlName="foundingBearProductUrl" placeholder="https://dinnerbears.printful.me/product/..." />
                 <mat-hint>
@@ -77,7 +77,7 @@ import { MerchService } from '../../../core/services/merch.service';
       }
       .full-width {
         width: 100%;
-        margin-bottom: 4px;
+        margin-bottom: 12px;
       }
       .center {
         display: flex;
