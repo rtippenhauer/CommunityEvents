@@ -1,0 +1,28 @@
+# Ephemeral MySQL for the API's e2e/integration test suite.
+# Never touches the real Unraid MySQL instance used by dev/stage/prod —
+# entirely separate container, throwaway data (no volume), own port.
+#
+# Pinned to 9.7 to match the real Unraid instance (confirmed via its own
+# startup log: "MySQL Server 9.7.1").
+#
+# Usage: bash scripts/run-e2e-tests.sh (starts this, runs migrations, runs
+# jest, tears down). Not meant to be started standalone in normal workflows.
+
+version: '3.9'
+
+services:
+  mysql-test:
+    image: mysql:9.7
+    container_name: dinnerbears-mysql-test
+    environment:
+      - MYSQL_ROOT_PASSWORD=test
+      - MYSQL_DATABASE=dinnerbears_test
+    ports:
+      - "3307:3306"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-ptest"]
+      interval: 3s
+      timeout: 5s
+      retries: 20

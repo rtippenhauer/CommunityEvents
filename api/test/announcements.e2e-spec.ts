@@ -1,0 +1,294 @@
+import { INestApplication } from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import request = require('supertest');
+import { createTestApp, truncateAllTables } from './utils/test-app';
+import { seedCity, seedUser, loginAs } from './utils/seed';
+import { CityEntity } from '../src/database/entities/city.entity';
+import { UserRole } from '../src/database/entities/user.entity';
+
+describe('Announcements CRUD (e2e)', () => {
+  let app: INestApplication;
+  let dataSource: DataSource;
+  let server: Parameters<typeof request>[0];
+
+  let city: CityEntity;
+  let adminCookie: string;
+  let moderatorCookie: string;
+  let memberCookie: string;
+
+  beforeAll(async () => {
+    ({ app, dataSource } = await createTestApp());
+    server = app.getHttpServer();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(dataSource);
+    city = await seedCity(dataSource);
+
+    const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
+    const member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    adminCookie = await loginAs(app, admin);
+    moderatorCookie = await loginAs(app, moderator);
+    memberCookie = await loginAs(app, member);
+  });
+
+  function validAnnouncementPayload(overrides: Record<string, unknown> = {}) {
+    return {
+      title: 'Cincinnati Chapter Update',
+      body: 'Great news, everyone!',
+      ...overrides,
+    };
+  }
+
+  describe('POST /admin/announcements (create)', () => {
+    it('creates an announcement when authenticated as admin', async () => {
+      const res = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      expect(res.body).toMatchObject({ title: 'Cincinnati Chapter Update', status: 'draft' });
+      expect(res.body.id).toEqual(expect.any(Number));
+    });
+
+    it('creates an announcement when authenticated as moderator', async () => {
+      await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', moderatorCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+    });
+
+    it('rejects a payload missing required fields', async () => {
+      const res = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send({ title: 'No body here' })
+        .expect(400);
+
+      expect(res.body.message).toEqual(expect.any(Array));
+    });
+
+    it('rejects a title that is too short', async () => {
+      await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload({ title: 'Hi' }))
+        .expect(400);
+    });
+
+    it('rejects unauthenticated requests', async () => {
+      await request(server).post('/api/v1/admin/announcements').send(validAnnouncementPayload()).expect(401);
+    });
+
+    it('rejects requests from a member (insufficient role)', async () => {
+      await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', memberCookie)
+        .send(validAnnouncementPayload())
+        .expect(403);
+    });
+  });
+
+  describe('GET /admin/announcements (read list) and GET /admin/announcements/:id (read one)', () => {
+    it('lists created announcements', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      const res = await request(server)
+        .get('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(res.body.some((a: { id: number }) => a.id === created.body.id)).toBe(true);
+    });
+
+    it('reads a single announcement by id', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      const res = await request(server)
+        .get(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(res.body.title).toBe('Cincinnati Chapter Update');
+    });
+
+    it('returns 404 for a nonexistent announcement', async () => {
+      await request(server)
+        .get('/api/v1/admin/announcements/999999')
+        .set('Cookie', adminCookie)
+        .expect(404);
+    });
+
+    it('rejects unauthenticated requests', async () => {
+      await request(server).get('/api/v1/admin/announcements').expect(401);
+    });
+  });
+
+  describe('PATCH /admin/announcements/:id (update)', () => {
+    it('updates an announcement when authenticated as admin', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      await request(server)
+        .patch(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload({ title: 'Updated Title' }))
+        .expect(200);
+
+      const fetched = await request(server)
+        .get(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(fetched.body.title).toBe('Updated Title');
+    });
+
+    it('rejects a payload missing required fields (body is required even on update)', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      await request(server)
+        .patch(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .send({ title: 'Only a title' })
+        .expect(400);
+    });
+
+    it('returns 404 for a nonexistent announcement', async () => {
+      await request(server)
+        .patch('/api/v1/admin/announcements/999999')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(404);
+    });
+
+    it('rejects unauthenticated requests', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      await request(server)
+        .patch(`/api/v1/admin/announcements/${created.body.id}`)
+        .send(validAnnouncementPayload({ title: 'Nope' }))
+        .expect(401);
+    });
+
+    it('rejects requests from a member (insufficient role)', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      await request(server)
+        .patch(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', memberCookie)
+        .send(validAnnouncementPayload({ title: 'Nope' }))
+        .expect(403);
+    });
+  });
+
+  describe('POST /admin/announcements/:id/publish', () => {
+    it('publishes a draft announcement when authenticated as moderator', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      await request(server)
+        .post(`/api/v1/admin/announcements/${created.body.id}/publish`)
+        .set('Cookie', moderatorCookie)
+        .expect(201);
+
+      const fetched = await request(server)
+        .get(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(fetched.body.status).toBe('published');
+    });
+  });
+
+  describe('DELETE /admin/announcements/:id', () => {
+    it('deletes an announcement when authenticated as admin', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      await request(server)
+        .delete(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(204);
+
+      await request(server)
+        .get(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(404);
+    });
+
+    it('deletes an announcement when authenticated as moderator', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      await request(server)
+        .delete(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', moderatorCookie)
+        .expect(204);
+    });
+
+    it('returns 404 for a nonexistent announcement', async () => {
+      await request(server)
+        .delete('/api/v1/admin/announcements/999999')
+        .set('Cookie', adminCookie)
+        .expect(404);
+    });
+
+    it('rejects unauthenticated requests', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      await request(server).delete(`/api/v1/admin/announcements/${created.body.id}`).expect(401);
+    });
+
+    it('rejects requests from a member (insufficient role)', async () => {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+
+      await request(server)
+        .delete(`/api/v1/admin/announcements/${created.body.id}`)
+        .set('Cookie', memberCookie)
+        .expect(403);
+    });
+  });
+});

@@ -27,14 +27,23 @@ export class CreateEmailSystem1749000014000 implements MigrationInterface {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
-    await queryRunner.query(`
-      CREATE TABLE email_suppressions (
-        id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        email_hash  VARCHAR(255) NOT NULL UNIQUE,
-        reason      ENUM('unsubscribed','bounced','complained') NOT NULL,
-        created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    // CreateUsers1749000002000 already creates this table (a historical
+    // leftover in that migration) — guard against the duplicate here rather
+    // than touching an already-applied earlier migration.
+    const existingTables = await queryRunner.query(`
+      SELECT TABLE_NAME FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'email_suppressions'
     `);
+    if ((existingTables as unknown[]).length === 0) {
+      await queryRunner.query(`
+        CREATE TABLE email_suppressions (
+          id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+          email_hash  VARCHAR(255) NOT NULL UNIQUE,
+          reason      ENUM('unsubscribed','bounced','complained') NOT NULL,
+          created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+    }
 
     const today = new Date().toISOString().split('T')[0];
     await queryRunner.query(`
