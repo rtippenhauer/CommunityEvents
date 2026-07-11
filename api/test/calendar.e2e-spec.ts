@@ -330,7 +330,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
   });
 
   describe('CalendarService.buildInviteAttachment (Phase 16b — direct call, no HTTP side effect to observe)', () => {
-    it('builds a METHOD:REQUEST invite with an ATTENDEE RSVP line', () => {
+    it('builds a METHOD:REQUEST invite with an ATTENDEE RSVP line and a DTSTAMP', () => {
       const event = { id: 1, restaurantName: 'Test Place', restaurantAddress: '123 Main St', eventDate: dateOffset(14), eventTime: '18:30', updatedAt: new Date() } as EventEntity;
 
       const ics = calendarService.buildInviteAttachment(event, { name: 'Guest Name', email: 'guest@example.test' }, 'http://localhost:8081');
@@ -339,6 +339,24 @@ describe('Calendar / ICS Feed (e2e)', () => {
       expect(ics).toContain(`UID:dinnerbears-event-${event.id}@dinnerbears.com`);
       expect(ics).toContain('ATTENDEE;CN=Guest Name;RSVP=TRUE:mailto:guest@example.test');
       expect(ics).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@dinnerbears.com');
+      expect(ics).toMatch(/DTSTAMP:\d{8}T\d{6}Z/);
+    });
+
+    it('increments SEQUENCE on a repeat send for the same event, even when the event itself is unchanged', async () => {
+      // Regression test: SEQUENCE used to be derived from event.updatedAt, so
+      // re-confirming the same RSVP (toggling away and back to Going) resent
+      // the exact same SEQUENCE every time — calendar clients had no signal
+      // that a later email superseded an earlier one and created a duplicate
+      // pending invitation per message instead of updating one in place.
+      const event = { id: 2, restaurantName: 'Test Place', restaurantAddress: '123 Main St', eventDate: dateOffset(14), eventTime: '18:30', updatedAt: new Date() } as EventEntity;
+      const recipient = { name: 'Guest Name', email: 'guest@example.test' };
+
+      const first = calendarService.buildInviteAttachment(event, recipient, 'http://localhost:8081');
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      const second = calendarService.buildInviteAttachment(event, recipient, 'http://localhost:8081');
+
+      const extractSequence = (ics: string) => Number(ics.match(/SEQUENCE:(\d+)/)?.[1]);
+      expect(extractSequence(second)).toBeGreaterThan(extractSequence(first));
     });
   });
 });

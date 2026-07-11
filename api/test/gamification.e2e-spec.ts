@@ -383,6 +383,58 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
         .expect(201);
       expect(res.body).toEqual(expect.objectContaining({ updated: expect.any(Number), inserted: expect.any(Number) }));
     });
+
+    it('backfills missing invite points and achievements for an attendee whose inviter was never credited', async () => {
+      const inviter = await seedUser(dataSource, city.id, { email: 'backfill-inviter@example.test' });
+      const invitee = await seedUser(dataSource, city.id, { email: 'backfill-invitee@example.test', invitedBy: inviter.id });
+      // Simulate the pre-fix bug: the invitee attended (their first dinner), but no
+      // invite point was ever recorded for the inviter, since checkInvitePointForInviter
+      // silently failed before this phase's fix.
+      await dataSource
+        .getRepository(MemberPointEntity)
+        .save({ userId: invitee.id, pointType: PointType.ATTENDANCE, referenceId: (await seedEvent()).id, points: 1 });
+
+      const res = await request(server)
+        .post('/api/v1/admin/achievements/backfill-invites')
+        .set('Cookie', adminCookie)
+        .expect(201);
+      expect(res.body.pointsGranted).toBe(1);
+
+      const invitePoint = await dataSource
+        .getRepository(MemberPointEntity)
+        .findOne({ where: { userId: inviter.id, pointType: PointType.INVITE, referenceId: invitee.id } });
+      expect(invitePoint).toBeTruthy();
+      expect(await hasEarned(inviter.id, 'connector')).toBe(true);
+
+      // Backfilled achievements are marked already-seen so they don't trigger a
+      // splash popup for activity that actually happened before this phase.
+      const achievement = await dataSource.getRepository(AchievementEntity).findOne({ where: { key: 'connector' } });
+      const memberAchievement = await dataSource
+        .getRepository(MemberAchievementEntity)
+        .findOne({ where: { memberId: inviter.id, achievementId: achievement!.id } });
+      expect(memberAchievement!.seenAt).toBeTruthy();
+    });
+
+    it('is idempotent — running the invite-points backfill twice does not double-award', async () => {
+      const inviter = await seedUser(dataSource, city.id, { email: 'idempotent-inviter@example.test' });
+      const invitee = await seedUser(dataSource, city.id, { email: 'idempotent-invitee@example.test', invitedBy: inviter.id });
+      await dataSource
+        .getRepository(MemberPointEntity)
+        .save({ userId: invitee.id, pointType: PointType.ATTENDANCE, referenceId: (await seedEvent()).id, points: 1 });
+
+      await request(server).post('/api/v1/admin/achievements/backfill-invites').set('Cookie', adminCookie).expect(201);
+      const second = await request(server).post('/api/v1/admin/achievements/backfill-invites').set('Cookie', adminCookie).expect(201);
+
+      expect(second.body.pointsGranted).toBe(0);
+      const count = await dataSource
+        .getRepository(MemberPointEntity)
+        .count({ where: { userId: inviter.id, pointType: PointType.INVITE, referenceId: invitee.id } });
+      expect(count).toBe(1);
+    });
+
+    it('rejects a moderator running the invite-points backfill (admin-only)', async () => {
+      await request(server).post('/api/v1/admin/achievements/backfill-invites').set('Cookie', moderatorCookie).expect(403);
+    });
   });
 
   describe('GET /leaderboard', () => {

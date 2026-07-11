@@ -206,6 +206,7 @@ export class CalendarService {
     const dtStart = this.toIcsUtc(startUtc);
     const dtEnd = this.toIcsUtc(endUtc);
     const lastMod = this.toIcsUtc(new Date(event.updatedAt));
+    const dtStamp = this.toIcsUtc(new Date());
     const sequence = Math.floor(new Date(event.updatedAt).getTime() / 60000) % 999999;
 
     const isCancelled = event.status === EventStatus.CANCELLED;
@@ -246,6 +247,7 @@ export class CalendarService {
     const lines = [
       'BEGIN:VEVENT',
       `UID:dinnerbears-event-${event.id}@dinnerbears.com`,
+      `DTSTAMP:${dtStamp}`,
       `DTSTART:${dtStart}`,
       `DTEND:${dtEnd}`,
       `LAST-MODIFIED:${lastMod}`,
@@ -352,8 +354,17 @@ export class CalendarService {
     const endUtc = new Date(startUtc.getTime() + 2 * 60 * 60 * 1000);
     const dtStart = this.toIcsUtc(startUtc);
     const dtEnd = this.toIcsUtc(endUtc);
+    const now = new Date();
     const lastMod = this.toIcsUtc(new Date(event.updatedAt));
-    const sequence = Math.floor(new Date(event.updatedAt).getTime() / 60000) % 999999;
+    const dtStamp = this.toIcsUtc(now);
+    // Must reflect when THIS invite was sent, not when the event was last edited —
+    // re-confirming the same RSVP (toggling away and back to Going) re-sends this
+    // same UID with the event's unchanged updatedAt, so a SEQUENCE derived from
+    // that never advances between sends. Without an incrementing SEQUENCE (and
+    // with DTSTAMP previously missing entirely), calendar clients have no signal
+    // that a later email supersedes an earlier one and can create a duplicate
+    // pending invitation per message instead of updating the same one in place.
+    const sequence = Math.floor(now.getTime() / 1000) % 999999;
 
     const [y, m, d] = event.eventDate.split('-').map(Number);
     const [h, min] = event.eventTime.split(':').map(Number);
@@ -389,6 +400,7 @@ export class CalendarService {
       'METHOD:REQUEST',
       'BEGIN:VEVENT',
       `UID:dinnerbears-event-${event.id}@dinnerbears.com`,
+      `DTSTAMP:${dtStamp}`,
       `DTSTART:${dtStart}`,
       `DTEND:${dtEnd}`,
       `LAST-MODIFIED:${lastMod}`,

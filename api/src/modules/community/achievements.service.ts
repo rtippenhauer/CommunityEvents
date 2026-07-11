@@ -470,4 +470,69 @@ export class AchievementsService {
     `);
     return { granted: (result as { affectedRows: number }).affectedRows };
   }
+
+  // One-time correction for a bug (fixed alongside this method, Phase 20) where
+  // PointsService.checkInvitePointForInviter destructured the wrong raw-query
+  // key and never actually found an inviter — every successful-invite Bear
+  // Point and Connector-tier achievement since Phase 15 launched silently
+  // failed to award. Re-derives the same condition the (now-fixed) live trigger
+  // checks: an invitee who has attended at least once, whose inviter hasn't
+  // already been credited for that specific invitee.
+  async adminBackfillInvitePoints(): Promise<{ pointsGranted: number; achievementsGranted: number }> {
+    const candidates = await this.dataSource.query<{ inviterId: number }[]>(`
+      SELECT DISTINCT invitee.invited_by AS inviterId
+      FROM users invitee
+      WHERE invitee.invited_by IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM member_points ap
+          WHERE ap.user_id = invitee.id AND ap.point_type = 'attendance'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM member_points ip
+          WHERE ip.user_id = invitee.invited_by
+            AND ip.point_type = 'invite'
+            AND ip.reference_id = invitee.id
+        )
+    `);
+
+    const insertResult = await this.dataSource.query(`
+      INSERT INTO member_points (user_id, point_type, reference_id, points, awarded_at)
+      SELECT invitee.invited_by, 'invite', invitee.id, 1, NOW()
+      FROM users invitee
+      WHERE invitee.invited_by IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM member_points ap
+          WHERE ap.user_id = invitee.id AND ap.point_type = 'attendance'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM member_points ip
+          WHERE ip.user_id = invitee.invited_by
+            AND ip.point_type = 'invite'
+            AND ip.reference_id = invitee.id
+        )
+    `);
+
+    // Re-run the invite-achievement tier check for every affected inviter, then
+    // mark anything newly earned as already-seen — these are retroactive
+    // credits for invites that happened up to Phase 20, not new activity, so
+    // they shouldn't trigger the achievement-splash popup on next login.
+    let achievementsGranted = 0;
+    for (const { inviterId } of candidates) {
+      const before = new Set(
+        (await this.memberAchievementRepo.find({ where: { memberId: inviterId } })).map((ma) => ma.achievementId),
+      );
+      await this.checkInviteAchievements(inviterId);
+      const after = await this.memberAchievementRepo.find({ where: { memberId: inviterId } });
+      const newlyEarned = after.filter((ma) => !before.has(ma.achievementId));
+      for (const ma of newlyEarned) {
+        await this.memberAchievementRepo.update(ma.id, { seenAt: new Date() });
+        achievementsGranted += 1;
+      }
+    }
+
+    return {
+      pointsGranted: (insertResult as { affectedRows: number }).affectedRows,
+      achievementsGranted,
+    };
+  }
 }

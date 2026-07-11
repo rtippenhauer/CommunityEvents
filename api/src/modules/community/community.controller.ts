@@ -275,6 +275,13 @@ export class CommunityController {
     return this.achievementsService.adminBackfillFounders();
   }
 
+  @Post('admin/achievements/backfill-invites')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async backfillInvites() {
+    return this.achievementsService.adminBackfillInvitePoints();
+  }
+
   @Post('admin/achievements/recalculate-points')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
