@@ -40,9 +40,11 @@
           <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
             <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
           </a>
-          <a mat-list-item routerLink="/merch" (click)="sidenav.close()">
-            <mat-icon matListItemIcon>storefront</mat-icon> Merch
-          </a>
+          @if (isMerchOpen()) {
+            <a mat-list-item routerLink="/merch" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>storefront</mat-icon> Merch
+            </a>
+          }
           <a mat-list-item routerLink="/members" (click)="sidenav.close()">
             <mat-icon matListItemIcon>group</mat-icon> Members
           </a>
@@ -199,9 +201,11 @@
                 <a mat-menu-item routerLink="/restaurants">
                   <mat-icon>restaurant</mat-icon> Restaurants
                 </a>
-                <a mat-menu-item routerLink="/merch">
-                  <mat-icon>storefront</mat-icon> Merch
-                </a>
+                @if (isMerchOpen()) {
+                  <a mat-menu-item routerLink="/merch">
+                    <mat-icon>storefront</mat-icon> Merch
+                  </a>
+                }
                 <a mat-menu-item routerLink="/members">
                   <mat-icon>group</mat-icon> Members
                 </a>

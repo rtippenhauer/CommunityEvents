@@ -16,7 +16,7 @@ import { MerchService, MerchLinks } from '../../core/services/merch.service';
 
       @if (loading()) {
         <div class="center"><mat-spinner /></div>
-      } @else if (!links()?.storeUrl) {
+      } @else if (!links()?.storeUrl && !links()?.foundingBearProductUrl) {
         <mat-card class="store-card">
           <mat-card-content>
             <div class="store-icon">🐻</div>
@@ -25,16 +25,18 @@ import { MerchService, MerchLinks } from '../../core/services/merch.service';
           </mat-card-content>
         </mat-card>
       } @else {
-        <mat-card class="store-card">
-          <mat-card-content>
-            <div class="store-icon">🐻</div>
-            <h3>The DinnerBears Store</h3>
-            <p>Bear-themed tees, hats, and more — printed and shipped by Printful.</p>
-            <a mat-raised-button color="primary" [href]="links()?.storeUrl" target="_blank" rel="noopener">
-              <mat-icon>storefront</mat-icon> Visit the Store
-            </a>
-          </mat-card-content>
-        </mat-card>
+        @if (links()?.storeUrl; as storeUrl) {
+          <mat-card class="store-card">
+            <mat-card-content>
+              <div class="store-icon">🐻</div>
+              <h3>The DinnerBears Store</h3>
+              <p>Bear-themed tees, hats, and more — printed and shipped by Printful.</p>
+              <a mat-raised-button color="primary" [href]="storeUrl" target="_blank" rel="noopener">
+                <mat-icon>storefront</mat-icon> Visit the Store
+              </a>
+            </mat-card-content>
+          </mat-card>
+        }
 
         @if (links()?.foundingBearProductUrl; as exclusiveUrl) {
           <mat-card class="exclusive-card">

@@ -17,6 +17,7 @@ import { environment } from '../environments/environment';
 import { AuthService } from './core/services/auth.service';
 import { CityService } from './core/services/city.service';
 import { FeedbackService } from './core/services/feedback.service';
+import { MerchService } from './core/services/merch.service';
 import { AchievementSplashService } from './core/services/achievement-splash.service';
 import { NotificationBellComponent } from './shared/components/notification-bell/notification-bell.component';
 import { IosInstallBannerComponent } from './shared/components/ios-install-banner/ios-install-banner.component';
@@ -47,6 +48,7 @@ export class AppComponent {
   readonly authService = inject(AuthService);
   private readonly cityService = inject(CityService);
   readonly feedbackService = inject(FeedbackService);
+  private readonly merchService = inject(MerchService);
   private readonly achievementSplashService = inject(AchievementSplashService);
   private readonly dialog = inject(MatDialog);
   private achievementDialogOpen = false;
@@ -159,6 +161,11 @@ export class AppComponent {
     () => this.authService.currentUser()?.role === 'non_validated',
   );
 
+  readonly isMerchOpen = computed<boolean>(() => {
+    const links = this.merchService.links();
+    return !!(links?.storeUrl || links?.foundingBearProductUrl);
+  });
+
   constructor() {
     // Safety net for unrecognized hosts (typo'd DNS entry, a decommissioned
     // city, someone hitting the wildcard cert directly): city-scoped features
@@ -191,6 +198,14 @@ export class AppComponent {
         this.achievementSplashService.startPolling();
       } else {
         this.achievementSplashService.stopPolling();
+      }
+    });
+
+    effect(() => {
+      if (this.authService.currentUser()) {
+        this.merchService.loadLinks();
+      } else {
+        this.merchService.links.set(null);
       }
     });
 
