@@ -11,7 +11,7 @@ Update `CLAUDE.md` "Current Development Phase" when moving to a new phase.
 - Angular Material custom theme (DinnerBears blue #1E4D8C)
 - Responsive shell layout: MatToolbar nav, MatSidenav mobile, footer
 - City selector dropdown in nav
-- NGINX internal proxy: /api/* → nestjs-api container
+- NGINX internal proxy: /api/\* → nestjs-api container
 - NestJS project init with TypeORM + MySQL connection
 - Health check: GET /api/v1/health → 200 with database status
 - VS Code workspace settings committed
@@ -269,6 +269,7 @@ with limited access — suitable for public Facebook posts where membership can'
 pre-screened.
 
 ### Non-Validated User Status
+
 - DB: add `non_validated` to `UserStatus` enum via migration
 - Non-Validated users can: view upcoming events, RSVP (Going/Maybe/Not Going),
   view release notes (`/updates`)
@@ -282,6 +283,7 @@ pre-screened.
 - Admin can also upgrade from the admin users list
 
 ### Multi-Use Event Invite Links
+
 - DB: extend `invites` table — add `event_id` FK (nullable), `invite_flavor`
   enum[`member`|`non_validated`]
 - Admin-only: generate a multi-use invite link tied to a specific event;
@@ -294,6 +296,7 @@ pre-screened.
 - Admin event detail: "Invite Links" panel — generate, copy, revoke per-event links
 
 ### Maybe RSVP
+
 - Add `maybe` as a valid RSVP status alongside `going` and `not_going`
 - RSVP UI: three-option toggle (Going / Maybe / Not Going) for all users
 - Event detail: Maybe count displayed separately from Going count
@@ -372,6 +375,7 @@ Blocked at API level for non-validated users and non-attendees.
 ## Phase 10 — Threaded Event Discussion & Attendance Tracking ✅ Complete
 
 ### Threaded Comments
+
 - DB: `event_comments` (id, event_id, member_id, body, created_at, deleted_at)
 - DB: `event_comment_replies` (id, comment_id, member_id, body, created_at, deleted_at)
 - Event detail page: discussion section below RSVP panel
@@ -381,6 +385,7 @@ Blocked at API level for non-validated users and non-attendees.
 - Discussions persist and remain visible after event concludes
 
 ### Attendance Tracking
+
 - DB migration: add `attended` boolean (default null) to `event_rsvps`
 - Mod/admin attendance panel on event detail: shown only after event concludes;
   lists all Going RSVPs with checkboxes to mark who actually attended
@@ -402,6 +407,7 @@ Required for Facebook App Review. Full spec in `docs/Dinnerbears_accountDeletion
 Partial stubs already exist: `POST /auth/facebook/deletion` (HMAC verification) and `facebook/link` endpoint. Full implementation required.
 
 ### Connected Accounts (REQ-DEL-01, REQ-DEL-02, REQ-DEL-03)
+
 - Account Settings page (`/account/settings`) with Connected Accounts section
 - Google and Facebook rows showing link status; **Disconnect** button when other auth method exists; "Only login method" label when not
 - Email/Password row stubbed (wired in Phase 11)
@@ -409,6 +415,7 @@ Partial stubs already exist: `POST /auth/facebook/deletion` (HMAC verification) 
 - Confirmation dialog and `409` warning dialog in Angular
 
 ### Account Self-Deletion (REQ-DEL-04, REQ-DEL-09)
+
 - Danger Zone section on Account Settings (red/amber-warn visual treatment)
 - Two-step confirmation: info dialog → type-to-confirm `DELETE` input
 - Hidden for admin role (REQ-DEL-09)
@@ -416,12 +423,14 @@ Partial stubs already exist: `POST /auth/facebook/deletion` (HMAC verification) 
 - Redirects to `/` with `?deleted=1` toast
 
 ### Meta Deletion Callback (REQ-DEL-05)
+
 - Rename/update existing stub: `POST /api/v1/auth/facebook/deletion-callback` (currently at `/facebook/deletion`)
 - Full processing: verify HMAC-SHA256 signature; look up by Facebook App-Scoped ID; if other auth exists → delete only `oauth_accounts` row; if only auth → full soft-delete; if not found → return success
 - New migration: `facebook_deletion_requests` table (facebook_user_id, confirmation_code UNIQUE, dinnerbears_user_id nullable, status enum[pending|completed], requested_at, completed_at)
 - Status lookup: `GET /account-deletion/status?code=` — public Angular page
 
 ### Hard-Delete Cron (REQ-DEL-06)
+
 - Daily `@Cron` job: users where `hard_delete_at <= NOW()` and `status = 'deleted'`
 - Overwrites PII: `full_name = 'Deleted Member'`, scrambles email, nulls photo/password
 - Deletes local photo file from disk
@@ -429,6 +438,7 @@ Partial stubs already exist: `POST /auth/facebook/deletion` (HMAC verification) 
 - Logs `account_hard_deleted` to audit
 
 ### Public Pages (REQ-DEL-08, REQ-DEL-10)
+
 - `/account-deletion` — public page with self-service instructions (content per spec)
 - `/account-deletion/status?code=` — public status lookup for Meta callback
 - All auth callbacks reject `status = 'deleted'` before issuing session token
@@ -554,6 +564,7 @@ numbered phase when ready to schedule.
 - CLAUDE.md's Versioning Workflow updated to reflect this split
 
 ### Uploaded File Auth Gating (2026-07-05) ✅ Done
+
 - Uploads split into per-category subdirectories: `/app/uploads/restaurants/`,
   `/app/uploads/profiles/`, plus the existing `/app/uploads/achievements/` and
   `/app/uploads/custom-icons/`
@@ -575,11 +586,13 @@ numbered phase when ready to schedule.
   static frontend assets, not uploads.
 
 ### Event Card Cleanup ✅ Resolved
+
 Addressed separately by moving event card actions into an overflow ("...")
 menu, simplifying the card's information hierarchy without a dedicated
 redesign pass.
 
 ### Stage Testing Fixes for Upload Auth Gating (2026-07-05) ✅ Done
+
 - Fixed photo uploads failing on stage after the upload-directory migration:
   migrations run as `root` (before the app drops to the unprivileged `nestjs`
   user), so the new `restaurants/`/`profiles/` subfolders came out root-owned
@@ -598,7 +611,7 @@ redesign pass.
   (submit button ~178px) below the fold on phones. Verified with a headless
   browser at a 390×844 viewport before/after.
 - Fixed remaining Docker Hub scan findings: `@nestjs/platform-express@11.1.27`
-  hard-pins an *exact* `multer@2.1.1`, which has two known DoS advisories
+  hard-pins an _exact_ `multer@2.1.1`, which has two known DoS advisories
   (patched in `2.2.0`). Removing the `multer` override during the v11 upgrade
   was a mistake — re-added it pinned to `^2.2.0`, which cascaded away every
   other HIGH finding in `npm audit` that was only flagged transitively through
@@ -652,13 +665,13 @@ confirmation token, and admin/mod assign/reassign UI on the event detail page.
 Points are awarded server-side only — no self-reporting. All triggers are
 tied to verifiable DB records.
 
-| Action | Points | Notes |
-|---|---|---|
-| Attend an event | 1 | Requires `attended = true` (Phase 10) |
-| Be event coordinator | 2 | Awarded when event concludes |
-| Coordinate at a brand-new restaurant | 4 | Restaurant never used in a prior published event — snapshot flag stored at award time so it doesn't shift retroactively |
-| Successfully invite someone | 1 | Fires when the invitee's first `attended = true` is recorded; walks invite lineage to find the original inviter |
-| Submit a restaurant rating | 1 | One point per eligible rating |
+| Action                               | Points | Notes                                                                                                                   |
+| ------------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Attend an event                      | 1      | Requires `attended = true` (Phase 10)                                                                                   |
+| Be event coordinator                 | 2      | Awarded when event concludes                                                                                            |
+| Coordinate at a brand-new restaurant | 4      | Restaurant never used in a prior published event — snapshot flag stored at award time so it doesn't shift retroactively |
+| Successfully invite someone          | 1      | Fires when the invitee's first `attended = true` is recorded; walks invite lineage to find the original inviter         |
+| Submit a restaurant rating           | 1      | One point per eligible rating                                                                                           |
 
 - **DB**: `member_points` (id, user_id FK, point_type enum[`attendance`|`coordinator`|`coordinator_new_restaurant`|`invite`|`rating`], reference_id int, points int, awarded_at) — ledger model for auditability and corrections
 - **Backfill**: attendance and ratings are retroactively calculable from existing data; coordinator and invite points require a one-time admin review script
@@ -676,16 +689,16 @@ display. Members pick their active title from all titles they've earned.
 
 **Seed achievements:**
 
-| Key | Name | Title Granted | Trigger |
-|---|---|---|---|
-| `founding_bear` | Founding Bear | "Founding Bear" | Backfilled at launch for all active members |
-| `first_dinner` | First Dinner | — | First `attended = true` |
-| `regular` | Regular | "Regular" | 5 attended dinners |
-| `veteran` | Veteran | "Veteran" | 25 attended dinners |
-| `first_coordinator` | Coordinator | — | First event coordinated |
-| `scout` | Scout | "Scout" | Coordinate at 3 different new restaurants |
-| `connector` | Connector | — | First successful invite (invitee attends) |
-| `critic` | Critic | — | Submit 5 restaurant ratings |
+| Key                 | Name          | Title Granted   | Trigger                                     |
+| ------------------- | ------------- | --------------- | ------------------------------------------- |
+| `founding_bear`     | Founding Bear | "Founding Bear" | Backfilled at launch for all active members |
+| `first_dinner`      | First Dinner  | —               | First `attended = true`                     |
+| `regular`           | Regular       | "Regular"       | 5 attended dinners                          |
+| `veteran`           | Veteran       | "Veteran"       | 25 attended dinners                         |
+| `first_coordinator` | Coordinator   | —               | First event coordinated                     |
+| `scout`             | Scout         | "Scout"         | Coordinate at 3 different new restaurants   |
+| `connector`         | Connector     | —               | First successful invite (invitee attends)   |
+| `critic`            | Critic        | —               | Submit 5 restaurant ratings                 |
 
 - **Founding Bear** is awarded via migration backfill at the time this phase deploys — all members with `status = 'active'` at that moment receive it; new members after deploy cannot earn it
 - Profile page: earned achievements grid with icons; locked achievements shown as silhouettes (non-secret only)
@@ -748,12 +761,14 @@ Members subscribe to a personal iCal feed so upcoming dinners appear automatical
 **Infrastructure:** Cloudflare Email Routing + Email Workers (free tier). No new Docker containers.
 
 Setup steps (one-time, done in Cloudflare dashboard):
+
 1. Enable Email Routing for dinnerbears.com (Cloudflare adds MX records automatically)
 2. Create routes: `calendar@dinnerbears.com` → Worker (prod); `calendar-stage@dinnerbears.com` → same Worker (stage)
 3. Deploy `cloudflare/email-worker.js` as the Worker; set `CLOUDFLARE_EMAIL_SECRET` env var in Worker settings
 4. Set `CLOUDFLARE_EMAIL_SECRET` in API container env (same value)
 
 **How replies flow:**
+
 - `buildInviteAttachment()` sets `ORGANIZER:mailto:calendar@dinnerbears.com` so iOS knows where to reply
 - Member RSVPs Going → RSVP confirmation email sent immediately with `.ics` (METHOD:REQUEST) attachment
 - iOS Calendar shows **Accept / Maybe / Decline** buttons on the invite
@@ -772,18 +787,21 @@ Setup steps (one-time, done in Cloudflare dashboard):
 ## Phase 17 — Event Admin Dialogs, Custom Icon Library & Hidden Achievements ✅ Complete
 
 ### Event Detail Admin Cleanup
+
 - Share/Invite Links, Attendance, and Special Dinner Achievement management moved from always-visible inline cards into dialogs opened from an overflow (kebab) menu next to the event title; data preloads so panels aren't empty on open
 - Reservation Coordinator card made visible to all members (assign/manage actions remain admin/mod only)
 
 ### Custom Icon Library
+
 - Searchable icon picker for achievements (Material icon set + reusable custom icons)
 - Admins can upload, crop, and reuse custom icon images across achievements; usage count shown per icon (icons in use can't be deleted)
-- Background cleanup: uploads are scanned for white *and* light-gray "checkerboard" pixels (some AI image generators simulate transparency this way) anywhere in the image, not just connected to the edges — fixes artifacts like a colored ring around a transparent hole
+- Background cleanup: uploads are scanned for white _and_ light-gray "checkerboard" pixels (some AI image generators simulate transparency this way) anywhere in the image, not just connected to the edges — fixes artifacts like a colored ring around a transparent hole
 - Icons can be reprocessed in place after upload (same stored file, backgrounds re-cleaned) without needing to re-upload or touch any achievement referencing it
 - Dedicated **Admin > Custom Icons** page — no longer requires opening an event's achievement editor to manage the library
 - Fixed the nginx default 1MB request body limit, which was silently truncating/rejecting larger icon/photo uploads
 
 ### Hidden Achievements
+
 - Fixed a bug where secret achievements never appeared once earned (a stale filter excluded all `is_secret` rows unconditionally) — they now display normally after being unlocked
 - New hidden login-count achievements: 25/50/100/250/500 site visits, 10 Bear Points each. Visits are deduped by a time window (5 min on stage, 12 hours in production as of 2026-07-05 — was 60 min) so rapid page loads don't over-count
 - 2026-07-05 fix: visit tracking moved from `JwtStrategy.validate()` (fires on every authenticated request, including background polling from a tab left open) to `AuthService.me()`, which only runs once per real app bootstrap (`APP_INITIALIZER`, i.e. a fresh page load/new tab) — a page left open in the background no longer keeps racking up visits
@@ -791,12 +809,14 @@ Setup steps (one-time, done in Cloudflare dashboard):
 - New achievement-earned splash screen: pops up automatically when a member has unseen achievements since their last visit, queues multiple if several were earned at once, and shows a red/white/blue animated fireworks celebration specifically for Patriotic Bear
 
 ### Event Invite Links Rework
+
 - Removed the "Share on Facebook" button (it never called any DinnerBears backend — pure client-side redirect to Facebook's share dialog)
 - Removed the standalone "Copy Post Text" button; its formatting logic was preserved and generalized to work per-link instead
 - New event invite links are always created with a fixed 10-use cap and now expire at the event's RSVP cutoff (150 minutes before start) instead of an admin-chosen day count
 - Every invite link now offers two copy actions — a plain link and a formatted "post text" version (adapted for Guest vs. Full Member, with the usage/expiry limits noted) — both embed the same token, so either one counts against the same 10-use cap
 
 ### Security Fix
+
 - The public `/api/v1/releases` endpoint (no login required, by design) was serializing the full author `UserEntity` — including `password_hash`, email, and verification tokens — for every release, and the full submitter record for any linked feedback ticket. Now serialized down to `id`, `fullName`, `profilePhotoPath` only.
 
 **Definition of done:** Event admin tools accessible via overflow-menu dialogs; Reservation Coordinator visible to all members. Admins can upload, crop, reuse, and clean up custom achievement icons from a dedicated admin page. Secret achievements display correctly once earned. Login-count and Patriotic Bear achievements grant automatically and surface via a queued splash screen. Event invite links use a fixed 10-use/RSVP-cutoff-expiry model with both plain and post-text copy options sharing one usage cap. Public release notes no longer leak account data.
@@ -806,11 +826,13 @@ Setup steps (one-time, done in Cloudflare dashboard):
 ## Phase 18 — Admin Nav Reorganization & Release Tooling ✅ Complete
 
 ### Admin Nav Restructure
+
 - Desktop: the flat Admin/Moderation dropdown is now a single entry point whose menu holds **Security** (Users, Invites, Invite Tree, Audit Log), **Settings** (Email, Cities), and **Members** (Feedback, Achievements, Custom Icons, Announcements, Moderation), each opening as a nested flyout submenu via Material's `matMenuTriggerFor`-from-within-a-menu-item pattern, plus a direct **Releases** link
 - Mobile sidenav mirrors the same four groupings as labeled sections (with dividers) under the existing Admin/Moderation block — no flyouts on mobile, just grouped headers
 - Role gating unchanged: moderators still see Security → Users and Members → Announcements/Moderation only; Settings, the rest of Security/Members, and Releases stay admin-only
 
 ### Release Notes Tooling
+
 - New `docs/NEXT_RELEASE.md` — a running local draft of unreleased, customer-facing notes; purely a staging file, never touches the `releases` table or the production API
 - `/phase-done` now appends its customer-facing summary to `docs/NEXT_RELEASE.md`, commits it with the other phase docs, creates a local-only `phase-<N>` git tag (not pushed), and automatically builds/pushes the `stage` Docker image — `latest` (prod) is untouched
 - `/release` now reads `docs/NEXT_RELEASE.md` as its starting draft, clears it back to empty once the release draft is created, and pushes only the specific `v<version>` tag (rather than `--tags`) so any unpushed local `phase-*` tags aren't swept along
@@ -822,16 +844,20 @@ Setup steps (one-time, done in Cloudflare dashboard):
 ## Phase 19 — Admin CRUD Integration Tests ✅ Complete
 
 ### Test Harness
+
 - New ephemeral MySQL test database (`docker/docker-compose.test.yml`), pinned to the same MySQL version as the real Unraid instance (9.7) rather than a lighter substitute like SQLite — entities use MySQL-specific column types (`json`, `enum`, `longtext`, `unsigned` PKs) that don't map cleanly elsewhere, and `synchronize: false` is a hard project rule
 - `api/test/utils/test-app.ts` boots the real `AppModule` end to end — real guards, real DB, real migrations via the existing `migrationsRun: true` — not a trimmed test-only module
 - `api/test/utils/seed.ts` seeds cities/restaurants/users and mints real login sessions (via `AuthService.issueTokens`, not a hand-crafted JWT) so `JwtStrategy`'s session-table check passes like a real login would
 - `bash scripts/run-e2e-tests.sh` — one command: starts the test DB, runs the full suite, always tears down
 
 ### CRUD Coverage
+
 Real-HTTP integration tests (success paths, validation errors, and 401/403 role-guard enforcement) for 11 admin resources: Events, Restaurants, Announcements, Cities, Releases, Achievements, Custom Icons, Event Comments, admin User management (list/ban/unban/role-change/delete), Feedback, and Reports. 202 tests total.
 
 ### Pre-Existing Migration Bugs Fixed
+
 Bootstrapping a genuinely fresh database (never done before this phase — every real environment was already migrated) surfaced two latent bugs, both invisible in practice since already-migrated environments never re-run a migration once it's recorded as applied:
+
 - `1749000008000-AddRestaurantAuditFields` used `ADD COLUMN IF NOT EXISTS`, which real MySQL doesn't support at any version (confirmed empirically against both 8.0.46 and 9.7.1 — it's a MariaDB-only extension). Rewritten to check `information_schema.COLUMNS` first.
 - `1749000014000-CreateEmailSystem` unconditionally recreated `email_suppressions`, which `CreateUsers` already creates. Same fix pattern.
 
@@ -839,9 +865,49 @@ Bootstrapping a genuinely fresh database (never done before this phase — every
 
 ---
 
-## Phase 20 — Cross-Cutting E2E Test Coverage ✅ In Progress
+## Phase 20 — Cross-Cutting E2E Test Coverage ✅ Complete
 
-Extends the Phase 19 harness to flows that don't fit inside a single CRUD resource:
-- **Batch 4 — Identity & Access:** auth/OAuth login flows, invites (create/redeem/revoke/lineage/expiration), account lifecycle (self-delete, Facebook data-deletion callback, hard-delete cron)
-- **Batch 5 — Event Engagement & Gamification:** RSVP lifecycle (create/update/remove, guest links, public RSVP, attendance, walk-ins), achievement auto-granting triggers, leaderboard/points aggregation
-- **Batch 6 — Content Delivery:** uploads (restaurant photos, avatars), email/push dispatch, calendar/ICS feed generation
+Extends the Phase 19 harness to flows that don't fit inside a single CRUD resource. Added 267 new tests across 6 spec files (469 total, up from 202), all passing via `bash scripts/run-e2e-tests.sh` against a fresh database.
+
+- **Batch 4 — Identity & Access** (`auth.e2e-spec.ts`, `invites.e2e-spec.ts`, `account-lifecycle.e2e-spec.ts`, 97 tests): auth/OAuth login flows (including a mocked Facebook Graph API and HMAC-verified Meta data-deletion callback), invites (create/redeem/revoke/lineage/expiration), account lifecycle (self-delete, Facebook data-deletion callback, hard-delete cron)
+- **Batch 5 — Event Engagement & Gamification** (`rsvp.e2e-spec.ts`, `gamification.e2e-spec.ts`, 92 tests): RSVP lifecycle (create/update/remove, cutoff enforcement, member-generated and public guest links, attendance, walk-ins), achievement auto-granting triggers for every tier, leaderboard/points ledger aggregation
+- **Batch 6 — Content Delivery** (`uploads.e2e-spec.ts`, `email-push.e2e-spec.ts`, `calendar.e2e-spec.ts`, 78 tests): restaurant/profile/achievement/custom-icon photo uploads and auth-gated serving, email queue dispatch and Brevo webhook handling, push subscription and in-app notifications, calendar ICS feed generation (RFC 5545 checks) and inbound RSVP-reply processing
+
+### Test Harness Additions
+- `resetThrottler(app)` (`api/test/utils/test-app.ts`) clears `ThrottlerStorage` (and its pending timers) between tests — auth/calendar routes carry tight per-route `@Throttle` limits, and a single app instance is reused across every test in a spec file
+- `hashPassword()` (`api/test/utils/seed.ts`) — shared bcrypt helper for specs that need a real password hash on a seeded user
+- Discovered that `truncateAllTables` also wipes migration-seeded reference data (e.g. the achievement catalog) — existing specs never depended on it staying seeded, so `gamification.e2e-spec.ts` re-seeds the specific achievement rows it needs locally rather than changing the shared harness (which `achievements.e2e-spec.ts`'s CRUD tests rely on being wiped between tests)
+
+### Pre-Existing Bugs Fixed
+Real-HTTP testing against actual business logic (not mocks) surfaced four latent defects, none previously caught because nothing had exercised these code paths end-to-end:
+- `PointsService.checkInvitePointForInviter` destructured a raw-query result key (`u_invited_by`) that never matched what the query actually returned (`invited_by`, since the query selected without an explicit `AS` alias) — the "successful invite" Bear Point and `connector` achievement have never fired in production. Fixed using the same explicit-alias pattern already used in `admin.service.ts`.
+- `EmailService.checkNotificationPref` compared a `tinyint` column value against the literal `false` (`!== false`) — since generic `tinyint` columns come back from the DB driver as `0`/`1`, not `boolean`, the strict comparison was always `true`, silently defeating every per-template email-preference opt-out. Fixed to compare numerically.
+- `SubscribePushDto.keys` relied on `@ValidateNested()` alone to require the field, which class-validator does not enforce for `undefined` — an omitted `keys` object crashed the controller with a 500 instead of failing validation with a 400. Added `@IsDefined()`.
+- `CalendarService.extractIcalFromEmail` applied full quoted-printable decoding (`=XY` hex-escape resolution) even to already-readable, non-encoded iCal text. Since `X` and `Y` matching any two hex digits triggers a decode, `PARTSTAT=ACCEPTED` (`=AC`) and `PARTSTAT=DECLINED` (`=DE`) were silently corrupted while `PARTSTAT=TENTATIVE` (`=TE`, not hex) happened to survive — meaning real Accept/Decline replies from iOS Calendar could silently fail to update a member's RSVP. Fixed to only strip QP soft-line-breaks on the already-matched branch, reserving full hex-escape decoding for the fallback branch where the iCal block genuinely needs it to be found at all.
+
+**Definition of done:** `bash scripts/run-e2e-tests.sh` runs the full migration history and 469-test suite cleanly against a database matching production's exact MySQL version, starting from nothing. All three batches covered; four real production bugs found via genuine e2e testing and fixed in the same pass.
+
+## Phase 21 - Edge Case Tests
+
+- Ensure all fields with a define limited have tests where data is incorrect or over that limit, example a varchar(20) Try to pass in 21 characters, or html
+- Ensure all database queries are using parameterized requests
+
+## Phase 21 - Ensure all endpoints are rate limited
+
+Add rate limiting to all API endpoints and server actions. Max 30 requests per minute per user for write operations (create, update, delete). Max 60 requests per minute for read operations.
+
+## Phase 22 - Security Audit
+
+-- Turn this into a command /security-audit
+
+- 1. Passwords are hashed (bcrypt or argon2), never stored in plain text 2. Session tokens are in httpOnly cookies (not accessible by JavaScript) 3. NEXTAUTH_SECRET is a real random value, not a placeholder 4. Login endpoint has rate limiting (5 attempts per minute per IP) 5. Password reset tokens expire within 1 hour
+
+6. All user inputs are validated on the server side (not just client side) 7. HTML is sanitized from all text inputs (prevents XSS) 8. Input lengths are limited (prevents memory exhaustion) 9. File uploads are validated for type and size (if applicable) 10. API endpoints validate and reject unexpected parameters
+7. Every database query that fetches user data includes a userId check 12. No raw SQL queries, or raw SQL uses parameterized inputs 13. API responses don't leak sensitive data (no password hashes in JSON) 14. Admin endpoints (if any) require admin role verification 15. Deleted data is actually deleted (not just hidden)
+8. .env files are in .gitignore and never committed to git 17. No hardcoded secrets in source code 18. npm audit shows zero high/critical vulnerabilities 19. HTTPS is enforced (Vercel handles this automatically) 20. CORS is configured to allow only your domain (prevents cross-origin attacks)
+   "Run through this 20-point security checklist on the Task Tracker. For each point, check the codebase and tell me: PASS (it's secure), FAIL (there's a vulnerability), or N/A (doesn't apply). Fix every FAIL."
+
+## Phase 23 - Clean up Dead Code
+
+"Scan the entire codebase and identify dead code. Check for: unused imports in every file, exported functions that nothing imports, components that no page or layout renders, files that nothing references. List every instance with the file path and line number."
+"Find functions, utilities, or components that do the same thing but exist in different files. Group them by function. For each group, recommend which version to keep and which to delete."

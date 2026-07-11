@@ -33,10 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-**End-to-End Test Coverage** — Phase 19 (Admin CRUD Integration Tests) completed 2026-07-11: real-HTTP/real-database e2e suite (ephemeral MySQL matching prod's exact version, run via `bash scripts/run-e2e-tests.sh`) covering 11 admin CRUD resources — Events, Restaurants, Announcements, Cities, Releases, Achievements, Custom Icons, Event Comments, admin User management, Feedback, Reports — success paths, validation errors, and role-guard enforcement; also fixed two pre-existing migration bugs (MySQL-incompatible `IF NOT EXISTS` syntax, a duplicate table creation) that only surfaced when bootstrapping a genuinely fresh database. Phase 20 (in progress) extends coverage to cross-cutting flows a single-resource CRUD suite can't reach: Batch 4 — Identity & Access (auth/OAuth, invites, account lifecycle); Batch 5 — Event Engagement & Gamification (RSVP lifecycle, achievement auto-granting, leaderboard points); Batch 6 — Content Delivery (uploads, email/push dispatch, calendar/ICS). Phase 21 (dead code scan) follows once Phase 20 wraps.
+Phase 20 (Cross-Cutting E2E Test Coverage) completed 2026-07-11 — see PHASES.md for full details. No next phase has been chosen yet; PHASES.md's post-19 backlog has a few rough, not-yet-scoped candidates (edge-case/limit tests, rate-limit audit, a security checklist pass, a dead-code scan) but nothing picked or numbered as authoritative — resolve that ambiguity with Rob before starting one.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules
