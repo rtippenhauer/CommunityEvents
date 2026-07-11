@@ -482,10 +482,18 @@ export class CalendarService {
   }
 
   private extractIcalFromEmail(rawEmail: string): string | null {
-    // Try plain-text first — also handles quoted-printable since BEGIN:VCALENDAR
-    // is readable ASCII. Decode QP afterward so =3D etc. are resolved.
+    // Try plain-text first — BEGIN:VCALENDAR is readable ASCII, so if this matches
+    // directly the block was never actually quoted-printable encoded (real QP
+    // encoding would have broken up "BEGIN:VCALENDAR" itself with soft line
+    // breaks, in which case this regex wouldn't match at all — see the fallback
+    // branch below for that case). Only undo QP soft-line-break folding here —
+    // do NOT run full hex-escape decoding (`=3D` etc.) on already-clean text: its
+    // "=XY" pattern also matches plenty of legitimate iCal content whenever X and
+    // Y happen to be hex digits (e.g. "PARTSTAT=ACCEPTED" contains "=AC", and
+    // "PARTSTAT=DECLINED" contains "=DE"), silently corrupting real PARTSTAT
+    // values while "=TE" in "TENTATIVE" happens to survive since T isn't hex.
     const inline = rawEmail.match(/BEGIN:VCALENDAR[\s\S]*?END:VCALENDAR/i);
-    if (inline) return this.decodeQuotedPrintable(inline[0]);
+    if (inline) return inline[0].replace(/=\r?\n/g, '');
 
     // Try after full QP decode of the email (catches cases where the iCal section
     // has soft-line-break folding that obscures the BEGIN: marker)

@@ -77,7 +77,11 @@ export class EmailService {
     const prefs = await this.prefsRepo.findOne({ where: { userId } });
     if (!prefs) return true;
 
-    return (prefs as unknown as Record<string, boolean>)[prefKey] !== false;
+    // These columns are generic `tinyint`, not TypeORM's special `boolean` type,
+    // so the driver returns 0/1 rather than false/true — comparing against the
+    // literal `false` here always passed, silently defeating every opt-out.
+    const value = (prefs as unknown as Record<string, boolean | number>)[prefKey];
+    return Number(value) !== 0;
   }
 
   async queue(dto: QueueEmailDto): Promise<EmailQueueEntity | null> {

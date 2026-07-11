@@ -108,11 +108,11 @@ export class PointsService {
     const attendee = await this.dataSource
       .getRepository('users')
       .createQueryBuilder('u')
-      .select(['u.id', 'u.invited_by'])
+      .select(['u.id AS id', 'u.invited_by AS invitedBy'])
       .where('u.id = :id', { id: attendeeId })
-      .getRawOne<{ u_id: number; u_invited_by: number | null }>();
+      .getRawOne<{ id: number; invitedBy: number | null }>();
 
-    const inviterId = attendee?.u_invited_by ?? null;
+    const inviterId = attendee?.invitedBy ?? null;
     if (!inviterId) return;
 
     const alreadyAwarded = await this.pointRepo.findOne({

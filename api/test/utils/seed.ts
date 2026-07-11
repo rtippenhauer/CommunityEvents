@@ -1,9 +1,16 @@
 import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import { CityEntity } from '../../src/database/entities/city.entity';
 import { UserEntity, UserRole, UserStatus } from '../../src/database/entities/user.entity';
 import { RestaurantEntity } from '../../src/database/entities/restaurant.entity';
 import { AuthService } from '../../src/modules/auth/auth.service';
+
+// Shared across specs that need a real bcrypt hash on a seeded user (login,
+// password reset/change, etc.) — same cost factor AuthService uses (12).
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 12);
+}
 
 let counter = 0;
 function unique(prefix: string): string {

@@ -20,3 +20,6 @@ setDefault('GOOGLE_CLIENT_SECRET', 'test-google-client-secret');
 setDefault('APP_URL', 'http://localhost:8081');
 setDefault('BASE_DOMAIN', 'localhost');
 setDefault('UPLOAD_PATH', '/tmp/dinnerbears-test-uploads');
+setDefault('FACEBOOK_APP_SECRET', 'test-facebook-app-secret-not-for-real-use');
+setDefault('CLAUDE_AUTOMATION_SECRET', 'test-automation-secret-not-for-real-use');
+setDefault('CLOUDFLARE_EMAIL_SECRET', 'test-cloudflare-email-secret-not-for-real-use');

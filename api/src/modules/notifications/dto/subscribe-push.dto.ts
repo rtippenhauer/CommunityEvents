@@ -1,4 +1,4 @@
-import { IsString, ValidateNested } from 'class-validator';
+import { IsDefined, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class PushKeysDto {
@@ -8,5 +8,8 @@ class PushKeysDto {
 
 export class SubscribePushDto {
   @IsString() endpoint: string;
-  @ValidateNested() @Type(() => PushKeysDto) keys: PushKeysDto;
+  // @ValidateNested() alone does not reject an undefined value — without
+  // @IsDefined(), an omitted `keys` object reaches the controller as
+  // undefined and crashes on `dto.keys.p256dh` instead of failing validation.
+  @IsDefined() @ValidateNested() @Type(() => PushKeysDto) keys: PushKeysDto;
 }
