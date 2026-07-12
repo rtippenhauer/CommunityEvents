@@ -934,11 +934,73 @@ needed).
 
 ---
 
-## Phase 21 - Ensure all endpoints are rate limited
+## Phase 22 — Rate Limiting Audit & Hardening ✅ Complete
 
-Add rate limiting to all API endpoints and server actions. Max 30 requests per minute per user for write operations (create, update, delete). Max 60 requests per minute for read operations.
+Target policy: 30 req/min/IP for write operations (create/update/delete),
+60 req/min/IP for reads. Scoped via an Explore-agent audit of the existing
+`@nestjs/throttler` setup, which found the global default (60/min) already
+matched the read target but every write route without its own `@Throttle`
+was 2x looser than intended — systemic across all 24 controllers, not a few
+one-offs. Rob chose per-IP keying (not per-user) as the simpler, lower-risk
+option for a small invite-only app, and chose to fix a webhook auth gap
+found during scoping in the same pass.
 
-## Phase 22 - Security Audit
+### Mechanism
+
+- `ThrottlerAuditGuard` (`api/src/common/guards/throttler-audit.guard.ts`,
+  already the app's sole `APP_GUARD`) gained a `handleRequest` override: for
+  any mutating request (not GET/HEAD/OPTIONS) that would otherwise fall
+  through to the module-level default, it substitutes a 30/min ceiling
+  before delegating to the base `ThrottlerGuard`. Routes with their own
+  `@Throttle()` are detected by comparing the resolved limit against the
+  configured global default and are left untouched — this fixed every
+  previously-unprotected write route in one ~15-line change instead of ~80
+  individual decorator edits, and doesn't disturb the 7 routes (login,
+  register, password reset/forgot, resend-verification, calendar feed) that
+  already had tighter explicit limits.
+- Bespoke tighter `@Throttle` overrides added to 10 higher-risk routes
+  regardless of the general policy: the unauthenticated public writes
+  (`events/:id/public-rsvp`, `events/guest-link/:token` POST+DELETE,
+  `events/reservation-confirm/:token`) at 10/min; expensive bulk/admin
+  operations (`restaurants/enrich/bulk`, `admin/achievements/backfill-founders`,
+  `backfill-invites`, `recalculate-points`) at 5/min; privilege escalation
+  (`admin/users/:id/role`) at 10/min; the paid-API-proxying
+  `restaurants/place-search` at 20/min; and the Brevo webhook (see below)
+  at 120/min.
+
+### Webhook auth fix
+
+`POST /email/webhook/brevo` had no signature/secret verification at all —
+anyone who discovered the URL could forge delivery/bounce/unsubscribe/spam
+events for any member's email. Added a `BREVO_WEBHOOK_SECRET` shared-secret
+check via query param (mirroring `calendar.controller.ts`'s existing
+`CLOUDFLARE_EMAIL_SECRET` pattern for the sibling inbound-email webhook,
+since Brevo's dashboard only lets you configure a URL, not custom headers).
+**Follow-up needed from Rob:** `.env.example` is outside this session's
+write permissions — add `BREVO_WEBHOOK_SECRET=` there next to
+`CLOUDFLARE_EMAIL_SECRET`, set a real value in stage/prod `.env`, and update
+the registered webhook URL in Brevo's dashboard to
+`.../email/webhook/brevo?secret=<value>`.
+
+### Tests
+
+New `api/test/rate-limiting.e2e-spec.ts` (11 tests): the generic write
+default firing at request 31 on a route with no prior throttle; the generic
+read default still allowing 60/min; a regression check that `/auth/register`
+still throttles at its own 5/min (not clobbered by the new default); each of
+the 10 bespoke routes enforcing its specific limit; and the Brevo webhook
+rejecting missing/wrong secrets with 401 while accepting the correct one.
+Updated the 6 pre-existing Brevo webhook tests in `email-push.e2e-spec.ts`
+to pass the new required secret.
+
+**Definition of done:** `bash scripts/run-e2e-tests.sh` runs the full
+migration history and 527-test suite (up from 516) cleanly. Every write
+route across all 24 controllers is throttled at 30/min or a documented
+tighter bespoke limit, without regressing the 7 pre-existing explicit
+throttles or any read route. The Brevo webhook requires a valid shared
+secret.
+
+## Phase 23 - Security Audit
 
 -- Turn this into a command /security-audit
 
@@ -949,7 +1011,7 @@ Add rate limiting to all API endpoints and server actions. Max 30 requests per m
 8. .env files are in .gitignore and never committed to git 17. No hardcoded secrets in source code 18. npm audit shows zero high/critical vulnerabilities 19. HTTPS is enforced (Vercel handles this automatically) 20. CORS is configured to allow only your domain (prevents cross-origin attacks)
    "Run through this 20-point security checklist on the Task Tracker. For each point, check the codebase and tell me: PASS (it's secure), FAIL (there's a vulnerability), or N/A (doesn't apply). Fix every FAIL."
 
-## Phase 23 - Clean up Dead Code
+## Phase 24 - Clean up Dead Code
 
 "Scan the entire codebase and identify dead code. Check for: unused imports in every file, exported functions that nothing imports, components that no page or layout renders, files that nothing references. List every instance with the file path and line number."
 "Find functions, utilities, or components that do the same thing but exist in different files. Group them by function. For each group, recommend which version to keep and which to delete."

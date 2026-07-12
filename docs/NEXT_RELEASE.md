@@ -16,3 +16,14 @@ once that release's draft has been created.
 - Added a large batch of automated tests specifically probing oversized
   input and malicious-looking text across the platform, confirming the app
   handles it safely everywhere it was checked
+
+## Rate Limiting & Webhook Security
+
+- Strengthened rate limiting across the platform: write actions (creating,
+  editing, deleting) are now capped at 30 per minute, with a handful of
+  especially sensitive actions (like public RSVP links and bulk admin
+  operations) capped even lower, reducing the risk of abuse or accidental
+  overload
+- Closed a gap where Brevo's email delivery/bounce/unsubscribe notifications
+  arrived without any verification — those notifications now require a
+  shared secret before being accepted
