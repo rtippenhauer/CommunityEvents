@@ -1,9 +1,9 @@
-import { IsDefined, IsString, ValidateNested } from 'class-validator';
+import { IsDefined, IsString, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class PushKeysDto {
-  @IsString() p256dh: string;
-  @IsString() auth: string;
+  @IsString() @MaxLength(512) p256dh: string;
+  @IsString() @MaxLength(255) auth: string;
 }
 
 export class SubscribePushDto {

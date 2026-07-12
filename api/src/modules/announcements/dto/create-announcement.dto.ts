@@ -8,6 +8,7 @@ export class CreateAnnouncementDto {
 
   @IsString()
   @MinLength(1)
+  @MaxLength(50000)
   body: string;
 
   @IsInt()

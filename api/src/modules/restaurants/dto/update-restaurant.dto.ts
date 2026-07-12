@@ -29,6 +29,7 @@ export class UpdateRestaurantDto {
 
   @ValidateIf((o: UpdateRestaurantDto) => o.websiteUrl !== null)
   @IsUrl()
+  @MaxLength(500)
   @IsOptional()
   websiteUrl?: string | null;
 

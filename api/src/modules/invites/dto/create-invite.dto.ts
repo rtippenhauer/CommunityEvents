@@ -17,6 +17,7 @@ export class CreateInviteDto {
   type: InviteType.MEMBER | InviteType.ADMIN | InviteType.CAMPAIGN_FACEBOOK;
 
   @IsEmail()
+  @MaxLength(255)
   @IsOptional()
   boundToEmail?: string;
 

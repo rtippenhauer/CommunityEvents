@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
+import * as sanitizeHtml from 'sanitize-html';
 import { AnnouncementEntity, AnnouncementStatus } from '../../database/entities/announcement.entity';
 import { AnnouncementCommentEntity } from '../../database/entities/announcement-comment.entity';
 import { ContentFlagEntity, FlagContentType, FlagStatus } from '../../database/entities/content-flag.entity';
@@ -15,6 +16,11 @@ import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FlagContentDto } from './dto/flag-content.dto';
 import { toPublicUser, toAnonSafeUser } from '../../common/utils/public-user.util';
+
+const ALLOWED_HTML = {
+  allowedTags: sanitizeHtml.defaults.allowedTags.concat(['s', 'u']),
+  allowedAttributes: { a: ['href', 'target', 'rel'], ...sanitizeHtml.defaults.allowedAttributes },
+};
 
 @Injectable()
 export class AnnouncementsService {
@@ -87,7 +93,7 @@ export class AnnouncementsService {
   async create(dto: CreateAnnouncementDto, userId: number) {
     const a = this.announcementRepo.create({
       title: dto.title,
-      body: dto.body,
+      body: sanitizeHtml(dto.body, ALLOWED_HTML),
       cityId: dto.cityId ?? null,
       createdBy: userId,
     });
@@ -99,7 +105,7 @@ export class AnnouncementsService {
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
     Object.assign(a, {
       ...(dto.title !== undefined && { title: dto.title }),
-      ...(dto.body !== undefined && { body: dto.body }),
+      ...(dto.body !== undefined && { body: sanitizeHtml(dto.body, ALLOWED_HTML) }),
       ...(dto.cityId !== undefined && { cityId: dto.cityId }),
     });
     return this.announcementRepo.save(a);

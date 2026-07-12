@@ -16,6 +16,12 @@ import { PointsService } from './points.service';
 import { AchievementsService } from './achievements.service';
 import { CustomIconsService } from './custom-icons.service';
 import { UserRole } from '../../database/entities/user.entity';
+import { SelectTitleDto } from './dto/select-title.dto';
+import { GrantAchievementDto } from './dto/grant-achievement.dto';
+import { CreateEventAchievementDto } from './dto/create-event-achievement.dto';
+import { CreateAchievementDto } from './dto/create-achievement.dto';
+import { UpdateAchievementDto } from './dto/update-achievement.dto';
+import { CreateCustomIconDto } from './dto/create-custom-icon.dto';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -111,7 +117,7 @@ export class CommunityController {
 
   @Patch('members/me/title')
   @UseGuards(JwtAuthGuard)
-  async selectTitle(@Request() req: any, @Body() body: { title: string | null }) {
+  async selectTitle(@Request() req: any, @Body() body: SelectTitleDto) {
     try {
       await this.achievementsService.selectTitle(req.user.id, body.title ?? null);
     } catch {
@@ -165,7 +171,7 @@ export class CommunityController {
   @Patch('admin/members/:id/achievements/grant')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  async adminGrant(@Param('id', ParseIntPipe) id: number, @Body() body: { key: string }) {
+  async adminGrant(@Param('id', ParseIntPipe) id: number, @Body() body: GrantAchievementDto) {
     await this.achievementsService.adminGrantAchievement(id, body.key);
     return { ok: true };
   }
@@ -196,14 +202,8 @@ export class CommunityController {
   @Roles(UserRole.ADMIN)
   async createEventAchievement(
     @Param('eventId', ParseIntPipe) eventId: number,
-    @Body() body: {
-      name: string; description: string; title?: string; points: number;
-      icon?: string; isSecret?: boolean;
-    },
+    @Body() body: CreateEventAchievementDto,
   ) {
-    if (!body.name || !body.description) {
-      throw new BadRequestException('name and description are required');
-    }
     const ach = await this.achievementsService.createEventAchievement({
       eventId,
       name: body.name,
@@ -226,19 +226,9 @@ export class CommunityController {
   @Post('admin/achievements')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  async adminCreateAchievement(
-    @Body() body: {
-      key: string; name: string; description: string; icon: string;
-      progressType: string; progressTarget?: number | null;
-      points: number; title?: string | null; isSecret?: boolean;
-    },
-  ) {
-    if (!body.key || !body.name || !body.description || !body.progressType) {
-      throw new BadRequestException('key, name, description, and progressType are required');
-    }
+  async adminCreateAchievement(@Body() body: CreateAchievementDto) {
     return this.achievementsService.adminCreateAchievement({
       ...body,
-      progressType: body.progressType as any,
       progressTarget: body.progressTarget ?? null,
       isSecret: body.isSecret ?? false,
     });
@@ -249,13 +239,8 @@ export class CommunityController {
   @Roles(UserRole.ADMIN)
   async updateAchievement(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: {
-      name: string; description: string; icon?: string;
-      title?: string | null; points: number; isSecret: boolean;
-      progressTarget?: number | null;
-    },
+    @Body() body: UpdateAchievementDto,
   ) {
-    if (!body.name || !body.description) throw new BadRequestException('name and description are required');
     await this.achievementsService.adminFullUpdate(id, {
       name: body.name,
       description: body.description,
@@ -329,14 +314,13 @@ export class CommunityController {
     }),
   )
   async createCustomIcon(
-    @Body('name') name: string,
+    @Body() body: CreateCustomIconDto,
     @UploadedFile() file: Express.Multer.File,
     @Request() req: any,
   ) {
     if (!file) throw new BadRequestException('No image uploaded');
-    if (!name || !name.trim()) throw new BadRequestException('Name is required');
     const imagePath = `/api/uploads/custom-icons/${file.filename}`;
-    const icon = await this.customIconsService.create(name.trim(), imagePath, req.user.id);
+    const icon = await this.customIconsService.create(body.name.trim(), imagePath, req.user.id);
     return { ...icon, usageCount: 0 };
   }
 

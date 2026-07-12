@@ -22,6 +22,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { SetRoleDto } from './dto/set-role.dto';
+import { UpdateEmailConfigDto } from './dto/update-email-config.dto';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -76,10 +78,10 @@ export class AdminController {
   @HttpCode(200)
   setRole(
     @Param('id', ParseIntPipe) id: number,
-    @Body('role') role: UserRole,
+    @Body() body: SetRoleDto,
     @CurrentUser() actor: UserEntity,
   ) {
-    return this.adminService.setRole(id, actor.id, role);
+    return this.adminService.setRole(id, actor.id, body.role);
   }
 
   @Get('users/:id/email-suppressed')
@@ -148,7 +150,7 @@ export class AdminController {
 
   @Patch('email/config')
   @Roles(UserRole.ADMIN)
-  async updateEmailConfig(@Body() body: Partial<EmailProviderConfigEntity>) {
+  async updateEmailConfig(@Body() body: UpdateEmailConfigDto) {
     const config = await this.providerConfigRepo.findOne({ where: { id: 1 } });
     if (!config) return;
     Object.assign(config, body);

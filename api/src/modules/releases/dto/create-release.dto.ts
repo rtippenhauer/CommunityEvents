@@ -2,6 +2,7 @@ import { IsArray, IsInt, IsOptional, IsString, Matches, MaxLength, MinLength } f
 
 export class CreateReleaseDto {
   @IsString()
+  @MaxLength(20)
   @Matches(/^\d+\.\d+\.\d+$/, { message: 'version must be valid semver (e.g. 1.2.3)' })
   version: string;
 

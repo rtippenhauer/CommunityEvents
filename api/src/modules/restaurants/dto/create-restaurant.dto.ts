@@ -15,6 +15,7 @@ export class CreateRestaurantDto {
   phone?: string;
 
   @IsUrl()
+  @MaxLength(500)
   @IsOptional()
   websiteUrl?: string;
 
