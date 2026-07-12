@@ -27,3 +27,13 @@ once that release's draft has been created.
 - Closed a gap where Brevo's email delivery/bounce/unsubscribe notifications
   arrived without any verification — those notifications now require a
   shared secret before being accepted
+
+## Security Audit (Phase 23)
+
+- Ran a full 20-point security checklist against the platform (password
+  hashing, session cookies, rate limiting, input validation, IDOR checks,
+  admin guards, deleted-data handling, and more) — 16 of 20 already passed
+- Tightened the login rate limit from 10 to 5 attempts per minute
+- Fixed a gap where a member's notification-preferences update could,
+  under a crafted request, overwrite another member's preferences instead
+  of their own

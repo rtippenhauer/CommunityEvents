@@ -10,6 +10,22 @@ import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
 import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
 
+const NOTIFICATION_PREF_FIELDS = [
+  'emailInvite',
+  'emailVerification',
+  'emailPasswordReset',
+  'emailPasswordChanged',
+  'emailSecurityAlert',
+  'emailEventPublished',
+  'emailRsvpConfirmation',
+  'emailEventReminder',
+  'emailAccountDeletion',
+  'emailReengagement',
+  'pushEventPublished',
+  'pushEventReminder',
+  'pushAnnouncement',
+] as const satisfies readonly (keyof NotificationPreferencesEntity)[];
+
 export interface QueueEmailDto {
   toEmail: string;
   toName?: string | null;
@@ -175,13 +191,17 @@ export class EmailService {
 
   async updateNotificationPrefs(
     userId: number,
-    updates: Partial<NotificationPreferencesEntity>,
+    updates: Partial<Pick<NotificationPreferencesEntity, (typeof NOTIFICATION_PREF_FIELDS)[number]>>,
   ): Promise<NotificationPreferencesEntity> {
     let prefs = await this.prefsRepo.findOne({ where: { userId } });
     if (!prefs) {
       prefs = this.prefsRepo.create({ userId });
     }
-    Object.assign(prefs, updates);
+    for (const key of NOTIFICATION_PREF_FIELDS) {
+      if (updates[key] !== undefined) {
+        prefs[key] = updates[key];
+      }
+    }
     return this.prefsRepo.save(prefs);
   }
 }

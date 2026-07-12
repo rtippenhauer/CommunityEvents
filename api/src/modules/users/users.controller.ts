@@ -27,6 +27,7 @@ import { Response } from 'express';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SetAvatarDto } from './dto/set-avatar.dto';
+import { UpdateNotificationPrefsDto } from './dto/update-notification-prefs.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity, EmailStatus, UserRole } from '../../database/entities/user.entity';
@@ -130,8 +131,8 @@ export class UsersController {
   }
 
   @Patch('me/notification-prefs')
-  updateNotificationPrefs(@CurrentUser() user: UserEntity, @Body() body: Record<string, boolean>) {
-    return this.emailService.updateNotificationPrefs(user.id, body);
+  updateNotificationPrefs(@CurrentUser() user: UserEntity, @Body() dto: UpdateNotificationPrefsDto) {
+    return this.emailService.updateNotificationPrefs(user.id, dto);
   }
 
   @Post('me/unsubscribe')

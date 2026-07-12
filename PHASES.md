@@ -533,6 +533,20 @@ See `memory/project_phase14_nav_invites.md` — completed as v1.0.1.
 Deferred cleanup items and design spikes. No ordering implied — promote to a
 numbered phase when ready to schedule.
 
+### Angular Major Version Upgrade (flagged 2026-07-12, Phase 23 audit)
+
+- `frontend/`'s `npm audit` shows 3 real high-severity runtime vulnerabilities
+  with no non-breaking fix: `@angular/core` (DOM clobbering & response-cache
+  poisoning), `@angular/service-worker` (sensitive header leakage on
+  cross-origin redirects), and `quill` (XSS via HTML export feature — no
+  patched version exists upstream yet, so this one may not be fixable by
+  upgrading alone)
+- Fixing the two Angular advisories requires jumping from Angular 19 to 22
+  (a 3-major-version upgrade) — real risk of breakage across standalone
+  components, Angular Material MDC, and the build tooling; needs its own
+  scoped phase with thorough manual QA, not a reflexive `npm audit fix --force`
+- `api/`'s `npm audit` is clean (0 vulnerabilities)
+
 ### NestJS v11 Upgrade & Calendar Feed Fix (2026-07-04) ✅ Done — released as v1.3.3
 
 - Upgraded `@nestjs/common`, `@nestjs/core`, `@nestjs/platform-express`,
@@ -1000,16 +1014,55 @@ tighter bespoke limit, without regressing the 7 pre-existing explicit
 throttles or any read route. The Brevo webhook requires a valid shared
 secret.
 
-## Phase 23 - Security Audit
+## Phase 23 — Security Audit ✅ Complete
 
--- Turn this into a command /security-audit
+Turned into a reusable `/security-audit` command (`.claude/commands/security-audit.md`)
+adapting a generic 20-point checklist to this stack (NestJS/MySQL/JWT cookies,
+self-hosted behind NGINX Proxy Manager, not Next.js/Vercel). Run via an
+Explore-agent audit against the real codebase, not from memory of what prior
+phases claimed.
 
-- 1. Passwords are hashed (bcrypt or argon2), never stored in plain text 2. Session tokens are in httpOnly cookies (not accessible by JavaScript) 3. NEXTAUTH_SECRET is a real random value, not a placeholder 4. Login endpoint has rate limiting (5 attempts per minute per IP) 5. Password reset tokens expire within 1 hour
+**Result:** 16 of 20 items already passed (password hashing, httpOnly
+cookies, JWT secret handling, password-reset expiry/single-use, HTML
+sanitization, upload validation, global `ValidationPipe` whitelisting, IDOR
+scoping, parameterized queries, response serialization, admin role guards,
+hard-delete anonymization, `.gitignore`, no hardcoded secrets, and CORS —
+same-origin via one nginx container, no `enableCors` needed).
 
-6. All user inputs are validated on the server side (not just client side) 7. HTML is sanitized from all text inputs (prevents XSS) 8. Input lengths are limited (prevents memory exhaustion) 9. File uploads are validated for type and size (if applicable) 10. API endpoints validate and reject unexpected parameters
-7. Every database query that fetches user data includes a userId check 12. No raw SQL queries, or raw SQL uses parameterized inputs 13. API responses don't leak sensitive data (no password hashes in JSON) 14. Admin endpoints (if any) require admin role verification 15. Deleted data is actually deleted (not just hidden)
-8. .env files are in .gitignore and never committed to git 17. No hardcoded secrets in source code 18. npm audit shows zero high/critical vulnerabilities 19. HTTPS is enforced (Vercel handles this automatically) 20. CORS is configured to allow only your domain (prevents cross-origin attacks)
-   "Run through this 20-point security checklist on the Task Tracker. For each point, check the codebase and tell me: PASS (it's secure), FAIL (there's a vulnerability), or N/A (doesn't apply). Fix every FAIL."
+**Fixed:**
+- Login endpoint was throttled at 10/min, not the required 5/min or tighter
+  — tightened to `@Throttle({ default: { limit: 5, ttl: 60000 } })`
+  (`api/src/modules/auth/auth.controller.ts`)
+- `PATCH /users/me/notification-prefs` took a raw `@Body() body: Record<string, boolean>`,
+  bypassing the global `ValidationPipe` entirely, then `Object.assign`'d it
+  directly onto the TypeORM entity before `save()` — including the
+  writable, unique `id`/`user_id` columns. A crafted body (e.g.
+  `{"id": <another member's preferences row PK>}`) would cause TypeORM's
+  `save()` to update someone else's row instead of the caller's own (IDOR
+  via mass assignment). Fixed with a real `UpdateNotificationPrefsDto`
+  (`api/src/modules/users/dto/update-notification-prefs.dto.ts`, one
+  `@IsOptional() @IsBoolean()` per toggle) and an explicit
+  `NOTIFICATION_PREF_FIELDS` whitelist loop in
+  `EmailService.updateNotificationPrefs` (`api/src/modules/email/email.service.ts`)
+  instead of blind `Object.assign`
+
+**Found, not fixed (logged to Post-Launch Backlog):**
+- `npm audit` on `frontend/` shows 3 real high-severity runtime
+  vulnerabilities (`@angular/core` DOM clobbering/cache poisoning,
+  `@angular/service-worker` cross-origin header leakage, `quill` XSS via
+  HTML export) — none have a non-breaking fix; all three require jumping
+  Angular from 19 to 22 (a 3-major-version upgrade), and quill has no
+  patched version published yet at all. `api/`'s `npm audit` is clean.
+- No HSTS header on the nginx config — reviewed with Rob, deliberately
+  skipped for now given the lock-in risk if HTTPS/cert renewal ever breaks
+  at the NGINX Proxy Manager layer (browsers would refuse HTTP fallback for
+  the `max-age` duration). Left as a known, accepted gap.
+
+**Definition of done:** All 20 checklist items evaluated against the actual
+codebase with file:line evidence, not assumed from prior phase notes. Every
+FAIL fixed except the two logged above, which are deliberate scope/risk
+calls made with Rob rather than oversights. Full 527-test e2e suite passes
+after the fixes. `/security-audit` command exists for repeat runs.
 
 ## Phase 24 - Clean up Dead Code
 
