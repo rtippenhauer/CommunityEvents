@@ -1,3 +1,14 @@
+/** Assumed dinner length for calendar entries — DinnerBears doesn't store an explicit end time. */
+export const EVENT_DURATION_MS = 2 * 60 * 60 * 1000;
+
+// RFC 5545 §3.1: a CONTENT-LINE may be no longer than 75 octets; continuation
+// lines (after the first fold) lose one octet to the leading space.
+const RFC5545_LINE_LIMIT = 75;
+const RFC5545_CONTINUATION_LIMIT = 74;
+// UTF-8 continuation-byte mask: 10xxxxxx bytes (0x80-0xBF) must never be split from their lead byte.
+const UTF8_CONTINUATION_MASK = 0xc0;
+const UTF8_CONTINUATION_TAG = 0x80;
+
 /** Escapes a value for use in an RFC 5545 TEXT property (SUMMARY, DESCRIPTION, LOCATION, etc). */
 export function icsEscape(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
@@ -36,16 +47,16 @@ export function toIcsUtcString(date: Date): string {
 /** Folds a CONTENT-LINE to RFC 5545's 75-octet limit, breaking only on UTF-8 character boundaries. */
 export function foldIcsLine(line: string): string {
   const bytes = Buffer.from(line, 'utf-8');
-  if (bytes.length <= 75) return line;
+  if (bytes.length <= RFC5545_LINE_LIMIT) return line;
 
   const parts: string[] = [];
   let pos = 0;
   let first = true;
 
   while (pos < bytes.length) {
-    const limit = first ? 75 : 74;
+    const limit = first ? RFC5545_LINE_LIMIT : RFC5545_CONTINUATION_LIMIT;
     let end = Math.min(pos + limit, bytes.length);
-    while (end > pos && (bytes[end] & 0xc0) === 0x80) end--;
+    while (end > pos && (bytes[end] & UTF8_CONTINUATION_MASK) === UTF8_CONTINUATION_TAG) end--;
     parts.push(bytes.subarray(pos, end).toString('utf-8'));
     pos = end;
     first = false;

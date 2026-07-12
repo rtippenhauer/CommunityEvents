@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import { UserEntity } from '../../database/entities/user.entity';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
-import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine } from '../../common/utils/ics.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 
 export interface CalendarSettingsResponse {
   url: string;
@@ -200,7 +200,7 @@ export class CalendarService {
   ): string[] {
 
     const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
-    const endUtc = new Date(startUtc.getTime() + 2 * 60 * 60 * 1000);
+    const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
     const dtStart = toIcsUtcString(startUtc);
     const dtEnd = toIcsUtcString(endUtc);
     const lastMod = toIcsUtcString(new Date(event.updatedAt));
@@ -302,7 +302,7 @@ export class CalendarService {
     appUrl: string,
   ): string {
     const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
-    const endUtc = new Date(startUtc.getTime() + 2 * 60 * 60 * 1000);
+    const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
     const dtStart = toIcsUtcString(startUtc);
     const dtEnd = toIcsUtcString(endUtc);
     const now = new Date();

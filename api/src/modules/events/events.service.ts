@@ -25,7 +25,7 @@ import { AchievementsService } from '../community/achievements.service';
 import { ConfigService } from '@nestjs/config';
 import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
-import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine } from '../../common/utils/ics.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 
 export interface EventFilters {
   cityId?: number;
@@ -974,7 +974,7 @@ export class EventsService {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
 
     const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
-    const endUtc = new Date(startUtc.getTime() + 2 * 60 * 60 * 1000);
+    const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
 
     const lastMod = toIcsUtcString(new Date(event.updatedAt));
     const sequence = Math.floor(new Date(event.updatedAt).getTime() / 60000) % 999999;
