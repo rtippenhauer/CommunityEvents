@@ -5,7 +5,7 @@ import { Observable, tap } from 'rxjs';
 export type FeedbackCategory = 'bug' | 'feature_request' | 'comment';
 export type FeedbackStatus = 'open' | 'in_progress' | 'resolved' | 'shipped' | 'closed' | 'wont_fix';
 
-export interface FeedbackUser {
+interface FeedbackUser {
   id: number;
   fullName: string;
   email: string;

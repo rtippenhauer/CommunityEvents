@@ -8,7 +8,7 @@ import { In, Repository } from 'typeorm';
 import * as sanitizeHtml from 'sanitize-html';
 import { AnnouncementEntity, AnnouncementStatus } from '../../database/entities/announcement.entity';
 import { AnnouncementCommentEntity } from '../../database/entities/announcement-comment.entity';
-import { ContentFlagEntity, FlagContentType, FlagStatus } from '../../database/entities/content-flag.entity';
+import { ContentFlagEntity, FlagStatus } from '../../database/entities/content-flag.entity';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PushService } from '../notifications/push.service';

@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
-export interface AnnouncementAuthor {
+interface AnnouncementAuthor {
   id: number;
   fullName: string;
   profilePhotoPath: string | null;

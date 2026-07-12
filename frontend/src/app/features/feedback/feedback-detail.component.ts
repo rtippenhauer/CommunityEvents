@@ -23,7 +23,6 @@ import {
 } from '../../core/services/feedback.service';
 import { ReleasesService, Release } from '../../core/services/releases.service';
 import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
-import { switchMap } from 'rxjs';
 
 @Component({
   selector: 'app-feedback-detail',

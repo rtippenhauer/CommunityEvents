@@ -18,7 +18,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { EventsService, Event, GuestLink, PublicRsvp, Rsvp, RsvpStatus } from '../../../core/services/events.service';
+import { EventsService, Event, GuestLink, Rsvp, RsvpStatus } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CommunityService, EventAchievement } from '../../../core/services/community.service';
 import { EventCommentsService, Comment, MemberSearchResult } from '../../../core/services/event-comments.service';
@@ -29,6 +29,7 @@ import { HasUnsavedChanges } from '../../../core/guards/unsaved-changes.guard';
 import { ShareInvitesDialogComponent } from './share-invites-dialog.component';
 import { AttendanceDialogComponent } from './attendance-dialog.component';
 import { AchievementAdminDialogComponent } from './achievement-admin-dialog.component';
+import { formatEventTime, initials as sharedInitials } from '../../../shared/utils/format-event';
 
 @Component({
   selector: 'app-event-detail',
@@ -1712,10 +1713,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   }
 
   formatTime(time: string): string {
-    const [h, m] = time.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const hour = h % 12 || 12;
-    return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
+    return formatEventTime(time);
   }
 
   mapsUrl(): string {
@@ -1745,7 +1743,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   }
 
   initials(name: string): string {
-    return name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+    return sharedInitials(name);
   }
 
   namedGuests(names: string[] | null): string {

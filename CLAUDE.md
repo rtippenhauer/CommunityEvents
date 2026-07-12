@@ -33,12 +33,12 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-Phase 23 (Security Audit & Hardening) completed 2026-07-12 — see PHASES.md for full details. No next phase has been chosen yet; PHASES.md has one remaining rough, not-yet-scoped candidate (Phase 24 dead-code scan) plus a new Post-Launch Backlog entry for an Angular 19→22 major upgrade (needed to close 3 real npm-audit vulnerabilities found this phase) — resolve with Rob before starting either.
+Phase 24 (Dead Code & Duplication Cleanup) completed 2026-07-12 — see PHASES.md for full details. No next phase has been chosen yet; the only open item is the Post-Launch Backlog's scoped-but-not-started Angular 19→22 major upgrade (needed to close 3 real npm-audit vulnerabilities found in Phase 23) — resolve with Rob before starting.
 
 **Follow-up needed from Rob (Phase 22, still open):** `.env.example` was outside that session's write permissions — add `BREVO_WEBHOOK_SECRET=` there next to `CLOUDFLARE_EMAIL_SECRET`, set a real value in stage/prod `.env`, and update the registered webhook URL in Brevo's dashboard to `.../email/webhook/brevo?secret=<value>`.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

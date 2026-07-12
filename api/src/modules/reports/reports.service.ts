@@ -65,7 +65,7 @@ export class ReportsService {
       }),
     );
 
-    void this.notifyMods(info.label, info.preview, dto.contentType, dto.contentId);
+    void this.notifyMods(info.label, info.preview);
   }
 
   async getPendingCount(): Promise<number> {
@@ -168,12 +168,7 @@ export class ReportsService {
     }
   }
 
-  private async notifyMods(
-    label: string,
-    preview: string,
-    contentType: ReportContentType,
-    contentId: number,
-  ): Promise<void> {
+  private async notifyMods(label: string, preview: string): Promise<void> {
     const mods = await this.userRepo.find({
       where: [{ role: UserRole.ADMIN }, { role: UserRole.MODERATOR }],
       select: ['id'],

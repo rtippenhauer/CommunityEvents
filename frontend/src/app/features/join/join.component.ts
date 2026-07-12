@@ -11,6 +11,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { InvitesService, InvitePreview } from '../../core/services/invites.service';
 import { AuthService } from '../../core/services/auth.service';
 import { environment } from '../../../environments/environment';
+import { formatEventTime } from '../../shared/utils/format-event';
 
 type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked';
 
@@ -538,9 +539,6 @@ export class JoinComponent implements OnInit {
   }
 
   formatTime(time: string): string {
-    const [h, m] = time.split(':').map(Number);
-    const suffix = h >= 12 ? 'PM' : 'AM';
-    const hour = h % 12 || 12;
-    return `${hour}:${String(m).padStart(2, '0')} ${suffix}`;
+    return formatEventTime(time);
   }
 }

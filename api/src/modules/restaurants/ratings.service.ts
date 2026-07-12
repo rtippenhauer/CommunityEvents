@@ -14,7 +14,7 @@ import { PointsService } from '../community/points.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 
-export interface RatingAggregate {
+interface RatingAggregate {
   count: number;
   avgFood: number | null;
   avgService: number | null;
@@ -23,7 +23,7 @@ export interface RatingAggregate {
   avgOverall: number | null;
 }
 
-export interface ReviewItem {
+interface ReviewItem {
   id: number;
   memberName: string;
   memberPhoto: string | null;
@@ -36,7 +36,7 @@ export interface ReviewItem {
   createdAt: Date;
 }
 
-export interface EligibleEvent {
+interface EligibleEvent {
   id: number;
   title: string;
   eventDate: string;

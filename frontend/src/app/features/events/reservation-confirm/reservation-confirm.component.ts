@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, ReservationConfirmInfo } from '../../../core/services/events.service';
+import { formatEventTime } from '../../../shared/utils/format-event';
 
 type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
 
@@ -220,8 +221,6 @@ export class ReservationConfirmComponent implements OnInit {
   }
 
   formatTime(time: string): string {
-    const [h, m] = time.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+    return formatEventTime(time);
   }
 }

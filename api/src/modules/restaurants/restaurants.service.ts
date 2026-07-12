@@ -8,7 +8,6 @@ import { UserEntity } from '../../database/entities/user.entity';
 import { GeocodingService } from './geocoding.service';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
-import { extname } from 'path';
 import { toPublicUser } from '../../common/utils/public-user.util';
 
 export interface RestaurantQuery {
@@ -16,7 +15,7 @@ export interface RestaurantQuery {
   search?: string;
 }
 
-export interface ImportDetail {
+interface ImportDetail {
   name: string;
   status: 'inserted' | 'skipped' | 'error';
   reason?: string;
@@ -377,6 +376,3 @@ export class RestaurantsService {
     return parts.length ? parts.join(', ') : null;
   }
 }
-
-// re-export for use in controller
-export { extname };

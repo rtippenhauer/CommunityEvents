@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, GuestLinkInfo } from '../../../core/services/events.service';
+import { formatEventTime } from '../../../shared/utils/format-event';
 
 type PageState = 'loading' | 'open' | 'used' | 'expired' | 'cancelled' | 'error' | 'confirmed' | 'cancel-confirm';
 
@@ -442,10 +443,7 @@ export class GuestRsvpComponent implements OnInit {
   }
 
   formatTime(time: string): string {
-    const [h, m] = time.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const hour = h % 12 || 12;
-    return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
+    return formatEventTime(time);
   }
 
   mapsUrl(): string {

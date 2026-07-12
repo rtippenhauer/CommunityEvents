@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { Event } from '../../../core/services/events.service';
+import { formatEventTime, initials as sharedInitials } from '../../utils/format-event';
 
 @Component({
   selector: 'app-event-card',
@@ -270,13 +271,10 @@ export class EventCardComponent {
   }
 
   initials(name: string): string {
-    return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+    return sharedInitials(name);
   }
 
   formatTime(time: string): string {
-    const [h, m] = time.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const hour = h % 12 || 12;
-    return `${hour}:${String(m).padStart(2, '0')} ${ampm}`;
+    return formatEventTime(time);
   }
 }

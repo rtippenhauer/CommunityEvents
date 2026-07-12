@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
-export type InviteFlavor = 'member' | 'non_validated';
+type InviteFlavor = 'member' | 'non_validated';
 
 export interface InvitePreview {
   token: string;

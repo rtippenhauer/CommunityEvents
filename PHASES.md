@@ -533,19 +533,90 @@ See `memory/project_phase14_nav_invites.md` — completed as v1.0.1.
 Deferred cleanup items and design spikes. No ordering implied — promote to a
 numbered phase when ready to schedule.
 
-### Angular Major Version Upgrade (flagged 2026-07-12, Phase 23 audit)
+### Angular Major Version Upgrade (19 → 22) 📋 Scoped 2026-07-12, not started
 
-- `frontend/`'s `npm audit` shows 3 real high-severity runtime vulnerabilities
-  with no non-breaking fix: `@angular/core` (DOM clobbering & response-cache
-  poisoning), `@angular/service-worker` (sensitive header leakage on
-  cross-origin redirects), and `quill` (XSS via HTML export feature — no
-  patched version exists upstream yet, so this one may not be fixable by
-  upgrading alone)
-- Fixing the two Angular advisories requires jumping from Angular 19 to 22
-  (a 3-major-version upgrade) — real risk of breakage across standalone
-  components, Angular Material MDC, and the build tooling; needs its own
-  scoped phase with thorough manual QA, not a reflexive `npm audit fix --force`
-- `api/`'s `npm audit` is clean (0 vulnerabilities)
+**This is live production exposure, not a someday item** — DinnerBears is
+deployed with real members using it today, not pre-launch. `frontend/`'s
+`npm audit` shows 3 real high-severity runtime vulnerabilities with no
+non-breaking fix: `@angular/core` (DOM clobbering & response-cache
+poisoning), `@angular/service-worker` (sensitive header leakage on
+cross-origin redirects), and `quill` (XSS via HTML export — no patched
+version exists upstream yet, so this one may not be fixable by upgrading
+alone). `api/`'s `npm audit` is clean (0 vulnerabilities); this is
+frontend-only. Rob should weigh scheduling this against other work now that
+scope is known, rather than leaving it indefinitely deferred.
+
+**Path:** 19 → 20 → 21 → 22, one major hop at a time (not straight to 22)
+— each hop run via `ng update @angular/core@<major> @angular/cli@<major>`,
+which applies Angular's official codemods automatically; re-verify after
+each hop rather than batching all three.
+
+**Confirmed version/compatibility facts (checked directly against the npm
+registry 2026-07-12, not assumed):**
+- Stable latest is 22.0.6 (22.1 is still `-next` prerelease) — 22 is a real
+  stopping point, not a moving target
+- `ngx-quill` must be bumped in lockstep with each hop — it pins tightly to
+  one Angular major per line: `27.x`→Angular 19 (current), `28.x`→20,
+  `29.x`/`30.x`→21, `31.x`→22. Confirm this ships as an `ng update`-compatible
+  package so the hop isn't silently skipped.
+- TypeScript: Angular 22 requires **TypeScript ≥ 6.0** — current pin is
+  `~5.6.0` in `frontend/package.json`, needs bumping at the final hop.
+  Scoped to the frontend workspace only (`api/` has its own independent
+  TypeScript version).
+- **Node.js — real infrastructure blocker, not just a frontend concern:**
+  the root `Dockerfile` pins `node:20-alpine` across all three stages
+  (`frontend-build`, `api-build`, and the final runtime image — API and
+  frontend share one image). Angular 22's CLI requires Node
+  `^22.22.3 || ^24.15.0 || >=26.0.0` — Node 20 doesn't satisfy that at all.
+  The Dockerfile's base image must bump to at least `node:22-alpine` before
+  or alongside the final hop, which also changes the Node version the
+  NestJS API runs on — needs its own verification pass (TypeORM/mysql2/etc.
+  behavior on the new Node major), not just an Angular concern.
+
+**Highest-risk item — verify before committing to the 22 hop:** Angular
+22's changelog (fetched directly from `CHANGELOG.md` this session, not
+recalled from training data — re-verify against the official migration
+guide at execution time since automated summarization can miss nuance)
+lists *"Component with undefined `changeDetection` property are now
+`OnPush` by default."* **Zero of this app's 73 components currently set
+`ChangeDetectionStrategy.OnPush` explicitly** — confirmed by direct grep.
+If that changelog line is accurate, all 73 components would silently
+switch from `Default` to `OnPush` change-detection behavior in one hop.
+This is the kind of regression that doesn't error or fail a build — it
+just makes some view silently stop updating after a mutation, and with
+**zero frontend test coverage** (confirmed separately — `ng test` is wired
+up but no `.spec.ts` files exist), nothing catches it automatically. This
+needs deliberate manual verification of every major interactive
+surface after the 22 hop specifically, not just a spot-check.
+
+**Checked and confirmed NOT a concern for this codebase** (grepped
+directly, not assumed clean):
+- No `ComponentFactoryResolver`/`ComponentFactory` usage (removed in v22)
+- No Hammer.js integration (removed in v22)
+- No `provideRoutes()` usage (removed in v22)
+- No `reportProgress`/upload-progress-event usage (v22 changes the default
+  `HttpClient` backend in a way that affects upload progress reporting)
+- The two `Validators.min()`/`Validators.max()` call sites
+  (`event-form-dialog.component.ts`, `restaurant-form-dialog.component.ts`)
+  both pass numeric literals, not strings — v22 drops string support for
+  these validators, doesn't affect this codebase
+
+**Worth a quick check but not blocking:** Router's
+`paramsInheritanceStrategy` now defaults to `'always'` in v22 (currently
+unset anywhere in this app, so it's riding the old default) — only matters
+for nested routes where both parent and child define route params; scan
+`app.routes.ts` for such nesting during the 21→22 hop.
+
+**Rollout plan given the risk profile:** do the 3-hop upgrade on a branch,
+build and deploy to the `stage` Docker image first (never straight to
+`latest`/prod), then manually walk every major golden path on stage before
+proceeding — login (Google/Facebook/email), RSVP flow, event
+create/edit/admin dialogs, achievements/leaderboard, calendar feed, PWA
+install + push notifications, and the Quill-based rich-text editors
+(feedback/announcements/releases). Only promote to prod via the normal
+`/release` flow once stage checks out clean. Re-run the full 527-test
+`api/` e2e suite after the Node/Docker base image bump specifically, since
+that's the one part of this upgrade that touches the API's runtime too.
 
 ### NestJS v11 Upgrade & Calendar Feed Fix (2026-07-04) ✅ Done — released as v1.3.3
 
@@ -1064,7 +1135,119 @@ FAIL fixed except the two logged above, which are deliberate scope/risk
 calls made with Rob rather than oversights. Full 527-test e2e suite passes
 after the fixes. `/security-audit` command exists for repeat runs.
 
-## Phase 24 - Clean up Dead Code
+## Phase 24 — Dead Code & Duplication Cleanup ✅ Complete
 
-"Scan the entire codebase and identify dead code. Check for: unused imports in every file, exported functions that nothing imports, components that no page or layout renders, files that nothing references. List every instance with the file path and line number."
-"Find functions, utilities, or components that do the same thing but exist in different files. Group them by function. For each group, recommend which version to keep and which to delete."
+Scoped 2026-07-12 alongside the Phase 23 audit, executed the same day. Two
+independent sub-tasks, since no single tool covers both.
+
+### Sub-task A — Unused code (tool-assisted)
+
+Added `knip.json` to both workspaces (`entry`/`project` config for
+migrations, one-off scripts, and `test/*.e2e-spec.ts`, which knip
+misreads as unused without it) and ran `npx knip`, cross-checking every
+finding against a plain grep before touching anything — knip's static
+graph doesn't see string/DB-value comparisons, so several flagged enum
+members (`InviteType.GUEST_RSVP`, `InviteType.SHAREABLE_RSVP`,
+`ReviewAction.DISMISS`) were confirmed live and deliberately left alone.
+Also ran `eslint` (catches unused imports/vars/params that knip's
+export-level scan doesn't) and a full `ng build --configuration
+production` (Angular's AOT compiler resolves every template binding,
+which caught two unused-import cases neither knip nor eslint saw:
+`RouterLink` in both legal pages).
+
+**Removed:**
+- `api/src/modules/email/gmail.service.ts` — already an empty stub
+  ("Replaced by ResendService") confirming its own deprecation; deleted
+  with Rob's sign-off
+- `api/src/database/entities/app-config.entity.ts` — unused TypeORM
+  entity for an `app_config` table seeded at launch with values (invite
+  expiry hours, max guests, inactivity thresholds) that turned out to be
+  hardcoded elsewhere in the app instead of ever being read from this
+  table. Entity deleted; the DB table/migration were deliberately left
+  alone per Rob (not worth a schema change) — it remains available if
+  admin-configurable settings are ever built
+- `api/src/scripts/import-restaurants.ts` (whole directory) — the Phase
+  3.5 one-time historical-import script, removed per Rob rather than
+  fixed: it required the `xlsx` package, which isn't installed and whose
+  only npm-published version (0.18.5) has unpatched prototype-pollution/
+  ReDoS advisories (SheetJS ships the real fix only via their own CDN)
+- `api/src/README.ts`, `frontend/src/app/README.ts` — leftover `nest
+  new`/`ng new` scaffolding comments
+- `frontend/src/app/features/feedback/feedback-submit.component.ts` —
+  orphaned; `/feedback/new` loads `feedback-new.component.ts` instead
+- 9 stray 0-byte files at the repo root (`=`, `CACHED`, `CANCELED`,
+  `[build`, `[internal]`, `[stage-1`, `exporting`, `naming`,
+  `transferring`) — fragments of a Docker BuildKit log accidentally
+  committed as files back in Phase 1 (2026-06-04), never referenced
+  anywhere
+- ~20 files' worth of unused imports/exports/constructor-injected
+  dependencies/function params across both workspaces (e.g. an
+  `EmailDispatcherService` import of `EmailStatus`, unused `rsvpRepo`/
+  `inviteRepo` injections in `PointsService`, an unused `res` param on
+  `AuthController.register`, a dead `TEMPLATE_ENV_KEYS` export in
+  `email.constants.ts` that duplicated a private map already used in
+  `brevo.service.ts`)
+- `api/eslint.config.js`: added `argsIgnorePattern`/`varsIgnorePattern:
+  '^_'` to `no-unused-vars` so the codebase's existing underscore-prefix
+  convention (used for required-but-unused migration `down()` params)
+  is actually recognized instead of silently relying on rule positional
+  quirks
+
+**Dependency hygiene** (`api/package.json`): removed 4 genuinely unused
+devDependencies (`@typescript-eslint/eslint-plugin`, `@typescript-eslint/
+parser`, `eslint-plugin-prettier`, `source-map-support`); added 5
+packages that were used directly in source but only ever pulled in
+transitively (`express`, `dotenv`, `ms`, `multer`, `@eslint/js`) — a
+latent fragility, since a version bump anywhere upstream could have
+silently broken a `require()` that wasn't guaranteed by anything in
+`package.json`. `frontend/package.json`: removed unused
+`@angular/platform-browser-dynamic` (app uses `bootstrapApplication`,
+not the older `platformBrowserDynamic` bootstrap).
+
+### Sub-task B — Duplicate functions/components across files
+
+Delegated the broad read-through to an Explore agent (semantic
+similarity isn't tool-assisted), then personally verified and acted on
+its findings:
+
+- **`formatTime()`/`initials()`** were copy-pasted (near byte-identical)
+  across 5 Angular components and 2 components respectively — extracted
+  to `frontend/src/app/shared/utils/format-event.ts`; each component's
+  method now delegates to the shared function so no template changed
+- **RFC 5545 ICS-generation logic** — Eastern→UTC time conversion,
+  75-octet line-folding, and TEXT-value escaping — was independently
+  reimplemented in `events.service.ts`'s `buildIcs()` instead of reusing
+  `calendar.service.ts`'s private versions (which itself had the escape
+  function duplicated twice internally). Extracted to
+  `api/src/common/utils/ics.util.ts` (`icsEscape`, `eventTimeToUtc`,
+  `toIcsUtcString`, `foldIcsLine`); both services now import the same
+  functions. Highest-risk change of the phase (compliance-sensitive,
+  78 calendar-related tests) — verified with a full e2e run immediately
+  after, no drift
+- 9 more inline copies of the same time-formatting expression within
+  `events.service.ts` itself (across different `send*Email` methods)
+  consolidated into one private `formatEventTimeDisplay()` helper
+- Checked and ruled out: `role === UserRole.ADMIN || role === UserRole.
+  MODERATOR` appears ~15+ times across services/controllers, but each
+  instance is a distinct authorization decision using a shared enum —
+  a reused idiom, not duplicated logic, so left as-is
+
+### Execution safety
+
+Followed the batch-and-verify discipline throughout: full `bash
+scripts/run-e2e-tests.sh` (527/527) after the dependency-hygiene batch,
+after Sub-task A's source edits, and again after the ICS consolidation.
+`frontend/` has no automated test coverage, so changes there were
+verified via `ng build --configuration production` (full AOT template
+compilation) plus a live `ng serve` + Playwright smoke-check of every
+page reachable without a running backend (home, `/privacy`, `/terms`);
+authenticated pages weren't reachable in the working environment (no
+local API/DB session available), so those relied on the AOT build
+catching any broken template binding — which it does, by construction.
+
+**Definition of done:** Sub-task A's findings reviewed and cross-checked
+before any deletion, genuine dead code removed in verified batches with
+zero test regressions. Sub-task B's duplicate-code report acted on with
+the same discipline, including the highest-risk cross-service ICS
+consolidation. Full 527-test e2e suite green throughout; frontend
+verified via production build + reachable-page smoke test.

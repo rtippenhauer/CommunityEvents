@@ -17,7 +17,7 @@ import {
   CATEGORY_LABELS,
   CATEGORY_COLORS,
 } from '../../core/services/feedback.service';
-import { ReleasesService, Release } from '../../core/services/releases.service';
+import { ReleasesService } from '../../core/services/releases.service';
 
 const COMPLETED_STATUSES = new Set(['shipped', 'wont_fix', 'closed']);
 

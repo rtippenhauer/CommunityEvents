@@ -37,3 +37,19 @@ once that release's draft has been created.
 - Fixed a gap where a member's notification-preferences update could,
   under a crafted request, overwrite another member's preferences instead
   of their own
+
+## Code Cleanup (Phase 24)
+
+No user-visible changes — internal maintenance to keep the codebase easy to
+maintain going forward, verified with the full automated test suite before
+and after every change.
+
+- Removed unused code and files across the app, including a leftover email
+  provider that had already been replaced and a one-time data-import script
+  whose job was long finished
+- Consolidated a handful of places where the same logic (like formatting
+  event times or building calendar invites) had been copy-pasted into
+  several files, into a single shared version each
+- Cleaned up outdated project dependencies — removed several no-longer-used
+  packages and added a few that were being relied on without being formally
+  listed

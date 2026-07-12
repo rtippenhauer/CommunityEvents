@@ -11,7 +11,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../../core/services/auth.service';
 import { ReportsService, ReportContentType } from '../../../core/services/reports.service';
 
-export interface ReportDialogResult {
+interface ReportDialogResult {
   reason?: string;
 }
 
@@ -51,7 +51,7 @@ export interface ReportDialogResult {
     mat-dialog-content { min-width: 320px; }
   `],
 })
-export class ReportDialogComponent {
+class ReportDialogComponent {
   readonly reasonCtrl = inject(NonNullableFormBuilder).control('');
   private readonly ref = inject(MatDialogRef<ReportDialogComponent, ReportDialogResult>);
 

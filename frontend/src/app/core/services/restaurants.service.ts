@@ -9,7 +9,7 @@ export interface RestaurantPhoto {
   sortOrder: number;
 }
 
-export interface RestaurantUser {
+interface RestaurantUser {
   id: number;
   fullName: string;
   profilePhotoPath: string | null;
@@ -57,7 +57,7 @@ export interface UpdateRestaurantPayload extends Partial<CreateRestaurantPayload
   isActive?: boolean;
 }
 
-export interface RatingAggregate {
+interface RatingAggregate {
   count: number;
   avgFood: number | null;
   avgService: number | null;
@@ -66,7 +66,7 @@ export interface RatingAggregate {
   avgOverall: number | null;
 }
 
-export interface ReviewItem {
+interface ReviewItem {
   id: number;
   memberId: number;
   memberName: string;

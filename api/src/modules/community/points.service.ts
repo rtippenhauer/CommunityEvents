@@ -2,9 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { MemberPointEntity, PointType } from '../../database/entities/member-point.entity';
-import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { EventEntity } from '../../database/entities/event.entity';
-import { InviteEntity } from '../../database/entities/invite.entity';
 import { UserRole } from '../../database/entities/user.entity';
 import { AchievementsService } from './achievements.service';
 
@@ -31,12 +29,8 @@ export class PointsService {
   constructor(
     @InjectRepository(MemberPointEntity)
     private readonly pointRepo: Repository<MemberPointEntity>,
-    @InjectRepository(EventRsvpEntity)
-    private readonly rsvpRepo: Repository<EventRsvpEntity>,
     @InjectRepository(EventEntity)
     private readonly eventRepo: Repository<EventEntity>,
-    @InjectRepository(InviteEntity)
-    private readonly inviteRepo: Repository<InviteEntity>,
     private readonly achievementsService: AchievementsService,
     private readonly dataSource: DataSource,
   ) {}
@@ -52,7 +46,7 @@ export class PointsService {
     );
 
     await this.achievementsService.checkAttendanceAchievements(userId);
-    await this.checkInvitePointForInviter(userId, eventId);
+    await this.checkInvitePointForInviter(userId);
   }
 
   async awardCoordinator(userId: number, eventId: number): Promise<void> {
@@ -97,7 +91,7 @@ export class PointsService {
     await this.achievementsService.checkRatingAchievements(userId);
   }
 
-  private async checkInvitePointForInviter(attendeeId: number, eventId: number): Promise<void> {
+  private async checkInvitePointForInviter(attendeeId: number): Promise<void> {
     // Only fire on first attended dinner
     const priorAttended = await this.pointRepo.count({
       where: { userId: attendeeId, pointType: PointType.ATTENDANCE },
@@ -185,7 +179,7 @@ export class PointsService {
 
     // Determine top point type per user
     const userIds = rows.map((r) => r.userId);
-    let topTypeMap: Record<number, PointType | null> = {};
+    const topTypeMap: Record<number, PointType | null> = {};
     if (userIds.length > 0) {
       const topRows = await this.dataSource
         .createQueryBuilder()

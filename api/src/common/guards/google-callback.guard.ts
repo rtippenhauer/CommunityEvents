@@ -2,7 +2,6 @@ import { ExecutionContext, Injectable } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
-import { AuthFlowError } from '../errors/auth-flow.error';
 
 @Injectable()
 export class GoogleCallbackGuard extends AuthGuard('google') {

@@ -13,14 +13,11 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { QuillModule } from 'ngx-quill';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ReleasesService, Release } from '../../../core/services/releases.service';
 import { normalizeNbsp } from '../../../shared/utils/normalize-nbsp';
 import {
-  FeedbackService,
   FeedbackItem,
   CATEGORY_LABELS,
-  STATUS_LABELS,
 } from '../../../core/services/feedback.service';
 
 @Component({
@@ -263,8 +260,6 @@ import {
 export class AdminReleasesComponent implements OnInit {
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly releasesService = inject(ReleasesService);
-  private readonly feedbackService = inject(FeedbackService);
-  private readonly sanitizer = inject(DomSanitizer);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
 

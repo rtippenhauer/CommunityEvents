@@ -263,7 +263,6 @@ export class AuthController {
   async register(
     @Body() dto: RegisterDto,
     @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
     const subdomain = req.headers['x-subdomain'];
     const city = await this.citiesService.findBySubdomainOrNull(

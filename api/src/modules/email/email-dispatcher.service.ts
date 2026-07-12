@@ -8,7 +8,7 @@ import {
   EmailProvider,
 } from '../../database/entities/email-queue.entity';
 import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
-import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
+import { UserEntity } from '../../database/entities/user.entity';
 import { BrevoService } from './brevo.service';
 import { ResendService } from './resend.service';
 import { EmailTemplateName } from './email.constants';

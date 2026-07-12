@@ -25,6 +25,7 @@ import { AchievementsService } from '../community/achievements.service';
 import { ConfigService } from '@nestjs/config';
 import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine } from '../../common/utils/ics.util';
 
 export interface EventFilters {
   cityId?: number;
@@ -349,7 +350,7 @@ export class EventsService {
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
-    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const timeDisplay = this.formatEventTimeDisplay(eh, emin);
 
     const reasonBlock = event.cancelledReason
       ? `<p style="margin:16px 0 0;padding:12px 16px;background:#fff3e0;border-left:3px solid #e65100;border-radius:4px;font-size:0.9rem;color:#444">${event.cancelledReason}</p>`
@@ -429,7 +430,7 @@ export class EventsService {
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
-    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const timeDisplay = this.formatEventTimeDisplay(eh, emin);
     const eventUrl = `${appUrl}/events/${event.id}`;
 
     const buildHtml = (recipientName: string) => `<!DOCTYPE html>
@@ -606,7 +607,7 @@ export class EventsService {
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric',
     });
-    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const timeDisplay = this.formatEventTimeDisplay(eh, emin);
     const eventUrl = `${appUrl}/events/${event.id}`;
 
     for (const member of members) {
@@ -679,7 +680,7 @@ export class EventsService {
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric',
     });
-    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const timeDisplay = this.formatEventTimeDisplay(eh, emin);
     const eventUrl = `${appUrl}/events/${event.id}`;
 
     const html = `<!DOCTYPE html>
@@ -821,6 +822,10 @@ export class EventsService {
     return { message: 'RSVP confirmed' };
   }
 
+  private formatEventTimeDisplay(hour: number, minute: number): string {
+    return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
+  }
+
   private buildGoogleCalendarUrl(event: EventEntity): string {
     const [y, m, d] = event.eventDate.split('-').map(Number);
     const [h, min] = event.eventTime.split(':').map(Number);
@@ -842,7 +847,6 @@ export class EventsService {
 
   private buildGuestEmail(params: {
     appUrl: string;
-    recipientName: string;
     inviterName: string | null;
     subject: string;
     eventTitle: string;
@@ -860,7 +864,7 @@ export class EventsService {
     icsUrl: string;
   }): string {
     const {
-      appUrl, recipientName, inviterName, eventTitle, eventDateDisplay, eventTimeDisplay,
+      appUrl, inviterName, eventTitle, eventDateDisplay, eventTimeDisplay,
       restaurantName, restaurantAddress, restaurantLat, restaurantLng,
       photoUrl, description, additionalInfo, manageUrl, googleCalUrl, icsUrl,
     } = params;
@@ -968,26 +972,11 @@ export class EventsService {
 
   private buildIcs(event: EventEntity, descriptionSuffix?: string): string {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
-    const esc = (s: string) =>
-      s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
-    const pad = (n: number) => String(n).padStart(2, '0');
 
-    // Convert Eastern stored time → UTC for RFC 5545 compliance
-    const [y, m, d] = event.eventDate.split('-').map(Number);
-    const [h, min] = event.eventTime.split(':').map(Number);
-    const approx = new Date(Date.UTC(y, m - 1, d, h, min, 0));
-    const tzParts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false,
-    }).formatToParts(approx);
-    const getP = (t: string) => parseInt(tzParts.find((p) => p.type === t)?.value ?? '0', 10);
-    const diffMin = (h * 60 + min) - (getP('hour') % 24 * 60 + getP('minute'));
-    const startUtc = new Date(approx.getTime() + diffMin * 60000);
+    const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
     const endUtc = new Date(startUtc.getTime() + 2 * 60 * 60 * 1000);
-    const toUtcStr = (dt: Date) =>
-      `${dt.getUTCFullYear()}${pad(dt.getUTCMonth() + 1)}${pad(dt.getUTCDate())}` +
-      `T${pad(dt.getUTCHours())}${pad(dt.getUTCMinutes())}${pad(dt.getUTCSeconds())}Z`;
 
-    const lastMod = toUtcStr(new Date(event.updatedAt));
+    const lastMod = toIcsUtcString(new Date(event.updatedAt));
     const sequence = Math.floor(new Date(event.updatedAt).getTime() / 60000) % 999999;
 
     const descParts: string[] = [`🍽️ ${event.restaurantName}`];
@@ -995,21 +984,6 @@ export class EventsService {
     if (event.description) descParts.push('', event.description);
     if (event.additionalInfo) descParts.push('', event.additionalInfo);
     if (descriptionSuffix) descParts.push('', descriptionSuffix);
-
-    const fold = (line: string): string => {
-      const bytes = Buffer.from(line, 'utf-8');
-      if (bytes.length <= 75) return line;
-      const parts: string[] = [];
-      let pos = 0; let first = true;
-      while (pos < bytes.length) {
-        const limit = first ? 75 : 74;
-        let end = Math.min(pos + limit, bytes.length);
-        while (end > pos && (bytes[end] & 0xc0) === 0x80) end--;
-        parts.push(bytes.slice(pos, end).toString('utf-8'));
-        pos = end; first = false;
-      }
-      return parts.join('\r\n ');
-    };
 
     const location = event.restaurantAddress
       ? `${event.restaurantName}, ${event.restaurantAddress}`
@@ -1023,15 +997,15 @@ export class EventsService {
       'METHOD:PUBLISH',
       'BEGIN:VEVENT',
       `UID:dinnerbears-event-${event.id}@dinnerbears.com`,
-      `DTSTART:${toUtcStr(startUtc)}`,
-      `DTEND:${toUtcStr(endUtc)}`,
+      `DTSTART:${toIcsUtcString(startUtc)}`,
+      `DTEND:${toIcsUtcString(endUtc)}`,
       `LAST-MODIFIED:${lastMod}`,
       `SEQUENCE:${sequence}`,
       `STATUS:${event.status === EventStatus.CANCELLED ? 'CANCELLED' : 'CONFIRMED'}`,
-      fold(`SUMMARY:${esc(`DinnerBears Dinner at ${event.restaurantName}`)}`),
-      fold(`LOCATION:${esc(location)}`),
-      fold(`DESCRIPTION:${esc(descParts.join('\n'))}`),
-      fold(`URL:${appUrl}/events/${event.id}`),
+      foldIcsLine(`SUMMARY:${icsEscape(`DinnerBears Dinner at ${event.restaurantName}`)}`),
+      foldIcsLine(`LOCATION:${icsEscape(location)}`),
+      foldIcsLine(`DESCRIPTION:${icsEscape(descParts.join('\n'))}`),
+      foldIcsLine(`URL:${appUrl}/events/${event.id}`),
       `ORGANIZER;CN=DinnerBears:mailto:noreply@dinnerbears.com`,
       'END:VEVENT',
       'END:VCALENDAR',
@@ -1113,7 +1087,7 @@ export class EventsService {
       const eventDateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
       });
-      const eventTimeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+      const eventTimeDisplay = this.formatEventTimeDisplay(eh, emin);
       const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
       const inviterName = rsvp.user?.fullName ?? null;
 
@@ -1123,7 +1097,6 @@ export class EventsService {
         subject: `You're invited to a DinnerBears dinner!`,
         htmlBody: this.buildGuestEmail({
           appUrl,
-          recipientName: recipientName ?? recipientEmail,
           inviterName,
           subject: `You're invited to a DinnerBears dinner!`,
           eventTitle: event.title,
@@ -1195,7 +1168,7 @@ export class EventsService {
     const eventDateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
-    const eventTimeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const eventTimeDisplay = this.formatEventTimeDisplay(eh, emin);
     const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
 
     await this.emailService.queue({
@@ -1204,7 +1177,6 @@ export class EventsService {
       subject: `You're going to a DinnerBears dinner!`,
       htmlBody: this.buildGuestEmail({
         appUrl,
-        recipientName: name,
         inviterName: null,
         subject: `You're going to a DinnerBears dinner!`,
         eventTitle: event.title,
@@ -1333,7 +1305,7 @@ export class EventsService {
     const eventDateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
-    const eventTimeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const eventTimeDisplay = this.formatEventTimeDisplay(eh, emin);
     const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
     const inviterName = link.memberRsvp?.user?.fullName ?? null;
 
@@ -1343,7 +1315,6 @@ export class EventsService {
       subject: `You're invited to a DinnerBears dinner!`,
       htmlBody: this.buildGuestEmail({
         appUrl,
-        recipientName: link.recipientName ?? link.recipientEmail,
         inviterName,
         subject: `You're invited to a DinnerBears dinner!`,
         eventTitle: event.title,
@@ -1525,7 +1496,7 @@ export class EventsService {
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
-    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const timeDisplay = this.formatEventTimeDisplay(eh, emin);
 
     const eventUrl = `${appUrl}/events/${event.id}`;
     const ctaUrl = confirmUrl ?? eventUrl;
@@ -1714,7 +1685,7 @@ export class EventsService {
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
-    const timeDisplay = `${eh % 12 || 12}:${String(emin).padStart(2, '0')} ${eh >= 12 ? 'PM' : 'AM'}`;
+    const timeDisplay = this.formatEventTimeDisplay(eh, emin);
     const mapsUrl = (event.restaurantLat && event.restaurantLng)
       ? `https://www.google.com/maps?q=${event.restaurantLat},${event.restaurantLng}`
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.restaurantAddress)}`;

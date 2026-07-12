@@ -11,7 +11,7 @@ export interface PostTextInvite {
   expiresAt: string;
 }
 
-export interface EventRestaurant {
+interface EventRestaurant {
   id: number;
   name: string;
   address: string;
@@ -45,7 +45,7 @@ export interface Rsvp {
   createdAt: string;
 }
 
-export interface PublicRsvp {
+interface PublicRsvp {
   id: number;
   recipientName: string | null;
   cancelledAt: string | null;
