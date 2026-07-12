@@ -192,7 +192,11 @@ describe('Email/Push Dispatch (e2e)', () => {
     it('activates a pending user on a delivered event', async () => {
       const pending = await seedUser(dataSource, city.id, { email: 'webhook-delivered@example.test', emailStatus: EmailStatus.PENDING });
 
-      await request(server).post('/api/v1/email/webhook/brevo').send({ event: 'delivered', email: pending.email }).expect(201);
+      await request(server)
+        .post('/api/v1/email/webhook/brevo')
+        .query({ secret: process.env.BREVO_WEBHOOK_SECRET })
+        .send({ event: 'delivered', email: pending.email })
+        .expect(201);
 
       const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: pending.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.ACTIVE);
@@ -201,7 +205,11 @@ describe('Email/Push Dispatch (e2e)', () => {
     it('marks a user bounced and suppresses their address on a hard_bounce event', async () => {
       const user = await seedUser(dataSource, city.id, { email: 'webhook-bounce@example.test' });
 
-      await request(server).post('/api/v1/email/webhook/brevo').send({ event: 'hard_bounce', email: user.email }).expect(201);
+      await request(server)
+        .post('/api/v1/email/webhook/brevo')
+        .query({ secret: process.env.BREVO_WEBHOOK_SECRET })
+        .send({ event: 'hard_bounce', email: user.email })
+        .expect(201);
 
       const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.BOUNCED);
@@ -211,7 +219,11 @@ describe('Email/Push Dispatch (e2e)', () => {
     it('marks a user unsubscribed on an unsubscribed event', async () => {
       const user = await seedUser(dataSource, city.id, { email: 'webhook-unsub@example.test' });
 
-      await request(server).post('/api/v1/email/webhook/brevo').send({ event: 'unsubscribed', email: user.email }).expect(201);
+      await request(server)
+        .post('/api/v1/email/webhook/brevo')
+        .query({ secret: process.env.BREVO_WEBHOOK_SECRET })
+        .send({ event: 'unsubscribed', email: user.email })
+        .expect(201);
 
       const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.UNSUBSCRIBED);
@@ -220,7 +232,11 @@ describe('Email/Push Dispatch (e2e)', () => {
     it('marks a user complained and suppresses on a spam event', async () => {
       const user = await seedUser(dataSource, city.id, { email: 'webhook-spam@example.test' });
 
-      await request(server).post('/api/v1/email/webhook/brevo').send({ event: 'spam', email: user.email }).expect(201);
+      await request(server)
+        .post('/api/v1/email/webhook/brevo')
+        .query({ secret: process.env.BREVO_WEBHOOK_SECRET })
+        .send({ event: 'spam', email: user.email })
+        .expect(201);
 
       const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.COMPLAINED);
@@ -233,6 +249,7 @@ describe('Email/Push Dispatch (e2e)', () => {
 
       await request(server)
         .post('/api/v1/email/webhook/brevo')
+        .query({ secret: process.env.BREVO_WEBHOOK_SECRET })
         .send([
           { event: 'delivered', email: userA.email },
           { event: 'delivered', email: userB.email },
@@ -248,7 +265,11 @@ describe('Email/Push Dispatch (e2e)', () => {
     });
 
     it('does not error for an unknown email address', async () => {
-      await request(server).post('/api/v1/email/webhook/brevo').send({ event: 'delivered', email: 'nobody@example.test' }).expect(201);
+      await request(server)
+        .post('/api/v1/email/webhook/brevo')
+        .query({ secret: process.env.BREVO_WEBHOOK_SECRET })
+        .send({ event: 'delivered', email: 'nobody@example.test' })
+        .expect(201);
     });
   });
 

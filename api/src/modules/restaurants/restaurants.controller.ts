@@ -14,6 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { diskStorage, memoryStorage } from 'multer';
 import type { Request } from 'express';
 import type { FileFilterCallback } from 'multer';
@@ -106,6 +107,7 @@ export class RestaurantsController {
   @Get('place-search')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   placeSearch(@Query('q') q: string) {
     if (!q?.trim()) return [];
     return this.enrichmentService.placeSearch(q.trim());
@@ -233,6 +235,7 @@ export class RestaurantsController {
   @Post('enrich/bulk')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async enrichBulk(@CurrentUser() user: UserEntity) {
     const restaurants = await this.restaurantsService.findAll({});
     void this.enrichmentService.bulkEnrich(restaurants, user.id);

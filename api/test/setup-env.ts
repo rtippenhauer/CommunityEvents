@@ -23,3 +23,4 @@ setDefault('UPLOAD_PATH', '/tmp/dinnerbears-test-uploads');
 setDefault('FACEBOOK_APP_SECRET', 'test-facebook-app-secret-not-for-real-use');
 setDefault('CLAUDE_AUTOMATION_SECRET', 'test-automation-secret-not-for-real-use');
 setDefault('CLOUDFLARE_EMAIL_SECRET', 'test-cloudflare-email-secret-not-for-real-use');
+setDefault('BREVO_WEBHOOK_SECRET', 'test-brevo-webhook-secret-not-for-real-use');

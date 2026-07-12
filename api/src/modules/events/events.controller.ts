@@ -13,6 +13,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { EventsService } from './events.service';
 import { InvitesService } from '../invites/invites.service';
@@ -93,11 +94,13 @@ export class EventsController {
   }
 
   @Post('guest-link/:token')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   useGuestLink(@Param('token') token: string, @Body() dto: UseGuestLinkDto) {
     return this.eventsService.useGuestLink(token, dto.guestName);
   }
 
   @Delete('guest-link/:token')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   cancelGuestRsvp(@Param('token') token: string) {
     return this.eventsService.cancelGuestRsvp(token);
   }
@@ -145,6 +148,7 @@ export class EventsController {
   }
 
   @Post(':id/public-rsvp')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async publicRsvp(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreatePublicRsvpDto,
@@ -271,6 +275,7 @@ export class EventsController {
   }
 
   @Post('reservation-confirm/:token')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   confirmReservation(@Param('token') token: string) {
     return this.eventsService.confirmReservation(token);
   }

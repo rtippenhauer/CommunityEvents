@@ -11,6 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AdminService, AuditLogFilter } from './admin.service';
@@ -76,6 +77,7 @@ export class AdminController {
   @Post('users/:id/role')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   setRole(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: SetRoleDto,

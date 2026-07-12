@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
@@ -256,6 +257,7 @@ export class CommunityController {
   @Post('admin/achievements/backfill-founders')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async backfillFounders() {
     return this.achievementsService.adminBackfillFounders();
   }
@@ -263,6 +265,7 @@ export class CommunityController {
   @Post('admin/achievements/backfill-invites')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async backfillInvites() {
     return this.achievementsService.adminBackfillInvitePoints();
   }
@@ -270,6 +273,7 @@ export class CommunityController {
   @Post('admin/achievements/recalculate-points')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async recalculatePoints() {
     return this.achievementsService.adminRecalculatePoints();
   }

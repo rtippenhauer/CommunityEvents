@@ -1,4 +1,6 @@
-import { Body, Controller, Logger, Post } from '@nestjs/common';
+import { Body, Controller, Logger, Post, Query, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailQueueEntity } from '../../database/entities/email-queue.entity';
@@ -26,10 +28,20 @@ export class EmailWebhookController {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly emailService: EmailService,
+    private readonly config: ConfigService,
   ) {}
 
   @Post('brevo')
-  async brevoWebhook(@Body() events: BrevoWebhookEvent | BrevoWebhookEvent[]): Promise<{ ok: boolean }> {
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
+  async brevoWebhook(
+    @Query('secret') secret: string | undefined,
+    @Body() events: BrevoWebhookEvent | BrevoWebhookEvent[],
+  ): Promise<{ ok: boolean }> {
+    const expected = this.config.get<string>('BREVO_WEBHOOK_SECRET', '');
+    if (!expected || secret !== expected) {
+      throw new UnauthorizedException('Invalid Brevo webhook secret');
+    }
+
     const list = Array.isArray(events) ? events : [events];
 
     for (const evt of list) {
