@@ -887,10 +887,52 @@ Real-HTTP testing against actual business logic (not mocks) surfaced four latent
 
 **Definition of done:** `bash scripts/run-e2e-tests.sh` runs the full migration history and 469-test suite cleanly against a database matching production's exact MySQL version, starting from nothing. All three batches covered; four real production bugs found via genuine e2e testing and fixed in the same pass.
 
-## Phase 21 - Edge Case Tests
+## Phase 21 — Edge Case & Injection Tests ✅ Complete
 
-- Ensure all fields with a define limited have tests where data is incorrect or over that limit, example a varchar(20) Try to pass in 21 characters, or html
-- Ensure all database queries are using parameterized requests
+Scoped from the two backlog bullets below via two research passes: a raw-SQL/
+`createQueryBuilder` audit (clean — every query already parameterized) and a
+DTO field-limit inventory (0% edge-case coverage existed; ~13 real validation
+gaps found beyond missing tests). Rob chose fix + test, not test-only.
+
+### Fixed validation gaps
+
+- Converted 8 endpoints that took `@Body()` as an inline object-literal type
+  (silently skipping the global `ValidationPipe` entirely — a violation of
+  `api/CLAUDE.md`'s "DTOs with class-validator for all request bodies" rule)
+  to real DTO classes: `community.controller.ts`'s title-select, achievement
+  grant, event-achievement create, achievement create/update, and custom-icon
+  create; `admin.controller.ts`'s role-change and email-config update
+- Added missing `@MaxLength` where a DTO field had no cap despite a real
+  `varchar` column limit behind it (previously an oversized value 500'd at
+  the DB instead of 400ing at validation): auth email fields, invite
+  `boundToEmail`, restaurant/merch `websiteUrl`/`storeUrl`, release
+  `version`, push subscription `p256dh`/`auth`
+- `announcement.body` brought in line with `feedback.body`/`release.body` —
+  added a `@MaxLength(50000)` cap and routed it through the same
+  `sanitize-html` call on create/update
+
+### New test coverage
+
+- `api/test/edge-cases.e2e-spec.ts` (38 tests): boundary tests (limit,
+  limit+1) across cities, restaurants, feedback, releases, invites,
+  announcements, events, event comments, restaurant ratings, merch config,
+  and push subscriptions, including the RSVP `guestNames` compound case
+  (`@ArrayMaxSize(9)` + per-item `@MaxLength(200)`); regression tests
+  proving each newly-converted no-DTO endpoint now rejects invalid/oversized
+  input; HTML-injection tests confirming sanitized fields (feedback,
+  announcements) strip `<script>` tags and unsanitized fields (event
+  comments) round-trip as inert literal text; SQL-injection-shaped payload
+  tests against restaurant create, the admin audit log's `LIKE` search, and
+  the raw parameterized `DELETE` in the account self-delete cleanup path —
+  all treated as inert data, no errors, no data loss
+
+**Definition of done:** `bash scripts/run-e2e-tests.sh` runs the full
+migration history and 511-test suite (up from 469) cleanly against a fresh
+database. All ~13 validation gaps found during scoping fixed in the same
+pass; zero raw-SQL parameterization issues found (audit-only, no fix
+needed).
+
+---
 
 ## Phase 21 - Ensure all endpoints are rate limited
 

@@ -33,10 +33,10 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-Phase 20 (Cross-Cutting E2E Test Coverage) completed 2026-07-11 — see PHASES.md for full details. No next phase has been chosen yet; PHASES.md's post-19 backlog has a few rough, not-yet-scoped candidates (edge-case/limit tests, rate-limit audit, a security checklist pass, a dead-code scan) but nothing picked or numbered as authoritative — resolve that ambiguity with Rob before starting one.
+Phase 21 (Edge Case & Injection Tests) completed 2026-07-11 — see PHASES.md for full details. No next phase has been chosen yet; PHASES.md's post-19 backlog still has a few rough, not-yet-scoped candidates (rate-limit audit, a security checklist pass, a dead-code scan) but nothing picked or numbered as authoritative — resolve that ambiguity with Rob before starting one.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules
