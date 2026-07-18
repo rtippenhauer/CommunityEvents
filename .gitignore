@@ -39,3 +39,5 @@ uploads/
 
 # Local-only docs with credentials
 docs/FACEBOOK_VERIFICATION_TODO.md
+prod.env
+Stage.env
