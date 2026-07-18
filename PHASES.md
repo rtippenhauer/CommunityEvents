@@ -1315,12 +1315,19 @@ since Phase 25 hadn't been released yet — see CLAUDE.md "Branching
 Workflow" and "Current Development Phase".
 
 - **Post-login splash screen** — on login, show a splash surfacing what's
-  new since the member's last login: the single latest unseen release and
-  the single latest unseen announcement (never a backlog of every unseen
-  item — at most one of each, shown together if both are new). Needs
-  investigation into the existing `releases` table and announcements
-  schema/read-tracking, likely following the same seen-tracking shape as
-  `member_achievements.seen_at` (see Phase 20/21 login-achievements work).
+  new since the member's last login. Confirmed spec (2026-07-18, see memory
+  `project-phase26-login-splash-spec`):
+  - Releases: latest unseen release only (max 1, never a backlog).
+  - Announcements: latest unseen announcement only (max 1, never a
+    backlog).
+  - Achievements: all unseen/newly-earned achievements since last login,
+    uncapped — reuses the existing achievement-splash reveal system from
+    Phase 20/21 (`member_achievements.seen_at`) rather than a new parallel
+    mechanism.
+  - Shows once per login; marked seen as soon as displayed (no explicit
+    dismiss click required for the seen state).
+  - Only surfaces items newer than the member's last login, so existing
+    members aren't flooded with all past history on ship day.
 - **Pending invites missing from admin Users list** — invited users who
   haven't yet accepted their invite don't show up in the admin Users
   list/table today; they should, presumably with a distinct
