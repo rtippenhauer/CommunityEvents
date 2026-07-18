@@ -1251,3 +1251,41 @@ zero test regressions. Sub-task B's duplicate-code report acted on with
 the same discipline, including the highest-risk cross-service ICS
 consolidation. Full 527-test e2e suite green throughout; frontend
 verified via production build + reachable-page smoke test.
+
+---
+
+## Phase 25 — Mobile UI Bug Fixes 🚧 In Progress
+
+Reported by Rob from live mobile use (iPhone screenshots, stage environment),
+2026-07-18. First phase developed on its own branch
+(`phase-25-mobile-ui-bug-fixes`) under the new branch-per-phase workflow —
+see CLAUDE.md "Branching Workflow".
+
+- **Restaurants list header overflow** — `.page-header`/`.header-actions` in
+  `restaurants-list.component.ts` have no `flex-wrap`, unlike the filters row
+  below them which does. On narrow viewports the button row (Archived /
+  Import / Enrich All / Add Restaurant, depending on role) overflows
+  horizontally instead of wrapping, pushing later buttons off-screen.
+- **Create Event dialog wider than viewport** — `EventFormDialogComponent`'s
+  `.event-form` has a hardcoded `min-width: 480px`, and all three call sites
+  (`events-list`, `event-detail`, `restaurant-detail`) open it with a fixed
+  `width: '600px'` and no `maxWidth` clamp — unlike
+  `RestaurantFormDialogComponent`, which already uses `maxWidth: '95vw'`.
+  Fields clip on both edges on mobile.
+- **Attendance "Add Walk-in" doesn't scroll into view** — the walk-in form
+  is a plain conditional block toggled by a signal, with no
+  `scrollIntoView()`/`ViewChild` wiring, so revealing it doesn't bring it
+  on-screen.
+- **Walk-in search results can be clipped** — the results list scrolls
+  within `mat-dialog-content`, but nothing keeps it visible above the
+  dialog's fixed `mat-dialog-actions` footer as the attendee list + walk-in
+  form + results grow taller than the dialog.
+- **Walk-in search doesn't exclude existing attendees** — backend
+  `EventsService.searchMembersForWalkin()` accepts `eventId` but never uses
+  it in the query; it only filters on `status = 'active'` and the name
+  match, so members already on the attendance/RSVP list still show up as
+  walk-in candidates.
+
+**Definition of done:** all 5 bugs fixed and verified on a mobile viewport,
+existing e2e suite still green, merged into `main` via PR at `/release`
+time.

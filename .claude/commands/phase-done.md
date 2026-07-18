@@ -1,5 +1,7 @@
 Phase $ARGUMENTS is complete. 
 
+0. Confirm the current branch is this phase's branch (`phase-$ARGUMENTS-*`), not `main`. If somehow on `main`, stop and ask Rob before committing anything — all phase work and its doc updates belong on the phase branch; `main` only changes at `/release` time.
+
 1. Provide a customer-friendly release note summary of everything completed.
    Append it to `docs/NEXT_RELEASE.md` under a heading for this phase's area
    (create the file from the template below if it doesn't exist yet). Don't

@@ -33,7 +33,9 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-Phase 24 (Dead Code & Duplication Cleanup) completed 2026-07-12 — see PHASES.md for full details. No next phase has been chosen yet; the only open item is the Post-Launch Backlog's scoped-but-not-started Angular 19→22 major upgrade (needed to close 3 real npm-audit vulnerabilities found in Phase 23) — resolve with Rob before starting.
+Phase 25 (Mobile UI Bug Fixes) — in progress on branch `phase-25-mobile-ui-bug-fixes`, started 2026-07-18. Five mobile-viewport bugs reported by Rob: (1) Restaurants list header button row doesn't wrap and overflows off-screen, (2) Create Event dialog is wider than the viewport and clips fields, (3) Attendance dialog's "Add Walk-in" reveal doesn't scroll into view, (4) walk-in name-search results can get clipped by the dialog's fixed action-button footer, (5) walk-in search doesn't exclude members already on the event's attendance/RSVP list. See PHASES.md for details.
+
+The Post-Launch Backlog's scoped-but-not-started Angular 19→22 major upgrade (needed to close 3 real npm-audit vulnerabilities found in Phase 23) is still open — resolve with Rob before starting.
 
 Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18: `.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL updated — webhook events are confirmed flowing.
 
@@ -73,6 +75,23 @@ When asked to work on bugs, Claude Code should:
 4. Call `PATCH /api/v1/admin/feedback/:id/status` with `{status: "resolved"}` on the fixed ticket
 5. Add an admin note via `POST /api/v1/admin/feedback/:id/notes` summarizing what was changed
 
+## Branching Workflow
+
+Each phase gets its own branch off `main`, created via `/phase-start`. All
+work for that phase — commits, `/phase-done`'s doc updates — happens on the
+branch, never directly on `main`. `main` only changes when a phase's branch
+merges in, which happens as part of `/release` (via a GitHub PR, merged with
+a real merge commit — never squash, so the phase's local `phase-<N>` tag and
+full commit history stay reachable from `main`).
+
+Branch naming: `phase-<number>-<kebab-case-slug>`, e.g.
+`phase-25-angular-19-22-upgrade`.
+
+Bug fixes and other ad hoc work that aren't tied to a phase still need a
+branch, not a direct commit to `main` — reuse the current phase's branch if
+one is in progress, otherwise create a short-lived `bugfix-<slug>` branch
+that merges in at the next `/release` alongside the phase branch.
+
 ## Versioning Workflow
 
 `package.json` version and the public release version (`/admin/releases/new`,
@@ -93,10 +112,12 @@ When asked to cut a release:
 2. Recommend a semver bump: patch for bug-only, minor for any new features
 3. Draft release note copy for Rob to review, starting from `docs/NEXT_RELEASE.md`
 4. When Rob gives a version number, run `/release <version>`, which:
+   - Pushes the current phase branch and merges it into `main` via a GitHub
+     PR (real merge commit, never squash)
    - Creates the release as an **unpublished draft** via `POST
      /api/v1/admin/releases` against production (cookie-authenticated as
      admin — never calls the `/publish` endpoint)
-   - Bumps `package.json` version in both workspaces, clears
+   - Bumps `package.json` version in both workspaces on `main`, clears
      `docs/NEXT_RELEASE.md`, commits, tags, pushes
    - Builds/pushes the stage and prod Docker images
 5. Rob reviews the draft and publishes it himself via the admin UI at
