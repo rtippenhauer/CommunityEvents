@@ -33,14 +33,14 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-Phase 25 (Mobile UI Bug Fixes) — in progress on branch `phase-25-mobile-ui-bug-fixes`, started 2026-07-18. Five mobile-viewport bugs reported by Rob: (1) Restaurants list header button row doesn't wrap and overflows off-screen, (2) Create Event dialog is wider than the viewport and clips fields, (3) Attendance dialog's "Add Walk-in" reveal doesn't scroll into view, (4) walk-in name-search results can get clipped by the dialog's fixed action-button footer, (5) walk-in search doesn't exclude members already on the event's attendance/RSVP list. See PHASES.md for details.
+Phase 26 (Login Splash, Pending Invites in Admin, Horizontal Scroll Bug) — in progress on branch `phase-26-splash-pending-invites-hscroll`, started 2026-07-18 (branched off `phase-25-mobile-ui-bug-fixes`, not yet-released `main`, since Phase 25 hasn't gone through `/release`). Three items from Rob: (1) a splash screen shown after login surfacing the latest unseen release and/or latest unseen announcement since the member's last login (at most one of each, never a backlog of every unseen item), (2) the admin Users list should include invited users who haven't yet accepted their invite, (3) a horizontal-scroll bug on mobile — scrolling left shifts the whole page left and reveals white space on the right edge; Rob has a screenshot pending. See PHASES.md for details.
 
 The Post-Launch Backlog's scoped-but-not-started Angular 19→22 major upgrade (needed to close 3 real npm-audit vulnerabilities found in Phase 23) is still open — resolve with Rob before starting.
 
 Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18: `.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL updated — webhook events are confirmed flowing.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

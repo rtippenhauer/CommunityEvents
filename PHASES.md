@@ -1254,7 +1254,7 @@ verified via production build + reachable-page smoke test.
 
 ---
 
-## Phase 25 — Mobile UI Bug Fixes 🚧 In Progress
+## Phase 25 — Mobile UI Bug Fixes ✅ Complete
 
 Reported by Rob from live mobile use (iPhone screenshots, stage environment),
 2026-07-18. First phase developed on its own branch
@@ -1286,6 +1286,54 @@ see CLAUDE.md "Branching Workflow".
   match, so members already on the attendance/RSVP list still show up as
   walk-in candidates.
 
+### Verification
+
+Verified against a fully disposable local stack rather than stage/prod: a
+throwaway MySQL container (migrations run, seeded with a fake city,
+restaurant, event, and RSVPs — including a "Bill DeMange/Brocker/Perkins"
+set mirroring Rob's real screenshots to test the exclusion fix
+specifically), a locally-patched API pointed at it, and `ng serve` proxying
+to that API. Authenticated via the seeded `automation@dinnerbears.internal`
+account (temporarily promoted to admin in the disposable DB only). All 5
+fixes confirmed via mobile-viewport (390×844) Playwright screenshots; no
+"Add"/save actions were taken on real data. Full e2e suite green (527/527
+— one `event-comments.e2e-spec` `beforeEach` timeout during the run was
+resource contention from the parallel local verification stack, confirmed
+by rerunning that spec alone clean). All scratch files (local `api/.env`,
+proxy config, disposable container) removed after verification.
+
 **Definition of done:** all 5 bugs fixed and verified on a mobile viewport,
-existing e2e suite still green, merged into `main` via PR at `/release`
-time.
+existing e2e suite still green. Not yet merged into `main` — Rob deferred
+`/release` to keep working; will merge via PR whenever `/release` runs.
+
+---
+
+## Phase 26 — Login Splash, Pending Invites in Admin, Horizontal Scroll Bug 🚧 In Progress
+
+Scoped 2026-07-18. Branched off `phase-25-mobile-ui-bug-fixes` (not `main`)
+since Phase 25 hadn't been released yet — see CLAUDE.md "Branching
+Workflow" and "Current Development Phase".
+
+- **Post-login splash screen** — on login, show a splash surfacing what's
+  new since the member's last login: the single latest unseen release and
+  the single latest unseen announcement (never a backlog of every unseen
+  item — at most one of each, shown together if both are new). Needs
+  investigation into the existing `releases` table and announcements
+  schema/read-tracking, likely following the same seen-tracking shape as
+  `member_achievements.seen_at` (see Phase 20/21 login-achievements work).
+- **Pending invites missing from admin Users list** — invited users who
+  haven't yet accepted their invite don't show up in the admin Users
+  list/table today; they should, presumably with a distinct
+  pending/invited status so admins can see and manage outstanding invites
+  from the same place they manage members.
+- **Horizontal scroll bug on mobile** — scrolling left on a phone shifts
+  the entire page left and reveals white space on the right edge (i.e.
+  something is wider than the viewport, causing horizontal overflow at the
+  page level rather than a contained element). Rob has a screenshot
+  pending; needs the actual offending page/element identified before a fix
+  can be scoped precisely — this is a different bug shape than Phase 25's
+  per-component overflow issues, since it's moving the whole page.
+
+**Definition of done:** all 3 items implemented/fixed and verified,
+existing e2e suite still green, merged into `main` via PR whenever
+`/release` runs (may ride together with Phase 25's unreleased fixes).
