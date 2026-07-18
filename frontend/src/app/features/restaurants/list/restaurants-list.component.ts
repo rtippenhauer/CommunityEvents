@@ -140,6 +140,8 @@ interface City {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-wrap: wrap;
+        row-gap: 12px;
         margin-bottom: 16px;
         h1 {
           margin: 0;
@@ -151,6 +153,7 @@ interface City {
         display: flex;
         gap: 8px;
         align-items: center;
+        flex-wrap: wrap;
       }
       .filters {
         display: flex;

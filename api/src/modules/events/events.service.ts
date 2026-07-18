@@ -1335,12 +1335,22 @@ export class EventsService {
   }
 
   async searchMembersForWalkin(eventId: number, query: string): Promise<{ id: number; fullName: string }[]> {
+    const existingRsvps = await this.rsvpRepo.find({
+      where: { eventId, status: RsvpStatus.GOING },
+      select: ['userId'],
+    });
+    const excludeIds = existingRsvps.map((r) => r.userId);
+
     const qb = this.userRepo
       .createQueryBuilder('u')
       .select(['u.id', 'u.fullName'])
       .where('u.status = :status', { status: 'active' })
       .orderBy('u.full_name', 'ASC')
       .limit(20);
+
+    if (excludeIds.length > 0) {
+      qb.andWhere('u.id NOT IN (:...excludeIds)', { excludeIds });
+    }
 
     if (query.trim()) {
       qb.andWhere('u.full_name LIKE :q', { q: `%${query.trim()}%` });

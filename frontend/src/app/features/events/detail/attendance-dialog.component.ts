@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -82,14 +82,14 @@ export interface AttendanceDialogData {
         </div>
 
         @if (showWalkinForm()) {
-          <div class="walkin-form">
+          <div class="walkin-form" #walkinFormEl>
             <mat-form-field appearance="outline" class="walkin-search-field">
               <mat-label>Search member by name</mat-label>
               <input matInput [value]="walkinSearch()" (input)="onWalkinSearchInput($any($event.target).value)" autocomplete="off" />
               <mat-icon matSuffix>search</mat-icon>
             </mat-form-field>
             @if (walkinResults().length > 0) {
-              <div class="walkin-results">
+              <div class="walkin-results" #walkinResultsEl>
                 @for (m of walkinResults(); track m.id) {
                   <button mat-button class="walkin-result-row" (click)="selectWalkin(m)" [disabled]="addingWalkin()">
                     <mat-icon>person</mat-icon> {{ m.fullName }}
@@ -174,6 +174,9 @@ export class AttendanceDialogComponent {
   readonly addingWalkin = signal(false);
   private readonly walkinSearch$ = new Subject<string>();
 
+  private readonly walkinFormEl = viewChild<ElementRef<HTMLElement>>('walkinFormEl');
+  private readonly walkinResultsEl = viewChild<ElementRef<HTMLElement>>('walkinResultsEl');
+
   constructor() {
     this.walkinSearch$.pipe(
       debounceTime(250),
@@ -181,6 +184,17 @@ export class AttendanceDialogComponent {
       switchMap((q) => this.commentsService.searchMembers(this.data.eventId, q)),
     ).subscribe((results) => this.walkinResults.set(results));
     this.loadAttendance();
+
+    effect(() => {
+      if (this.showWalkinForm()) {
+        this.walkinFormEl()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+    effect(() => {
+      if (this.walkinResults().length > 0) {
+        this.walkinResultsEl()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
   }
 
   private loadAttendance(): void {
