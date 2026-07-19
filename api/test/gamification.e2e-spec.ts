@@ -384,6 +384,23 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
       expect(res.body).toEqual(expect.objectContaining({ updated: expect.any(Number), inserted: expect.any(Number) }));
     });
 
+    it('is idempotent — running recalculate-points twice does not duplicate an achievement point', async () => {
+      await pointsService.awardAttendance(member.id, (await seedEvent()).id);
+      const achievement = await dataSource.getRepository(AchievementEntity).findOneOrFail({ where: { key: 'first_dinner' } });
+
+      await request(server).post('/api/v1/admin/achievements/recalculate-points').set('Cookie', adminCookie).expect(201);
+      const second = await request(server)
+        .post('/api/v1/admin/achievements/recalculate-points')
+        .set('Cookie', adminCookie)
+        .expect(201);
+
+      expect(second.body.inserted).toBe(0);
+      const count = await dataSource
+        .getRepository(MemberPointEntity)
+        .count({ where: { userId: member.id, pointType: PointType.ACHIEVEMENT, referenceId: achievement.id } });
+      expect(count).toBe(1);
+    });
+
     it('backfills missing invite points and achievements for an attendee whose inviter was never credited', async () => {
       const inviter = await seedUser(dataSource, city.id, { email: 'backfill-inviter@example.test' });
       const invitee = await seedUser(dataSource, city.id, { email: 'backfill-invitee@example.test', invitedBy: inviter.id });

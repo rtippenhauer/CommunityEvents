@@ -244,11 +244,7 @@ export class PointsService {
     const rows = await this.getLedger(userId);
 
     const achievementIds = [
-      ...new Set(
-        rows
-          .filter((r) => r.pointType === PointType.ACHIEVEMENT && r.referenceId !== null)
-          .map((r) => r.referenceId as number),
-      ),
+      ...new Set(rows.filter((r) => r.pointType === PointType.ACHIEVEMENT).map((r) => r.referenceId)),
     ];
     const achievementNames = new Map<number, string>();
     if (achievementIds.length > 0) {
@@ -262,7 +258,7 @@ export class PointsService {
       date: r.awardedAt,
       achievement:
         r.pointType === PointType.ACHIEVEMENT
-          ? (r.referenceId !== null && achievementNames.get(r.referenceId)) || 'Achievement unlocked'
+          ? achievementNames.get(r.referenceId) ?? 'Achievement unlocked'
           : POINT_TYPE_LABELS[r.pointType],
       points: r.points,
     }));
@@ -270,9 +266,9 @@ export class PointsService {
     return { entries, total: rows.reduce((sum, r) => sum + r.points, 0) };
   }
 
-  async adminAwardPoints(userId: number, pointType: PointType, points: number, referenceId?: number): Promise<void> {
+  async adminAwardPoints(userId: number, pointType: PointType, points: number, referenceId: number): Promise<void> {
     await this.pointRepo.save(
-      this.pointRepo.create({ userId, pointType, points, referenceId: referenceId ?? null }),
+      this.pointRepo.create({ userId, pointType, points, referenceId }),
     );
   }
 
