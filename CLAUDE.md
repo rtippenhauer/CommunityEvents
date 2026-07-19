@@ -33,14 +33,12 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-Phase 26 (Login Splash, Pending Invites in Admin, Horizontal Scroll Bug) — all 3 items complete as of 2026-07-19 on branch `phase-26-splash-pending-invites-hscroll` (branched off `phase-25-mobile-ui-bug-fixes`, not yet-released `main`, since Phase 25 hasn't gone through `/release`). (1) Post-login splash for the latest unseen release/announcement (extends the existing achievement-splash system), (2) admin Users list now shows pending/unaccepted member invites, (3) the horizontal-scroll bug self-resolved — no code change needed, likely fixed as a side effect of Phase 25's restaurants-list header wrap fix. Not yet merged into `main` — pending `/release`. See PHASES.md for details.
-
-The Post-Launch Backlog's scoped-but-not-started Angular 19→22 major upgrade (needed to close 3 real npm-audit vulnerabilities found in Phase 23) is still open — resolve with Rob before starting.
+No next phase has been chosen yet. Phases 25 and 26 are both complete and stacked on branch `phase-26-splash-pending-invites-hscroll` (26 branched off 25), awaiting `/release` to merge into `main`. The only open backlog item is the Post-Launch Backlog's scoped-but-not-started Angular 19→22 major upgrade (needed to close 3 real npm-audit vulnerabilities found in Phase 23) — resolve with Rob before starting.
 
 Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18: `.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL updated — webhook events are confirmed flowing.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

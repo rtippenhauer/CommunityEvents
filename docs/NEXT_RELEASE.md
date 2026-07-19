@@ -11,3 +11,9 @@ once that release's draft has been created.
 - Event creation form now fits properly on phone screens instead of getting cut off
 - Walk-in attendance search now scrolls into view automatically and no longer
   suggests people who are already checked in
+
+## New Login Splash
+
+- After logging in, you'll now see a quick splash for what's new — the latest
+  release notes, the latest community announcement, and any new achievements
+- Admin: pending (not-yet-accepted) invites now show up in the Users list
