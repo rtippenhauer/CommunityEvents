@@ -18,10 +18,10 @@ import { AuthService } from './core/services/auth.service';
 import { CityService } from './core/services/city.service';
 import { FeedbackService } from './core/services/feedback.service';
 import { MerchService } from './core/services/merch.service';
-import { AchievementSplashService } from './core/services/achievement-splash.service';
+import { SplashService } from './core/services/splash.service';
 import { NotificationBellComponent } from './shared/components/notification-bell/notification-bell.component';
 import { IosInstallBannerComponent } from './shared/components/ios-install-banner/ios-install-banner.component';
-import { AchievementSplashComponent, AchievementSplashData } from './shared/components/achievement-splash/achievement-splash.component';
+import { SplashComponent, SplashDialogData } from './shared/components/splash/splash.component';
 
 @Component({
   selector: 'app-root',
@@ -49,9 +49,9 @@ export class AppComponent {
   private readonly cityService = inject(CityService);
   readonly feedbackService = inject(FeedbackService);
   private readonly merchService = inject(MerchService);
-  private readonly achievementSplashService = inject(AchievementSplashService);
+  private readonly splashService = inject(SplashService);
   private readonly dialog = inject(MatDialog);
-  private achievementDialogOpen = false;
+  private splashDialogOpen = false;
 
   readonly currentYear = new Date().getFullYear();
   readonly isStage = environment.isStage;
@@ -195,9 +195,9 @@ export class AppComponent {
 
     effect(() => {
       if (this.authService.currentUser()) {
-        this.achievementSplashService.startPolling();
+        this.splashService.startPolling();
       } else {
-        this.achievementSplashService.stopPolling();
+        this.splashService.stopPolling();
       }
     });
 
@@ -210,15 +210,15 @@ export class AppComponent {
     });
 
     effect(() => {
-      const queue = this.achievementSplashService.queue();
+      const queue = this.splashService.queue();
       const next = queue[0];
-      if (next && !this.achievementDialogOpen) {
-        this.achievementDialogOpen = true;
-        const data: AchievementSplashData = { achievement: next, remaining: queue.length };
+      if (next && !this.splashDialogOpen) {
+        this.splashDialogOpen = true;
+        const data: SplashDialogData = { item: next, remaining: queue.length };
         this.dialog
-          .open(AchievementSplashComponent, {
+          .open(SplashComponent, {
             data,
-            panelClass: 'achievement-splash-panel',
+            panelClass: 'splash-panel',
             disableClose: true,
             // Material defaults dialogs to maxWidth: 80vw, which fights with
             // the patriotic splash's own (larger) intrinsic sizing — let the
@@ -227,8 +227,8 @@ export class AppComponent {
           })
           .afterClosed()
           .subscribe(() => {
-            this.achievementSplashService.dismiss(next.memberAchievementId);
-            this.achievementDialogOpen = false;
+            this.splashService.dismiss(next);
+            this.splashDialogOpen = false;
           });
       }
     });

@@ -2,11 +2,13 @@ import { Component, inject, signal, OnDestroy } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
-import { UnseenAchievement } from '../../../core/services/community.service';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { SplashItem } from '../../../core/services/splash.service';
+import { normalizeNbsp } from '../../utils/normalize-nbsp';
 
-export interface AchievementSplashData {
-  achievement: UnseenAchievement;
-  /** Total unseen achievements still queued, including this one. */
+export interface SplashDialogData {
+  item: SplashItem;
+  /** Total unseen splash items still queued, including this one. */
   remaining: number;
 }
 
@@ -59,7 +61,7 @@ function buildBurst(id: number): Burst {
 }
 
 @Component({
-  selector: 'app-achievement-splash',
+  selector: 'app-splash',
   standalone: true,
   imports: [MatButtonModule, MatDialogModule, MatIconModule],
   template: `
@@ -86,24 +88,42 @@ function buildBurst(id: number): Burst {
         @if (data.remaining > 1) {
           <div class="splash-counter">+{{ data.remaining - 1 }} more waiting</div>
         }
-        <div class="splash-icon">
-          @if (achievement.imagePath) {
-            <img [src]="achievement.imagePath" [alt]="achievement.name" />
-          } @else if (isImgIcon(achievement.icon)) {
-            <img [src]="imgIconSrc(achievement.icon)" [alt]="achievement.name" />
-          } @else {
-            <mat-icon>{{ achievement.icon }}</mat-icon>
+
+        @switch (data.item.kind) {
+          @case ('achievement') {
+            <div class="splash-icon">
+              @if (data.item.achievement.imagePath) {
+                <img [src]="data.item.achievement.imagePath" [alt]="data.item.achievement.name" />
+              } @else if (isImgIcon(data.item.achievement.icon)) {
+                <img [src]="imgIconSrc(data.item.achievement.icon)" [alt]="data.item.achievement.name" />
+              } @else {
+                <mat-icon>{{ data.item.achievement.icon }}</mat-icon>
+              }
+            </div>
+            <div class="splash-label">Achievement Unlocked</div>
+            <h2 class="splash-name">{{ data.item.achievement.name }}</h2>
+            <p class="splash-desc">{{ data.item.achievement.description }}</p>
+            @if (data.item.achievement.points > 0) {
+              <div class="splash-points">+{{ data.item.achievement.points }} Bear Points</div>
+            }
+            @if (data.item.achievement.title) {
+              <div class="splash-title-hint">New title unlocked: "{{ data.item.achievement.title }}"</div>
+            }
           }
-        </div>
-        <div class="splash-label">Achievement Unlocked</div>
-        <h2 class="splash-name">{{ achievement.name }}</h2>
-        <p class="splash-desc">{{ achievement.description }}</p>
-        @if (achievement.points > 0) {
-          <div class="splash-points">+{{ achievement.points }} Bear Points</div>
+          @case ('release') {
+            <div class="splash-icon"><mat-icon>celebration</mat-icon></div>
+            <div class="splash-label">What's New — v{{ data.item.release.version }}</div>
+            <h2 class="splash-name">{{ data.item.release.title }}</h2>
+            <div class="splash-body" [innerHTML]="safeHtml(data.item.release.body)"></div>
+          }
+          @case ('announcement') {
+            <div class="splash-icon"><mat-icon>campaign</mat-icon></div>
+            <div class="splash-label">Announcement</div>
+            <h2 class="splash-name">{{ data.item.announcement.title }}</h2>
+            <div class="splash-body" [innerHTML]="safeHtml(data.item.announcement.body)"></div>
+          }
         }
-        @if (achievement.title) {
-          <div class="splash-title-hint">New title unlocked: "{{ achievement.title }}"</div>
-        }
+
         <button mat-raised-button color="primary" (click)="close()">
           {{ data.remaining > 1 ? 'Next' : 'Nice!' }}
         </button>
@@ -140,6 +160,8 @@ function buildBurst(id: number): Burst {
       text-align: center;
       gap: 8px;
       max-width: 340px;
+      max-height: 80vh;
+      overflow-y: auto;
       padding: 24px 20px 20px;
       background: #fffaf3;
       border-radius: 16px;
@@ -155,6 +177,7 @@ function buildBurst(id: number): Burst {
       background: radial-gradient(circle, #fff7e6 0%, #f5e3bf 100%);
       box-shadow: 0 4px 18px rgba(201, 147, 58, 0.45);
       margin-bottom: 6px;
+      flex-shrink: 0;
       mat-icon { font-size: 44px; width: 44px; height: 44px; color: #C9933A; }
       img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
     }
@@ -177,6 +200,14 @@ function buildBurst(id: number): Burst {
     }
     .splash-name { margin: 0; font-size: 1.4rem; font-weight: 700; color: #1E4D8C; }
     .splash-desc { margin: 0; font-size: 0.9rem; color: #666; line-height: 1.4; }
+    .splash-body {
+      margin: 0;
+      font-size: 0.9rem;
+      color: #555;
+      line-height: 1.6;
+      text-align: left;
+      width: 100%;
+    }
     .splash-points {
       font-size: 0.95rem;
       font-weight: 700;
@@ -186,7 +217,7 @@ function buildBurst(id: number): Burst {
       border-radius: 999px;
     }
     .splash-title-hint { font-size: 0.8rem; color: #C9933A; font-weight: 600; }
-    button { margin-top: 10px; }
+    button { margin-top: 10px; flex-shrink: 0; }
 
     .fireworks {
       position: absolute;
@@ -226,12 +257,12 @@ function buildBurst(id: number): Burst {
     }
   `],
 })
-export class AchievementSplashComponent implements OnDestroy {
-  readonly data = inject<AchievementSplashData>(MAT_DIALOG_DATA);
-  private readonly dialogRef = inject(MatDialogRef<AchievementSplashComponent>);
+export class SplashComponent implements OnDestroy {
+  readonly data = inject<SplashDialogData>(MAT_DIALOG_DATA);
+  private readonly dialogRef = inject(MatDialogRef<SplashComponent>);
+  private readonly sanitizer = inject(DomSanitizer);
 
-  readonly achievement = this.data.achievement;
-  readonly isPatriotic = this.achievement.key === 'patriotic_bear';
+  readonly isPatriotic = this.data.item.kind === 'achievement' && this.data.item.achievement.key === 'patriotic_bear';
   readonly bursts = signal<Burst[]>([]);
 
   private nextBurstId = 0;
@@ -265,5 +296,9 @@ export class AchievementSplashComponent implements OnDestroy {
 
   imgIconSrc(icon: string): string {
     return icon.slice(4);
+  }
+
+  safeHtml(content: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(content));
   }
 }
