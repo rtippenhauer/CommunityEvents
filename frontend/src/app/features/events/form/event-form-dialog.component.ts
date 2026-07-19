@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -39,8 +39,15 @@ function toDateString(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-interface City { id: number; name: string; }
-interface Restaurant { id: number; name: string; cityId: number; }
+interface City {
+  id: number;
+  name: string;
+}
+interface Restaurant {
+  id: number;
+  name: string;
+  cityId: number;
+}
 
 @Component({
   selector: 'app-event-form-dialog',
@@ -61,7 +68,6 @@ interface Restaurant { id: number; name: string; cityId: number; }
 
     <mat-dialog-content>
       <form [formGroup]="form" class="event-form">
-
         <mat-form-field appearance="outline">
           <mat-label>City</mat-label>
           <mat-select formControlName="cityId">
@@ -84,7 +90,11 @@ interface Restaurant { id: number; name: string; cityId: number; }
 
         <mat-form-field appearance="outline">
           <mat-label>Event Title</mat-label>
-          <input matInput formControlName="title" placeholder="DinnerBears Cincinnati — June 2026" />
+          <input
+            matInput
+            formControlName="title"
+            placeholder="DinnerBears Cincinnati — June 2026"
+          />
           <mat-error>Title is required</mat-error>
         </mat-form-field>
 
@@ -106,14 +116,22 @@ interface Restaurant { id: number; name: string; cityId: number; }
 
         <mat-form-field appearance="outline">
           <mat-label>Description</mat-label>
-          <textarea matInput formControlName="description" rows="3"
-            placeholder="Join us for a great evening…"></textarea>
+          <textarea
+            matInput
+            formControlName="description"
+            rows="3"
+            placeholder="Join us for a great evening…"
+          ></textarea>
         </mat-form-field>
 
         <mat-form-field appearance="outline">
           <mat-label>Additional Info</mat-label>
-          <textarea matInput formControlName="additionalInfo" rows="2"
-            placeholder="Parking, dress code, special notes…"></textarea>
+          <textarea
+            matInput
+            formControlName="additionalInfo"
+            rows="2"
+            placeholder="Parking, dress code, special notes…"
+          ></textarea>
         </mat-form-field>
 
         <mat-form-field appearance="outline">
@@ -126,8 +144,12 @@ interface Restaurant { id: number; name: string; cityId: number; }
 
         <mat-form-field appearance="outline">
           <mat-label>Facebook Post Text (optional)</mat-label>
-          <textarea matInput formControlName="facebookShareText" rows="3"
-            placeholder="Leave blank to auto-generate from event details…"></textarea>
+          <textarea
+            matInput
+            formControlName="facebookShareText"
+            rows="3"
+            placeholder="Leave blank to auto-generate from event details…"
+          ></textarea>
           <mat-hint>Pre-filled text for sharing to Facebook. Auto-generated if empty.</mat-hint>
         </mat-form-field>
 
@@ -135,44 +157,57 @@ interface Restaurant { id: number; name: string; cityId: number; }
           <input type="checkbox" formControlName="isSecret" />
           Secret dinner (attendees earn a surprise bonus achievement after the event)
         </label>
-
       </form>
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Cancel</button>
-      <button
-        mat-raised-button
-        color="primary"
-        [disabled]="saving()"
-        (click)="save()"
-      >
-        @if (saving()) { <mat-spinner diameter="18" /> }
-        @else { {{ data.event ? 'Save Changes' : 'Create Event' }} }
+      <button mat-raised-button color="primary" [disabled]="saving()" (click)="save()">
+        @if (saving()) {
+          <mat-spinner diameter="18" />
+        } @else {
+          {{ data.event ? 'Save Changes' : 'Create Event' }}
+        }
       </button>
     </mat-dialog-actions>
   `,
-  styles: [`
-    .event-form {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      width: min(480px, 100%);
-      padding-top: 8px;
-      mat-form-field { width: 100%; }
-    }
-    .date-time-row {
-      display: flex;
-      gap: 12px;
-      .date-field { flex: 2; }
-      .time-field { flex: 1; }
-    }
-    .secret-toggle {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 0.9rem; color: #555; padding: 4px 0;
-      input[type=checkbox] { width: 16px; height: 16px; }
-    }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .event-form {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: min(480px, 100%);
+        padding-top: 8px;
+        mat-form-field {
+          width: 100%;
+        }
+      }
+      .date-time-row {
+        display: flex;
+        gap: 12px;
+        .date-field {
+          flex: 2;
+        }
+        .time-field {
+          flex: 1;
+        }
+      }
+      .secret-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+        color: #555;
+        padding: 4px 0;
+        input[type='checkbox'] {
+          width: 16px;
+          height: 16px;
+        }
+      }
+    `,
+  ],
 })
 export class EventFormDialogComponent implements OnInit {
   private readonly fb = inject(NonNullableFormBuilder);
@@ -269,7 +304,10 @@ export class EventFormDialogComponent implements OnInit {
   }
 
   save(): void {
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
     this.saving.set(true);
 
     const val = this.form.getRawValue();

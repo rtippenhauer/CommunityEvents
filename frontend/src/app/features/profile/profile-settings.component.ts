@@ -1,4 +1,12 @@
-import { Component, inject, OnInit, signal, ViewChild, ElementRef } from '@angular/core';
+import {
+  Component,
+  inject,
+  OnInit,
+  signal,
+  ViewChild,
+  ElementRef,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -19,14 +27,27 @@ import { PushNotificationService } from '../../core/services/push.service';
 import { PhotoCropDialogComponent } from '../../shared/components/photo-crop-dialog/photo-crop-dialog.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 
-interface City { id: number; name: string; subdomain: string; }
-interface NotifPrefs {
-  emailInvite: boolean; emailSecurityAlert: boolean; emailEventPublished: boolean;
-  emailRsvpConfirmation: boolean; emailEventReminder: boolean;
-  emailAccountDeletion: boolean; emailReengagement: boolean;
-  pushEventPublished: boolean; pushEventReminder: boolean; pushAnnouncement: boolean;
+interface City {
+  id: number;
+  name: string;
+  subdomain: string;
 }
-interface AvatarEntry { path: string; label: string; }
+interface NotifPrefs {
+  emailInvite: boolean;
+  emailSecurityAlert: boolean;
+  emailEventPublished: boolean;
+  emailRsvpConfirmation: boolean;
+  emailEventReminder: boolean;
+  emailAccountDeletion: boolean;
+  emailReengagement: boolean;
+  pushEventPublished: boolean;
+  pushEventReminder: boolean;
+  pushAnnouncement: boolean;
+}
+interface AvatarEntry {
+  path: string;
+  label: string;
+}
 
 @Component({
   selector: 'app-profile-settings',
@@ -68,12 +89,23 @@ interface AvatarEntry { path: string; label: string; }
                 }
               </div>
             </div>
-            <button mat-button type="button" class="change-photo-btn" (click)="avatarOpen.set(!avatarOpen())">
+            <button
+              mat-button
+              type="button"
+              class="change-photo-btn"
+              (click)="avatarOpen.set(!avatarOpen())"
+            >
               <mat-icon>{{ avatarOpen() ? 'close' : 'photo_camera' }}</mat-icon>
               {{ avatarOpen() ? 'Close' : 'Change photo' }}
             </button>
             @if (photoUrl()) {
-              <button mat-button type="button" color="warn" class="remove-photo-btn" (click)="removePhoto()">
+              <button
+                mat-button
+                type="button"
+                color="warn"
+                class="remove-photo-btn"
+                (click)="removePhoto()"
+              >
                 Remove photo
               </button>
             }
@@ -81,16 +113,24 @@ interface AvatarEntry { path: string; label: string; }
               <mat-tab-group animationDuration="150ms" class="avatar-picker">
                 <mat-tab label="Choose a Bear">
                   <div class="avatar-tab-actions">
-                    <button mat-stroked-button type="button" class="lucky-btn" (click)="feelLucky()">
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      class="lucky-btn"
+                      (click)="feelLucky()"
+                    >
                       <mat-icon>casino</mat-icon> I Feel Lucky
                     </button>
                   </div>
                   <div class="avatar-grid">
                     @for (avatar of presetAvatars(); track avatar.path) {
-                      <button type="button" class="avatar-tile"
+                      <button
+                        type="button"
+                        class="avatar-tile"
                         [class.selected]="photoUrl() === avatar.path"
                         [matTooltip]="avatar.label"
-                        (click)="selectAvatar(avatar.path)">
+                        (click)="selectAvatar(avatar.path)"
+                      >
                         <img [src]="avatar.path" [alt]="avatar.label" />
                         @if (photoUrl() === avatar.path) {
                           <div class="avatar-check">✓</div>
@@ -109,8 +149,13 @@ interface AvatarEntry { path: string; label: string; }
                 </mat-tab>
               </mat-tab-group>
             }
-            <input #fileInput type="file" accept="image/jpeg,image/png,image/webp"
-              style="display:none" (change)="onFileSelected($event)" />
+            <input
+              #fileInput
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              style="display:none"
+              (change)="onFileSelected($event)"
+            />
           </div>
 
           @if (saving()) {
@@ -132,11 +177,19 @@ interface AvatarEntry { path: string; label: string; }
               </mat-form-field>
               <mat-form-field appearance="outline">
                 <mat-label>Email</mat-label>
-                <input matInput [value]="authService.currentUser()?.email" readonly />
+                <input
+                  matInput
+                  [value]="$safeNavigationMigration(authService.currentUser()?.email)"
+                  readonly
+                />
               </mat-form-field>
               <mat-card-actions>
-                <button mat-raised-button color="primary" type="submit"
-                  [disabled]="form.invalid || saving()">
+                <button
+                  mat-raised-button
+                  color="primary"
+                  type="submit"
+                  [disabled]="form.invalid || saving()"
+                >
                   Save Changes
                 </button>
               </mat-card-actions>
@@ -155,12 +208,16 @@ interface AvatarEntry { path: string; label: string; }
             <div class="email-status-banner unsubscribed-banner">
               <mat-icon>unsubscribe</mat-icon>
               <span>You are currently unsubscribed from all DinnerBears emails.</span>
-              <button mat-stroked-button color="primary" (click)="resubscribe()">Resubscribe</button>
+              <button mat-stroked-button color="primary" (click)="resubscribe()">
+                Resubscribe
+              </button>
             </div>
           } @else if (emailStatus() === 'complained') {
             <div class="email-status-banner complained-banner">
               <mat-icon>report</mat-icon>
-              <span>Your email was marked as spam. Please contact us to restore email delivery.</span>
+              <span
+                >Your email was marked as spam. Please contact us to restore email delivery.</span
+              >
             </div>
           }
           @if (notifPrefs(); as prefs) {
@@ -168,31 +225,59 @@ interface AvatarEntry { path: string; label: string; }
               <h3 class="notif-section-title">Email Notifications</h3>
               <div class="notif-row">
                 <span class="notif-label">Invites sent to you</span>
-                <mat-slide-toggle [checked]="prefs.emailInvite" (change)="togglePref('emailInvite', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.emailInvite"
+                  (change)="togglePref('emailInvite', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
               <div class="notif-row">
                 <span class="notif-label">Security alerts</span>
-                <mat-slide-toggle [checked]="prefs.emailSecurityAlert" (change)="togglePref('emailSecurityAlert', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.emailSecurityAlert"
+                  (change)="togglePref('emailSecurityAlert', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
               <div class="notif-row">
                 <span class="notif-label">New events published</span>
-                <mat-slide-toggle [checked]="prefs.emailEventPublished" (change)="togglePref('emailEventPublished', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.emailEventPublished"
+                  (change)="togglePref('emailEventPublished', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
               <div class="notif-row">
                 <span class="notif-label">RSVP confirmations</span>
-                <mat-slide-toggle [checked]="prefs.emailRsvpConfirmation" (change)="togglePref('emailRsvpConfirmation', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.emailRsvpConfirmation"
+                  (change)="togglePref('emailRsvpConfirmation', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
               <div class="notif-row">
                 <span class="notif-label">Event reminders</span>
-                <mat-slide-toggle [checked]="prefs.emailEventReminder" (change)="togglePref('emailEventReminder', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.emailEventReminder"
+                  (change)="togglePref('emailEventReminder', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
               <div class="notif-row">
                 <span class="notif-label">Account &amp; deletion warnings</span>
-                <mat-slide-toggle [checked]="prefs.emailAccountDeletion" (change)="togglePref('emailAccountDeletion', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.emailAccountDeletion"
+                  (change)="togglePref('emailAccountDeletion', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
               <div class="notif-row">
                 <span class="notif-label">Re-engagement reminders</span>
-                <mat-slide-toggle [checked]="prefs.emailReengagement" (change)="togglePref('emailReengagement', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.emailReengagement"
+                  (change)="togglePref('emailReengagement', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
             </div>
             <mat-divider class="section-divider" />
@@ -207,22 +292,36 @@ interface AvatarEntry { path: string; label: string; }
               }
               <div class="notif-row">
                 <span class="notif-label">New events published</span>
-                <mat-slide-toggle [checked]="prefs.pushEventPublished" (change)="togglePref('pushEventPublished', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.pushEventPublished"
+                  (change)="togglePref('pushEventPublished', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
               <div class="notif-row">
                 <span class="notif-label">Event reminders</span>
-                <mat-slide-toggle [checked]="prefs.pushEventReminder" (change)="togglePref('pushEventReminder', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.pushEventReminder"
+                  (change)="togglePref('pushEventReminder', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
               <div class="notif-row">
                 <span class="notif-label">Announcements</span>
-                <mat-slide-toggle [checked]="prefs.pushAnnouncement" (change)="togglePref('pushAnnouncement', $event.checked)" [disabled]="savingPrefs()" />
+                <mat-slide-toggle
+                  [checked]="prefs.pushAnnouncement"
+                  (change)="togglePref('pushAnnouncement', $event.checked)"
+                  [disabled]="savingPrefs()"
+                />
               </div>
             </div>
             @if (emailStatus() === 'active') {
               <mat-divider class="section-divider" />
               <div class="unsubscribe-row">
                 <span class="unsubscribe-hint">Want to stop all emails at once?</span>
-                <button mat-stroked-button color="warn" (click)="unsubscribe()">Unsubscribe All</button>
+                <button mat-stroked-button color="warn" (click)="unsubscribe()">
+                  Unsubscribe All
+                </button>
               </div>
             }
           } @else {
@@ -237,23 +336,42 @@ interface AvatarEntry { path: string; label: string; }
           <mat-card-title>Calendar Subscription</mat-card-title>
         </mat-card-header>
         <mat-card-content>
-          <p class="cal-desc">Add your DinnerBears dinners to your calendar. Updates automatically when you RSVP or event details change.</p>
+          <p class="cal-desc">
+            Add your DinnerBears dinners to your calendar. Updates automatically when you RSVP or
+            event details change.
+          </p>
           @if (calendarUrl()) {
             <div class="cal-buttons">
               <a mat-flat-button color="primary" [href]="webcalUrl()" class="cal-subscribe-btn">
                 <mat-icon>event</mat-icon>
                 Apple / Outlook
               </a>
-              <a mat-stroked-button color="primary" [href]="googleCalUrl()" target="_blank" rel="noopener" class="cal-subscribe-btn">
+              <a
+                mat-stroked-button
+                color="primary"
+                [href]="googleCalUrl()"
+                target="_blank"
+                rel="noopener"
+                class="cal-subscribe-btn"
+              >
                 <mat-icon>open_in_new</mat-icon>
                 Google Calendar
               </a>
-              <button mat-icon-button (click)="copyCalendarUrl()" matTooltip="Copy feed URL for other apps">
+              <button
+                mat-icon-button
+                (click)="copyCalendarUrl()"
+                matTooltip="Copy feed URL for other apps"
+              >
                 <mat-icon>content_copy</mat-icon>
               </button>
             </div>
             <div class="cal-regen-row">
-              <button mat-button color="warn" (click)="confirmRegenerateToken()" [disabled]="calendarLoading()">
+              <button
+                mat-button
+                color="warn"
+                (click)="confirmRegenerateToken()"
+                [disabled]="calendarLoading()"
+              >
                 Regenerate link
               </button>
             </div>
@@ -269,169 +387,248 @@ interface AvatarEntry { path: string; label: string; }
       </mat-card>
     </div>
   `,
-  styles: [`
-    .settings-container {
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 24px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-    .page-title {
-      font-size: 1.4rem;
-      font-weight: 700;
-      margin: 0;
-      color: #1a1a1a;
-    }
-    .photo-section {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      padding: 16px 0 8px;
-    }
-    .photo-wrapper {
-      position: relative;
-      width: 96px;
-      height: 96px;
-    }
-    .photo-edit-btn {
-      position: absolute;
-      bottom: -4px;
-      right: -4px;
-      width: 32px !important;
-      height: 32px !important;
-      min-height: 32px !important;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-      mat-icon { font-size: 16px; width: 16px; height: 16px; line-height: 16px; }
-    }
-    .change-photo-btn { font-size: 0.82rem !important; }
-    .remove-photo-btn { font-size: 0.78rem !important; margin-top: -4px; }
-    .avatar-picker { width: 100%; margin-top: 4px; }
-    .photo-preview {
-      width: 96px;
-      height: 96px;
-      border-radius: 50%;
-      overflow: hidden;
-      border: 2px solid #ddd;
-    }
-    .profile-photo {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: center top;
-      display: block;
-    }
-    .profile-form {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      padding: 8px 0;
-    }
-    .avatar-tab-actions {
-      display: flex;
-      justify-content: flex-end;
-      padding: 10px 0 4px;
-    }
-    .lucky-btn { font-size: 0.82rem !important; }
-    .avatar-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      padding: 12px 0;
-    }
-    .avatar-tile {
-      position: relative;
-      border: 2px solid transparent;
-      border-radius: 8px;
-      overflow: hidden;
-      cursor: pointer;
-      padding: 0;
-      background: none;
-      transition: border-color 0.15s, transform 0.15s;
-      img { width: 100%; aspect-ratio: 1; object-fit: cover; object-position: center top; display: block; }
-      &:hover { border-color: var(--db-primary, #1e4d8c); transform: scale(1.04); }
-      &.selected { border-color: var(--db-primary, #1e4d8c); box-shadow: 0 0 0 2px var(--db-primary, #1e4d8c); }
-    }
-    .avatar-check {
-      position: absolute;
-      inset: 0;
-      background: rgba(30, 77, 140, 0.45);
-      color: #fff;
-      font-size: 1.5rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-    }
-    .upload-tab {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 12px 0;
-    }
-    .photo-hint { font-size: 0.75rem; color: #999; margin: 0; }
-    .notif-card mat-card-content { padding-top: 8px; }
-    .email-status-banner {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      font-size: 0.875rem;
-      flex-wrap: wrap;
-    }
-    .unsubscribed-banner { background: #fff3e0; }
-    .complained-banner { background: #fce4ec; }
-    .push-subscribe-banner {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      border-radius: 8px;
-      background: #fff8e1;
-      font-size: 0.875rem;
-      margin-bottom: 12px;
-      flex-wrap: wrap;
-      mat-icon { color: #f9a825; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
-      span { flex: 1; }
-    }
-    .notif-section { padding: 8px 0; }
-    .notif-section-title {
-      font-size: 0.8rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: #888;
-      margin: 0 0 10px;
-    }
-    .notif-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px solid #f5f5f5;
-    }
-    .notif-label { font-size: 0.9rem; }
-    .section-divider { margin: 12px 0; }
-    .unsubscribe-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 0 4px;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .unsubscribe-hint { font-size: 0.85rem; color: #888; }
-    .cal-desc { font-size: 0.875rem; color: #555; margin: 0 0 16px; }
-    .cal-buttons { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .cal-subscribe-btn { display: inline-flex; align-items: center; gap: 6px; }
-    .cal-regen-row { margin-top: 12px; display: flex; justify-content: flex-end; }
-    .cal-hint { font-size: 0.82rem; color: #666; margin: 0 0 8px; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .settings-container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 24px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      .page-title {
+        font-size: 1.4rem;
+        font-weight: 700;
+        margin: 0;
+        color: #1a1a1a;
+      }
+      .photo-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 16px 0 8px;
+      }
+      .photo-wrapper {
+        position: relative;
+        width: 96px;
+        height: 96px;
+      }
+      .photo-edit-btn {
+        position: absolute;
+        bottom: -4px;
+        right: -4px;
+        width: 32px !important;
+        height: 32px !important;
+        min-height: 32px !important;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+        mat-icon {
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          line-height: 16px;
+        }
+      }
+      .change-photo-btn {
+        font-size: 0.82rem !important;
+      }
+      .remove-photo-btn {
+        font-size: 0.78rem !important;
+        margin-top: -4px;
+      }
+      .avatar-picker {
+        width: 100%;
+        margin-top: 4px;
+      }
+      .photo-preview {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 2px solid #ddd;
+      }
+      .profile-photo {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
+        display: block;
+      }
+      .profile-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 8px 0;
+      }
+      .avatar-tab-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding: 10px 0 4px;
+      }
+      .lucky-btn {
+        font-size: 0.82rem !important;
+      }
+      .avatar-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        padding: 12px 0;
+      }
+      .avatar-tile {
+        position: relative;
+        border: 2px solid transparent;
+        border-radius: 8px;
+        overflow: hidden;
+        cursor: pointer;
+        padding: 0;
+        background: none;
+        transition:
+          border-color 0.15s,
+          transform 0.15s;
+        img {
+          width: 100%;
+          aspect-ratio: 1;
+          object-fit: cover;
+          object-position: center top;
+          display: block;
+        }
+        &:hover {
+          border-color: var(--db-primary, #1e4d8c);
+          transform: scale(1.04);
+        }
+        &.selected {
+          border-color: var(--db-primary, #1e4d8c);
+          box-shadow: 0 0 0 2px var(--db-primary, #1e4d8c);
+        }
+      }
+      .avatar-check {
+        position: absolute;
+        inset: 0;
+        background: rgba(30, 77, 140, 0.45);
+        color: #fff;
+        font-size: 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+      }
+      .upload-tab {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px 0;
+      }
+      .photo-hint {
+        font-size: 0.75rem;
+        color: #999;
+        margin: 0;
+      }
+      .notif-card mat-card-content {
+        padding-top: 8px;
+      }
+      .email-status-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 0.875rem;
+        flex-wrap: wrap;
+      }
+      .unsubscribed-banner {
+        background: #fff3e0;
+      }
+      .complained-banner {
+        background: #fce4ec;
+      }
+      .push-subscribe-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: #fff8e1;
+        font-size: 0.875rem;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+        mat-icon {
+          color: #f9a825;
+          font-size: 1.1rem;
+          width: 1.1rem;
+          height: 1.1rem;
+        }
+        span {
+          flex: 1;
+        }
+      }
+      .notif-section {
+        padding: 8px 0;
+      }
+      .notif-section-title {
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #888;
+        margin: 0 0 10px;
+      }
+      .notif-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #f5f5f5;
+      }
+      .notif-label {
+        font-size: 0.9rem;
+      }
+      .section-divider {
+        margin: 12px 0;
+      }
+      .unsubscribe-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 0 4px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .unsubscribe-hint {
+        font-size: 0.85rem;
+        color: #888;
+      }
+      .cal-desc {
+        font-size: 0.875rem;
+        color: #555;
+        margin: 0 0 16px;
+      }
+      .cal-buttons {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .cal-subscribe-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .cal-regen-row {
+        margin-top: 12px;
+        display: flex;
+        justify-content: flex-end;
+      }
+      .cal-hint {
+        font-size: 0.82rem;
+        color: #666;
+        margin: 0 0 8px;
+      }
+    `,
+  ],
 })
 export class ProfileSettingsComponent implements OnInit {
   readonly authService = inject(AuthService);
@@ -455,7 +652,8 @@ export class ProfileSettingsComponent implements OnInit {
   readonly calendarUrl = signal<string | null>(null);
   readonly calendarLoading = signal(false);
   readonly webcalUrl = () => (this.calendarUrl() ?? '').replace(/^https?:\/\//, 'webcal://');
-  readonly googleCalUrl = () => `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(this.webcalUrl())}`;
+  readonly googleCalUrl = () =>
+    `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(this.webcalUrl())}`;
 
   readonly form = this.fb.group({
     fullName: ['', [Validators.required, Validators.maxLength(200)]],
@@ -505,7 +703,10 @@ export class ProfileSettingsComponent implements OnInit {
   togglePref(key: keyof NotifPrefs, value: boolean): void {
     this.savingPrefs.set(true);
     this.http.patch<NotifPrefs>('/api/v1/users/me/notification-prefs', { [key]: value }).subscribe({
-      next: (prefs) => { this.notifPrefs.set(prefs); this.savingPrefs.set(false); },
+      next: (prefs) => {
+        this.notifPrefs.set(prefs);
+        this.savingPrefs.set(false);
+      },
       error: () => {
         this.snackBar.open('Failed to save preference', 'OK', { duration: 3000 });
         this.savingPrefs.set(false);
@@ -516,14 +717,20 @@ export class ProfileSettingsComponent implements OnInit {
 
   unsubscribe(): void {
     this.http.post<{ message: string }>('/api/v1/users/me/unsubscribe', {}).subscribe({
-      next: (res) => { this.emailStatus.set('unsubscribed'); this.snackBar.open(res.message, 'OK', { duration: 4000 }); },
+      next: (res) => {
+        this.emailStatus.set('unsubscribed');
+        this.snackBar.open(res.message, 'OK', { duration: 4000 });
+      },
       error: () => this.snackBar.open('Failed to unsubscribe', 'OK', { duration: 3000 }),
     });
   }
 
   resubscribe(): void {
     this.http.post<{ message: string }>('/api/v1/users/me/resubscribe', {}).subscribe({
-      next: (res) => { this.emailStatus.set('active'); this.snackBar.open(res.message, 'OK', { duration: 4000 }); },
+      next: (res) => {
+        this.emailStatus.set('active');
+        this.snackBar.open(res.message, 'OK', { duration: 4000 });
+      },
       error: () => this.snackBar.open('Failed to resubscribe', 'OK', { duration: 3000 }),
     });
   }
@@ -533,9 +740,10 @@ export class ProfileSettingsComponent implements OnInit {
       await this.pushService.requestSubscription();
       this.snackBar.open('Push notifications enabled!', 'OK', { duration: 3000 });
     } catch (err: any) {
-      const msg = err?.message === 'PERMISSION_DENIED'
-        ? 'Notifications are blocked — open your browser\'s site settings and allow notifications for this site, then try again.'
-        : 'Could not enable push notifications. Please try again.';
+      const msg =
+        err?.message === 'PERMISSION_DENIED'
+          ? "Notifications are blocked — open your browser's site settings and allow notifications for this site, then try again."
+          : 'Could not enable push notifications. Please try again.';
       this.snackBar.open(msg, 'OK', { duration: 7000 });
     }
   }
@@ -604,8 +812,13 @@ export class ProfileSettingsComponent implements OnInit {
   loadCalendarUrl(): void {
     this.calendarLoading.set(true);
     this.http.get<{ url: string }>('/api/v1/calendar/token').subscribe({
-      next: (res) => { this.calendarUrl.set(res.url); this.calendarLoading.set(false); },
-      error: () => { this.calendarLoading.set(false); },
+      next: (res) => {
+        this.calendarUrl.set(res.url);
+        this.calendarLoading.set(false);
+      },
+      error: () => {
+        this.calendarLoading.set(false);
+      },
     });
   }
 
@@ -621,7 +834,8 @@ export class ProfileSettingsComponent implements OnInit {
     const ref = this.dialog.open(ConfirmDialogComponent, {
       data: {
         title: 'Regenerate Calendar Link?',
-        message: 'Any apps using your current feed URL will stop updating. You will need to re-add the new URL in each calendar app.',
+        message:
+          'Any apps using your current feed URL will stop updating. You will need to re-add the new URL in each calendar app.',
         confirmLabel: 'Regenerate',
         confirmColor: 'warn',
       },

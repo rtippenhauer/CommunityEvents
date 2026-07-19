@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -29,7 +29,14 @@ interface FlatRow {
 @Component({
   selector: 'app-admin-invite-lineage',
   standalone: true,
-  imports: [DatePipe, RouterLink, MatProgressSpinnerModule, MatIconModule, MatChipsModule, MatButtonModule],
+  imports: [
+    DatePipe,
+    RouterLink,
+    MatProgressSpinnerModule,
+    MatIconModule,
+    MatChipsModule,
+    MatButtonModule,
+  ],
   template: `
     <div class="lineage-container">
       <div class="lineage-header">
@@ -56,7 +63,7 @@ interface FlatRow {
               @if (row.status === 'suspended') {
                 <mat-chip class="chip-banned">Banned</mat-chip>
               }
-              <span class="joined-at">{{ row.joinedAt | date:'MM/dd/yy' }}</span>
+              <span class="joined-at">{{ row.joinedAt | date: 'MM/dd/yy' }}</span>
               @if (row.childCount > 0) {
                 <span class="child-count">→ {{ row.childCount }}</span>
               }
@@ -66,34 +73,84 @@ interface FlatRow {
       }
     </div>
   `,
-  styles: [`
-    .lineage-container { max-width: 860px; margin: 0 auto; padding: 16px; }
-    .lineage-header { margin-bottom: 12px; h2 { margin: 0; } }
-    .subtitle { color: #888; font-size: 0.85rem; }
-    .loading { display: flex; justify-content: center; padding: 48px; }
-    .tree-meta { font-size: 0.82rem; color: #666; margin-bottom: 12px; }
-    .tree { font-size: 0.88rem; }
-    .tree-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 3px 0;
-      border-bottom: 1px solid #f5f5f5;
-    }
-    .connector { color: #ccc; width: 14px; flex-shrink: 0; }
-    .member-name {
-      color: #1E4D8C;
-      text-decoration: none;
-      font-weight: 500;
-      &:hover { text-decoration: underline; }
-    }
-    .joined-at { color: #aaa; font-size: 0.78rem; margin-left: auto; }
-    .child-count { color: #C9933A; font-size: 0.78rem; font-weight: 600; }
-    mat-chip { font-size: 0.7rem !important; min-height: 20px !important; }
-    .role-admin { --mat-chip-label-text-color: #fff; background: #1E4D8C !important; }
-    .role-moderator { --mat-chip-label-text-color: #fff; background: #C9933A !important; }
-    .chip-banned { background: #ffccbc !important; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .lineage-container {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+      .lineage-header {
+        margin-bottom: 12px;
+        h2 {
+          margin: 0;
+        }
+      }
+      .subtitle {
+        color: #888;
+        font-size: 0.85rem;
+      }
+      .loading {
+        display: flex;
+        justify-content: center;
+        padding: 48px;
+      }
+      .tree-meta {
+        font-size: 0.82rem;
+        color: #666;
+        margin-bottom: 12px;
+      }
+      .tree {
+        font-size: 0.88rem;
+      }
+      .tree-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+        border-bottom: 1px solid #f5f5f5;
+      }
+      .connector {
+        color: #ccc;
+        width: 14px;
+        flex-shrink: 0;
+      }
+      .member-name {
+        color: #1e4d8c;
+        text-decoration: none;
+        font-weight: 500;
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+      .joined-at {
+        color: #aaa;
+        font-size: 0.78rem;
+        margin-left: auto;
+      }
+      .child-count {
+        color: #c9933a;
+        font-size: 0.78rem;
+        font-weight: 600;
+      }
+      mat-chip {
+        font-size: 0.7rem !important;
+        min-height: 20px !important;
+      }
+      .role-admin {
+        --mat-chip-label-text-color: #fff;
+        background: #1e4d8c !important;
+      }
+      .role-moderator {
+        --mat-chip-label-text-color: #fff;
+        background: #c9933a !important;
+      }
+      .chip-banned {
+        background: #ffccbc !important;
+      }
+    `,
+  ],
 })
 export class AdminInviteLineageComponent implements OnInit {
   private readonly http = inject(HttpClient);

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -33,10 +33,18 @@ import { AuthService } from '../../../core/services/auth.service';
             <input matInput formControlName="email" type="email" autocomplete="email" />
           </mat-form-field>
 
-          <button mat-raised-button color="primary" type="submit" class="full-width"
-            [disabled]="form.invalid || submitting()">
-            @if (submitting()) { <mat-spinner diameter="20" /> }
-            @else { Send reset link }
+          <button
+            mat-raised-button
+            color="primary"
+            type="submit"
+            class="full-width"
+            [disabled]="form.invalid || submitting()"
+          >
+            @if (submitting()) {
+              <mat-spinner diameter="20" />
+            } @else {
+              Send reset link
+            }
           </button>
         </form>
 
@@ -49,23 +57,47 @@ import { AuthService } from '../../../core/services/auth.service';
       }
     </div>
   `,
-  styles: [`
-    .page {
-      max-width: 420px;
-      margin: 80px auto;
-      text-align: center;
-      padding: 0 24px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 20px;
-    }
-    .icon { font-size: 48px; width: 48px; height: 48px; color: var(--db-primary); }
-    h1 { margin: 0; font-size: 1.5rem; color: var(--db-brown-dark); }
-    p { margin: 0; color: var(--db-text-mid); line-height: 1.6; }
-    .form { width: 100%; display: flex; flex-direction: column; gap: 8px; text-align: left; }
-    .full-width { width: 100%; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .page {
+        max-width: 420px;
+        margin: 80px auto;
+        text-align: center;
+        padding: 0 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+      .icon {
+        font-size: 48px;
+        width: 48px;
+        height: 48px;
+        color: var(--db-primary);
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        color: var(--db-brown-dark);
+      }
+      p {
+        margin: 0;
+        color: var(--db-text-mid);
+        line-height: 1.6;
+      }
+      .form {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        text-align: left;
+      }
+      .full-width {
+        width: 100%;
+      }
+    `,
+  ],
 })
 export class ForgotPasswordComponent {
   private readonly authService = inject(AuthService);
@@ -82,8 +114,14 @@ export class ForgotPasswordComponent {
     if (this.form.invalid) return;
     this.submitting.set(true);
     this.authService.forgotPassword(this.form.getRawValue().email).subscribe({
-      next: () => { this.submitting.set(false); this.submitted.set(true); },
-      error: () => { this.submitting.set(false); this.submitted.set(true); }, // always show success
+      next: () => {
+        this.submitting.set(false);
+        this.submitted.set(true);
+      },
+      error: () => {
+        this.submitting.set(false);
+        this.submitted.set(true);
+      }, // always show success
     });
   }
 }

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
@@ -25,7 +25,6 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
             <mat-spinner diameter="40" />
             <p>Loading event details…</p>
           </div>
-
         } @else if (state() === 'error') {
           <div class="state-body error-state">
             <mat-icon class="state-icon error-icon">error_outline</mat-icon>
@@ -33,12 +32,13 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
             <p>This confirmation link is invalid or has already expired.</p>
             <a mat-stroked-button routerLink="/">Go to DinnerBears</a>
           </div>
-
         } @else if (state() === 'confirmed') {
           <div class="state-body success-state">
             <mat-icon class="state-icon success-icon">check_circle</mat-icon>
             <h2>Reservation confirmed!</h2>
-            <p class="success-sub">Thanks for making the reservation. The group has been notified.</p>
+            <p class="success-sub">
+              Thanks for making the reservation. The group has been notified.
+            </p>
             <div class="event-details">
               <div class="detail-row">
                 <mat-icon>restaurant</mat-icon>
@@ -46,29 +46,38 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
               </div>
               <div class="detail-row">
                 <mat-icon>event</mat-icon>
-                <span>{{ (info()!.eventDate + 'T12:00:00') | date: 'EEEE, MMMM d, y' }} at {{ formatTime(info()!.eventTime) }}</span>
+                <span
+                  >{{ info()!.eventDate + 'T12:00:00' | date: 'EEEE, MMMM d, y' }} at
+                  {{ formatTime(info()!.eventTime) }}</span
+                >
               </div>
             </div>
             @if (info()!.inviteToken) {
               <div class="join-cta">
                 <p class="join-heading">New to DinnerBears?</p>
-                <p class="join-sub">Create your account and you'll be added to this dinner automatically.</p>
+                <p class="join-sub">
+                  Create your account and you'll be added to this dinner automatically.
+                </p>
                 <a mat-raised-button color="primary" [href]="'/login?token=' + info()!.inviteToken">
                   <mat-icon>person_add</mat-icon> Create My Account
                 </a>
               </div>
             }
           </div>
-
         } @else {
           <!-- ready or confirming — show event info + confirm button -->
           <div class="state-body ready-state">
             <h2>Confirm the Reservation</h2>
-            <p class="ready-sub">You've been asked to make the reservation for this event. Once you've called the restaurant, click the button below.</p>
+            <p class="ready-sub">
+              You've been asked to make the reservation for this event. Once you've called the
+              restaurant, click the button below.
+            </p>
             <div class="event-details">
               <div class="detail-row">
                 <mat-icon>dining</mat-icon>
-                <span><strong>{{ info()!.eventTitle }}</strong></span>
+                <span
+                  ><strong>{{ info()!.eventTitle }}</strong></span
+                >
               </div>
               <div class="detail-row">
                 <mat-icon>restaurant</mat-icon>
@@ -76,13 +85,20 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
               </div>
               <div class="detail-row">
                 <mat-icon>event</mat-icon>
-                <span>{{ (info()!.eventDate + 'T12:00:00') | date: 'EEEE, MMMM d, y' }} at {{ formatTime(info()!.eventTime) }}</span>
+                <span
+                  >{{ info()!.eventDate + 'T12:00:00' | date: 'EEEE, MMMM d, y' }} at
+                  {{ formatTime(info()!.eventTime) }}</span
+                >
               </div>
             </div>
             <div class="confirm-action">
-              <button mat-raised-button color="primary" class="confirm-btn"
+              <button
+                mat-raised-button
+                color="primary"
+                class="confirm-btn"
                 [disabled]="state() === 'confirming'"
-                (click)="confirm()">
+                (click)="confirm()"
+              >
                 @if (state() === 'confirming') {
                   <mat-spinner diameter="18" />
                 } @else {
@@ -90,105 +106,159 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
                 }
                 I Made the Reservation
               </button>
-              <p class="confirm-hint">This will notify the group that the reservation is confirmed.</p>
+              <p class="confirm-hint">
+                This will notify the group that the reservation is confirmed.
+              </p>
             </div>
           </div>
         }
       </div>
     </div>
   `,
-  styles: [`
-    .confirm-layout {
-      min-height: 100vh;
-      background: #F5EDD8;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px 16px;
-    }
-    .confirm-card {
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 4px 24px rgba(61,28,5,0.12);
-      max-width: 480px;
-      width: 100%;
-      overflow: hidden;
-    }
-    .card-header {
-      background: #3D1C05;
-      padding: 20px;
-      text-align: center;
-    }
-    .logo { height: 80px; display: inline-block; }
-    .state-body {
-      padding: 36px 32px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 12px;
-      h2 { margin: 0; font-size: 1.35rem; font-weight: 700; color: #3D1C05; }
-      p { margin: 0; color: #555; font-size: 0.92rem; line-height: 1.5; }
-    }
-    .center { gap: 16px; color: #888; }
-    .state-icon { font-size: 3rem; width: 3rem; height: 3rem; }
-    .success-icon { color: #2e7d32; }
-    .error-icon { color: #c62828; }
-    .success-sub, .ready-sub { color: #555; max-width: 360px; }
-    .event-details {
-      background: #faf7f2;
-      border: 1px solid #e8e0d6;
-      border-radius: 8px;
-      padding: 14px 18px;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 4px;
-      text-align: left;
-    }
-    .detail-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 0.9rem;
-      color: #444;
-      mat-icon { color: #C9933A; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
-    }
-    .confirm-action {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      margin-top: 4px;
-      width: 100%;
-    }
-    .confirm-btn {
-      min-width: 220px;
-      font-size: 1rem;
-      font-weight: 700;
-      padding: 10px 24px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      mat-spinner { display: inline-block; }
-    }
-    .confirm-hint { font-size: 0.78rem; color: #999; }
-    .join-cta {
-      margin-top: 8px;
-      padding: 16px;
-      background: #e8f0fb;
-      border: 1px solid #c5d5f0;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      width: 100%;
-    }
-    .join-heading { font-size: 0.95rem; font-weight: 700; color: #1E4D8C; margin: 0; }
-    .join-sub { font-size: 0.85rem; color: #555; margin: 0; max-width: 320px; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .confirm-layout {
+        min-height: 100vh;
+        background: #f5edd8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+      }
+      .confirm-card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 4px 24px rgba(61, 28, 5, 0.12);
+        max-width: 480px;
+        width: 100%;
+        overflow: hidden;
+      }
+      .card-header {
+        background: #3d1c05;
+        padding: 20px;
+        text-align: center;
+      }
+      .logo {
+        height: 80px;
+        display: inline-block;
+      }
+      .state-body {
+        padding: 36px 32px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 12px;
+        h2 {
+          margin: 0;
+          font-size: 1.35rem;
+          font-weight: 700;
+          color: #3d1c05;
+        }
+        p {
+          margin: 0;
+          color: #555;
+          font-size: 0.92rem;
+          line-height: 1.5;
+        }
+      }
+      .center {
+        gap: 16px;
+        color: #888;
+      }
+      .state-icon {
+        font-size: 3rem;
+        width: 3rem;
+        height: 3rem;
+      }
+      .success-icon {
+        color: #2e7d32;
+      }
+      .error-icon {
+        color: #c62828;
+      }
+      .success-sub,
+      .ready-sub {
+        color: #555;
+        max-width: 360px;
+      }
+      .event-details {
+        background: #faf7f2;
+        border: 1px solid #e8e0d6;
+        border-radius: 8px;
+        padding: 14px 18px;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 4px;
+        text-align: left;
+      }
+      .detail-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.9rem;
+        color: #444;
+        mat-icon {
+          color: #c9933a;
+          font-size: 1.1rem;
+          width: 1.1rem;
+          height: 1.1rem;
+          flex-shrink: 0;
+        }
+      }
+      .confirm-action {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+        width: 100%;
+      }
+      .confirm-btn {
+        min-width: 220px;
+        font-size: 1rem;
+        font-weight: 700;
+        padding: 10px 24px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        mat-spinner {
+          display: inline-block;
+        }
+      }
+      .confirm-hint {
+        font-size: 0.78rem;
+        color: #999;
+      }
+      .join-cta {
+        margin-top: 8px;
+        padding: 16px;
+        background: #e8f0fb;
+        border: 1px solid #c5d5f0;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+      }
+      .join-heading {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1e4d8c;
+        margin: 0;
+      }
+      .join-sub {
+        font-size: 0.85rem;
+        color: #555;
+        margin: 0;
+        max-width: 320px;
+      }
+    `,
+  ],
 })
 export class ReservationConfirmComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);

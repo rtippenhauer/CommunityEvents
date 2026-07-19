@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
@@ -38,10 +38,14 @@ const BURST_INTERVAL_MS = 550;
 function randomSpawnPoint(): { x: number; y: number } {
   const region = Math.floor(Math.random() * 4);
   switch (region) {
-    case 0: return { x: Math.random() * 100, y: 2 + Math.random() * 18 };        // top strip
-    case 1: return { x: Math.random() * 100, y: 80 + Math.random() * 18 };       // bottom strip
-    case 2: return { x: 2 + Math.random() * 24, y: Math.random() * 100 };        // left strip
-    default: return { x: 74 + Math.random() * 24, y: Math.random() * 100 };      // right strip
+    case 0:
+      return { x: Math.random() * 100, y: 2 + Math.random() * 18 }; // top strip
+    case 1:
+      return { x: Math.random() * 100, y: 80 + Math.random() * 18 }; // bottom strip
+    case 2:
+      return { x: 2 + Math.random() * 24, y: Math.random() * 100 }; // left strip
+    default:
+      return { x: 74 + Math.random() * 24, y: Math.random() * 100 }; // right strip
   }
 }
 
@@ -95,7 +99,10 @@ function buildBurst(id: number): Burst {
               @if (data.item.achievement.imagePath) {
                 <img [src]="data.item.achievement.imagePath" [alt]="data.item.achievement.name" />
               } @else if (isImgIcon(data.item.achievement.icon)) {
-                <img [src]="imgIconSrc(data.item.achievement.icon)" [alt]="data.item.achievement.name" />
+                <img
+                  [src]="imgIconSrc(data.item.achievement.icon)"
+                  [alt]="data.item.achievement.name"
+                />
               } @else {
                 <mat-icon>{{ data.item.achievement.icon }}</mat-icon>
               }
@@ -107,7 +114,9 @@ function buildBurst(id: number): Burst {
               <div class="splash-points">+{{ data.item.achievement.points }} Bear Points</div>
             }
             @if (data.item.achievement.title) {
-              <div class="splash-title-hint">New title unlocked: "{{ data.item.achievement.title }}"</div>
+              <div class="splash-title-hint">
+                New title unlocked: "{{ data.item.achievement.title }}"
+              </div>
             }
           }
           @case ('release') {
@@ -130,139 +139,184 @@ function buildBurst(id: number): Burst {
       </div>
     </div>
   `,
-  styles: [`
-    .splash {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 300px;
-      max-width: 420px;
-      padding: 8px;
-      overflow: hidden;
-    }
-    .splash.patriotic {
-      /* Explicit size (not just extra padding) so the fireworks sky is a real
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .splash {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 300px;
+        max-width: 420px;
+        padding: 8px;
+        overflow: hidden;
+      }
+      .splash.patriotic {
+        /* Explicit size (not just extra padding) so the fireworks sky is a real
          2-3x-larger frame around the card, not capped by the compact
          max-width above — the card stays its normal size and floats in
          the middle via flex centering. */
-      width: min(92vw, 820px);
-      height: min(80vh, 680px);
-      max-width: none;
-      padding: 16px;
-    }
-    .splash-card {
-      position: relative;
-      z-index: 2;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 8px;
-      max-width: 340px;
-      max-height: 80vh;
-      overflow-y: auto;
-      padding: 24px 20px 20px;
-      background: #fffaf3;
-      border-radius: 16px;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
-    }
-    .splash-icon {
-      width: 84px;
-      height: 84px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: radial-gradient(circle, #fff7e6 0%, #f5e3bf 100%);
-      box-shadow: 0 4px 18px rgba(201, 147, 58, 0.45);
-      margin-bottom: 6px;
-      flex-shrink: 0;
-      mat-icon { font-size: 44px; width: 44px; height: 44px; color: #C9933A; }
-      img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-    }
-    .splash-counter {
-      align-self: flex-end;
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: #999;
-      background: #f0ebe4;
-      padding: 2px 10px;
-      border-radius: 999px;
-      margin-bottom: -4px;
-    }
-    .splash-label {
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #C9933A;
-    }
-    .splash-name { margin: 0; font-size: 1.4rem; font-weight: 700; color: #1E4D8C; }
-    .splash-desc { margin: 0; font-size: 0.9rem; color: #666; line-height: 1.4; }
-    .splash-body {
-      margin: 0;
-      font-size: 0.9rem;
-      color: #555;
-      line-height: 1.6;
-      text-align: left;
-      width: 100%;
-    }
-    .splash-points {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: #2e7d32;
-      background: #eaf6ea;
-      padding: 4px 12px;
-      border-radius: 999px;
-    }
-    .splash-title-hint { font-size: 0.8rem; color: #C9933A; font-weight: 600; }
-    button { margin-top: 10px; flex-shrink: 0; }
+        width: min(92vw, 820px);
+        height: min(80vh, 680px);
+        max-width: none;
+        padding: 16px;
+      }
+      .splash-card {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 8px;
+        max-width: 340px;
+        max-height: 80vh;
+        overflow-y: auto;
+        padding: 24px 20px 20px;
+        background: #fffaf3;
+        border-radius: 16px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+      }
+      .splash-icon {
+        width: 84px;
+        height: 84px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle, #fff7e6 0%, #f5e3bf 100%);
+        box-shadow: 0 4px 18px rgba(201, 147, 58, 0.45);
+        margin-bottom: 6px;
+        flex-shrink: 0;
+        mat-icon {
+          font-size: 44px;
+          width: 44px;
+          height: 44px;
+          color: #c9933a;
+        }
+        img {
+          width: 100%;
+          height: 100%;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+      }
+      .splash-counter {
+        align-self: flex-end;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #999;
+        background: #f0ebe4;
+        padding: 2px 10px;
+        border-radius: 999px;
+        margin-bottom: -4px;
+      }
+      .splash-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #c9933a;
+      }
+      .splash-name {
+        margin: 0;
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #1e4d8c;
+      }
+      .splash-desc {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #666;
+        line-height: 1.4;
+      }
+      .splash-body {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #555;
+        line-height: 1.6;
+        text-align: left;
+        width: 100%;
+      }
+      .splash-points {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #2e7d32;
+        background: #eaf6ea;
+        padding: 4px 12px;
+        border-radius: 999px;
+      }
+      .splash-title-hint {
+        font-size: 0.8rem;
+        color: #c9933a;
+        font-weight: 600;
+      }
+      button {
+        margin-top: 10px;
+        flex-shrink: 0;
+      }
 
-    .fireworks {
-      position: absolute;
-      inset: 0;
-      z-index: 1;
-      overflow: hidden;
-      pointer-events: none;
-      background: linear-gradient(180deg, #0b1d3a 0%, #14274d 100%);
-    }
-    .burst {
-      position: absolute;
-      width: 0;
-      height: 0;
-      opacity: 0;
-      animation: burst-appear 900ms ease-out forwards;
-    }
-    .particle {
-      position: absolute;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      left: 0;
-      top: 0;
-      box-shadow: 0 0 8px 2px currentColor;
-      transform: rotate(var(--angle, 0deg)) translateX(0);
-      animation: particle-fly 900ms ease-out forwards;
-    }
-    @keyframes burst-appear {
-      0% { opacity: 0; }
-      1% { opacity: 1; }
-      80% { opacity: 1; }
-      100% { opacity: 0; }
-    }
-    @keyframes particle-fly {
-      0% { transform: rotate(var(--angle, 0deg)) translateX(0); opacity: 1; }
-      100% { transform: rotate(var(--angle, 0deg)) translateX(var(--dist, 60px)); opacity: 0; }
-    }
-  `],
+      .fireworks {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        overflow: hidden;
+        pointer-events: none;
+        background: linear-gradient(180deg, #0b1d3a 0%, #14274d 100%);
+      }
+      .burst {
+        position: absolute;
+        width: 0;
+        height: 0;
+        opacity: 0;
+        animation: burst-appear 900ms ease-out forwards;
+      }
+      .particle {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        left: 0;
+        top: 0;
+        box-shadow: 0 0 8px 2px currentColor;
+        transform: rotate(var(--angle, 0deg)) translateX(0);
+        animation: particle-fly 900ms ease-out forwards;
+      }
+      @keyframes burst-appear {
+        0% {
+          opacity: 0;
+        }
+        1% {
+          opacity: 1;
+        }
+        80% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+      @keyframes particle-fly {
+        0% {
+          transform: rotate(var(--angle, 0deg)) translateX(0);
+          opacity: 1;
+        }
+        100% {
+          transform: rotate(var(--angle, 0deg)) translateX(var(--dist, 60px));
+          opacity: 0;
+        }
+      }
+    `,
+  ],
 })
 export class SplashComponent implements OnDestroy {
   readonly data = inject<SplashDialogData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<SplashComponent>);
   private readonly sanitizer = inject(DomSanitizer);
 
-  readonly isPatriotic = this.data.item.kind === 'achievement' && this.data.item.achievement.key === 'patriotic_bear';
+  readonly isPatriotic =
+    this.data.item.kind === 'achievement' && this.data.item.achievement.key === 'patriotic_bear';
   readonly bursts = signal<Burst[]>([]);
 
   private nextBurstId = 0;

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -54,7 +54,9 @@ import {
       <div class="page-header">
         <h1>Feedback</h1>
         <div class="header-actions">
-          <span class="item-count">{{ filtered().length }} item{{ filtered().length === 1 ? '' : 's' }}</span>
+          <span class="item-count"
+            >{{ filtered().length }} item{{ filtered().length === 1 ? '' : 's' }}</span
+          >
           <button mat-stroked-button routerLink="/admin/releases/new">
             <mat-icon>rocket_launch</mat-icon> New Release
           </button>
@@ -93,14 +95,21 @@ import {
           @for (item of filtered(); track item.id) {
             <mat-card class="feedback-card" [class.expanded]="expandedId() === item.id">
               <mat-card-content>
-
                 <!-- Top row -->
                 <div class="card-top">
                   <div class="badges">
-                    <span class="category-chip" [style.background]="categoryColor(item.category) + '22'" [style.color]="categoryColor(item.category)">
+                    <span
+                      class="category-chip"
+                      [style.background]="categoryColor(item.category) + '22'"
+                      [style.color]="categoryColor(item.category)"
+                    >
                       {{ categoryLabel(item.category) }}
                     </span>
-                    <span class="status-chip" [style.background]="statusColor(item.status) + '22'" [style.color]="statusColor(item.status)">
+                    <span
+                      class="status-chip"
+                      [style.background]="statusColor(item.status) + '22'"
+                      [style.color]="statusColor(item.status)"
+                    >
                       {{ statusLabel(item.status) }}
                     </span>
                     @if (item.isPrivate) {
@@ -130,7 +139,11 @@ import {
                 @if (item.title) {
                   <div class="item-title">{{ item.title }}</div>
                 }
-                <div class="body-text" [class.truncated]="expandedId() !== item.id" [innerHTML]="safeHtml(item.body)"></div>
+                <div
+                  class="body-text"
+                  [class.truncated]="expandedId() !== item.id"
+                  [innerHTML]="safeHtml(item.body)"
+                ></div>
                 <button mat-button class="expand-btn" (click)="toggleExpand(item.id)">
                   {{ expandedId() === item.id ? 'Show less' : 'Show more' }}
                 </button>
@@ -139,19 +152,30 @@ import {
                 <div class="card-actions">
                   <mat-form-field appearance="outline" class="status-field">
                     <mat-label>Status</mat-label>
-                    <mat-select [value]="item.status" (selectionChange)="updateStatus(item, $event.value)">
+                    <mat-select
+                      [value]="item.status"
+                      (selectionChange)="updateStatus(item, $event.value)"
+                    >
                       @for (s of allStatuses; track s) {
                         <mat-option [value]="s">{{ statusLabel(s) }}</mat-option>
                       }
                     </mat-select>
                   </mat-form-field>
 
-                  <button mat-stroked-button (click)="toggleNotePanel(item.id)" matTooltip="View / add notes">
+                  <button
+                    mat-stroked-button
+                    (click)="toggleNotePanel(item.id)"
+                    matTooltip="View / add notes"
+                  >
                     <mat-icon>chat_bubble_outline</mat-icon>
                     Notes
                   </button>
 
-                  <a mat-stroked-button [routerLink]="['/feedback', item.id]" matTooltip="View member view">
+                  <a
+                    mat-stroked-button
+                    [routerLink]="['/feedback', item.id]"
+                    matTooltip="View member view"
+                  >
                     <mat-icon>open_in_new</mat-icon>
                   </a>
                 </div>
@@ -184,8 +208,12 @@ import {
                         @for (note of itemNotes(); track note.id) {
                           <div class="note-row" [class.admin-only]="note.isAdminOnly">
                             <span class="note-author">{{ note.author.fullName }}</span>
-                            @if (note.isAdminOnly) { <span class="admin-badge">Admin only</span> }
-                            <span class="note-date">{{ note.createdAt | date:'MMM d, h:mm a' }}</span>
+                            @if (note.isAdminOnly) {
+                              <span class="admin-badge">Admin only</span>
+                            }
+                            <span class="note-date">{{
+                              note.createdAt | date: 'MMM d, h:mm a'
+                            }}</span>
                             <div class="note-body" [innerHTML]="safeHtml(note.content)"></div>
                           </div>
                         }
@@ -201,17 +229,26 @@ import {
                           ></quill-editor>
                         </div>
                         <div class="note-form-row">
-                          <mat-slide-toggle [(ngModel)]="newNoteAdminOnly" color="warn">Admin only</mat-slide-toggle>
-                          <button mat-raised-button color="primary" (click)="saveNote(item.id)" [disabled]="savingNote()">
-                            @if (savingNote()) { <mat-spinner diameter="16" /> }
-                            @else { Post note }
+                          <mat-slide-toggle [(ngModel)]="newNoteAdminOnly" color="warn"
+                            >Admin only</mat-slide-toggle
+                          >
+                          <button
+                            mat-raised-button
+                            color="primary"
+                            (click)="saveNote(item.id)"
+                            [disabled]="savingNote()"
+                          >
+                            @if (savingNote()) {
+                              <mat-spinner diameter="16" />
+                            } @else {
+                              Post note
+                            }
                           </button>
                         </div>
                       </div>
                     }
                   </div>
                 }
-
               </mat-card-content>
             </mat-card>
           }
@@ -219,104 +256,306 @@ import {
       }
     </div>
   `,
-  styles: [`
-    .feedback-admin { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
-    .page-header {
-      display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap;
-      gap: 12px; margin-bottom: 20px;
-      h1 { margin: 0; font-size: 1.75rem; color: var(--db-brown-dark); }
-    }
-    .header-actions { display: flex; align-items: center; gap: 12px; }
-    .item-count { font-size: 0.9rem; color: #888; }
-    .filters { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-    .filter-field { width: 200px; margin-bottom: -1.25em; }
-    .center { display: flex; justify-content: center; padding: 48px; }
-    .empty { text-align: center; color: #999; padding: 48px 0; }
-    .feedback-list { display: flex; flex-direction: column; gap: 16px; }
-    .feedback-card { border-radius: 10px; }
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .feedback-admin {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 24px 16px;
+      }
+      .page-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 20px;
+        h1 {
+          margin: 0;
+          font-size: 1.75rem;
+          color: var(--db-brown-dark);
+        }
+      }
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .item-count {
+        font-size: 0.9rem;
+        color: #888;
+      }
+      .filters {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+      }
+      .filter-field {
+        width: 200px;
+        margin-bottom: -1.25em;
+      }
+      .center {
+        display: flex;
+        justify-content: center;
+        padding: 48px;
+      }
+      .empty {
+        text-align: center;
+        color: #999;
+        padding: 48px 0;
+      }
+      .feedback-list {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .feedback-card {
+        border-radius: 10px;
+      }
 
-    .card-top {
-      display: flex; align-items: flex-start; justify-content: space-between;
-      flex-wrap: wrap; gap: 8px; margin-bottom: 10px;
-    }
-    .badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    .category-chip, .status-chip {
-      font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 12px;
-      text-transform: uppercase; letter-spacing: 0.05em;
-    }
-    .private-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; color: #aaa; }
-    .linked-release-badge {
-      display: inline-flex; align-items: center; gap: 3px;
-      font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 10px;
-      background: #e8f5e9; color: #2e7d32; text-transform: uppercase; letter-spacing: 0.04em;
-      mat-icon { font-size: 0.75rem; width: 0.75rem; height: 0.75rem; }
-      &.draft { background: #fff8e1; color: #f57f17; }
-    }
-    .new-badge {
-      font-size: 0.68rem; font-weight: 800; padding: 2px 7px; border-radius: 10px;
-      background: #e3f2fd; color: #1565c0; text-transform: uppercase; letter-spacing: 0.05em;
-    }
-    .meta { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #888; }
-    .submitter { font-weight: 600; color: #555; }
-    .dot { color: #ccc; }
-    .upvote-meta-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; }
+      .card-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .badges {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .category-chip,
+      .status-chip {
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .private-icon {
+        font-size: 0.9rem;
+        width: 0.9rem;
+        height: 0.9rem;
+        color: #aaa;
+      }
+      .linked-release-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 10px;
+        background: #e8f5e9;
+        color: #2e7d32;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        mat-icon {
+          font-size: 0.75rem;
+          width: 0.75rem;
+          height: 0.75rem;
+        }
+        &.draft {
+          background: #fff8e1;
+          color: #f57f17;
+        }
+      }
+      .new-badge {
+        font-size: 0.68rem;
+        font-weight: 800;
+        padding: 2px 7px;
+        border-radius: 10px;
+        background: #e3f2fd;
+        color: #1565c0;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.82rem;
+        color: #888;
+      }
+      .submitter {
+        font-weight: 600;
+        color: #555;
+      }
+      .dot {
+        color: #ccc;
+      }
+      .upvote-meta-icon {
+        font-size: 0.9rem;
+        width: 0.9rem;
+        height: 0.9rem;
+      }
 
-    .item-title { font-weight: 700; font-size: 0.95rem; color: #222; margin-bottom: 4px; }
-    .body-text {
-      font-size: 0.9rem; color: #444; line-height: 1.55; margin: 0 0 4px;
-      &.truncated { max-height: 4.65em; overflow: hidden; }
-      ::ng-deep p { margin: 0 0 8px; &:last-child { margin-bottom: 0; } }
-    }
-    .expand-btn { font-size: 0.78rem; padding: 0; min-width: 0; height: auto; margin-bottom: 8px; }
+      .item-title {
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: #222;
+        margin-bottom: 4px;
+      }
+      .body-text {
+        font-size: 0.9rem;
+        color: #444;
+        line-height: 1.55;
+        margin: 0 0 4px;
+        &.truncated {
+          max-height: 4.65em;
+          overflow: hidden;
+        }
+        ::ng-deep p {
+          margin: 0 0 8px;
+          &:last-child {
+            margin-bottom: 0;
+          }
+        }
+      }
+      .expand-btn {
+        font-size: 0.78rem;
+        padding: 0;
+        min-width: 0;
+        height: auto;
+        margin-bottom: 8px;
+      }
 
-    .card-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
-    .status-field { width: 180px; margin-bottom: -1.25em; }
-    .release-note-row {
-      display: flex; align-items: center; gap: 10px;
-      margin-top: 14px; padding: 8px 12px;
-      background: #f0f4ff; border: 1px solid #c5d0f0; border-radius: 6px;
-    }
-    .release-note-label {
-      display: flex; align-items: center; gap: 4px;
-      font-size: 0.78rem; font-weight: 600; color: #1565c0;
-      white-space: nowrap; flex-shrink: 0;
-      .rn-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; }
-    }
-    .release-note-input {
-      flex: 1; border: none; background: transparent;
-      font-size: 0.88rem; color: #333; outline: none; min-width: 0;
-      &::placeholder { color: #aaa; }
-    }
+      .card-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+      }
+      .status-field {
+        width: 180px;
+        margin-bottom: -1.25em;
+      }
+      .release-note-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 14px;
+        padding: 8px 12px;
+        background: #f0f4ff;
+        border: 1px solid #c5d0f0;
+        border-radius: 6px;
+      }
+      .release-note-label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #1565c0;
+        white-space: nowrap;
+        flex-shrink: 0;
+        .rn-icon {
+          font-size: 0.9rem;
+          width: 0.9rem;
+          height: 0.9rem;
+        }
+      }
+      .release-note-input {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-size: 0.88rem;
+        color: #333;
+        outline: none;
+        min-width: 0;
+        &::placeholder {
+          color: #aaa;
+        }
+      }
 
-    .notes-panel {
-      margin-top: 16px;
-      border-top: 1px solid #eee;
-      padding-top: 16px;
-    }
-    .no-notes { font-size: 0.85rem; color: #aaa; margin: 0 0 12px; }
-    .note-row {
-      background: #fafafa; border: 1px solid #eee; border-radius: 6px;
-      padding: 10px 12px; margin-bottom: 10px;
-      &.admin-only { background: #fff8e1; border-color: #ffe082; }
-    }
-    .note-author { font-size: 0.82rem; font-weight: 600; color: #333; margin-right: 8px; }
-    .admin-badge {
-      font-size: 0.68rem; font-weight: 700; padding: 2px 6px; border-radius: 8px;
-      background: #ffe082; color: #5d4037; text-transform: uppercase; margin-right: 8px;
-    }
-    .note-date { font-size: 0.75rem; color: #aaa; }
-    .note-body { font-size: 0.85rem; color: #444; margin-top: 6px; line-height: 1.5; ::ng-deep p { margin: 0; } }
+      .notes-panel {
+        margin-top: 16px;
+        border-top: 1px solid #eee;
+        padding-top: 16px;
+      }
+      .no-notes {
+        font-size: 0.85rem;
+        color: #aaa;
+        margin: 0 0 12px;
+      }
+      .note-row {
+        background: #fafafa;
+        border: 1px solid #eee;
+        border-radius: 6px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        &.admin-only {
+          background: #fff8e1;
+          border-color: #ffe082;
+        }
+      }
+      .note-author {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #333;
+        margin-right: 8px;
+      }
+      .admin-badge {
+        font-size: 0.68rem;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 8px;
+        background: #ffe082;
+        color: #5d4037;
+        text-transform: uppercase;
+        margin-right: 8px;
+      }
+      .note-date {
+        font-size: 0.75rem;
+        color: #aaa;
+      }
+      .note-body {
+        font-size: 0.85rem;
+        color: #444;
+        margin-top: 6px;
+        line-height: 1.5;
+        ::ng-deep p {
+          margin: 0;
+        }
+      }
 
-    .add-note-form { margin-top: 12px; }
-    .quill-wrap {
-      border: 1px solid rgba(0,0,0,0.23); border-radius: 4px; margin-bottom: 8px;
-      &:focus-within { border-color: var(--db-blue, #1E4D8C); }
-    }
-    .note-quill { display: block; }
-    ::ng-deep .note-quill .ql-container { border: none; min-height: 80px; font-size: 0.9rem; }
-    ::ng-deep .note-quill .ql-toolbar { border: none; border-bottom: 1px solid rgba(0,0,0,0.12); }
-    .note-form-row { display: flex; align-items: center; justify-content: space-between; }
-  `],
+      .add-note-form {
+        margin-top: 12px;
+      }
+      .quill-wrap {
+        border: 1px solid rgba(0, 0, 0, 0.23);
+        border-radius: 4px;
+        margin-bottom: 8px;
+        &:focus-within {
+          border-color: var(--db-blue, #1e4d8c);
+        }
+      }
+      .note-quill {
+        display: block;
+      }
+      ::ng-deep .note-quill .ql-container {
+        border: none;
+        min-height: 80px;
+        font-size: 0.9rem;
+      }
+      ::ng-deep .note-quill .ql-toolbar {
+        border: none;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+      }
+      .note-form-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+    `,
+  ],
 })
 export class AdminFeedbackComponent implements OnInit {
   private readonly feedbackService = inject(FeedbackService);
@@ -342,14 +581,33 @@ export class AdminFeedbackComponent implements OnInit {
     toolbar: [['bold', 'italic'], [{ list: 'bullet' }], ['link'], ['clean']],
   };
 
-  readonly allStatuses: FeedbackStatus[] = ['open', 'in_progress', 'resolved', 'shipped', 'closed', 'wont_fix'];
+  readonly allStatuses: FeedbackStatus[] = [
+    'open',
+    'in_progress',
+    'resolved',
+    'shipped',
+    'closed',
+    'wont_fix',
+  ];
 
-  statusLabel(s: string): string { return STATUS_LABELS[s as FeedbackStatus] ?? s; }
-  statusColor(s: string): string { return STATUS_COLORS[s as FeedbackStatus] ?? '#555'; }
-  categoryLabel(c: string): string { return CATEGORY_LABELS[c as keyof typeof CATEGORY_LABELS] ?? c; }
-  categoryColor(c: string): string { return CATEGORY_COLORS[c as keyof typeof CATEGORY_COLORS] ?? '#555'; }
-  safeHtml(html: string): SafeHtml { return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(html)); }
-  linkedRelease(item: FeedbackItem): FeedbackLinkedRelease | null { return getLinkedRelease(item); }
+  statusLabel(s: string): string {
+    return STATUS_LABELS[s as FeedbackStatus] ?? s;
+  }
+  statusColor(s: string): string {
+    return STATUS_COLORS[s as FeedbackStatus] ?? '#555';
+  }
+  categoryLabel(c: string): string {
+    return CATEGORY_LABELS[c as keyof typeof CATEGORY_LABELS] ?? c;
+  }
+  categoryColor(c: string): string {
+    return CATEGORY_COLORS[c as keyof typeof CATEGORY_COLORS] ?? '#555';
+  }
+  safeHtml(html: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(html));
+  }
+  linkedRelease(item: FeedbackItem): FeedbackLinkedRelease | null {
+    return getLinkedRelease(item);
+  }
 
   ngOnInit(): void {
     this.feedbackService.getAll().subscribe({
@@ -385,7 +643,10 @@ export class AdminFeedbackComponent implements OnInit {
     this.itemNotes.set([]);
     this.loadingNotes.set(true);
     this.feedbackService.getNotes(id).subscribe({
-      next: (notes) => { this.itemNotes.set(notes); this.loadingNotes.set(false); },
+      next: (notes) => {
+        this.itemNotes.set(notes);
+        this.loadingNotes.set(false);
+      },
       error: () => this.loadingNotes.set(false),
     });
   }
@@ -420,22 +681,24 @@ export class AdminFeedbackComponent implements OnInit {
     const raw = this.newNoteContent.replace(/<[^>]*>/g, '').trim();
     if (!raw) return;
     this.savingNote.set(true);
-    this.feedbackService.addAdminNote(feedbackId, {
-      content: normalizeNbsp(this.newNoteContent),
-      isAdminOnly: this.newNoteAdminOnly,
-    }).subscribe({
-      next: (note) => {
-        this.itemNotes.update((list) => [...list, note]);
-        this.newNoteContent = '';
-        this.newNoteAdminOnly = false;
-        this.savingNote.set(false);
-        this.snackBar.open('Note posted', 'OK', { duration: 2000 });
-      },
-      error: () => {
-        this.savingNote.set(false);
-        this.snackBar.open('Failed to post note', 'OK', { duration: 3000 });
-      },
-    });
+    this.feedbackService
+      .addAdminNote(feedbackId, {
+        content: normalizeNbsp(this.newNoteContent),
+        isAdminOnly: this.newNoteAdminOnly,
+      })
+      .subscribe({
+        next: (note) => {
+          this.itemNotes.update((list) => [...list, note]);
+          this.newNoteContent = '';
+          this.newNoteAdminOnly = false;
+          this.savingNote.set(false);
+          this.snackBar.open('Note posted', 'OK', { duration: 2000 });
+        },
+        error: () => {
+          this.savingNote.set(false);
+          this.snackBar.open('Failed to post note', 'OK', { duration: 3000 });
+        },
+      });
   }
 
   private patchItem(updated: FeedbackItem): void {

@@ -1,4 +1,13 @@
-import { Component, computed, ElementRef, inject, OnInit, signal, ViewChild } from '@angular/core';
+import {
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  OnInit,
+  signal,
+  ViewChild,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -69,9 +78,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                 <mat-icon>more_vert</mat-icon>
               </button>
               <mat-menu #adminMenu="matMenu">
-                <button mat-menu-item (click)="openEdit()">
-                  <mat-icon>edit</mat-icon> Edit
-                </button>
+                <button mat-menu-item (click)="openEdit()"><mat-icon>edit</mat-icon> Edit</button>
                 <button mat-menu-item (click)="openAddPhoto()">
                   <mat-icon>add_photo_alternate</mat-icon> Add Photo
                 </button>
@@ -165,32 +172,42 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                 <div class="audit-row">
                   <img
                     class="audit-avatar"
-                    [src]="restaurant()!.createdByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'"
+                    [src]="
+                      restaurant()!.createdByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'
+                    "
                     [alt]="restaurant()!.createdByUser!.fullName"
                   />
-                  <span>Added by <strong>{{ restaurant()!.createdByUser!.fullName }}</strong>
-                    on {{ restaurant()!.createdAt | date:'mediumDate' }}</span>
+                  <span
+                    >Added by <strong>{{ restaurant()!.createdByUser!.fullName }}</strong> on
+                    {{ restaurant()!.createdAt | date: 'mediumDate' }}</span
+                  >
                 </div>
               } @else {
                 <div class="audit-row muted">
-                  Added {{ restaurant()!.createdAt | date:'mediumDate' }}
+                  Added {{ restaurant()!.createdAt | date: 'mediumDate' }}
                 </div>
               }
-              @if (restaurant()!.updatedByUser && restaurant()!.updatedAt !== restaurant()!.createdAt) {
+              @if (
+                restaurant()!.updatedByUser && restaurant()!.updatedAt !== restaurant()!.createdAt
+              ) {
                 <div class="audit-row">
                   <img
                     class="audit-avatar"
-                    [src]="restaurant()!.updatedByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'"
+                    [src]="
+                      restaurant()!.updatedByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'
+                    "
                     [alt]="restaurant()!.updatedByUser!.fullName"
                   />
-                  <span>Updated by <strong>{{ restaurant()!.updatedByUser!.fullName }}</strong>
-                    on {{ restaurant()!.updatedAt | date:'mediumDate' }}</span>
+                  <span
+                    >Updated by <strong>{{ restaurant()!.updatedByUser!.fullName }}</strong> on
+                    {{ restaurant()!.updatedAt | date: 'mediumDate' }}</span
+                  >
                 </div>
               }
               @if (restaurant()!.enrichedAt) {
                 <div class="audit-row muted">
                   <mat-icon class="audit-icon">auto_awesome</mat-icon>
-                  Enriched {{ restaurant()!.enrichedAt | date:'mediumDate' }}
+                  Enriched {{ restaurant()!.enrichedAt | date: 'mediumDate' }}
                 </div>
               }
             </div>
@@ -206,7 +223,10 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
               <mat-card-title class="ratings-title">
                 <mat-icon>star</mat-icon> Ratings
                 @if (ratings()!.aggregate.count > 0) {
-                  <span class="ratings-count">{{ ratings()!.aggregate.count }} {{ ratings()!.aggregate.count === 1 ? 'rating' : 'ratings' }}</span>
+                  <span class="ratings-count"
+                    >{{ ratings()!.aggregate.count }}
+                    {{ ratings()!.aggregate.count === 1 ? 'rating' : 'ratings' }}</span
+                  >
                 }
               </mat-card-title>
             </mat-card-header>
@@ -216,10 +236,20 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
               } @else {
                 <div class="rating-aggregate">
                   <div class="rating-overall">
-                    <span class="overall-score">{{ ratings()!.aggregate.avgOverall | number:'1.1-1' }}</span>
+                    <span class="overall-score">{{
+                      ratings()!.aggregate.avgOverall | number: '1.1-1'
+                    }}</span>
                     <div class="stars-row">
-                      @for (s of [1,2,3,4,5]; track s) {
-                        <mat-icon class="star-icon" [class.star-filled]="s <= (ratings()!.aggregate.avgOverall ?? 0)" [class.star-half]="s > (ratings()!.aggregate.avgOverall ?? 0) && s - 0.5 <= (ratings()!.aggregate.avgOverall ?? 0)">star</mat-icon>
+                      @for (s of [1, 2, 3, 4, 5]; track s) {
+                        <mat-icon
+                          class="star-icon"
+                          [class.star-filled]="s <= (ratings()!.aggregate.avgOverall ?? 0)"
+                          [class.star-half]="
+                            s > (ratings()!.aggregate.avgOverall ?? 0) &&
+                            s - 0.5 <= (ratings()!.aggregate.avgOverall ?? 0)
+                          "
+                          >star</mat-icon
+                        >
                       }
                     </div>
                     <span class="overall-label">Overall</span>
@@ -231,7 +261,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                         <div class="breakdown-bar">
                           <div class="breakdown-fill" [style.width.%]="(dim.value / 5) * 100"></div>
                         </div>
-                        <span class="breakdown-score">{{ dim.value | number:'1.1-1' }}</span>
+                        <span class="breakdown-score">{{ dim.value | number: '1.1-1' }}</span>
                       </div>
                     }
                   </div>
@@ -243,21 +273,29 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                     @for (review of ratings()!.reviews; track review.id) {
                       <div class="review-item">
                         <div class="review-header">
-                          <img class="review-avatar"
+                          <img
+                            class="review-avatar"
                             [src]="review.memberPhoto || '/avatars/bear-chef.jpg'"
-                            [alt]="review.memberName" />
+                            [alt]="review.memberName"
+                          />
                           <div>
                             <div class="review-name">{{ review.memberName }}</div>
-                            <div class="review-date">{{ (review.eventDate + 'T12:00:00') | date:'MMM d, y' }}</div>
+                            <div class="review-date">
+                              {{ review.eventDate + 'T12:00:00' | date: 'MMM d, y' }}
+                            </div>
                           </div>
                           <div class="review-scores">
-                            <span class="review-score">{{ ((review.food + review.service + review.valueRating + review.noise) / 4) | number:'1.1-1' }}</span>
+                            <span class="review-score">{{
+                              (review.food + review.service + review.valueRating + review.noise) / 4
+                                | number: '1.1-1'
+                            }}</span>
                             <mat-icon class="review-star">star</mat-icon>
                           </div>
                           <app-report-button
                             contentType="restaurant_rating"
                             [contentId]="review.id"
-                            [authorId]="review.memberId" />
+                            [authorId]="review.memberId"
+                          />
                         </div>
                         @if (review.comment) {
                           <p class="review-comment">{{ review.comment }}</p>
@@ -281,14 +319,19 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
 
                     @if (unratedEligibleEvents().length === 1) {
                       <p class="single-visit-label">
-                        Rating your visit on <strong>{{ (unratedEligibleEvents()[0].eventDate + 'T12:00:00') | date:'MMMM d, y' }}</strong>
+                        Rating your visit on
+                        <strong>{{
+                          unratedEligibleEvents()[0].eventDate + 'T12:00:00' | date: 'MMMM d, y'
+                        }}</strong>
                       </p>
                     } @else {
                       <mat-form-field appearance="outline" class="event-select">
                         <mat-label>Select your visit date</mat-label>
                         <mat-select [formControl]="ratingEventCtrl">
                           @for (e of unratedEligibleEvents(); track e.id) {
-                            <mat-option [value]="e.id">{{ (e.eventDate + 'T12:00:00') | date:'MMMM d, y' }}</mat-option>
+                            <mat-option [value]="e.id">{{
+                              e.eventDate + 'T12:00:00' | date: 'MMMM d, y'
+                            }}</mat-option>
                           }
                         </mat-select>
                       </mat-form-field>
@@ -298,9 +341,11 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                       <div class="rating-dim">
                         <span class="rating-dim-label">{{ dim.label }}</span>
                         <div class="rating-stars">
-                          @for (s of [1,2,3,4,5]; track s) {
+                          @for (s of [1, 2, 3, 4, 5]; track s) {
                             <button mat-icon-button class="star-btn" (click)="setDim(dim.key, s)">
-                              <mat-icon [class.star-filled]="s <= getRatingValue(dim.key)">star</mat-icon>
+                              <mat-icon [class.star-filled]="s <= getRatingValue(dim.key)"
+                                >star</mat-icon
+                              >
                             </button>
                           }
                         </div>
@@ -310,13 +355,23 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
 
                     <mat-form-field appearance="outline" class="rating-comment-field">
                       <mat-label>Comment (optional)</mat-label>
-                      <textarea matInput [formControl]="ratingCommentCtrl" rows="3" maxlength="1000"></textarea>
+                      <textarea
+                        matInput
+                        [formControl]="ratingCommentCtrl"
+                        rows="3"
+                        maxlength="1000"
+                      ></textarea>
                       <mat-hint align="end">{{ ratingCommentCtrl.value.length }}/1000</mat-hint>
                     </mat-form-field>
 
                     <div class="rating-form-actions">
                       <button mat-button (click)="showRatingForm.set(false)">Cancel</button>
-                      <button mat-raised-button color="primary" (click)="submitRating()" [disabled]="!canSubmitRating()">
+                      <button
+                        mat-raised-button
+                        color="primary"
+                        (click)="submitRating()"
+                        [disabled]="!canSubmitRating()"
+                      >
                         Submit Rating
                       </button>
                     </div>
@@ -328,7 +383,13 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         }
 
         <!-- Moderator info (admin/mod only) -->
-        @if (isAdminOrMod() && (restaurant()!.moderatorNotes || restaurant()!.contactName || restaurant()!.contactPhone || restaurant()!.contactEmail)) {
+        @if (
+          isAdminOrMod() &&
+          (restaurant()!.moderatorNotes ||
+            restaurant()!.contactName ||
+            restaurant()!.contactPhone ||
+            restaurant()!.contactEmail)
+        ) {
           <mat-card class="mod-card">
             <mat-card-header>
               <mat-card-title class="mod-card-title">
@@ -339,7 +400,11 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
               @if (restaurant()!.moderatorNotes) {
                 <p class="mod-notes">{{ restaurant()!.moderatorNotes }}</p>
               }
-              @if (restaurant()!.contactName || restaurant()!.contactPhone || restaurant()!.contactEmail) {
+              @if (
+                restaurant()!.contactName ||
+                restaurant()!.contactPhone ||
+                restaurant()!.contactEmail
+              ) {
                 <div class="mod-contact">
                   <div class="mod-contact-label">Contact</div>
                   @if (restaurant()!.contactName) {
@@ -351,13 +416,17 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                   @if (restaurant()!.contactPhone) {
                     <div class="mod-contact-row">
                       <mat-icon>phone</mat-icon>
-                      <a [href]="'tel:' + restaurant()!.contactPhone">{{ restaurant()!.contactPhone }}</a>
+                      <a [href]="'tel:' + restaurant()!.contactPhone">{{
+                        restaurant()!.contactPhone
+                      }}</a>
                     </div>
                   }
                   @if (restaurant()!.contactEmail) {
                     <div class="mod-contact-row">
                       <mat-icon>email</mat-icon>
-                      <a [href]="'mailto:' + restaurant()!.contactEmail">{{ restaurant()!.contactEmail }}</a>
+                      <a [href]="'mailto:' + restaurant()!.contactEmail">{{
+                        restaurant()!.contactEmail
+                      }}</a>
                     </div>
                   }
                 </div>
@@ -370,6 +439,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
       <p class="empty">Restaurant not found.</p>
     }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .center {
@@ -394,7 +464,9 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         gap: 4px;
         align-items: center;
       }
-      .delete-item { color: #c62828; }
+      .delete-item {
+        color: #c62828;
+      }
       .gallery {
         display: flex;
         gap: 8px;
@@ -482,7 +554,9 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         gap: 8px;
         font-size: 0.82rem;
         color: #666;
-        &.muted { color: #aaa; }
+        &.muted {
+          color: #aaa;
+        }
       }
       .audit-avatar {
         width: 24px;
@@ -498,17 +572,36 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         color: var(--db-primary);
       }
       // ── Ratings ────────────────────────────────────────────────────────────
-      .ratings-loading { display: flex; justify-content: center; padding: 24px; }
-      .ratings-card { margin-bottom: 24px; }
+      .ratings-loading {
+        display: flex;
+        justify-content: center;
+        padding: 24px;
+      }
+      .ratings-card {
+        margin-bottom: 24px;
+      }
       .ratings-title {
         display: flex;
         align-items: center;
         gap: 8px;
         font-size: 0.9rem;
-        mat-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; color: var(--db-amber); }
+        mat-icon {
+          font-size: 1.1rem;
+          width: 1.1rem;
+          height: 1.1rem;
+          color: var(--db-amber);
+        }
       }
-      .ratings-count { font-size: 0.8rem; font-weight: 400; color: #999; }
-      .no-ratings { color: #aaa; font-size: 0.88rem; margin: 0; }
+      .ratings-count {
+        font-size: 0.8rem;
+        font-weight: 400;
+        color: #999;
+      }
+      .no-ratings {
+        color: #aaa;
+        font-size: 0.88rem;
+        margin: 0;
+      }
       .rating-aggregate {
         display: flex;
         gap: 24px;
@@ -538,17 +631,34 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         width: 1.1rem;
         height: 1.1rem;
         color: #ddd;
-        &.star-filled { color: var(--db-amber); }
+        &.star-filled {
+          color: var(--db-amber);
+        }
       }
-      .overall-label { font-size: 0.72rem; color: #999; text-transform: uppercase; letter-spacing: 0.05em; }
-      .rating-breakdown { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 8px; }
+      .overall-label {
+        font-size: 0.72rem;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .rating-breakdown {
+        flex: 1;
+        min-width: 180px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
       .breakdown-row {
         display: flex;
         align-items: center;
         gap: 8px;
         font-size: 0.82rem;
       }
-      .breakdown-label { width: 60px; color: #666; flex-shrink: 0; }
+      .breakdown-label {
+        width: 60px;
+        color: #666;
+        flex-shrink: 0;
+      }
       .breakdown-bar {
         flex: 1;
         height: 6px;
@@ -556,9 +666,21 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         border-radius: 3px;
         overflow: hidden;
       }
-      .breakdown-fill { height: 100%; background: var(--db-amber); border-radius: 3px; }
-      .breakdown-score { width: 28px; text-align: right; color: #666; }
-      .reviews-list { display: flex; flex-direction: column; gap: 12px; }
+      .breakdown-fill {
+        height: 100%;
+        background: var(--db-amber);
+        border-radius: 3px;
+      }
+      .breakdown-score {
+        width: 28px;
+        text-align: right;
+        color: #666;
+      }
+      .reviews-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
       .review-item {
         padding: 12px;
         background: #faf7f2;
@@ -578,8 +700,15 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         object-fit: cover;
         flex-shrink: 0;
       }
-      .review-name { font-size: 0.88rem; font-weight: 600; color: var(--db-brown-dark); }
-      .review-date { font-size: 0.75rem; color: #aaa; }
+      .review-name {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--db-brown-dark);
+      }
+      .review-date {
+        font-size: 0.75rem;
+        color: #aaa;
+      }
       .review-scores {
         margin-left: auto;
         display: flex;
@@ -588,9 +717,19 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         font-size: 0.9rem;
         font-weight: 700;
         color: var(--db-brown-dark);
-        .review-star { font-size: 1rem; width: 1rem; height: 1rem; color: var(--db-amber); }
+        .review-star {
+          font-size: 1rem;
+          width: 1rem;
+          height: 1rem;
+          color: var(--db-amber);
+        }
       }
-      .review-comment { margin: 0; font-size: 0.88rem; color: #555; line-height: 1.5; }
+      .review-comment {
+        margin: 0;
+        font-size: 0.88rem;
+        color: #555;
+        line-height: 1.5;
+      }
       // ── Rating form ────────────────────────────────────────────────────────
       .rating-form {
         display: flex;
@@ -609,8 +748,15 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         text-transform: uppercase;
         letter-spacing: 0.06em;
       }
-      .event-select { width: 100%; font-size: 0.88rem; }
-      .single-visit-label { margin: 0 0 12px; font-size: 0.88rem; color: #555; }
+      .event-select {
+        width: 100%;
+        font-size: 0.88rem;
+      }
+      .single-visit-label {
+        margin: 0 0 12px;
+        font-size: 0.88rem;
+        color: #555;
+      }
       .rating-dim {
         display: flex;
         align-items: center;
@@ -622,7 +768,10 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         color: #555;
         flex-shrink: 0;
       }
-      .rating-stars { display: flex; gap: 0; }
+      .rating-stars {
+        display: flex;
+        gap: 0;
+      }
       .star-btn {
         width: 32px !important;
         height: 32px !important;
@@ -632,12 +781,24 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
           width: 1.4rem;
           height: 1.4rem;
           color: #bbb;
-          &.star-filled { color: var(--db-amber); }
+          &.star-filled {
+            color: var(--db-amber);
+          }
         }
       }
-      .rating-dim-val { font-size: 0.8rem; color: #999; width: 28px; }
-      .rating-comment-field { width: 100%; }
-      .rating-form-actions { display: flex; gap: 8px; justify-content: flex-end; }
+      .rating-dim-val {
+        font-size: 0.8rem;
+        color: #999;
+        width: 28px;
+      }
+      .rating-comment-field {
+        width: 100%;
+      }
+      .rating-form-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
 
       .mod-card {
         margin-bottom: 24px;
@@ -650,9 +811,15 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         gap: 8px;
         font-size: 0.9rem;
         color: #6a1b9a;
-        mat-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
+        mat-icon {
+          font-size: 1.1rem;
+          width: 1.1rem;
+          height: 1.1rem;
+        }
       }
-      .mod-body { padding: 4px 0 0; }
+      .mod-body {
+        padding: 4px 0 0;
+      }
       .mod-notes {
         font-size: 0.9rem;
         line-height: 1.6;
@@ -660,7 +827,9 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         white-space: pre-wrap;
         margin: 0 0 12px;
       }
-      .mod-contact { margin-top: 4px; }
+      .mod-contact {
+        margin-top: 4px;
+      }
       .mod-contact-label {
         font-size: 0.72rem;
         font-weight: 600;
@@ -676,8 +845,20 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         font-size: 0.88rem;
         color: #444;
         margin-bottom: 4px;
-        mat-icon { font-size: 1rem; width: 1rem; height: 1rem; color: #9c27b0; flex-shrink: 0; }
-        a { color: inherit; text-decoration: none; &:hover { text-decoration: underline; } }
+        mat-icon {
+          font-size: 1rem;
+          width: 1rem;
+          height: 1rem;
+          color: #9c27b0;
+          flex-shrink: 0;
+        }
+        a {
+          color: inherit;
+          text-decoration: none;
+          &:hover {
+            text-decoration: underline;
+          }
+        }
       }
     `,
   ],
@@ -706,7 +887,12 @@ export class RestaurantDetailComponent implements OnInit {
   readonly ratingEventCtrl = new FormControl<number | null>(null, Validators.required);
   readonly ratingCommentCtrl = new FormControl('', { nonNullable: true });
 
-  readonly ratingValues = signal<Record<string, number>>({ food: 0, service: 0, valueRating: 0, noise: 0 });
+  readonly ratingValues = signal<Record<string, number>>({
+    food: 0,
+    service: 0,
+    valueRating: 0,
+    noise: 0,
+  });
 
   readonly ratingFormDims = [
     { key: 'food', label: 'Food' },
@@ -727,11 +913,11 @@ export class RestaurantDetailComponent implements OnInit {
   });
 
   readonly unratedEligibleEvents = computed<EligibleEvent[]>(() =>
-    (this.ratings()?.eligibleEvents ?? []).filter(e => !e.alreadyRated)
+    (this.ratings()?.eligibleEvents ?? []).filter((e) => !e.alreadyRated),
   );
 
   setDim(key: string, value: number): void {
-    this.ratingValues.update(v => ({ ...v, [key]: value }));
+    this.ratingValues.update((v) => ({ ...v, [key]: value }));
   }
 
   getRatingValue(key: string): number {
@@ -740,35 +926,43 @@ export class RestaurantDetailComponent implements OnInit {
 
   canSubmitRating(): boolean {
     const v = this.ratingValues();
-    return !!this.ratingEventCtrl.value && v['food'] > 0 && v['service'] > 0 && v['valueRating'] > 0 && v['noise'] > 0;
+    return (
+      !!this.ratingEventCtrl.value &&
+      v['food'] > 0 &&
+      v['service'] > 0 &&
+      v['valueRating'] > 0 &&
+      v['noise'] > 0
+    );
   }
 
   submitRating(): void {
     if (!this.canSubmitRating()) return;
     this.ratingSaving.set(true);
     const v = this.ratingValues();
-    this.restaurantsService.submitRating(this.restaurant()!.id, {
-      eventId: this.ratingEventCtrl.value!,
-      food: v['food'],
-      service: v['service'],
-      valueRating: v['valueRating'],
-      noise: v['noise'],
-      comment: this.ratingCommentCtrl.value.trim() || undefined,
-    }).subscribe({
-      next: () => {
-        this.ratingSaving.set(false);
-        this.showRatingForm.set(false);
-        this.ratingValues.set({ food: 0, service: 0, valueRating: 0, noise: 0 });
-        this.ratingCommentCtrl.setValue('');
-        this.ratingEventCtrl.setValue(null);
-        this.snackBar.open('Rating submitted!', 'OK', { duration: 3000 });
-        this.loadRatings(this.restaurant()!.id);
-      },
-      error: () => {
-        this.ratingSaving.set(false);
-        this.snackBar.open('Failed to submit rating', 'OK', { duration: 3000 });
-      },
-    });
+    this.restaurantsService
+      .submitRating(this.restaurant()!.id, {
+        eventId: this.ratingEventCtrl.value!,
+        food: v['food'],
+        service: v['service'],
+        valueRating: v['valueRating'],
+        noise: v['noise'],
+        comment: this.ratingCommentCtrl.value.trim() || undefined,
+      })
+      .subscribe({
+        next: () => {
+          this.ratingSaving.set(false);
+          this.showRatingForm.set(false);
+          this.ratingValues.set({ food: 0, service: 0, valueRating: 0, noise: 0 });
+          this.ratingCommentCtrl.setValue('');
+          this.ratingEventCtrl.setValue(null);
+          this.snackBar.open('Rating submitted!', 'OK', { duration: 3000 });
+          this.loadRatings(this.restaurant()!.id);
+        },
+        error: () => {
+          this.ratingSaving.set(false);
+          this.snackBar.open('Failed to submit rating', 'OK', { duration: 3000 });
+        },
+      });
   }
 
   private loadRatings(restaurantId: number): void {
@@ -777,8 +971,8 @@ export class RestaurantDetailComponent implements OnInit {
       next: (r) => {
         this.ratings.set(r);
         this.ratingsLoading.set(false);
-        if (r.eligibleEvents.filter(e => !e.alreadyRated).length > 0) {
-          this.ratingEventCtrl.setValue(r.eligibleEvents.find(e => !e.alreadyRated)?.id ?? null);
+        if (r.eligibleEvents.filter((e) => !e.alreadyRated).length > 0) {
+          this.ratingEventCtrl.setValue(r.eligibleEvents.find((e) => !e.alreadyRated)?.id ?? null);
         }
       },
       error: () => this.ratingsLoading.set(false),

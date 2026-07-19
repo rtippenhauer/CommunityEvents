@@ -1,10 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { ErrorPageComponent } from '../../shared/components/error-page/error-page.component';
 
 @Component({
   selector: 'app-not-found',
   standalone: true,
   imports: [ErrorPageComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <app-error-page
       icon="search_off"

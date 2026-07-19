@@ -1,4 +1,4 @@
-import { Component, effect, inject, OnInit, signal } from '@angular/core';
+import { Component, effect, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -93,7 +93,9 @@ interface City {
     @if (loading()) {
       <div class="center"><mat-spinner /></div>
     } @else if (restaurants().length === 0) {
-      <p class="empty">{{ showArchived() ? 'No archived restaurants.' : 'No restaurants found.' }}</p>
+      <p class="empty">
+        {{ showArchived() ? 'No archived restaurants.' : 'No restaurants found.' }}
+      </p>
     } @else {
       <div class="restaurant-grid">
         @for (r of restaurants(); track r.id) {
@@ -134,6 +136,7 @@ interface City {
       </div>
     }
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .page-header {
@@ -332,7 +335,11 @@ export class RestaurantsListComponent implements OnInit {
   }
 
   openCreate(): void {
-    const ref = this.dialog.open(RestaurantFormDialogComponent, { data: {}, width: '560px', maxWidth: '95vw' });
+    const ref = this.dialog.open(RestaurantFormDialogComponent, {
+      data: {},
+      width: '560px',
+      maxWidth: '95vw',
+    });
     ref.afterClosed().subscribe((r: Restaurant | undefined) => {
       if (r) this.load();
     });
@@ -341,7 +348,7 @@ export class RestaurantsListComponent implements OnInit {
   bulkEnrich(): void {
     const count = this.restaurants().length;
     const confirmed = window.confirm(
-      `Enrich all ${count} restaurants with Google Places + Claude descriptions?\n\nThis runs in the background — check Unraid logs for progress. Takes ~${Math.ceil(count * 0.7 / 60)} minutes.`
+      `Enrich all ${count} restaurants with Google Places + Claude descriptions?\n\nThis runs in the background — check Unraid logs for progress. Takes ~${Math.ceil((count * 0.7) / 60)} minutes.`,
     );
     if (!confirmed) return;
     this.enrichingAll.set(true);
@@ -351,7 +358,7 @@ export class RestaurantsListComponent implements OnInit {
         this.snackBar.open(
           `Enriching ${res.total} restaurants in background — check logs for progress`,
           'OK',
-          { duration: 6000 }
+          { duration: 6000 },
         );
       },
       error: () => {

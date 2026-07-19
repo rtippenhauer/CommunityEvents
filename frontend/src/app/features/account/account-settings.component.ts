@@ -1,7 +1,12 @@
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, OnInit, signal, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { NonNullableFormBuilder, ReactiveFormsModule, FormControl, Validators } from '@angular/forms';
+import {
+  NonNullableFormBuilder,
+  ReactiveFormsModule,
+  FormControl,
+  Validators,
+} from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -51,10 +56,22 @@ import { environment } from '../../../environments/environment';
             <div class="provider-row">
               <div class="provider-info">
                 <svg class="provider-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  />
                 </svg>
                 <div class="provider-text">
                   <span class="provider-name">Google</span>
@@ -67,16 +84,19 @@ import { environment } from '../../../environments/environment';
               </div>
               @if (providers()!.google) {
                 @if (providers()!.hasMultipleMethods) {
-                  <button mat-stroked-button color="warn" (click)="confirmDisconnect('google')" [disabled]="disconnecting()">
+                  <button
+                    mat-stroked-button
+                    color="warn"
+                    (click)="confirmDisconnect('google')"
+                    [disabled]="disconnecting()"
+                  >
                     Disconnect
                   </button>
                 } @else {
                   <span class="only-method-label">Only login method</span>
                 }
               } @else {
-                <button mat-stroked-button (click)="connectGoogle()">
-                  Connect
-                </button>
+                <button mat-stroked-button (click)="connectGoogle()">Connect</button>
               }
             </div>
 
@@ -86,12 +106,17 @@ import { environment } from '../../../environments/environment';
             <div class="provider-row">
               <div class="provider-info">
                 <svg class="provider-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                  <path
+                    fill="#1877F2"
+                    d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
+                  />
                 </svg>
                 <div class="provider-text">
                   <span class="provider-name">Facebook</span>
                   @if (providers()!.facebook) {
-                    <span class="provider-email">{{ providers()!.facebook!.email ?? 'Connected' }}</span>
+                    <span class="provider-email">{{
+                      providers()!.facebook!.email ?? 'Connected'
+                    }}</span>
                   } @else {
                     <span class="provider-email not-connected">Not connected</span>
                   }
@@ -99,16 +124,28 @@ import { environment } from '../../../environments/environment';
               </div>
               @if (providers()!.facebook) {
                 @if (providers()!.hasMultipleMethods) {
-                  <button mat-stroked-button color="warn" (click)="confirmDisconnect('facebook')" [disabled]="disconnecting()">
+                  <button
+                    mat-stroked-button
+                    color="warn"
+                    (click)="confirmDisconnect('facebook')"
+                    [disabled]="disconnecting()"
+                  >
                     Disconnect
                   </button>
                 } @else {
                   <span class="only-method-label">Only login method</span>
                 }
               } @else if (facebookEnabled) {
-                <button mat-stroked-button (click)="connectFacebook()" [disabled]="fbLinking() || !fbReady()">
-                  @if (fbLinking()) { <mat-spinner diameter="16"></mat-spinner> }
-                  @else { Connect }
+                <button
+                  mat-stroked-button
+                  (click)="connectFacebook()"
+                  [disabled]="fbLinking() || !fbReady()"
+                >
+                  @if (fbLinking()) {
+                    <mat-spinner diameter="16"></mat-spinner>
+                  } @else {
+                    Connect
+                  }
                 </button>
               }
             </div>
@@ -132,7 +169,9 @@ import { environment } from '../../../environments/environment';
               </div>
               @if (providers()!.hasPassword) {
                 @if (providers()!.hasMultipleMethods) {
-                  <button mat-stroked-button (click)="showChangePasswordDialog.set(true)">Change</button>
+                  <button mat-stroked-button (click)="showChangePasswordDialog.set(true)">
+                    Change
+                  </button>
                 } @else {
                   <span class="only-method-label">Only login method</span>
                 }
@@ -152,10 +191,15 @@ import { environment } from '../../../environments/environment';
           </mat-card-header>
           <mat-card-content>
             <p class="danger-description">
-              Permanently delete your DinnerBears account and all associated login credentials.
-              Your name and email will be deleted within 30 days.
+              Permanently delete your DinnerBears account and all associated login credentials. Your
+              name and email will be deleted within 30 days.
             </p>
-            <button mat-raised-button color="warn" (click)="startDeleteFlow()" [disabled]="deleting()">
+            <button
+              mat-raised-button
+              color="warn"
+              (click)="startDeleteFlow()"
+              [disabled]="deleting()"
+            >
               <mat-icon>delete_forever</mat-icon>
               Delete My Account
             </button>
@@ -177,7 +221,9 @@ import { environment } from '../../../environments/environment';
         <div class="dialog-backdrop" (click)="showSetPasswordDialog.set(false)">
           <div class="dialog-panel" (click)="$event.stopPropagation()">
             <h2>Set a password</h2>
-            <p>Add a password so you can sign in with email in addition to your connected accounts.</p>
+            <p>
+              Add a password so you can sign in with email in addition to your connected accounts.
+            </p>
             <form [formGroup]="setPasswordForm" (ngSubmit)="submitSetPassword()" class="pw-form">
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Email for sign-in</mat-label>
@@ -186,27 +232,49 @@ import { environment } from '../../../environments/environment';
               </mat-form-field>
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>New password</mat-label>
-                <input matInput formControlName="newPassword"
-                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="new-password" />
-                <button mat-icon-button matSuffix type="button" (click)="showChangePw.set(!showChangePw())">
+                <input
+                  matInput
+                  formControlName="newPassword"
+                  [type]="showChangePw() ? 'text' : 'password'"
+                  autocomplete="new-password"
+                />
+                <button
+                  mat-icon-button
+                  matSuffix
+                  type="button"
+                  (click)="showChangePw.set(!showChangePw())"
+                >
                   <mat-icon>{{ showChangePw() ? 'visibility_off' : 'visibility' }}</mat-icon>
                 </button>
                 <mat-hint>At least 8 characters</mat-hint>
               </mat-form-field>
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Confirm password</mat-label>
-                <input matInput formControlName="confirmPassword"
-                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="new-password" />
+                <input
+                  matInput
+                  formControlName="confirmPassword"
+                  [type]="showChangePw() ? 'text' : 'password'"
+                  autocomplete="new-password"
+                />
               </mat-form-field>
               @if (changePasswordError()) {
                 <p class="form-error">{{ changePasswordError() }}</p>
               }
               <div class="dialog-actions">
-                <button mat-button type="button" (click)="showSetPasswordDialog.set(false)">Cancel</button>
-                <button mat-raised-button color="primary" type="submit"
-                  [disabled]="setPasswordForm.invalid || changingPassword()">
-                  @if (changingPassword()) { <mat-spinner diameter="18" /> }
-                  @else { Set password }
+                <button mat-button type="button" (click)="showSetPasswordDialog.set(false)">
+                  Cancel
+                </button>
+                <button
+                  mat-raised-button
+                  color="primary"
+                  type="submit"
+                  [disabled]="setPasswordForm.invalid || changingPassword()"
+                >
+                  @if (changingPassword()) {
+                    <mat-spinner diameter="18" />
+                  } @else {
+                    Set password
+                  }
                 </button>
               </div>
             </form>
@@ -219,35 +287,65 @@ import { environment } from '../../../environments/environment';
         <div class="dialog-backdrop" (click)="showChangePasswordDialog.set(false)">
           <div class="dialog-panel" (click)="$event.stopPropagation()">
             <h2>Change password</h2>
-            <form [formGroup]="changePasswordForm" (ngSubmit)="submitChangePassword()" class="pw-form">
+            <form
+              [formGroup]="changePasswordForm"
+              (ngSubmit)="submitChangePassword()"
+              class="pw-form"
+            >
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Current password</mat-label>
-                <input matInput formControlName="currentPassword"
-                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="current-password" />
-                <button mat-icon-button matSuffix type="button" (click)="showChangePw.set(!showChangePw())">
+                <input
+                  matInput
+                  formControlName="currentPassword"
+                  [type]="showChangePw() ? 'text' : 'password'"
+                  autocomplete="current-password"
+                />
+                <button
+                  mat-icon-button
+                  matSuffix
+                  type="button"
+                  (click)="showChangePw.set(!showChangePw())"
+                >
                   <mat-icon>{{ showChangePw() ? 'visibility_off' : 'visibility' }}</mat-icon>
                 </button>
               </mat-form-field>
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>New password</mat-label>
-                <input matInput formControlName="newPassword"
-                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="new-password" />
+                <input
+                  matInput
+                  formControlName="newPassword"
+                  [type]="showChangePw() ? 'text' : 'password'"
+                  autocomplete="new-password"
+                />
                 <mat-hint>At least 8 characters</mat-hint>
               </mat-form-field>
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>Confirm new password</mat-label>
-                <input matInput formControlName="confirmPassword"
-                  [type]="showChangePw() ? 'text' : 'password'" autocomplete="new-password" />
+                <input
+                  matInput
+                  formControlName="confirmPassword"
+                  [type]="showChangePw() ? 'text' : 'password'"
+                  autocomplete="new-password"
+                />
               </mat-form-field>
               @if (changePasswordError()) {
                 <p class="form-error">{{ changePasswordError() }}</p>
               }
               <div class="dialog-actions">
-                <button mat-button type="button" (click)="showChangePasswordDialog.set(false)">Cancel</button>
-                <button mat-raised-button color="primary" type="submit"
-                  [disabled]="changePasswordForm.invalid || changingPassword()">
-                  @if (changingPassword()) { <mat-spinner diameter="18" /> }
-                  @else { Update password }
+                <button mat-button type="button" (click)="showChangePasswordDialog.set(false)">
+                  Cancel
+                </button>
+                <button
+                  mat-raised-button
+                  color="primary"
+                  type="submit"
+                  [disabled]="changePasswordForm.invalid || changingPassword()"
+                >
+                  @if (changingPassword()) {
+                    <mat-spinner diameter="18" />
+                  } @else {
+                    Update password
+                  }
                 </button>
               </div>
             </form>
@@ -260,10 +358,18 @@ import { environment } from '../../../environments/environment';
         <div class="dialog-backdrop" (click)="cancelDisconnect()">
           <div class="dialog-panel" (click)="$event.stopPropagation()">
             <h2>Disconnect {{ pendingProvider() | titlecase }}?</h2>
-            <p>You will no longer be able to log in with {{ pendingProvider() | titlecase }}. Your DinnerBears account and all history will remain.</p>
+            <p>
+              You will no longer be able to log in with {{ pendingProvider() | titlecase }}. Your
+              DinnerBears account and all history will remain.
+            </p>
             <div class="dialog-actions">
               <button mat-button (click)="cancelDisconnect()">Cancel</button>
-              <button mat-raised-button color="warn" (click)="executeDisconnect()" [disabled]="disconnecting()">
+              <button
+                mat-raised-button
+                color="warn"
+                (click)="executeDisconnect()"
+                [disabled]="disconnecting()"
+              >
                 Disconnect {{ pendingProvider() | titlecase }}
               </button>
             </div>
@@ -281,7 +387,11 @@ import { environment } from '../../../environments/environment';
             <p class="hint">To keep your account, cancel and add another login method first.</p>
             <div class="dialog-actions">
               <button mat-button (click)="cancelDisconnect()">Cancel</button>
-              <button mat-raised-button color="warn" (click)="startDeleteFlow(); cancelDisconnect()">
+              <button
+                mat-raised-button
+                color="warn"
+                (click)="startDeleteFlow(); cancelDisconnect()"
+              >
                 Delete My Account Instead
               </button>
             </div>
@@ -298,13 +408,19 @@ import { environment } from '../../../environments/environment';
             <ul class="delete-details">
               <li>Your account will be <strong>immediately deactivated</strong>.</li>
               <li>All login credentials are removed now.</li>
-              <li>Your name and email will be <strong>permanently deleted within 30 days</strong>.</li>
+              <li>
+                Your name and email will be <strong>permanently deleted within 30 days</strong>.
+              </li>
               <li>Event attendance history is retained anonymously.</li>
             </ul>
             <p class="hint">You will be logged out immediately and cannot undo this.</p>
             <div class="dialog-actions">
               <button mat-button (click)="showDeleteStep1.set(false)">Cancel</button>
-              <button mat-raised-button color="warn" (click)="showDeleteStep1.set(false); showDeleteStep2.set(true)">
+              <button
+                mat-raised-button
+                color="warn"
+                (click)="showDeleteStep1.set(false); showDeleteStep2.set(true)"
+              >
                 Continue
               </button>
             </div>
@@ -319,10 +435,17 @@ import { environment } from '../../../environments/environment';
             <h2>Confirm account deletion</h2>
             <p>Type <strong>DELETE</strong> to confirm:</p>
             <mat-form-field appearance="outline" class="confirm-field">
-              <input matInput [formControl]="deleteConfirmCtrl" placeholder="DELETE" autocomplete="off" />
+              <input
+                matInput
+                [formControl]="deleteConfirmCtrl"
+                placeholder="DELETE"
+                autocomplete="off"
+              />
             </mat-form-field>
             <div class="dialog-actions">
-              <button mat-button (click)="showDeleteStep2.set(false); deleteConfirmCtrl.reset()">Cancel</button>
+              <button mat-button (click)="showDeleteStep2.set(false); deleteConfirmCtrl.reset()">
+                Cancel
+              </button>
               <button
                 mat-raised-button
                 color="warn"
@@ -337,187 +460,192 @@ import { environment } from '../../../environments/environment';
       }
     </div>
   `,
-  styles: [`
-    .settings-page {
-      max-width: 640px;
-      margin: 40px auto;
-      padding: 0 16px 80px;
-    }
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .settings-page {
+        max-width: 640px;
+        margin: 40px auto;
+        padding: 0 16px 80px;
+      }
 
-    .page-title {
-      font-size: 1.6rem;
-      color: var(--db-brown-dark, #3d2b1f);
-      margin: 0 0 24px;
-    }
+      .page-title {
+        font-size: 1.6rem;
+        color: var(--db-brown-dark, #3d2b1f);
+        margin: 0 0 24px;
+      }
 
-    .settings-card {
-      margin-bottom: 24px;
-      border-radius: 12px;
-    }
+      .settings-card {
+        margin-bottom: 24px;
+        border-radius: 12px;
+      }
 
-    .loading-row {
-      display: flex;
-      justify-content: center;
-      padding: 24px 0;
-    }
+      .loading-row {
+        display: flex;
+        justify-content: center;
+        padding: 24px 0;
+      }
 
-    .provider-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 0;
-    }
+      .provider-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 0;
+      }
 
-    .provider-info {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
+      .provider-info {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
 
-    .provider-icon {
-      width: 28px;
-      height: 28px;
-      flex-shrink: 0;
-    }
+      .provider-icon {
+        width: 28px;
+        height: 28px;
+        flex-shrink: 0;
+      }
 
-    .provider-icon-mat {
-      font-size: 28px;
-      width: 28px;
-      height: 28px;
-      color: #888;
-    }
+      .provider-icon-mat {
+        font-size: 28px;
+        width: 28px;
+        height: 28px;
+        color: #888;
+      }
 
-    .provider-text {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
+      .provider-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
 
-    .provider-name {
-      font-weight: 500;
-      font-size: 0.95rem;
-    }
+      .provider-name {
+        font-weight: 500;
+        font-size: 0.95rem;
+      }
 
-    .provider-email {
-      font-size: 0.82rem;
-      color: #666;
-    }
+      .provider-email {
+        font-size: 0.82rem;
+        color: #666;
+      }
 
-    .provider-email.not-connected {
-      color: #aaa;
-      font-style: italic;
-    }
+      .provider-email.not-connected {
+        color: #aaa;
+        font-style: italic;
+      }
 
-    .only-method-label {
-      font-size: 0.8rem;
-      color: #888;
-      font-style: italic;
-    }
+      .only-method-label {
+        font-size: 0.8rem;
+        color: #888;
+        font-style: italic;
+      }
 
-    .danger-zone-card {
-      border: 2px solid #d32f2f;
-    }
+      .danger-zone-card {
+        border: 2px solid #d32f2f;
+      }
 
-    .danger-title {
-      color: #d32f2f !important;
-    }
+      .danger-title {
+        color: #d32f2f !important;
+      }
 
-    .danger-description {
-      color: #555;
-      font-size: 0.9rem;
-      margin: 0 0 16px;
-    }
+      .danger-description {
+        color: #555;
+        font-size: 0.9rem;
+        margin: 0 0 16px;
+      }
 
-    .admin-note {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #888;
-      font-size: 0.9rem;
-    }
+      .admin-note {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #888;
+        font-size: 0.9rem;
+      }
 
-    /* Dialogs */
-    .dialog-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.45);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    }
+      /* Dialogs */
+      .dialog-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
 
-    .dialog-panel {
-      background: #fff;
-      border-radius: 12px;
-      padding: 32px;
-      max-width: 480px;
-      width: calc(100vw - 32px);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-    }
+      .dialog-panel {
+        background: #fff;
+        border-radius: 12px;
+        padding: 32px;
+        max-width: 480px;
+        width: calc(100vw - 32px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      }
 
-    .dialog-panel h2 {
-      margin: 0 0 12px;
-      font-size: 1.2rem;
-    }
+      .dialog-panel h2 {
+        margin: 0 0 12px;
+        font-size: 1.2rem;
+      }
 
-    .dialog-panel p {
-      color: #555;
-      font-size: 0.92rem;
-      margin: 0 0 12px;
-      line-height: 1.55;
-    }
+      .dialog-panel p {
+        color: #555;
+        font-size: 0.92rem;
+        margin: 0 0 12px;
+        line-height: 1.55;
+      }
 
-    .dialog-warn-icon {
-      font-size: 2.5rem;
-      width: 2.5rem;
-      height: 2.5rem;
-      color: #e65100;
-      margin-bottom: 8px;
-      display: block;
-    }
+      .dialog-warn-icon {
+        font-size: 2.5rem;
+        width: 2.5rem;
+        height: 2.5rem;
+        color: #e65100;
+        margin-bottom: 8px;
+        display: block;
+      }
 
-    .dialog-actions {
-      display: flex;
-      gap: 10px;
-      justify-content: flex-end;
-      margin-top: 20px;
-    }
+      .dialog-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 20px;
+      }
 
-    .delete-details {
-      color: #555;
-      font-size: 0.9rem;
-      line-height: 1.7;
-      padding-left: 20px;
-      margin: 0 0 12px;
-    }
+      .delete-details {
+        color: #555;
+        font-size: 0.9rem;
+        line-height: 1.7;
+        padding-left: 20px;
+        margin: 0 0 12px;
+      }
 
-    .hint {
-      font-size: 0.85rem !important;
-      color: #888 !important;
-      font-style: italic;
-    }
+      .hint {
+        font-size: 0.85rem !important;
+        color: #888 !important;
+        font-style: italic;
+      }
 
-    .confirm-field {
-      width: 100%;
-      margin-top: 4px;
-    }
+      .confirm-field {
+        width: 100%;
+        margin-top: 4px;
+      }
 
-    .pw-form {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      margin-top: 8px;
-    }
+      .pw-form {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 8px;
+      }
 
-    .full-width { width: 100%; }
+      .full-width {
+        width: 100%;
+      }
 
-    .form-error {
-      color: #c62828;
-      font-size: 0.82rem;
-      margin: 4px 0 0;
-    }
-  `],
+      .form-error {
+        color: #c62828;
+        font-size: 0.82rem;
+        margin: 4px 0 0;
+      }
+    `,
+  ],
 })
 export class AccountSettingsComponent implements OnInit {
   private readonly accountService = inject(AccountService);
@@ -575,7 +703,10 @@ export class AccountSettingsComponent implements OnInit {
   private loadProviders(): void {
     this.loading.set(true);
     this.accountService.getConnectedProviders().subscribe({
-      next: (p) => { this.providers.set(p); this.loading.set(false); },
+      next: (p) => {
+        this.providers.set(p);
+        this.loading.set(false);
+      },
       error: () => this.loading.set(false),
     });
   }
@@ -599,7 +730,11 @@ export class AccountSettingsComponent implements OnInit {
       await firstValueFrom(this.accountService.disconnectProvider(provider));
       this.showDisconnectDialog.set(false);
       this.pendingProvider.set(null);
-      this.snackBar.open(`${provider.charAt(0).toUpperCase() + provider.slice(1)} disconnected successfully.`, 'OK', { duration: 4000 });
+      this.snackBar.open(
+        `${provider.charAt(0).toUpperCase() + provider.slice(1)} disconnected successfully.`,
+        'OK',
+        { duration: 4000 },
+      );
       this.loadProviders();
     } catch (err) {
       const status = (err as HttpErrorResponse)?.status;
@@ -628,28 +763,36 @@ export class AccountSettingsComponent implements OnInit {
       return;
     }
     this.fbLinking.set(true);
-    win.FB.login((response: any) => {
-      if (response.status !== 'connected') {
-        this.fbLinking.set(false);
-        return;
-      }
-      this.authService.linkFacebook(response.authResponse.accessToken).subscribe({
-        next: () => {
+    win.FB.login(
+      (response: any) => {
+        if (response.status !== 'connected') {
           this.fbLinking.set(false);
-          this.snackBar.open('Facebook account connected!', 'OK', { duration: 3000 });
-          this.loadProviders();
-        },
-        error: (err: HttpErrorResponse) => {
-          this.fbLinking.set(false);
-          this.snackBar.open(err?.error?.message ?? 'Failed to connect Facebook.', 'OK', { duration: 5000 });
-        },
-      });
-    }, { scope: 'public_profile,email,user_link' });
+          return;
+        }
+        this.authService.linkFacebook(response.authResponse.accessToken).subscribe({
+          next: () => {
+            this.fbLinking.set(false);
+            this.snackBar.open('Facebook account connected!', 'OK', { duration: 3000 });
+            this.loadProviders();
+          },
+          error: (err: HttpErrorResponse) => {
+            this.fbLinking.set(false);
+            this.snackBar.open(err?.error?.message ?? 'Failed to connect Facebook.', 'OK', {
+              duration: 5000,
+            });
+          },
+        });
+      },
+      { scope: 'public_profile,email,user_link' },
+    );
   }
 
   private loadFbSdk(appId: string): void {
     const win = window as any;
-    if (win.__fbDone) { this.fbReady.set(true); return; }
+    if (win.__fbDone) {
+      this.fbReady.set(true);
+      return;
+    }
     const onReady = () => {
       if (!win.__fbDone) {
         win.FB.init({ appId, cookie: true, xfbml: false, version: 'v22.0' });
@@ -657,7 +800,10 @@ export class AccountSettingsComponent implements OnInit {
       }
       win.FB.getLoginStatus(() => this.fbReady.set(true));
     };
-    if (win.FB) { onReady(); return; }
+    if (win.FB) {
+      onReady();
+      return;
+    }
     win.fbAsyncInit = onReady;
     if (!document.getElementById('facebook-jssdk')) {
       const js = document.createElement('script');
@@ -677,7 +823,10 @@ export class AccountSettingsComponent implements OnInit {
   submitSetPassword(): void {
     this.changePasswordError.set(null);
     const { email, newPassword, confirmPassword } = this.setPasswordForm.getRawValue();
-    if (newPassword !== confirmPassword) { this.changePasswordError.set('Passwords do not match.'); return; }
+    if (newPassword !== confirmPassword) {
+      this.changePasswordError.set('Passwords do not match.');
+      return;
+    }
     this.changingPassword.set(true);
     this.authService.setPassword(email, newPassword).subscribe({
       next: (res) => {
@@ -685,7 +834,11 @@ export class AccountSettingsComponent implements OnInit {
         this.showSetPasswordDialog.set(false);
         this.setPasswordForm.reset();
         if (res.needsVerification) {
-          this.snackBar.open(`Password set. Check ${email} to verify your address before signing in with it.`, 'OK', { duration: 7000 });
+          this.snackBar.open(
+            `Password set. Check ${email} to verify your address before signing in with it.`,
+            'OK',
+            { duration: 7000 },
+          );
         } else {
           this.snackBar.open('Password set successfully.', 'OK', { duration: 3000 });
         }

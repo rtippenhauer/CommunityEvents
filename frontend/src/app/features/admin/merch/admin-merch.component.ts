@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -37,21 +37,28 @@ import { MerchService } from '../../../core/services/merch.service';
             <form [formGroup]="form" (ngSubmit)="save()">
               <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
                 <mat-label>Main Store URL</mat-label>
-                <input matInput formControlName="storeUrl" placeholder="https://dinnerbears.printful.me/" />
+                <input
+                  matInput
+                  formControlName="storeUrl"
+                  placeholder="https://dinnerbears.printful.me/"
+                />
                 <mat-hint>
-                  Shown to every member on the Merch page. Leave blank to close the
-                  store — members will see a "store is closed" message instead of a
-                  buy link.
+                  Shown to every member on the Merch page. Leave blank to close the store — members
+                  will see a "store is closed" message instead of a buy link.
                 </mat-hint>
               </mat-form-field>
 
               <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
                 <mat-label>Founding Bear Exclusive Product URL</mat-label>
-                <input matInput formControlName="foundingBearProductUrl" placeholder="https://dinnerbears.printful.me/product/..." />
+                <input
+                  matInput
+                  formControlName="foundingBearProductUrl"
+                  placeholder="https://dinnerbears.printful.me/product/..."
+                />
                 <mat-hint>
                   Only shown to members with the Founding Bear achievement. Use an
-                  unlisted/unpublished Printful product link — leave blank until
-                  that product exists.
+                  unlisted/unpublished Printful product link — leave blank until that product
+                  exists.
                 </mat-hint>
               </mat-form-field>
 
@@ -64,6 +71,7 @@ import { MerchService } from '../../../core/services/merch.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .merch-admin-container {

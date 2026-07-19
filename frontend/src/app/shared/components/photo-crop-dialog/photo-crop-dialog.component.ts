@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -54,24 +54,31 @@ export interface PhotoCropDialogData {
       </button>
     </mat-dialog-actions>
   `,
-  styles: [`
-    .crop-content {
-      min-width: min(90vw, 520px);
-      min-height: 300px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-    }
-    .loading {
-      position: absolute;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .cropper { max-height: 60vh; }
-    .hidden { visibility: hidden; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .crop-content {
+        min-width: min(90vw, 520px);
+        min-height: 300px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .loading {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .cropper {
+        max-height: 60vh;
+      }
+      .hidden {
+        visibility: hidden;
+      }
+    `,
+  ],
 })
 export class PhotoCropDialogComponent {
   readonly data = inject<PhotoCropDialogData>(MAT_DIALOG_DATA);

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
@@ -45,9 +45,7 @@ const TYPE_LABELS: Record<string, string> = {
   template: `
     <div class="container">
       <div class="back-row">
-        <a mat-button routerLink="/admin/users">
-          <mat-icon>arrow_back</mat-icon> Back to Users
-        </a>
+        <a mat-button routerLink="/admin/users"> <mat-icon>arrow_back</mat-icon> Back to Users </a>
         <h2>Member #{{ memberId() }} — Points & Achievements</h2>
       </div>
 
@@ -82,19 +80,23 @@ const TYPE_LABELS: Record<string, string> = {
                 </ng-container>
                 <ng-container matColumnDef="date">
                   <th mat-header-cell *matHeaderCellDef>Awarded</th>
-                  <td mat-cell *matCellDef="let row">{{ row.awardedAt | date:'short' }}</td>
+                  <td mat-cell *matCellDef="let row">{{ row.awardedAt | date: 'short' }}</td>
                 </ng-container>
                 <ng-container matColumnDef="actions">
                   <th mat-header-cell *matHeaderCellDef></th>
                   <td mat-cell *matCellDef="let row">
-                    <button mat-icon-button color="warn" (click)="removePoint(row.id)"
-                            matTooltip="Remove this point award">
+                    <button
+                      mat-icon-button
+                      color="warn"
+                      (click)="removePoint(row.id)"
+                      matTooltip="Remove this point award"
+                    >
                       <mat-icon>delete</mat-icon>
                     </button>
                   </td>
                 </ng-container>
                 <tr mat-header-row *matHeaderRowDef="ledgerCols"></tr>
-                <tr mat-row *matRowDef="let row; columns: ledgerCols;"></tr>
+                <tr mat-row *matRowDef="let row; columns: ledgerCols"></tr>
               </table>
             }
           </mat-card-content>
@@ -116,9 +118,13 @@ const TYPE_LABELS: Record<string, string> = {
                     @if (ea.title) {
                       <span class="ach-title-badge">{{ ea.title }}</span>
                     }
-                    <span class="ach-date">{{ ea.earnedAt | date:'mediumDate' }}</span>
-                    <button mat-icon-button color="warn" (click)="revokeAchievement(ea.id, ea.name)"
-                            matTooltip="Revoke achievement">
+                    <span class="ach-date">{{ ea.earnedAt | date: 'mediumDate' }}</span>
+                    <button
+                      mat-icon-button
+                      color="warn"
+                      (click)="revokeAchievement(ea.id, ea.name)"
+                      matTooltip="Revoke achievement"
+                    >
                       <mat-icon>remove_circle</mat-icon>
                     </button>
                   </div>
@@ -130,18 +136,68 @@ const TYPE_LABELS: Record<string, string> = {
       }
     </div>
   `,
-  styles: [`
-    .container { max-width: 800px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; }
-    .back-row { display: flex; align-items: center; gap: 12px; h2 { margin: 0; font-size: 1.1rem; } }
-    .loading { display: flex; justify-content: center; padding: 48px; }
-    .empty { color: #888; padding: 16px 0; }
-    .ledger-table { width: 100%; }
-    .ach-list { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
-    .ach-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
-    .ach-name { font-weight: 600; flex: 1; }
-    .ach-title-badge { font-size: 0.75rem; background: #EAF0FA; color: #1E4D8C; border-radius: 10px; padding: 2px 8px; }
-    .ach-date { font-size: 0.8rem; color: #888; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .back-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        h2 {
+          margin: 0;
+          font-size: 1.1rem;
+        }
+      }
+      .loading {
+        display: flex;
+        justify-content: center;
+        padding: 48px;
+      }
+      .empty {
+        color: #888;
+        padding: 16px 0;
+      }
+      .ledger-table {
+        width: 100%;
+      }
+      .ach-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-top: 8px;
+      }
+      .ach-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid #f0f0f0;
+      }
+      .ach-name {
+        font-weight: 600;
+        flex: 1;
+      }
+      .ach-title-badge {
+        font-size: 0.75rem;
+        background: #eaf0fa;
+        color: #1e4d8c;
+        border-radius: 10px;
+        padding: 2px 8px;
+      }
+      .ach-date {
+        font-size: 0.8rem;
+        color: #888;
+      }
+    `,
+  ],
 })
 export class AdminCommunityComponent implements OnInit {
   private readonly communityService = inject(CommunityService);
@@ -170,11 +226,13 @@ export class AdminCommunityComponent implements OnInit {
     Promise.all([
       this.communityService.getAdminLedger(id).toPromise(),
       this.communityService.getMemberAchievements(id).toPromise(),
-    ]).then(([ledger, ach]) => {
-      this.ledger.set((ledger ?? []) as LedgerRow[]);
-      this.earnedAchievements.set(((ach ?? []) as Achievement[]).filter((a) => a.earned));
-      this.loading.set(false);
-    }).catch(() => this.loading.set(false));
+    ])
+      .then(([ledger, ach]) => {
+        this.ledger.set((ledger ?? []) as LedgerRow[]);
+        this.earnedAchievements.set(((ach ?? []) as Achievement[]).filter((a) => a.earned));
+        this.loading.set(false);
+      })
+      .catch(() => this.loading.set(false));
   }
 
   removePoint(pointId: number): void {
