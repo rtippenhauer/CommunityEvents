@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -10,18 +10,18 @@ import { MatIconModule } from '@angular/material/icon';
   template: `
     <div class="error-bg">
       <div class="error-card">
-        <mat-icon class="error-icon">{{ icon }}</mat-icon>
-        <h1 class="error-title">{{ title }}</h1>
-        <p class="error-body">{{ body }}</p>
+        <mat-icon class="error-icon">{{ icon() }}</mat-icon>
+        <h1 class="error-title">{{ title() }}</h1>
+        <p class="error-body">{{ body() }}</p>
 
-        @if (invitedEmail) {
+        @if (invitedEmail()) {
           <div class="invited-email-block">
             <span class="invited-label">Invite sent to:</span>
-            <span class="invited-address">{{ invitedEmail }}</span>
+            <span class="invited-address">{{ invitedEmail() }}</span>
           </div>
         }
 
-        @if (showInviteHint) {
+        @if (showInviteHint()) {
           <p class="invite-hint">
             Don't have an invite? Have a current member visit
             <strong>dinnerbears.com</strong> to send you one.
@@ -29,10 +29,10 @@ import { MatIconModule } from '@angular/material/icon';
         }
 
         <div class="actions">
-          @if (showLoginButton) {
+          @if (showLoginButton()) {
             <a mat-raised-button color="primary" routerLink="/login">Back to sign in</a>
           }
-          @if (showHomeButton) {
+          @if (showHomeButton()) {
             <a mat-raised-button color="primary" routerLink="/">Go home</a>
           }
         </div>
@@ -123,11 +123,11 @@ import { MatIconModule } from '@angular/material/icon';
   `],
 })
 export class ErrorPageComponent {
-  @Input() icon = 'error_outline';
-  @Input() title = 'Something went wrong';
-  @Input() body = 'Please try again, or contact a DinnerBears admin if the problem continues.';
-  @Input() showLoginButton = false;
-  @Input() showHomeButton = false;
-  @Input() showInviteHint = false;
-  @Input() invitedEmail: string | null = null;
+  readonly icon = input('error_outline');
+  readonly title = input('Something went wrong');
+  readonly body = input('Please try again, or contact a DinnerBears admin if the problem continues.');
+  readonly showLoginButton = input(false);
+  readonly showHomeButton = input(false);
+  readonly showInviteHint = input(false);
+  readonly invitedEmail = input<string | null>(null);
 }

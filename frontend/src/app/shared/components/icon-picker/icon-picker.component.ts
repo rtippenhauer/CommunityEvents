@@ -1,4 +1,4 @@
-import { Component, EventEmitter, inject, Input, OnChanges, OnInit, Output, SimpleChanges, signal } from '@angular/core';
+import { Component, inject, OnChanges, OnInit, SimpleChanges, signal, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
@@ -64,13 +64,13 @@ const ICON_NAMES: string[] = [
   ],
   template: `
     <div class="icon-picker">
-      @if (isImg(icon)) {
-        <img class="icon-preview-img" [src]="srcFor(icon)" alt="" />
+      @if (isImg(icon())) {
+        <img class="icon-preview-img" [src]="srcFor(icon())" alt="" />
       } @else {
-        <mat-icon class="icon-preview">{{ icon || 'emoji_events' }}</mat-icon>
+        <mat-icon class="icon-preview">{{ icon() || 'emoji_events' }}</mat-icon>
       }
       <mat-form-field appearance="outline" class="icon-search-field">
-        <mat-label>{{ label }}</mat-label>
+        <mat-label>{{ label() }}</mat-label>
         <input matInput [(ngModel)]="query" (ngModelChange)="onQueryChange($event)"
           [matAutocomplete]="auto" autocomplete="off" placeholder="Search icons or custom images…" />
         <mat-autocomplete #auto="matAutocomplete" (optionSelected)="onSelect($event)">
@@ -99,7 +99,7 @@ const ICON_NAMES: string[] = [
         <mat-icon>collections</mat-icon>
       </button>
     </div>
-    @if (isImg(icon) && currentUsage() !== null) {
+    @if (isImg(icon()) && currentUsage() !== null) {
       <p class="usage-hint">Used by {{ currentUsage() }} achievement{{ currentUsage() === 1 ? '' : 's' }}.</p>
     }
     @if (showUploadForm()) {
@@ -199,9 +199,9 @@ export class IconPickerComponent implements OnChanges, OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
 
-  @Input() icon = '';
-  @Input() label = 'Icon';
-  @Output() iconChange = new EventEmitter<string>();
+  readonly icon = input('');
+  readonly label = input('Icon');
+  readonly iconChange = output<string>();
 
   query = '';
   uploadName = '';
@@ -235,12 +235,13 @@ export class IconPickerComponent implements OnChanges, OnInit {
   }
 
   private syncQueryFromIcon(): void {
-    if (this.isImg(this.icon)) {
-      const match = this.customIcons().find((c) => this.valueFor(c) === this.icon);
-      this.query = match ? match.name : this.icon;
+    const icon = this.icon();
+    if (this.isImg(icon)) {
+      const match = this.customIcons().find((c) => this.valueFor(c) === this.icon());
+      this.query = match ? match.name : icon;
       this.currentUsage.set(match ? match.usageCount : null);
     } else {
-      this.query = this.icon;
+      this.query = icon;
       this.currentUsage.set(null);
     }
   }

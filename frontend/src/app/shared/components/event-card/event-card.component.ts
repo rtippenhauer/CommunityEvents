@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, input } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -10,18 +10,18 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
   standalone: true,
   imports: [DatePipe, RouterLink, MatIconModule],
   template: `
-    <a class="event-card" [class.cancelled]="event.status === 'cancelled'" [class.draft]="event.status === 'draft'" [routerLink]="['/events', event.id]">
+    <a class="event-card" [class.cancelled]="event().status === 'cancelled'" [class.draft]="event().status === 'draft'" [routerLink]="['/events', event().id]">
       <!-- Photo header — keep exactly as-is -->
-      <div class="card-photo" [class.compact]="compact">
-        @if (event.restaurant?.photos?.length) {
-          <img [src]="event.restaurant!.photos[0].filePath" [alt]="event.restaurantName" loading="lazy" />
+      <div class="card-photo" [class.compact]="compact()">
+        @if (event().restaurant?.photos?.length) {
+          <img [src]="event().restaurant!.photos[0].filePath" [alt]="event().restaurantName" loading="lazy" />
         } @else {
           <div class="card-photo-placeholder"></div>
         }
-        @if (event.status === 'cancelled') {
+        @if (event().status === 'cancelled') {
           <div class="cancelled-overlay">CANCELLED</div>
         }
-        @if (event.status === 'draft') {
+        @if (event().status === 'draft') {
           <div class="draft-overlay">DRAFT</div>
         }
         <div class="card-photo-fade"></div>
@@ -30,19 +30,19 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
       <!-- Card body -->
       <div class="card-body">
         <div class="card-date">
-          {{ event.eventDate | date:'EEE, MMM d' }} &middot; {{ formatTime(event.eventTime) }}
+          {{ event().eventDate | date:'EEE, MMM d' }} &middot; {{ formatTime(event().eventTime) }}
         </div>
-        @if (!compact) {
-          <div class="card-city">{{ event.city.name }}</div>
+        @if (!compact()) {
+          <div class="card-city">{{ event().city.name }}</div>
         }
-        <div class="card-restaurant" [class.muted]="event.status === 'cancelled'">
-          {{ event.restaurantName }}
+        <div class="card-restaurant" [class.muted]="event().status === 'cancelled'">
+          {{ event().restaurantName }}
         </div>
       </div>
 
       <!-- Footer -->
       <div class="card-footer">
-        @if (event.status === 'cancelled') {
+        @if (event().status === 'cancelled') {
           <span class="cancelled-badge">
             <mat-icon class="cancelled-badge-icon">cancel</mat-icon>
             Event cancelled
@@ -61,12 +61,12 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
             }
           </div>
           <div class="footer-right">
-            @if (event.myRsvpStatus === 'going') {
+            @if (event().myRsvpStatus === 'going') {
               <span class="rsvp-pill rsvp-pill--done">
                 <mat-icon class="rsvp-pill-icon">check_circle</mat-icon>
                 Going
               </span>
-            } @else if (event.myRsvpStatus === 'maybe') {
+            } @else if (event().myRsvpStatus === 'maybe') {
               <span class="rsvp-pill rsvp-pill--done">
                 <mat-icon class="rsvp-pill-icon">check_circle</mat-icon>
                 Maybe
@@ -256,17 +256,18 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
   `],
 })
 export class EventCardComponent {
-  @Input({ required: true }) event!: Event;
-  @Input() compact = false;
+  readonly event = input.required<Event>();
+  readonly compact = input(false);
 
-  get snippet() { return this.event.attendeeSnippet ?? []; }
-  get totalAttending() { return this.event.totalAttending ?? this.event.goingCount ?? 0; }
+  get snippet() { return this.event().attendeeSnippet ?? []; }
+  get totalAttending() { const event = this.event();
+                         return event.totalAttending ?? event.goingCount ?? 0; }
   get isPast(): boolean {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    if (this.event.eventDate < todayStr) return true;
-    if (this.event.eventDate > todayStr) return false;
-    const [h, min] = this.event.eventTime.split(':').map(Number);
+    if (this.event().eventDate < todayStr) return true;
+    if (this.event().eventDate > todayStr) return false;
+    const [h, min] = this.event().eventTime.split(':').map(Number);
     return now.getHours() * 60 + now.getMinutes() >= h * 60 + min - 150;
   }
 
