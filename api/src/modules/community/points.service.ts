@@ -3,9 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import { MemberPointEntity, PointType } from '../../database/entities/member-point.entity';
 import { EventEntity } from '../../database/entities/event.entity';
+import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 import { UserRole } from '../../database/entities/user.entity';
 import { AchievementEntity } from '../../database/entities/achievement.entity';
 import { AchievementsService } from './achievements.service';
+
+export type SecretDinnerResync = { enabled: true; awarded: number } | { enabled: false; removed: number };
 
 export interface PointSummary {
   total: number;
@@ -53,6 +56,8 @@ export class PointsService {
     private readonly pointRepo: Repository<MemberPointEntity>,
     @InjectRepository(EventEntity)
     private readonly eventRepo: Repository<EventEntity>,
+    @InjectRepository(EventRsvpEntity)
+    private readonly rsvpRepo: Repository<EventRsvpEntity>,
     private readonly achievementsService: AchievementsService,
     private readonly dataSource: DataSource,
   ) {}
@@ -296,5 +301,33 @@ export class PointsService {
       this.pointRepo.create({ userId, pointType: PointType.SECRET_DINNER, referenceId: eventId, points: 1 }),
     );
     await this.achievementsService.checkSecretDinnerAchievements(userId);
+  }
+
+  // Called whenever an admin flips an event's is_secret flag, so already-attended
+  // members aren't stuck with (or stripped of) secret-dinner credit just because
+  // of when the flag happened to change relative to their attendance being marked.
+  // Scoped to this one event's attendees, so cost stays flat regardless of how
+  // many events exist overall.
+  async resyncSecretDinnerForEvent(eventId: number, isSecret: boolean): Promise<SecretDinnerResync> {
+    if (isSecret) {
+      const attendees = await this.rsvpRepo.find({
+        where: { eventId, attended: true },
+        select: ['userId'],
+      });
+      for (const { userId } of attendees) {
+        await this.awardSecretDinner(userId, eventId);
+      }
+      return { enabled: true, awarded: attendees.length };
+    }
+
+    const rows = await this.pointRepo.find({
+      where: { pointType: PointType.SECRET_DINNER, referenceId: eventId },
+    });
+    if (rows.length === 0) return { enabled: false, removed: 0 };
+    await this.pointRepo.delete({ pointType: PointType.SECRET_DINNER, referenceId: eventId });
+    for (const { userId } of rows) {
+      await this.achievementsService.recheckSecretDinnerAchievements(userId);
+    }
+    return { enabled: false, removed: rows.length };
   }
 }

@@ -90,6 +90,8 @@ export interface Event {
   myRsvpStatus?: 'going' | 'maybe' | null;
   createdAt: string;
   updatedAt: string;
+  /** Only present on the response right after a PATCH that flips isSecret. */
+  secretDinnerResync?: { enabled: true; awarded: number } | { enabled: false; removed: number };
 }
 
 export interface ReservationConfirmInfo {

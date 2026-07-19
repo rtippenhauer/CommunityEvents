@@ -59,6 +59,8 @@ export interface EventAchievement {
   title: string | null;
   points: number;
   isSecret: boolean;
+  /** Only present on the response right after creation — how many already-attended members got it retroactively. */
+  attendeesChecked?: number;
 }
 
 export interface CustomIcon {
@@ -194,6 +196,12 @@ export class CommunityService {
     dto: { name: string; description: string; title?: string; points: number; icon?: string; isSecret?: boolean },
   ): Observable<EventAchievement> {
     return this.http.post<EventAchievement>(`/api/v1/admin/events/${eventId}/achievement`, dto);
+  }
+
+  adminDeleteEventAchievement(eventId: number): Observable<{ removedAchievements: number; removedPoints: number }> {
+    return this.http.delete<{ removedAchievements: number; removedPoints: number }>(
+      `/api/v1/admin/events/${eventId}/achievement`,
+    );
   }
 
   adminListAchievements(): Observable<AdminAchievement[]> {
