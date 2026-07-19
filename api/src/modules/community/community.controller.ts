@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Query, Param, ParseIntPipe,
   UseGuards, UseInterceptors, UploadedFile, Request,
-  BadRequestException,
+  BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -157,6 +157,17 @@ export class CommunityController {
   @UseGuards(OptionalJwtAuthGuard)
   async getMemberPoints(@Param('id', ParseIntPipe) id: number) {
     return this.pointsService.getSummary(id);
+  }
+
+  @Get('members/:id/points/ledger')
+  @UseGuards(JwtAuthGuard)
+  async getMemberPointsLedger(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
+    const isSelf = req.user.id === id;
+    const isPrivileged = req.user.role === UserRole.ADMIN || req.user.role === UserRole.MODERATOR;
+    if (!isSelf && !isPrivileged) {
+      throw new ForbiddenException('Not authorized to view this ledger');
+    }
+    return this.pointsService.getLedgerDetailed(id);
   }
 
   @Get('members/:id/achievements')

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -18,10 +18,18 @@ import { CityService } from '../../../core/services/city.service';
   selector: 'app-admin-announcements',
   standalone: true,
   imports: [
-    DatePipe, ReactiveFormsModule,
-    MatButtonModule, MatChipsModule, MatDialogModule, MatFormFieldModule,
-    MatIconModule, MatInputModule, MatProgressSpinnerModule, MatSelectModule,
-    MatSnackBarModule, MatTooltipModule,
+    DatePipe,
+    ReactiveFormsModule,
+    MatButtonModule,
+    MatChipsModule,
+    MatDialogModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+    MatSelectModule,
+    MatSnackBarModule,
+    MatTooltipModule,
   ],
   template: `
     <div class="page-header">
@@ -65,7 +73,11 @@ import { CityService } from '../../../core/services/city.service';
             <div class="form-actions">
               <button mat-button type="button" (click)="cancelForm()">Cancel</button>
               <button mat-raised-button type="submit" [disabled]="form.invalid || saving()">
-                @if (saving()) { <mat-spinner diameter="18" /> } @else { Save Draft }
+                @if (saving()) {
+                  <mat-spinner diameter="18" />
+                } @else {
+                  Save Draft
+                }
               </button>
             </div>
           </form>
@@ -87,7 +99,11 @@ import { CityService } from '../../../core/services/city.service';
               </div>
               <div class="ann-row-title">{{ a.title }}</div>
               <div class="ann-row-meta">
-                {{ a.status === 'published' ? (a.publishedAt | date:'MMM d, y') : (a.createdAt | date:'MMM d, y') }}
+                {{
+                  a.status === 'published'
+                    ? (a.publishedAt | date: 'MMM d, y')
+                    : (a.createdAt | date: 'MMM d, y')
+                }}
               </div>
             </div>
             <div class="ann-row-actions">
@@ -111,26 +127,116 @@ import { CityService } from '../../../core/services/city.service';
       </div>
     }
   `,
-  styles: [`
-    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; h1 { margin: 0; font-size: 1.75rem; color: var(--db-brown-dark); } }
-    .center { display: flex; justify-content: center; padding: 48px; }
-    .form-panel { background: #fff; border: 1px solid #e8e0d6; border-radius: 10px; padding: 24px; margin-bottom: 24px; max-width: 700px; }
-    .form-title { margin: 0 0 16px; font-size: 1.1rem; font-weight: 600; color: var(--db-brown-dark); }
-    .full-width { width: 100%; }
-    .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
-    .ann-table { display: flex; flex-direction: column; gap: 8px; max-width: 900px; }
-    .ann-row { display: flex; align-items: center; background: #fff; border: 1px solid #e8e0d6; border-radius: 8px; padding: 12px 16px; gap: 12px; &.draft { border-left: 3px solid #f0a500; } }
-    .ann-row-main { flex: 1; min-width: 0; }
-    .ann-row-status { display: flex; gap: 6px; margin-bottom: 4px; }
-    .status-chip { font-size: 0.68rem !important; height: 20px !important; }
-    .status-published { --mdc-chip-label-text-color: #2e7d32; --mdc-chip-container-color: #e8f5e9; }
-    .status-draft { --mdc-chip-label-text-color: #e65100; --mdc-chip-container-color: #fff3e0; }
-    .city-chip { font-size: 0.68rem !important; height: 20px !important; }
-    .ann-row-title { font-size: 0.95rem; font-weight: 600; color: var(--db-brown-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ann-row-meta { font-size: 0.72rem; color: #aaa; margin-top: 2px; }
-    .ann-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
-    .empty { color: #999; text-align: center; padding: 32px 0; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        h1 {
+          margin: 0;
+          font-size: 1.75rem;
+          color: var(--db-brown-dark);
+        }
+      }
+      .center {
+        display: flex;
+        justify-content: center;
+        padding: 48px;
+      }
+      .form-panel {
+        background: #fff;
+        border: 1px solid #e8e0d6;
+        border-radius: 10px;
+        padding: 24px;
+        margin-bottom: 24px;
+        max-width: 700px;
+      }
+      .form-title {
+        margin: 0 0 16px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--db-brown-dark);
+      }
+      .full-width {
+        width: 100%;
+      }
+      .form-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 8px;
+      }
+      .ann-table {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-width: 900px;
+      }
+      .ann-row {
+        display: flex;
+        align-items: center;
+        background: #fff;
+        border: 1px solid #e8e0d6;
+        border-radius: 8px;
+        padding: 12px 16px;
+        gap: 12px;
+        &.draft {
+          border-left: 3px solid #f0a500;
+        }
+      }
+      .ann-row-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .ann-row-status {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 4px;
+      }
+      .status-chip {
+        font-size: 0.68rem !important;
+        height: 20px !important;
+      }
+      .status-published {
+        --mat-chip-label-text-color: #2e7d32;
+        --mat-chip-container-color: #e8f5e9;
+      }
+      .status-draft {
+        --mat-chip-label-text-color: #e65100;
+        --mat-chip-container-color: #fff3e0;
+      }
+      .city-chip {
+        font-size: 0.68rem !important;
+        height: 20px !important;
+      }
+      .ann-row-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--db-brown-dark);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ann-row-meta {
+        font-size: 0.72rem;
+        color: #aaa;
+        margin-top: 2px;
+      }
+      .ann-row-actions {
+        display: flex;
+        gap: 4px;
+        flex-shrink: 0;
+      }
+      .empty {
+        color: #999;
+        text-align: center;
+        padding: 32px 0;
+      }
+    `,
+  ],
 })
 export class AdminAnnouncementsComponent implements OnInit {
   private readonly announcementsService = inject(AnnouncementsService);
@@ -144,8 +250,14 @@ export class AdminAnnouncementsComponent implements OnInit {
   readonly editingId = signal<number | null>(null);
 
   readonly form = new FormGroup({
-    title: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.maxLength(200)] }),
-    body: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.maxLength(10000)] }),
+    title: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.maxLength(200)],
+    }),
+    body: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.maxLength(10000)],
+    }),
     cityId: new FormControl<number | null>(null),
   });
 
@@ -156,7 +268,10 @@ export class AdminAnnouncementsComponent implements OnInit {
   private load(): void {
     this.loading.set(true);
     this.announcementsService.adminGetAll().subscribe({
-      next: (list) => { this.announcements.set(list); this.loading.set(false); },
+      next: (list) => {
+        this.announcements.set(list);
+        this.loading.set(false);
+      },
       error: () => this.loading.set(false),
     });
   }
@@ -198,7 +313,10 @@ export class AdminAnnouncementsComponent implements OnInit {
         this.cancelForm();
         this.snackBar.open('Saved.', 'OK', { duration: 2500 });
       },
-      error: () => { this.saving.set(false); this.snackBar.open('Save failed.', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.saving.set(false);
+        this.snackBar.open('Save failed.', 'OK', { duration: 3000 });
+      },
     });
   }
 

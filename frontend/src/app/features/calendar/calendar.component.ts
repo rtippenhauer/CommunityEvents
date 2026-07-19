@@ -1,4 +1,11 @@
-import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import {
+  Component,
+  inject,
+  OnInit,
+  signal,
+  computed,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -41,7 +48,6 @@ interface CalendarDay {
       </div>
 
       <div class="calendar-layout">
-
         <!-- Mini calendar -->
         <aside class="mini-cal">
           <div class="cal-nav">
@@ -71,7 +77,9 @@ interface CalendarDay {
                   [attr.aria-label]="cell.dateStr"
                 >
                   {{ cell.day }}
-                  @if (cell.hasEvent) { <span class="event-dot"></span> }
+                  @if (cell.hasEvent) {
+                    <span class="event-dot"></span>
+                  }
                 </button>
               }
             }
@@ -79,7 +87,12 @@ interface CalendarDay {
 
           <button mat-button class="today-btn" (click)="goToday()">Today</button>
           @if (isLoggedIn()) {
-            <mat-checkbox [checked]="myOnly()" (change)="myOnly.set($event.checked)" class="my-only-check">My events only</mat-checkbox>
+            <mat-checkbox
+              [checked]="myOnly()"
+              (change)="myOnly.set($event.checked)"
+              class="my-only-check"
+              >My events only</mat-checkbox
+            >
           }
         </aside>
 
@@ -90,12 +103,12 @@ interface CalendarDay {
           } @else if (visibleEvents().length === 0) {
             <div class="list-empty">
               <mat-icon>event_busy</mat-icon>
-              <p>No events in {{ monthLabel() }}.<br>Check back soon!</p>
+              <p>No events in {{ monthLabel() }}.<br />Check back soon!</p>
             </div>
           } @else {
             @for (group of eventGroups(); track group.dateStr) {
               <div class="event-group" [id]="'day-' + group.dateStr">
-                <div class="group-label">{{ group.dateStr | date:'EEEE, MMMM d' }}</div>
+                <div class="group-label">{{ group.dateStr | date: 'EEEE, MMMM d' }}</div>
                 <div class="group-cards">
                   @for (e of group.events; track e.id) {
                     <app-event-card [event]="e" [compact]="true" />
@@ -105,199 +118,229 @@ interface CalendarDay {
             }
           }
         </main>
-
       </div>
     </div>
   `,
-  styles: [`
-    :host { display: block; }
-
-    .calendar-page {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 0 0 3rem;
-    }
-
-    .page-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
-      padding: 0 0 24px;
-      border-bottom: 1px solid var(--db-cream-dark);
-      margin-bottom: 28px;
-    }
-
-    .page-title {
-      font-family: var(--db-font-display);
-      font-size: 1.8rem;
-      font-weight: 600;
-      color: var(--db-brown-dark);
-      margin: 0 0 4px;
-    }
-
-    .page-sub { font-size: 0.88rem; color: #888; margin: 0; }
-
-    // ── Layout ───────────────────────────────────────────────────────────────
-
-    .calendar-layout {
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      gap: 32px;
-      align-items: start;
-    }
-
-    // ── Mini Calendar ─────────────────────────────────────────────────────────
-
-    .mini-cal {
-      position: sticky;
-      top: 80px;
-      background: #fff;
-      border: 1px solid #e8e0d6;
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 2px 8px rgba(61,28,5,0.07);
-    }
-
-    .cal-nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-
-    .cal-month-label {
-      font-weight: 700;
-      font-size: 0.92rem;
-      color: var(--db-brown-dark);
-      letter-spacing: 0.01em;
-    }
-
-    .cal-grid {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 2px;
-      margin-bottom: 10px;
-    }
-
-    .cal-dow {
-      text-align: center;
-      font-size: 0.65rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #bbb;
-      padding: 4px 0 6px;
-    }
-
-    .cal-cell {
-      position: relative;
-      aspect-ratio: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.78rem;
-      border-radius: 50%;
-      border: none;
-      background: transparent;
-      cursor: default;
-      line-height: 1;
-      padding: 0;
-
-      &.day {
-        cursor: pointer;
-        font-weight: 500;
-        color: var(--db-text-dark);
-        transition: background 0.12s;
-        &:hover { background: var(--db-cream-dark); }
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      :host {
+        display: block;
       }
 
-      &.today {
-        background: var(--db-amber) !important;
-        color: #fff !important;
-        font-weight: 700;
+      .calendar-page {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0 0 3rem;
       }
 
-      &.has-event:not(.today) { color: var(--db-brown-dark); font-weight: 700; }
-
-      &.selected:not(.today) {
-        background: var(--db-cream-dark);
-        outline: 2px solid var(--db-amber);
-        outline-offset: -2px;
+      .page-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 0 0 24px;
+        border-bottom: 1px solid var(--db-cream-dark);
+        margin-bottom: 28px;
       }
 
-      &.empty { cursor: default; }
-    }
+      .page-title {
+        font-family: var(--db-font-display);
+        font-size: 1.8rem;
+        font-weight: 600;
+        color: var(--db-brown-dark);
+        margin: 0 0 4px;
+      }
 
-    .event-dot {
-      position: absolute;
-      bottom: 3px;
-      width: 4px;
-      height: 4px;
-      border-radius: 50%;
-      background: var(--db-amber);
-    }
+      .page-sub {
+        font-size: 0.88rem;
+        color: #888;
+        margin: 0;
+      }
 
-    .today-btn {
-      width: 100%;
-      font-size: 0.78rem;
-      color: var(--db-amber) !important;
-    }
+      // ── Layout ───────────────────────────────────────────────────────────────
 
-    .my-only-check {
-      display: flex;
-      width: 100%;
-      font-size: 0.78rem;
-      margin-top: 4px;
-      padding: 0 2px;
-    }
-
-    // ── Event list ────────────────────────────────────────────────────────────
-
-    .event-list { min-height: 200px; }
-
-    .list-loading, .list-empty {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 240px;
-      gap: 12px;
-      color: #999;
-      text-align: center;
-      mat-icon { font-size: 2.5rem; width: 2.5rem; height: 2.5rem; }
-      p { line-height: 1.6; }
-    }
-
-    .event-group { margin-bottom: 28px; }
-
-    .group-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: #aaa;
-      margin-bottom: 10px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid #f0ece4;
-    }
-
-    .group-cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-      gap: 14px;
-    }
-
-    @media (max-width: 768px) {
       .calendar-layout {
-        grid-template-columns: 1fr;
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 32px;
+        align-items: start;
       }
-      .mini-cal { position: static; }
-      .group-cards { grid-template-columns: 1fr; }
-    }
-  `],
+
+      // ── Mini Calendar ─────────────────────────────────────────────────────────
+
+      .mini-cal {
+        position: sticky;
+        top: 80px;
+        background: #fff;
+        border: 1px solid #e8e0d6;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 2px 8px rgba(61, 28, 5, 0.07);
+      }
+
+      .cal-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .cal-month-label {
+        font-weight: 700;
+        font-size: 0.92rem;
+        color: var(--db-brown-dark);
+        letter-spacing: 0.01em;
+      }
+
+      .cal-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        margin-bottom: 10px;
+      }
+
+      .cal-dow {
+        text-align: center;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #bbb;
+        padding: 4px 0 6px;
+      }
+
+      .cal-cell {
+        position: relative;
+        aspect-ratio: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.78rem;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        cursor: default;
+        line-height: 1;
+        padding: 0;
+
+        &.day {
+          cursor: pointer;
+          font-weight: 500;
+          color: var(--db-text-dark);
+          transition: background 0.12s;
+          &:hover {
+            background: var(--db-cream-dark);
+          }
+        }
+
+        &.today {
+          background: var(--db-amber) !important;
+          color: #fff !important;
+          font-weight: 700;
+        }
+
+        &.has-event:not(.today) {
+          color: var(--db-brown-dark);
+          font-weight: 700;
+        }
+
+        &.selected:not(.today) {
+          background: var(--db-cream-dark);
+          outline: 2px solid var(--db-amber);
+          outline-offset: -2px;
+        }
+
+        &.empty {
+          cursor: default;
+        }
+      }
+
+      .event-dot {
+        position: absolute;
+        bottom: 3px;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--db-amber);
+      }
+
+      .today-btn {
+        width: 100%;
+        font-size: 0.78rem;
+        color: var(--db-amber) !important;
+      }
+
+      .my-only-check {
+        display: flex;
+        width: 100%;
+        font-size: 0.78rem;
+        margin-top: 4px;
+        padding: 0 2px;
+      }
+
+      // ── Event list ────────────────────────────────────────────────────────────
+
+      .event-list {
+        min-height: 200px;
+      }
+
+      .list-loading,
+      .list-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 240px;
+        gap: 12px;
+        color: #999;
+        text-align: center;
+        mat-icon {
+          font-size: 2.5rem;
+          width: 2.5rem;
+          height: 2.5rem;
+        }
+        p {
+          line-height: 1.6;
+        }
+      }
+
+      .event-group {
+        margin-bottom: 28px;
+      }
+
+      .group-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #aaa;
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #f0ece4;
+      }
+
+      .group-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 14px;
+      }
+
+      @media (max-width: 768px) {
+        .calendar-layout {
+          grid-template-columns: 1fr;
+        }
+        .mini-cal {
+          position: static;
+        }
+        .group-cards {
+          grid-template-columns: 1fr;
+        }
+      }
+    `,
+  ],
 })
 export class CalendarComponent implements OnInit {
   private readonly eventsService = inject(EventsService);
@@ -316,8 +359,10 @@ export class CalendarComponent implements OnInit {
   readonly selectedDay = signal<string | null>(null);
 
   readonly monthLabel = computed(() => {
-    return new Date(this.viewYear(), this.viewMonth(), 1)
-      .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return new Date(this.viewYear(), this.viewMonth(), 1).toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
   });
 
   readonly monthEvents = computed(() => {
@@ -350,7 +395,10 @@ export class CalendarComponent implements OnInit {
     }
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([dateStr, events]) => ({ dateStr, events: events.sort((a, b) => a.eventTime.localeCompare(b.eventTime)) }));
+      .map(([dateStr, events]) => ({
+        dateStr,
+        events: events.sort((a, b) => a.eventTime.localeCompare(b.eventTime)),
+      }));
   });
 
   readonly calendarDays = computed<CalendarDay[]>(() => {
@@ -382,22 +430,33 @@ export class CalendarComponent implements OnInit {
 
   ngOnInit(): void {
     this.eventsService.getAll({}).subscribe({
-      next: (evts) => { this.allEvents.set(evts); this.loading.set(false); },
+      next: (evts) => {
+        this.allEvents.set(evts);
+        this.loading.set(false);
+      },
       error: () => this.loading.set(false),
     });
   }
 
   prevMonth(): void {
     const m = this.viewMonth();
-    if (m === 0) { this.viewYear.update((y) => y - 1); this.viewMonth.set(11); }
-    else { this.viewMonth.set(m - 1); }
+    if (m === 0) {
+      this.viewYear.update((y) => y - 1);
+      this.viewMonth.set(11);
+    } else {
+      this.viewMonth.set(m - 1);
+    }
     this.selectedDay.set(null);
   }
 
   nextMonth(): void {
     const m = this.viewMonth();
-    if (m === 11) { this.viewYear.update((y) => y + 1); this.viewMonth.set(0); }
-    else { this.viewMonth.set(m + 1); }
+    if (m === 11) {
+      this.viewYear.update((y) => y + 1);
+      this.viewMonth.set(0);
+    } else {
+      this.viewMonth.set(m + 1);
+    }
     this.selectedDay.set(null);
   }
 
@@ -413,11 +472,15 @@ export class CalendarComponent implements OnInit {
 
     // Scroll to the event group if it exists
     setTimeout(() => {
-      document.getElementById(`day-${dateStr}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document
+        .getElementById(`day-${dateStr}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   }
 
-  isLoggedIn(): boolean { return this.authService.isLoggedIn(); }
+  isLoggedIn(): boolean {
+    return this.authService.isLoggedIn();
+  }
 
   private monthPrefix(): string {
     return `${this.viewYear()}-${String(this.viewMonth() + 1).padStart(2, '0')}`;

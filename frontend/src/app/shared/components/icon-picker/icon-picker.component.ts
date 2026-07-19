@@ -1,6 +1,19 @@
-import { Component, EventEmitter, inject, Input, OnChanges, OnInit, Output, SimpleChanges, signal } from '@angular/core';
+import {
+  Component,
+  inject,
+  OnChanges,
+  OnInit,
+  SimpleChanges,
+  signal,
+  input,
+  output,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
+import {
+  MatAutocompleteModule,
+  MatAutocompleteSelectedEvent,
+} from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -16,37 +29,181 @@ import { removeWhiteBackground } from '../../utils/remove-white-background';
 const IMG_PREFIX = 'img:';
 
 const ICON_NAMES: string[] = [
-  'emoji_events', 'military_tech', 'workspace_premium', 'verified', 'badge', 'stars', 'star', 'grade',
-  'thumb_up', 'favorite', 'favorite_border', 'celebration', 'festival', 'nightlife', 'new_releases',
-  'auto_awesome', 'diamond', 'savings', 'paid', 'redeem', 'card_giftcard', 'loyalty',
-  'local_activity', 'local_dining', 'restaurant', 'restaurant_menu', 'fastfood', 'ramen_dining',
-  'dinner_dining', 'brunch_dining', 'breakfast_dining', 'bakery_dining', 'lunch_dining', 'takeout_dining',
-  'local_pizza', 'local_bar', 'local_cafe', 'wine_bar', 'sports_bar', 'icecream', 'cake', 'liquor',
-  'tapas', 'set_meal', 'kebab_dining', 'soup_kitchen', 'rice_bowl', 'egg', 'egg_alt', 'grill',
+  'emoji_events',
+  'military_tech',
+  'workspace_premium',
+  'verified',
+  'badge',
+  'stars',
+  'star',
+  'grade',
+  'thumb_up',
+  'favorite',
+  'favorite_border',
+  'celebration',
+  'festival',
+  'nightlife',
+  'new_releases',
+  'auto_awesome',
+  'diamond',
+  'savings',
+  'paid',
+  'redeem',
+  'card_giftcard',
+  'loyalty',
+  'local_activity',
+  'local_dining',
+  'restaurant',
+  'restaurant_menu',
+  'fastfood',
+  'ramen_dining',
+  'dinner_dining',
+  'brunch_dining',
+  'breakfast_dining',
+  'bakery_dining',
+  'lunch_dining',
+  'takeout_dining',
+  'local_pizza',
+  'local_bar',
+  'local_cafe',
+  'wine_bar',
+  'sports_bar',
+  'icecream',
+  'cake',
+  'liquor',
+  'tapas',
+  'set_meal',
+  'kebab_dining',
+  'soup_kitchen',
+  'rice_bowl',
+  'egg',
+  'egg_alt',
+  'grill',
   'food_bank',
-  'event', 'event_available', 'event_seat', 'event_note', 'calendar_today', 'calendar_month',
-  'today', 'schedule', 'watch_later', 'history', 'history_edu',
-  'people', 'person', 'person_add', 'group', 'group_add', 'groups', 'diversity_3', 'handshake',
-  'forum', 'chat', 'comment', 'volunteer_activism', 'self_improvement',
-  'travel_explore', 'flight', 'flight_takeoff', 'directions_car', 'hiking', 'explore', 'map',
-  'place', 'location_on', 'public', 'language', 'luggage', 'backpack', 'hotel',
-  'directions_boat', 'sailing', 'anchor', 'surfing', 'kayaking', 'terrain', 'landscape',
-  'beach_access', 'downhill_skiing', 'snowboarding', 'golf_course',
-  'lock', 'lock_open', 'key', 'shield', 'security',
-  'home', 'house', 'cottage', 'apartment', 'storefront', 'store', 'business', 'corporate_fare',
-  'school', 'book', 'menu_book', 'auto_stories',
-  'music_note', 'headphones', 'mic', 'camera_alt', 'photo_camera', 'palette', 'brush',
+  'event',
+  'event_available',
+  'event_seat',
+  'event_note',
+  'calendar_today',
+  'calendar_month',
+  'today',
+  'schedule',
+  'watch_later',
+  'history',
+  'history_edu',
+  'people',
+  'person',
+  'person_add',
+  'group',
+  'group_add',
+  'groups',
+  'diversity_3',
+  'handshake',
+  'forum',
+  'chat',
+  'comment',
+  'volunteer_activism',
+  'self_improvement',
+  'travel_explore',
+  'flight',
+  'flight_takeoff',
+  'directions_car',
+  'hiking',
+  'explore',
+  'map',
+  'place',
+  'location_on',
+  'public',
+  'language',
+  'luggage',
+  'backpack',
+  'hotel',
+  'directions_boat',
+  'sailing',
+  'anchor',
+  'surfing',
+  'kayaking',
+  'terrain',
+  'landscape',
+  'beach_access',
+  'downhill_skiing',
+  'snowboarding',
+  'golf_course',
+  'lock',
+  'lock_open',
+  'key',
+  'shield',
+  'security',
+  'home',
+  'house',
+  'cottage',
+  'apartment',
+  'storefront',
+  'store',
+  'business',
+  'corporate_fare',
+  'school',
+  'book',
+  'menu_book',
+  'auto_stories',
+  'music_note',
+  'headphones',
+  'mic',
+  'camera_alt',
+  'photo_camera',
+  'palette',
+  'brush',
   'theater_comedy',
-  'sports_esports', 'sports_football', 'sports_soccer', 'sports_basketball', 'sports_baseball',
-  'sports_tennis', 'sports_volleyball', 'sports_handball', 'sports_cricket', 'sports_rugby',
-  'sports_hockey', 'sports_mma', 'sports_motorsports', 'fitness_center', 'directions_bike',
-  'directions_run', 'directions_walk', 'pool', 'spa', 'accessibility', 'accessibility_new',
-  'pets', 'cruelty_free', 'forest', 'park', 'nature', 'eco', 'local_florist',
-  'whatshot', 'local_fire_department', 'bolt', 'flash_on', 'ac_unit', 'wb_sunny', 'nightlight',
-  'cloud', 'sunny', 'umbrella',
-  'rocket_launch', 'science', 'psychology', 'lightbulb',
-  'mood', 'sentiment_very_satisfied', 'tag_faces',
-  'check_circle', 'task_alt', 'done_all', 'assignment_turned_in', 'local_shipping',
+  'sports_esports',
+  'sports_football',
+  'sports_soccer',
+  'sports_basketball',
+  'sports_baseball',
+  'sports_tennis',
+  'sports_volleyball',
+  'sports_handball',
+  'sports_cricket',
+  'sports_rugby',
+  'sports_hockey',
+  'sports_mma',
+  'sports_motorsports',
+  'fitness_center',
+  'directions_bike',
+  'directions_run',
+  'directions_walk',
+  'pool',
+  'spa',
+  'accessibility',
+  'accessibility_new',
+  'pets',
+  'cruelty_free',
+  'forest',
+  'park',
+  'nature',
+  'eco',
+  'local_florist',
+  'whatshot',
+  'local_fire_department',
+  'bolt',
+  'flash_on',
+  'ac_unit',
+  'wb_sunny',
+  'nightlight',
+  'cloud',
+  'sunny',
+  'umbrella',
+  'rocket_launch',
+  'science',
+  'psychology',
+  'lightbulb',
+  'mood',
+  'sentiment_very_satisfied',
+  'tag_faces',
+  'check_circle',
+  'task_alt',
+  'done_all',
+  'assignment_turned_in',
+  'local_shipping',
 ];
 
 @Component({
@@ -64,15 +221,21 @@ const ICON_NAMES: string[] = [
   ],
   template: `
     <div class="icon-picker">
-      @if (isImg(icon)) {
-        <img class="icon-preview-img" [src]="srcFor(icon)" alt="" />
+      @if (isImg(icon())) {
+        <img class="icon-preview-img" [src]="srcFor(icon())" alt="" />
       } @else {
-        <mat-icon class="icon-preview">{{ icon || 'emoji_events' }}</mat-icon>
+        <mat-icon class="icon-preview">{{ icon() || 'emoji_events' }}</mat-icon>
       }
       <mat-form-field appearance="outline" class="icon-search-field">
-        <mat-label>{{ label }}</mat-label>
-        <input matInput [(ngModel)]="query" (ngModelChange)="onQueryChange($event)"
-          [matAutocomplete]="auto" autocomplete="off" placeholder="Search icons or custom images…" />
+        <mat-label>{{ label() }}</mat-label>
+        <input
+          matInput
+          [(ngModel)]="query"
+          (ngModelChange)="onQueryChange($event)"
+          [matAutocomplete]="auto"
+          autocomplete="off"
+          placeholder="Search icons or custom images…"
+        />
         <mat-autocomplete #auto="matAutocomplete" (optionSelected)="onSelect($event)">
           @for (item of filteredCustomIcons(); track item.id) {
             <mat-option [value]="valueFor(item)">
@@ -90,17 +253,27 @@ const ICON_NAMES: string[] = [
           }
         </mat-autocomplete>
       </mat-form-field>
-      <button mat-icon-button type="button" matTooltip="Upload a custom icon"
-        (click)="showUploadForm.set(!showUploadForm())">
+      <button
+        mat-icon-button
+        type="button"
+        matTooltip="Upload a custom icon"
+        (click)="showUploadForm.set(!showUploadForm())"
+      >
         <mat-icon>add_photo_alternate</mat-icon>
       </button>
-      <button mat-icon-button type="button" matTooltip="Manage custom icons"
-        (click)="showManagePanel.set(!showManagePanel())">
+      <button
+        mat-icon-button
+        type="button"
+        matTooltip="Manage custom icons"
+        (click)="showManagePanel.set(!showManagePanel())"
+      >
         <mat-icon>collections</mat-icon>
       </button>
     </div>
-    @if (isImg(icon) && currentUsage() !== null) {
-      <p class="usage-hint">Used by {{ currentUsage() }} achievement{{ currentUsage() === 1 ? '' : 's' }}.</p>
+    @if (isImg(icon()) && currentUsage() !== null) {
+      <p class="usage-hint">
+        Used by {{ currentUsage() }} achievement{{ currentUsage() === 1 ? '' : 's' }}.
+      </p>
     }
     @if (showUploadForm()) {
       <div class="icon-upload-form">
@@ -108,17 +281,30 @@ const ICON_NAMES: string[] = [
           <mat-label>Icon name</mat-label>
           <input matInput [(ngModel)]="uploadName" placeholder="e.g. Chips &amp; Salsa" />
         </mat-form-field>
-        <input #fileInput type="file" accept="image/*" hidden (change)="onUploadFileSelected($event)" />
+        <input
+          #fileInput
+          type="file"
+          accept="image/*"
+          hidden
+          (change)="onUploadFileSelected($event)"
+        />
         @if (uploadPreviewUrl) {
           <img class="upload-preview" [src]="uploadPreviewUrl" alt="" />
         }
         <button mat-stroked-button type="button" (click)="fileInput.click()">
           <mat-icon>upload</mat-icon> {{ uploadBlob ? 'Change Image' : 'Choose Image' }}
         </button>
-        <button mat-raised-button color="primary" type="button"
+        <button
+          mat-raised-button
+          color="primary"
+          type="button"
           [disabled]="uploading() || !uploadName.trim() || !uploadBlob"
-          (click)="doUpload()">
-          @if (uploading()) { <mat-spinner diameter="16" /> } Add to Library
+          (click)="doUpload()"
+        >
+          @if (uploading()) {
+            <mat-spinner diameter="16" />
+          }
+          Add to Library
         </button>
         <button mat-button type="button" (click)="cancelUpload()">Cancel</button>
       </div>
@@ -134,21 +320,34 @@ const ICON_NAMES: string[] = [
               <div class="manage-row">
                 <img class="manage-thumb" [src]="item.imagePath" alt="" />
                 <span class="manage-name">{{ item.name }}</span>
-                <span class="manage-usage">{{ item.usageCount }} use{{ item.usageCount === 1 ? '' : 's' }}</span>
-                <button mat-icon-button type="button"
+                <span class="manage-usage"
+                  >{{ item.usageCount }} use{{ item.usageCount === 1 ? '' : 's' }}</span
+                >
+                <button
+                  mat-icon-button
+                  type="button"
                   [disabled]="reprocessingId() === item.id"
                   matTooltip="Remove white/checkered background"
-                  (click)="reprocessIcon(item)">
+                  (click)="reprocessIcon(item)"
+                >
                   @if (reprocessingId() === item.id) {
                     <mat-spinner diameter="18" />
                   } @else {
                     <mat-icon>auto_fix_high</mat-icon>
                   }
                 </button>
-                <button mat-icon-button type="button" color="warn"
+                <button
+                  mat-icon-button
+                  type="button"
+                  color="warn"
                   [disabled]="item.usageCount > 0"
-                  [matTooltip]="item.usageCount > 0 ? 'In use — change achievements using it before deleting' : 'Delete'"
-                  (click)="deleteCustomIcon(item)">
+                  [matTooltip]="
+                    item.usageCount > 0
+                      ? 'In use — change achievements using it before deleting'
+                      : 'Delete'
+                  "
+                  (click)="deleteCustomIcon(item)"
+                >
                   <mat-icon>delete</mat-icon>
                 </button>
               </div>
@@ -158,50 +357,133 @@ const ICON_NAMES: string[] = [
       </div>
     }
   `,
-  styles: [`
-    .icon-picker { display: flex; align-items: center; gap: 10px; }
-    .icon-preview { font-size: 1.6rem; width: 1.6rem; height: 1.6rem; color: #C9933A; flex-shrink: 0; }
-    .icon-preview-img { width: 1.6rem; height: 1.6rem; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-    .icon-search-field { flex: 1; min-width: 160px; }
-    .option-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; vertical-align: middle; margin-right: 6px; color: #666; }
-    .option-img { width: 1.1rem; height: 1.1rem; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 6px; }
-    .option-usage { color: #999; font-size: 0.8em; margin-left: 4px; }
-    .usage-hint { margin: 4px 0 0; font-size: 0.78rem; color: #888; }
-    .icon-upload-form {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
-      margin-top: 6px;
-      padding: 10px;
-      background: #faf7f2;
-      border-radius: 8px;
-    }
-    .upload-name-field { width: 200px; }
-    .upload-preview { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
-    .icon-manage-panel {
-      margin-top: 6px;
-      padding: 10px;
-      background: #faf7f2;
-      border-radius: 8px;
-    }
-    .manage-panel-title { font-size: 0.8rem; font-weight: 700; color: #666; margin-bottom: 6px; }
-    .manage-empty { color: #999; font-size: 0.85rem; margin: 0; }
-    .manage-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
-    .manage-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-    .manage-thumb { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-    .manage-name { flex: 1; font-size: 0.85rem; }
-    .manage-usage { font-size: 0.75rem; color: #999; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .icon-picker {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .icon-preview {
+        font-size: 1.6rem;
+        width: 1.6rem;
+        height: 1.6rem;
+        color: #c9933a;
+        flex-shrink: 0;
+      }
+      .icon-preview-img {
+        width: 1.6rem;
+        height: 1.6rem;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .icon-search-field {
+        flex: 1;
+        min-width: 160px;
+      }
+      .option-icon {
+        font-size: 1.1rem;
+        width: 1.1rem;
+        height: 1.1rem;
+        vertical-align: middle;
+        margin-right: 6px;
+        color: #666;
+      }
+      .option-img {
+        width: 1.1rem;
+        height: 1.1rem;
+        border-radius: 50%;
+        object-fit: cover;
+        vertical-align: middle;
+        margin-right: 6px;
+      }
+      .option-usage {
+        color: #999;
+        font-size: 0.8em;
+        margin-left: 4px;
+      }
+      .usage-hint {
+        margin: 4px 0 0;
+        font-size: 0.78rem;
+        color: #888;
+      }
+      .icon-upload-form {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+        padding: 10px;
+        background: #faf7f2;
+        border-radius: 8px;
+      }
+      .upload-name-field {
+        width: 200px;
+      }
+      .upload-preview {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+      }
+      .icon-manage-panel {
+        margin-top: 6px;
+        padding: 10px;
+        background: #faf7f2;
+        border-radius: 8px;
+      }
+      .manage-panel-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #666;
+        margin-bottom: 6px;
+      }
+      .manage-empty {
+        color: #999;
+        font-size: 0.85rem;
+        margin: 0;
+      }
+      .manage-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 220px;
+        overflow-y: auto;
+      }
+      .manage-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+      }
+      .manage-thumb {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .manage-name {
+        flex: 1;
+        font-size: 0.85rem;
+      }
+      .manage-usage {
+        font-size: 0.75rem;
+        color: #999;
+      }
+    `,
+  ],
 })
 export class IconPickerComponent implements OnChanges, OnInit {
   private readonly communityService = inject(CommunityService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
 
-  @Input() icon = '';
-  @Input() label = 'Icon';
-  @Output() iconChange = new EventEmitter<string>();
+  readonly icon = input('');
+  readonly label = input('Icon');
+  readonly iconChange = output<string>();
 
   query = '';
   uploadName = '';
@@ -235,12 +517,13 @@ export class IconPickerComponent implements OnChanges, OnInit {
   }
 
   private syncQueryFromIcon(): void {
-    if (this.isImg(this.icon)) {
-      const match = this.customIcons().find((c) => this.valueFor(c) === this.icon);
-      this.query = match ? match.name : this.icon;
+    const icon = this.icon();
+    if (this.isImg(icon)) {
+      const match = this.customIcons().find((c) => this.valueFor(c) === this.icon());
+      this.query = match ? match.name : icon;
       this.currentUsage.set(match ? match.usageCount : null);
     } else {
-      this.query = this.icon;
+      this.query = icon;
       this.currentUsage.set(null);
     }
   }
@@ -306,7 +589,9 @@ export class IconPickerComponent implements OnChanges, OnInit {
     this.uploading.set(true);
     this.communityService.createCustomIcon(this.uploadName.trim(), this.uploadBlob).subscribe({
       next: (created) => {
-        const updated = [...this.customIcons(), created].sort((a, b) => a.name.localeCompare(b.name));
+        const updated = [...this.customIcons(), created].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
         this.customIcons.set(updated);
         this.filteredCustomIcons.set(updated);
         this.query = created.name;
@@ -330,7 +615,8 @@ export class IconPickerComponent implements OnChanges, OnInit {
 
   deleteCustomIcon(item: CustomIcon): void {
     if (item.usageCount > 0) return;
-    if (!window.confirm(`Delete "${item.name}" from the icon library? This can't be undone.`)) return;
+    if (!window.confirm(`Delete "${item.name}" from the icon library? This can't be undone.`))
+      return;
     this.communityService.deleteCustomIcon(item.id).subscribe({
       next: () => {
         const updated = this.customIcons().filter((c) => c.id !== item.id);
@@ -357,7 +643,8 @@ export class IconPickerComponent implements OnChanges, OnInit {
       .then((cleaned) => {
         this.communityService.reprocessCustomIcon(item.id, cleaned).subscribe({
           next: (updated) => {
-            const replace = (list: CustomIcon[]) => list.map((c) => (c.id === item.id ? { ...c, imagePath: updated.imagePath } : c));
+            const replace = (list: CustomIcon[]) =>
+              list.map((c) => (c.id === item.id ? { ...c, imagePath: updated.imagePath } : c));
             this.customIcons.update(replace);
             this.filteredCustomIcons.update(replace);
             this.reprocessingId.set(null);

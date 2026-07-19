@@ -1,4 +1,11 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  inject,
+  OnInit,
+  signal,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
@@ -92,18 +99,27 @@ interface EmailConfig {
       <h2 class="page-title">Email Admin</h2>
 
       @if (config(); as cfg) {
-
         <!-- Send counts card -->
         <mat-card>
           <mat-card-header>
             <mat-card-title>Today's Send Counts</mat-card-title>
             <div class="header-actions">
               @if (failedCount() > 0) {
-                <button mat-stroked-button color="warn" (click)="retryFailed()" [disabled]="retrying()">
+                <button
+                  mat-stroked-button
+                  color="warn"
+                  (click)="retryFailed()"
+                  [disabled]="retrying()"
+                >
                   <mat-icon>replay</mat-icon> Retry {{ failedCount() }} Failed
                 </button>
               }
-              <button mat-stroked-button color="primary" (click)="flushQueue()" [disabled]="flushing()">
+              <button
+                mat-stroked-button
+                color="primary"
+                (click)="flushQueue()"
+                [disabled]="flushing()"
+              >
                 <mat-icon>send</mat-icon> {{ flushing() ? 'Sending…' : 'Send Now' }}
               </button>
               <button mat-icon-button (click)="loadQueue()" matTooltip="Refresh queue">
@@ -116,22 +132,31 @@ interface EmailConfig {
               <div class="provider-block">
                 <div class="provider-header">
                   <span class="provider-name">Brevo</span>
-                  <mat-slide-toggle [checked]="cfg.brevoEnabled"
-                    (change)="patchConfig({ brevoEnabled: $event.checked })" />
+                  <mat-slide-toggle
+                    [checked]="cfg.brevoEnabled"
+                    (change)="patchConfig({ brevoEnabled: $event.checked })"
+                  />
                 </div>
-                <div class="provider-stat"><span>Sent today</span>
-                  <strong>{{ cfg.brevoSentToday }} / {{ cfg.brevoDailyLimit }}</strong></div>
-                <div class="provider-stat"><span>Reset date</span>
-                  <strong>{{ cfg.lastResetDate }}</strong></div>
+                <div class="provider-stat">
+                  <span>Sent today</span>
+                  <strong>{{ cfg.brevoSentToday }} / {{ cfg.brevoDailyLimit }}</strong>
+                </div>
+                <div class="provider-stat">
+                  <span>Reset date</span> <strong>{{ cfg.lastResetDate }}</strong>
+                </div>
               </div>
               <div class="provider-block">
                 <div class="provider-header">
                   <span class="provider-name">Resend (overflow)</span>
-                  <mat-slide-toggle [checked]="cfg.resendOverflowEnabled"
-                    (change)="patchConfig({ resendOverflowEnabled: $event.checked })" />
+                  <mat-slide-toggle
+                    [checked]="cfg.resendOverflowEnabled"
+                    (change)="patchConfig({ resendOverflowEnabled: $event.checked })"
+                  />
                 </div>
-                <div class="provider-stat"><span>Sent today</span>
-                  <strong>{{ cfg.resendSentToday }} / {{ cfg.resendDailyLimit }}</strong></div>
+                <div class="provider-stat">
+                  <span>Sent today</span>
+                  <strong>{{ cfg.resendSentToday }} / {{ cfg.resendDailyLimit }}</strong>
+                </div>
               </div>
             </div>
           </mat-card-content>
@@ -196,7 +221,9 @@ interface EmailConfig {
           <mat-expansion-panel>
             <mat-expansion-panel-header>
               <mat-panel-title>Brevo Template IDs</mat-panel-title>
-              <mat-panel-description>Numeric IDs from your Brevo template library</mat-panel-description>
+              <mat-panel-description
+                >Numeric IDs from your Brevo template library</mat-panel-description
+              >
             </mat-expansion-panel-header>
             <form [formGroup]="templatesForm" (ngSubmit)="saveTemplates()" class="creds-form">
               <div class="templates-grid">
@@ -234,7 +261,12 @@ interface EmailConfig {
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Guest RSVP Confirmation</mat-label>
-                  <input matInput formControlName="tmplGuestRsvpConfirmation" type="number" min="0" />
+                  <input
+                    matInput
+                    formControlName="tmplGuestRsvpConfirmation"
+                    type="number"
+                    min="0"
+                  />
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Email Verification</mat-label>
@@ -294,10 +326,17 @@ interface EmailConfig {
                   <th mat-header-cell *matHeaderCellDef></th>
                   <td mat-cell *matCellDef="let row">
                     <button mat-icon-button (click)="toggleDetail(row.id)" matTooltip="More info">
-                      <mat-icon>{{ expandedRowId() === row.id ? 'expand_less' : 'expand_more' }}</mat-icon>
+                      <mat-icon>{{
+                        expandedRowId() === row.id ? 'expand_less' : 'expand_more'
+                      }}</mat-icon>
                     </button>
                     @if (row.status === 'pending' || row.status === 'failed') {
-                      <button mat-icon-button color="warn" (click)="cancelEmail(row.id)" matTooltip="Cancel">
+                      <button
+                        mat-icon-button
+                        color="warn"
+                        (click)="cancelEmail(row.id)"
+                        matTooltip="Cancel"
+                      >
                         <mat-icon>cancel</mat-icon>
                       </button>
                     }
@@ -307,13 +346,25 @@ interface EmailConfig {
                   <td mat-cell *matCellDef="let row" [attr.colspan]="displayedColumns.length">
                     @if (expandedRowId() === row.id) {
                       <div class="row-detail">
-                        <div class="detail-field"><span>Subject</span><strong>{{ row.subject ?? '—' }}</strong></div>
-                        <div class="detail-field"><span>Last attempt</span><strong>{{ row.lastAttemptAt ? (row.lastAttemptAt | date: 'short') : '—' }}</strong></div>
+                        <div class="detail-field">
+                          <span>Subject</span><strong>{{ row.subject ?? '—' }}</strong>
+                        </div>
+                        <div class="detail-field">
+                          <span>Last attempt</span
+                          ><strong>{{
+                            row.lastAttemptAt ? (row.lastAttemptAt | date: 'short') : '—'
+                          }}</strong>
+                        </div>
                         @if (row.brevoStatus) {
-                          <div class="detail-field"><span>Brevo status</span><strong>{{ row.brevoStatus }}</strong></div>
+                          <div class="detail-field">
+                            <span>Brevo status</span><strong>{{ row.brevoStatus }}</strong>
+                          </div>
                         }
                         @if (row.errorMessage) {
-                          <div class="detail-field"><span>Error</span><strong class="detail-error">{{ row.errorMessage }}</strong></div>
+                          <div class="detail-field">
+                            <span>Error</span
+                            ><strong class="detail-error">{{ row.errorMessage }}</strong>
+                          </div>
                         }
                         @if (row.templateParams) {
                           <div class="detail-block">
@@ -334,7 +385,10 @@ interface EmailConfig {
                           </div>
                         }
                         @if (!row.templateParams && !row.htmlBody && !row.textBody) {
-                          <p class="empty-state">No stored content for this email — it may have been sent via provider template only.</p>
+                          <p class="empty-state">
+                            No stored content for this email — it may have been sent via provider
+                            template only.
+                          </p>
                         }
                       </div>
                     }
@@ -342,67 +396,181 @@ interface EmailConfig {
                 </ng-container>
                 <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
                 <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
-                <tr mat-row *matRowDef="let row; columns: ['expandedDetail']" class="detail-row"></tr>
+                <tr
+                  mat-row
+                  *matRowDef="let row; columns: ['expandedDetail']"
+                  class="detail-row"
+                ></tr>
               </table>
             }
           </mat-card-content>
         </mat-card>
-
       } @else {
         <mat-spinner diameter="40" />
       }
     </div>
   `,
-  styles: [`
-    .email-admin-container {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 24px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-    .page-title { margin: 0; font-size: 1.4rem; }
-    mat-card-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
-    .header-actions { display: flex; gap: 8px; align-items: center; }
-    .provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 8px; }
-    @media (max-width: 600px) { .provider-grid { grid-template-columns: 1fr; } }
-    .provider-block {
-      background: #f9f9f9; border-radius: 8px; padding: 14px;
-      display: flex; flex-direction: column; gap: 8px;
-    }
-    .provider-header { display: flex; align-items: center; justify-content: space-between; }
-    .provider-name { font-weight: 600; font-size: 0.95rem; }
-    .provider-stat { display: flex; justify-content: space-between; font-size: 0.85rem; color: #555; }
-    .creds-form { display: flex; flex-direction: column; gap: 12px; padding: 16px 0 8px; }
-    .full-width { width: 100%; }
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
-    .templates-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 600px) { .templates-grid { grid-template-columns: 1fr; } }
-    .queue-table { width: 100%; }
-    .detail-row td { border-bottom-width: 1px; padding: 0 !important; }
-    .row-detail {
-      display: flex; flex-direction: column; gap: 10px;
-      padding: 12px 16px; background: #f5f5f5;
-    }
-    .detail-field { display: flex; gap: 8px; font-size: 0.85rem; }
-    .detail-field span { color: #777; min-width: 110px; }
-    .detail-error { color: #c62828; }
-    .detail-block { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
-    .detail-block span { color: #777; }
-    .detail-block pre {
-      margin: 0; max-height: 240px; overflow: auto; white-space: pre-wrap;
-      word-break: break-word; background: #fff; border: 1px solid #ddd;
-      border-radius: 4px; padding: 8px; font-size: 0.78rem;
-    }
-    .empty-state { color: #999; text-align: center; padding: 24px 0; }
-    mat-chip { font-size: 0.72rem !important; min-height: 22px !important; }
-    .chip-pending { background: #fff9c4 !important; }
-    .chip-sent { background: #c8e6c9 !important; }
-    .chip-failed { background: #ffccbc !important; }
-    .chip-cancelled, .chip-blocked { background: #e0e0e0 !important; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .email-admin-container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 24px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      .page-title {
+        margin: 0;
+        font-size: 1.4rem;
+      }
+      mat-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .provider-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        padding-top: 8px;
+      }
+      @media (max-width: 600px) {
+        .provider-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .provider-block {
+        background: #f9f9f9;
+        border-radius: 8px;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .provider-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .provider-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+      .provider-stat {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        color: #555;
+      }
+      .creds-form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px 0 8px;
+      }
+      .full-width {
+        width: 100%;
+      }
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 600px) {
+        .two-col {
+          grid-template-columns: 1fr;
+        }
+      }
+      .templates-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 600px) {
+        .templates-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .queue-table {
+        width: 100%;
+      }
+      .detail-row td {
+        border-bottom-width: 1px;
+        padding: 0 !important;
+      }
+      .row-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px 16px;
+        background: #f5f5f5;
+      }
+      .detail-field {
+        display: flex;
+        gap: 8px;
+        font-size: 0.85rem;
+      }
+      .detail-field span {
+        color: #777;
+        min-width: 110px;
+      }
+      .detail-error {
+        color: #c62828;
+      }
+      .detail-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.85rem;
+      }
+      .detail-block span {
+        color: #777;
+      }
+      .detail-block pre {
+        margin: 0;
+        max-height: 240px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 8px;
+        font-size: 0.78rem;
+      }
+      .empty-state {
+        color: #999;
+        text-align: center;
+        padding: 24px 0;
+      }
+      mat-chip {
+        font-size: 0.72rem !important;
+        min-height: 22px !important;
+      }
+      .chip-pending {
+        background: #fff9c4 !important;
+      }
+      .chip-sent {
+        background: #c8e6c9 !important;
+      }
+      .chip-failed {
+        background: #ffccbc !important;
+      }
+      .chip-cancelled,
+      .chip-blocked {
+        background: #e0e0e0 !important;
+      }
+    `,
+  ],
 })
 export class AdminEmailComponent implements OnInit {
   private readonly http = inject(HttpClient);
@@ -418,7 +586,15 @@ export class AdminEmailComponent implements OnInit {
   readonly failedCount = computed(() => this.queue().filter((e) => e.status === 'failed').length);
   readonly expandedRowId = signal<number | null>(null);
 
-  readonly displayedColumns = ['status', 'template', 'toEmail', 'provider', 'attempts', 'createdAt', 'actions'];
+  readonly displayedColumns = [
+    'status',
+    'template',
+    'toEmail',
+    'provider',
+    'attempts',
+    'createdAt',
+    'actions',
+  ];
 
   readonly brevoForm = this.fb.group({
     brevoApiKey: [''],
@@ -485,14 +661,20 @@ export class AdminEmailComponent implements OnInit {
   loadQueue(): void {
     this.loading.set(true);
     this.http.get<EmailQueueItem[]>('/api/v1/admin/email/queue').subscribe({
-      next: (q) => { this.queue.set(q); this.loading.set(false); },
+      next: (q) => {
+        this.queue.set(q);
+        this.loading.set(false);
+      },
       error: () => this.loading.set(false),
     });
   }
 
   patchConfig(patch: Partial<EmailConfig>): void {
     this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
-      next: (cfg) => { this.config.set(cfg); this.snackBar.open('Saved', 'OK', { duration: 2000 }); },
+      next: (cfg) => {
+        this.config.set(cfg);
+        this.snackBar.open('Saved', 'OK', { duration: 2000 });
+      },
       error: () => this.snackBar.open('Failed to save', 'OK', { duration: 3000 }),
     });
   }
@@ -506,8 +688,15 @@ export class AdminEmailComponent implements OnInit {
       brevoFromName: val.brevoFromName || null,
     };
     this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
-      next: (cfg) => { this.config.set(cfg); this.saving.set(false); this.snackBar.open('Brevo credentials saved', 'OK', { duration: 2000 }); },
-      error: () => { this.saving.set(false); this.snackBar.open('Failed to save', 'OK', { duration: 3000 }); },
+      next: (cfg) => {
+        this.config.set(cfg);
+        this.saving.set(false);
+        this.snackBar.open('Brevo credentials saved', 'OK', { duration: 2000 });
+      },
+      error: () => {
+        this.saving.set(false);
+        this.snackBar.open('Failed to save', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -520,8 +709,15 @@ export class AdminEmailComponent implements OnInit {
       resendFromName: val.resendFromName || null,
     };
     this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
-      next: (cfg) => { this.config.set(cfg); this.saving.set(false); this.snackBar.open('Resend credentials saved', 'OK', { duration: 2000 }); },
-      error: () => { this.saving.set(false); this.snackBar.open('Failed to save', 'OK', { duration: 3000 }); },
+      next: (cfg) => {
+        this.config.set(cfg);
+        this.saving.set(false);
+        this.snackBar.open('Resend credentials saved', 'OK', { duration: 2000 });
+      },
+      error: () => {
+        this.saving.set(false);
+        this.snackBar.open('Failed to save', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -529,8 +725,15 @@ export class AdminEmailComponent implements OnInit {
     this.saving.set(true);
     const val = this.templatesForm.getRawValue();
     this.http.patch<EmailConfig>('/api/v1/admin/email/config', val).subscribe({
-      next: (cfg) => { this.config.set(cfg); this.saving.set(false); this.snackBar.open('Template IDs saved', 'OK', { duration: 2000 }); },
-      error: () => { this.saving.set(false); this.snackBar.open('Failed to save', 'OK', { duration: 3000 }); },
+      next: (cfg) => {
+        this.config.set(cfg);
+        this.saving.set(false);
+        this.snackBar.open('Template IDs saved', 'OK', { duration: 2000 });
+      },
+      error: () => {
+        this.saving.set(false);
+        this.snackBar.open('Failed to save', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -542,7 +745,10 @@ export class AdminEmailComponent implements OnInit {
         this.flushing.set(false);
         this.loadQueue();
       },
-      error: () => { this.snackBar.open('Flush failed', 'OK', { duration: 3000 }); this.flushing.set(false); },
+      error: () => {
+        this.snackBar.open('Flush failed', 'OK', { duration: 3000 });
+        this.flushing.set(false);
+      },
     });
   }
 
@@ -554,7 +760,10 @@ export class AdminEmailComponent implements OnInit {
         this.retrying.set(false);
         this.loadQueue();
       },
-      error: () => { this.snackBar.open('Retry failed', 'OK', { duration: 3000 }); this.retrying.set(false); },
+      error: () => {
+        this.snackBar.open('Retry failed', 'OK', { duration: 3000 });
+        this.retrying.set(false);
+      },
     });
   }
 
@@ -564,7 +773,10 @@ export class AdminEmailComponent implements OnInit {
 
   cancelEmail(id: number): void {
     this.http.delete(`/api/v1/admin/email/${id}`).subscribe({
-      next: () => { this.snackBar.open('Email cancelled', 'OK', { duration: 2000 }); this.loadQueue(); },
+      next: () => {
+        this.snackBar.open('Email cancelled', 'OK', { duration: 2000 });
+        this.loadQueue();
+      },
       error: () => this.snackBar.open('Failed to cancel', 'OK', { duration: 3000 }),
     });
   }

@@ -384,6 +384,23 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
       expect(res.body).toEqual(expect.objectContaining({ updated: expect.any(Number), inserted: expect.any(Number) }));
     });
 
+    it('is idempotent — running recalculate-points twice does not duplicate an achievement point', async () => {
+      await pointsService.awardAttendance(member.id, (await seedEvent()).id);
+      const achievement = await dataSource.getRepository(AchievementEntity).findOneOrFail({ where: { key: 'first_dinner' } });
+
+      await request(server).post('/api/v1/admin/achievements/recalculate-points').set('Cookie', adminCookie).expect(201);
+      const second = await request(server)
+        .post('/api/v1/admin/achievements/recalculate-points')
+        .set('Cookie', adminCookie)
+        .expect(201);
+
+      expect(second.body.inserted).toBe(0);
+      const count = await dataSource
+        .getRepository(MemberPointEntity)
+        .count({ where: { userId: member.id, pointType: PointType.ACHIEVEMENT, referenceId: achievement.id } });
+      expect(count).toBe(1);
+    });
+
     it('backfills missing invite points and achievements for an attendee whose inviter was never credited', async () => {
       const inviter = await seedUser(dataSource, city.id, { email: 'backfill-inviter@example.test' });
       const invitee = await seedUser(dataSource, city.id, { email: 'backfill-invitee@example.test', invitedBy: inviter.id });
@@ -501,6 +518,54 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
       await request(server).get(`/api/v1/members/${member.id}/points`).expect(200);
       const res = await request(server).get(`/api/v1/members/${member.id}/achievements`).expect(200);
       expect(res.body.some((a: { key: string }) => a.key === 'first_dinner')).toBe(true);
+    });
+  });
+
+  describe('GET /members/:id/points/ledger', () => {
+    it("returns the caller's own ledger with human-readable labels and a matching total", async () => {
+      await pointsService.awardAttendance(member.id, (await seedEvent()).id);
+
+      const res = await request(server)
+        .get(`/api/v1/members/${member.id}/points/ledger`)
+        .set('Cookie', memberCookie)
+        .expect(200);
+
+      expect(res.body.entries.some((e: { achievement: string; points: number }) =>
+        e.achievement === 'Attended a dinner' && e.points === 1,
+      )).toBe(true);
+      // Attending a first dinner also unlocks the seeded 'First Dinner' achievement (3 pts).
+      expect(res.body.entries.some((e: { achievement: string; points: number }) =>
+        e.achievement === 'First Dinner' && e.points === 3,
+      )).toBe(true);
+      expect(res.body.total).toBe(4);
+    });
+
+    it('allows an admin to view another member\'s ledger', async () => {
+      await pointsService.awardAttendance(member.id, (await seedEvent()).id);
+      await request(server)
+        .get(`/api/v1/members/${member.id}/points/ledger`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+    });
+
+    it('allows a moderator to view another member\'s ledger', async () => {
+      await pointsService.awardAttendance(member.id, (await seedEvent()).id);
+      await request(server)
+        .get(`/api/v1/members/${member.id}/points/ledger`)
+        .set('Cookie', moderatorCookie)
+        .expect(200);
+    });
+
+    it('rejects a member viewing another member\'s ledger', async () => {
+      const other = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'other@example.test' });
+      await request(server)
+        .get(`/api/v1/members/${other.id}/points/ledger`)
+        .set('Cookie', memberCookie)
+        .expect(403);
+    });
+
+    it('rejects unauthenticated requests', async () => {
+      await request(server).get(`/api/v1/members/${member.id}/points/ledger`).expect(401);
     });
   });
 

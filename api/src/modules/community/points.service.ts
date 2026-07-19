@@ -1,15 +1,37 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { MemberPointEntity, PointType } from '../../database/entities/member-point.entity';
 import { EventEntity } from '../../database/entities/event.entity';
 import { UserRole } from '../../database/entities/user.entity';
+import { AchievementEntity } from '../../database/entities/achievement.entity';
 import { AchievementsService } from './achievements.service';
 
 export interface PointSummary {
   total: number;
   byType: Record<PointType, number>;
 }
+
+export interface PointLedgerEntry {
+  date: Date;
+  achievement: string;
+  points: number;
+}
+
+export interface PointLedgerDetailed {
+  entries: PointLedgerEntry[];
+  total: number;
+}
+
+const POINT_TYPE_LABELS: Record<Exclude<PointType, PointType.ACHIEVEMENT>, string> = {
+  [PointType.ATTENDANCE]: 'Attended a dinner',
+  [PointType.COORDINATOR]: 'Coordinated a dinner',
+  [PointType.COORDINATOR_NEW_RESTAURANT]: 'Coordinated a dinner at a new restaurant',
+  [PointType.INVITE]: 'Invited a member who attended their first dinner',
+  [PointType.RATING]: 'Rated a restaurant',
+  [PointType.CITY_HOPPER]: 'Dined in a new city',
+  [PointType.SECRET_DINNER]: 'Attended a secret dinner',
+};
 
 export interface LeaderboardEntry {
   rank: number;
@@ -218,9 +240,35 @@ export class PointsService {
     });
   }
 
-  async adminAwardPoints(userId: number, pointType: PointType, points: number, referenceId?: number): Promise<void> {
+  async getLedgerDetailed(userId: number): Promise<PointLedgerDetailed> {
+    const rows = await this.getLedger(userId);
+
+    const achievementIds = [
+      ...new Set(rows.filter((r) => r.pointType === PointType.ACHIEVEMENT).map((r) => r.referenceId)),
+    ];
+    const achievementNames = new Map<number, string>();
+    if (achievementIds.length > 0) {
+      const achievements = await this.dataSource
+        .getRepository(AchievementEntity)
+        .findBy({ id: In(achievementIds) });
+      for (const a of achievements) achievementNames.set(a.id, a.name);
+    }
+
+    const entries: PointLedgerEntry[] = rows.map((r) => ({
+      date: r.awardedAt,
+      achievement:
+        r.pointType === PointType.ACHIEVEMENT
+          ? achievementNames.get(r.referenceId) ?? 'Achievement unlocked'
+          : POINT_TYPE_LABELS[r.pointType],
+      points: r.points,
+    }));
+
+    return { entries, total: rows.reduce((sum, r) => sum + r.points, 0) };
+  }
+
+  async adminAwardPoints(userId: number, pointType: PointType, points: number, referenceId: number): Promise<void> {
     await this.pointRepo.save(
-      this.pointRepo.create({ userId, pointType, points, referenceId: referenceId ?? null }),
+      this.pointRepo.create({ userId, pointType, points, referenceId }),
     );
   }
 

@@ -1,4 +1,11 @@
-import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import {
+  Component,
+  inject,
+  OnInit,
+  signal,
+  computed,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -51,8 +58,17 @@ const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = 
 };
 
 const ACHIEVEMENT_CATEGORY_ORDER = [
-  'attendance', 'coordinator', 'new_restaurant_coordinator',
-  'invite', 'rating', 'city_hopper', 'secret_dinner', 'login', 'founding', 'event', 'other',
+  'attendance',
+  'coordinator',
+  'new_restaurant_coordinator',
+  'invite',
+  'rating',
+  'city_hopper',
+  'secret_dinner',
+  'login',
+  'founding',
+  'event',
+  'other',
 ];
 
 interface AchievementGroup {
@@ -88,13 +104,23 @@ interface AchievementGroup {
         @if ((points()?.total ?? 0) > 0 && authService.currentUser()?.role !== 'admin') {
           <div class="paw-badge">
             <svg viewBox="0 0 56 54" xmlns="http://www.w3.org/2000/svg" class="paw-svg">
-              <circle cx="10" cy="20" r="7" fill="#8B5E3C"/>
-              <circle cx="21" cy="13" r="7" fill="#8B5E3C"/>
-              <circle cx="35" cy="13" r="7" fill="#8B5E3C"/>
-              <circle cx="46" cy="20" r="7" fill="#8B5E3C"/>
-              <circle cx="28" cy="38" r="14" fill="#8B5E3C"/>
-              <text x="28" y="38" text-anchor="middle" dominant-baseline="central"
-                    fill="white" font-size="13" font-weight="800" font-family="system-ui,sans-serif">{{ points()!.total }}</text>
+              <circle cx="10" cy="20" r="7" fill="#8B5E3C" />
+              <circle cx="21" cy="13" r="7" fill="#8B5E3C" />
+              <circle cx="35" cy="13" r="7" fill="#8B5E3C" />
+              <circle cx="46" cy="20" r="7" fill="#8B5E3C" />
+              <circle cx="28" cy="38" r="14" fill="#8B5E3C" />
+              <text
+                x="28"
+                y="38"
+                text-anchor="middle"
+                dominant-baseline="central"
+                fill="white"
+                font-size="13"
+                font-weight="800"
+                font-family="system-ui,sans-serif"
+              >
+                {{ points()!.total }}
+              </text>
             </svg>
           </div>
         }
@@ -229,7 +255,7 @@ interface AchievementGroup {
                         }
                       </div>
                       @if (a.earnedAt) {
-                        <span class="ach-earned-when">{{ a.earnedAt | date:'MMM d, y' }}</span>
+                        <span class="ach-earned-when">{{ a.earnedAt | date: 'MMM d, y' }}</span>
                       }
                     </div>
                   }
@@ -248,11 +274,19 @@ interface AchievementGroup {
                       <span class="ach-next-desc">{{ next.description }}</span>
                     </div>
                   </div>
-                  @if (next.progressTarget && next.progressType !== 'founding' && next.progressType !== 'event') {
+                  @if (
+                    next.progressTarget &&
+                    next.progressType !== 'founding' &&
+                    next.progressType !== 'event'
+                  ) {
                     <div class="ach-next-progress">
-                      <mat-progress-bar mode="determinate" [value]="progressPct(next)"></mat-progress-bar>
+                      <mat-progress-bar
+                        mode="determinate"
+                        [value]="progressPct(next)"
+                      ></mat-progress-bar>
                       <div class="ach-progress-label">
-                        {{ next.progressCurrent }} of {{ next.progressTarget }} {{ progressLabel(next.progressType) }}
+                        {{ next.progressCurrent }} of {{ next.progressTarget }}
+                        {{ progressLabel(next.progressType) }}
                       </div>
                     </div>
                   }
@@ -264,145 +298,346 @@ interface AchievementGroup {
       }
     </div>
   `,
-  styles: [`
-    .profile-container {
-      max-width: 680px;
-      margin: 0 auto;
-      padding: 24px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-    .profile-header {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      padding: 20px 16px !important;
-    }
-    .profile-photo-wrap {
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      overflow: hidden;
-      flex-shrink: 0;
-      border: 2px solid #ddd;
-    }
-    .profile-photo {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: center top;
-      display: block;
-    }
-    .profile-info { flex: 1; min-width: 0; }
-    .profile-name { font-size: 1.2rem; font-weight: 700; margin: 0 0 4px; color: #1a1a1a; }
-    .profile-email { font-size: 0.875rem; color: #888; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .edit-btn { flex-shrink: 0; }
-    .connections-card mat-card-content { padding: 12px 16px; }
-    .connection-row {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      & + .connection-row { margin-top: 16px; }
-    }
-    .connection-label { font-size: 0.75rem; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.04em; }
-    .mini-members-list { display: flex; flex-wrap: wrap; gap: 8px; }
-    .mini-member {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      text-decoration: none;
-      color: inherit;
-      padding: 6px 10px;
-      border-radius: 8px;
-      background: #f5f5f5;
-      font-size: 0.88rem;
-      transition: background 0.12s;
-      &:hover { background: #ebebeb; }
-    }
-    .mini-avatar {
-      width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: #e0e0e0; flex-shrink: 0;
-      img { width: 100%; height: 100%; object-fit: cover; }
-    }
-    .stats-card mat-card-content { padding-top: 8px; }
-    .stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
-    .stat-item {
-      flex: 1; min-width: 90px;
-      display: flex; flex-direction: column; align-items: center;
-      padding: 16px 8px; border-radius: 10px; background: #f5f5f5;
-      text-decoration: none; color: inherit; transition: background 0.15s;
-      &:hover { background: #e8f4fd; }
-      &.shipped { background: #e8f5e9; &:hover { background: #c8e6c9; } }
-    }
-    .stat-value { font-size: 1.75rem; font-weight: 800; color: var(--db-blue, #1E4D8C); line-height: 1; margin-bottom: 4px; }
-    .stat-item.shipped .stat-value { color: #2e7d32; }
-    .stat-label { font-size: 0.75rem; color: #888; text-align: center; }
-    mat-card-title { display: flex; align-items: center; gap: 10px; }
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .profile-container {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 24px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      .profile-header {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 20px 16px !important;
+      }
+      .profile-photo-wrap {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        overflow: hidden;
+        flex-shrink: 0;
+        border: 2px solid #ddd;
+      }
+      .profile-photo {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center top;
+        display: block;
+      }
+      .profile-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .profile-name {
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin: 0 0 4px;
+        color: #1a1a1a;
+      }
+      .profile-email {
+        font-size: 0.875rem;
+        color: #888;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .edit-btn {
+        flex-shrink: 0;
+      }
+      .connections-card mat-card-content {
+        padding: 12px 16px;
+      }
+      .connection-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        & + .connection-row {
+          margin-top: 16px;
+        }
+      }
+      .connection-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .mini-members-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .mini-member {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+        color: inherit;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: #f5f5f5;
+        font-size: 0.88rem;
+        transition: background 0.12s;
+        &:hover {
+          background: #ebebeb;
+        }
+      }
+      .mini-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: #e0e0e0;
+        flex-shrink: 0;
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+      }
+      .stats-card mat-card-content {
+        padding-top: 8px;
+      }
+      .stats-row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .stat-item {
+        flex: 1;
+        min-width: 90px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 16px 8px;
+        border-radius: 10px;
+        background: #f5f5f5;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s;
+        &:hover {
+          background: #e8f4fd;
+        }
+        &.shipped {
+          background: #e8f5e9;
+          &:hover {
+            background: #c8e6c9;
+          }
+        }
+      }
+      .stat-value {
+        font-size: 1.75rem;
+        font-weight: 800;
+        color: var(--db-blue, #1e4d8c);
+        line-height: 1;
+        margin-bottom: 4px;
+      }
+      .stat-item.shipped .stat-value {
+        color: #2e7d32;
+      }
+      .stat-label {
+        font-size: 0.75rem;
+        color: #888;
+        text-align: center;
+      }
+      mat-card-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-    /* Paw badge on profile card */
-    .profile-card { position: relative; overflow: visible !important; }
-    .paw-badge { position: absolute; top: -12px; right: 12px; z-index: 1; }
-    .paw-svg { width: 46px; height: 46px; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.18)); }
+      /* Paw badge on profile card */
+      .profile-card {
+        position: relative;
+        overflow: visible !important;
+      }
+      .paw-badge {
+        position: absolute;
+        top: -12px;
+        right: 12px;
+        z-index: 1;
+      }
+      .paw-svg {
+        width: 46px;
+        height: 46px;
+        filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.18));
+      }
 
-    /* Achievements section */
-    .achievements-section { display: flex; flex-direction: column; gap: 12px; }
-    .achievements-header {
-      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
-    }
-    .section-title { margin: 0; font-size: 1.1rem; font-weight: 700; color: #333; }
-    .title-picker { width: 200px; }
+      /* Achievements section */
+      .achievements-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .achievements-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .section-title {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #333;
+      }
+      .title-picker {
+        width: 200px;
+      }
 
-    /* Group card */
-    .ach-group-card { padding: 0 !important; overflow: hidden; }
+      /* Group card */
+      .ach-group-card {
+        padding: 0 !important;
+        overflow: hidden;
+      }
 
-    .ach-group-header {
-      display: flex; align-items: center; gap: 8px;
-      padding: 12px 16px;
-      background: #1E4D8C;
-      color: #fff;
-    }
-    .ach-group-icon { font-size: 1.2rem; width: 1.2rem; height: 1.2rem; flex-shrink: 0; opacity: 0.9; }
-    .ach-group-label { font-weight: 700; font-size: 0.95rem; flex: 1; }
-    .ach-complete-badge {
-      font-size: 0.7rem; font-weight: 700;
-      background: #C9933A; color: #fff;
-      border-radius: 10px; padding: 2px 8px;
-      white-space: nowrap;
-    }
+      .ach-group-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        background: #1e4d8c;
+        color: #fff;
+      }
+      .ach-group-icon {
+        font-size: 1.2rem;
+        width: 1.2rem;
+        height: 1.2rem;
+        flex-shrink: 0;
+        opacity: 0.9;
+      }
+      .ach-group-label {
+        font-weight: 700;
+        font-size: 0.95rem;
+        flex: 1;
+      }
+      .ach-complete-badge {
+        font-size: 0.7rem;
+        font-weight: 700;
+        background: #c9933a;
+        color: #fff;
+        border-radius: 10px;
+        padding: 2px 8px;
+        white-space: nowrap;
+      }
 
-    /* Earned rows */
-    .ach-earned-list { padding: 4px 0; }
-    .ach-earned-row {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 16px;
-      &:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
-    }
-    .ach-icon { color: #C9933A; font-size: 1.5rem; width: 1.5rem; height: 1.5rem; flex-shrink: 0; }
-    .ach-row-img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-    .ach-earned-info { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap; }
-    .ach-earned-name { font-size: 0.88rem; font-weight: 600; color: #222; }
-    .ach-title-badge {
-      font-size: 0.68rem; font-weight: 700;
-      background: #C9933A; color: #fff;
-      border-radius: 8px; padding: 1px 7px;
-    }
-    .ach-earned-when { font-size: 0.72rem; color: #aaa; white-space: nowrap; flex-shrink: 0; margin-left: auto; }
+      /* Earned rows */
+      .ach-earned-list {
+        padding: 4px 0;
+      }
+      .ach-earned-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 16px;
+        &:not(:last-child) {
+          border-bottom: 1px solid #f0f0f0;
+        }
+      }
+      .ach-icon {
+        color: #c9933a;
+        font-size: 1.5rem;
+        width: 1.5rem;
+        height: 1.5rem;
+        flex-shrink: 0;
+      }
+      .ach-row-img {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .ach-earned-info {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .ach-earned-name {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #222;
+      }
+      .ach-title-badge {
+        font-size: 0.68rem;
+        font-weight: 700;
+        background: #c9933a;
+        color: #fff;
+        border-radius: 8px;
+        padding: 1px 7px;
+      }
+      .ach-earned-when {
+        font-size: 0.72rem;
+        color: #aaa;
+        white-space: nowrap;
+        flex-shrink: 0;
+        margin-left: auto;
+      }
 
-    /* Next tier */
-    .ach-next {
-      padding: 10px 16px 12px;
-      background: #fafafa;
-      &.with-divider { border-top: 2px dashed #e8e8e8; }
-    }
-    .ach-next-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
-    .ach-lock-icon { color: #bbb; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; margin-top: 2px; }
-    .ach-next-info { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-    .ach-next-name { font-size: 0.88rem; font-weight: 600; color: #555; }
-    .ach-next-title-hint { font-size: 0.7rem; color: #C9933A; font-weight: 600; }
-    .ach-next-desc { font-size: 0.78rem; color: #999; line-height: 1.35; }
-    .ach-next-progress { padding-left: 21px; }
-    .ach-progress-label { font-size: 0.72rem; color: #888; margin-top: 4px; }
-  `],
+      /* Next tier */
+      .ach-next {
+        padding: 10px 16px 12px;
+        background: #fafafa;
+        &.with-divider {
+          border-top: 2px dashed #e8e8e8;
+        }
+      }
+      .ach-next-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+      .ach-lock-icon {
+        color: #bbb;
+        font-size: 1.1rem;
+        width: 1.1rem;
+        height: 1.1rem;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .ach-next-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+      }
+      .ach-next-name {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #555;
+      }
+      .ach-next-title-hint {
+        font-size: 0.7rem;
+        color: #c9933a;
+        font-weight: 600;
+      }
+      .ach-next-desc {
+        font-size: 0.78rem;
+        color: #999;
+        line-height: 1.35;
+      }
+      .ach-next-progress {
+        padding-left: 21px;
+      }
+      .ach-progress-label {
+        font-size: 0.72rem;
+        color: #888;
+        margin-top: 4px;
+      }
+    `,
+  ],
 })
 export class ProfileComponent implements OnInit {
   readonly authService = inject(AuthService);
@@ -419,9 +654,7 @@ export class ProfileComponent implements OnInit {
   readonly activeTitle = signal<string | null>(null);
 
   readonly earnedTitles = computed(() =>
-    (this.achievements() ?? [])
-      .filter((a) => a.earned && a.title)
-      .map((a) => a.title as string),
+    (this.achievements() ?? []).filter((a) => a.earned && a.title).map((a) => a.title as string),
   );
 
   readonly groupedAchievements = computed<AchievementGroup[]>(() => {
@@ -496,7 +729,9 @@ export class ProfileComponent implements OnInit {
     this.communityService.selectTitle(title).subscribe({
       next: () => {
         this.activeTitle.set(title);
-        this.snackBar.open(title ? `Title set to "${title}"` : 'Title cleared', 'OK', { duration: 3000 });
+        this.snackBar.open(title ? `Title set to "${title}"` : 'Title cleared', 'OK', {
+          duration: 3000,
+        });
       },
       error: () => this.snackBar.open('Could not update title', 'OK', { duration: 3000 }),
     });

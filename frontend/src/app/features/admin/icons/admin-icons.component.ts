@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -43,17 +43,30 @@ import { removeWhiteBackground } from '../../../shared/utils/remove-white-backgr
               <mat-label>Icon name</mat-label>
               <input matInput [(ngModel)]="uploadName" placeholder="e.g. Chips &amp; Salsa" />
             </mat-form-field>
-            <input #fileInput type="file" accept="image/*" hidden (change)="onUploadFileSelected($event)" />
+            <input
+              #fileInput
+              type="file"
+              accept="image/*"
+              hidden
+              (change)="onUploadFileSelected($event)"
+            />
             @if (uploadPreviewUrl) {
               <img class="upload-preview" [src]="uploadPreviewUrl" alt="" />
             }
             <button mat-stroked-button type="button" (click)="fileInput.click()">
               <mat-icon>upload</mat-icon> {{ uploadBlob ? 'Change Image' : 'Choose Image' }}
             </button>
-            <button mat-raised-button color="primary" type="button"
+            <button
+              mat-raised-button
+              color="primary"
+              type="button"
               [disabled]="uploading() || !uploadName.trim() || !uploadBlob"
-              (click)="doUpload()">
-              @if (uploading()) { <mat-spinner diameter="16" /> } Add to Library
+              (click)="doUpload()"
+            >
+              @if (uploading()) {
+                <mat-spinner diameter="16" />
+              }
+              Add to Library
             </button>
             @if (uploadBlob) {
               <button mat-button type="button" (click)="resetUploadState()">Cancel</button>
@@ -74,21 +87,34 @@ import { removeWhiteBackground } from '../../../shared/utils/remove-white-backgr
                 <div class="icon-row">
                   <img class="icon-thumb" [src]="item.imagePath" alt="" />
                   <span class="icon-name">{{ item.name }}</span>
-                  <span class="icon-usage">{{ item.usageCount }} use{{ item.usageCount === 1 ? '' : 's' }}</span>
-                  <button mat-icon-button type="button"
+                  <span class="icon-usage"
+                    >{{ item.usageCount }} use{{ item.usageCount === 1 ? '' : 's' }}</span
+                  >
+                  <button
+                    mat-icon-button
+                    type="button"
                     [disabled]="reprocessingId() === item.id"
                     matTooltip="Remove white/checkered background"
-                    (click)="reprocessIcon(item)">
+                    (click)="reprocessIcon(item)"
+                  >
                     @if (reprocessingId() === item.id) {
                       <mat-spinner diameter="18" />
                     } @else {
                       <mat-icon>auto_fix_high</mat-icon>
                     }
                   </button>
-                  <button mat-icon-button type="button" color="warn"
+                  <button
+                    mat-icon-button
+                    type="button"
+                    color="warn"
                     [disabled]="item.usageCount > 0"
-                    [matTooltip]="item.usageCount > 0 ? 'In use — change achievements using it before deleting' : 'Delete'"
-                    (click)="deleteCustomIcon(item)">
+                    [matTooltip]="
+                      item.usageCount > 0
+                        ? 'In use — change achievements using it before deleting'
+                        : 'Delete'
+                    "
+                    (click)="deleteCustomIcon(item)"
+                  >
                     <mat-icon>delete</mat-icon>
                   </button>
                 </div>
@@ -99,25 +125,86 @@ import { removeWhiteBackground } from '../../../shared/utils/remove-white-backgr
       </mat-card>
     </div>
   `,
-  styles: [`
-    .page { max-width: 800px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 24px; }
-    .page-header { display: flex; align-items: center; gap: 12px; }
-    .page-title { font-size: 1.4rem; font-weight: 700; margin: 0; flex: 1; }
-    .upload-form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-    .upload-name-field { width: 220px; }
-    .upload-preview { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
-    .loading { display: flex; justify-content: center; padding: 32px; }
-    .empty { color: #999; margin: 0; padding: 8px 0; }
-    .icon-list { display: flex; flex-direction: column; gap: 4px; }
-    .icon-row {
-      display: flex; align-items: center; gap: 12px; padding: 8px 0;
-      border-bottom: 1px solid #f0ebe4;
-      &:last-child { border-bottom: none; }
-    }
-    .icon-thumb { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-    .icon-name { flex: 1; font-size: 0.95rem; font-weight: 500; }
-    .icon-usage { font-size: 0.8rem; color: #999; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .page {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 24px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      .page-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .page-title {
+        font-size: 1.4rem;
+        font-weight: 700;
+        margin: 0;
+        flex: 1;
+      }
+      .upload-form {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+      .upload-name-field {
+        width: 220px;
+      }
+      .upload-preview {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        object-fit: cover;
+      }
+      .loading {
+        display: flex;
+        justify-content: center;
+        padding: 32px;
+      }
+      .empty {
+        color: #999;
+        margin: 0;
+        padding: 8px 0;
+      }
+      .icon-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .icon-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid #f0ebe4;
+        &:last-child {
+          border-bottom: none;
+        }
+      }
+      .icon-thumb {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .icon-name {
+        flex: 1;
+        font-size: 0.95rem;
+        font-weight: 500;
+      }
+      .icon-usage {
+        font-size: 0.8rem;
+        color: #999;
+      }
+    `,
+  ],
 })
 export class AdminIconsComponent implements OnInit {
   private readonly communityService = inject(CommunityService);
@@ -166,7 +253,9 @@ export class AdminIconsComponent implements OnInit {
     this.uploading.set(true);
     this.communityService.createCustomIcon(this.uploadName.trim(), this.uploadBlob).subscribe({
       next: (created) => {
-        this.customIcons.set([...this.customIcons(), created].sort((a, b) => a.name.localeCompare(b.name)));
+        this.customIcons.set(
+          [...this.customIcons(), created].sort((a, b) => a.name.localeCompare(b.name)),
+        );
         this.uploading.set(false);
         this.resetUploadState();
         this.snackBar.open(`"${created.name}" added to the library`, 'OK', { duration: 2000 });
@@ -187,7 +276,8 @@ export class AdminIconsComponent implements OnInit {
 
   deleteCustomIcon(item: CustomIcon): void {
     if (item.usageCount > 0) return;
-    if (!window.confirm(`Delete "${item.name}" from the icon library? This can't be undone.`)) return;
+    if (!window.confirm(`Delete "${item.name}" from the icon library? This can't be undone.`))
+      return;
     this.communityService.deleteCustomIcon(item.id).subscribe({
       next: () => {
         this.customIcons.set(this.customIcons().filter((c) => c.id !== item.id));

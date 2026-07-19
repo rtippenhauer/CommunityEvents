@@ -1,4 +1,11 @@
-import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import {
+  Component,
+  inject,
+  OnInit,
+  signal,
+  computed,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DatePipe } from '@angular/common';
@@ -45,7 +52,9 @@ interface Invite {
         <mat-icon class="header-icon">group_add</mat-icon>
         <div>
           <h1>Invite a Friend</h1>
-          <p class="subtitle">Send a personal invite link — it only works for the email address you specify.</p>
+          <p class="subtitle">
+            Send a personal invite link — it only works for the email address you specify.
+          </p>
         </div>
       </div>
 
@@ -55,7 +64,12 @@ interface Invite {
           <mat-form-field appearance="outline">
             <mat-label>Their Email</mat-label>
             <mat-icon matPrefix>email</mat-icon>
-            <input matInput formControlName="boundToEmail" type="email" placeholder="friend@example.com" />
+            <input
+              matInput
+              formControlName="boundToEmail"
+              type="email"
+              placeholder="friend@example.com"
+            />
             <mat-hint>The link will only work for this address</mat-hint>
             <mat-error>A valid email is required</mat-error>
           </mat-form-field>
@@ -66,9 +80,17 @@ interface Invite {
             <input matInput formControlName="boundToName" placeholder="Jane Smith" />
           </mat-form-field>
 
-          <button mat-raised-button color="primary" type="submit" [disabled]="form.invalid || creating()">
-            @if (creating()) { <mat-spinner diameter="18" /> }
-            @else { <mat-icon>add_link</mat-icon> Generate Invite Link }
+          <button
+            mat-raised-button
+            color="primary"
+            type="submit"
+            [disabled]="form.invalid || creating()"
+          >
+            @if (creating()) {
+              <mat-spinner diameter="18" />
+            } @else {
+              <mat-icon>add_link</mat-icon> Generate Invite Link
+            }
           </button>
         </form>
 
@@ -92,8 +114,12 @@ interface Invite {
           <div class="history-header">
             <h2>Your Invites</h2>
             <div class="filter-toggles">
-              <mat-slide-toggle [checked]="showExpired()" (change)="showExpired.set($event.checked)">Show expired</mat-slide-toggle>
-              <mat-slide-toggle [checked]="showRevoked()" (change)="showRevoked.set($event.checked)">Show revoked</mat-slide-toggle>
+              <mat-slide-toggle [checked]="showExpired()" (change)="showExpired.set($event.checked)"
+                >Show expired</mat-slide-toggle
+              >
+              <mat-slide-toggle [checked]="showRevoked()" (change)="showRevoked.set($event.checked)"
+                >Show revoked</mat-slide-toggle
+              >
             </div>
           </div>
           <div class="invite-list">
@@ -104,7 +130,9 @@ interface Invite {
                   @if (invite.boundToName) {
                     <span class="invite-name">{{ invite.boundToName }}</span>
                   }
-                  <span class="invite-meta">Expires {{ invite.expiresAt | date:'shortDate' }}</span>
+                  <span class="invite-meta"
+                    >Expires {{ invite.expiresAt | date: 'shortDate' }}</span
+                  >
                 </div>
                 <div class="invite-actions">
                   @if (invite.isRevoked) {
@@ -115,14 +143,25 @@ interface Invite {
                     <mat-chip class="chip-expired">Expired</mat-chip>
                   } @else {
                     <mat-chip class="chip-active">Pending</mat-chip>
-                    <button mat-icon-button matTooltip="Copy invite link" (click)="copyToken(invite.token)">
+                    <button
+                      mat-icon-button
+                      matTooltip="Copy invite link"
+                      (click)="copyToken(invite.token)"
+                    >
                       <mat-icon>content_copy</mat-icon>
                     </button>
-                    <button mat-icon-button matTooltip="Revoke invite" class="revoke-btn"
+                    <button
+                      mat-icon-button
+                      matTooltip="Revoke invite"
+                      class="revoke-btn"
                       [disabled]="revokingId() === invite.id"
-                      (click)="revoke(invite.id)">
-                      @if (revokingId() === invite.id) { <mat-spinner diameter="16" /> }
-                      @else { <mat-icon>link_off</mat-icon> }
+                      (click)="revoke(invite.id)"
+                    >
+                      @if (revokingId() === invite.id) {
+                        <mat-spinner diameter="16" />
+                      } @else {
+                        <mat-icon>link_off</mat-icon>
+                      }
                     </button>
                   }
                 </div>
@@ -133,56 +172,180 @@ interface Invite {
       }
     </div>
   `,
-  styles: [`
-    .invite-page { max-width: 600px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 20px; }
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .invite-page {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 24px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
 
-    .page-header {
-      display: flex; align-items: flex-start; gap: 14px;
-      h1 { margin: 0 0 4px; font-size: 1.75rem; color: var(--db-brown-dark); }
-      .header-icon { font-size: 2.5rem; width: 2.5rem; height: 2.5rem; color: var(--db-blue, #1E4D8C); margin-top: 4px; flex-shrink: 0; }
-    }
-    .subtitle { margin: 0; font-size: 0.9rem; color: #666; }
+      .page-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        h1 {
+          margin: 0 0 4px;
+          font-size: 1.75rem;
+          color: var(--db-brown-dark);
+        }
+        .header-icon {
+          font-size: 2.5rem;
+          width: 2.5rem;
+          height: 2.5rem;
+          color: var(--db-blue, #1e4d8c);
+          margin-top: 4px;
+          flex-shrink: 0;
+        }
+      }
+      .subtitle {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #666;
+      }
 
-    .invite-card, .history-card {
-      background: white; border-radius: 12px; padding: 24px;
-      box-shadow: 0 2px 8px rgba(61,28,5,0.07);
-    }
+      .invite-card,
+      .history-card {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 2px 8px rgba(61, 28, 5, 0.07);
+      }
 
-    .invite-form { display: flex; flex-direction: column; gap: 16px; mat-form-field { width: 100%; } }
+      .invite-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        mat-form-field {
+          width: 100%;
+        }
+      }
 
-    .new-link-banner {
-      display: flex; align-items: flex-start; gap: 12px; margin-top: 20px;
-      background: #e8f5e9; border-radius: 10px; padding: 14px 16px;
-      .success-icon { color: #2e7d32; flex-shrink: 0; margin-top: 2px; }
-      .link-content { flex: 1; min-width: 0; }
-      .link-label { display: block; font-size: 0.8rem; color: #388e3c; font-weight: 600; margin-bottom: 4px; }
-      .link-url { display: block; font-size: 0.8rem; color: #333; word-break: break-all; }
-    }
+      .new-link-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-top: 20px;
+        background: #e8f5e9;
+        border-radius: 10px;
+        padding: 14px 16px;
+        .success-icon {
+          color: #2e7d32;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+        .link-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .link-label {
+          display: block;
+          font-size: 0.8rem;
+          color: #388e3c;
+          font-weight: 600;
+          margin-bottom: 4px;
+        }
+        .link-url {
+          display: block;
+          font-size: 0.8rem;
+          color: #333;
+          word-break: break-all;
+        }
+      }
 
-    .history-header {
-      display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;
-      h2 { margin: 0; font-size: 1.05rem; color: #444; }
-    }
-    .filter-toggles { display: flex; gap: 16px; flex-wrap: wrap; margin-left: auto; font-size: 0.85rem; }
-    .invite-list { display: flex; flex-direction: column; gap: 0; }
-    .invite-row {
-      display: flex; align-items: center; gap: 12px; padding: 12px 0;
-      border-bottom: 1px solid #f0f0f0;
-      &:last-child { border-bottom: none; }
-    }
-    .invite-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-    .invite-email { font-size: 0.9rem; font-weight: 600; color: #222; }
-    .invite-name { font-size: 0.8rem; color: #666; }
-    .invite-meta { font-size: 0.75rem; color: #aaa; }
-    .invite-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+      .history-header {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 16px;
+        h2 {
+          margin: 0;
+          font-size: 1.05rem;
+          color: #444;
+        }
+      }
+      .filter-toggles {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-left: auto;
+        font-size: 0.85rem;
+      }
+      .invite-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+      .invite-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid #f0f0f0;
+        &:last-child {
+          border-bottom: none;
+        }
+      }
+      .invite-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .invite-email {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #222;
+      }
+      .invite-name {
+        font-size: 0.8rem;
+        color: #666;
+      }
+      .invite-meta {
+        font-size: 0.75rem;
+        color: #aaa;
+      }
+      .invite-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+      }
 
-    mat-chip { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; min-height: unset; }
-    .chip-active { background: #e3f2fd; color: #1565c0; }
-    .chip-used { background: #e8f5e9; color: #2e7d32; }
-    .chip-expired { background: #f5f5f5; color: #999; }
-    .chip-revoked { background: #fce4ec; color: #c62828; }
-    .revoke-btn mat-icon { color: #ef9a9a; }
-  `],
+      mat-chip {
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 10px;
+        min-height: unset;
+      }
+      .chip-active {
+        background: #e3f2fd;
+        color: #1565c0;
+      }
+      .chip-used {
+        background: #e8f5e9;
+        color: #2e7d32;
+      }
+      .chip-expired {
+        background: #f5f5f5;
+        color: #999;
+      }
+      .chip-revoked {
+        background: #fce4ec;
+        color: #c62828;
+      }
+      .revoke-btn mat-icon {
+        color: #ef9a9a;
+      }
+    `,
+  ],
 })
 export class InviteComponent implements OnInit {
   private readonly http = inject(HttpClient);
@@ -202,7 +365,7 @@ export class InviteComponent implements OnInit {
       if (inv.isRevoked && !this.showRevoked()) return false;
       if (this.isExpired(inv) && !this.showExpired()) return false;
       return true;
-    })
+    }),
   );
 
   readonly form = this.fb.group({
@@ -235,9 +398,15 @@ export class InviteComponent implements OnInit {
         this.creating.set(false);
         const msg = err?.error?.message;
         if (msg === 'already_a_member') {
-          this.snackBar.open('This person is already a DinnerBears member.', 'OK', { duration: 5000 });
+          this.snackBar.open('This person is already a DinnerBears member.', 'OK', {
+            duration: 5000,
+          });
         } else if (msg === 'invite_already_exists') {
-          this.snackBar.open('An invite was already sent to this email and is still active.', 'OK', { duration: 5000 });
+          this.snackBar.open(
+            'An invite was already sent to this email and is still active.',
+            'OK',
+            { duration: 5000 },
+          );
         } else {
           this.snackBar.open(msg ?? 'Failed to create invite', 'OK', { duration: 4000 });
         }
@@ -249,7 +418,9 @@ export class InviteComponent implements OnInit {
     this.revokingId.set(id);
     this.http.patch(`/api/v1/invites/${id}/revoke-own`, {}).subscribe({
       next: () => {
-        this.invites.update((list) => list.map((i) => i.id === id ? { ...i, isRevoked: true } : i));
+        this.invites.update((list) =>
+          list.map((i) => (i.id === id ? { ...i, isRevoked: true } : i)),
+        );
         this.revokingId.set(null);
       },
       error: () => {

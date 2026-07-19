@@ -27,8 +27,8 @@ export class MemberPointEntity {
   @Column({ name: 'point_type', type: 'enum', enum: PointType })
   pointType: PointType;
 
-  @Column({ name: 'reference_id', type: 'int', unsigned: true, nullable: true })
-  referenceId: number | null;
+  @Column({ name: 'reference_id', type: 'int', unsigned: true })
+  referenceId: number;
 
   @Column({ type: 'tinyint', default: 1 })
   points: number;

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
@@ -12,13 +12,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
 @Component({
   selector: 'app-updates',
   standalone: true,
-  imports: [
-    DatePipe,
-    RouterLink,
-    MatButtonModule,
-    MatIconModule,
-    MatProgressSpinnerModule,
-  ],
+  imports: [DatePipe, RouterLink, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
   template: `
     <div class="updates-page">
       <div class="page-header">
@@ -46,7 +40,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
             <article class="release-card">
               <div class="release-version-row">
                 <span class="version-badge">v{{ release.version }}</span>
-                <span class="release-date">{{ release.publishedAt | date:'MMMM d, y' }}</span>
+                <span class="release-date">{{ release.publishedAt | date: 'MMMM d, y' }}</span>
               </div>
               <h2 class="release-title">{{ release.title }}</h2>
               <div class="release-body" [innerHTML]="safeHtml(release.body)"></div>
@@ -65,99 +59,163 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
       }
     </div>
   `,
-  styles: [`
-    .updates-page { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .updates-page {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 24px 16px;
+      }
 
-    .page-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 16px;
-      margin-bottom: 32px;
-      h1 { margin: 0 0 4px; font-size: 1.75rem; color: var(--db-brown-dark); }
-    }
-    .subtitle { margin: 0; font-size: 0.9rem; color: #666; }
+      .page-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-bottom: 32px;
+        h1 {
+          margin: 0 0 4px;
+          font-size: 1.75rem;
+          color: var(--db-brown-dark);
+        }
+      }
+      .subtitle {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #666;
+      }
 
-    .center { display: flex; justify-content: center; padding: 48px; }
-    .empty-state {
-      text-align: center;
-      padding: 48px 0;
-      mat-icon { font-size: 3rem; width: 3rem; height: 3rem; color: #ccc; margin-bottom: 12px; }
-      p { color: #999; margin: 0; }
-    }
+      .center {
+        display: flex;
+        justify-content: center;
+        padding: 48px;
+      }
+      .empty-state {
+        text-align: center;
+        padding: 48px 0;
+        mat-icon {
+          font-size: 3rem;
+          width: 3rem;
+          height: 3rem;
+          color: #ccc;
+          margin-bottom: 12px;
+        }
+        p {
+          color: #999;
+          margin: 0;
+        }
+      }
 
-    .releases-list { display: flex; flex-direction: column; gap: 32px; }
+      .releases-list {
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+      }
 
-    .release-card {
-      background: white;
-      border-radius: 12px;
-      padding: 28px;
-      box-shadow: 0 2px 8px rgba(61,28,5,0.07);
-      border-left: 4px solid var(--db-blue, #1E4D8C);
-      overflow-wrap: break-word;
-      min-width: 0;
-    }
+      .release-card {
+        background: white;
+        border-radius: 12px;
+        padding: 28px;
+        box-shadow: 0 2px 8px rgba(61, 28, 5, 0.07);
+        border-left: 4px solid var(--db-blue, #1e4d8c);
+        overflow-wrap: break-word;
+        min-width: 0;
+      }
 
-    .release-version-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 8px;
-    }
-    .version-badge {
-      font-size: 0.78rem;
-      font-weight: 800;
-      padding: 3px 10px;
-      border-radius: 12px;
-      background: var(--db-blue, #1E4D8C);
-      color: white;
-      letter-spacing: 0.05em;
-    }
-    .release-date { font-size: 0.82rem; color: #aaa; }
+      .release-version-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      .version-badge {
+        font-size: 0.78rem;
+        font-weight: 800;
+        padding: 3px 10px;
+        border-radius: 12px;
+        background: var(--db-blue, #1e4d8c);
+        color: white;
+        letter-spacing: 0.05em;
+      }
+      .release-date {
+        font-size: 0.82rem;
+        color: #aaa;
+      }
 
-    .release-title { margin: 0 0 16px; font-size: 1.25rem; color: var(--db-brown-dark); }
+      .release-title {
+        margin: 0 0 16px;
+        font-size: 1.25rem;
+        color: var(--db-brown-dark);
+      }
 
-    .release-body {
-      font-size: 0.95rem;
-      line-height: 1.7;
-      color: #333;
-      overflow-wrap: break-word;
-      word-break: normal;
-      hyphens: none;
-      min-width: 0;
-      ::ng-deep p { margin: 0 0 10px; &:last-child { margin-bottom: 0; } }
-      ::ng-deep ul, ::ng-deep ol { padding-left: 20px; margin: 0 0 10px; }
-      ::ng-deep h2, ::ng-deep h3 { margin: 16px 0 8px; color: var(--db-brown-dark); }
-    }
+      .release-body {
+        font-size: 0.95rem;
+        line-height: 1.7;
+        color: #333;
+        overflow-wrap: break-word;
+        word-break: normal;
+        hyphens: none;
+        min-width: 0;
+        ::ng-deep p {
+          margin: 0 0 10px;
+          &:last-child {
+            margin-bottom: 0;
+          }
+        }
+        ::ng-deep ul,
+        ::ng-deep ol {
+          padding-left: 20px;
+          margin: 0 0 10px;
+        }
+        ::ng-deep h2,
+        ::ng-deep h3 {
+          margin: 16px 0 8px;
+          color: var(--db-brown-dark);
+        }
+      }
 
-    .community-credit {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      margin-top: 16px;
-      padding: 10px 14px;
-      background: #f3f8ff;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      color: #555;
-      .credit-icon { font-size: 1rem; width: 1rem; height: 1rem; color: var(--db-blue, #1E4D8C); flex-shrink: 0; margin-top: 1px; }
-    }
-  `],
+      .community-credit {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-top: 16px;
+        padding: 10px 14px;
+        background: #f3f8ff;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: #555;
+        .credit-icon {
+          font-size: 1rem;
+          width: 1rem;
+          height: 1rem;
+          color: var(--db-blue, #1e4d8c);
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+      }
+    `,
+  ],
 })
 export class UpdatesComponent implements OnInit {
   private readonly releasesService = inject(ReleasesService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly authService = inject(AuthService);
 
-  isNonValidated(): boolean { return this.authService.isNonValidated(); }
+  isNonValidated(): boolean {
+    return this.authService.isNonValidated();
+  }
 
   readonly loading = signal(true);
   readonly releases = signal<Release[]>([]);
 
   ngOnInit(): void {
     this.releasesService.getPublished().subscribe({
-      next: (data) => { this.releases.set(data); this.loading.set(false); },
+      next: (data) => {
+        this.releases.set(data);
+        this.loading.set(false);
+      },
       error: () => this.loading.set(false),
     });
   }
@@ -172,7 +230,7 @@ export class UpdatesComponent implements OnInit {
 
   creditList(release: Release): string {
     const names = (release.linkedFeedback ?? []).map((fb) =>
-      fb.isPrivate ? 'a community member' : fb.user?.fullName ?? 'a community member',
+      fb.isPrivate ? 'a community member' : (fb.user?.fullName ?? 'a community member'),
     );
     const unique = [...new Set(names)];
     if (unique.length === 1) return unique[0];

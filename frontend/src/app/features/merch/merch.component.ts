@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -43,8 +43,17 @@ import { MerchService, MerchLinks } from '../../core/services/merch.service';
             <mat-card-content>
               <div class="store-icon">🏆</div>
               <h3>Founding Bear Exclusive</h3>
-              <p>A special tee only available to Founding Bears — thanks for being here from the start.</p>
-              <a mat-raised-button color="accent" [href]="exclusiveUrl" target="_blank" rel="noopener">
+              <p>
+                A special tee only available to Founding Bears — thanks for being here from the
+                start.
+              </p>
+              <a
+                mat-raised-button
+                color="accent"
+                [href]="exclusiveUrl"
+                target="_blank"
+                rel="noopener"
+              >
                 <mat-icon>redeem</mat-icon> Get Your Exclusive Tee
               </a>
             </mat-card-content>
@@ -53,6 +62,7 @@ import { MerchService, MerchLinks } from '../../core/services/merch.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .merch-page {

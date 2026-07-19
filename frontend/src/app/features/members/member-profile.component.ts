@@ -1,4 +1,11 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  inject,
+  OnInit,
+  signal,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
@@ -15,8 +22,13 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
 import { CommunityService, Achievement, PointSummary } from '../../core/services/community.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
+import { PointsHistoryDialogComponent } from './points-history-dialog.component';
 
-interface MiniMember { id: number; fullName: string; profilePhotoPath: string | null; }
+interface MiniMember {
+  id: number;
+  fullName: string;
+  profilePhotoPath: string | null;
+}
 
 interface MemberProfile {
   id: number;
@@ -61,8 +73,17 @@ const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = 
 };
 
 const ACHIEVEMENT_CATEGORY_ORDER = [
-  'attendance', 'coordinator', 'new_restaurant_coordinator',
-  'invite', 'rating', 'city_hopper', 'secret_dinner', 'login', 'founding', 'event', 'other',
+  'attendance',
+  'coordinator',
+  'new_restaurant_coordinator',
+  'invite',
+  'rating',
+  'city_hopper',
+  'secret_dinner',
+  'login',
+  'founding',
+  'event',
+  'other',
 ];
 
 interface AchievementGroup {
@@ -97,19 +118,35 @@ interface AchievementGroup {
       @if (loading()) {
         <div class="loading"><mat-spinner diameter="40" /></div>
       } @else if (profile()) {
-
         <!-- Profile card with paw badge -->
         <div class="card-wrap">
           @if ((points()?.total ?? 0) > 0 && !profile()?.isAdmin) {
-            <div class="paw-badge">
+            <div
+              class="paw-badge"
+              [class.paw-badge-clickable]="isSelf() || showElevated()"
+              [attr.role]="isSelf() || showElevated() ? 'button' : null"
+              [attr.tabindex]="isSelf() || showElevated() ? 0 : null"
+              (click)="openPointsHistory()"
+              (keydown.enter)="openPointsHistory()"
+            >
               <svg viewBox="0 0 56 54" xmlns="http://www.w3.org/2000/svg" class="paw-svg">
-                <circle cx="10" cy="20" r="7" fill="#8B5E3C"/>
-                <circle cx="21" cy="13" r="7" fill="#8B5E3C"/>
-                <circle cx="35" cy="13" r="7" fill="#8B5E3C"/>
-                <circle cx="46" cy="20" r="7" fill="#8B5E3C"/>
-                <circle cx="28" cy="38" r="14" fill="#8B5E3C"/>
-                <text x="28" y="38" text-anchor="middle" dominant-baseline="central"
-                      fill="white" font-size="13" font-weight="800" font-family="system-ui,sans-serif">{{ points()!.total }}</text>
+                <circle cx="10" cy="20" r="7" fill="#8B5E3C" />
+                <circle cx="21" cy="13" r="7" fill="#8B5E3C" />
+                <circle cx="35" cy="13" r="7" fill="#8B5E3C" />
+                <circle cx="46" cy="20" r="7" fill="#8B5E3C" />
+                <circle cx="28" cy="38" r="14" fill="#8B5E3C" />
+                <text
+                  x="28"
+                  y="38"
+                  text-anchor="middle"
+                  dominant-baseline="central"
+                  fill="white"
+                  font-size="13"
+                  font-weight="800"
+                  font-family="system-ui,sans-serif"
+                >
+                  {{ points()!.total }}
+                </text>
               </svg>
             </div>
           }
@@ -118,10 +155,19 @@ interface AchievementGroup {
               <div class="profile-header">
                 <div class="avatar-wrap">
                   @if (profile()!.profilePhotoPath) {
-                    <img [src]="profile()!.profilePhotoPath" alt="Profile photo" class="profile-photo"
-                      [class.photo-banned]="profile()!.status === 'suspended'" />
+                    <img
+                      [src]="profile()!.profilePhotoPath"
+                      alt="Profile photo"
+                      class="profile-photo"
+                      [class.photo-banned]="profile()!.status === 'suspended'"
+                    />
                   } @else {
-                    <img src="/avatars/bear-default.jpg" alt="Bear avatar" class="profile-photo" [class.photo-banned]="profile()!.status === 'suspended'" />
+                    <img
+                      src="/avatars/bear-default.jpg"
+                      alt="Bear avatar"
+                      class="profile-photo"
+                      [class.photo-banned]="profile()!.status === 'suspended'"
+                    />
                   }
                 </div>
                 <div class="profile-meta">
@@ -129,7 +175,9 @@ interface AchievementGroup {
                   @if (profile()!.cityName) {
                     <span class="profile-city">{{ profile()!.cityName }}</span>
                   }
-                  <span class="profile-joined">Member since {{ profile()!.joinedAt | date:'MMMM yyyy' }}</span>
+                  <span class="profile-joined"
+                    >Member since {{ profile()!.joinedAt | date: 'MMMM yyyy' }}</span
+                  >
                   <div class="profile-badges">
                     @if (showElevated() && profile()!.role && profile()!.role !== 'member') {
                       <mat-chip [class]="'role-' + profile()!.role">{{ profile()!.role }}</mat-chip>
@@ -145,16 +193,30 @@ interface AchievementGroup {
                     <div class="provider-badges">
                       @if (profile()!.hasFacebook) {
                         @if (profile()!.facebookProfileUrl) {
-                          <a [href]="profile()!.facebookProfileUrl!" target="_blank" rel="noopener noreferrer"
-                             class="provider-badge badge-fb" title="View Facebook profile">fb</a>
+                          <a
+                            [href]="profile()!.facebookProfileUrl!"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="provider-badge badge-fb"
+                            title="View Facebook profile"
+                            >fb</a
+                          >
                         } @else {
                           <span class="provider-badge badge-fb" title="Facebook connected">fb</span>
                         }
                       }
                       @if (profile()!.googleEmail) {
-                        <a [href]="'https://mail.google.com/mail/?view=cm&fs=1&to=' + profile()!.googleEmail!"
-                           target="_blank" rel="noopener noreferrer"
-                           class="provider-badge badge-g" title="Send Gmail to {{ profile()!.googleEmail }}">G</a>
+                        <a
+                          [href]="
+                            'https://mail.google.com/mail/?view=cm&fs=1&to=' +
+                            profile()!.googleEmail!
+                          "
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="provider-badge badge-g"
+                          title="Send Gmail to {{ profile()!.googleEmail }}"
+                          >G</a
+                        >
                       }
                     </div>
                   }
@@ -184,9 +246,15 @@ interface AchievementGroup {
                   <a class="mini-member" [routerLink]="['/members', profile()!.invitedBy!.id]">
                     <div class="mini-avatar">
                       @if (profile()!.invitedBy!.profilePhotoPath) {
-                        <img [src]="profile()!.invitedBy!.profilePhotoPath" [alt]="profile()!.invitedBy!.fullName" />
+                        <img
+                          [src]="profile()!.invitedBy!.profilePhotoPath"
+                          [alt]="profile()!.invitedBy!.fullName"
+                        />
                       } @else {
-                        <img src="/avatars/bear-default.jpg" [alt]="profile()!.invitedBy!.fullName" />
+                        <img
+                          src="/avatars/bear-default.jpg"
+                          [alt]="profile()!.invitedBy!.fullName"
+                        />
                       }
                     </div>
                     <span>{{ profile()!.invitedBy!.fullName }}</span>
@@ -215,11 +283,16 @@ interface AchievementGroup {
                 </div>
               }
 
-              <!-- Role selector (admin only, not own profile, not other admins) -->
-              @if (isAdmin() && !isSelf() && profile()!.role !== 'admin') {
+              <!-- Role selector (admin only, not own profile, not other admins —
+                   except the automation account, which can be flipped back down) -->
+              @if (isAdmin() && !isSelf() && (profile()!.role !== 'admin' || profile()!.isAutomationAccount)) {
                 <div class="role-section">
                   <span class="role-section-label">Role</span>
-                  <mat-select [value]="profile()!.role" (selectionChange)="setRole($event.value)" class="role-select">
+                  <mat-select
+                    [value]="profile()!.role"
+                    (selectionChange)="setRole($event.value)"
+                    class="role-select"
+                  >
                     <mat-option value="member">Member</mat-option>
                     <mat-option value="moderator">Moderator</mat-option>
                     @if (profile()!.isAutomationAccount) {
@@ -235,10 +308,18 @@ interface AchievementGroup {
                 <div class="validate-section">
                   <p class="validate-info">
                     <mat-icon class="validate-info-icon">info_outline</mat-icon>
-                    This member joined via a self-serve event link. Validate them to grant full membership.
+                    This member joined via a self-serve event link. Validate them to grant full
+                    membership.
                   </p>
-                  <button mat-raised-button color="primary" (click)="validateMember()" [disabled]="validating()">
-                    @if (validating()) { <mat-spinner diameter="18" /> }
+                  <button
+                    mat-raised-button
+                    color="primary"
+                    (click)="validateMember()"
+                    [disabled]="validating()"
+                  >
+                    @if (validating()) {
+                      <mat-spinner diameter="18" />
+                    }
                     <mat-icon>verified_user</mat-icon> Validate Member
                   </button>
                 </div>
@@ -252,8 +333,13 @@ interface AchievementGroup {
                       <mat-icon>block</mat-icon> Ban Member
                     </button>
                     @if (isAdmin()) {
-                      <button mat-stroked-button color="warn" (click)="forceBan()" class="force-ban-btn"
-                        matTooltip="Removes from member list, kept for audit">
+                      <button
+                        mat-stroked-button
+                        color="warn"
+                        (click)="forceBan()"
+                        class="force-ban-btn"
+                        matTooltip="Removes from member list, kept for audit"
+                      >
                         <mat-icon>gavel</mat-icon> Forceful Ban
                       </button>
                     }
@@ -262,8 +348,13 @@ interface AchievementGroup {
                       <button mat-stroked-button (click)="unban()">
                         <mat-icon>check_circle</mat-icon> Unban Member
                       </button>
-                      <button mat-stroked-button color="warn" (click)="forceBan()" class="force-ban-btn"
-                        matTooltip="Permanently removes from member list">
+                      <button
+                        mat-stroked-button
+                        color="warn"
+                        (click)="forceBan()"
+                        class="force-ban-btn"
+                        matTooltip="Permanently removes from member list"
+                      >
                         <mat-icon>gavel</mat-icon> Forceful Ban
                       </button>
                     }
@@ -306,7 +397,7 @@ interface AchievementGroup {
                           }
                         </div>
                         @if (a.earnedAt) {
-                          <span class="ach-earned-when">{{ a.earnedAt | date:'MMM d, y' }}</span>
+                          <span class="ach-earned-when">{{ a.earnedAt | date: 'MMM d, y' }}</span>
                         }
                       </div>
                     }
@@ -325,11 +416,19 @@ interface AchievementGroup {
                         <span class="ach-next-desc">{{ next.description }}</span>
                       </div>
                     </div>
-                    @if (next.progressTarget && next.progressType !== 'founding' && next.progressType !== 'event') {
+                    @if (
+                      next.progressTarget &&
+                      next.progressType !== 'founding' &&
+                      next.progressType !== 'event'
+                    ) {
                       <div class="ach-next-progress">
-                        <mat-progress-bar mode="determinate" [value]="progressPct(next)"></mat-progress-bar>
+                        <mat-progress-bar
+                          mode="determinate"
+                          [value]="progressPct(next)"
+                        ></mat-progress-bar>
                         <div class="ach-progress-label">
-                          {{ next.progressCurrent }} of {{ next.progressTarget }} {{ progressLabel(next.progressType) }}
+                          {{ next.progressCurrent }} of {{ next.progressTarget }}
+                          {{ progressLabel(next.progressType) }}
                         </div>
                       </div>
                     }
@@ -339,216 +438,415 @@ interface AchievementGroup {
             }
           </div>
         }
-
       } @else {
         <p>Member not found.</p>
       }
     </div>
   `,
-  styles: [`
-    .profile-view-container {
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .loading { display: flex; justify-content: center; padding: 48px; }
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .profile-view-container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .loading {
+        display: flex;
+        justify-content: center;
+        padding: 48px;
+      }
 
-    /* Card wrap for paw badge positioning */
-    .card-wrap { position: relative; }
-    .paw-badge { position: absolute; top: -12px; right: 12px; z-index: 2; }
-    .paw-svg { width: 46px; height: 46px; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.18)); }
+      /* Card wrap for paw badge positioning */
+      .card-wrap {
+        position: relative;
+      }
+      .paw-badge {
+        position: absolute;
+        top: -12px;
+        right: 12px;
+        z-index: 2;
+      }
+      .paw-badge-clickable {
+        cursor: pointer;
+      }
+      .paw-svg {
+        width: 46px;
+        height: 46px;
+        filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.18));
+      }
 
-    .profile-header {
-      display: flex;
-      gap: 24px;
-      align-items: flex-start;
-      padding: 8px 0 16px;
-    }
-    .avatar-wrap { flex-shrink: 0; }
-    .profile-photo, .photo-placeholder {
-      width: 96px;
-      height: 96px;
-      border-radius: 50%;
-      object-fit: cover;
-      border: 3px solid #eee;
-    }
-    .photo-placeholder {
-      background: #f0f0f0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2.5rem;
-    }
-    .photo-banned { opacity: 0.5; filter: grayscale(1); }
-    .profile-meta {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .profile-name { margin: 0; font-size: 1.4rem; }
-    .profile-city { color: #777; font-size: 0.9rem; }
-    .profile-joined { color: #aaa; font-size: 0.8rem; }
-    .profile-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-    .provider-badges { display: flex; gap: 6px; margin-top: 8px; }
-    .provider-badge {
-      font-size: 0.8rem;
-      font-weight: 700;
-      padding: 4px 12px;
-      border-radius: 20px;
-      text-decoration: none;
-      letter-spacing: 0.03em;
-      display: inline-flex;
-      align-items: center;
-    }
-    .badge-fb { background: #1877f2; color: #fff; }
-    .badge-g { background: #ea4335; color: #fff; }
-    .edit-row { margin: 12px 0; }
-    .invited-section {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 20px;
-    }
-    .invited-label { font-size: 0.8rem; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.04em; }
-    .mini-members-list { display: flex; flex-wrap: wrap; gap: 8px; }
-    .mini-member {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      text-decoration: none;
-      color: inherit;
-      padding: 6px 10px;
-      border-radius: 8px;
-      background: #f5f5f5;
-      font-size: 0.88rem;
-      transition: background 0.12s;
-      &:hover { background: #ebebeb; }
-    }
-    .mini-avatar {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      overflow: hidden;
-      background: #e0e0e0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1rem;
-      flex-shrink: 0;
-      img { width: 100%; height: 100%; object-fit: cover; }
-    }
-    .role-section {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-top: 20px;
-      padding-top: 16px;
-      border-top: 1px solid #f0f0f0;
-    }
-    .role-section-label {
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: #999;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      white-space: nowrap;
-    }
-    .role-select { width: 160px; }
-    .ban-section {
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid #f0f0f0;
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .force-ban-btn { margin-left: 4px; }
-    mat-chip {
-      font-size: 0.72rem !important;
-      min-height: 22px !important;
-    }
-    .role-admin { --mdc-chip-label-text-color: #fff; background: #1E4D8C !important; }
-    .role-moderator { --mdc-chip-label-text-color: #fff; background: #C9933A !important; }
-    .chip-banned { background: #ffccbc !important; }
-    .chip-non-validated { background: #f3e5f5 !important; color: #6a1b9a !important; }
-    .self-invited-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 0.85rem;
-      color: #6a1b9a;
-      background: #f3e5f5;
-      padding: 4px 10px;
-      border-radius: 20px;
-      .self-invited-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; }
-    }
-    .validate-section {
-      margin-top: 16px;
-      padding: 16px;
-      background: #e8f5e9;
-      border: 1px solid #a5d6a7;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .validate-info {
-      display: flex;
-      align-items: flex-start;
-      gap: 6px;
-      margin: 0;
-      font-size: 0.88rem;
-      color: #1b5e20;
-      .validate-info-icon { font-size: 1rem; width: 1rem; height: 1rem; flex-shrink: 0; margin-top: 1px; }
-    }
+      .profile-header {
+        display: flex;
+        gap: 24px;
+        align-items: flex-start;
+        padding: 8px 0 16px;
+      }
+      .avatar-wrap {
+        flex-shrink: 0;
+      }
+      .profile-photo,
+      .photo-placeholder {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 3px solid #eee;
+      }
+      .photo-placeholder {
+        background: #f0f0f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
+      }
+      .photo-banned {
+        opacity: 0.5;
+        filter: grayscale(1);
+      }
+      .profile-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .profile-name {
+        margin: 0;
+        font-size: 1.4rem;
+      }
+      .profile-city {
+        color: #777;
+        font-size: 0.9rem;
+      }
+      .profile-joined {
+        color: #aaa;
+        font-size: 0.8rem;
+      }
+      .profile-badges {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+      }
+      .provider-badges {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .provider-badge {
+        font-size: 0.8rem;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 20px;
+        text-decoration: none;
+        letter-spacing: 0.03em;
+        display: inline-flex;
+        align-items: center;
+      }
+      .badge-fb {
+        background: #1877f2;
+        color: #fff;
+      }
+      .badge-g {
+        background: #ea4335;
+        color: #fff;
+      }
+      .edit-row {
+        margin: 12px 0;
+      }
+      .invited-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 20px;
+      }
+      .invited-label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .mini-members-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .mini-member {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+        color: inherit;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: #f5f5f5;
+        font-size: 0.88rem;
+        transition: background 0.12s;
+        &:hover {
+          background: #ebebeb;
+        }
+      }
+      .mini-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        flex-shrink: 0;
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+      }
+      .role-section {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid #f0f0f0;
+      }
+      .role-section-label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+      .role-select {
+        width: 160px;
+      }
+      .ban-section {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid #f0f0f0;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .force-ban-btn {
+        margin-left: 4px;
+      }
+      mat-chip {
+        font-size: 0.72rem !important;
+        min-height: 22px !important;
+      }
+      .role-admin {
+        --mat-chip-label-text-color: #fff;
+        background: #1e4d8c !important;
+      }
+      .role-moderator {
+        --mat-chip-label-text-color: #fff;
+        background: #c9933a !important;
+      }
+      .chip-banned {
+        background: #ffccbc !important;
+      }
+      .chip-non-validated {
+        background: #f3e5f5 !important;
+        color: #6a1b9a !important;
+      }
+      .self-invited-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.85rem;
+        color: #6a1b9a;
+        background: #f3e5f5;
+        padding: 4px 10px;
+        border-radius: 20px;
+        .self-invited-icon {
+          font-size: 0.9rem;
+          width: 0.9rem;
+          height: 0.9rem;
+        }
+      }
+      .validate-section {
+        margin-top: 16px;
+        padding: 16px;
+        background: #e8f5e9;
+        border: 1px solid #a5d6a7;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .validate-info {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        margin: 0;
+        font-size: 0.88rem;
+        color: #1b5e20;
+        .validate-info-icon {
+          font-size: 1rem;
+          width: 1rem;
+          height: 1rem;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+      }
 
-    /* Achievements */
-    .achievements-section { display: flex; flex-direction: column; gap: 12px; }
-    .section-title { margin: 0 0 4px; font-size: 1.1rem; font-weight: 700; color: #333; }
-    .ach-group-card { padding: 0 !important; overflow: hidden; }
-    .ach-group-header {
-      display: flex; align-items: center; gap: 8px;
-      padding: 12px 16px;
-      background: #1E4D8C; color: #fff;
-    }
-    .ach-group-icon { font-size: 1.2rem; width: 1.2rem; height: 1.2rem; flex-shrink: 0; opacity: 0.9; }
-    .ach-group-label { font-weight: 700; font-size: 0.95rem; flex: 1; }
-    .ach-complete-badge {
-      font-size: 0.7rem; font-weight: 700;
-      background: #C9933A; color: #fff;
-      border-radius: 10px; padding: 2px 8px; white-space: nowrap;
-    }
-    .ach-earned-list { padding: 4px 0; }
-    .ach-earned-row {
-      display: flex; align-items: center; gap: 10px; padding: 8px 16px;
-      &:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
-    }
-    .ach-icon { color: #C9933A; font-size: 1.5rem; width: 1.5rem; height: 1.5rem; flex-shrink: 0; }
-    .ach-row-img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
-    .ach-earned-info { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap; }
-    .ach-earned-name { font-size: 0.88rem; font-weight: 600; color: #222; }
-    .ach-title-badge {
-      font-size: 0.68rem; font-weight: 700;
-      background: #C9933A; color: #fff;
-      border-radius: 8px; padding: 1px 7px;
-    }
-    .ach-earned-when { font-size: 0.72rem; color: #aaa; white-space: nowrap; flex-shrink: 0; margin-left: auto; }
-    .ach-next {
-      padding: 10px 16px 12px; background: #fafafa;
-      &.with-divider { border-top: 2px dashed #e8e8e8; }
-    }
-    .ach-next-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
-    .ach-lock-icon { color: #bbb; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; margin-top: 2px; }
-    .ach-next-info { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-    .ach-next-name { font-size: 0.88rem; font-weight: 600; color: #555; }
-    .ach-next-title-hint { font-size: 0.7rem; color: #C9933A; font-weight: 600; }
-    .ach-next-desc { font-size: 0.78rem; color: #999; line-height: 1.35; }
-    .ach-next-progress { padding-left: 21px; }
-    .ach-progress-label { font-size: 0.72rem; color: #888; margin-top: 4px; }
-  `],
+      /* Achievements */
+      .achievements-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .section-title {
+        margin: 0 0 4px;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #333;
+      }
+      .ach-group-card {
+        padding: 0 !important;
+        overflow: hidden;
+      }
+      .ach-group-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        background: #1e4d8c;
+        color: #fff;
+      }
+      .ach-group-icon {
+        font-size: 1.2rem;
+        width: 1.2rem;
+        height: 1.2rem;
+        flex-shrink: 0;
+        opacity: 0.9;
+      }
+      .ach-group-label {
+        font-weight: 700;
+        font-size: 0.95rem;
+        flex: 1;
+      }
+      .ach-complete-badge {
+        font-size: 0.7rem;
+        font-weight: 700;
+        background: #c9933a;
+        color: #fff;
+        border-radius: 10px;
+        padding: 2px 8px;
+        white-space: nowrap;
+      }
+      .ach-earned-list {
+        padding: 4px 0;
+      }
+      .ach-earned-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 16px;
+        &:not(:last-child) {
+          border-bottom: 1px solid #f0f0f0;
+        }
+      }
+      .ach-icon {
+        color: #c9933a;
+        font-size: 1.5rem;
+        width: 1.5rem;
+        height: 1.5rem;
+        flex-shrink: 0;
+      }
+      .ach-row-img {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .ach-earned-info {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+        flex-wrap: wrap;
+      }
+      .ach-earned-name {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #222;
+      }
+      .ach-title-badge {
+        font-size: 0.68rem;
+        font-weight: 700;
+        background: #c9933a;
+        color: #fff;
+        border-radius: 8px;
+        padding: 1px 7px;
+      }
+      .ach-earned-when {
+        font-size: 0.72rem;
+        color: #aaa;
+        white-space: nowrap;
+        flex-shrink: 0;
+        margin-left: auto;
+      }
+      .ach-next {
+        padding: 10px 16px 12px;
+        background: #fafafa;
+        &.with-divider {
+          border-top: 2px dashed #e8e8e8;
+        }
+      }
+      .ach-next-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+      .ach-lock-icon {
+        color: #bbb;
+        font-size: 1.1rem;
+        width: 1.1rem;
+        height: 1.1rem;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .ach-next-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+      }
+      .ach-next-name {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #555;
+      }
+      .ach-next-title-hint {
+        font-size: 0.7rem;
+        color: #c9933a;
+        font-weight: 600;
+      }
+      .ach-next-desc {
+        font-size: 0.78rem;
+        color: #999;
+        line-height: 1.35;
+      }
+      .ach-next-progress {
+        padding-left: 21px;
+      }
+      .ach-progress-label {
+        font-size: 0.72rem;
+        color: #888;
+        margin-top: 4px;
+      }
+    `,
+  ],
 })
 export class MemberProfileComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
@@ -616,8 +914,14 @@ export class MemberProfileComponent implements OnInit {
   private load(id: number): void {
     this.loading.set(true);
     this.http.get<MemberProfile>(`/api/v1/users/${id}`).subscribe({
-      next: (p) => { this.profile.set(p); this.loading.set(false); },
-      error: () => { this.profile.set(null); this.loading.set(false); },
+      next: (p) => {
+        this.profile.set(p);
+        this.loading.set(false);
+      },
+      error: () => {
+        this.profile.set(null);
+        this.loading.set(false);
+      },
     });
     this.communityService.getMemberPoints(id).subscribe({
       next: (p) => this.points.set(p),
@@ -659,6 +963,12 @@ export class MemberProfileComponent implements OnInit {
     return role === 'admin' || role === 'moderator';
   }
 
+  openPointsHistory(): void {
+    const p = this.profile();
+    if (!p || !(this.isSelf() || this.showElevated())) return;
+    this.dialog.open(PointsHistoryDialogComponent, { data: { memberId: p.id } });
+  }
+
   showBanControls(): boolean {
     if (this.isSelf()) return false;
     if (!this.showElevated()) return false;
@@ -672,12 +982,20 @@ export class MemberProfileComponent implements OnInit {
     const p = this.profile();
     if (!p) return;
     const ref = this.dialog.open(ConfirmDialogComponent, {
-      data: { title: 'Ban Member', message: `Ban ${p.fullName}? They will be unable to log in but will remain visible in the member list.`, confirmLabel: 'Ban', confirmColor: 'warn' },
+      data: {
+        title: 'Ban Member',
+        message: `Ban ${p.fullName}? They will be unable to log in but will remain visible in the member list.`,
+        confirmLabel: 'Ban',
+        confirmColor: 'warn',
+      },
     });
     ref.afterClosed().subscribe((confirmed) => {
       if (!confirmed) return;
       this.http.post(`/api/v1/admin/users/${p.id}/ban`, {}).subscribe({
-        next: () => { this.snackBar.open('Member banned', 'OK', { duration: 3000 }); this.load(p.id); },
+        next: () => {
+          this.snackBar.open('Member banned', 'OK', { duration: 3000 });
+          this.load(p.id);
+        },
         error: (e) => this.snackBar.open(e?.error?.message ?? 'Failed', 'OK', { duration: 4000 }),
       });
     });
@@ -687,12 +1005,20 @@ export class MemberProfileComponent implements OnInit {
     const p = this.profile();
     if (!p) return;
     const ref = this.dialog.open(ConfirmDialogComponent, {
-      data: { title: 'Forceful Ban', message: `Forcefully ban ${p.fullName}? They will be removed from the member list and cannot log in. This is recorded for audit.`, confirmLabel: 'Force Ban', confirmColor: 'warn' },
+      data: {
+        title: 'Forceful Ban',
+        message: `Forcefully ban ${p.fullName}? They will be removed from the member list and cannot log in. This is recorded for audit.`,
+        confirmLabel: 'Force Ban',
+        confirmColor: 'warn',
+      },
     });
     ref.afterClosed().subscribe((confirmed) => {
       if (!confirmed) return;
       this.http.post(`/api/v1/admin/users/${p.id}/ban/force`, {}).subscribe({
-        next: () => { this.snackBar.open('Member forcefully banned', 'OK', { duration: 3000 }); this.load(p.id); },
+        next: () => {
+          this.snackBar.open('Member forcefully banned', 'OK', { duration: 3000 });
+          this.load(p.id);
+        },
         error: (e) => this.snackBar.open(e?.error?.message ?? 'Failed', 'OK', { duration: 4000 }),
       });
     });
@@ -702,12 +1028,19 @@ export class MemberProfileComponent implements OnInit {
     const p = this.profile();
     if (!p) return;
     const ref = this.dialog.open(ConfirmDialogComponent, {
-      data: { title: 'Unban Member', message: `Unban ${p.fullName}? They will be able to log in again.`, confirmLabel: 'Unban' },
+      data: {
+        title: 'Unban Member',
+        message: `Unban ${p.fullName}? They will be able to log in again.`,
+        confirmLabel: 'Unban',
+      },
     });
     ref.afterClosed().subscribe((confirmed) => {
       if (!confirmed) return;
       this.http.post(`/api/v1/admin/users/${p.id}/unban`, {}).subscribe({
-        next: () => { this.snackBar.open('Member unbanned', 'OK', { duration: 3000 }); this.load(p.id); },
+        next: () => {
+          this.snackBar.open('Member unbanned', 'OK', { duration: 3000 });
+          this.load(p.id);
+        },
         error: (e) => this.snackBar.open(e?.error?.message ?? 'Failed', 'OK', { duration: 4000 }),
       });
     });
@@ -721,7 +1054,8 @@ export class MemberProfileComponent implements OnInit {
         this.snackBar.open(`Role updated to ${role}`, 'OK', { duration: 3000 });
         this.load(p.id);
       },
-      error: (e) => this.snackBar.open(e?.error?.message ?? 'Failed to update role', 'OK', { duration: 4000 }),
+      error: (e) =>
+        this.snackBar.open(e?.error?.message ?? 'Failed to update role', 'OK', { duration: 4000 }),
     });
   }
 
@@ -747,7 +1081,9 @@ export class MemberProfileComponent implements OnInit {
         },
         error: (e) => {
           this.validating.set(false);
-          this.snackBar.open(e?.error?.message ?? 'Failed to validate member', 'OK', { duration: 4000 });
+          this.snackBar.open(e?.error?.message ?? 'Failed to validate member', 'OK', {
+            duration: 4000,
+          });
         },
       });
     });

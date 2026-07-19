@@ -1,4 +1,12 @@
-import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  effect,
+  inject,
+  OnInit,
+  signal,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
@@ -81,7 +89,12 @@ interface City {
       </mat-form-field>
 
       @if (isLoggedIn()) {
-        <mat-checkbox [checked]="myOnly()" (change)="myOnly.set($event.checked)" class="my-only-check">My events only</mat-checkbox>
+        <mat-checkbox
+          [checked]="myOnly()"
+          (change)="myOnly.set($event.checked)"
+          class="my-only-check"
+          >My events only</mat-checkbox
+        >
       }
     </div>
 
@@ -98,46 +111,70 @@ interface City {
       </div>
     }
   `,
-  styles: [`
-    .guest-banner {
-      display: flex;
-      align-items: center;
-      background: var(--db-cream-dark);
-      border: 1px solid #e0d8cc;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 20px;
-      font-size: 0.95rem;
-      color: var(--db-brown-dark);
-    }
-    .page-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-      h1 { margin: 0; font-size: 1.75rem; color: var(--db-brown-dark); }
-    }
-    .cal-sub-bar {
-      margin-bottom: 16px;
-    }
-    .filters {
-      display: flex;
-      gap: 16px;
-      align-items: center;
-      margin-bottom: 24px;
-      flex-wrap: wrap;
-    }
-    .date-field { width: 160px; margin-bottom: -1.25em; }
-    .city-field { width: 180px; margin-bottom: -1.25em; }
-    .events-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 20px;
-    }
-    .my-only-check { font-size: 0.85rem; white-space: nowrap; }
-    .center { display: flex; justify-content: center; padding: 48px; }
-    .empty { text-align: center; color: #999; padding: 48px 0; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .guest-banner {
+        display: flex;
+        align-items: center;
+        background: var(--db-cream-dark);
+        border: 1px solid #e0d8cc;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 20px;
+        font-size: 0.95rem;
+        color: var(--db-brown-dark);
+      }
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        h1 {
+          margin: 0;
+          font-size: 1.75rem;
+          color: var(--db-brown-dark);
+        }
+      }
+      .cal-sub-bar {
+        margin-bottom: 16px;
+      }
+      .filters {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+      .date-field {
+        width: 160px;
+        margin-bottom: -1.25em;
+      }
+      .city-field {
+        width: 180px;
+        margin-bottom: -1.25em;
+      }
+      .events-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+      }
+      .my-only-check {
+        font-size: 0.85rem;
+        white-space: nowrap;
+      }
+      .center {
+        display: flex;
+        justify-content: center;
+        padding: 48px;
+      }
+      .empty {
+        text-align: center;
+        color: #999;
+        padding: 48px 0;
+      }
+    `,
+  ],
 })
 export class EventsListComponent implements OnInit {
   private readonly eventsService = inject(EventsService);
@@ -183,13 +220,18 @@ export class EventsListComponent implements OnInit {
       return;
     }
     const fromDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    this.eventsService.getAll({
-      cityId: this.cityCtrl.value ?? undefined,
-      fromDate,
-    }).subscribe({
-      next: (evts) => { this.events.set(evts); this.loading.set(false); },
-      error: () => this.loading.set(false),
-    });
+    this.eventsService
+      .getAll({
+        cityId: this.cityCtrl.value ?? undefined,
+        fromDate,
+      })
+      .subscribe({
+        next: (evts) => {
+          this.events.set(evts);
+          this.loading.set(false);
+        },
+        error: () => this.loading.set(false),
+      });
   }
 
   isLoggedIn(): boolean {

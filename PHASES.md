@@ -533,90 +533,13 @@ See `memory/project_phase14_nav_invites.md` — completed as v1.0.1.
 Deferred cleanup items and design spikes. No ordering implied — promote to a
 numbered phase when ready to schedule.
 
-### Angular Major Version Upgrade (19 → 22) 📋 Scoped 2026-07-12, not started
+### Angular Major Version Upgrade (19 → 22) ✅ Done — see Phase 27
 
-**This is live production exposure, not a someday item** — DinnerBears is
-deployed with real members using it today, not pre-launch. `frontend/`'s
-`npm audit` shows 3 real high-severity runtime vulnerabilities with no
-non-breaking fix: `@angular/core` (DOM clobbering & response-cache
-poisoning), `@angular/service-worker` (sensitive header leakage on
-cross-origin redirects), and `quill` (XSS via HTML export — no patched
-version exists upstream yet, so this one may not be fixable by upgrading
-alone). `api/`'s `npm audit` is clean (0 vulnerabilities); this is
-frontend-only. Rob should weigh scheduling this against other work now that
-scope is known, rather than leaving it indefinitely deferred.
-
-**Path:** 19 → 20 → 21 → 22, one major hop at a time (not straight to 22)
-— each hop run via `ng update @angular/core@<major> @angular/cli@<major>`,
-which applies Angular's official codemods automatically; re-verify after
-each hop rather than batching all three.
-
-**Confirmed version/compatibility facts (checked directly against the npm
-registry 2026-07-12, not assumed):**
-- Stable latest is 22.0.6 (22.1 is still `-next` prerelease) — 22 is a real
-  stopping point, not a moving target
-- `ngx-quill` must be bumped in lockstep with each hop — it pins tightly to
-  one Angular major per line: `27.x`→Angular 19 (current), `28.x`→20,
-  `29.x`/`30.x`→21, `31.x`→22. Confirm this ships as an `ng update`-compatible
-  package so the hop isn't silently skipped.
-- TypeScript: Angular 22 requires **TypeScript ≥ 6.0** — current pin is
-  `~5.6.0` in `frontend/package.json`, needs bumping at the final hop.
-  Scoped to the frontend workspace only (`api/` has its own independent
-  TypeScript version).
-- **Node.js — real infrastructure blocker, not just a frontend concern:**
-  the root `Dockerfile` pins `node:20-alpine` across all three stages
-  (`frontend-build`, `api-build`, and the final runtime image — API and
-  frontend share one image). Angular 22's CLI requires Node
-  `^22.22.3 || ^24.15.0 || >=26.0.0` — Node 20 doesn't satisfy that at all.
-  The Dockerfile's base image must bump to at least `node:22-alpine` before
-  or alongside the final hop, which also changes the Node version the
-  NestJS API runs on — needs its own verification pass (TypeORM/mysql2/etc.
-  behavior on the new Node major), not just an Angular concern.
-
-**Highest-risk item — verify before committing to the 22 hop:** Angular
-22's changelog (fetched directly from `CHANGELOG.md` this session, not
-recalled from training data — re-verify against the official migration
-guide at execution time since automated summarization can miss nuance)
-lists *"Component with undefined `changeDetection` property are now
-`OnPush` by default."* **Zero of this app's 73 components currently set
-`ChangeDetectionStrategy.OnPush` explicitly** — confirmed by direct grep.
-If that changelog line is accurate, all 73 components would silently
-switch from `Default` to `OnPush` change-detection behavior in one hop.
-This is the kind of regression that doesn't error or fail a build — it
-just makes some view silently stop updating after a mutation, and with
-**zero frontend test coverage** (confirmed separately — `ng test` is wired
-up but no `.spec.ts` files exist), nothing catches it automatically. This
-needs deliberate manual verification of every major interactive
-surface after the 22 hop specifically, not just a spot-check.
-
-**Checked and confirmed NOT a concern for this codebase** (grepped
-directly, not assumed clean):
-- No `ComponentFactoryResolver`/`ComponentFactory` usage (removed in v22)
-- No Hammer.js integration (removed in v22)
-- No `provideRoutes()` usage (removed in v22)
-- No `reportProgress`/upload-progress-event usage (v22 changes the default
-  `HttpClient` backend in a way that affects upload progress reporting)
-- The two `Validators.min()`/`Validators.max()` call sites
-  (`event-form-dialog.component.ts`, `restaurant-form-dialog.component.ts`)
-  both pass numeric literals, not strings — v22 drops string support for
-  these validators, doesn't affect this codebase
-
-**Worth a quick check but not blocking:** Router's
-`paramsInheritanceStrategy` now defaults to `'always'` in v22 (currently
-unset anywhere in this app, so it's riding the old default) — only matters
-for nested routes where both parent and child define route params; scan
-`app.routes.ts` for such nesting during the 21→22 hop.
-
-**Rollout plan given the risk profile:** do the 3-hop upgrade on a branch,
-build and deploy to the `stage` Docker image first (never straight to
-`latest`/prod), then manually walk every major golden path on stage before
-proceeding — login (Google/Facebook/email), RSVP flow, event
-create/edit/admin dialogs, achievements/leaderboard, calendar feed, PWA
-install + push notifications, and the Quill-based rich-text editors
-(feedback/announcements/releases). Only promote to prod via the normal
-`/release` flow once stage checks out clean. Re-run the full 527-test
-`api/` e2e suite after the Node/Docker base image bump specifically, since
-that's the one part of this upgrade that touches the API's runtime too.
+Executed exactly per the plan below: one major hop at a time via `ng
+update`, verified on stage before each subsequent hop, Node/Dockerfile
+bumped alongside. All 3 flagged `npm audit` vulnerabilities closed. See
+Phase 27 for the full account, including what else rode along on the same
+branch.
 
 ### NestJS v11 Upgrade & Calendar Feed Fix (2026-07-04) ✅ Done — released as v1.3.3
 
@@ -1356,3 +1279,116 @@ Workflow" and "Current Development Phase".
 **Definition of done:** all 3 items resolved and verified. Not yet merged
 into `main` — will merge via PR whenever `/release` runs (may ride
 together with Phase 25's unreleased fixes).
+
+---
+
+## Phase 27 — Angular 19→22 Upgrade & Points Audit Trail ✅ Complete
+
+Started 2026-07-19 once phases 25/26 had actually merged to `main` via
+`/release` (confirmed live on stage + prod as v1.4.3). Branched as
+`phase-27-angular-19-22-upgrade` off the fresh `main`. Scope grew
+considerably beyond the original upgrade as Rob tested the result live on
+stage and follow-on requests landed on the same branch.
+
+### Angular 19 → 22 upgrade
+- Sequential major hops (19→20→21→22) via `ng update`, verified with a full
+  build after each. TypeScript bumped 5.6→6.0 along the way (removed the
+  now-deprecated, actually-unused `baseUrl` tsconfig option that TS 6.0
+  turns into a hard error).
+- `ngx-quill` bumped in lockstep each hop (27→28→30→31) to stay peer-compatible
+  with each Angular major.
+- Root Dockerfile's frontend-build stage and `frontend/Dockerfile` pinned to
+  `node:22-alpine` (was a floating `node:20-alpine`, which wouldn't have
+  reliably cleared Angular 22's Node floor).
+- Migrated the last 3 non-standalone-syntax components (`event-card`,
+  `error-page`, `icon-picker`) off `@Input`/`@Output` decorators onto signal
+  `input()`/`output()`; `app.config.ts`'s `APP_INITIALIZER` provider onto
+  `provideAppInitializer()`; the `serve` target off the deprecated webpack
+  dev-server onto `@angular/build`'s esbuild-native one.
+- Angular 22's own migration schematics applied `ChangeDetectionStrategy.Eager`
+  to all ~73 existing components (preserving pre-v22 default change-detection
+  behavior against the new default) and `withXhr()` to `provideHttpClient()`
+  (preserving the XHR backend against the new default fetch backend) —
+  automated, not manual, and deliberately *not* an OnPush migration (that's
+  real behavior change, scoped out of a version-bump phase); disabled
+  angular-eslint's new `prefer-on-push-component-change-detection` rule
+  accordingly rather than fighting it file-by-file.
+- **All 3 flagged `npm audit` vulnerabilities closed**: `@angular/core` and
+  `@angular/service-worker` by the version bump itself; `quill`'s XSS-via-
+  HTML-export pinned to exact `2.0.2` (the `^2.0.3` range's resolved version
+  has an unpatched regression 2.0.2 doesn't; no 2.0.4+ exists upstream).
+- Verified via build + lint + a full Playwright click-through on stage
+  (home, 404, event RSVP, admin restaurant add/delete, admin achievement
+  icon-picker) using the `automation@dinnerbears.internal` account —
+  zero unexpected console errors.
+- `frontend/src/**/*.spec.ts`: still zero files, confirmed again this phase.
+  Flagged to Rob as a bigger, separate undertaking (no existing harness/
+  TestBed patterns to build on) rather than silently skipped or scope-crept
+  into this phase.
+
+### Bug fixes found via live stage testing
+- **Automation account couldn't be flipped back down from admin** —
+  `AdminService.setRole()` blocked *any* role change on a user currently at
+  `ADMIN`, with no exception for the documented automation-account
+  flip-up-for-testing/flip-back-down workflow. Backend guard fixed (exempt
+  the automation account, matched by email); a second, independent bug in
+  `member-profile.component.ts` also hid the role-selector UI entirely
+  whenever `role === 'admin'` even though its own `mat-option`s already
+  anticipated flipping an automation account back down — fixed to match.
+  Regression test added retroactively (wasn't covered when first fixed).
+- **Admin achievements page header overflow on mobile** — `.page-header`
+  had no `flex-wrap`, so the 3 action buttons (Re-run Founder Check /
+  Recalculate Points / Backfill Invite Points) compressed into cramped
+  multi-line pills and overflowed off-screen instead of wrapping as whole
+  buttons. Same class of bug as Phase 25's restaurants-list header fix.
+
+### Points audit trail (new, requested mid-phase)
+- New self/admin/moderator-accessible `GET /members/:id/points/ledger`,
+  distinct from the pre-existing admin-only raw ledger endpoint (left
+  untouched, still used by the separate admin point-management tool).
+  Returns a human-labeled itemized breakdown (date, description, points)
+  plus a total that reconciles with the profile page's existing points
+  badge by construction (same underlying `member_points` rows).
+- Clicking the "paw badge" points total on a member's profile (self, or
+  admin/moderator on someone else's) now opens a dialog listing that
+  breakdown, modeled on the existing `AttendanceDialogComponent` pattern.
+- Founding Bear achievement bumped from 1 point to 20 — it's a one-time,
+  can-never-be-re-earned achievement and should feel special relative to
+  the rest of the catalog.
+
+### Data-integrity bugs surfaced by building the audit trail
+Live-testing the new audit list on stage surfaced two real, pre-existing
+data bugs, both fixed with migrations rather than one-off scripts:
+- `ResetAndBackfillAchievements` (an earlier phase's historical backfill)
+  had inserted the Founding Bear bonus point via raw SQL with
+  `reference_id` hardcoded `NULL` — the one place in the codebase where an
+  achievement-type `member_points` row wasn't traceable back to its
+  achievement. Backfilled to the real id.
+- That NULL `reference_id` window, combined with `adminRecalculatePoints()`
+  ("Recalculate Points" in the admin UI)'s duplicate-row check being keyed
+  on `reference_id` equality, meant a NULL row was invisible to that check
+  — so a "Recalculate Points" click during this window inserted a *second*
+  points row per already-credited member instead of finding the existing
+  one. Cleaned up (de-dupe migration, keeping the earliest row per
+  user+achievement), then hardened at the schema level so this class of
+  bug can't recur: `member_points.reference_id` is now `NOT NULL` (every
+  real award path already always supplied one) plus a
+  `UNIQUE (user_id, point_type, reference_id)` constraint, mirroring
+  `member_achievements`'s existing `uq_member_achievement`.
+  `adminRecalculatePoints()`'s insert also switched to `INSERT IGNORE` as
+  defense-in-depth against the new constraint. Regression test added
+  (recalculate-points run twice no longer risks a duplicate).
+
+### Verification
+Backend: full `api/` e2e suite (21 suites, 535 tests) run against a
+throwaway MySQL container after every backend-affecting commit, all green.
+Frontend: `ng build` + `eslint` clean after every commit (same pre-existing
+~50-error accessibility/`any`-type lint debt throughout, none of it new).
+Every change deployed to and manually verified on `stage.dinnerbears.com`
+before moving to the next one — 9 separate stage pushes across the phase,
+each following a green local verification pass.
+
+**Definition of done:** Angular 22 live and verified on stage, all 3
+`npm audit` items closed, points audit trail shipped and its follow-on data
+bugs fixed. Not yet merged into `main` — will merge via PR at the next
+`/release`.

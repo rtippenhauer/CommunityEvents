@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { ErrorPageComponent } from '../../../shared/components/error-page/error-page.component';
 
@@ -71,6 +71,7 @@ const FALLBACK: ErrorContent = {
   selector: 'app-auth-error',
   standalone: true,
   imports: [ErrorPageComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <app-error-page
       [icon]="content().icon"
@@ -90,7 +91,7 @@ export class AuthErrorComponent {
     return ERROR_CONTENT[reason] ?? FALLBACK;
   });
 
-  readonly invitedEmail = computed<string | null>(
-    () => this.route.snapshot.queryParamMap.get('email'),
+  readonly invitedEmail = computed<string | null>(() =>
+    this.route.snapshot.queryParamMap.get('email'),
   );
 }

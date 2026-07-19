@@ -1,8 +1,22 @@
-import { Component, HostListener, inject, OnDestroy, OnInit, signal, computed } from '@angular/core';
+import {
+  Component,
+  HostListener,
+  inject,
+  OnDestroy,
+  OnInit,
+  signal,
+  computed,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { forkJoin } from 'rxjs';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe, TitleCasePipe } from '@angular/common';
-import { FormArray, FormControl, NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
+import {
+  FormArray,
+  FormControl,
+  NonNullableFormBuilder,
+  ReactiveFormsModule,
+} from '@angular/forms';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -18,10 +32,20 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { EventsService, Event, GuestLink, Rsvp, RsvpStatus } from '../../../core/services/events.service';
+import {
+  EventsService,
+  Event,
+  GuestLink,
+  Rsvp,
+  RsvpStatus,
+} from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CommunityService, EventAchievement } from '../../../core/services/community.service';
-import { EventCommentsService, Comment, MemberSearchResult } from '../../../core/services/event-comments.service';
+import {
+  EventCommentsService,
+  Comment,
+  MemberSearchResult,
+} from '../../../core/services/event-comments.service';
 import { debounceTime, distinctUntilChanged, Subject, switchMap } from 'rxjs';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 import { ReportButtonComponent } from '../../../shared/components/report-button/report-button.component';
@@ -79,8 +103,13 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
           <div class="title-row">
             <h1 class="event-title">{{ event()!.title }}</h1>
             @if (isAdminOrMod()) {
-              <button mat-icon-button class="admin-menu-btn" [matMenuTriggerFor]="adminMenu"
-                matTooltip="Admin tools" aria-label="Admin tools menu">
+              <button
+                mat-icon-button
+                class="admin-menu-btn"
+                [matMenuTriggerFor]="adminMenu"
+                matTooltip="Admin tools"
+                aria-label="Admin tools menu"
+              >
                 <mat-icon>more_vert</mat-icon>
               </button>
               <mat-menu #adminMenu="matMenu">
@@ -104,7 +133,10 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
           </div>
           <div class="event-datetime">
             <mat-icon>event</mat-icon>
-            <span>{{ (event()!.eventDate + 'T12:00:00') | date: 'EEEE, MMMM d, y' }} at {{ formatTime(event()!.eventTime) }}</span>
+            <span
+              >{{ event()!.eventDate + 'T12:00:00' | date: 'EEEE, MMMM d, y' }} at
+              {{ formatTime(event()!.eventTime) }}</span
+            >
             @if (event()!.status === 'published') {
               <button mat-stroked-button class="cal-add-btn" [matMenuTriggerFor]="calMenu">
                 <mat-icon>calendar_add_on</mat-icon> Add to Calendar
@@ -127,7 +159,11 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
           @if (eventAchievement()) {
             <div class="special-dinner-badge">
               @if (eventAchievement()!.icon.startsWith('img:')) {
-                <img class="special-dinner-icon-img" [src]="eventAchievement()!.icon.slice(4)" alt="" />
+                <img
+                  class="special-dinner-icon-img"
+                  [src]="eventAchievement()!.icon.slice(4)"
+                  alt=""
+                />
               } @else {
                 <mat-icon>{{ eventAchievement()!.icon || 'local_activity' }}</mat-icon>
               }
@@ -136,11 +172,17 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <span class="special-dinner-name">{{ eventAchievement()!.name }}</span>
                 <span class="special-dinner-desc">{{ eventAchievement()!.description }}</span>
                 @if (eventAchievement()!.title) {
-                  <span class="special-dinner-title">Earns title: "{{ eventAchievement()!.title }}"</span>
+                  <span class="special-dinner-title"
+                    >Earns title: "{{ eventAchievement()!.title }}"</span
+                  >
                 }
               </div>
               @if (eventAchievement()!.imagePath) {
-                <img [src]="eventAchievement()!.imagePath!" class="special-dinner-img" alt="Achievement" />
+                <img
+                  [src]="eventAchievement()!.imagePath!"
+                  class="special-dinner-img"
+                  alt="Achievement"
+                />
               }
             </div>
           }
@@ -153,7 +195,12 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <div>
                   <div class="info-label">Restaurant</div>
                   @if (event()!.restaurant?.websiteUrl) {
-                    <a class="info-value map-link" [href]="event()!.restaurant!.websiteUrl!" target="_blank" rel="noopener">
+                    <a
+                      class="info-value map-link"
+                      [href]="event()!.restaurant!.websiteUrl!"
+                      target="_blank"
+                      rel="noopener"
+                    >
                       {{ event()!.restaurantName }}
                     </a>
                   } @else {
@@ -170,7 +217,8 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                     [href]="mapsUrl()"
                     target="_blank"
                     rel="noopener"
-                  >{{ event()!.restaurantAddress }}</a>
+                    >{{ event()!.restaurantAddress }}</a
+                  >
                 </div>
               </div>
             </mat-card-content>
@@ -196,20 +244,33 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <mat-icon>hourglass_empty</mat-icon>
                 <span>
                   Reservation being handled by
-                  <strong>{{ event()!.reservationAssignee?.fullName ?? event()!.reservationContactName }}</strong>
+                  <strong>{{
+                    event()!.reservationAssignee?.fullName ?? event()!.reservationContactName
+                  }}</strong>
                 </span>
               </div>
             }
 
             <!-- Assignee self-confirm button (for the logged-in member who was assigned) -->
-            @if (event()!.reservationAssigneeId === currentUserId() && !event()!.reservationConfirmed && !isAdminOrMod()) {
+            @if (
+              event()!.reservationAssigneeId === currentUserId() &&
+              !event()!.reservationConfirmed &&
+              !isAdminOrMod()
+            ) {
               <div class="assignee-confirm-banner">
                 <mat-icon>phone</mat-icon>
                 <span>You've been asked to make the reservation for this event.</span>
-                <button mat-raised-button color="primary"
+                <button
+                  mat-raised-button
+                  color="primary"
                   [disabled]="reservationSaving()"
-                  (click)="memberMarkReservationConfirmed()">
-                  @if (reservationSaving()) { <mat-spinner diameter="16" /> } @else { <mat-icon>check</mat-icon> }
+                  (click)="memberMarkReservationConfirmed()"
+                >
+                  @if (reservationSaving()) {
+                    <mat-spinner diameter="16" />
+                  } @else {
+                    <mat-icon>check</mat-icon>
+                  }
                   I Made the Reservation
                 </button>
               </div>
@@ -247,7 +308,9 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <div class="rsvp-header">
                   <h3>Who's coming</h3>
                   <div class="rsvp-counts">
-                    <span class="seat-count">{{ totalSeats() }} seat{{ totalSeats() === 1 ? '' : 's' }} needed</span>
+                    <span class="seat-count"
+                      >{{ totalSeats() }} seat{{ totalSeats() === 1 ? '' : 's' }} needed</span
+                    >
                     @if (maybeCount() > 0) {
                       <span class="maybe-count">{{ maybeCount() }} maybe</span>
                     }
@@ -258,7 +321,9 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <div class="rsvp-disclaimer">
                   <div class="disclaimer-row">
                     <mat-icon class="disc-icon">schedule</mat-icon>
-                    <span>RSVP deadline: <strong>{{ cutoffTimeLabel() }}</strong> day-of</span>
+                    <span
+                      >RSVP deadline: <strong>{{ cutoffTimeLabel() }}</strong> day-of</span
+                    >
                   </div>
                 </div>
 
@@ -277,9 +342,15 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                           [value]="myRsvp()!.status"
                           (change)="onRsvpStatusChange($event.value)"
                           [disabled]="rsvpLoading()"
-                          class="rsvp-toggle">
-                          <mat-button-toggle value="going" class="toggle-going"
-                            [disabled]="!isAdminOrMod() && isPastCutoff() && myRsvp()!.status !== 'going'">
+                          class="rsvp-toggle"
+                        >
+                          <mat-button-toggle
+                            value="going"
+                            class="toggle-going"
+                            [disabled]="
+                              !isAdminOrMod() && isPastCutoff() && myRsvp()!.status !== 'going'
+                            "
+                          >
                             <mat-icon>check_circle</mat-icon> Going
                           </mat-button-toggle>
                           <mat-button-toggle value="maybe" class="toggle-maybe">
@@ -291,11 +362,21 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                         </mat-button-toggle-group>
 
                         @if (myRsvp()!.status === 'going' && !isNonValidated()) {
-                          <mat-select [formControl]="guestsCtrl" class="guests-select" (selectionChange)="updateGuests($event.value)">
+                          <mat-select
+                            [formControl]="guestsCtrl"
+                            class="guests-select"
+                            (selectionChange)="updateGuests($event.value)"
+                          >
                             <mat-option [value]="0">Just me</mat-option>
                             @for (n of guestOptions.slice(1); track n) {
-                              <mat-option [value]="n"
-                                [disabled]="!isAdminOrMod() && isPastCutoff() && n > myRsvp()!.additionalGuests">
+                              <mat-option
+                                [value]="n"
+                                [disabled]="
+                                  !isAdminOrMod() &&
+                                  isPastCutoff() &&
+                                  n > myRsvp()!.additionalGuests
+                                "
+                              >
                                 +{{ n }} guest{{ n === 1 ? '' : 's' }}
                               </mat-option>
                             }
@@ -314,25 +395,60 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                           <div class="guest-compact-list">
                             @for (idx of guestIndices; track idx) {
                               <div class="guest-compact-row">
-                                <mat-icon class="guest-row-icon"
-                                  [class.link-ready-icon]="guestLinkAt(myRsvp()!, idx) && !guestLinkAt(myRsvp()!, idx)?.usedAt && !guestLinkAt(myRsvp()!, idx)?.cancelledAt"
-                                  [class.link-used-icon]="guestLinkAt(myRsvp()!, idx)?.usedAt && !guestLinkAt(myRsvp()!, idx)?.cancelledAt"
-                                  [class.link-cancelled-icon]="!!guestLinkAt(myRsvp()!, idx)?.cancelledAt">
-                                  {{ guestLinkAt(myRsvp()!, idx)?.cancelledAt ? 'person_off' : guestLinkAt(myRsvp()!, idx)?.usedAt ? 'how_to_reg' : guestLinkAt(myRsvp()!, idx) ? 'link' : 'person_outline' }}
+                                <mat-icon
+                                  class="guest-row-icon"
+                                  [class.link-ready-icon]="
+                                    guestLinkAt(myRsvp()!, idx) &&
+                                    !guestLinkAt(myRsvp()!, idx)?.usedAt &&
+                                    !guestLinkAt(myRsvp()!, idx)?.cancelledAt
+                                  "
+                                  [class.link-used-icon]="
+                                    guestLinkAt(myRsvp()!, idx)?.usedAt &&
+                                    !guestLinkAt(myRsvp()!, idx)?.cancelledAt
+                                  "
+                                  [class.link-cancelled-icon]="
+                                    !!guestLinkAt(myRsvp()!, idx)?.cancelledAt
+                                  "
+                                >
+                                  {{
+                                    guestLinkAt(myRsvp()!, idx)?.cancelledAt
+                                      ? 'person_off'
+                                      : guestLinkAt(myRsvp()!, idx)?.usedAt
+                                        ? 'how_to_reg'
+                                        : guestLinkAt(myRsvp()!, idx)
+                                          ? 'link'
+                                          : 'person_outline'
+                                  }}
                                 </mat-icon>
-                                <span class="guest-compact-name" [class.unnamed]="!guestNameControls[idx].value.trim()">
-                                  {{ guestNameControls[idx].value.trim() || ('Guest ' + (idx + 1)) }}
+                                <span
+                                  class="guest-compact-name"
+                                  [class.unnamed]="!guestNameControls[idx].value.trim()"
+                                >
+                                  {{ guestNameControls[idx].value.trim() || 'Guest ' + (idx + 1) }}
                                 </span>
                                 @if (guestLinkAt(myRsvp()!, idx); as link) {
-                                  <span class="link-status-badge" [class.used]="link.usedAt && !link.cancelledAt" [class.cancelled]="link.cancelledAt">
-                                    {{ link.cancelledAt ? "Can't Make It" : link.usedAt ? 'Confirmed' : 'Pending' }}
+                                  <span
+                                    class="link-status-badge"
+                                    [class.used]="link.usedAt && !link.cancelledAt"
+                                    [class.cancelled]="link.cancelledAt"
+                                  >
+                                    {{
+                                      link.cancelledAt
+                                        ? "Can't Make It"
+                                        : link.usedAt
+                                          ? 'Confirmed'
+                                          : 'Pending'
+                                    }}
                                   </span>
                                 }
                                 <div class="guest-row-actions">
-                                  <button mat-icon-button class="copy-link-btn"
+                                  <button
+                                    mat-icon-button
+                                    class="copy-link-btn"
                                     [matTooltip]="guestLinkTooltip(idx)"
                                     [disabled]="generatingLinkIndex() === idx"
-                                    (click)="generateAndCopyLink(idx)">
+                                    (click)="generateAndCopyLink(idx)"
+                                  >
                                     @if (generatingLinkIndex() === idx) {
                                       <mat-spinner diameter="16" />
                                     } @else if (guestLinkAt(myRsvp()!, idx)?.cancelledAt) {
@@ -345,16 +461,26 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                                       <mat-icon>link</mat-icon>
                                     }
                                   </button>
-                                  <button mat-icon-button class="edit-guest-btn"
+                                  <button
+                                    mat-icon-button
+                                    class="edit-guest-btn"
                                     matTooltip="Edit guest"
-                                    (click)="toggleEditGuest(idx)">
-                                    <mat-icon>{{ editingGuestIndex() === idx ? 'close' : 'edit' }}</mat-icon>
+                                    (click)="toggleEditGuest(idx)"
+                                  >
+                                    <mat-icon>{{
+                                      editingGuestIndex() === idx ? 'close' : 'edit'
+                                    }}</mat-icon>
                                   </button>
                                   @if (guestLinkAt(myRsvp()!, idx)) {
-                                    <button mat-icon-button class="remove-link-btn"
+                                    <button
+                                      mat-icon-button
+                                      class="remove-link-btn"
                                       matTooltip="Remove guest"
-                                      [disabled]="removingLinkId() === guestLinkAt(myRsvp()!, idx)!.id"
-                                      (click)="removeLink(guestLinkAt(myRsvp()!, idx)!.id)">
+                                      [disabled]="
+                                        removingLinkId() === guestLinkAt(myRsvp()!, idx)!.id
+                                      "
+                                      (click)="removeLink(guestLinkAt(myRsvp()!, idx)!.id)"
+                                    >
                                       @if (removingLinkId() === guestLinkAt(myRsvp()!, idx)!.id) {
                                         <mat-spinner diameter="16" />
                                       } @else {
@@ -369,21 +495,37 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                                 <div class="guest-edit-expansion">
                                   <mat-form-field appearance="outline" class="guest-name-field">
                                     <mat-label>Name (optional)</mat-label>
-                                    <input matInput [formControl]="guestNameControls[idx]" maxlength="200" />
+                                    <input
+                                      matInput
+                                      [formControl]="guestNameControls[idx]"
+                                      maxlength="200"
+                                    />
                                   </mat-form-field>
                                   @if (!guestLinkAt(myRsvp()!, idx)) {
                                     <mat-form-field appearance="outline" class="guest-email-field">
                                       <mat-label>Email (optional)</mat-label>
                                       <mat-icon matPrefix>mail_outline</mat-icon>
-                                      <input matInput [formControl]="guestEmailControls[idx]" type="email" maxlength="255" />
+                                      <input
+                                        matInput
+                                        [formControl]="guestEmailControls[idx]"
+                                        type="email"
+                                        maxlength="255"
+                                      />
                                     </mat-form-field>
                                   }
                                   <div class="guest-edit-save-row">
-                                    <button mat-icon-button color="primary" matTooltip="Save"
+                                    <button
+                                      mat-icon-button
+                                      color="primary"
+                                      matTooltip="Save"
                                       [disabled]="savingNames()"
-                                      (click)="saveAndCloseEdit()">
-                                      @if (savingNames()) { <mat-spinner diameter="18" /> }
-                                      @else { <mat-icon>check</mat-icon> }
+                                      (click)="saveAndCloseEdit()"
+                                    >
+                                      @if (savingNames()) {
+                                        <mat-spinner diameter="18" />
+                                      } @else {
+                                        <mat-icon>check</mat-icon>
+                                      }
                                     </button>
                                   </div>
                                 </div>
@@ -401,10 +543,18 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                       } @else {
                         <div class="rsvp-initial-toggle">
                           <mat-button-toggle-group class="rsvp-toggle" [disabled]="rsvpLoading()">
-                            <mat-button-toggle value="going" class="toggle-going" (click)="addRsvp('going')">
+                            <mat-button-toggle
+                              value="going"
+                              class="toggle-going"
+                              (click)="addRsvp('going')"
+                            >
                               <mat-icon>check_circle</mat-icon> Going
                             </mat-button-toggle>
-                            <mat-button-toggle value="maybe" class="toggle-maybe" (click)="addRsvp('maybe')">
+                            <mat-button-toggle
+                              value="maybe"
+                              class="toggle-maybe"
+                              (click)="addRsvp('maybe')"
+                            >
                               <mat-icon>help_outline</mat-icon> Maybe
                             </mat-button-toggle>
                           </mat-button-toggle-group>
@@ -427,20 +577,39 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                         <div class="public-rsvp-fields">
                           <mat-form-field appearance="outline" class="pub-field">
                             <mat-label>Your name</mat-label>
-                            <input matInput [value]="publicRsvpName()" (input)="publicRsvpName.set($any($event.target).value)" maxlength="200" />
+                            <input
+                              matInput
+                              [value]="publicRsvpName()"
+                              (input)="publicRsvpName.set($any($event.target).value)"
+                              maxlength="200"
+                            />
                           </mat-form-field>
                           <mat-form-field appearance="outline" class="pub-field">
                             <mat-label>Email address</mat-label>
-                            <input matInput type="email" [value]="publicRsvpEmail()" (input)="publicRsvpEmail.set($any($event.target).value)" maxlength="255" />
+                            <input
+                              matInput
+                              type="email"
+                              [value]="publicRsvpEmail()"
+                              (input)="publicRsvpEmail.set($any($event.target).value)"
+                              maxlength="255"
+                            />
                           </mat-form-field>
                         </div>
                         @if (publicRsvpError()) {
                           <div class="public-rsvp-error">{{ publicRsvpError() }}</div>
                         }
-                        <button mat-stroked-button
-                          [disabled]="publicRsvpLoading() || !publicRsvpName().trim() || !publicRsvpEmail().trim()"
-                          (click)="submitPublicRsvp()">
-                          @if (publicRsvpLoading()) { <mat-spinner diameter="16" /> }
+                        <button
+                          mat-stroked-button
+                          [disabled]="
+                            publicRsvpLoading() ||
+                            !publicRsvpName().trim() ||
+                            !publicRsvpEmail().trim()
+                          "
+                          (click)="submitPublicRsvp()"
+                        >
+                          @if (publicRsvpLoading()) {
+                            <mat-spinner diameter="16" />
+                          }
                           I'm going!
                         </button>
                       </div>
@@ -454,9 +623,7 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 @if (event()!.rsvps.length === 0 && event()!.publicRsvps.length === 0) {
                   <p class="no-rsvps">No RSVPs yet — be the first!</p>
                 } @else if (!isLoggedIn()) {
-                  <p class="no-rsvps">
-                    <a routerLink="/login">Sign in</a> to see who's going.
-                  </p>
+                  <p class="no-rsvps"><a routerLink="/login">Sign in</a> to see who's going.</p>
                 } @else if (isNonValidated()) {
                   <ul class="attendee-list">
                     @for (r of event()!.rsvps; track r.id) {
@@ -492,7 +659,9 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                             <span class="attendee-guests">
                               +{{ r.additionalGuests }}
                               @if (namedGuests(r.guestNames)) {
-                                <span class="guest-names-inline">({{ namedGuests(r.guestNames) }})</span>
+                                <span class="guest-names-inline"
+                                  >({{ namedGuests(r.guestNames) }})</span
+                                >
                               }
                             </span>
                           }
@@ -526,13 +695,31 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                   </h4>
                   @if (isAdminOrMod()) {
                     <div class="res-header-actions">
-                      @if ((event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
-                        <button mat-stroked-button class="res-reassign-btn" (click)="startReassign()">
+                      @if (
+                        (event()!.reservationAssignee ||
+                          event()!.reservationAssigneeId ||
+                          event()!.reservationContactEmail) &&
+                        !reservationReassigning()
+                      ) {
+                        <button
+                          mat-stroked-button
+                          class="res-reassign-btn"
+                          (click)="startReassign()"
+                        >
                           <mat-icon>swap_horiz</mat-icon> Reassign
                         </button>
                       }
-                      @if (event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) {
-                        <button mat-icon-button matTooltip="Clear assignment" color="warn" (click)="clearReservation()">
+                      @if (
+                        event()!.reservationAssignee ||
+                        event()!.reservationAssigneeId ||
+                        event()!.reservationContactEmail
+                      ) {
+                        <button
+                          mat-icon-button
+                          matTooltip="Clear assignment"
+                          color="warn"
+                          (click)="clearReservation()"
+                        >
                           <mat-icon>close</mat-icon>
                         </button>
                       }
@@ -541,19 +728,34 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 </div>
 
                 <!-- Current assignment display -->
-                @if ((event()!.reservationAssignee || event()!.reservationAssigneeId || event()!.reservationContactEmail) && !reservationReassigning()) {
+                @if (
+                  (event()!.reservationAssignee ||
+                    event()!.reservationAssigneeId ||
+                    event()!.reservationContactEmail) &&
+                  !reservationReassigning()
+                ) {
                   <div class="reservation-assigned">
                     <mat-icon class="res-person-icon">person</mat-icon>
                     <div class="res-person-info">
                       <span class="res-person-name">
-                        {{ event()!.reservationAssignee?.fullName ?? event()!.reservationContactName ?? event()!.reservationContactEmail }}
+                        {{
+                          event()!.reservationAssignee?.fullName ??
+                            event()!.reservationContactName ??
+                            event()!.reservationContactEmail
+                        }}
                       </span>
-                      @if (isAdminOrMod() && event()!.reservationContactEmail && !event()!.reservationAssigneeId) {
+                      @if (
+                        isAdminOrMod() &&
+                        event()!.reservationContactEmail &&
+                        !event()!.reservationAssigneeId
+                      ) {
                         <span class="res-person-email">{{ event()!.reservationContactEmail }}</span>
                       }
                     </div>
                     <div class="res-status" [class.confirmed]="event()!.reservationConfirmed">
-                      <mat-icon>{{ event()!.reservationConfirmed ? 'check_circle' : 'hourglass_empty' }}</mat-icon>
+                      <mat-icon>{{
+                        event()!.reservationConfirmed ? 'check_circle' : 'hourglass_empty'
+                      }}</mat-icon>
                       {{ event()!.reservationConfirmed ? 'Confirmed' : 'Pending' }}
                     </div>
                   </div>
@@ -563,25 +765,49 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                     @if (!event()!.reservationConfirmed) {
                       @if (!showConfirmNoteInput()) {
                         <div class="res-confirm-toggle">
-                          <button mat-stroked-button color="primary" (click)="showConfirmNoteInput.set(true)">
+                          <button
+                            mat-stroked-button
+                            color="primary"
+                            (click)="showConfirmNoteInput.set(true)"
+                          >
                             <mat-icon>check</mat-icon> Mark as Confirmed
                           </button>
                         </div>
                       } @else {
                         <div class="res-note-form">
                           <mat-form-field appearance="outline" class="res-field">
-                            <mat-label>Note (optional) — e.g. "Spoke with Jane, confirmed for 22 people"</mat-label>
-                            <textarea matInput rows="2" maxlength="500"
+                            <mat-label
+                              >Note (optional) — e.g. "Spoke with Jane, confirmed for 22
+                              people"</mat-label
+                            >
+                            <textarea
+                              matInput
+                              rows="2"
+                              maxlength="500"
                               [value]="reservationConfirmNote()"
-                              (input)="reservationConfirmNote.set($any($event.target).value)"></textarea>
+                              (input)="reservationConfirmNote.set($any($event.target).value)"
+                            ></textarea>
                           </mat-form-field>
                           <div class="res-note-actions">
-                            <button mat-raised-button color="primary" [disabled]="reservationSaving()"
-                              (click)="toggleReservationConfirmed(true)">
-                              @if (reservationSaving()) { <mat-spinner diameter="16" /> } @else { <mat-icon>check</mat-icon> }
+                            <button
+                              mat-raised-button
+                              color="primary"
+                              [disabled]="reservationSaving()"
+                              (click)="toggleReservationConfirmed(true)"
+                            >
+                              @if (reservationSaving()) {
+                                <mat-spinner diameter="16" />
+                              } @else {
+                                <mat-icon>check</mat-icon>
+                              }
                               Confirm
                             </button>
-                            <button mat-button (click)="showConfirmNoteInput.set(false); reservationConfirmNote.set('')">
+                            <button
+                              mat-button
+                              (click)="
+                                showConfirmNoteInput.set(false); reservationConfirmNote.set('')
+                              "
+                            >
                               Cancel
                             </button>
                           </div>
@@ -589,13 +815,16 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                       }
                     } @else {
                       <div class="res-confirm-toggle">
-                        <button mat-stroked-button color="warn" (click)="toggleReservationConfirmed(false)">
+                        <button
+                          mat-stroked-button
+                          color="warn"
+                          (click)="toggleReservationConfirmed(false)"
+                        >
                           <mat-icon>undo</mat-icon> Unmark Confirmed
                         </button>
                       </div>
                     }
                   }
-
                 } @else if (isAdminOrMod()) {
                   <!-- No assignment yet: show Assign button, expand to form on click -->
                   @if (!reservationReassigning() && !showCoordinatorAssignForm()) {
@@ -607,9 +836,15 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                   } @else {
                     <!-- Assignment form (shown when no assignment and form open, or when reassigning) -->
                     @if (reservationReassigning()) {
-                      <p class="res-reassign-label">Select a new coordinator to replace the current one:</p>
+                      <p class="res-reassign-label">
+                        Select a new coordinator to replace the current one:
+                      </p>
                     }
-                    <mat-button-toggle-group [value]="reservationMode()" (change)="reservationMode.set($event.value)" class="res-mode-toggle">
+                    <mat-button-toggle-group
+                      [value]="reservationMode()"
+                      (change)="reservationMode.set($event.value)"
+                      class="res-mode-toggle"
+                    >
                       <mat-button-toggle value="member">Assign Member</mat-button-toggle>
                       <mat-button-toggle value="contact">Outside Contact</mat-button-toggle>
                     </mat-button-toggle-group>
@@ -618,16 +853,23 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                       <div class="res-member-search">
                         <mat-form-field appearance="outline" class="res-search-field">
                           <mat-label>Search member by name</mat-label>
-                          <input matInput [value]="reservationMemberSearch()"
+                          <input
+                            matInput
+                            [value]="reservationMemberSearch()"
                             (input)="onReservationMemberSearch($any($event.target).value)"
-                            autocomplete="off" />
+                            autocomplete="off"
+                          />
                           <mat-icon matSuffix>search</mat-icon>
                         </mat-form-field>
                         @if (reservationMemberResults().length > 0) {
                           <div class="res-member-results">
                             @for (m of reservationMemberResults(); track m.id) {
-                              <button mat-button class="res-member-row" (click)="assignReservationMember(m)"
-                                [disabled]="reservationSaving()">
+                              <button
+                                mat-button
+                                class="res-member-row"
+                                (click)="assignReservationMember(m)"
+                                [disabled]="reservationSaving()"
+                              >
                                 <mat-icon>person</mat-icon> {{ m.fullName }}
                               </button>
                             }
@@ -638,25 +880,50 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                       <div class="res-contact-form">
                         <mat-form-field appearance="outline" class="res-field">
                           <mat-label>Contact name</mat-label>
-                          <input matInput [value]="reservationContactName()"
-                            (input)="reservationContactName.set($any($event.target).value)" maxlength="150" />
+                          <input
+                            matInput
+                            [value]="reservationContactName()"
+                            (input)="reservationContactName.set($any($event.target).value)"
+                            maxlength="150"
+                          />
                         </mat-form-field>
                         <mat-form-field appearance="outline" class="res-field">
                           <mat-label>Email address</mat-label>
-                          <input matInput type="email" [value]="reservationContactEmail()"
-                            (input)="reservationContactEmail.set($any($event.target).value)" maxlength="255" />
+                          <input
+                            matInput
+                            type="email"
+                            [value]="reservationContactEmail()"
+                            (input)="reservationContactEmail.set($any($event.target).value)"
+                            maxlength="255"
+                          />
                         </mat-form-field>
-                        <button mat-raised-button color="primary"
-                          [disabled]="reservationSaving() || !reservationContactName().trim() || !reservationContactEmail().trim()"
-                          (click)="sendReservationToContact()">
-                          @if (reservationSaving()) { <mat-spinner diameter="16" /> }
+                        <button
+                          mat-raised-button
+                          color="primary"
+                          [disabled]="
+                            reservationSaving() ||
+                            !reservationContactName().trim() ||
+                            !reservationContactEmail().trim()
+                          "
+                          (click)="sendReservationToContact()"
+                        >
+                          @if (reservationSaving()) {
+                            <mat-spinner diameter="16" />
+                          }
                           <mat-icon>send</mat-icon> Send Reservation Request
                         </button>
                       </div>
                     }
 
-                    <button mat-button class="res-cancel-reassign"
-                      (click)="reservationReassigning() ? reservationReassigning.set(false) : showCoordinatorAssignForm.set(false)">
+                    <button
+                      mat-button
+                      class="res-cancel-reassign"
+                      (click)="
+                        reservationReassigning()
+                          ? reservationReassigning.set(false)
+                          : showCoordinatorAssignForm.set(false)
+                      "
+                    >
                       Cancel
                     </button>
                   }
@@ -666,7 +933,6 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
               </mat-card-content>
             </mat-card>
           }
-
 
           <!-- Discussion -->
           @if (isLoggedIn() && event()!.status === 'published') {
@@ -681,24 +947,41 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                   @for (comment of comments(); track comment.id) {
                     <div class="comment-block">
                       @if (comment.deleted) {
-                        <p class="comment-removed"><mat-icon>remove_circle_outline</mat-icon> This comment was removed.</p>
+                        <p class="comment-removed">
+                          <mat-icon>remove_circle_outline</mat-icon> This comment was removed.
+                        </p>
                       } @else {
                         <div class="comment-header">
                           <span class="comment-author">{{ comment.memberName }}</span>
-                          <span class="comment-time">{{ comment.createdAt | date: 'MMM d, y · h:mm a' }}</span>
+                          <span class="comment-time">{{
+                            comment.createdAt | date: 'MMM d, y · h:mm a'
+                          }}</span>
                           @if (comment.memberId === currentUserId() || isAdminOrMod()) {
-                            <button mat-icon-button class="comment-delete-btn" matTooltip="Remove" (click)="deleteComment(comment.id)">
+                            <button
+                              mat-icon-button
+                              class="comment-delete-btn"
+                              matTooltip="Remove"
+                              (click)="deleteComment(comment.id)"
+                            >
                               <mat-icon>delete_outline</mat-icon>
                             </button>
                           }
                           <app-report-button
                             contentType="event_comment"
                             [contentId]="comment.id"
-                            [authorId]="comment.memberId" />
+                            [authorId]="comment.memberId"
+                          />
                         </div>
                         <p class="comment-body">{{ comment.body }}</p>
                         @if (!isNonValidated()) {
-                          <button mat-button class="reply-toggle-btn" (click)="replyingToId.set(replyingToId() === comment.id ? null : comment.id); newReplyBody.set('')">
+                          <button
+                            mat-button
+                            class="reply-toggle-btn"
+                            (click)="
+                              replyingToId.set(replyingToId() === comment.id ? null : comment.id);
+                              newReplyBody.set('')
+                            "
+                          >
                             <mat-icon>reply</mat-icon> Reply
                           </button>
                         }
@@ -708,20 +991,30 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                           @for (reply of comment.replies; track reply.id) {
                             <div class="reply-block">
                               @if (reply.deleted) {
-                                <p class="comment-removed"><mat-icon>remove_circle_outline</mat-icon> This reply was removed.</p>
+                                <p class="comment-removed">
+                                  <mat-icon>remove_circle_outline</mat-icon> This reply was removed.
+                                </p>
                               } @else {
                                 <div class="comment-header">
                                   <span class="comment-author">{{ reply.memberName }}</span>
-                                  <span class="comment-time">{{ reply.createdAt | date: 'MMM d, y · h:mm a' }}</span>
+                                  <span class="comment-time">{{
+                                    reply.createdAt | date: 'MMM d, y · h:mm a'
+                                  }}</span>
                                   @if (reply.memberId === currentUserId() || isAdminOrMod()) {
-                                    <button mat-icon-button class="comment-delete-btn" matTooltip="Remove" (click)="deleteReply(comment.id, reply.id)">
+                                    <button
+                                      mat-icon-button
+                                      class="comment-delete-btn"
+                                      matTooltip="Remove"
+                                      (click)="deleteReply(comment.id, reply.id)"
+                                    >
                                       <mat-icon>delete_outline</mat-icon>
                                     </button>
                                   }
                                   <app-report-button
                                     contentType="event_comment_reply"
                                     [contentId]="reply.id"
-                                    [authorId]="reply.memberId" />
+                                    [authorId]="reply.memberId"
+                                  />
                                 </div>
                                 <p class="comment-body">{{ reply.body }}</p>
                               }
@@ -733,12 +1026,31 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                         <div class="reply-form">
                           <mat-form-field appearance="outline" class="comment-field">
                             <mat-label>Your reply…</mat-label>
-                            <textarea matInput [value]="newReplyBody()" (input)="newReplyBody.set($any($event.target).value)" rows="2" maxlength="2000"></textarea>
+                            <textarea
+                              matInput
+                              [value]="newReplyBody()"
+                              (input)="newReplyBody.set($any($event.target).value)"
+                              rows="2"
+                              maxlength="2000"
+                            ></textarea>
                           </mat-form-field>
                           <div class="comment-form-actions">
-                            <button mat-button (click)="replyingToId.set(null); newReplyBody.set('')">Cancel</button>
-                            <button mat-raised-button color="primary" (click)="submitReply(comment.id)" [disabled]="!newReplyBody().trim() || submittingReply()">
-                              @if (submittingReply()) { <mat-spinner diameter="16" /> } Post Reply
+                            <button
+                              mat-button
+                              (click)="replyingToId.set(null); newReplyBody.set('')"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              mat-raised-button
+                              color="primary"
+                              (click)="submitReply(comment.id)"
+                              [disabled]="!newReplyBody().trim() || submittingReply()"
+                            >
+                              @if (submittingReply()) {
+                                <mat-spinner diameter="16" />
+                              }
+                              Post Reply
                             </button>
                           </div>
                         </div>
@@ -751,11 +1063,25 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <div class="new-comment-form">
                   <mat-form-field appearance="outline" class="comment-field">
                     <mat-label>Add a comment…</mat-label>
-                    <textarea matInput [value]="newCommentBody()" (input)="newCommentBody.set($any($event.target).value)" rows="3" maxlength="2000"></textarea>
+                    <textarea
+                      matInput
+                      [value]="newCommentBody()"
+                      (input)="newCommentBody.set($any($event.target).value)"
+                      rows="3"
+                      maxlength="2000"
+                    ></textarea>
                   </mat-form-field>
                   <div class="comment-form-actions">
-                    <button mat-raised-button color="primary" (click)="submitComment()" [disabled]="!newCommentBody().trim() || submittingComment()">
-                      @if (submittingComment()) { <mat-spinner diameter="16" /> } Post
+                    <button
+                      mat-raised-button
+                      color="primary"
+                      (click)="submitComment()"
+                      [disabled]="!newCommentBody().trim() || submittingComment()"
+                    >
+                      @if (submittingComment()) {
+                        <mat-spinner diameter="16" />
+                      }
+                      Post
                     </button>
                   </div>
                 </div>
@@ -797,7 +1123,6 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
             </div>
           }
 
-
           <!-- Back -->
           <div class="back-row">
             <button mat-button (click)="goBack()">
@@ -810,686 +1135,1093 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
       <p class="center">Event not found.</p>
     }
   `,
-  styles: [`
-    .center { display: flex; justify-content: center; padding: 48px; }
-    .detail-layout { max-width: 760px; margin: 0 auto; }
-    .hero-photo {
-      width: 100%;
-      height: 280px;
-      overflow: hidden;
-      border-radius: 12px;
-      margin-bottom: 24px;
-      img { width: 100%; height: 100%; object-fit: cover; }
-    }
-    .status-row { margin-bottom: 12px; }
-    .status-chip {
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      &.status-draft { background: #e3f2fd; color: #1565c0; }
-      &.status-cancelled { background: #ffebee; color: #c62828; }
-    }
-    .title-row {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .event-title {
-      margin: 0 0 12px;
-      font-size: 2rem;
-      font-weight: 700;
-      color: var(--db-brown-dark);
-      line-height: 1.2;
-    }
-    .admin-menu-btn {
-      flex-shrink: 0;
-      margin-top: -4px;
-      color: var(--db-brown-dark);
-    }
-    .event-datetime {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
-      font-size: 1.05rem;
-      color: var(--db-primary);
-      font-weight: 500;
-      margin-bottom: 20px;
-      mat-icon { color: var(--db-primary); }
-    }
-    .cal-add-btn {
-      flex-shrink: 0;
-      white-space: nowrap;
-      height: 28px !important;
-      min-height: 28px !important;
-      line-height: 26px !important;
-      font-size: 0.75rem !important;
-      padding: 0 10px !important;
-      color: var(--db-primary) !important;
-      border-color: var(--db-primary) !important;
-      mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; margin-right: 2px; }
-    }
-    .info-card { margin-bottom: 24px; }
-    .info-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 10px 0;
-      border-bottom: 1px solid #f0ebe3;
-      &:last-child { border-bottom: none; }
-      mat-icon { color: #999; margin-top: 2px; flex-shrink: 0; }
-    }
-    .info-label { font-size: 0.75rem; color: #999; text-transform: uppercase; letter-spacing: 0.05em; }
-    .info-value { font-size: 0.95rem; color: var(--db-brown-dark); margin-top: 2px; }
-    .map-link { color: var(--db-primary); text-decoration: none; &:hover { text-decoration: underline; } }
-    .section { margin-bottom: 24px; h3 { margin: 0 0 8px; color: var(--db-brown-dark); } }
-    .description { margin: 0; color: #444; line-height: 1.6; white-space: pre-wrap; }
-    .cancelled-reason {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
-      background: #ffebee;
-      border-radius: 8px;
-      color: #c62828;
-      margin-bottom: 24px;
-      mat-icon { color: #c62828; }
-    }
-    .rsvp-card { margin-bottom: 24px; }
-    .rsvp-header {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      margin-bottom: 16px;
-      h3 { margin: 0; color: var(--db-brown-dark); }
-    }
-    .seat-count {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--db-primary);
-    }
-    .rsvp-disclaimer {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      padding: 10px 12px;
-      margin-bottom: 14px;
-      background: #faf7f2;
-      border: 1px solid #e8e0d6;
-      border-radius: 8px;
-    }
-    .disclaimer-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 0.82rem;
-      color: #666;
-    }
-    .disc-icon {
-      font-size: 0.95rem;
-      width: 0.95rem;
-      height: 0.95rem;
-      color: var(--db-amber);
-      flex-shrink: 0;
-    }
-    .cutoff-banner {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      background: #fff3e0;
-      border: 1px solid #ffb74d;
-      border-radius: 8px;
-      font-size: 0.88rem;
-      font-weight: 500;
-      color: #e65100;
-      mat-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
-    }
-    .rsvp-action { margin-bottom: 16px; }
-    .rsvp-guest-cta {
-      margin-bottom: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .rsvp-or {
-      font-size: 0.8rem;
-      color: #aaa;
-      text-align: center;
-    }
-    .public-rsvp-form {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .public-rsvp-label {
-      margin: 0;
-      font-size: 0.82rem;
-      color: #666;
-      font-weight: 500;
-    }
-    .public-rsvp-fields {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      .pub-field {
-        flex: 1;
-        min-width: 140px;
-        font-size: 0.88rem;
-        .mat-mdc-form-field-subscript-wrapper { display: none; }
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .center {
+        display: flex;
+        justify-content: center;
+        padding: 48px;
       }
-    }
-    .public-rsvp-error {
-      font-size: 0.8rem;
-      color: #c62828;
-    }
-    .public-rsvp-success {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      background: #e8f5e9;
-      border-radius: 8px;
-      font-size: 0.88rem;
-      color: #2e7d32;
-      font-weight: 500;
-      mat-icon { color: #2e7d32; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
-    }
-    .rsvp-controls {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    .going-icon { color: #2e7d32; font-size: 1.4rem; width: 1.4rem; height: 1.4rem; }
-    .going-label { font-weight: 600; color: #2e7d32; }
-    .guests-select { width: 130px; }
-    .cancel-rsvp-btn { font-size: 0.8rem; }
+      .detail-layout {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+      .hero-photo {
+        width: 100%;
+        height: 280px;
+        overflow: hidden;
+        border-radius: 12px;
+        margin-bottom: 24px;
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+      }
+      .status-row {
+        margin-bottom: 12px;
+      }
+      .status-chip {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        &.status-draft {
+          background: #e3f2fd;
+          color: #1565c0;
+        }
+        &.status-cancelled {
+          background: #ffebee;
+          color: #c62828;
+        }
+      }
+      .title-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .event-title {
+        margin: 0 0 12px;
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--db-brown-dark);
+        line-height: 1.2;
+      }
+      .admin-menu-btn {
+        flex-shrink: 0;
+        margin-top: -4px;
+        color: var(--db-brown-dark);
+      }
+      .event-datetime {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        font-size: 1.05rem;
+        color: var(--db-primary);
+        font-weight: 500;
+        margin-bottom: 20px;
+        mat-icon {
+          color: var(--db-primary);
+        }
+      }
+      .cal-add-btn {
+        flex-shrink: 0;
+        white-space: nowrap;
+        height: 28px !important;
+        min-height: 28px !important;
+        line-height: 26px !important;
+        font-size: 0.75rem !important;
+        padding: 0 10px !important;
+        color: var(--db-primary) !important;
+        border-color: var(--db-primary) !important;
+        mat-icon {
+          font-size: 0.9rem;
+          width: 0.9rem;
+          height: 0.9rem;
+          margin-right: 2px;
+        }
+      }
+      .info-card {
+        margin-bottom: 24px;
+      }
+      .info-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid #f0ebe3;
+        &:last-child {
+          border-bottom: none;
+        }
+        mat-icon {
+          color: #999;
+          margin-top: 2px;
+          flex-shrink: 0;
+        }
+      }
+      .info-label {
+        font-size: 0.75rem;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .info-value {
+        font-size: 0.95rem;
+        color: var(--db-brown-dark);
+        margin-top: 2px;
+      }
+      .map-link {
+        color: var(--db-primary);
+        text-decoration: none;
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+      .section {
+        margin-bottom: 24px;
+        h3 {
+          margin: 0 0 8px;
+          color: var(--db-brown-dark);
+        }
+      }
+      .description {
+        margin: 0;
+        color: #444;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+      .cancelled-reason {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        background: #ffebee;
+        border-radius: 8px;
+        color: #c62828;
+        margin-bottom: 24px;
+        mat-icon {
+          color: #c62828;
+        }
+      }
+      .rsvp-card {
+        margin-bottom: 24px;
+      }
+      .rsvp-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        h3 {
+          margin: 0;
+          color: var(--db-brown-dark);
+        }
+      }
+      .seat-count {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--db-primary);
+      }
+      .rsvp-disclaimer {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 10px 12px;
+        margin-bottom: 14px;
+        background: #faf7f2;
+        border: 1px solid #e8e0d6;
+        border-radius: 8px;
+      }
+      .disclaimer-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82rem;
+        color: #666;
+      }
+      .disc-icon {
+        font-size: 0.95rem;
+        width: 0.95rem;
+        height: 0.95rem;
+        color: var(--db-amber);
+        flex-shrink: 0;
+      }
+      .cutoff-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: #fff3e0;
+        border: 1px solid #ffb74d;
+        border-radius: 8px;
+        font-size: 0.88rem;
+        font-weight: 500;
+        color: #e65100;
+        mat-icon {
+          font-size: 1.1rem;
+          width: 1.1rem;
+          height: 1.1rem;
+        }
+      }
+      .rsvp-action {
+        margin-bottom: 16px;
+      }
+      .rsvp-guest-cta {
+        margin-bottom: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .rsvp-or {
+        font-size: 0.8rem;
+        color: #aaa;
+        text-align: center;
+      }
+      .public-rsvp-form {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .public-rsvp-label {
+        margin: 0;
+        font-size: 0.82rem;
+        color: #666;
+        font-weight: 500;
+      }
+      .public-rsvp-fields {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        .pub-field {
+          flex: 1;
+          min-width: 140px;
+          font-size: 0.88rem;
+          .mat-mdc-form-field-subscript-wrapper {
+            display: none;
+          }
+        }
+      }
+      .public-rsvp-error {
+        font-size: 0.8rem;
+        color: #c62828;
+      }
+      .public-rsvp-success {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        background: #e8f5e9;
+        border-radius: 8px;
+        font-size: 0.88rem;
+        color: #2e7d32;
+        font-weight: 500;
+        mat-icon {
+          color: #2e7d32;
+          font-size: 1.1rem;
+          width: 1.1rem;
+          height: 1.1rem;
+        }
+      }
+      .rsvp-controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .going-icon {
+        color: #2e7d32;
+        font-size: 1.4rem;
+        width: 1.4rem;
+        height: 1.4rem;
+      }
+      .going-label {
+        font-weight: 600;
+        color: #2e7d32;
+      }
+      .guests-select {
+        width: 130px;
+      }
+      .cancel-rsvp-btn {
+        font-size: 0.8rem;
+      }
 
-    // ── Guest panel ───────────────────────────────────────────────────────────
+      // ── Guest panel ───────────────────────────────────────────────────────────
 
-    .guest-panel {
-      margin-top: 16px;
-      padding: 16px;
-      background: #faf7f2;
-      border: 1px solid #e8e0d6;
-      border-radius: 10px;
-    }
+      .guest-panel {
+        margin-top: 16px;
+        padding: 16px;
+        background: #faf7f2;
+        border: 1px solid #e8e0d6;
+        border-radius: 10px;
+      }
 
-    .guest-panel-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
+      .guest-panel-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
 
-    .guest-panel-icon { color: var(--db-amber); font-size: 1.2rem; width: 1.2rem; height: 1.2rem; }
+      .guest-panel-icon {
+        color: var(--db-amber);
+        font-size: 1.2rem;
+        width: 1.2rem;
+        height: 1.2rem;
+      }
 
-    .guest-panel-title {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--db-brown-dark);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
+      .guest-panel-title {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--db-brown-dark);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
 
-    .guest-compact-list { display: flex; flex-direction: column; gap: 4px; }
+      .guest-compact-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
 
-    .guest-compact-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 8px 4px 4px;
-      border-radius: 6px;
-      background: #fff;
-      border: 1px solid #e8e0d6;
-    }
+      .guest-compact-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px 4px 4px;
+        border-radius: 6px;
+        background: #fff;
+        border: 1px solid #e8e0d6;
+      }
 
-    .guest-row-icon {
-      font-size: 1rem;
-      width: 1rem;
-      height: 1rem;
-      flex-shrink: 0;
-      color: #bbb;
-    }
+      .guest-row-icon {
+        font-size: 1rem;
+        width: 1rem;
+        height: 1rem;
+        flex-shrink: 0;
+        color: #bbb;
+      }
 
-    .guest-compact-name {
-      flex: 1;
-      font-size: 0.9rem;
-      color: var(--db-brown-dark);
-      &.unnamed { color: #aaa; font-style: italic; }
-    }
+      .guest-compact-name {
+        flex: 1;
+        font-size: 0.9rem;
+        color: var(--db-brown-dark);
+        &.unnamed {
+          color: #aaa;
+          font-style: italic;
+        }
+      }
 
-    .guest-row-actions {
-      display: flex;
-      align-items: center;
-      flex-shrink: 0;
-      .mat-mdc-icon-button { width: 32px; height: 32px; padding: 4px; }
-    }
+      .guest-row-actions {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        .mat-mdc-icon-button {
+          width: 32px;
+          height: 32px;
+          padding: 4px;
+        }
+      }
 
-    .copy-link-btn { color: var(--db-amber) !important; }
-    .edit-guest-btn { color: #888 !important; }
+      .copy-link-btn {
+        color: var(--db-amber) !important;
+      }
+      .edit-guest-btn {
+        color: #888 !important;
+      }
 
-    .link-ready-icon { color: #2e7d32 !important; }
-    .link-used-icon { color: #999 !important; }
-    .link-cancelled-icon { color: #c62828 !important; }
-    .remove-link-btn { color: #c62828 !important; opacity: 0.7; &:hover { opacity: 1; } }
+      .link-ready-icon {
+        color: #2e7d32 !important;
+      }
+      .link-used-icon {
+        color: #999 !important;
+      }
+      .link-cancelled-icon {
+        color: #c62828 !important;
+      }
+      .remove-link-btn {
+        color: #c62828 !important;
+        opacity: 0.7;
+        &:hover {
+          opacity: 1;
+        }
+      }
 
-    .link-status-badge {
-      font-size: 0.68rem;
-      font-weight: 600;
-      padding: 2px 7px;
-      border-radius: 10px;
-      white-space: nowrap;
-      background: #fff3e0;
-      color: var(--db-amber-dark);
-      &.used { background: #e8f5e9; color: #2e7d32; }
-      &.cancelled { background: #ffebee; color: #c62828; }
-    }
+      .link-status-badge {
+        font-size: 0.68rem;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 10px;
+        white-space: nowrap;
+        background: #fff3e0;
+        color: var(--db-amber-dark);
+        &.used {
+          background: #e8f5e9;
+          color: #2e7d32;
+        }
+        &.cancelled {
+          background: #ffebee;
+          color: #c62828;
+        }
+      }
 
-    .guest-edit-expansion {
-      padding: 10px 12px 4px;
-      background: #fff;
-      border: 1px solid #e8e0d6;
-      border-top: none;
-      border-radius: 0 0 6px 6px;
-      margin-top: -4px;
-      display: flex;
-      flex-direction: column;
-    }
+      .guest-edit-expansion {
+        padding: 10px 12px 4px;
+        background: #fff;
+        border: 1px solid #e8e0d6;
+        border-top: none;
+        border-radius: 0 0 6px 6px;
+        margin-top: -4px;
+        display: flex;
+        flex-direction: column;
+      }
 
-    .guest-name-field, .guest-email-field {
-      width: 100%;
-      font-size: 0.88rem;
-      .mat-mdc-form-field-subscript-wrapper { display: none; }
-    }
+      .guest-name-field,
+      .guest-email-field {
+        width: 100%;
+        font-size: 0.88rem;
+        .mat-mdc-form-field-subscript-wrapper {
+          display: none;
+        }
+      }
 
-    .guest-edit-save-row { display: flex; justify-content: flex-end; margin-top: -4px; }
+      .guest-edit-save-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: -4px;
+      }
 
-    // ── Attendee list ─────────────────────────────────────────────────────────
+      // ── Attendee list ─────────────────────────────────────────────────────────
 
-    .rsvp-divider { margin: 16px 0; }
-    .no-rsvps { color: #999; font-size: 0.9rem; margin: 0; }
-    .attendee-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .attendee-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .attendee-avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      overflow: hidden;
-      flex-shrink: 0;
-      background: var(--db-primary);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      img { width: 100%; height: 100%; object-fit: cover; }
-    }
-    .avatar-initials { color: #fff; font-size: 0.8rem; font-weight: 700; }
-    .attendee-info { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-    .attendee-name { font-size: 0.95rem; color: var(--db-brown-dark); }
-    .attendee-guests {
-      font-size: 0.8rem;
-      color: #888;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .guest-names-inline { color: #666; font-style: italic; }
-    .attendee-avatar-guest {
-      background: #e8e0d6;
-      .guest-avatar-icon { color: #999; font-size: 1.2rem; width: 1.2rem; height: 1.2rem; }
-    }
-    .attendee-avatar-mystery {
-      filter: grayscale(1);
-      opacity: 0.4;
-    }
-    .attendee-mystery { pointer-events: none; }
-    .mystery-name { color: #bbb; font-style: italic; }
-    .attendee-guest-badge {
-      font-size: 0.68rem;
-      font-weight: 600;
-      padding: 1px 6px;
-      border-radius: 8px;
-      background: #f5edd8;
-      color: var(--db-brown-mid);
-      align-self: flex-start;
-    }
+      .rsvp-divider {
+        margin: 16px 0;
+      }
+      .no-rsvps {
+        color: #999;
+        font-size: 0.9rem;
+        margin: 0;
+      }
+      .attendee-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .attendee-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .attendee-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: var(--db-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+      }
+      .avatar-initials {
+        color: #fff;
+        font-size: 0.8rem;
+        font-weight: 700;
+      }
+      .attendee-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+      }
+      .attendee-name {
+        font-size: 0.95rem;
+        color: var(--db-brown-dark);
+      }
+      .attendee-guests {
+        font-size: 0.8rem;
+        color: #888;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .guest-names-inline {
+        color: #666;
+        font-style: italic;
+      }
+      .attendee-avatar-guest {
+        background: #e8e0d6;
+        .guest-avatar-icon {
+          color: #999;
+          font-size: 1.2rem;
+          width: 1.2rem;
+          height: 1.2rem;
+        }
+      }
+      .attendee-avatar-mystery {
+        filter: grayscale(1);
+        opacity: 0.4;
+      }
+      .attendee-mystery {
+        pointer-events: none;
+      }
+      .mystery-name {
+        color: #bbb;
+        font-style: italic;
+      }
+      .attendee-guest-badge {
+        font-size: 0.68rem;
+        font-weight: 600;
+        padding: 1px 6px;
+        border-radius: 8px;
+        background: #f5edd8;
+        color: var(--db-brown-mid);
+        align-self: flex-start;
+      }
 
-    // ── RSVP toggle ──────────────────────────────────────────────────────────
+      // ── RSVP toggle ──────────────────────────────────────────────────────────
 
-    .rsvp-counts {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+      .rsvp-counts {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-    .maybe-count {
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: var(--db-amber-dark, #e65100);
-      background: #fff3e0;
-      padding: 2px 8px;
-      border-radius: 10px;
-    }
+      .maybe-count {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--db-amber-dark, #e65100);
+        background: #fff3e0;
+        padding: 2px 8px;
+        border-radius: 10px;
+      }
 
-    .rsvp-toggle {
-      .mat-button-toggle-button { font-size: 0.85rem; }
-      .toggle-going.mat-button-toggle-checked { background: #e8f5e9; color: #2e7d32; }
-      .toggle-maybe.mat-button-toggle-checked { background: #fff3e0; color: #e65100; }
-      .toggle-not-going.mat-button-toggle-checked { background: #ffebee; color: #c62828; }
-      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; vertical-align: middle; margin-right: 4px; }
-    }
+      .rsvp-toggle {
+        .mat-button-toggle-button {
+          font-size: 0.85rem;
+        }
+        .toggle-going.mat-button-toggle-checked {
+          background: #e8f5e9;
+          color: #2e7d32;
+        }
+        .toggle-maybe.mat-button-toggle-checked {
+          background: #fff3e0;
+          color: #e65100;
+        }
+        .toggle-not-going.mat-button-toggle-checked {
+          background: #ffebee;
+          color: #c62828;
+        }
+        mat-icon {
+          font-size: 1rem;
+          width: 1rem;
+          height: 1rem;
+          vertical-align: middle;
+          margin-right: 4px;
+        }
+      }
 
-    .rsvp-initial-toggle { margin-bottom: 4px; }
+      .rsvp-initial-toggle {
+        margin-bottom: 4px;
+      }
 
-    .attendee-maybe { opacity: 0.75; }
+      .attendee-maybe {
+        opacity: 0.75;
+      }
 
-    .attendee-name-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+      .attendee-name-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
 
-    .maybe-badge {
-      font-size: 0.65rem;
-      font-weight: 600;
-      padding: 1px 6px;
-      border-radius: 8px;
-      background: #fff3e0;
-      color: #e65100;
-    }
+      .maybe-badge {
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 1px 6px;
+        border-radius: 8px;
+        background: #fff3e0;
+        color: #e65100;
+      }
 
-    .res-no-assignee-text { color: #999; font-size: 0.88rem; margin: 0; }
+      .res-no-assignee-text {
+        color: #999;
+        font-size: 0.88rem;
+        margin: 0;
+      }
 
-    // ── Reservation status badges ─────────────────────────────────────────────
+      // ── Reservation status badges ─────────────────────────────────────────────
 
-    .reservation-confirmed-badge {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 10px 16px;
-      background: #e8f5e9;
-      border: 1px solid #a5d6a7;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      color: #2e7d32;
-      mat-icon { color: #2e7d32; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; margin-top: 1px; }
-    }
+      .reservation-confirmed-badge {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 10px 16px;
+        background: #e8f5e9;
+        border: 1px solid #a5d6a7;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        color: #2e7d32;
+        mat-icon {
+          color: #2e7d32;
+          font-size: 1.1rem;
+          width: 1.1rem;
+          height: 1.1rem;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+      }
 
-    .res-badge-text {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      font-size: 0.9rem;
-      font-weight: 600;
-    }
+      .res-badge-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
 
-    .res-badge-by { font-size: 0.8rem; font-weight: 400; color: #388e3c; }
+      .res-badge-by {
+        font-size: 0.8rem;
+        font-weight: 400;
+        color: #388e3c;
+      }
 
-    .res-badge-note {
-      font-size: 0.8rem;
-      font-weight: 400;
-      font-style: italic;
-      color: #555;
-      margin-top: 2px;
-    }
+      .res-badge-note {
+        font-size: 0.8rem;
+        font-weight: 400;
+        font-style: italic;
+        color: #555;
+        margin-top: 2px;
+      }
 
-    .reservation-pending-badge {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      background: #fff8e1;
-      border: 1px solid #ffe082;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      font-size: 0.88rem;
-      color: #5d4037;
-      mat-icon { color: #e65100; font-size: 1.1rem; width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
-    }
+      .reservation-pending-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        background: #fff8e1;
+        border: 1px solid #ffe082;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 0.88rem;
+        color: #5d4037;
+        mat-icon {
+          color: #e65100;
+          font-size: 1.1rem;
+          width: 1.1rem;
+          height: 1.1rem;
+          flex-shrink: 0;
+        }
+      }
 
-    .assignee-confirm-banner {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      padding: 12px 16px;
-      background: #e3f2fd;
-      border: 1px solid #90caf9;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      font-size: 0.88rem;
-      color: #1565c0;
-      mat-icon { color: #1976d2; font-size: 1.2rem; width: 1.2rem; height: 1.2rem; flex-shrink: 0; }
-      span { flex: 1; min-width: 180px; }
-    }
+      .assignee-confirm-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 12px 16px;
+        background: #e3f2fd;
+        border: 1px solid #90caf9;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 0.88rem;
+        color: #1565c0;
+        mat-icon {
+          color: #1976d2;
+          font-size: 1.2rem;
+          width: 1.2rem;
+          height: 1.2rem;
+          flex-shrink: 0;
+        }
+        span {
+          flex: 1;
+          min-width: 180px;
+        }
+      }
 
-    // ── Reservation Coordinator panel ─────────────────────────────────────────
+      // ── Reservation Coordinator panel ─────────────────────────────────────────
 
-    .reservation-card { margin-bottom: 24px; }
+      .reservation-card {
+        margin-bottom: 24px;
+      }
 
-    .reservation-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
+      .reservation-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
 
-    .res-header-actions {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
+      .res-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
 
-    .res-reassign-btn {
-      font-size: 0.78rem;
-      height: 30px;
-      line-height: 28px;
-      padding: 0 10px;
-      mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; margin-right: 2px; }
-    }
+      .res-reassign-btn {
+        font-size: 0.78rem;
+        height: 30px;
+        line-height: 28px;
+        padding: 0 10px;
+        mat-icon {
+          font-size: 0.9rem;
+          width: 0.9rem;
+          height: 0.9rem;
+          margin-right: 2px;
+        }
+      }
 
-    .reservation-title {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin: 0;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--db-brown-dark);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; color: var(--db-amber); }
-    }
+      .reservation-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--db-brown-dark);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        mat-icon {
+          font-size: 1rem;
+          width: 1rem;
+          height: 1rem;
+          color: var(--db-amber);
+        }
+      }
 
-    .res-reassign-label {
-      font-size: 0.82rem;
-      color: #888;
-      margin: 0 0 10px;
-      font-style: italic;
-    }
+      .res-reassign-label {
+        font-size: 0.82rem;
+        color: #888;
+        margin: 0 0 10px;
+        font-style: italic;
+      }
 
-    .res-cancel-reassign { margin-top: 4px; }
-    .res-no-assignee { padding: 4px 0 8px; }
+      .res-cancel-reassign {
+        margin-top: 4px;
+      }
+      .res-no-assignee {
+        padding: 4px 0 8px;
+      }
 
-    .res-mode-toggle {
-      margin-bottom: 14px;
-      .mat-button-toggle-button { font-size: 0.82rem; }
-    }
+      .res-mode-toggle {
+        margin-bottom: 14px;
+        .mat-button-toggle-button {
+          font-size: 0.82rem;
+        }
+      }
 
-    .reservation-assigned {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      background: #faf7f2;
-      border: 1px solid #e8e0d6;
-      border-radius: 8px;
-      margin-bottom: 12px;
-    }
+      .reservation-assigned {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: #faf7f2;
+        border: 1px solid #e8e0d6;
+        border-radius: 8px;
+        margin-bottom: 12px;
+      }
 
-    .res-person-icon { color: var(--db-amber); font-size: 1.3rem; width: 1.3rem; height: 1.3rem; flex-shrink: 0; }
+      .res-person-icon {
+        color: var(--db-amber);
+        font-size: 1.3rem;
+        width: 1.3rem;
+        height: 1.3rem;
+        flex-shrink: 0;
+      }
 
-    .res-person-info {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
+      .res-person-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
 
-    .res-person-name { font-size: 0.95rem; font-weight: 600; color: var(--db-brown-dark); }
-    .res-person-email { font-size: 0.78rem; color: #888; }
+      .res-person-name {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--db-brown-dark);
+      }
+      .res-person-email {
+        font-size: 0.78rem;
+        color: #888;
+      }
 
-    .res-status {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: #e65100;
-      mat-icon { font-size: 1rem; width: 1rem; height: 1rem; }
-      &.confirmed { color: #2e7d32; }
-    }
+      .res-status {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #e65100;
+        mat-icon {
+          font-size: 1rem;
+          width: 1rem;
+          height: 1rem;
+        }
+        &.confirmed {
+          color: #2e7d32;
+        }
+      }
 
-    .res-confirm-toggle { display: flex; margin-bottom: 4px; }
+      .res-confirm-toggle {
+        display: flex;
+        margin-bottom: 4px;
+      }
 
-    .res-note-form {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-top: 4px;
-    }
+      .res-note-form {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 4px;
+      }
 
-    .res-note-actions {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
+      .res-note-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
 
-    .res-member-search { margin-top: 10px; }
+      .res-member-search {
+        margin-top: 10px;
+      }
 
-    .res-search-field {
-      width: 100%;
-      font-size: 0.88rem;
-      .mat-mdc-form-field-subscript-wrapper { display: none; }
-    }
+      .res-search-field {
+        width: 100%;
+        font-size: 0.88rem;
+        .mat-mdc-form-field-subscript-wrapper {
+          display: none;
+        }
+      }
 
-    .res-member-results {
-      display: flex;
-      flex-direction: column;
-      border: 1px solid #e8e0d6;
-      border-radius: 4px;
-      overflow: hidden;
-      margin-top: -8px;
-    }
+      .res-member-results {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #e8e0d6;
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: -8px;
+      }
 
-    .res-member-row {
-      justify-content: flex-start !important;
-      border-radius: 0 !important;
-      border-bottom: 1px solid #f0ebe3;
-      font-size: 0.9rem;
-      &:last-child { border-bottom: none; }
-    }
+      .res-member-row {
+        justify-content: flex-start !important;
+        border-radius: 0 !important;
+        border-bottom: 1px solid #f0ebe3;
+        font-size: 0.9rem;
+        &:last-child {
+          border-bottom: none;
+        }
+      }
 
-    .res-contact-form {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      margin-top: 10px;
-    }
+      .res-contact-form {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 10px;
+      }
 
-    .res-field {
-      width: 100%;
-      font-size: 0.88rem;
-      .mat-mdc-form-field-subscript-wrapper { display: none; }
-    }
+      .res-field {
+        width: 100%;
+        font-size: 0.88rem;
+        .mat-mdc-form-field-subscript-wrapper {
+          display: none;
+        }
+      }
 
-    // ── Admin actions ─────────────────────────────────────────────────────────
+      // ── Admin actions ─────────────────────────────────────────────────────────
 
-    .admin-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 24px;
-      padding: 16px;
-      background: var(--db-cream-dark);
-      border-radius: 8px;
-    }
-    .back-row { margin-top: 8px; }
+      .admin-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 24px;
+        padding: 16px;
+        background: var(--db-cream-dark);
+        border-radius: 8px;
+      }
+      .back-row {
+        margin-top: 8px;
+      }
 
-    // ── Special Dinner Achievement Badge ──────────────────────────────────────
-    .special-dinner-badge {
-      display: flex; align-items: flex-start; gap: 14px;
-      background: linear-gradient(135deg, #1E4D8C 0%, #2a6bbf 100%);
-      color: #fff; border-radius: 12px; padding: 14px 16px;
-      margin-bottom: 16px;
-      box-shadow: 0 2px 10px rgba(30,77,140,0.25);
-      mat-icon { color: #C9933A; font-size: 2rem; width: 2rem; height: 2rem; flex-shrink: 0; margin-top: 2px; }
-    }
-    .special-dinner-icon-img { width: 2rem; height: 2rem; border-radius: 50%; object-fit: cover; flex-shrink: 0; margin-top: 2px; }
-    .special-dinner-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-    .special-dinner-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; }
-    .special-dinner-name { font-size: 1rem; font-weight: 700; }
-    .special-dinner-desc { font-size: 0.82rem; opacity: 0.85; }
-    .special-dinner-title { font-size: 0.78rem; color: #C9933A; font-weight: 600; font-style: italic; }
-    .special-dinner-img { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.3); }
+      // ── Special Dinner Achievement Badge ──────────────────────────────────────
+      .special-dinner-badge {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        background: linear-gradient(135deg, #1e4d8c 0%, #2a6bbf 100%);
+        color: #fff;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 10px rgba(30, 77, 140, 0.25);
+        mat-icon {
+          color: #c9933a;
+          font-size: 2rem;
+          width: 2rem;
+          height: 2rem;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+      }
+      .special-dinner-icon-img {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .special-dinner-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+      }
+      .special-dinner-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.75;
+      }
+      .special-dinner-name {
+        font-size: 1rem;
+        font-weight: 700;
+      }
+      .special-dinner-desc {
+        font-size: 0.82rem;
+        opacity: 0.85;
+      }
+      .special-dinner-title {
+        font-size: 0.78rem;
+        color: #c9933a;
+        font-weight: 600;
+        font-style: italic;
+      }
+      .special-dinner-img {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        object-fit: cover;
+        flex-shrink: 0;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+      }
 
-
-    // ── Discussion ────────────────────────────────────────────────────────────
-    .section-heading {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--db-brown-dark);
-      margin: 0 0 16px;
-      mat-icon { font-size: 1.1rem; width: 1.1rem; height: 1.1rem; }
-    }
-    .discussion-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e8e0d6; }
-    .no-comments { color: #999; font-size: 0.9rem; margin: 0 0 16px; }
-    .comments-list { display: flex; flex-direction: column; margin-bottom: 20px; }
-    .comment-block {
-      padding: 14px 0;
-      border-bottom: 1px solid #f0ebe3;
-      &:last-child { border-bottom: none; }
-    }
-    .reply-block {
-      padding: 10px 0 10px 16px;
-      border-left: 2px solid #e8e0d6;
-      margin-top: 8px;
-    }
-    .replies-list { margin-top: 4px; display: flex; flex-direction: column; }
-    .comment-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .comment-author { font-weight: 600; font-size: 0.88rem; color: var(--db-brown-dark); }
-    .comment-time { font-size: 0.78rem; color: #999; flex: 1; }
-    .comment-delete-btn { width: 28px; height: 28px; line-height: 28px; mat-icon { font-size: 0.95rem; } color: #bbb !important; &:hover { color: #c62828 !important; } }
-    .comment-body { font-size: 0.92rem; line-height: 1.6; color: #444; margin: 0 0 6px; white-space: pre-wrap; }
-    .comment-removed { display: flex; align-items: center; gap: 6px; font-size: 0.83rem; color: #bbb; font-style: italic; margin: 0; mat-icon { font-size: 0.9rem; width: 0.9rem; height: 0.9rem; } }
-    .reply-toggle-btn { font-size: 0.8rem; color: #888 !important; padding: 0 4px; min-width: 0; height: 28px; line-height: 28px; mat-icon { font-size: 0.85rem; } }
-    .reply-form, .new-comment-form { margin-top: 12px; }
-    .comment-field { width: 100%; font-size: 0.9rem; }
-    .comment-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: -8px; }
-    .new-comment-form { padding-top: 16px; border-top: 1px dashed #e8e0d6; margin-top: 8px; }
-  `],
+      // ── Discussion ────────────────────────────────────────────────────────────
+      .section-heading {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--db-brown-dark);
+        margin: 0 0 16px;
+        mat-icon {
+          font-size: 1.1rem;
+          width: 1.1rem;
+          height: 1.1rem;
+        }
+      }
+      .discussion-section {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid #e8e0d6;
+      }
+      .no-comments {
+        color: #999;
+        font-size: 0.9rem;
+        margin: 0 0 16px;
+      }
+      .comments-list {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 20px;
+      }
+      .comment-block {
+        padding: 14px 0;
+        border-bottom: 1px solid #f0ebe3;
+        &:last-child {
+          border-bottom: none;
+        }
+      }
+      .reply-block {
+        padding: 10px 0 10px 16px;
+        border-left: 2px solid #e8e0d6;
+        margin-top: 8px;
+      }
+      .replies-list {
+        margin-top: 4px;
+        display: flex;
+        flex-direction: column;
+      }
+      .comment-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .comment-author {
+        font-weight: 600;
+        font-size: 0.88rem;
+        color: var(--db-brown-dark);
+      }
+      .comment-time {
+        font-size: 0.78rem;
+        color: #999;
+        flex: 1;
+      }
+      .comment-delete-btn {
+        width: 28px;
+        height: 28px;
+        line-height: 28px;
+        mat-icon {
+          font-size: 0.95rem;
+        }
+        color: #bbb !important;
+        &:hover {
+          color: #c62828 !important;
+        }
+      }
+      .comment-body {
+        font-size: 0.92rem;
+        line-height: 1.6;
+        color: #444;
+        margin: 0 0 6px;
+        white-space: pre-wrap;
+      }
+      .comment-removed {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.83rem;
+        color: #bbb;
+        font-style: italic;
+        margin: 0;
+        mat-icon {
+          font-size: 0.9rem;
+          width: 0.9rem;
+          height: 0.9rem;
+        }
+      }
+      .reply-toggle-btn {
+        font-size: 0.8rem;
+        color: #888 !important;
+        padding: 0 4px;
+        min-width: 0;
+        height: 28px;
+        line-height: 28px;
+        mat-icon {
+          font-size: 0.85rem;
+        }
+      }
+      .reply-form,
+      .new-comment-form {
+        margin-top: 12px;
+      }
+      .comment-field {
+        width: 100%;
+        font-size: 0.9rem;
+      }
+      .comment-form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: -8px;
+      }
+      .new-comment-form {
+        padding-top: 16px;
+        border-top: 1px dashed #e8e0d6;
+        margin-top: 8px;
+      }
+    `,
+  ],
 })
 export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChanges {
   private readonly route = inject(ActivatedRoute);
@@ -1673,11 +2405,13 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   ngOnInit(): void {
     this.clockInterval = setInterval(() => this.nowSignal.set(new Date()), 60_000);
     const id = Number(this.route.snapshot.paramMap.get('id'));
-    this.reservationSearch$.pipe(
-      debounceTime(250),
-      distinctUntilChanged(),
-      switchMap((q) => this.commentsService.searchMembers(id, q)),
-    ).subscribe((results) => this.reservationMemberResults.set(results));
+    this.reservationSearch$
+      .pipe(
+        debounceTime(250),
+        distinctUntilChanged(),
+        switchMap((q) => this.commentsService.searchMembers(id, q)),
+      )
+      .subscribe((results) => this.reservationMemberResults.set(results));
     this.communityService.getEventAchievement(id).subscribe({
       next: (a) => this.eventAchievement.set(a),
       error: () => {},
@@ -1699,7 +2433,11 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     });
   }
 
-  private rebuildNameControls(count: number, existing: string[] | null, preservedEmails?: string[]): void {
+  private rebuildNameControls(
+    count: number,
+    existing: string[] | null,
+    preservedEmails?: string[],
+  ): void {
     const arr = this.guestNamesForm.get('names') as FormArray<FormControl<string>>;
     arr.clear();
     for (let i = 0; i < count; i++) {
@@ -1771,7 +2509,11 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.event.set(e);
         const my = e.rsvps.find((r) => r.userId === this.authService.currentUser()?.id);
         this.guestsCtrl.setValue(my?.additionalGuests ?? 0);
-        this.rebuildNameControls(my?.additionalGuests ?? 0, my?.guestNames ?? null, preservedEmails);
+        this.rebuildNameControls(
+          my?.additionalGuests ?? 0,
+          my?.guestNames ?? null,
+          preservedEmails,
+        );
         this.rsvpLoading.set(false);
         if (expandIndex != null) this.editingGuestIndex.set(expandIndex);
       },
@@ -1785,10 +2527,13 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     this.eventsService.rsvp(id, status, 0).subscribe({
       next: () => {
         this.refreshEvent(id);
-        const msg = status === 'going' ? "You're going! 🎉" : "Marked as Maybe!";
+        const msg = status === 'going' ? "You're going! 🎉" : 'Marked as Maybe!';
         this.snackBar.open(msg, 'OK', { duration: 3000 });
       },
-      error: () => { this.rsvpLoading.set(false); this.snackBar.open('RSVP failed', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.rsvpLoading.set(false);
+        this.snackBar.open('RSVP failed', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -1800,14 +2545,19 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     const id = this.event()!.id;
     const rsvp = this.myRsvp()!;
     this.rsvpLoading.set(true);
-    this.eventsService.rsvp(id, newStatus, rsvp.additionalGuests, rsvp.guestNames ?? undefined).subscribe({
-      next: () => {
-        this.refreshEvent(id);
-        const msg = newStatus === 'going' ? "Changed to Going!" : "Changed to Maybe!";
-        this.snackBar.open(msg, 'OK', { duration: 2000 });
-      },
-      error: () => { this.rsvpLoading.set(false); this.snackBar.open('Failed to update', 'OK', { duration: 3000 }); },
-    });
+    this.eventsService
+      .rsvp(id, newStatus, rsvp.additionalGuests, rsvp.guestNames ?? undefined)
+      .subscribe({
+        next: () => {
+          this.refreshEvent(id);
+          const msg = newStatus === 'going' ? 'Changed to Going!' : 'Changed to Maybe!';
+          this.snackBar.open(msg, 'OK', { duration: 2000 });
+        },
+        error: () => {
+          this.rsvpLoading.set(false);
+          this.snackBar.open('Failed to update', 'OK', { duration: 3000 });
+        },
+      });
   }
 
   updateGuests(additionalGuests: number): void {
@@ -1817,7 +2567,8 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     const emails = this.guestEmailControls.map((c) => c.value);
     const status = this.myRsvp()?.status ?? 'going';
     this.eventsService.rsvp(id, status, additionalGuests, names).subscribe({
-      next: () => this.refreshEvent(id, emails, additionalGuests > oldCount ? additionalGuests - 1 : null),
+      next: () =>
+        this.refreshEvent(id, emails, additionalGuests > oldCount ? additionalGuests - 1 : null),
       error: () => this.snackBar.open('Failed to update guests', 'OK', { duration: 3000 }),
     });
   }
@@ -1828,9 +2579,12 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     this.eventsService.unrsvp(id).subscribe({
       next: () => {
         this.refreshEvent(id);
-        this.snackBar.open("RSVP removed", 'OK', { duration: 3000 });
+        this.snackBar.open('RSVP removed', 'OK', { duration: 3000 });
       },
-      error: () => { this.rsvpLoading.set(false); this.snackBar.open('Failed to remove RSVP', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.rsvpLoading.set(false);
+        this.snackBar.open('Failed to remove RSVP', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -1846,7 +2600,9 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         const linkTasks = emails
           .map((email, i) => ({ email: email.trim(), i }))
           .filter(({ email, i }) => email && !this.guestLinkAt(rsvp, i))
-          .map(({ email, i }) => this.eventsService.generateGuestLink(id, names[i] || undefined, email));
+          .map(({ email, i }) =>
+            this.eventsService.generateGuestLink(id, names[i] || undefined, email),
+          );
 
         if (linkTasks.length === 0) {
           this.refreshEvent(id, emails);
@@ -1860,16 +2616,25 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
             this.refreshEvent(id, emails);
             this.savingNames.set(false);
             const n = linkTasks.length;
-            this.snackBar.open(`Names saved — ${n} invite email${n !== 1 ? 's' : ''} queued`, 'OK', { duration: 3000 });
+            this.snackBar.open(
+              `Names saved — ${n} invite email${n !== 1 ? 's' : ''} queued`,
+              'OK',
+              { duration: 3000 },
+            );
           },
           error: () => {
             this.refreshEvent(id, emails);
             this.savingNames.set(false);
-            this.snackBar.open('Names saved — some invites may have failed to send', 'OK', { duration: 3000 });
+            this.snackBar.open('Names saved — some invites may have failed to send', 'OK', {
+              duration: 3000,
+            });
           },
         });
       },
-      error: () => { this.savingNames.set(false); this.snackBar.open('Failed to save names', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.savingNames.set(false);
+        this.snackBar.open('Failed to save names', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -1881,9 +2646,11 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     if (existingLink) {
       const url = `${window.location.origin}/rsvp-guest?token=${existingLink.token}`;
       this.clipboard.copy(url);
-      const msg = existingLink.cancelledAt ? "Link copied — guest can re-RSVP with this"
-                : existingLink.usedAt ? 'Link copied — guest already confirmed'
-                : 'Link copied!';
+      const msg = existingLink.cancelledAt
+        ? 'Link copied — guest can re-RSVP with this'
+        : existingLink.usedAt
+          ? 'Link copied — guest already confirmed'
+          : 'Link copied!';
       this.snackBar.open(msg, 'OK', { duration: 3000 });
       return;
     }
@@ -1910,7 +2677,12 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   }
 
   removeLink(linkId: number): void {
-    if (!window.confirm('Remove this guest? Their link will stop working and your guest count will decrease by 1.')) return;
+    if (
+      !window.confirm(
+        'Remove this guest? Their link will stop working and your guest count will decrease by 1.',
+      )
+    )
+      return;
     const id = this.event()!.id;
     this.removingLinkId.set(linkId);
     this.eventsService.removeGuestLink(id, linkId).subscribe({
@@ -1964,13 +2736,15 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   cancel(): void {
     const reason = window.prompt('Cancellation reason (optional):') ?? '';
     const e = this.event()!;
-    this.eventsService.update(e.id, { status: 'cancelled', cancelledReason: reason || null }).subscribe({
-      next: (updated) => {
-        this.event.set(updated);
-        this.snackBar.open('Event cancelled', 'OK', { duration: 3000 });
-      },
-      error: () => this.snackBar.open('Failed to cancel event', 'OK', { duration: 3000 }),
-    });
+    this.eventsService
+      .update(e.id, { status: 'cancelled', cancelledReason: reason || null })
+      .subscribe({
+        next: (updated) => {
+          this.event.set(updated);
+          this.snackBar.open('Event cancelled', 'OK', { duration: 3000 });
+        },
+        error: () => this.snackBar.open('Failed to cancel event', 'OK', { duration: 3000 }),
+      });
   }
 
   restore(): void {
@@ -2040,7 +2814,10 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.reservationSaving.set(false);
         this.snackBar.open('Reservation marked as confirmed!', 'OK', { duration: 2000 });
       },
-      error: () => { this.reservationSaving.set(false); this.snackBar.open('Failed to update', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.reservationSaving.set(false);
+        this.snackBar.open('Failed to update', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -2062,7 +2839,10 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.reservationMemberResults.set([]);
         this.snackBar.open(`${member.fullName} assigned — email sent`, 'OK', { duration: 3000 });
       },
-      error: () => { this.reservationSaving.set(false); this.snackBar.open('Failed to assign', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.reservationSaving.set(false);
+        this.snackBar.open('Failed to assign', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -2082,22 +2862,30 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.reservationContactEmail.set('');
         this.snackBar.open('Contact assigned — email sent', 'OK', { duration: 3000 });
       },
-      error: () => { this.reservationSaving.set(false); this.snackBar.open('Failed to assign contact', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.reservationSaving.set(false);
+        this.snackBar.open('Failed to assign contact', 'OK', { duration: 3000 });
+      },
     });
   }
 
   clearReservation(): void {
     if (!window.confirm('Clear the current reservation assignment?')) return;
     const id = this.event()!.id;
-    this.eventsService.setReservation(id, { assigneeId: null, contactName: null, contactEmail: null }).subscribe({
-      next: (updated) => { this.event.set(updated); this.snackBar.open('Reservation cleared', 'OK', { duration: 2000 }); },
-      error: () => this.snackBar.open('Failed to clear', 'OK', { duration: 3000 }),
-    });
+    this.eventsService
+      .setReservation(id, { assigneeId: null, contactName: null, contactEmail: null })
+      .subscribe({
+        next: (updated) => {
+          this.event.set(updated);
+          this.snackBar.open('Reservation cleared', 'OK', { duration: 2000 });
+        },
+        error: () => this.snackBar.open('Failed to clear', 'OK', { duration: 3000 }),
+      });
   }
 
   toggleReservationConfirmed(confirmed: boolean): void {
     const id = this.event()!.id;
-    const note = confirmed ? (this.reservationConfirmNote().trim() || null) : null;
+    const note = confirmed ? this.reservationConfirmNote().trim() || null : null;
     this.reservationSaving.set(true);
     this.eventsService.setReservation(id, { confirmed, confirmedNote: note }).subscribe({
       next: (updated) => {
@@ -2105,9 +2893,16 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.reservationSaving.set(false);
         this.showConfirmNoteInput.set(false);
         this.reservationConfirmNote.set('');
-        this.snackBar.open(confirmed ? 'Reservation marked as confirmed!' : 'Confirmation cleared', 'OK', { duration: 2000 });
+        this.snackBar.open(
+          confirmed ? 'Reservation marked as confirmed!' : 'Confirmation cleared',
+          'OK',
+          { duration: 2000 },
+        );
       },
-      error: () => { this.reservationSaving.set(false); this.snackBar.open('Failed to update', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.reservationSaving.set(false);
+        this.snackBar.open('Failed to update', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -2122,7 +2917,10 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   private loadComments(eventId: number): void {
     this.commentsLoading.set(true);
     this.commentsService.getComments(eventId).subscribe({
-      next: (c) => { this.comments.set(c); this.commentsLoading.set(false); },
+      next: (c) => {
+        this.comments.set(c);
+        this.commentsLoading.set(false);
+      },
       error: () => this.commentsLoading.set(false),
     });
   }
@@ -2138,7 +2936,10 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.newCommentBody.set('');
         this.submittingComment.set(false);
       },
-      error: () => { this.submittingComment.set(false); this.snackBar.open('Failed to post comment', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.submittingComment.set(false);
+        this.snackBar.open('Failed to post comment', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -2146,7 +2947,10 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     if (!window.confirm('Remove this comment?')) return;
     const id = this.event()!.id;
     this.commentsService.deleteComment(id, commentId).subscribe({
-      next: () => this.comments.update((list) => list.map((c) => c.id === commentId ? { ...c, body: null, deleted: true } : c)),
+      next: () =>
+        this.comments.update((list) =>
+          list.map((c) => (c.id === commentId ? { ...c, body: null, deleted: true } : c)),
+        ),
       error: () => this.snackBar.open('Failed to remove comment', 'OK', { duration: 3000 }),
     });
   }
@@ -2158,14 +2962,17 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     this.submittingReply.set(true);
     this.commentsService.addReply(id, commentId, body).subscribe({
       next: (reply) => {
-        this.comments.update((list) => list.map((c) =>
-          c.id === commentId ? { ...c, replies: [...c.replies, reply] } : c,
-        ));
+        this.comments.update((list) =>
+          list.map((c) => (c.id === commentId ? { ...c, replies: [...c.replies, reply] } : c)),
+        );
         this.newReplyBody.set('');
         this.replyingToId.set(null);
         this.submittingReply.set(false);
       },
-      error: () => { this.submittingReply.set(false); this.snackBar.open('Failed to post reply', 'OK', { duration: 3000 }); },
+      error: () => {
+        this.submittingReply.set(false);
+        this.snackBar.open('Failed to post reply', 'OK', { duration: 3000 });
+      },
     });
   }
 
@@ -2173,11 +2980,19 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     if (!window.confirm('Remove this reply?')) return;
     const id = this.event()!.id;
     this.commentsService.deleteReply(id, commentId, replyId).subscribe({
-      next: () => this.comments.update((list) => list.map((c) =>
-        c.id === commentId
-          ? { ...c, replies: c.replies.map((r) => r.id === replyId ? { ...r, body: null, deleted: true } : r) }
-          : c,
-      )),
+      next: () =>
+        this.comments.update((list) =>
+          list.map((c) =>
+            c.id === commentId
+              ? {
+                  ...c,
+                  replies: c.replies.map((r) =>
+                    r.id === replyId ? { ...r, body: null, deleted: true } : r,
+                  ),
+                }
+              : c,
+          ),
+        ),
       error: () => this.snackBar.open('Failed to remove reply', 'OK', { duration: 3000 }),
     });
   }

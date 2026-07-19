@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -42,7 +42,10 @@ export interface CityFormDialogData {
         <mat-form-field appearance="outline">
           <mat-label>Subdomain</mat-label>
           <input matInput formControlName="subdomain" />
-          <mat-hint>{{ form.getRawValue().subdomain || 'subdomain' }}.{{ baseDomain }} — lowercase letters, numbers, and hyphens only</mat-hint>
+          <mat-hint
+            >{{ form.getRawValue().subdomain || 'subdomain' }}.{{ baseDomain }} — lowercase letters,
+            numbers, and hyphens only</mat-hint
+          >
           <mat-error>Lowercase letters, numbers, and hyphens only</mat-error>
         </mat-form-field>
 
@@ -52,23 +55,36 @@ export interface CityFormDialogData {
 
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Cancel</button>
-      <button mat-raised-button color="primary" (click)="save()" [disabled]="form.invalid || saving">
-        @if (saving) { <mat-spinner diameter="20" /> }
-        @else { Save }
+      <button
+        mat-raised-button
+        color="primary"
+        (click)="save()"
+        [disabled]="form.invalid || saving"
+      >
+        @if (saving) {
+          <mat-spinner diameter="20" />
+        } @else {
+          Save
+        }
       </button>
     </mat-dialog-actions>
   `,
-  styles: [`
-    .city-form {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      width: 100%;
-      min-width: 320px;
-      padding-top: 8px;
-    }
-    mat-form-field { width: 100%; }
-  `],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .city-form {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+        min-width: 320px;
+        padding-top: 8px;
+      }
+      mat-form-field {
+        width: 100%;
+      }
+    `,
+  ],
 })
 export class CityFormDialogComponent {
   readonly data = inject<CityFormDialogData>(MAT_DIALOG_DATA);
@@ -106,7 +122,9 @@ export class CityFormDialogComponent {
       error: (err: HttpErrorResponse) => {
         this.saving = false;
         const msg = err?.error?.message ?? 'Save failed';
-        this.snackBar.open(typeof msg === 'string' ? msg : JSON.stringify(msg), 'OK', { duration: 5000 });
+        this.snackBar.open(typeof msg === 'string' ? msg : JSON.stringify(msg), 'OK', {
+          duration: 5000,
+        });
       },
     });
   }

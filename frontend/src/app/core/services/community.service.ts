@@ -7,6 +7,17 @@ export interface PointSummary {
   byType: Partial<Record<string, number>>;
 }
 
+export interface PointLedgerEntry {
+  date: string;
+  achievement: string;
+  points: number;
+}
+
+export interface PointLedger {
+  entries: PointLedgerEntry[];
+  total: number;
+}
+
 export interface Achievement {
   id: number;
   key: string;
@@ -122,6 +133,10 @@ export class CommunityService {
 
   getMemberPoints(id: number): Observable<PointSummary> {
     return this.http.get<PointSummary>(`/api/v1/members/${id}/points`);
+  }
+
+  getPointsHistory(id: number): Observable<PointLedger> {
+    return this.http.get<PointLedger>(`/api/v1/members/${id}/points/ledger`);
   }
 
   getMemberAchievements(id: number): Observable<Achievement[]> {

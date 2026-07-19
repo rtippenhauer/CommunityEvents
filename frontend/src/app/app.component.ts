@@ -1,4 +1,4 @@
-import { Component, inject, computed, effect } from '@angular/core';
+import { Component, inject, computed, effect, ChangeDetectionStrategy } from '@angular/core';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd } from '@angular/router';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatSidenavModule } from '@angular/material/sidenav';
@@ -41,6 +41,7 @@ import { SplashComponent, SplashDialogData } from './shared/components/splash/sp
     IosInstallBannerComponent,
   ],
   templateUrl: './app.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.component.scss',
 })
 export class AppComponent {
@@ -90,7 +91,9 @@ export class AppComponent {
 
   readonly isUpdatesMenuActive = computed(() => {
     const url = this.currentUrl();
-    return url.startsWith('/announcements') || url.startsWith('/feedback') || url.startsWith('/updates');
+    return (
+      url.startsWith('/announcements') || url.startsWith('/feedback') || url.startsWith('/updates')
+    );
   });
 
   readonly isSecurityMenuActive = computed(() => {
@@ -149,9 +152,7 @@ export class AppComponent {
     () => this.authService.currentUser()?.profilePhotoPath ?? null,
   );
 
-  readonly isAdmin = computed<boolean>(
-    () => this.authService.currentUser()?.role === 'admin',
-  );
+  readonly isAdmin = computed<boolean>(() => this.authService.currentUser()?.role === 'admin');
 
   readonly isModerator = computed<boolean>(
     () => this.authService.currentUser()?.role === 'moderator',
@@ -235,11 +236,11 @@ export class AppComponent {
 
     const swUpdate = inject(SwUpdate);
     if (swUpdate.isEnabled) {
-      swUpdate.versionUpdates.pipe(
-        filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'),
-      ).subscribe(() => {
-        swUpdate.activateUpdate().then(() => document.location.reload());
-      });
+      swUpdate.versionUpdates
+        .pipe(filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'))
+        .subscribe(() => {
+          swUpdate.activateUpdate().then(() => document.location.reload());
+        });
       swUpdate.checkForUpdate();
     }
   }
@@ -251,5 +252,4 @@ export class AppComponent {
   logout(): void {
     this.authService.logout();
   }
-
 }

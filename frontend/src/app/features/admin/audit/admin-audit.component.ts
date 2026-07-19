@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { DatePipe, JsonPipe } from '@angular/common';
@@ -30,23 +30,23 @@ interface AuditResponse {
 }
 
 const AUDIT_ACTIONS = [
-  { value: 'user.login',                     label: 'Login' },
-  { value: 'user.login_failed',              label: 'Failed Login' },
-  { value: 'user.logout',                    label: 'Logout' },
-  { value: 'user.register',                  label: 'Register' },
-  { value: 'auth.rate_limited',              label: 'Rate Limited' },
-  { value: 'user.ban',                       label: 'Ban' },
-  { value: 'user.unban',                     label: 'Unban' },
-  { value: 'user.force_ban',                 label: 'Force Ban' },
-  { value: 'user.role_change',               label: 'Role Change' },
-  { value: 'user.admin_delete',              label: 'Admin Delete' },
-  { value: 'user.link_facebook',             label: 'Link Facebook' },
-  { value: 'account_deleted',                label: 'Self-Deleted' },
+  { value: 'user.login', label: 'Login' },
+  { value: 'user.login_failed', label: 'Failed Login' },
+  { value: 'user.logout', label: 'Logout' },
+  { value: 'user.register', label: 'Register' },
+  { value: 'auth.rate_limited', label: 'Rate Limited' },
+  { value: 'user.ban', label: 'Ban' },
+  { value: 'user.unban', label: 'Unban' },
+  { value: 'user.force_ban', label: 'Force Ban' },
+  { value: 'user.role_change', label: 'Role Change' },
+  { value: 'user.admin_delete', label: 'Admin Delete' },
+  { value: 'user.link_facebook', label: 'Link Facebook' },
+  { value: 'account_deleted', label: 'Self-Deleted' },
   { value: 'account_deleted_by_meta_callback', label: 'Meta Deletion Callback' },
-  { value: 'account_hard_deleted',           label: 'Hard Deleted' },
+  { value: 'account_hard_deleted', label: 'Hard Deleted' },
   { value: 'facebook_disconnected_by_meta_callback', label: 'Facebook Disconnected (Meta)' },
-  { value: 'admin.suppress_email',           label: 'Suppress Email' },
-  { value: 'admin.lift_suppression',         label: 'Lift Suppression' },
+  { value: 'admin.suppress_email', label: 'Suppress Email' },
+  { value: 'admin.lift_suppression', label: 'Lift Suppression' },
 ];
 
 @Component({
@@ -131,11 +131,14 @@ const AUDIT_ACTIONS = [
             <tbody>
               @for (entry of entries(); track entry.id) {
                 <tr>
-                  <td class="td-time">{{ entry.createdAt | date:'MM/dd HH:mm:ss' }}</td>
+                  <td class="td-time">{{ entry.createdAt | date: 'MM/dd HH:mm:ss' }}</td>
                   <td class="td-user">
                     @if (entry.userId) {
-                      <a [routerLink]="['/members', entry.userId]" class="user-link"
-                         [appMemberHover]="entry.userId">
+                      <a
+                        [routerLink]="['/members', entry.userId]"
+                        class="user-link"
+                        [appMemberHover]="entry.userId"
+                      >
                         {{ entry.userName ?? '—' }}
                       </a>
                       <span class="user-id">#{{ entry.userId }}</span>
@@ -143,7 +146,11 @@ const AUDIT_ACTIONS = [
                       <span class="anon">—</span>
                     }
                   </td>
-                  <td><mat-chip [class]="actionClass(entry.action)">{{ actionLabel(entry.action) }}</mat-chip></td>
+                  <td>
+                    <mat-chip [class]="actionClass(entry.action)">{{
+                      actionLabel(entry.action)
+                    }}</mat-chip>
+                  </td>
                   <td class="td-entity">
                     @if (entry.entityType) {
                       <span class="entity-type">{{ entry.entityType }}</span>
@@ -164,7 +171,9 @@ const AUDIT_ACTIONS = [
                   <td class="td-ip">{{ entry.ipAddress ?? '—' }}</td>
                 </tr>
               } @empty {
-                <tr><td colspan="6" class="empty">No audit entries match your filters.</td></tr>
+                <tr>
+                  <td colspan="6" class="empty">No audit entries match your filters.</td>
+                </tr>
               }
             </tbody>
           </table>
@@ -175,96 +184,177 @@ const AUDIT_ACTIONS = [
             <mat-icon>chevron_left</mat-icon>
           </button>
           <span>{{ page() }} / {{ totalPages() }}</span>
-          <button mat-stroked-button [disabled]="page() >= totalPages()" (click)="goToPage(page() + 1)">
+          <button
+            mat-stroked-button
+            [disabled]="page() >= totalPages()"
+            (click)="goToPage(page() + 1)"
+          >
             <mat-icon>chevron_right</mat-icon>
           </button>
         </div>
       }
     </div>
   `,
-  styles: [`
-    .audit-container { max-width: 1400px; margin: 0 auto; padding: 16px; }
-    h2 { margin: 0 0 16px; }
-    .filters {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-    .filter-action { width: 200px; }
-    .filter-user  { width: 220px; }
-    .filter-id    { width: 110px; }
-    .filter-date  { width: 150px; }
-    .table-meta {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.85rem;
-      color: #666;
-      margin-bottom: 8px;
-    }
-    .loading { display: flex; justify-content: center; padding: 48px; }
-    .table-wrapper { overflow-x: auto; }
-    .audit-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.82rem;
-      th {
-        text-align: left;
-        padding: 8px 10px;
-        background: #f5f5f5;
-        border-bottom: 2px solid #e0e0e0;
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .audit-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 16px;
+      }
+      h2 {
+        margin: 0 0 16px;
+      }
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      .filter-action {
+        width: 200px;
+      }
+      .filter-user {
+        width: 220px;
+      }
+      .filter-id {
+        width: 110px;
+      }
+      .filter-date {
+        width: 150px;
+      }
+      .table-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        color: #666;
+        margin-bottom: 8px;
+      }
+      .loading {
+        display: flex;
+        justify-content: center;
+        padding: 48px;
+      }
+      .table-wrapper {
+        overflow-x: auto;
+      }
+      .audit-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+        th {
+          text-align: left;
+          padding: 8px 10px;
+          background: #f5f5f5;
+          border-bottom: 2px solid #e0e0e0;
+          white-space: nowrap;
+        }
+        td {
+          padding: 6px 10px;
+          border-bottom: 1px solid #f0f0f0;
+          vertical-align: top;
+        }
+        tr:hover td {
+          background: #fafafa;
+        }
+      }
+      .td-time {
+        white-space: nowrap;
+        color: #666;
+      }
+      .td-user {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .user-link {
+        color: #1e4d8c;
+        text-decoration: none;
+        font-weight: 500;
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+      .user-id {
+        font-size: 0.72rem;
+        color: #bbb;
+        font-family: monospace;
+      }
+      .anon {
+        color: #bbb;
+      }
+      .td-entity {
         white-space: nowrap;
       }
-      td {
-        padding: 6px 10px;
-        border-bottom: 1px solid #f0f0f0;
-        vertical-align: top;
+      .entity-type {
+        font-weight: 500;
       }
-      tr:hover td { background: #fafafa; }
-    }
-    .td-time { white-space: nowrap; color: #666; }
-    .td-user {
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
-    }
-    .user-link { color: #1E4D8C; text-decoration: none; font-weight: 500; &:hover { text-decoration: underline; } }
-    .user-id { font-size: 0.72rem; color: #bbb; font-family: monospace; }
-    .anon { color: #bbb; }
-    .td-entity { white-space: nowrap; }
-    .entity-type { font-weight: 500; }
-    .entity-id { color: #888; margin-left: 4px; }
-    .td-meta .meta-text {
-      display: block;
-      max-width: 280px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: #555;
-      font-family: monospace;
-      font-size: 0.78rem;
-    }
-    .td-ip { font-family: monospace; color: #888; white-space: nowrap; }
-    .empty { text-align: center; color: #aaa; padding: 32px; }
-    .pagination {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-      margin-top: 16px;
-    }
-    mat-chip { font-size: 0.7rem !important; min-height: 20px !important; }
-    .chip-login   { background: #e3f2fd !important; }
-    .chip-ban     { background: #ffccbc !important; }
-    .chip-unban   { background: #c8e6c9 !important; }
-    .chip-role    { background: #e8eaf6 !important; }
-    .chip-suppress { background: #fff9c4 !important; }
-    .chip-delete  { background: #ffcdd2 !important; }
-    .chip-warn    { background: #ffe0b2 !important; }
-    .chip-rate    { background: #f3e5f5 !important; }
-    .chip-default { background: #f5f5f5 !important; }
-  `],
+      .entity-id {
+        color: #888;
+        margin-left: 4px;
+      }
+      .td-meta .meta-text {
+        display: block;
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #555;
+        font-family: monospace;
+        font-size: 0.78rem;
+      }
+      .td-ip {
+        font-family: monospace;
+        color: #888;
+        white-space: nowrap;
+      }
+      .empty {
+        text-align: center;
+        color: #aaa;
+        padding: 32px;
+      }
+      .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        margin-top: 16px;
+      }
+      mat-chip {
+        font-size: 0.7rem !important;
+        min-height: 20px !important;
+      }
+      .chip-login {
+        background: #e3f2fd !important;
+      }
+      .chip-ban {
+        background: #ffccbc !important;
+      }
+      .chip-unban {
+        background: #c8e6c9 !important;
+      }
+      .chip-role {
+        background: #e8eaf6 !important;
+      }
+      .chip-suppress {
+        background: #fff9c4 !important;
+      }
+      .chip-delete {
+        background: #ffcdd2 !important;
+      }
+      .chip-warn {
+        background: #ffe0b2 !important;
+      }
+      .chip-rate {
+        background: #f3e5f5 !important;
+      }
+      .chip-default {
+        background: #f5f5f5 !important;
+      }
+    `,
+  ],
 })
 export class AdminAuditComponent implements OnInit {
   private readonly http = inject(HttpClient);
@@ -297,11 +387,11 @@ export class AdminAuditComponent implements OnInit {
     this.loading.set(true);
     const f = this.filterForm.value;
     let params = new HttpParams().set('page', this.page()).set('limit', this.pageSize);
-    if (f.action)     params = params.set('action', f.action);
+    if (f.action) params = params.set('action', f.action);
     if (f.userSearch) params = params.set('userSearch', f.userSearch);
-    if (f.userId)     params = params.set('userId', f.userId);
-    if (f.dateFrom)   params = params.set('dateFrom', f.dateFrom);
-    if (f.dateTo)     params = params.set('dateTo', f.dateTo);
+    if (f.userId) params = params.set('userId', f.userId);
+    if (f.dateFrom) params = params.set('dateFrom', f.dateFrom);
+    if (f.dateTo) params = params.set('dateTo', f.dateTo);
 
     this.http.get<AuditResponse>('/api/v1/admin/audit', { params }).subscribe({
       next: (res) => {
@@ -334,10 +424,16 @@ export class AdminAuditComponent implements OnInit {
   }
 
   actionClass(action: string): string {
-    if (action === 'auth.rate_limited')  return 'chip-rate';
-    if (action === 'user.login_failed')  return 'chip-warn';
-    if (action.includes('login') || action.includes('logout') || action.includes('register')) return 'chip-login';
-    if (action.includes('force_ban') || action.includes('admin_delete') || action.includes('hard_deleted')) return 'chip-delete';
+    if (action === 'auth.rate_limited') return 'chip-rate';
+    if (action === 'user.login_failed') return 'chip-warn';
+    if (action.includes('login') || action.includes('logout') || action.includes('register'))
+      return 'chip-login';
+    if (
+      action.includes('force_ban') ||
+      action.includes('admin_delete') ||
+      action.includes('hard_deleted')
+    )
+      return 'chip-delete';
     if (action.includes('ban') && !action.includes('un')) return 'chip-ban';
     if (action.includes('unban')) return 'chip-unban';
     if (action.includes('role')) return 'chip-role';

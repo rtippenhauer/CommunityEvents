@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -8,7 +8,11 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { RestaurantsService, ImportResult, ImportDetail } from '../../../core/services/restaurants.service';
+import {
+  RestaurantsService,
+  ImportResult,
+  ImportDetail,
+} from '../../../core/services/restaurants.service';
 
 interface City {
   id: number;
@@ -34,7 +38,6 @@ type DialogStep = 'form' | 'importing' | 'done';
     <h2 mat-dialog-title>Import Restaurants from Facebook</h2>
 
     <mat-dialog-content class="import-content">
-
       @if (step() === 'form') {
         <p class="instructions">
           Export your Facebook Group's event data, then upload the events JSON file below.
@@ -137,7 +140,6 @@ type DialogStep = 'form' | 'importing' | 'done';
           </div>
         }
       }
-
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
@@ -157,169 +159,205 @@ type DialogStep = 'form' | 'importing' | 'done';
       }
     </mat-dialog-actions>
   `,
-  styles: [`
-    .import-content {
-      min-width: min(90vw, 540px);
-      padding-top: 4px;
-    }
-
-    .instructions {
-      margin: 0 0 12px;
-      color: #555;
-      font-size: 0.9rem;
-      line-height: 1.5;
-    }
-
-    .steps {
-      margin: 0 0 20px;
-      padding-left: 20px;
-      font-size: 0.875rem;
-      color: #444;
-      line-height: 1.8;
-    }
-
-    .city-select {
-      width: 100%;
-      margin-bottom: 16px;
-    }
-
-    /* Drop zone */
-    .drop-zone {
-      border: 2px dashed #ccc;
-      border-radius: 12px;
-      padding: 32px 24px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-      background: var(--db-cream);
-
-      &:hover, &.drag-over {
-        border-color: var(--db-primary);
-        background: var(--db-cream-dark);
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [
+    `
+      .import-content {
+        min-width: min(90vw, 540px);
+        padding-top: 4px;
       }
 
-      &.has-file {
-        border-color: #4caf50;
-        background: #f1f8f1;
-      }
-    }
-
-    .drop-icon {
-      font-size: 40px;
-      width: 40px;
-      height: 40px;
-      color: #aaa;
-      margin-bottom: 8px;
-
-      &.done {
-        color: #4caf50;
-      }
-    }
-
-    .drop-label {
-      margin: 0 0 4px;
-      font-weight: 500;
-      color: var(--db-brown-dark);
-      font-size: 0.95rem;
-      word-break: break-all;
-    }
-
-    .drop-hint {
-      margin: 0;
-      font-size: 0.8rem;
-      color: #999;
-    }
-
-    .error-msg {
-      margin: 12px 0 0;
-      color: #c62828;
-      font-size: 0.875rem;
-    }
-
-    /* Spinner */
-    .spinner-wrap {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 24px 0;
-      gap: 16px;
-
-      p {
-        margin: 0;
+      .instructions {
+        margin: 0 0 12px;
         color: #555;
-        text-align: center;
+        font-size: 0.9rem;
+        line-height: 1.5;
       }
 
-      .hint {
+      .steps {
+        margin: 0 0 20px;
+        padding-left: 20px;
+        font-size: 0.875rem;
+        color: #444;
+        line-height: 1.8;
+      }
+
+      .city-select {
+        width: 100%;
+        margin-bottom: 16px;
+      }
+
+      /* Drop zone */
+      .drop-zone {
+        border: 2px dashed #ccc;
+        border-radius: 12px;
+        padding: 32px 24px;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          border-color 0.2s,
+          background 0.2s;
+        background: var(--db-cream);
+
+        &:hover,
+        &.drag-over {
+          border-color: var(--db-primary);
+          background: var(--db-cream-dark);
+        }
+
+        &.has-file {
+          border-color: #4caf50;
+          background: #f1f8f1;
+        }
+      }
+
+      .drop-icon {
+        font-size: 40px;
+        width: 40px;
+        height: 40px;
+        color: #aaa;
+        margin-bottom: 8px;
+
+        &.done {
+          color: #4caf50;
+        }
+      }
+
+      .drop-label {
+        margin: 0 0 4px;
+        font-weight: 500;
+        color: var(--db-brown-dark);
+        font-size: 0.95rem;
+        word-break: break-all;
+      }
+
+      .drop-hint {
+        margin: 0;
         font-size: 0.8rem;
         color: #999;
       }
-    }
 
-    /* Summary chips */
-    .summary {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-
-    .chip {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-weight: 500;
-      font-size: 0.9rem;
-
-      &.inserted { background: #e8f5e9; color: #2e7d32; mat-icon { color: #2e7d32; } }
-      &.skipped  { background: #f5f5f5; color: #616161; mat-icon { color: #9e9e9e; } }
-      &.error    { background: #ffebee; color: #c62828; mat-icon { color: #c62828; } }
-    }
-
-    /* Detail list */
-    .detail-list {
-      max-height: 300px;
-      overflow-y: auto;
-      border: 1px solid #eee;
-      border-radius: 8px;
-      padding: 4px 0;
-    }
-
-    .detail-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
-      font-size: 0.875rem;
-
-      &:not(:last-child) {
-        border-bottom: 1px solid #f5f5f5;
+      .error-msg {
+        margin: 12px 0 0;
+        color: #c62828;
+        font-size: 0.875rem;
       }
 
-      &.inserted { .row-icon { color: #4caf50; } }
-      &.skipped  { .row-icon { color: #9e9e9e; } }
-      &.error    { .row-icon { color: #c62828; } }
-    }
+      /* Spinner */
+      .spinner-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 0;
+        gap: 16px;
 
-    .row-icon {
-      font-size: 16px;
-      width: 16px;
-      height: 16px;
-      flex-shrink: 0;
-    }
+        p {
+          margin: 0;
+          color: #555;
+          text-align: center;
+        }
 
-    .row-name {
-      font-weight: 500;
-      color: var(--db-brown-dark);
-    }
+        .hint {
+          font-size: 0.8rem;
+          color: #999;
+        }
+      }
 
-    .row-reason {
-      color: #888;
-      font-size: 0.8rem;
-    }
-  `],
+      /* Summary chips */
+      .summary {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+
+      .chip {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-weight: 500;
+        font-size: 0.9rem;
+
+        &.inserted {
+          background: #e8f5e9;
+          color: #2e7d32;
+          mat-icon {
+            color: #2e7d32;
+          }
+        }
+        &.skipped {
+          background: #f5f5f5;
+          color: #616161;
+          mat-icon {
+            color: #9e9e9e;
+          }
+        }
+        &.error {
+          background: #ffebee;
+          color: #c62828;
+          mat-icon {
+            color: #c62828;
+          }
+        }
+      }
+
+      /* Detail list */
+      .detail-list {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 4px 0;
+      }
+
+      .detail-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        font-size: 0.875rem;
+
+        &:not(:last-child) {
+          border-bottom: 1px solid #f5f5f5;
+        }
+
+        &.inserted {
+          .row-icon {
+            color: #4caf50;
+          }
+        }
+        &.skipped {
+          .row-icon {
+            color: #9e9e9e;
+          }
+        }
+        &.error {
+          .row-icon {
+            color: #c62828;
+          }
+        }
+      }
+
+      .row-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+
+      .row-name {
+        font-weight: 500;
+        color: var(--db-brown-dark);
+      }
+
+      .row-reason {
+        color: #888;
+        font-size: 0.8rem;
+      }
+    `,
+  ],
 })
 export class FacebookImportDialogComponent implements OnInit {
   private readonly dialogRef = inject(MatDialogRef<FacebookImportDialogComponent>);

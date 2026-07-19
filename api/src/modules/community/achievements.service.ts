@@ -437,8 +437,12 @@ export class AchievementsService {
       SET mp.points = a.points
       WHERE mp.point_type = 'achievement' AND mp.points <> a.points
     `);
+    // INSERT IGNORE: uq_member_points_user_type_ref (see
+    // 1752100000000-AddUniqueConstraintMemberPoints) is now the real
+    // backstop against duplicating a row here -- the NOT EXISTS below is
+    // just the fast path that avoids hitting it on every normal run.
     const insertResult = await this.dataSource.query(`
-      INSERT INTO member_points (user_id, point_type, reference_id, points, awarded_at)
+      INSERT IGNORE INTO member_points (user_id, point_type, reference_id, points, awarded_at)
       SELECT ma.member_id, 'achievement', ma.achievement_id, a.points, NOW()
       FROM member_achievements ma
       JOIN achievements a ON a.id = ma.achievement_id
