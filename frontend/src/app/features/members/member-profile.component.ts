@@ -22,6 +22,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
 import { CommunityService, Achievement, PointSummary } from '../../core/services/community.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
+import { PointsHistoryDialogComponent } from './points-history-dialog.component';
 
 interface MiniMember {
   id: number;
@@ -120,7 +121,14 @@ interface AchievementGroup {
         <!-- Profile card with paw badge -->
         <div class="card-wrap">
           @if ((points()?.total ?? 0) > 0 && !profile()?.isAdmin) {
-            <div class="paw-badge">
+            <div
+              class="paw-badge"
+              [class.paw-badge-clickable]="isSelf() || showElevated()"
+              [attr.role]="isSelf() || showElevated() ? 'button' : null"
+              [attr.tabindex]="isSelf() || showElevated() ? 0 : null"
+              (click)="openPointsHistory()"
+              (keydown.enter)="openPointsHistory()"
+            >
               <svg viewBox="0 0 56 54" xmlns="http://www.w3.org/2000/svg" class="paw-svg">
                 <circle cx="10" cy="20" r="7" fill="#8B5E3C" />
                 <circle cx="21" cy="13" r="7" fill="#8B5E3C" />
@@ -461,6 +469,9 @@ interface AchievementGroup {
         top: -12px;
         right: 12px;
         z-index: 2;
+      }
+      .paw-badge-clickable {
+        cursor: pointer;
       }
       .paw-svg {
         width: 46px;
@@ -950,6 +961,12 @@ export class MemberProfileComponent implements OnInit {
   showElevated(): boolean {
     const role = this.authService.currentUser()?.role;
     return role === 'admin' || role === 'moderator';
+  }
+
+  openPointsHistory(): void {
+    const p = this.profile();
+    if (!p || !(this.isSelf() || this.showElevated())) return;
+    this.dialog.open(PointsHistoryDialogComponent, { data: { memberId: p.id } });
   }
 
   showBanControls(): boolean {
