@@ -275,8 +275,9 @@ interface AchievementGroup {
                 </div>
               }
 
-              <!-- Role selector (admin only, not own profile, not other admins) -->
-              @if (isAdmin() && !isSelf() && profile()!.role !== 'admin') {
+              <!-- Role selector (admin only, not own profile, not other admins —
+                   except the automation account, which can be flipped back down) -->
+              @if (isAdmin() && !isSelf() && (profile()!.role !== 'admin' || profile()!.isAutomationAccount)) {
                 <div class="role-section">
                   <span class="role-section-label">Role</span>
                   <mat-select
