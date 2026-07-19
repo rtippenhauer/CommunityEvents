@@ -470,8 +470,8 @@ interface AchievementGroup {
       font-size: 0.72rem !important;
       min-height: 22px !important;
     }
-    .role-admin { --mdc-chip-label-text-color: #fff; background: #1E4D8C !important; }
-    .role-moderator { --mdc-chip-label-text-color: #fff; background: #C9933A !important; }
+    .role-admin { --mat-chip-label-text-color: #fff; background: #1E4D8C !important; }
+    .role-moderator { --mat-chip-label-text-color: #fff; background: #C9933A !important; }
     .chip-banned { background: #ffccbc !important; }
     .chip-non-validated { background: #f3e5f5 !important; color: #6a1b9a !important; }
     .self-invited-badge {

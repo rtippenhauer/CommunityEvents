@@ -62,7 +62,7 @@ import { AnnouncementsService, Announcement } from '../../core/services/announce
     .ann-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
     .ann-date { font-size: 0.75rem; font-weight: 600; color: var(--db-primary); text-transform: uppercase; letter-spacing: 0.05em; }
     .city-chip { font-size: 0.68rem !important; height: 20px !important; padding: 0 8px !important; }
-    .all-cities { --mdc-chip-label-text-color: #666; }
+    .all-cities { --mat-chip-label-text-color: #666; }
     .ann-title { margin: 0 0 8px; font-size: 1.05rem; font-weight: 600; color: var(--db-brown-dark); }
     .ann-author { display: flex; align-items: center; gap: 4px; font-size: 0.78rem; color: #888; }
     .author-icon { font-size: 1rem; width: 1rem; height: 1rem; }

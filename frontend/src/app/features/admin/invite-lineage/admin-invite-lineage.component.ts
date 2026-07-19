@@ -90,8 +90,8 @@ interface FlatRow {
     .joined-at { color: #aaa; font-size: 0.78rem; margin-left: auto; }
     .child-count { color: #C9933A; font-size: 0.78rem; font-weight: 600; }
     mat-chip { font-size: 0.7rem !important; min-height: 20px !important; }
-    .role-admin { --mdc-chip-label-text-color: #fff; background: #1E4D8C !important; }
-    .role-moderator { --mdc-chip-label-text-color: #fff; background: #C9933A !important; }
+    .role-admin { --mat-chip-label-text-color: #fff; background: #1E4D8C !important; }
+    .role-moderator { --mat-chip-label-text-color: #fff; background: #C9933A !important; }
     .chip-banned { background: #ffccbc !important; }
   `],
 })

@@ -123,8 +123,8 @@ import { CityService } from '../../../core/services/city.service';
     .ann-row-main { flex: 1; min-width: 0; }
     .ann-row-status { display: flex; gap: 6px; margin-bottom: 4px; }
     .status-chip { font-size: 0.68rem !important; height: 20px !important; }
-    .status-published { --mdc-chip-label-text-color: #2e7d32; --mdc-chip-container-color: #e8f5e9; }
-    .status-draft { --mdc-chip-label-text-color: #e65100; --mdc-chip-container-color: #fff3e0; }
+    .status-published { --mat-chip-label-text-color: #2e7d32; --mat-chip-container-color: #e8f5e9; }
+    .status-draft { --mat-chip-label-text-color: #e65100; --mat-chip-container-color: #fff3e0; }
     .city-chip { font-size: 0.68rem !important; height: 20px !important; }
     .ann-row-title { font-size: 0.95rem; font-weight: 600; color: var(--db-brown-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ann-row-meta { font-size: 0.72rem; color: #aaa; margin-top: 2px; }

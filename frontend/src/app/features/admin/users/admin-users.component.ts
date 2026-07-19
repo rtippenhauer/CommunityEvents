@@ -274,11 +274,11 @@ interface AdminUser {
     .inactive-warn { color: #f57c00; font-weight: 500; }
     .inactive-alert { color: #e53935; font-weight: 600; }
     mat-chip { font-size: 0.72rem !important; min-height: 20px !important; }
-    .role-admin { --mdc-chip-label-text-color: #fff; background: #1E4D8C !important; }
-    .role-moderator { --mdc-chip-label-text-color: #fff; background: #C9933A !important; }
+    .role-admin { --mat-chip-label-text-color: #fff; background: #1E4D8C !important; }
+    .role-moderator { --mat-chip-label-text-color: #fff; background: #C9933A !important; }
     .role-member { background: #e0e0e0 !important; }
-    .role-non_validated { background: #fff9c4 !important; --mdc-chip-label-text-color: #7a6200 !important; }
-    .role-invited { background: #e1e8f0 !important; --mdc-chip-label-text-color: #1E4D8C !important; }
+    .role-non_validated { background: #fff9c4 !important; --mat-chip-label-text-color: #7a6200 !important; }
+    .role-invited { background: #e1e8f0 !important; --mat-chip-label-text-color: #1E4D8C !important; }
     .status-active { background: #c8e6c9 !important; }
     .status-suspended { background: #ffccbc !important; }
     .status-invite_pending { background: #fff9c4 !important; }

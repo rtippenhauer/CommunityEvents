@@ -178,15 +178,15 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
     .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .card-time { font-size: 0.7rem; color: #aaa; margin-left: auto; }
     .type-chip, .status-chip { font-size: 0.67rem !important; height: 20px !important; }
-    .type-event_comment { --mdc-chip-container-color: #e8f5e9; --mdc-chip-label-text-color: #2e7d32; }
-    .type-event_comment_reply { --mdc-chip-container-color: #f1f8e9; --mdc-chip-label-text-color: #558b2f; }
-    .type-announcement_comment { --mdc-chip-container-color: #f3e5f5; --mdc-chip-label-text-color: #6a1b9a; }
-    .type-restaurant_rating { --mdc-chip-container-color: #fff8e1; --mdc-chip-label-text-color: #f57f17; }
-    .type-announcement { --mdc-chip-container-color: #e3f2fd; --mdc-chip-label-text-color: #1565c0; }
-    .type-announcement_comment { --mdc-chip-container-color: #f3e5f5; --mdc-chip-label-text-color: #6a1b9a; }
-    .status-pending { --mdc-chip-container-color: #fff3e0; --mdc-chip-label-text-color: #e65100; }
-    .status-reviewed { --mdc-chip-container-color: #fce4ec; --mdc-chip-label-text-color: #b71c1c; }
-    .status-dismissed { --mdc-chip-container-color: #f5f5f5; --mdc-chip-label-text-color: #757575; }
+    .type-event_comment { --mat-chip-container-color: #e8f5e9; --mat-chip-label-text-color: #2e7d32; }
+    .type-event_comment_reply { --mat-chip-container-color: #f1f8e9; --mat-chip-label-text-color: #558b2f; }
+    .type-announcement_comment { --mat-chip-container-color: #f3e5f5; --mat-chip-label-text-color: #6a1b9a; }
+    .type-restaurant_rating { --mat-chip-container-color: #fff8e1; --mat-chip-label-text-color: #f57f17; }
+    .type-announcement { --mat-chip-container-color: #e3f2fd; --mat-chip-label-text-color: #1565c0; }
+    .type-announcement_comment { --mat-chip-container-color: #f3e5f5; --mat-chip-label-text-color: #6a1b9a; }
+    .status-pending { --mat-chip-container-color: #fff3e0; --mat-chip-label-text-color: #e65100; }
+    .status-reviewed { --mat-chip-container-color: #fce4ec; --mat-chip-label-text-color: #b71c1c; }
+    .status-dismissed { --mat-chip-container-color: #f5f5f5; --mat-chip-label-text-color: #757575; }
     .card-preview { font-size: 0.875rem; color: #444; font-style: italic; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .card-reporter { font-size: 0.82rem; color: #555; margin-bottom: 8px; }
     .card-reason { color: #888; font-style: italic; }

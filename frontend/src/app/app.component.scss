@@ -44,13 +44,13 @@
   color: var(--db-brown-dark, #3D1C05);
 
   // Override MDC CSS custom properties directly
-  --mdc-list-list-item-label-text-color: var(--db-brown-dark, #3D1C05);
-  --mdc-list-list-item-leading-icon-color: var(--db-brown-dark, #3D1C05);
-  --mdc-list-list-item-hover-label-text-color: var(--db-brown-dark, #3D1C05);
-  --mdc-list-list-item-hover-leading-icon-color: var(--db-brown-dark, #3D1C05);
-  --mdc-list-list-item-selected-label-text-color: var(--db-brown-nav, #5C2D0A);
-  --mdc-list-list-item-selected-leading-icon-color: var(--db-brown-nav, #5C2D0A);
-  --mdc-list-list-item-focus-label-text-color: var(--db-brown-nav, #5C2D0A);
+  --mat-list-list-item-label-text-color: var(--db-brown-dark, #3D1C05);
+  --mat-list-list-item-leading-icon-color: var(--db-brown-dark, #3D1C05);
+  --mat-list-list-item-hover-label-text-color: var(--db-brown-dark, #3D1C05);
+  --mat-list-list-item-hover-leading-icon-color: var(--db-brown-dark, #3D1C05);
+  --mat-list-list-item-selected-label-text-color: var(--db-brown-nav, #5C2D0A);
+  --mat-list-list-item-selected-leading-icon-color: var(--db-brown-nav, #5C2D0A);
+  --mat-list-list-item-focus-label-text-color: var(--db-brown-nav, #5C2D0A);
   --mat-list-active-indicator-color: rgba(61, 28, 5, 0.08);
 
   .mat-mdc-list-item {
@@ -88,7 +88,7 @@
   align-items: stretch !important;
   border-top: 12px solid var(--db-brown-dark, #3D1C05) !important;
   border-bottom: 12px solid var(--db-brown-dark, #3D1C05) !important;
-  --mdc-icon-button-icon-color: var(--db-cream);
+  --mat-icon-button-icon-color: var(--db-cream);
 }
 
 .app-logo-link {
@@ -117,12 +117,12 @@
   border-radius: 10px;
   overflow: hidden;
   // Override icon button color for elements inside the cream band
-  --mdc-icon-button-icon-color: var(--db-brown-dark, #3D1C05);
+  --mat-icon-button-icon-color: var(--db-brown-dark, #3D1C05);
 
   @media (max-width: 959.98px) {
     background: transparent;
     border-radius: 0;
-    --mdc-icon-button-icon-color: var(--db-cream);
+    --mat-icon-button-icon-color: var(--db-cream);
   }
 }
 

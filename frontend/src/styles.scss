@@ -64,13 +64,13 @@ body {
 .mat-mdc-raised-button.mat-primary,
 .mat-mdc-fab.mat-primary,
 .mat-mdc-mini-fab.mat-primary {
-  --mdc-filled-button-container-color: var(--db-primary);
-  --mdc-filled-button-label-text-color: #fff;
+  --mat-button-filled-container-color: var(--db-primary);
+  --mat-button-filled-label-text-color: #fff;
 }
 
 .mat-mdc-outlined-button.mat-primary {
-  --mdc-outlined-button-label-text-color: var(--db-primary);
-  --mdc-outlined-button-outline-color: var(--db-primary);
+  --mat-button-outlined-label-text-color: var(--db-primary);
+  --mat-button-outlined-outline-color: var(--db-primary);
 }
 
 // Member hover card — CDK overlay pane must capture pointer events

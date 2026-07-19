@@ -329,8 +329,8 @@ interface Member {
       font-size: 0.7rem !important;
       min-height: 20px !important;
     }
-    .role-admin { --mdc-chip-label-text-color: #fff; background: #1E4D8C !important; }
-    .role-moderator { --mdc-chip-label-text-color: #fff; background: #C9933A !important; }
+    .role-admin { --mat-chip-label-text-color: #fff; background: #1E4D8C !important; }
+    .role-moderator { --mat-chip-label-text-color: #fff; background: #C9933A !important; }
     .chip-banned { background: #ffccbc !important; }
     .mystery-hint {
       color: #888;
