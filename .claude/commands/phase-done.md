@@ -1,6 +1,6 @@
 Phase $ARGUMENTS is complete. 
 
-0. Confirm the current branch is this phase's branch (`phase-$ARGUMENTS-*`), not `main`. If somehow on `main`, stop and ask Rob before committing anything — all phase work and its doc updates belong on the phase branch; `main` only changes at `/release` time.
+0. Confirm the current branch is this phase's branch (`phase-$ARGUMENTS-*`), not `main`. If somehow on `main`, stop and ask Rob before committing anything — all phase work and its doc updates belong on the phase branch; the merge into `main` happens later in this same command (step 7), not before it.
 
 1. Provide a customer-friendly release note summary of everything completed.
    Append it to `docs/NEXT_RELEASE.md` under a heading for this phase's area
@@ -38,15 +38,23 @@ Phase $ARGUMENTS is complete.
    docs/NEXT_RELEASE.md) with message: "docs: phase $ARGUMENTS complete"
 
 6. Tag the commit: `git tag -a phase-$ARGUMENTS -m "Phase $ARGUMENTS complete"`.
-   Local tag only — do not `git push` the commit or the tag to GitHub. Pushing
-   to GitHub and publishing a release only happen via `/release`.
 
-7. Build and push the stage image: `bash scripts/publish-stage.sh`. This
+7. **Merge the phase branch into `main`:**
+   - Push the branch: `git push -u origin <branch>`
+   - Push the tag: `git push origin phase-$ARGUMENTS`
+   - Open a PR into `main`: `gh pr create --title "<branch/phase description>" --body "<short summary of what's in it>"`
+   - Merge with a real merge commit — never squash or rebase, so the branch's
+     individual commits and the `phase-<N>` tag stay reachable from `main`'s
+     history: `gh pr merge --merge --delete-branch`
+   - `git checkout main && git pull origin main`, then delete the local
+     branch if it wasn't already removed: `git branch -d <branch>`
+
+8. Build and push the stage image: `bash scripts/publish-stage.sh`. This
    updates the `stage` tag on Docker Hub only — never touches
    `rtippenhauer/dinnerbears:latest` (prod), which is exclusively `/release`'s
    job.
 
-8. Report back a short summary: files updated, local commit + tag created
-   (not pushed), stage image rebuilt and pushed.
+9. Report back a short summary: files updated, commit + tag created, PR
+   merged into `main`, stage image rebuilt and pushed.
 
 When done, run /clear.

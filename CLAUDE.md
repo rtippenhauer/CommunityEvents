@@ -33,7 +33,7 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-No next phase has been chosen yet. Phase 27 is complete on branch `phase-27-angular-19-22-upgrade`, awaiting `/release` to merge into `main`. The Angular 19→22 major upgrade is done (all 3 npm-audit vulnerabilities that motivated it are closed); no other backlog items are currently scoped. The frontend has zero unit tests (`frontend/src/**/*.spec.ts` — none exist) — flagged repeatedly but not yet undertaken; would need its own scoped phase since there's no existing harness/pattern to build on.
+No next phase has been chosen yet. Phase 27 is fully merged into `main` and released as v1.4.4 (confirmed live on stage + prod 2026-07-19). The Angular 19→22 major upgrade is done (all 3 npm-audit vulnerabilities that motivated it are closed); no other backlog items are currently scoped. The frontend has zero unit tests (`frontend/src/**/*.spec.ts` — none exist) — flagged repeatedly but not yet undertaken; would need its own scoped phase since there's no existing harness/pattern to build on.
 
 Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18: `.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL updated — webhook events are confirmed flowing.
 
@@ -78,17 +78,20 @@ When asked to work on bugs, Claude Code should:
 Each phase gets its own branch off `main`, created via `/phase-start`. All
 work for that phase — commits, `/phase-done`'s doc updates — happens on the
 branch, never directly on `main`. `main` only changes when a phase's branch
-merges in, which happens as part of `/release` (via a GitHub PR, merged with
-a real merge commit — never squash, so the phase's local `phase-<N>` tag and
-full commit history stay reachable from `main`).
+merges in, which now happens as part of `/phase-done` itself (via a GitHub
+PR, merged with a real merge commit — never squash, so the phase's local
+`phase-<N>` tag and full commit history stay reachable from `main`). By the
+time `/release` runs, the phase branch is already merged and deleted.
 
 Branch naming: `phase-<number>-<kebab-case-slug>`, e.g.
 `phase-25-angular-19-22-upgrade`.
 
 Bug fixes and other ad hoc work that aren't tied to a phase still need a
 branch, not a direct commit to `main` — reuse the current phase's branch if
-one is in progress, otherwise create a short-lived `bugfix-<slug>` branch
-that merges in at the next `/release` alongside the phase branch.
+one is in progress, otherwise create a short-lived `bugfix-<slug>` branch.
+Since phase branches no longer stay open until `/release`, a bugfix branch
+merges into `main` on its own (same PR + real-merge-commit approach) once
+the fix is ready, rather than waiting to ride along with a phase merge.
 
 ## Versioning Workflow
 
@@ -110,8 +113,9 @@ When asked to cut a release:
 2. Recommend a semver bump: patch for bug-only, minor for any new features
 3. Draft release note copy for Rob to review, starting from `docs/NEXT_RELEASE.md`
 4. When Rob gives a version number, run `/release <version>`, which:
-   - Pushes the current phase branch and merges it into `main` via a GitHub
-     PR (real merge commit, never squash)
+   - Assumes `main` is already up to date — the phase branch merge happened
+     back at `/phase-done`, not here — but merges any leftover ad hoc
+     `bugfix-<slug>` branch into `main` first if one is still open
    - Creates the release as an **unpublished draft** via `POST
      /api/v1/admin/releases` against production (cookie-authenticated as
      admin — never calls the `/publish` endpoint)
