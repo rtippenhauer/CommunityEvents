@@ -18,6 +18,10 @@ module.exports = tseslint.config(
       '@angular-eslint/directive-selector': ['error', { type: 'attribute', prefix: 'app', style: 'camelCase' }],
       '@angular-eslint/component-selector': ['error', { type: 'element', prefix: 'app', style: 'kebab-case' }],
       '@typescript-eslint/no-explicit-any': 'warn',
+      // Angular 22's ng update migration set ChangeDetectionStrategy.Eager on every existing
+      // component to preserve pre-v22 behavior; converting them to OnPush is a separate,
+      // deliberate effort, not a byproduct of this version bump.
+      '@angular-eslint/prefer-on-push-component-change-detection': 'off',
     },
   },
   {
