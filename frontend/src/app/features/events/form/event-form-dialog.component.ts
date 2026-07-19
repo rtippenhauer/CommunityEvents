@@ -157,7 +157,7 @@ interface Restaurant { id: number; name: string; cityId: number; }
       display: flex;
       flex-direction: column;
       gap: 4px;
-      min-width: 480px;
+      width: min(480px, 100%);
       padding-top: 8px;
       mat-form-field { width: 100%; }
     }

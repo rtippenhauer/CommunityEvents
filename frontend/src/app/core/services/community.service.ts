@@ -70,6 +70,21 @@ export interface UnseenAchievement {
   earnedAt: string;
 }
 
+export interface WhatsNewRelease {
+  id: number;
+  version: string;
+  title: string;
+  body: string;
+  publishedAt: string;
+}
+
+export interface WhatsNewAnnouncement {
+  id: number;
+  title: string;
+  body: string;
+  publishedAt: string;
+}
+
 export interface AdminAchievement {
   id: number;
   key: string;
@@ -119,6 +134,20 @@ export class CommunityService {
 
   markAchievementSeen(memberAchievementId: number): Observable<{ ok: boolean }> {
     return this.http.patch<{ ok: boolean }>(`/api/v1/members/me/achievements/${memberAchievementId}/seen`, {});
+  }
+
+  getWhatsNew(): Observable<{ release: WhatsNewRelease | null; announcement: WhatsNewAnnouncement | null }> {
+    return this.http.get<{ release: WhatsNewRelease | null; announcement: WhatsNewAnnouncement | null }>(
+      '/api/v1/members/me/whats-new',
+    );
+  }
+
+  markReleaseSeen(releaseId: number): Observable<{ ok: boolean }> {
+    return this.http.patch<{ ok: boolean }>(`/api/v1/members/me/whats-new/release-seen/${releaseId}`, {});
+  }
+
+  markAnnouncementSeen(announcementId: number): Observable<{ ok: boolean }> {
+    return this.http.patch<{ ok: boolean }>(`/api/v1/members/me/whats-new/announcement-seen/${announcementId}`, {});
   }
 
   selectTitle(title: string | null): Observable<{ ok: boolean }> {

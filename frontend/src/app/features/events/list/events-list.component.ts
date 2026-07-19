@@ -205,6 +205,7 @@ export class EventsListComponent implements OnInit {
     const ref = this.dialog.open(EventFormDialogComponent, {
       data: {},
       width: '600px',
+      maxWidth: '95vw',
     });
     ref.afterClosed().subscribe((created: Event | undefined) => {
       if (created) this.load();

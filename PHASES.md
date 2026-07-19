@@ -1251,3 +1251,108 @@ zero test regressions. Sub-task B's duplicate-code report acted on with
 the same discipline, including the highest-risk cross-service ICS
 consolidation. Full 527-test e2e suite green throughout; frontend
 verified via production build + reachable-page smoke test.
+
+---
+
+## Phase 25 — Mobile UI Bug Fixes ✅ Complete
+
+Reported by Rob from live mobile use (iPhone screenshots, stage environment),
+2026-07-18. First phase developed on its own branch
+(`phase-25-mobile-ui-bug-fixes`) under the new branch-per-phase workflow —
+see CLAUDE.md "Branching Workflow".
+
+- **Restaurants list header overflow** — `.page-header`/`.header-actions` in
+  `restaurants-list.component.ts` have no `flex-wrap`, unlike the filters row
+  below them which does. On narrow viewports the button row (Archived /
+  Import / Enrich All / Add Restaurant, depending on role) overflows
+  horizontally instead of wrapping, pushing later buttons off-screen.
+- **Create Event dialog wider than viewport** — `EventFormDialogComponent`'s
+  `.event-form` has a hardcoded `min-width: 480px`, and all three call sites
+  (`events-list`, `event-detail`, `restaurant-detail`) open it with a fixed
+  `width: '600px'` and no `maxWidth` clamp — unlike
+  `RestaurantFormDialogComponent`, which already uses `maxWidth: '95vw'`.
+  Fields clip on both edges on mobile.
+- **Attendance "Add Walk-in" doesn't scroll into view** — the walk-in form
+  is a plain conditional block toggled by a signal, with no
+  `scrollIntoView()`/`ViewChild` wiring, so revealing it doesn't bring it
+  on-screen.
+- **Walk-in search results can be clipped** — the results list scrolls
+  within `mat-dialog-content`, but nothing keeps it visible above the
+  dialog's fixed `mat-dialog-actions` footer as the attendee list + walk-in
+  form + results grow taller than the dialog.
+- **Walk-in search doesn't exclude existing attendees** — backend
+  `EventsService.searchMembersForWalkin()` accepts `eventId` but never uses
+  it in the query; it only filters on `status = 'active'` and the name
+  match, so members already on the attendance/RSVP list still show up as
+  walk-in candidates.
+
+### Verification
+
+Verified against a fully disposable local stack rather than stage/prod: a
+throwaway MySQL container (migrations run, seeded with a fake city,
+restaurant, event, and RSVPs — including a "Bill DeMange/Brocker/Perkins"
+set mirroring Rob's real screenshots to test the exclusion fix
+specifically), a locally-patched API pointed at it, and `ng serve` proxying
+to that API. Authenticated via the seeded `automation@dinnerbears.internal`
+account (temporarily promoted to admin in the disposable DB only). All 5
+fixes confirmed via mobile-viewport (390×844) Playwright screenshots; no
+"Add"/save actions were taken on real data. Full e2e suite green (527/527
+— one `event-comments.e2e-spec` `beforeEach` timeout during the run was
+resource contention from the parallel local verification stack, confirmed
+by rerunning that spec alone clean). All scratch files (local `api/.env`,
+proxy config, disposable container) removed after verification.
+
+**Definition of done:** all 5 bugs fixed and verified on a mobile viewport,
+existing e2e suite still green. Not yet merged into `main` — Rob deferred
+`/release` to keep working; will merge via PR whenever `/release` runs.
+
+---
+
+## Phase 26 — Login Splash, Pending Invites in Admin, Horizontal Scroll Bug ✅ Complete
+
+Scoped 2026-07-18. Branched off `phase-25-mobile-ui-bug-fixes` (not `main`)
+since Phase 25 hadn't been released yet — see CLAUDE.md "Branching
+Workflow" and "Current Development Phase".
+
+- **Post-login splash screen ✅** — on login, show a splash surfacing what's
+  new since the member's last login. Confirmed spec (2026-07-18, see memory
+  `project-phase26-login-splash-spec`):
+  - Releases: latest unseen release only (max 1, never a backlog).
+  - Announcements: latest unseen announcement only (max 1, never a
+    backlog).
+  - Achievements: all unseen/newly-earned achievements since last login,
+    uncapped — reuses the existing achievement-splash reveal system from
+    Phase 20/21 (`member_achievements.seen_at`) rather than a new parallel
+    mechanism.
+  - Shows once per login; marked seen as soon as displayed (no explicit
+    dismiss click required for the seen state).
+  - Only surfaces items newer than the member's last login, so existing
+    members aren't flooded with all past history on ship day.
+  - Implemented by generalizing `AchievementSplashComponent`/`Service` into
+    `SplashComponent`/`SplashService`; new `users.last_seen_release_id`/
+    `last_seen_announcement_id` columns (migration backfills existing users
+    to today's latest of each); new `WhatsNewService` +
+    `members/me/whats-new` endpoints in `CommunityModule`. Verified via
+    migration up()/down() against a real disposable DB and a full
+    Playwright walkthrough (queue → dismiss → seen-state persists across
+    reload; confirmed two simultaneously-unseen releases only ever surface
+    the newer one).
+- **Pending invites missing from admin Users list ✅** — `AdminService.
+  getUsers()` now merges in unaccepted single-use "member" invites as
+  synthetic rows (`isPendingInvite: true`, negative id to avoid colliding
+  with real user ids), shown with a distinct "Pending Invite" chip in
+  `admin-users.component.ts`. Read-only for this pass — no revoke/resend
+  action wired up from this view yet (possible follow-up if Rob wants it).
+  Verified: 29/29 `admin-users.e2e-spec.ts` tests green in isolation.
+- **Horizontal scroll bug on mobile — resolved without a code change ✅** —
+  Rob confirmed on 2026-07-19 that scrolling left on a phone no longer
+  shifts the whole page and reveals white space; it self-resolved,
+  most likely as a side effect of Phase 25's restaurants-list header
+  `flex-wrap` fix (that row was the kind of always-present, viewport-width
+  element whose overflow could have been causing page-level horizontal
+  scroll site-wide). No dedicated fix needed; no screenshot was ultimately
+  required.
+
+**Definition of done:** all 3 items resolved and verified. Not yet merged
+into `main` — will merge via PR whenever `/release` runs (may ride
+together with Phase 25's unreleased fixes).

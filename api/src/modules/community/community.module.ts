@@ -9,9 +9,12 @@ import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 import { InviteEntity } from '../../database/entities/invite.entity';
 import { CustomIconEntity } from '../../database/entities/custom-icon.entity';
+import { ReleaseEntity } from '../../database/entities/release.entity';
+import { AnnouncementEntity } from '../../database/entities/announcement.entity';
 import { PointsService } from './points.service';
 import { AchievementsService } from './achievements.service';
 import { CustomIconsService } from './custom-icons.service';
+import { WhatsNewService } from './whats-new.service';
 import { CommunityController } from './community.controller';
 
 @Module({
@@ -26,10 +29,12 @@ import { CommunityController } from './community.controller';
       EventRsvpEntity,
       InviteEntity,
       CustomIconEntity,
+      ReleaseEntity,
+      AnnouncementEntity,
     ]),
   ],
-  providers: [PointsService, AchievementsService, CustomIconsService],
+  providers: [PointsService, AchievementsService, CustomIconsService, WhatsNewService],
   controllers: [CommunityController],
-  exports: [PointsService, AchievementsService, CustomIconsService],
+  exports: [PointsService, AchievementsService, CustomIconsService, WhatsNewService],
 })
 export class CommunityModule {}

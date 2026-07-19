@@ -16,6 +16,7 @@ import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guar
 import { PointsService } from './points.service';
 import { AchievementsService } from './achievements.service';
 import { CustomIconsService } from './custom-icons.service';
+import { WhatsNewService } from './whats-new.service';
 import { UserRole } from '../../database/entities/user.entity';
 import { SelectTitleDto } from './dto/select-title.dto';
 import { GrantAchievementDto } from './dto/grant-achievement.dto';
@@ -66,6 +67,7 @@ export class CommunityController {
     private readonly pointsService: PointsService,
     private readonly achievementsService: AchievementsService,
     private readonly customIconsService: CustomIconsService,
+    private readonly whatsNewService: WhatsNewService,
   ) {}
 
   // ── Leaderboard (validated members only — shows real names) ──────────────────
@@ -113,6 +115,28 @@ export class CommunityController {
   @UseGuards(JwtAuthGuard)
   async markAchievementSeen(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
     await this.achievementsService.markAchievementSeen(req.user.id, id);
+    return { ok: true };
+  }
+
+  // ── What's new (latest unseen release/announcement) ──────────────────────────
+
+  @Get('members/me/whats-new')
+  @UseGuards(JwtAuthGuard)
+  async getWhatsNew(@Request() req: any) {
+    return this.whatsNewService.getUnseen(req.user.id);
+  }
+
+  @Patch('members/me/whats-new/release-seen/:id')
+  @UseGuards(JwtAuthGuard)
+  async markReleaseSeen(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    await this.whatsNewService.markReleaseSeen(req.user.id, id);
+    return { ok: true };
+  }
+
+  @Patch('members/me/whats-new/announcement-seen/:id')
+  @UseGuards(JwtAuthGuard)
+  async markAnnouncementSeen(@Request() req: any, @Param('id', ParseIntPipe) id: number) {
+    await this.whatsNewService.markAnnouncementSeen(req.user.id, id);
     return { ok: true };
   }
 

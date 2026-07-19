@@ -98,3 +98,16 @@ body {
 .nav-menu mat-divider {
   border-color: rgba(61, 28, 5, 0.15) !important;
 }
+
+// Splash dialog (achievements/releases/announcements) — the component
+// draws its own card (and, for the patriotic achievement, a full-bleed
+// fireworks background), so Material's own default dialog surface
+// (background/padding/shadow/radius) must be stripped or it shows through
+// as a second box behind the custom one — most visible with sparse content
+// like a short release note.
+.splash-panel .mat-mdc-dialog-surface {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}

@@ -824,6 +824,7 @@ export class RestaurantDetailComponent implements OnInit {
         },
       },
       width: '600px',
+      maxWidth: '95vw',
     });
     ref.afterClosed().subscribe((created: DinnerEvent | undefined) => {
       if (created) void this.router.navigate(['/events', created.id]);

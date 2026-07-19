@@ -151,6 +151,12 @@ export class UserEntity {
   @Column({ name: 'selected_title', type: 'varchar', length: 100, nullable: true })
   selectedTitle: string | null;
 
+  @Column({ name: 'last_seen_release_id', type: 'int', unsigned: true, nullable: true })
+  lastSeenReleaseId: number | null;
+
+  @Column({ name: 'last_seen_announcement_id', type: 'int', unsigned: true, nullable: true })
+  lastSeenAnnouncementId: number | null;
+
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt: Date | null;
 

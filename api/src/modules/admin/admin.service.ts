@@ -1,9 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
 import { OAuthAccountEntity } from '../../database/entities/oauth-account.entity';
 import { AuditLogEntity } from '../../database/entities/audit-log.entity';
+import { InviteEntity, InviteType } from '../../database/entities/invite.entity';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import { SuppressionReason } from '../../database/entities/email-suppression.entity';
@@ -23,6 +24,8 @@ export interface AdminUserRow {
   lastLoginAt: Date | null;
   loginCount: number;
   oauthProviders: Array<{ provider: string; providerId: string; email: string | null }>;
+  isPendingInvite: boolean;
+  inviteExpiresAt: Date | null;
 }
 
 export interface AuditLogFilter {
@@ -57,6 +60,8 @@ export class AdminService {
     private readonly oauthRepo: Repository<OAuthAccountEntity>,
     @InjectRepository(AuditLogEntity)
     private readonly auditRepo: Repository<AuditLogEntity>,
+    @InjectRepository(InviteEntity)
+    private readonly inviteRepo: Repository<InviteEntity>,
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
   ) {}
@@ -82,7 +87,7 @@ export class AdminService {
       ])
       .where('u.deleted_at IS NULL')
       .orderBy('u.created_at', 'DESC')
-      .getRawMany<Omit<AdminUserRow, 'oauthProviders'>>();
+      .getRawMany<Omit<AdminUserRow, 'oauthProviders' | 'isPendingInvite' | 'inviteExpiresAt'>>();
 
     const oauthAccounts = await this.oauthRepo.find({
       select: ['userId', 'provider', 'providerId', 'email'],
@@ -95,7 +100,47 @@ export class AdminService {
       oauthByUser.set(acc.userId, list);
     }
 
-    return users.map((u) => ({ ...u, oauthProviders: oauthByUser.get(u.id) ?? [] }));
+    const userRows: AdminUserRow[] = users.map((u) => ({
+      ...u,
+      oauthProviders: oauthByUser.get(u.id) ?? [],
+      isPendingInvite: false,
+      inviteExpiresAt: null,
+    }));
+
+    const pendingInviteRows = await this.getPendingInviteRows();
+
+    return [...userRows, ...pendingInviteRows];
+  }
+
+  // Single-use, named-invitee "member" invites that haven't been accepted yet —
+  // shown alongside real users so admins don't have to cross-reference the
+  // separate Invites tab to see who's been invited but hasn't joined.
+  private async getPendingInviteRows(): Promise<AdminUserRow[]> {
+    const invites = await this.inviteRepo.find({
+      where: { type: InviteType.MEMBER, redeemedAt: IsNull(), isRevoked: false },
+      relations: ['creator'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return invites
+      .map((i) => ({
+        id: -i.id, // negative id keeps pending-invite rows out of real-user id space
+        fullName: i.boundToName ?? i.boundToEmail ?? 'Invited member',
+        email: i.boundToEmail ?? '',
+        role: 'invited',
+        status: i.expiresAt < new Date() ? 'invite_expired' : 'invite_pending',
+        emailStatus: 'n/a',
+        cityId: i.cityId ?? 0,
+        profilePhotoPath: null,
+        invitedById: i.createdBy,
+        invitedByName: i.creator?.fullName ?? null,
+        createdAt: i.createdAt,
+        lastLoginAt: null,
+        loginCount: 0,
+        oauthProviders: [],
+        isPendingInvite: true,
+        inviteExpiresAt: i.expiresAt,
+      }));
   }
 
   async getAuditLog(filter: AuditLogFilter): Promise<{ data: AuditLogRow[]; total: number }> {

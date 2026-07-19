@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-07-12_
+_Last updated: 2026-07-19_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -105,6 +105,12 @@ deleted_at                      DATETIME NULL
 hard_delete_at                  DATETIME NULL               -- deleted_at + 30 days
 -- Community (Phase 15)
 selected_title                  VARCHAR(100) NULL           -- active title chosen from earned achievements
+-- Login splash (Phase 26): pointer to the latest release/announcement this
+-- member has been shown — not a read-history table, since the splash only
+-- ever surfaces the single latest of each. Backfilled to the current latest
+-- of each at migration time so existing members aren't flooded on ship day.
+last_seen_release_id             INT UNSIGNED NULL REFERENCES releases(id) ON DELETE SET NULL
+last_seen_announcement_id        INT UNSIGNED NULL REFERENCES announcements(id) ON DELETE SET NULL
 -- Calendar integration (Phase 16 / 16c)
 calendar_token                  VARCHAR(36) NULL UNIQUE     -- iCal feed token; regenerable from Calendar Settings
 calendar_city_filter            ENUM('all','city') NOT NULL DEFAULT 'all'

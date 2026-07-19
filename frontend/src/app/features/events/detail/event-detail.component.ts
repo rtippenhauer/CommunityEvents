@@ -1941,6 +1941,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     const ref = this.dialog.open(EventFormDialogComponent, {
       data: { event: this.event() },
       width: '600px',
+      maxWidth: '95vw',
     });
     ref.afterClosed().subscribe((updated: Event | undefined) => {
       if (updated) {

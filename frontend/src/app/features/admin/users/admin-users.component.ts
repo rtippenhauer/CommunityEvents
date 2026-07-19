@@ -35,6 +35,8 @@ interface AdminUser {
   lastLoginAt: string | null;
   loginCount: number;
   oauthProviders: OAuthProvider[];
+  isPendingInvite: boolean;
+  inviteExpiresAt: string | null;
 }
 
 @Component({
@@ -90,7 +92,11 @@ interface AdminUser {
                   <th mat-header-cell *matHeaderCellDef>Name</th>
                   <td mat-cell *matCellDef="let u" (click)="$event.stopPropagation()">
                     <div class="name-cell">
-                      <a class="name-link" [routerLink]="['/members', u.id]">{{ u.fullName }}</a>
+                      @if (u.isPendingInvite) {
+                        <span class="name-link name-pending">{{ u.fullName }}</span>
+                      } @else {
+                        <a class="name-link" [routerLink]="['/members', u.id]">{{ u.fullName }}</a>
+                      }
                       <span class="email">{{ u.email }}</span>
                       @if (u.oauthProviders?.length) {
                         <div class="provider-badges">
@@ -177,7 +183,7 @@ interface AdminUser {
                         }
                       }
 
-                      @if (isAdmin()) {
+                      @if (isAdmin() && !u.isPendingInvite) {
                         <!-- Suppress / Lift suppression -->
                         @if (isEmailSuppressed(u.emailStatus)) {
                           <button mat-icon-button class="lift-btn" (click)="liftSuppression(u)"
@@ -217,7 +223,9 @@ interface AdminUser {
                 </ng-container>
 
                 <tr mat-header-row *matHeaderRowDef="columns"></tr>
-                <tr mat-row *matRowDef="let row; columns: columns;" class="user-row" (click)="viewProfile(row.id)"></tr>
+                <tr mat-row *matRowDef="let row; columns: columns;"
+                  [class.user-row]="!row.isPendingInvite"
+                  (click)="!row.isPendingInvite && viewProfile(row.id)"></tr>
               </table>
             </div>
           }
@@ -270,8 +278,12 @@ interface AdminUser {
     .role-moderator { --mdc-chip-label-text-color: #fff; background: #C9933A !important; }
     .role-member { background: #e0e0e0 !important; }
     .role-non_validated { background: #fff9c4 !important; --mdc-chip-label-text-color: #7a6200 !important; }
+    .role-invited { background: #e1e8f0 !important; --mdc-chip-label-text-color: #1E4D8C !important; }
     .status-active { background: #c8e6c9 !important; }
     .status-suspended { background: #ffccbc !important; }
+    .status-invite_pending { background: #fff9c4 !important; }
+    .status-invite_expired { background: #eeeeee !important; color: #888; }
+    .name-pending { font-weight: 500; color: var(--db-brown-dark); }
     .email-active { background: #c8e6c9 !important; }
     .email-pending { background: #fff9c4 !important; }
     .email-unsubscribed, .email-bounced, .email-complained { background: #ffccbc !important; }
