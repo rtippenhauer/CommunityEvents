@@ -6,7 +6,7 @@ Initial cities: Cincinnati and Dayton (cincinnati.dinnerbears.com, dayton.dinner
 Self-hosted on Unraid using Docker Compose. Invite-only membership.
 
 ## Full Stack
-- **Frontend:** Angular 19, standalone components (NO NgModules), Angular Material (MDC), SCSS
+- **Frontend:** Angular 22, standalone components (NO NgModules), Angular Material (MDC), SCSS
 - **Backend:** NestJS (Node.js, TypeScript), TypeORM, Passport.js
 - **Database:** MySQL 8.x
 - **Auth:** JWT sessions + Google OAuth + Facebook OAuth (Passport strategies)
@@ -33,12 +33,12 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-No next phase has been chosen yet. Phases 25 and 26 are both complete and stacked on branch `phase-26-splash-pending-invites-hscroll` (26 branched off 25), awaiting `/release` to merge into `main`. The only open backlog item is the Post-Launch Backlog's scoped-but-not-started Angular 19→22 major upgrade (needed to close 3 real npm-audit vulnerabilities found in Phase 23) — resolve with Rob before starting.
+No next phase has been chosen yet. Phase 27 is complete on branch `phase-27-angular-19-22-upgrade`, awaiting `/release` to merge into `main`. The Angular 19→22 major upgrade is done (all 3 npm-audit vulnerabilities that motivated it are closed); no other backlog items are currently scoped. The frontend has zero unit tests (`frontend/src/**/*.spec.ts` — none exist) — flagged repeatedly but not yet undertaken; would need its own scoped phase since there's no existing harness/pattern to build on.
 
 Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18: `.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL updated — webhook events are confirmed flowing.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

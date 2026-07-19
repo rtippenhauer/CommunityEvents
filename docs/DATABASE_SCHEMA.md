@@ -857,13 +857,22 @@ user_id         INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
 point_type      ENUM('attendance','coordinator','coordinator_new_restaurant',
                      'invite','rating','city_hopper','secret_dinner',
                      'achievement') NOT NULL
-reference_id    INT UNSIGNED NULL               -- event_id, rating_id, etc. for audit
+reference_id    INT UNSIGNED NOT NULL           -- event_id, restaurant_id, achievement_id, etc. for audit
 points          TINYINT NOT NULL DEFAULT 1
 awarded_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
 INDEX idx_user (user_id)
 INDEX idx_type (point_type)
+UNIQUE KEY uq_member_points_user_type_ref (user_id, point_type, reference_id)
 ```
+
+Phase 27: `reference_id` made `NOT NULL` and the unique key added, closing a
+duplication bug where one raw-SQL migration's `reference_id = NULL` backfill
+let `AchievementsService.adminRecalculatePoints()`'s duplicate-row check
+(keyed on `reference_id`) silently miss existing rows and insert a second
+one. Every real award path already always supplied a real `reference_id`,
+so this only formalizes what was already true everywhere except that one
+migration (also cleaned up, see Phase 27).
 
 ---
 
