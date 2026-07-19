@@ -111,7 +111,7 @@ function buildBurst(id: number): Burst {
             }
           }
           @case ('release') {
-            <div class="splash-icon"><mat-icon>celebration</mat-icon></div>
+            <div class="splash-icon"><mat-icon>rocket_launch</mat-icon></div>
             <div class="splash-label">What's New — v{{ data.item.release.version }}</div>
             <h2 class="splash-name">{{ data.item.release.title }}</h2>
             <div class="splash-body" [innerHTML]="safeHtml(data.item.release.body)"></div>
