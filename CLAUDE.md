@@ -33,7 +33,7 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-Phase 26 (Login Splash, Pending Invites in Admin, Horizontal Scroll Bug) — in progress on branch `phase-26-splash-pending-invites-hscroll`, started 2026-07-18 (branched off `phase-25-mobile-ui-bug-fixes`, not yet-released `main`, since Phase 25 hasn't gone through `/release`). Three items from Rob: (1) a splash screen shown after login surfacing the latest unseen release and/or latest unseen announcement since the member's last login (at most one of each, never a backlog of every unseen item), (2) the admin Users list should include invited users who haven't yet accepted their invite, (3) a horizontal-scroll bug on mobile — scrolling left shifts the whole page left and reveals white space on the right edge; Rob has a screenshot pending. See PHASES.md for details.
+Phase 26 (Login Splash, Pending Invites in Admin, Horizontal Scroll Bug) — all 3 items complete as of 2026-07-19 on branch `phase-26-splash-pending-invites-hscroll` (branched off `phase-25-mobile-ui-bug-fixes`, not yet-released `main`, since Phase 25 hasn't gone through `/release`). (1) Post-login splash for the latest unseen release/announcement (extends the existing achievement-splash system), (2) admin Users list now shows pending/unaccepted member invites, (3) the horizontal-scroll bug self-resolved — no code change needed, likely fixed as a side effect of Phase 25's restaurants-list header wrap fix. Not yet merged into `main` — pending `/release`. See PHASES.md for details.
 
 The Post-Launch Backlog's scoped-but-not-started Angular 19→22 major upgrade (needed to close 3 real npm-audit vulnerabilities found in Phase 23) is still open — resolve with Rob before starting.
 

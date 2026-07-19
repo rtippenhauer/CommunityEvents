@@ -1308,13 +1308,13 @@ existing e2e suite still green. Not yet merged into `main` — Rob deferred
 
 ---
 
-## Phase 26 — Login Splash, Pending Invites in Admin, Horizontal Scroll Bug 🚧 In Progress
+## Phase 26 — Login Splash, Pending Invites in Admin, Horizontal Scroll Bug ✅ Complete
 
 Scoped 2026-07-18. Branched off `phase-25-mobile-ui-bug-fixes` (not `main`)
 since Phase 25 hadn't been released yet — see CLAUDE.md "Branching
 Workflow" and "Current Development Phase".
 
-- **Post-login splash screen** — on login, show a splash surfacing what's
+- **Post-login splash screen ✅** — on login, show a splash surfacing what's
   new since the member's last login. Confirmed spec (2026-07-18, see memory
   `project-phase26-login-splash-spec`):
   - Releases: latest unseen release only (max 1, never a backlog).
@@ -1328,19 +1328,31 @@ Workflow" and "Current Development Phase".
     dismiss click required for the seen state).
   - Only surfaces items newer than the member's last login, so existing
     members aren't flooded with all past history on ship day.
-- **Pending invites missing from admin Users list** — invited users who
-  haven't yet accepted their invite don't show up in the admin Users
-  list/table today; they should, presumably with a distinct
-  pending/invited status so admins can see and manage outstanding invites
-  from the same place they manage members.
-- **Horizontal scroll bug on mobile** — scrolling left on a phone shifts
-  the entire page left and reveals white space on the right edge (i.e.
-  something is wider than the viewport, causing horizontal overflow at the
-  page level rather than a contained element). Rob has a screenshot
-  pending; needs the actual offending page/element identified before a fix
-  can be scoped precisely — this is a different bug shape than Phase 25's
-  per-component overflow issues, since it's moving the whole page.
+  - Implemented by generalizing `AchievementSplashComponent`/`Service` into
+    `SplashComponent`/`SplashService`; new `users.last_seen_release_id`/
+    `last_seen_announcement_id` columns (migration backfills existing users
+    to today's latest of each); new `WhatsNewService` +
+    `members/me/whats-new` endpoints in `CommunityModule`. Verified via
+    migration up()/down() against a real disposable DB and a full
+    Playwright walkthrough (queue → dismiss → seen-state persists across
+    reload; confirmed two simultaneously-unseen releases only ever surface
+    the newer one).
+- **Pending invites missing from admin Users list ✅** — `AdminService.
+  getUsers()` now merges in unaccepted single-use "member" invites as
+  synthetic rows (`isPendingInvite: true`, negative id to avoid colliding
+  with real user ids), shown with a distinct "Pending Invite" chip in
+  `admin-users.component.ts`. Read-only for this pass — no revoke/resend
+  action wired up from this view yet (possible follow-up if Rob wants it).
+  Verified: 29/29 `admin-users.e2e-spec.ts` tests green in isolation.
+- **Horizontal scroll bug on mobile — resolved without a code change ✅** —
+  Rob confirmed on 2026-07-19 that scrolling left on a phone no longer
+  shifts the whole page and reveals white space; it self-resolved,
+  most likely as a side effect of Phase 25's restaurants-list header
+  `flex-wrap` fix (that row was the kind of always-present, viewport-width
+  element whose overflow could have been causing page-level horizontal
+  scroll site-wide). No dedicated fix needed; no screenshot was ultimately
+  required.
 
-**Definition of done:** all 3 items implemented/fixed and verified,
-existing e2e suite still green, merged into `main` via PR whenever
-`/release` runs (may ride together with Phase 25's unreleased fixes).
+**Definition of done:** all 3 items resolved and verified. Not yet merged
+into `main` — will merge via PR whenever `/release` runs (may ride
+together with Phase 25's unreleased fixes).
