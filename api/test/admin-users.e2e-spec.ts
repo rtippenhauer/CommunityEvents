@@ -172,6 +172,36 @@ describe('Admin User Management (e2e)', () => {
         .expect(403);
     });
 
+    it('allows promoting the automation account to admin', async () => {
+      const automation = await seedUser(dataSource, city.id, {
+        role: UserRole.AUTOMATION,
+        email: 'automation@dinnerbears.internal',
+      });
+
+      await request(server)
+        .post(`/api/v1/admin/users/${automation.id}/role`)
+        .set('Cookie', adminCookie)
+        .send({ role: 'admin' })
+        .expect(200);
+    });
+
+    it('allows flipping the automation account back down from admin', async () => {
+      const automation = await seedUser(dataSource, city.id, {
+        role: UserRole.ADMIN,
+        email: 'automation@dinnerbears.internal',
+      });
+
+      await request(server)
+        .post(`/api/v1/admin/users/${automation.id}/role`)
+        .set('Cookie', adminCookie)
+        .send({ role: 'automation' })
+        .expect(200);
+
+      const res = await request(server).get('/api/v1/admin/users').set('Cookie', adminCookie).expect(200);
+      const updated = res.body.find((u: { id: number }) => u.id === automation.id);
+      expect(updated.role).toBe('automation');
+    });
+
     it('rejects changing your own role', async () => {
       const admin = await request(server).get('/api/v1/admin/users').set('Cookie', adminCookie).expect(200);
       const self = admin.body.find((u: { email: string }) => u.email === 'admin@example.test');
