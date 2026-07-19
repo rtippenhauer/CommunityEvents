@@ -435,7 +435,12 @@ interface AddForm extends EditForm {
       .page-header {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 12px;
+      }
+      .page-header > button,
+      .page-header > a {
+        flex-shrink: 0;
       }
       .page-title {
         font-size: 1.4rem;
