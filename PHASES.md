@@ -1392,3 +1392,62 @@ each following a green local verification pass.
 `npm audit` items closed, points audit trail shipped and its follow-on data
 bugs fixed. Not yet merged into `main` — will merge via PR at the next
 `/release`.
+
+## Phase 28 — Retroactive Event-Achievement Sync ✅ Complete
+
+Started 2026-07-20, scoped ad hoc mid-conversation: an admin investigation
+into a member's out-of-order-looking "Bear Points History" entries surfaced
+that neither toggling an event's secret-dinner flag nor creating/deleting
+its one-off "Special Dinner Achievement" ever touched points or badges for
+members already marked attended at that event — those only applied to
+future attendance. Branched as `phase-28-retroactive-event-achievements`.
+
+### Retroactive award/removal, scoped per event
+- `PointsService.resyncSecretDinnerForEvent(eventId, isSecret)`: flipping
+  an event's secret-dinner flag on walks that event's `attended = true`
+  RSVPs and awards `secret_dinner` points to anyone missing one (idempotent,
+  reuses the existing per-user dedupe check); flipping it off deletes every
+  `secret_dinner` point row tied to that event and re-checks each affected
+  member's achievement tier.
+- `AchievementsService.recheckSecretDinnerAchievements(userId)`: the
+  downward counterpart to the existing `checkSecretDinnerAchievements` —
+  revokes a tier's badge + points once a member's count drops below its
+  threshold, so a badge (e.g. "Secret Society") never outlives the count
+  it was earned from.
+- `AchievementsService.grantEventAchievementToAttendees(eventId)`: called
+  right after a Special Dinner Achievement is created, grants it to every
+  already-attended member instead of only whoever attends from then on.
+- `AchievementsService.deleteEventAchievement(eventId)` (net new — no
+  delete endpoint or UI button existed before this phase): removes the
+  achievement definition itself plus every member's badge and points for
+  it. `DELETE admin/events/:eventId/achievement` + a "Remove Achievement"
+  button added to the event's achievement admin dialog.
+- All of the above are scoped to a single event's attendee list (not a
+  global sweep), so cost stays flat regardless of how many events
+  accumulate over time — unlike the existing global
+  `adminRecalculatePoints()` ("Recalculate Points" in the admin UI), which
+  was deliberately left alone rather than overloaded with removal semantics
+  it was never designed for.
+- `EventsService.update()` now detects an actual `is_secret` change and
+  runs the resync inline, returning the result (`{ enabled, awarded }` or
+  `{ enabled, removed }`) on the response; the admin event-edit dialog and
+  the achievement dialog surface it via snackbar (e.g. "awarded 2
+  already-attended members").
+
+### Verification
+New `event-achievement-resync.e2e-spec.ts` (7 tests) covers all four
+flows: secret-dinner-on award, secret-dinner-off removal + tier revoke,
+achievement-create retroactive grant, achievement-delete clawback, plus
+role-guard and no-op-change cases. Full `api/` e2e suite (22 suites, 542
+tests) green against a throwaway MySQL container (one unrelated
+`feedback.e2e-spec.ts` timeout in the full run confirmed as a flake by an
+isolated re-run). Frontend `ng build` + `eslint` clean. No schema changes
+this phase — pure application logic on the existing `member_points` /
+`member_achievements` / `achievements` tables.
+
+**Definition of done:** merged into `main`, live on stage
+(`rtippenhauer/dinnerbears:stage`) — awaiting the next `/release` to reach
+prod. One-time manual cleanup still needed on the specific event that
+prompted this (toggle secret-dinner off→on→off, and delete+recreate its
+Special Dinner Achievement) to catch up its already-stale totals, now that
+the sync logic exists to do it correctly.
