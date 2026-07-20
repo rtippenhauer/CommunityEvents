@@ -602,6 +602,96 @@ describe('RSVP Lifecycle (e2e)', () => {
     });
   });
 
+  describe('GET /events/:id/members/search', () => {
+    it('excludes a member already RSVP\'d Going by default (walk-in search — they\'re already on the list)', async () => {
+      const event = await createPublishedEvent();
+      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+
+      const res = await request(server)
+        .get(`/api/v1/events/${event.id}/members/search`)
+        .query({ q: member.fullName })
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(res.body.some((m: { id: number }) => m.id === member.id)).toBe(false);
+    });
+
+    it('includes a member already RSVP\'d Going when excludeGoing=false (reservation-coordinator search — they often already are)', async () => {
+      const event = await createPublishedEvent();
+      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+
+      const res = await request(server)
+        .get(`/api/v1/events/${event.id}/members/search`)
+        .query({ q: member.fullName, excludeGoing: 'false' })
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(res.body.some((m: { id: number }) => m.id === member.id)).toBe(true);
+    });
+
+    it('rejects a member searching (mod/admin only)', async () => {
+      const event = await createPublishedEvent();
+      await request(server)
+        .get(`/api/v1/events/${event.id}/members/search`)
+        .query({ q: 'a' })
+        .set('Cookie', memberCookie)
+        .expect(403);
+    });
+
+    it('rejects unauthenticated requests', async () => {
+      const event = await createPublishedEvent();
+      await request(server).get(`/api/v1/events/${event.id}/members/search`).query({ q: 'a' }).expect(401);
+    });
+  });
+
+  describe('PATCH /events/:id/reservation', () => {
+    it('retroactively awards a coordinator point when the assignee already attended the event', async () => {
+      const event = await createPublishedEvent();
+      // Back-date the restaurant so awardCoordinator() gives the plain COORDINATOR
+      // credit rather than the COORDINATOR_NEW_RESTAURANT bonus (see the similar
+      // note on the "established restaurant" test above).
+      await dataSource.query('UPDATE restaurants SET created_at = ? WHERE id = ?', [
+        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        restaurant.id,
+      ]);
+      await dataSource.getRepository(EventRsvpEntity).save({
+        eventId: event.id,
+        userId: member.id,
+        status: RsvpStatus.GOING,
+        attended: true,
+      });
+
+      await request(server)
+        .patch(`/api/v1/events/${event.id}/reservation`)
+        .set('Cookie', adminCookie)
+        .send({ assigneeId: member.id })
+        .expect(200);
+
+      const coordinatorPoints = await dataSource
+        .getRepository(MemberPointEntity)
+        .findOne({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
+      expect(coordinatorPoints).toBeTruthy();
+    });
+
+    it('does not award a coordinator point when the assignee has not attended yet', async () => {
+      const event = await createPublishedEvent();
+      await dataSource.getRepository(EventRsvpEntity).save({
+        eventId: event.id,
+        userId: member.id,
+        status: RsvpStatus.GOING,
+      });
+
+      await request(server)
+        .patch(`/api/v1/events/${event.id}/reservation`)
+        .set('Cookie', adminCookie)
+        .send({ assigneeId: member.id })
+        .expect(200);
+
+      const coordinatorPoints = await dataSource
+        .getRepository(MemberPointEntity)
+        .findOne({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
+      expect(coordinatorPoints).toBeFalsy();
+    });
+  });
+
   describe('GET/PATCH /events/:id/attendance', () => {
     it('lists Going RSVPs and non-cancelled guest links', async () => {
       const event = await createPublishedEvent();
@@ -619,6 +709,21 @@ describe('RSVP Lifecycle (e2e)', () => {
       const res = await request(server).get(`/api/v1/events/${event.id}/attendance`).set('Cookie', adminCookie).expect(200);
       expect(res.body.some((r: { type: string }) => r.type === 'member')).toBe(true);
       expect(res.body.some((r: { type: string }) => r.type === 'guest')).toBe(true);
+    });
+
+    it('returns attended as a real boolean, not a raw tinyint 0/1 (the admin attendance dialog highlights by strict === true/false)', async () => {
+      const event = await createPublishedEvent();
+      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+
+      await request(server)
+        .patch(`/api/v1/events/${event.id}/attendance`)
+        .set('Cookie', adminCookie)
+        .send({ attendances: [{ userId: member.id, attended: true }] })
+        .expect(200);
+
+      const res = await request(server).get(`/api/v1/events/${event.id}/attendance`).set('Cookie', adminCookie).expect(200);
+      const entry = res.body.find((r: { userId: number }) => r.userId === member.id);
+      expect(entry.attended).toBe(true);
     });
 
     it('marks a Going RSVP attended and awards an attendance point', async () => {

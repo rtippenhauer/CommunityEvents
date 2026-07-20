@@ -2409,7 +2409,9 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
       .pipe(
         debounceTime(250),
         distinctUntilChanged(),
-        switchMap((q) => this.commentsService.searchMembers(id, q)),
+        // Unlike the walk-in search, don't exclude members already RSVP'd Going —
+        // the reservation coordinator is very often already attending their own event.
+        switchMap((q) => this.commentsService.searchMembers(id, q, false)),
       )
       .subscribe((results) => this.reservationMemberResults.set(results));
     this.communityService.getEventAchievement(id).subscribe({

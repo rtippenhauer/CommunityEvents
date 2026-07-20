@@ -177,6 +177,62 @@ describe('Invites (e2e)', () => {
     it('rejects unauthenticated requests', async () => {
       await request(server).post('/api/v1/invites').send({ type: 'member', boundToEmail: 'x@example.test' }).expect(401);
     });
+
+    it('normalizes boundToEmail to lowercase even when submitted mixed-case', async () => {
+      const res = await request(server)
+        .post('/api/v1/invites')
+        .set('Cookie', adminCookie)
+        .send({ type: 'member', boundToEmail: 'MixedCase@Example.test', boundToName: 'Mixed Case' })
+        .expect(201);
+      expect(res.body.boundToEmail).toBe('mixedcase@example.test');
+    });
+
+    it('lets a member register whose email case differs from the mixed-case invite it was sent to', async () => {
+      const created = await request(server)
+        .post('/api/v1/invites')
+        .set('Cookie', adminCookie)
+        .send({ type: 'member', boundToEmail: 'MixedCase@Example.test', boundToName: 'Mixed Case' })
+        .expect(201);
+
+      await request(server)
+        .post('/api/v1/auth/register')
+        .send({
+          inviteToken: created.body.token,
+          fullName: 'Mixed Case',
+          email: 'mixedcase@example.test',
+          password: 'MixedCasePassword123!',
+        })
+        .expect(201);
+    });
+
+    it('validates a pre-existing invite whose boundToEmail was stored mixed-case (pre-fix data) against a lowercase registration email', async () => {
+      // Simulates an invite row created before boundToEmail normalization existed —
+      // the defensive lowercase compare in validate() must still accept it rather
+      // than requiring a data migration to fix already-sent invites.
+      const inviteRepo = dataSource.getRepository(InviteEntity);
+      const invite = await inviteRepo.save(
+        inviteRepo.create({
+          token: `legacy-mixed-case-${Date.now()}`,
+          type: InviteType.MEMBER,
+          createdBy: admin.id,
+          boundToEmail: 'LegacyMixedCase@Example.test',
+          boundToName: 'Legacy Mixed Case',
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          maxUses: 1,
+          useCount: 0,
+        }),
+      );
+
+      await request(server)
+        .post('/api/v1/auth/register')
+        .send({
+          inviteToken: invite.token,
+          fullName: 'Legacy Mixed Case',
+          email: 'legacymixedcase@example.test',
+          password: 'LegacyMixedPassword123!',
+        })
+        .expect(201);
+    });
   });
 
   describe('GET /invites/mine', () => {

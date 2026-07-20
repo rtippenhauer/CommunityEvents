@@ -1232,7 +1232,11 @@ export class EventsService {
       type: 'member' as const,
       userId: r.userId,
       memberName: r.user?.fullName ?? 'Member',
-      attended: r.attended ?? null,
+      // `attended` is a plain tinyint column, not TypeORM's `boolean` type — MySQL
+      // hands back a raw 0/1 number here, not a real boolean. The attendance
+      // dialog highlights buttons with a strict `=== true`/`=== false` check, which
+      // a number never satisfies, so this must be coerced before it leaves the API.
+      attended: r.attended === null ? null : !!r.attended,
       isWalkin: r.isWalkin,
       fromOtherCity: r.fromOtherCity,
       linkUsed: false,
@@ -1245,7 +1249,7 @@ export class EventsService {
         guestLinkId: l.id,
         memberName: l.recipientName ?? l.recipientEmail ?? 'Guest',
         recipientEmail: l.recipientEmail,
-        attended: l.attended ?? null,
+        attended: l.attended === null ? null : !!l.attended,
         isWalkin: false,
         fromOtherCity: false,
         linkUsed: !!l.usedAt,
@@ -1340,13 +1344,7 @@ export class EventsService {
     });
   }
 
-  async searchMembersForWalkin(eventId: number, query: string): Promise<{ id: number; fullName: string }[]> {
-    const existingRsvps = await this.rsvpRepo.find({
-      where: { eventId, status: RsvpStatus.GOING },
-      select: ['userId'],
-    });
-    const excludeIds = existingRsvps.map((r) => r.userId);
-
+  async searchMembersForWalkin(eventId: number, query: string, excludeGoing = true): Promise<{ id: number; fullName: string }[]> {
     const qb = this.userRepo
       .createQueryBuilder('u')
       .select(['u.id', 'u.fullName'])
@@ -1354,8 +1352,15 @@ export class EventsService {
       .orderBy('u.full_name', 'ASC')
       .limit(20);
 
-    if (excludeIds.length > 0) {
-      qb.andWhere('u.id NOT IN (:...excludeIds)', { excludeIds });
+    if (excludeGoing) {
+      const existingRsvps = await this.rsvpRepo.find({
+        where: { eventId, status: RsvpStatus.GOING },
+        select: ['userId'],
+      });
+      const excludeIds = existingRsvps.map((r) => r.userId);
+      if (excludeIds.length > 0) {
+        qb.andWhere('u.id NOT IN (:...excludeIds)', { excludeIds });
+      }
     }
 
     if (query.trim()) {
@@ -1496,6 +1501,20 @@ export class EventsService {
     }
 
     await this.eventRepo.save(event);
+
+    // awardCoordinator() otherwise only ever fires inline, once, inside
+    // markAttendance() — someone assigned as coordinator *after* their
+    // attendance was already marked (e.g. once they've finished registering)
+    // would never get credit without this retroactive check.
+    if (dto.assigneeId) {
+      const assigneeRsvp = await this.rsvpRepo.findOne({
+        where: { eventId, userId: dto.assigneeId, attended: true },
+      });
+      if (assigneeRsvp) {
+        await this.pointsService.awardCoordinator(dto.assigneeId, eventId).catch(() => {});
+      }
+    }
+
     return this.findOne(eventId, callerUser?.role);
   }
 
