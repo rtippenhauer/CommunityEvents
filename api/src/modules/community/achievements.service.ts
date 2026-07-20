@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository, DataSource, IsNull } from 'typeorm';
@@ -6,6 +6,7 @@ import { AchievementEntity, ProgressType } from '../../database/entities/achieve
 import { MemberAchievementEntity } from '../../database/entities/member-achievement.entity';
 import { MemberPointEntity, PointType } from '../../database/entities/member-point.entity';
 import { UserEntity } from '../../database/entities/user.entity';
+import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
 
 // Independence Day week — the qualifying window for the Patriotic Bear achievement.
 // Starts a day earlier on stage so it can be tested without waiting for July 4.
@@ -44,6 +45,8 @@ export class AchievementsService {
     private readonly pointRepo: Repository<MemberPointEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(EventRsvpEntity)
+    private readonly rsvpRepo: Repository<EventRsvpEntity>,
     private readonly dataSource: DataSource,
     configService: ConfigService,
   ) {
@@ -168,6 +171,36 @@ export class AchievementsService {
     if (count >= 25)  await this.grant(userId, 'secret_dinner_25');
     if (count >= 50)  await this.grant(userId, 'secret_dinner_50');
     if (count >= 100) await this.grant(userId, 'secret_dinner_100');
+  }
+
+  private readonly secretDinnerTiers = [
+    { key: 'secret_dinner_1', threshold: 1 },
+    { key: 'secret_dinner_3', threshold: 3 },
+    { key: 'secret_dinner_5', threshold: 5 },
+    { key: 'secret_dinner_10', threshold: 10 },
+    { key: 'secret_dinner_25', threshold: 25 },
+    { key: 'secret_dinner_50', threshold: 50 },
+    { key: 'secret_dinner_100', threshold: 100 },
+  ];
+
+  private async revoke(userId: number, key: string): Promise<void> {
+    const achievement = await this.achievementRepo.findOne({ where: { key } });
+    if (!achievement) return;
+    await this.memberAchievementRepo.delete({ memberId: userId, achievementId: achievement.id });
+    await this.pointRepo.delete({ userId, pointType: PointType.ACHIEVEMENT, referenceId: achievement.id });
+  }
+
+  // Mirror image of checkSecretDinnerAchievements: called after an event's
+  // secret-dinner points are retracted (e.g. admin unmarks the event as
+  // secret), so a member's badge/points never outlive the count they were
+  // earned from.
+  async recheckSecretDinnerAchievements(userId: number): Promise<void> {
+    const count = await this.pointRepo.count({
+      where: { userId, pointType: PointType.SECRET_DINNER },
+    });
+    for (const tier of this.secretDinnerTiers) {
+      if (count < tier.threshold) await this.revoke(userId, tier.key);
+    }
   }
 
   async checkLoginAchievements(userId: number, qualifyingLoginCount: number): Promise<void> {
@@ -312,6 +345,44 @@ export class AchievementsService {
       isSecret: dto.isSecret ?? false,
     });
     return this.achievementRepo.save(achievement);
+  }
+
+  // Called right after a "Special Dinner Achievement" is created (or an
+  // existing one is un-deleted by creating a new one), so members who were
+  // already marked attended before the achievement existed still get it —
+  // scoped to this one event's attendees, not a global sweep.
+  async grantEventAchievementToAttendees(eventId: number): Promise<{ attendeesChecked: number }> {
+    const attendees = await this.rsvpRepo.find({
+      where: { eventId, attended: true },
+      select: ['userId'],
+    });
+    for (const { userId } of attendees) {
+      await this.checkEventAchievement(userId, eventId);
+    }
+    return { attendeesChecked: attendees.length };
+  }
+
+  // Removes a per-event "Special Dinner Achievement" entirely, including
+  // clawing back the badge and points from anyone who already earned it —
+  // there's no partial/soft-delete state for these, they're one-off and
+  // event-scoped so a full removal is always what "delete" means here.
+  async deleteEventAchievement(eventId: number): Promise<{ removedAchievements: number; removedPoints: number }> {
+    const achievement = await this.achievementRepo.findOne({
+      where: { eventId, progressType: ProgressType.EVENT },
+    });
+    if (!achievement) throw new NotFoundException('This event has no achievement to remove');
+
+    const removedPoints = await this.pointRepo.delete({
+      pointType: PointType.ACHIEVEMENT,
+      referenceId: achievement.id,
+    });
+    const removedAchievements = await this.memberAchievementRepo.delete({ achievementId: achievement.id });
+    await this.achievementRepo.delete(achievement.id);
+
+    return {
+      removedAchievements: removedAchievements.affected ?? 0,
+      removedPoints: removedPoints.affected ?? 0,
+    };
   }
 
   async updateEventAchievement(

@@ -20,7 +20,7 @@ import { UpdateEventDto } from './dto/update-event.dto';
 import { SetReservationDto } from './dto/set-reservation.dto';
 import { EmailService } from '../email/email.service';
 import { CalendarService } from '../calendar/calendar.service';
-import { PointsService } from '../community/points.service';
+import { PointsService, SecretDinnerResync } from '../community/points.service';
 import { AchievementsService } from '../community/achievements.service';
 import { ConfigService } from '@nestjs/config';
 import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
@@ -273,7 +273,7 @@ export class EventsService {
     return this.eventRepo.save(event);
   }
 
-  async update(id: number, dto: UpdateEventDto, callerRole?: UserRole): Promise<EventEntity> {
+  async update(id: number, dto: UpdateEventDto, callerRole?: UserRole): Promise<EventEntity & { secretDinnerResync?: SecretDinnerResync }> {
     const event = await this.findOne(id, callerRole);
 
     const isRestoring = event.status === EventStatus.CANCELLED && dto.status === EventStatus.DRAFT;
@@ -282,6 +282,7 @@ export class EventsService {
     }
 
     const wasPublished = event.status === EventStatus.PUBLISHED;
+    const wasSecret = event.isSecret;
 
     // Track meaningful changes for update-notification email
     const changedDate = dto.eventDate !== undefined && dto.eventDate !== event.eventDate;
@@ -340,7 +341,12 @@ export class EventsService {
       void this.sendPublishInvites(saved);
     }
 
-    return saved;
+    let secretDinnerResync: SecretDinnerResync | undefined;
+    if (dto.isSecret !== undefined && dto.isSecret !== wasSecret) {
+      secretDinnerResync = await this.pointsService.resyncSecretDinnerForEvent(event.id, dto.isSecret);
+    }
+
+    return { ...saved, secretDinnerResync };
   }
 
   private async sendCancellationEmails(event: EventEntity): Promise<void> {

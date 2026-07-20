@@ -13,8 +13,8 @@ import { IconPickerComponent } from '../../../shared/components/icon-picker/icon
 export interface AchievementAdminDialogData {
   eventId: number;
   achievement: EventAchievement | null;
-  /** Called whenever the achievement is created/updated/re-imaged, so the page's public badge can update live. */
-  onChange: (achievement: EventAchievement) => void;
+  /** Called whenever the achievement is created/updated/re-imaged/removed, so the page's public badge can update live. */
+  onChange: (achievement: EventAchievement | null) => void;
 }
 
 @Component({
@@ -121,6 +121,15 @@ export interface AchievementAdminDialogData {
                   [disabled]="imageUploading()"
                 />
               </label>
+              <button
+                mat-icon-button
+                color="warn"
+                [disabled]="removing()"
+                (click)="remove()"
+                matTooltip="Remove achievement (also removes it from anyone who already earned it)"
+              >
+                <mat-icon>delete</mat-icon>
+              </button>
             </div>
           </div>
         }
@@ -305,6 +314,7 @@ export class AchievementAdminDialogComponent {
   readonly formSecret = signal(false);
   readonly creating = signal(false);
   readonly saving = signal(false);
+  readonly removing = signal(false);
   readonly imageUploading = signal(false);
   readonly showCreateForm = signal(false);
   readonly editMode = signal(false);
@@ -326,13 +336,39 @@ export class AchievementAdminDialogComponent {
           this.data.onChange(ach);
           this.showCreateForm.set(false);
           this.creating.set(false);
-          this.snackBar.open('Achievement created!', 'OK', { duration: 3000 });
+          const retroMsg = ach.attendeesChecked ? ` — granted to ${ach.attendeesChecked} already-attended member${ach.attendeesChecked === 1 ? '' : 's'}` : '';
+          this.snackBar.open(`Achievement created!${retroMsg}`, 'OK', { duration: 4000 });
         },
         error: () => {
           this.creating.set(false);
           this.snackBar.open('Failed to create achievement', 'OK', { duration: 3000 });
         },
       });
+  }
+
+  remove(): void {
+    const a = this.achievement();
+    if (!a) return;
+    if (!window.confirm(`Remove "${a.name}"? This also removes it (and its points) from anyone who already earned it.`)) {
+      return;
+    }
+    this.removing.set(true);
+    this.communityService.adminDeleteEventAchievement(this.data.eventId).subscribe({
+      next: ({ removedAchievements }) => {
+        this.achievement.set(null);
+        this.data.onChange(null);
+        this.removing.set(false);
+        this.snackBar.open(
+          `Achievement removed${removedAchievements ? ` — clawed back from ${removedAchievements} member${removedAchievements === 1 ? '' : 's'}` : ''}`,
+          'OK',
+          { duration: 4000 },
+        );
+      },
+      error: () => {
+        this.removing.set(false);
+        this.snackBar.open('Failed to remove achievement', 'OK', { duration: 3000 });
+      },
+    });
   }
 
   startEdit(): void {

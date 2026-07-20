@@ -249,7 +249,15 @@ export class CommunityController {
       icon: body.icon,
       isSecret: body.isSecret,
     });
-    return ach;
+    const { attendeesChecked } = await this.achievementsService.grantEventAchievementToAttendees(eventId);
+    return { ...ach, attendeesChecked };
+  }
+
+  @Delete('admin/events/:eventId/achievement')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async deleteEventAchievement(@Param('eventId', ParseIntPipe) eventId: number) {
+    return this.achievementsService.deleteEventAchievement(eventId);
   }
 
   @Get('admin/achievements')

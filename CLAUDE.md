@@ -33,12 +33,12 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-No next phase has been chosen yet. Phase 27 is fully merged into `main` and released as v1.4.4 (confirmed live on stage + prod 2026-07-19). The Angular 19→22 major upgrade is done (all 3 npm-audit vulnerabilities that motivated it are closed); no other backlog items are currently scoped. The frontend has zero unit tests (`frontend/src/**/*.spec.ts` — none exist) — flagged repeatedly but not yet undertaken; would need its own scoped phase since there's no existing harness/pattern to build on.
+No next phase has been chosen yet. Phase 28 (retroactive event-achievement sync) is fully merged into `main` and rebuilt to stage (`rtippenhauer/dinnerbears:stage`, 2026-07-20) — not yet in a production release; the next `/release` will pick it up. Toggling an event's secret-dinner flag, or creating/deleting its one-off Special Dinner Achievement, now retroactively syncs points and badges for members already marked attended, scoped to that one event so cost stays flat as the event catalog grows. The Angular 19→22 major upgrade (Phase 27) is done (all 3 npm-audit vulnerabilities that motivated it are closed); no other backlog items are currently scoped. The frontend has zero unit tests (`frontend/src/**/*.spec.ts` — none exist) — flagged repeatedly but not yet undertaken; would need its own scoped phase since there's no existing harness/pattern to build on.
 
 Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18: `.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL updated — webhook events are confirmed flowing.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

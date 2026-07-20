@@ -2718,6 +2718,20 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     ref.afterClosed().subscribe((updated: Event | undefined) => {
       if (updated) {
         this.eventsService.getOne(updated.id).subscribe((fresh) => this.event.set(fresh));
+        const resync = updated.secretDinnerResync;
+        if (resync?.enabled === true && resync.awarded > 0) {
+          this.snackBar.open(
+            `Secret dinner marked — awarded ${resync.awarded} already-attended member${resync.awarded === 1 ? '' : 's'}`,
+            'OK',
+            { duration: 4000 },
+          );
+        } else if (resync?.enabled === false && resync.removed > 0) {
+          this.snackBar.open(
+            `Secret dinner unmarked — removed points from ${resync.removed} member${resync.removed === 1 ? '' : 's'}`,
+            'OK',
+            { duration: 4000 },
+          );
+        }
       }
     });
   }
@@ -3018,7 +3032,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
       data: {
         eventId: this.event()!.id,
         achievement: this.eventAchievement(),
-        onChange: (a: EventAchievement) => this.eventAchievement.set(a),
+        onChange: (a: EventAchievement | null) => this.eventAchievement.set(a),
       },
       width: '480px',
       maxWidth: '95vw',
