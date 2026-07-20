@@ -84,7 +84,9 @@ export class EventCommentsService {
     return this.http.post<void>(`/api/v1/events/guest-links/${guestLinkId}/resend`, {});
   }
 
-  searchMembers(eventId: number, query: string): Observable<MemberSearchResult[]> {
-    return this.http.get<MemberSearchResult[]>(`/api/v1/events/${eventId}/members/search`, { params: { q: query } });
+  searchMembers(eventId: number, query: string, excludeGoing = true): Observable<MemberSearchResult[]> {
+    return this.http.get<MemberSearchResult[]>(`/api/v1/events/${eventId}/members/search`, {
+      params: { q: query, excludeGoing: String(excludeGoing) },
+    });
   }
 }

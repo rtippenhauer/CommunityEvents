@@ -286,7 +286,13 @@ export class EventsController {
   searchMembers(
     @Param('id', ParseIntPipe) id: number,
     @Query('q') q: string,
+    @Query('excludeGoing') excludeGoing?: string,
   ) {
-    return this.eventsService.searchMembersForWalkin(id, q ?? '');
+    // Shared by the walk-in search (should exclude members already RSVP'd
+    // Going — they're already on the list) and the reservation-coordinator
+    // search (should NOT exclude them — the coordinator is very often
+    // already Going to their own event). Default true preserves the
+    // original walk-in-only behavior for any other caller.
+    return this.eventsService.searchMembersForWalkin(id, q ?? '', excludeGoing !== 'false');
   }
 }

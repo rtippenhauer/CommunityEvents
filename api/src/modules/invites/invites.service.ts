@@ -46,7 +46,7 @@ export class InvitesService {
 
       const existing = await this.inviteRepo.findOne({
         where: {
-          boundToEmail: dto.boundToEmail,
+          boundToEmail: dto.boundToEmail.toLowerCase(),
           type: InviteType.MEMBER,
           isRevoked: false,
           redeemedAt: undefined,
@@ -72,7 +72,7 @@ export class InvitesService {
       createdBy: creator.id,
       cityId: dto.cityId ?? null,
       facebookGroupId: dto.facebookGroupId ?? null,
-      boundToEmail: dto.boundToEmail ?? null,
+      boundToEmail: dto.boundToEmail ? dto.boundToEmail.toLowerCase() : null,
       boundToName: dto.boundToName ?? null,
       expiresAt,
       maxUses: dto.type === InviteType.MEMBER ? 1 : (dto.maxUses ?? null),
@@ -116,7 +116,7 @@ export class InvitesService {
     if (invite.maxUses !== null && invite.useCount >= invite.maxUses) {
       throw new BadRequestException('This invite has already been used');
     }
-    if (invite.boundToEmail && email && invite.boundToEmail !== email.toLowerCase()) {
+    if (invite.boundToEmail && email && invite.boundToEmail.toLowerCase() !== email.toLowerCase()) {
       throw new AuthFlowError('invite_email_mismatch', invite.boundToEmail);
     }
 
