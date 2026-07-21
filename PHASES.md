@@ -1451,3 +1451,42 @@ prod. One-time manual cleanup still needed on the specific event that
 prompted this (toggle secret-dinner off→on→off, and delete+recreate its
 Special Dinner Achievement) to catch up its already-stale totals, now that
 the sync logic exists to do it correctly.
+
+---
+
+## Phase 29 — White-Label Template for a New Group
+
+Started 2026-07-21. Rob wants to stand up a second, separately-branded
+community dining site for a different group (Southwest Ohio) — a fork of
+this codebase with its own domain, database, secrets, and branding, not
+another city inside DinnerBears itself. The new site is single-region —
+no multi-city subdomain switching needed. Branched as
+`phase-29-white-label-template`.
+
+Scope:
+- Extract hardcoded branding into a single theme/config point: app name,
+  tagline, primary/accent/background colors, logo + splash images,
+  favicon/PWA icons
+- Replace DinnerBears-specific legal copy (Terms, Privacy, About/story
+  page) with clearly-marked placeholder content a new operator must fill
+  in
+- Fix `CityService.currentCity` (`frontend/src/app/core/services/city.service.ts`)
+  to fall back to the sole active city when there's no subdomain match
+  (root-domain deployments), instead of requiring subdomain routing
+- Simplify/hide the city-selector nav dropdown when only one city exists
+- Bootstrap script or seed migration: creates the one city row,
+  `app_config` row, `email_provider_config` row, and first admin user for
+  a fresh database
+- New `docs/NEW_INSTANCE_SETUP.md`: step-by-step for a new operator —
+  their own Google OAuth app, Facebook app (Go-Live checklist), Brevo/Resend
+  account, VAPID keypair generation, Docker Compose stack, MySQL instance,
+  domain/DNS, `.env` checklist
+- Audit for any remaining hardcoded `dinnerbears.com` assumptions in the
+  API (redirect URIs, CORS origins, email templates, `APP_URL` usage) and
+  parameterize them
+
+**Definition of done:** A second operator can clone the repo, follow
+`docs/NEW_INSTANCE_SETUP.md` top to bottom with their own
+domain/branding/secrets/database, run `docker compose up`, and reach a
+fully working single-city instance with their own name/colors/logo and no
+DinnerBears branding or subdomain assumptions left over.
