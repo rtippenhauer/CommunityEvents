@@ -1490,3 +1490,12 @@ Scope:
 domain/branding/secrets/database, run `docker compose up`, and reach a
 fully working single-city instance with their own name/colors/logo and no
 DinnerBears branding or subdomain assumptions left over.
+
+**Open question — restaurants vs. locations:** the Southwest Ohio group
+("Sons") holds dinners at members' houses, not restaurants, so the
+`restaurants` entity (`docs/DATABASE_SCHEMA.md`) may need to generalize to
+a broader "location" concept (name/address, optionally tied to a member
+instead of a business) rather than being restaurant-specific. Sons has a
+monthly meeting on 2026-07-28 that could change how they want this to
+work, so this is unconfirmed — revisit after that meeting before building
+anything here.
