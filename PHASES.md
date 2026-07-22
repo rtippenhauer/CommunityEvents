@@ -1511,11 +1511,14 @@ that conversation:
   restricted to members RSVP'd "Going" — unlike restaurant addresses,
   which are public. Needs real access-control work, not just a label
   change.
-- **Attendance/payment is external:** Sons apparently charges for
-  attendance and tracks it via a Google Doc, not through DinnerBears. If
-  true, our RSVP/attendance data wouldn't be authoritative for them — just
-  informational — which matters for how much weight to put on our
-  attendance-driven features (achievements, points) for their instance.
+- **Attendance/payment migration:** Sons currently tracks attendance (and
+  charges for it, mechanism unclear) via a Google Doc, but the plan is for
+  them to move onto DinnerBears' own RSVP/attendance system rather than
+  keep both running — so our attendance-driven features (achievements,
+  points) should be built to become authoritative for them, not just
+  informational. Payment/charging isn't handled by DinnerBears today at
+  all (no payment integration exists) — worth confirming with Sons whether
+  that needs to come along in this migration or stays external indefinitely.
 
 **Open question — event date default:** `nextTuesdayDate()` in
 `frontend/src/app/features/events/form/event-form-dialog.component.ts`
