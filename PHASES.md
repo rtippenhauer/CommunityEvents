@@ -1495,7 +1495,27 @@ DinnerBears branding or subdomain assumptions left over.
 ("Sons") holds dinners at members' houses, not restaurants, so the
 `restaurants` entity (`docs/DATABASE_SCHEMA.md`) may need to generalize to
 a broader "location" concept (name/address, optionally tied to a member
-instead of a business) rather than being restaurant-specific.
+instead of a business) rather than being restaurant-specific. Likely
+approach (pending a real conversation with Sons, not yet confirmed):
+rename the concept generically in the shared codebase — table, entity,
+module, API routes, frontend feature folder — and drive the *displayed
+word* ("Restaurant" for DinnerBears vs. "Location" for Sons) off a single
+config value per fork, alongside the branding/theme config. Since it's
+fork-per-org rather than shared multi-tenant, no runtime per-org branching
+is needed.
+
+Two follow-on considerations surfaced by this, both unconfirmed pending
+that conversation:
+- **Address visibility:** a private/house location's full address should
+  probably only be visible to logged-in members, and maybe further
+  restricted to members RSVP'd "Going" — unlike restaurant addresses,
+  which are public. Needs real access-control work, not just a label
+  change.
+- **Attendance/payment is external:** Sons apparently charges for
+  attendance and tracks it via a Google Doc, not through DinnerBears. If
+  true, our RSVP/attendance data wouldn't be authoritative for them — just
+  informational — which matters for how much weight to put on our
+  attendance-driven features (achievements, points) for their instance.
 
 **Open question — event date default:** `nextTuesdayDate()` in
 `frontend/src/app/features/events/form/event-form-dialog.component.ts`
