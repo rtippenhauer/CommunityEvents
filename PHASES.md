@@ -1495,7 +1495,12 @@ DinnerBears branding or subdomain assumptions left over.
 ("Sons") holds dinners at members' houses, not restaurants, so the
 `restaurants` entity (`docs/DATABASE_SCHEMA.md`) may need to generalize to
 a broader "location" concept (name/address, optionally tied to a member
-instead of a business) rather than being restaurant-specific. Sons has a
-monthly meeting on 2026-07-28 that could change how they want this to
-work, so this is unconfirmed — revisit after that meeting before building
-anything here.
+instead of a business) rather than being restaurant-specific.
+
+**Open question — event date default:** `nextTuesdayDate()` in
+`frontend/src/app/features/events/form/event-form-dialog.component.ts`
+hardcodes new-event creation to default to next Tuesday at 6:30pm —
+DinnerBears' own weekly cadence baked into code. Sons meets monthly, not
+necessarily on a fixed weekday, so this default needs to become
+configurable (or simply not assume a fixed weekday/time) as part of the
+white-label template.
