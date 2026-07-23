@@ -1517,8 +1517,9 @@ that conversation:
   keep both running — so our attendance-driven features (achievements,
   points) should be built to become authoritative for them, not just
   informational. Payment/charging isn't handled by DinnerBears today at
-  all (no payment integration exists) — worth confirming with Sons whether
-  that needs to come along in this migration or stays external indefinitely.
+  all — if that turns out to be needed, Rob's direction is to integrate
+  with whatever payment mechanism Sons already uses rather than build a
+  native payment feature.
 
 **Open question — event date default:** `nextTuesdayDate()` in
 `frontend/src/app/features/events/form/event-form-dialog.component.ts`
