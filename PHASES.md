@@ -1533,32 +1533,6 @@ necessarily on a fixed weekday, so this default needs to become
 configurable (or simply not assume a fixed weekday/time) as part of the
 white-label template.
 
----
-
-## Phase 30 — Editable Legal Copy (Terms, Privacy, About)
-
-Started 2026-07-22. Split out of Phase 29's scope: Terms, Privacy, and
-About/story copy currently live as full inline HTML in hardcoded Angular
-components (`frontend/src/app/features/legal/*.component.ts`), so editing
-any of it requires a code change and redeploy — for DinnerBears itself,
-not just a future fork. Doing this first, ahead of the rest of Phase 29,
-since it stands on its own and has standalone value regardless of whether
-the Southwest Ohio group ever launches.
-
-Scope:
-- New `app_config` rows for each piece of copy (reusing the existing
-  key/value config table — `docs/DATABASE_SCHEMA.md:900` — rather than a
-  new table), seeded with DinnerBears' current text as the starting value
-- Admin editor screen to view/edit each config value, reusing the
-  existing `ngx-quill` rich-text component already used in the
-  feedback/releases admin screens
-- Update `legal/terms.component.ts`, `legal/privacy.component.ts`, and the
-  About/story page to fetch and render the `app_config` value instead of
-  hardcoded template HTML
-- Confirm sensible fallback/empty-state behavior if a config row is ever
-  missing or blank (fresh database before seeding, etc.)
-
-**Definition of done:** Rob can edit Terms, Privacy, or About copy from
-the admin UI and see it reflected live on the public pages, with no code
-change or deploy. Phase 29's bootstrap script (once built) seeds a new
-fork's own starting copy into these same `app_config` rows.
+Phase 30 (editable legal copy) was split out of this phase's scope — see
+its own entry on the `phase-30-editable-legal-copy` branch, added to this
+file once that branch merges.
