@@ -1454,7 +1454,7 @@ the sync logic exists to do it correctly.
 
 ---
 
-## Phase 30 — Editable Legal Copy (Terms, Privacy, About)
+## Phase 30 — Editable Legal Copy (Terms, Privacy, About) ✅ Complete
 
 Started 2026-07-22. Split out of Phase 29 (white-label template,
 `phase-29-white-label-template` branch — see that branch's PHASES.md for
@@ -1480,6 +1480,33 @@ Scope:
   hardcoded template HTML
 - Confirm sensible fallback/empty-state behavior if a config row is ever
   missing or blank (fresh database before seeding, etc.)
+
+### Notable decision
+The "About/story" copy turned out not to be a separate page — it's the
+`story-section` embedded in `home.component.ts`, mixing free-form narrative
+(headline, paragraphs, quote) with a structured milestone timeline and map
+image. Rob chose to make the entire `.story-copy` block (narrative +
+milestones) a single editable HTML blob rather than splitting the
+milestones out as structured data; the map/lightbox stayed hardcoded since
+it's not copy. All three editable regions (`legal-copy` on Terms/Privacy,
+`story-copy` on the home page) needed `::ng-deep` added to their component
+styles, since Angular's view encapsulation doesn't style content injected
+via `[innerHTML]` otherwise.
+
+### Verification
+Caught and fixed a real bug by actually running the stack rather than
+trusting `tsc`: `AppConfigEntity.description` needed an explicit
+`type: 'varchar'` — TypeORM can't infer a column type from a `string | null`
+union, and it crashed the app at boot against a real MySQL connection.
+Verified end-to-end against an ephemeral MySQL container (real migrations,
+not `synchronize()`): guard behavior (401/404 as expected), an edit made
+through the actual `/admin/legal` UI persisting through the API to MySQL
+and appearing on the public `/terms` page, and the `::ng-deep` styling
+rendering correctly in a real browser for Terms, Privacy, and the home
+story section. Also found and removed `frontend/public/terms.html` /
+`privacy.html`, pre-Angular static placeholder pages fully superseded by
+this phase (confirmed harmless in production either way — nginx's
+`try_files` never appends `.html` to bare routes like `/terms`).
 
 **Definition of done:** Rob can edit Terms, Privacy, or About copy from
 the admin UI and see it reflected live on the public pages, with no code
