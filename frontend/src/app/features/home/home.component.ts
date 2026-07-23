@@ -1,12 +1,15 @@
 import { Component, effect, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, Event } from '../../core/services/events.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CityService } from '../../core/services/city.service';
+import { AppConfigService } from '../../core/services/app-config.service';
+import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
 import { EventCardComponent } from '../../shared/components/event-card/event-card.component';
 
 interface PublicStats {
@@ -138,73 +141,7 @@ interface PublicStats {
             />
           </div>
         }
-        <div class="story-copy">
-          <span class="section-label">EST. FEBRUARY 2014</span>
-          <h2 class="story-headline">One simple act.<br />A lifetime of bear memories.</h2>
-          <p class="story-p">
-            On February 22, 2014, Rob Tippenhauer helped his husband Terry Wachtman's old karate
-            instructor at a small sushi restaurant in Kentucky. As a thank-you, the instructor
-            introduced them both to Chuy's. The very next Tuesday Rob was back — hooked on the free
-            queso bar. Terry joined at 7:00 PM after Tai Chi class, and neither of them left. Within
-            a few weeks, TJVBear and OhioBear started joining regularly. As the group kept growing,
-            Terry found himself spending afternoons each week tracking down who planned to come — so
-            Rob created a Facebook event to manage attendance and duplicated it week after week.
-          </p>
-          <p class="story-p">
-            After nearly two years of Tuesday nights at Chuy's, the group was ready to branch out.
-            But the Facebook event format had a frustrating flaw: when someone declined, they were
-            dropped from future invites entirely. On February 21, 2016, Rob solved both problems at
-            once by creating the
-            <em>Cincinnati Tuesday Night Bear Dinners</em> private Facebook Group. The process was
-            simple: members nominate restaurants at each dinner, everyone votes, the top vote-getter
-            wins, whoever suggested it makes the reservation, and Rob posts the event to the group.
-            As the restaurant list grew and the weekly write-ups got more elaborate, managing it
-            became a real chore — and members without Facebook were missing out. So in June 2026,
-            Rob built DinnerBears.com to take its place. We're actively adding features: sign-in
-            with Facebook or Google, +1 RSVPs, and restaurant ratings.
-          </p>
-          <blockquote class="story-quote">
-            "It's amazing what one simple act of helping someone in a time of need has led to in a
-            few short years."
-          </blockquote>
-          <div class="story-milestones">
-            <div class="milestone">
-              <span class="ms-date">Feb 22, 2014</span
-              ><span class="ms-text"
-                >Rob helps Terry's karate instructor — introduced to Chuy's as a thank-you</span
-              >
-            </div>
-            <div class="milestone">
-              <span class="ms-date">Spring 2014</span
-              ><span class="ms-text"
-                >TJVBear &amp; OhioBear join; Facebook events created to track weekly
-                attendance</span
-              >
-            </div>
-            <div class="milestone">
-              <span class="ms-date">Sept 1, 2015</span
-              ><span class="ms-text">First official Facebook event invite sent to the group</span>
-            </div>
-            <div class="milestone">
-              <span class="ms-date">Feb 21, 2016</span
-              ><span class="ms-text"
-                >Cincinnati Tuesday Night Bear Dinners Group founded — rotating restaurants &amp;
-                voting begins</span
-              >
-            </div>
-            <div class="milestone">
-              <span class="ms-date">Aug 3, 2016</span
-              ><span class="ms-text">First monthly Dayton dinner launched</span>
-            </div>
-            <div class="milestone">
-              <span class="ms-date">June 2026</span
-              ><span class="ms-text"
-                >DinnerBears.com launches — purpose-built home with Google &amp; Facebook login, +1
-                RSVPs, and restaurant ratings</span
-              >
-            </div>
-          </div>
-        </div>
+        <div class="story-copy" [innerHTML]="storyHtml()"></div>
       </div>
     </section>
   `,
@@ -462,61 +399,63 @@ interface PublicStats {
         text-transform: uppercase;
       }
 
-      .story-copy .section-label {
-        color: var(--db-amber);
-      }
+      .story-copy {
+        ::ng-deep .section-label {
+          color: var(--db-amber);
+        }
 
-      .story-headline {
-        font-family: var(--db-font-display);
-        font-size: 2rem;
-        font-weight: 600;
-        color: var(--db-cream);
-        line-height: 1.2;
-        margin: 0.5rem 0 1.25rem;
-      }
+        ::ng-deep .story-headline {
+          font-family: var(--db-font-display);
+          font-size: 2rem;
+          font-weight: 600;
+          color: var(--db-cream);
+          line-height: 1.2;
+          margin: 0.5rem 0 1.25rem;
+        }
 
-      .story-p {
-        font-size: 0.93rem;
-        color: var(--db-cream-muted);
-        line-height: 1.8;
-        margin: 0 0 1rem;
-      }
+        ::ng-deep .story-p {
+          font-size: 0.93rem;
+          color: var(--db-cream-muted);
+          line-height: 1.8;
+          margin: 0 0 1rem;
+        }
 
-      .story-quote {
-        border-left: 3px solid var(--db-amber);
-        padding: 0.65rem 1.1rem;
-        font-style: italic;
-        font-size: 0.92rem;
-        color: var(--db-cream);
-        background: rgba(255, 255, 255, 0.04);
-        border-radius: 0 4px 4px 0;
-        margin: 1.25rem 0 1.5rem;
-      }
+        ::ng-deep .story-quote {
+          border-left: 3px solid var(--db-amber);
+          padding: 0.65rem 1.1rem;
+          font-style: italic;
+          font-size: 0.92rem;
+          color: var(--db-cream);
+          background: rgba(255, 255, 255, 0.04);
+          border-radius: 0 4px 4px 0;
+          margin: 1.25rem 0 1.5rem;
+        }
 
-      .story-milestones {
-        display: flex;
-        flex-direction: column;
-        gap: 0.6rem;
-      }
+        ::ng-deep .story-milestones {
+          display: flex;
+          flex-direction: column;
+          gap: 0.6rem;
+        }
 
-      .milestone {
-        display: flex;
-        gap: 1rem;
-        font-size: 0.85rem;
-        align-items: baseline;
-      }
+        ::ng-deep .milestone {
+          display: flex;
+          gap: 1rem;
+          font-size: 0.85rem;
+          align-items: baseline;
+        }
 
-      .ms-date {
-        color: var(--db-amber);
-        font-weight: 600;
-        white-space: nowrap;
-        width: 105px;
-        flex-shrink: 0;
-      }
+        ::ng-deep .ms-date {
+          color: var(--db-amber);
+          font-weight: 600;
+          white-space: nowrap;
+          width: 105px;
+          flex-shrink: 0;
+        }
 
-      .ms-text {
-        color: var(--db-cream-muted);
-        line-height: 1.4;
+        ::ng-deep .ms-text {
+          color: var(--db-cream-muted);
+          line-height: 1.4;
+        }
       }
 
       /* MAP LIGHTBOX */
@@ -605,11 +544,14 @@ export class HomeComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly cityService = inject(CityService);
   private readonly http = inject(HttpClient);
+  private readonly appConfigService = inject(AppConfigService);
+  private readonly sanitizer = inject(DomSanitizer);
 
   readonly events = signal<Event[]>([]);
   readonly loading = signal(true);
   readonly stats = signal<PublicStats | null>(null);
   readonly showMapLightbox = signal(false);
+  private readonly storyContent = signal('');
 
   private readonly loadEventsEffect = effect(() => {
     // Re-runs once currentCity() resolves from undefined -> a city (or stays
@@ -633,6 +575,10 @@ export class HomeComponent implements OnInit {
         /* stats are non-critical, fail silently */
       },
     });
+    this.appConfigService.getValue('about_story_html').subscribe({
+      next: (value) => this.storyContent.set(value),
+      error: () => this.storyContent.set(''),
+    });
   }
 
   isLoggedIn(): boolean {
@@ -641,5 +587,9 @@ export class HomeComponent implements OnInit {
 
   scrollToStory(): void {
     document.getElementById('story')?.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  storyHtml(): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(this.storyContent()));
   }
 }

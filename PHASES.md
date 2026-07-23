@@ -1451,3 +1451,64 @@ prod. One-time manual cleanup still needed on the specific event that
 prompted this (toggle secret-dinner off→on→off, and delete+recreate its
 Special Dinner Achievement) to catch up its already-stale totals, now that
 the sync logic exists to do it correctly.
+
+---
+
+## Phase 30 — Editable Legal Copy (Terms, Privacy, About) ✅ Complete
+
+Started 2026-07-22. Split out of Phase 29 (white-label template,
+`phase-29-white-label-template` branch — see that branch's PHASES.md for
+its full scope): Terms, Privacy, and About/story copy currently live as
+full inline HTML in hardcoded Angular components
+(`frontend/src/app/features/legal/*.component.ts`), so editing any of it
+requires a code change and redeploy — for DinnerBears itself, not just a
+future fork. Doing this first, ahead of the rest of Phase 29, since it
+stands on its own and has standalone value regardless of whether the
+Southwest Ohio group ever launches. Branched as
+`phase-30-editable-legal-copy`.
+
+Scope:
+- New `app_config` rows for each piece of copy (reusing the existing
+  key/value config table — see `app_config` in this file's earlier
+  entries / `docs/DATABASE_SCHEMA.md` — rather than a new table), seeded
+  with DinnerBears' current text as the starting value
+- Admin editor screen to view/edit each config value, reusing the
+  existing `ngx-quill` rich-text component already used in the
+  feedback/releases admin screens
+- Update `legal/terms.component.ts`, `legal/privacy.component.ts`, and the
+  About/story page to fetch and render the `app_config` value instead of
+  hardcoded template HTML
+- Confirm sensible fallback/empty-state behavior if a config row is ever
+  missing or blank (fresh database before seeding, etc.)
+
+### Notable decision
+The "About/story" copy turned out not to be a separate page — it's the
+`story-section` embedded in `home.component.ts`, mixing free-form narrative
+(headline, paragraphs, quote) with a structured milestone timeline and map
+image. Rob chose to make the entire `.story-copy` block (narrative +
+milestones) a single editable HTML blob rather than splitting the
+milestones out as structured data; the map/lightbox stayed hardcoded since
+it's not copy. All three editable regions (`legal-copy` on Terms/Privacy,
+`story-copy` on the home page) needed `::ng-deep` added to their component
+styles, since Angular's view encapsulation doesn't style content injected
+via `[innerHTML]` otherwise.
+
+### Verification
+Caught and fixed a real bug by actually running the stack rather than
+trusting `tsc`: `AppConfigEntity.description` needed an explicit
+`type: 'varchar'` — TypeORM can't infer a column type from a `string | null`
+union, and it crashed the app at boot against a real MySQL connection.
+Verified end-to-end against an ephemeral MySQL container (real migrations,
+not `synchronize()`): guard behavior (401/404 as expected), an edit made
+through the actual `/admin/legal` UI persisting through the API to MySQL
+and appearing on the public `/terms` page, and the `::ng-deep` styling
+rendering correctly in a real browser for Terms, Privacy, and the home
+story section. Also found and removed `frontend/public/terms.html` /
+`privacy.html`, pre-Angular static placeholder pages fully superseded by
+this phase (confirmed harmless in production either way — nginx's
+`try_files` never appends `.html` to bare routes like `/terms`).
+
+**Definition of done:** Rob can edit Terms, Privacy, or About copy from
+the admin UI and see it reflected live on the public pages, with no code
+change or deploy. Phase 29's bootstrap script (once built) seeds a new
+fork's own starting copy into these same `app_config` rows.
