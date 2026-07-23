@@ -1467,9 +1467,16 @@ Scope:
 - Extract hardcoded branding into a single theme/config point: app name,
   tagline, primary/accent/background colors, logo + splash images,
   favicon/PWA icons
-- Replace DinnerBears-specific legal copy (Terms, Privacy, About/story
-  page) with clearly-marked placeholder content a new operator must fill
-  in
+- Move Terms, Privacy, and About/story copy out of hardcoded Angular
+  templates (`frontend/src/app/features/legal/*.component.ts`, currently
+  the full HTML is inline in each component) into `app_config` rows,
+  and build a small admin editor for them (reusing the existing
+  `ngx-quill` rich-text component already used in feedback/releases
+  admin screens) — so a new operator (or Rob, for DinnerBears itself)
+  edits this copy directly in the app, no code change or redeploy
+  required. Seed each fork's database with that operator's own starting
+  copy via the bootstrap script below, not DinnerBears' text as a
+  "placeholder"
 - Fix `CityService.currentCity` (`frontend/src/app/core/services/city.service.ts`)
   to fall back to the sole active city when there's no subdomain match
   (root-domain deployments), instead of requiring subdomain routing
@@ -1489,7 +1496,9 @@ Scope:
 `docs/NEW_INSTANCE_SETUP.md` top to bottom with their own
 domain/branding/secrets/database, run `docker compose up`, and reach a
 fully working single-city instance with their own name/colors/logo and no
-DinnerBears branding or subdomain assumptions left over.
+DinnerBears branding or subdomain assumptions left over. Terms, Privacy,
+and About copy are editable directly from the admin UI on both instances,
+not hardcoded in either one.
 
 **Open question — restaurants vs. locations:** the Southwest Ohio group
 ("Sons") holds dinners at members' houses, not restaurants, so the
