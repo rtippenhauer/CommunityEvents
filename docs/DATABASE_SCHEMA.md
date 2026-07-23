@@ -919,6 +919,16 @@ Seed rows:
 - `inactivity_hard_delete_days` = `150`
 - `max_additional_guests` = `9`
 - `max_facebook_groups` = `3`
+- `legal_terms_html` (Phase 30) — Terms of Service body copy, rendered on `/terms`
+- `legal_privacy_html` (Phase 30) — Privacy Policy body copy, rendered on `/privacy`
+- `about_story_html` (Phase 30) — Home page "Our Story" narrative + milestone timeline
+
+The Phase 30 rows above are editable via the admin UI (`/admin/legal`), unlike the
+rest of this table which has no management UI yet. `AppConfigController`
+(`GET /api/v1/config/:key`, public) and `AppConfigAdminController`
+(`GET /api/v1/admin/config/legal`, `PATCH /api/v1/admin/config/:key`, admin-only)
+only serve these three keys — see `LEGAL_CONFIG_KEYS` in
+`api/src/modules/app-config/app-config.service.ts`.
 
 ---
 

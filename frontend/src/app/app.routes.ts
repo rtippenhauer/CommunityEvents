@@ -266,6 +266,14 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    path: 'admin/legal',
+    loadComponent: () =>
+      import('./features/admin/legal/admin-legal.component').then(
+        (m) => m.AdminLegalComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/feedback',
     loadComponent: () =>
       import('./features/admin/feedback/admin-feedback.component').then(

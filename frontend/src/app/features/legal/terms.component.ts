@@ -1,6 +1,9 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ChangeDetectionStrategy, OnInit, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { AppConfigService } from '../../core/services/app-config.service';
+import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
 
 @Component({
   selector: 'app-terms',
@@ -11,91 +14,7 @@ import { MatIconModule } from '@angular/material/icon';
       <div class="legal-content">
         <span class="page-label">Legal</span>
         <h1>Terms of Service</h1>
-        <p class="updated">Last updated: June 2, 2026</p>
-
-        <p>
-          These Terms of Service ("Terms") govern your use of the DinnerBears platform operated by
-          DinnerBears.Com, LLC ("DinnerBears," "we," "us," or "our"). By accessing or using
-          DinnerBears, you agree to these Terms.
-        </p>
-
-        <h2>1. Eligibility &amp; Invite-Only Access</h2>
-        <p>
-          DinnerBears is a private, invite-only community. You may only create an account by
-          redeeming a valid invite link issued by an existing member or administrator. You must be
-          18 years of age or older to use the platform.
-        </p>
-
-        <h2>2. Your Account</h2>
-        <p>
-          You are responsible for maintaining the confidentiality of your account credentials and
-          for all activity that occurs under your account. You agree to notify us immediately of any
-          unauthorized use of your account at
-          <a href="mailto:admin@dinnerbears.com">admin&#64;dinnerbears.com</a>.
-        </p>
-
-        <h2>3. Community Standards</h2>
-        <p>DinnerBears is a community built on mutual respect. You agree not to:</p>
-        <ul>
-          <li>Share your invite link publicly or with people outside the intended community</li>
-          <li>Harass, threaten, or abuse other members</li>
-          <li>Post spam, fraudulent, or misleading content</li>
-          <li>Attempt to circumvent platform security or access controls</li>
-          <li>Use the platform for any unlawful purpose</li>
-        </ul>
-
-        <h2>4. RSVPs and Event Attendance</h2>
-        <p>
-          When you RSVP for a dinner event, your name and RSVP status are visible to other members
-          of that city's community. Please cancel your RSVP promptly if you can no longer attend, as
-          restaurant reservations are made based on expected attendance.
-        </p>
-
-        <h2>5. Intellectual Property</h2>
-        <p>
-          The DinnerBears platform, including its design, code, and content, is owned by
-          DinnerBears.Com, LLC. You may not reproduce, distribute, or create derivative works
-          without our express written permission.
-        </p>
-
-        <h2>6. Account Termination</h2>
-        <p>
-          We reserve the right to suspend or terminate accounts that violate these Terms or the
-          spirit of the community. You may request deletion of your account at any time from your
-          profile settings. Deleted accounts enter a 30-day recovery window before permanent
-          deletion.
-        </p>
-
-        <h2>7. Disclaimer of Warranties</h2>
-        <p>
-          DinnerBears is provided "as is" without warranties of any kind. We do not guarantee
-          uninterrupted availability of the platform and are not responsible for any restaurant
-          experiences, third-party services, or events organized through the platform.
-        </p>
-
-        <h2>8. Limitation of Liability</h2>
-        <p>
-          To the maximum extent permitted by law, DinnerBears.Com, LLC shall not be liable for any
-          indirect, incidental, or consequential damages arising from your use of the platform.
-        </p>
-
-        <h2>9. Governing Law</h2>
-        <p>
-          These Terms are governed by the laws of the State of Ohio, United States, without regard
-          to conflict of law principles.
-        </p>
-
-        <h2>10. Changes to These Terms</h2>
-        <p>
-          We may update these Terms from time to time. We will notify registered members of material
-          changes via email. Continued use of the platform constitutes acceptance of updated Terms.
-        </p>
-
-        <h2>11. Contact</h2>
-        <p>
-          Questions about these Terms? Contact us at
-          <a href="mailto:admin@dinnerbears.com">admin&#64;dinnerbears.com</a>
-        </p>
+        <div class="legal-copy" [innerHTML]="html()"></div>
       </div>
     </div>
   `,
@@ -124,42 +43,61 @@ import { MatIconModule } from '@angular/material/icon';
         margin: 0 0 8px;
       }
 
-      .updated {
-        font-size: 0.85rem;
-        color: #888;
-        margin-bottom: 32px;
-        padding-bottom: 24px;
-        border-bottom: 1px solid rgba(201, 147, 58, 0.2);
-      }
+      .legal-copy {
+        ::ng-deep .updated {
+          font-size: 0.85rem;
+          color: #888;
+          margin-bottom: 32px;
+          padding-bottom: 24px;
+          border-bottom: 1px solid rgba(201, 147, 58, 0.2);
+        }
 
-      h2 {
-        font-size: 1.15rem;
-        color: var(--db-brown-dark, #1a2e4a);
-        margin: 2rem 0 0.6rem;
-      }
+        ::ng-deep h2 {
+          font-size: 1.15rem;
+          color: var(--db-brown-dark, #1a2e4a);
+          margin: 2rem 0 0.6rem;
+        }
 
-      p {
-        font-size: 0.95rem;
-        line-height: 1.8;
-        color: #444;
-        margin-bottom: 1rem;
-      }
-
-      ul {
-        padding-left: 1.5rem;
-        margin-bottom: 1rem;
-        li {
+        ::ng-deep p {
           font-size: 0.95rem;
           line-height: 1.8;
           color: #444;
-          margin-bottom: 0.3rem;
+          margin-bottom: 1rem;
         }
-      }
 
-      a {
-        color: var(--db-gold, #c9933a);
+        ::ng-deep ul {
+          padding-left: 1.5rem;
+          margin-bottom: 1rem;
+
+          li {
+            font-size: 0.95rem;
+            line-height: 1.8;
+            color: #444;
+            margin-bottom: 0.3rem;
+          }
+        }
+
+        ::ng-deep a {
+          color: var(--db-gold, #c9933a);
+        }
       }
     `,
   ],
 })
-export class TermsComponent {}
+export class TermsComponent implements OnInit {
+  private readonly appConfigService = inject(AppConfigService);
+  private readonly sanitizer = inject(DomSanitizer);
+
+  private readonly content = signal('');
+
+  ngOnInit(): void {
+    this.appConfigService.getValue('legal_terms_html').subscribe({
+      next: (value) => this.content.set(value),
+      error: () => this.content.set(''),
+    });
+  }
+
+  html(): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(this.content()));
+  }
+}

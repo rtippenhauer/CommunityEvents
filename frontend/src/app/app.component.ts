@@ -110,7 +110,8 @@ export class AppComponent {
     return (
       url.startsWith('/admin/email') ||
       url.startsWith('/admin/cities') ||
-      url.startsWith('/admin/merch')
+      url.startsWith('/admin/merch') ||
+      url.startsWith('/admin/legal')
     );
   });
 
