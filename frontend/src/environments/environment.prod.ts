@@ -4,6 +4,6 @@ export const environment = {
   apiUrl: '/api/v1',
   baseDomain: 'dinnerbears.com',
   rootUrl: 'https://www.dinnerbears.com',
-  facebookAppId: '2432839693858962' as string | null,
+  facebookAppId: null as string | null,
   vapidPublicKey: 'BNgDaojnW0stGPCXsvdx-T8e26JOc7btJ_6djRqcueiDm1eNrZ1YtK39tazAypAughyLJVJsgS8q3KK5nKx6EJw' as string | null,
 };

@@ -1495,44 +1495,100 @@ DinnerBears branding or subdomain assumptions left over. Terms, Privacy,
 and About copy are editable directly from the admin UI on both instances,
 not hardcoded in either one.
 
-**Open question — restaurants vs. locations:** the Southwest Ohio group
-("Sons") holds dinners at members' houses, not restaurants, so the
-`restaurants` entity (`docs/DATABASE_SCHEMA.md`) may need to generalize to
-a broader "location" concept (name/address, optionally tied to a member
-instead of a business) rather than being restaurant-specific. Likely
-approach (pending a real conversation with Sons, not yet confirmed):
-rename the concept generically in the shared codebase — table, entity,
-module, API routes, frontend feature folder — and drive the *displayed
-word* ("Restaurant" for DinnerBears vs. "Location" for Sons) off a single
-config value per fork, alongside the branding/theme config. Since it's
-fork-per-org rather than shared multi-tenant, no runtime per-org branching
-is needed.
+**Decision — restaurants vs. locations (resolved 2026-07-23):** the
+Southwest Ohio group ("Sons") holds dinners at members' houses, not
+restaurants. Rob's call: rename the concept generically to "location" in
+the shared codebase — table, entity, module, API routes, frontend feature
+folder — but the *displayed word* in app copy stays "Restaurant" for every
+fork (no per-fork config value for the label after all; that earlier idea
+is dropped as unnecessary complexity). So `restaurants` →
+`locations`/`LocationEntity`/etc. under the hood, while UI strings keep
+saying "Restaurant."
 
-Two follow-on considerations surfaced by this, both unconfirmed pending
-that conversation:
-- **Address visibility:** a private/house location's full address should
-  probably only be visible to logged-in members, and maybe further
-  restricted to members RSVP'd "Going" — unlike restaurant addresses,
-  which are public. Needs real access-control work, not just a label
-  change.
-- **Attendance/payment migration:** Sons currently tracks attendance (and
-  charges for it, mechanism unclear) via a Google Doc, but the plan is for
-  them to move onto DinnerBears' own RSVP/attendance system rather than
-  keep both running — so our attendance-driven features (achievements,
-  points) should be built to become authoritative for them, not just
-  informational. Payment/charging isn't handled by DinnerBears today at
-  all — if that turns out to be needed, Rob's direction is to integrate
-  with whatever payment mechanism Sons already uses rather than build a
-  native payment feature.
+**Decision — location privacy (resolved 2026-07-23):** rather than
+hardcoding private-address behavior for Sons, add an `app_config`
+preference (per fork, same pattern as Phase 30's config rows) controlling
+whether locations are private: if enabled, a location's full address is
+hidden from members who haven't RSVP'd "Going" (and from logged-out
+visitors), only becoming visible to members RSVP'd Going. DinnerBears
+leaves this off (restaurant addresses stay public); Sons turns it on. Real
+access-control work in the locations API/frontend, not just a label
+change.
 
-**Open question — event date default:** `nextTuesdayDate()` in
+**Decision — attendance migration (resolved 2026-07-23):** Sons moves
+attendance tracking into this app outright — no ongoing sync or import
+tooling against their Google Doc. It's an organizational cutover (Sons
+stops updating the Doc and starts using our RSVP/attendance flow), not a
+data-migration feature to build. Our attendance-driven features
+(achievements, points) become authoritative for them from day one, same as
+for DinnerBears. Payment/charging is still out of scope for DinnerBears
+itself — if Sons needs it, integrate with whatever mechanism they already
+use rather than build a native payment feature.
+
+**Decision — event cadence default (resolved 2026-07-23):** replace the
+hardcoded `nextTuesdayDate()` in
 `frontend/src/app/features/events/form/event-form-dialog.component.ts`
-hardcodes new-event creation to default to next Tuesday at 6:30pm —
-DinnerBears' own weekly cadence baked into code. Sons meets monthly, not
-necessarily on a fixed weekday, so this default needs to become
-configurable (or simply not assume a fixed weekday/time) as part of the
-white-label template.
+with an `app_config` preference describing each fork's recurring event
+cycle, covering both weekly-by-weekday patterns ("next Tuesday") and
+monthly-by-nth-weekday patterns ("2nd Saturday"). The new-event form
+defaults its date/time off whichever pattern the fork has configured,
+instead of assuming DinnerBears' own weekly-Tuesday cadence.
 
-Phase 30 (editable legal copy) was split out of this phase's scope — see
-its own entry on the `phase-30-editable-legal-copy` branch, added to this
-file once that branch merges.
+## Phase 30 — Editable Legal Copy (Terms, Privacy, About) ✅ Complete
+
+Started 2026-07-22. Split out of Phase 29 (white-label template,
+`phase-29-white-label-template` branch — see that branch's PHASES.md for
+its full scope): Terms, Privacy, and About/story copy currently live as
+full inline HTML in hardcoded Angular components
+(`frontend/src/app/features/legal/*.component.ts`), so editing any of it
+requires a code change and redeploy — for DinnerBears itself, not just a
+future fork. Doing this first, ahead of the rest of Phase 29, since it
+stands on its own and has standalone value regardless of whether the
+Southwest Ohio group ever launches. Branched as
+`phase-30-editable-legal-copy`.
+
+Scope:
+- New `app_config` rows for each piece of copy (reusing the existing
+  key/value config table — see `app_config` in this file's earlier
+  entries / `docs/DATABASE_SCHEMA.md` — rather than a new table), seeded
+  with DinnerBears' current text as the starting value
+- Admin editor screen to view/edit each config value, reusing the
+  existing `ngx-quill` rich-text component already used in the
+  feedback/releases admin screens
+- Update `legal/terms.component.ts`, `legal/privacy.component.ts`, and the
+  About/story page to fetch and render the `app_config` value instead of
+  hardcoded template HTML
+- Confirm sensible fallback/empty-state behavior if a config row is ever
+  missing or blank (fresh database before seeding, etc.)
+
+### Notable decision
+The "About/story" copy turned out not to be a separate page — it's the
+`story-section` embedded in `home.component.ts`, mixing free-form narrative
+(headline, paragraphs, quote) with a structured milestone timeline and map
+image. Rob chose to make the entire `.story-copy` block (narrative +
+milestones) a single editable HTML blob rather than splitting the
+milestones out as structured data; the map/lightbox stayed hardcoded since
+it's not copy. All three editable regions (`legal-copy` on Terms/Privacy,
+`story-copy` on the home page) needed `::ng-deep` added to their component
+styles, since Angular's view encapsulation doesn't style content injected
+via `[innerHTML]` otherwise.
+
+### Verification
+Caught and fixed a real bug by actually running the stack rather than
+trusting `tsc`: `AppConfigEntity.description` needed an explicit
+`type: 'varchar'` — TypeORM can't infer a column type from a `string | null`
+union, and it crashed the app at boot against a real MySQL connection.
+Verified end-to-end against an ephemeral MySQL container (real migrations,
+not `synchronize()`): guard behavior (401/404 as expected), an edit made
+through the actual `/admin/legal` UI persisting through the API to MySQL
+and appearing on the public `/terms` page, and the `::ng-deep` styling
+rendering correctly in a real browser for Terms, Privacy, and the home
+story section. Also found and removed `frontend/public/terms.html` /
+`privacy.html`, pre-Angular static placeholder pages fully superseded by
+this phase (confirmed harmless in production either way — nginx's
+`try_files` never appends `.html` to bare routes like `/terms`).
+
+**Definition of done:** Rob can edit Terms, Privacy, or About copy from
+the admin UI and see it reflected live on the public pages, with no code
+change or deploy. Phase 29's bootstrap script (once built) seeds a new
+fork's own starting copy into these same `app_config` rows.

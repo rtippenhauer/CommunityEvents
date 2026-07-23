@@ -29,6 +29,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { CommunityModule } from './modules/community/community.module';
 import { MerchModule } from './modules/merch/merch.module';
+import { AppConfigModule } from './modules/app-config/app-config.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { MerchModule } from './modules/merch/merch.module';
     CalendarModule,
     CommunityModule,
     MerchModule,
+    AppConfigModule,
   ],
   controllers: [AppController],
   providers: [

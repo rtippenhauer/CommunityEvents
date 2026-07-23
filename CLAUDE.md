@@ -33,7 +33,7 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-Phase 29 (white-label template for a new group) is in progress on branch `phase-29-white-label-template`. Rob wants to stand up a second, separately-branded, single-region community dining site (Southwest Ohio) as a fork of this codebase — own domain, database, secrets, and branding, not another DinnerBears city. Scope: extract hardcoded branding/theme into one config point, replace DinnerBears-specific legal copy with placeholders, fix `CityService.currentCity` to fall back to the sole active city on root-domain (no-subdomain) deployments, hide the city-selector when only one city exists, a bootstrap/seed script for a fresh database's first city/app_config/email_provider_config/admin user, a new `docs/NEW_INSTANCE_SETUP.md`, and an audit for remaining hardcoded `dinnerbears.com` assumptions in the API. See PHASES.md for full scope and definition of done. Open questions: the new group ("Sons") holds dinners at members' houses rather than restaurants, which may mean generalizing the `restaurants` entity to a broader "location" concept; and the event-creation form's `nextTuesdayDate()` default (next Tuesday, 6:30pm) hardcodes DinnerBears' own weekly cadence, which won't fit Sons' monthly (not necessarily fixed-weekday) meeting pattern.
+Phase 29 (white-label template for a new group) is in progress on branch `phase-29-white-label-template` — Rob has now resolved its open questions (restaurants-vs-locations, address privacy, attendance migration, event-cadence default; see PHASES.md) and it's moving toward implementation-ready. Rob wants to stand up a second, separately-branded, single-region community dining site (Southwest Ohio, group name "Sons") as a fork of this codebase — own domain, database, secrets, and branding, not another DinnerBears city. See PHASES.md for full scope and definition of done.
 
 Phase 28 (retroactive event-achievement sync) is fully merged into `main` and rebuilt to stage (`rtippenhauer/dinnerbears:stage`, 2026-07-20) — not yet in a production release; the next `/release` will pick it up. Toggling an event's secret-dinner flag, or creating/deleting its one-off Special Dinner Achievement, now retroactively syncs points and badges for members already marked attended, scoped to that one event so cost stays flat as the event catalog grows. The Angular 19→22 major upgrade (Phase 27) is done (all 3 npm-audit vulnerabilities that motivated it are closed). The frontend has zero unit tests (`frontend/src/**/*.spec.ts` — none exist) — flagged repeatedly but not yet undertaken; would need its own scoped phase since there's no existing harness/pattern to build on.
 
@@ -42,7 +42,7 @@ The `bugfix-hide-unconfigured-facebook-login` fix is merged into `main` and rebu
 Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18: `.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL updated — webhook events are confirmed flowing.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 30 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules
