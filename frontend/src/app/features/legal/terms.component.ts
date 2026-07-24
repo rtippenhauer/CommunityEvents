@@ -32,7 +32,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         font-size: 0.75rem;
         letter-spacing: 0.15em;
         text-transform: uppercase;
-        color: var(--db-gold, #c9933a);
+        color: var(--db-primary);
         font-weight: 500;
         margin-bottom: 12px;
       }
@@ -78,7 +78,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         }
 
         ::ng-deep a {
-          color: var(--db-gold, #c9933a);
+          color: var(--db-primary);
         }
       }
     `,

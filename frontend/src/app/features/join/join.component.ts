@@ -455,7 +455,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
       .expires-note {
         margin: 0;
         font-size: 0.78rem;
-        color: var(--db-text-light);
+        color: var(--db-text-mid);
         text-align: center;
       }
 

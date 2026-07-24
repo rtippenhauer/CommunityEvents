@@ -435,7 +435,7 @@ interface AchievementGroup {
       .stat-value {
         font-size: 1.75rem;
         font-weight: 800;
-        color: var(--db-blue, #1e4d8c);
+        color: var(--db-primary);
         line-height: 1;
         margin-bottom: 4px;
       }
@@ -504,7 +504,7 @@ interface AchievementGroup {
         align-items: center;
         gap: 8px;
         padding: 12px 16px;
-        background: #1e4d8c;
+        background: var(--db-primary);
         color: #fff;
       }
       .ach-group-icon {
@@ -522,7 +522,7 @@ interface AchievementGroup {
       .ach-complete-badge {
         font-size: 0.7rem;
         font-weight: 700;
-        background: #c9933a;
+        background: var(--db-primary);
         color: #fff;
         border-radius: 10px;
         padding: 2px 8px;
@@ -543,7 +543,7 @@ interface AchievementGroup {
         }
       }
       .ach-icon {
-        color: #c9933a;
+        color: var(--db-primary);
         font-size: 1.5rem;
         width: 1.5rem;
         height: 1.5rem;
@@ -572,7 +572,7 @@ interface AchievementGroup {
       .ach-title-badge {
         font-size: 0.68rem;
         font-weight: 700;
-        background: #c9933a;
+        background: var(--db-primary);
         color: #fff;
         border-radius: 8px;
         padding: 1px 7px;
@@ -620,7 +620,7 @@ interface AchievementGroup {
       }
       .ach-next-title-hint {
         font-size: 0.7rem;
-        color: #c9933a;
+        color: var(--db-primary);
         font-weight: 600;
       }
       .ach-next-desc {

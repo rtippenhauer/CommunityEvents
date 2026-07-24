@@ -193,7 +193,7 @@ function buildBurst(id: number): Burst {
           font-size: 44px;
           width: 44px;
           height: 44px;
-          color: #c9933a;
+          color: var(--db-primary);
         }
         img {
           width: 100%;
@@ -217,13 +217,13 @@ function buildBurst(id: number): Burst {
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #c9933a;
+        color: var(--db-primary);
       }
       .splash-name {
         margin: 0;
         font-size: 1.4rem;
         font-weight: 700;
-        color: #1e4d8c;
+        color: var(--db-primary);
       }
       .splash-desc {
         margin: 0;
@@ -249,7 +249,7 @@ function buildBurst(id: number): Burst {
       }
       .splash-title-hint {
         font-size: 0.8rem;
-        color: #c9933a;
+        color: var(--db-primary);
         font-weight: 600;
       }
       button {

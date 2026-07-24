@@ -228,7 +228,7 @@ type PageState =
     `
       .guest-rsvp-page {
         min-height: 100vh;
-        background: var(--db-cream, #fdfaf5);
+        background: var(--db-cream);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -289,7 +289,7 @@ type PageState =
       }
 
       .invite-icon {
-        color: var(--db-amber, #c9933a);
+        color: var(--db-amber);
         font-size: 1.2rem;
         width: 1.2rem;
         height: 1.2rem;
@@ -330,7 +330,7 @@ type PageState =
       }
 
       .address-link {
-        color: var(--db-primary, #1e4d8c);
+        color: var(--db-primary);
         text-decoration: none;
         &:hover {
           text-decoration: underline;

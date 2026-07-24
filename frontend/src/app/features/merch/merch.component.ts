@@ -89,7 +89,7 @@ import { MerchService, MerchLinks } from '../../core/services/merch.service';
         padding: 8px;
       }
       .exclusive-card {
-        border: 2px solid var(--db-gold, #c9933a);
+        border: 2px solid var(--db-primary);
       }
       .store-icon {
         font-size: 2.5rem;

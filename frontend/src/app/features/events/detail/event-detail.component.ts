@@ -2053,14 +2053,14 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
         display: flex;
         align-items: flex-start;
         gap: 14px;
-        background: linear-gradient(135deg, #1e4d8c 0%, #2a6bbf 100%);
+        background: linear-gradient(135deg, var(--db-primary) 0%, #2a6bbf 100%);
         color: #fff;
         border-radius: 12px;
         padding: 14px 16px;
         margin-bottom: 16px;
         box-shadow: 0 2px 10px rgba(30, 77, 140, 0.25);
         mat-icon {
-          color: #c9933a;
+          color: var(--db-primary);
           font-size: 2rem;
           width: 2rem;
           height: 2rem;
@@ -2099,7 +2099,7 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
       }
       .special-dinner-title {
         font-size: 0.78rem;
-        color: #c9933a;
+        color: var(--db-primary);
         font-weight: 600;
         font-style: italic;
       }

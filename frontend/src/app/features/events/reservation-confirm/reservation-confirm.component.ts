@@ -202,7 +202,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
         font-size: 0.9rem;
         color: #444;
         mat-icon {
-          color: #c9933a;
+          color: var(--db-primary);
           font-size: 1.1rem;
           width: 1.1rem;
           height: 1.1rem;
@@ -248,7 +248,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
       .join-heading {
         font-size: 0.95rem;
         font-weight: 700;
-        color: #1e4d8c;
+        color: var(--db-primary);
         margin: 0;
       }
       .join-sub {

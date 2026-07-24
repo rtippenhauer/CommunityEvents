@@ -495,12 +495,12 @@ interface AvatarEntry {
           display: block;
         }
         &:hover {
-          border-color: var(--db-primary, #1e4d8c);
+          border-color: var(--db-primary);
           transform: scale(1.04);
         }
         &.selected {
-          border-color: var(--db-primary, #1e4d8c);
-          box-shadow: 0 0 0 2px var(--db-primary, #1e4d8c);
+          border-color: var(--db-primary);
+          box-shadow: 0 0 0 2px var(--db-primary);
         }
       }
       .avatar-check {

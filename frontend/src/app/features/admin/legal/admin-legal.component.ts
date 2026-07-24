@@ -113,7 +113,7 @@ const TABS: LegalTab[] = [
         border: 1px solid rgba(0, 0, 0, 0.23);
         border-radius: 4px;
         &:focus-within {
-          border-color: var(--db-blue, #1e4d8c);
+          border-color: var(--db-primary);
           border-width: 2px;
         }
       }

@@ -232,7 +232,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         padding: 0;
         transition: border-color 0.15s;
         &:focus-within {
-          border-color: var(--db-blue, #1e4d8c);
+          border-color: var(--db-primary);
           border-width: 2px;
         }
         &.quill-error {

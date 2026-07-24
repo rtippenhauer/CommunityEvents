@@ -109,7 +109,7 @@ import { RouterLink } from '@angular/router';
       }
 
       a {
-        color: var(--db-blue, #1e4d8c);
+        color: var(--db-primary);
         text-decoration: none;
       }
 

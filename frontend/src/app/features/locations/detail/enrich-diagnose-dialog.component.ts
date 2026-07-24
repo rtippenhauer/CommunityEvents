@@ -181,7 +181,7 @@ import { MatIconModule } from '@angular/material/icon';
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.05em;
-          color: var(--db-primary, #1e4d8c);
+          color: var(--db-primary);
           margin: 0 0 8px;
           border-bottom: 1px solid #eee;
           padding-bottom: 4px;

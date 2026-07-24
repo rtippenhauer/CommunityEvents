@@ -119,7 +119,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         border-radius: 12px;
         padding: 28px;
         box-shadow: 0 2px 8px rgba(61, 28, 5, 0.07);
-        border-left: 4px solid var(--db-blue, #1e4d8c);
+        border-left: 4px solid var(--db-primary);
         overflow-wrap: break-word;
         min-width: 0;
       }
@@ -135,7 +135,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         font-weight: 800;
         padding: 3px 10px;
         border-radius: 12px;
-        background: var(--db-blue, #1e4d8c);
+        background: var(--db-primary);
         color: white;
         letter-spacing: 0.05em;
       }
@@ -190,7 +190,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
           font-size: 1rem;
           width: 1rem;
           height: 1rem;
-          color: var(--db-blue, #1e4d8c);
+          color: var(--db-primary);
           flex-shrink: 0;
           margin-top: 1px;
         }
