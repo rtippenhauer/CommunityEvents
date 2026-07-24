@@ -167,14 +167,16 @@ interface AvatarEntry {
                 <input matInput formControlName="fullName" />
                 <mat-error>Name is required</mat-error>
               </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>City</mat-label>
-                <mat-select formControlName="cityId">
-                  @for (city of cities(); track city.id) {
-                    <mat-option [value]="city.id">{{ city.name }}</mat-option>
-                  }
-                </mat-select>
-              </mat-form-field>
+              @if (cities().length > 1) {
+                <mat-form-field appearance="outline">
+                  <mat-label>City</mat-label>
+                  <mat-select formControlName="cityId">
+                    @for (city of cities(); track city.id) {
+                      <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              }
               <mat-form-field appearance="outline">
                 <mat-label>Email</mat-label>
                 <input

@@ -75,15 +75,17 @@ interface Location {
 
     <mat-dialog-content>
       <form [formGroup]="form" class="event-form">
-        <mat-form-field appearance="outline">
-          <mat-label>City</mat-label>
-          <mat-select formControlName="cityId">
-            @for (city of cities(); track city.id) {
-              <mat-option [value]="city.id">{{ city.name }}</mat-option>
-            }
-          </mat-select>
-          <mat-error>City is required</mat-error>
-        </mat-form-field>
+        @if (cities().length > 1) {
+          <mat-form-field appearance="outline">
+            <mat-label>City</mat-label>
+            <mat-select formControlName="cityId">
+              @for (city of cities(); track city.id) {
+                <mat-option [value]="city.id">{{ city.name }}</mat-option>
+              }
+            </mat-select>
+            <mat-error>City is required</mat-error>
+          </mat-form-field>
+        }
 
         <mat-form-field appearance="outline">
           <mat-label>Restaurant</mat-label>
@@ -246,6 +248,13 @@ export class EventFormDialogComponent implements OnInit {
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((c) => {
       this.cities.set(c);
+      // Single-region fork: there's only one city and its selector is hidden
+      // (see template), so auto-select it for new events. The guard leaves an
+      // already-set value alone — edit mode patches cityId synchronously below
+      // before this async callback fires.
+      if (c.length === 1 && !this.form.controls.cityId.value) {
+        this.form.controls.cityId.setValue(c[0].id);
+      }
     });
 
     this.http.get<Location[]>('/api/v1/locations').subscribe((r) => {

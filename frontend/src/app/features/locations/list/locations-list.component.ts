@@ -80,15 +80,17 @@ interface City {
         <input matInput [formControl]="searchCtrl" placeholder="Restaurant name…" />
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="city-field">
-        <mat-label>City</mat-label>
-        <mat-select [formControl]="cityCtrl">
-          <mat-option [value]="null">All cities</mat-option>
-          @for (city of cities(); track city.id) {
-            <mat-option [value]="city.id">{{ city.name }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
+      @if (!cityService.isSingleCity()) {
+        <mat-form-field appearance="outline" class="city-field">
+          <mat-label>City</mat-label>
+          <mat-select [formControl]="cityCtrl">
+            <mat-option [value]="null">All cities</mat-option>
+            @for (city of cities(); track city.id) {
+              <mat-option [value]="city.id">{{ city.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+      }
     </div>
 
     <!-- Results -->
@@ -278,7 +280,7 @@ interface City {
 export class LocationsListComponent implements OnInit {
   private readonly locationsService = inject(LocationsService);
   private readonly authService = inject(AuthService);
-  private readonly cityService = inject(CityService);
+  readonly cityService = inject(CityService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);

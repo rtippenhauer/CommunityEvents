@@ -65,15 +65,17 @@ interface Member {
               <mat-option value="alpha">Alphabetical</mat-option>
             </mat-select>
           </mat-form-field>
-          <mat-form-field appearance="outline" class="city-field">
-            <mat-label>City</mat-label>
-            <mat-select [value]="cityFilter()" (selectionChange)="cityFilter.set($event.value)">
-              <mat-option [value]="null">All Cities</mat-option>
-              @for (city of cityService.cities(); track city.id) {
-                <mat-option [value]="city.id">{{ city.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
+          @if (!cityService.isSingleCity()) {
+            <mat-form-field appearance="outline" class="city-field">
+              <mat-label>City</mat-label>
+              <mat-select [value]="cityFilter()" (selectionChange)="cityFilter.set($event.value)">
+                <mat-option [value]="null">All Cities</mat-option>
+                @for (city of cityService.cities(); track city.id) {
+                  <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          }
           @if (showRoles()) {
             <mat-form-field appearance="outline" class="role-field">
               <mat-label>Role</mat-label>

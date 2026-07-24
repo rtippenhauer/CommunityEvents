@@ -39,15 +39,17 @@ const TYPE_LABELS: Record<string, string> = {
       <div class="lb-header">
         <div class="lb-title-row">
           <h2>Bear Points Leaderboard</h2>
-          <mat-form-field appearance="outline" class="city-filter">
-            <mat-label>City</mat-label>
-            <mat-select [value]="cityFilter()" (selectionChange)="setCityFilter($event.value)">
-              <mat-option [value]="null">All Cities</mat-option>
-              @for (city of cities(); track city.id) {
-                <mat-option [value]="city.id">{{ city.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
+          @if (!cityService.isSingleCity()) {
+            <mat-form-field appearance="outline" class="city-filter">
+              <mat-label>City</mat-label>
+              <mat-select [value]="cityFilter()" (selectionChange)="setCityFilter($event.value)">
+                <mat-option [value]="null">All Cities</mat-option>
+                @for (city of cities(); track city.id) {
+                  <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          }
         </div>
       </div>
 

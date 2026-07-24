@@ -148,15 +148,17 @@ interface City {
             visitors never see it.
           </p>
 
-          <mat-form-field appearance="outline">
-            <mat-label>City</mat-label>
-            <mat-select formControlName="cityId">
-              @for (city of cities; track city.id) {
-                <mat-option [value]="city.id">{{ city.name }}</mat-option>
-              }
-            </mat-select>
-            <mat-error>City is required</mat-error>
-          </mat-form-field>
+          @if (cities.length > 1) {
+            <mat-form-field appearance="outline">
+              <mat-label>City</mat-label>
+              <mat-select formControlName="cityId">
+                @for (city of cities; track city.id) {
+                  <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                }
+              </mat-select>
+              <mat-error>City is required</mat-error>
+            </mat-form-field>
+          }
 
           <mat-form-field appearance="outline">
             <mat-label>Phone</mat-label>
@@ -457,6 +459,12 @@ export class LocationFormDialogComponent implements OnInit {
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((cities) => {
       this.cities = cities;
+      // Single-region fork: the city selector is hidden (see template), so
+      // auto-select the sole city for new locations. Edit mode patches cityId
+      // synchronously below before this async callback resolves.
+      if (cities.length === 1 && !this.form.controls.cityId.value) {
+        this.form.controls.cityId.setValue(cities[0].id);
+      }
     });
     if (this.data.location) {
       const r = this.data.location;
