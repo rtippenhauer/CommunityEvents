@@ -20,11 +20,11 @@ import type { Request } from 'express';
 import type { FileFilterCallback } from 'multer';
 import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
-import { RestaurantsService } from './restaurants.service';
+import { LocationsService } from './locations.service';
 import { RatingsService } from './ratings.service';
 import { EnrichmentService } from './enrichment.service';
-import { CreateRestaurantDto } from './dto/create-restaurant.dto';
-import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
+import { CreateLocationDto } from './dto/create-location.dto';
+import { UpdateLocationDto } from './dto/update-location.dto';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -41,7 +41,7 @@ const photoStorage = diskStorage({
     _file: Express.Multer.File,
     cb: (err: Error | null, dest: string) => void,
   ) => {
-    const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'restaurants');
+    const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'locations');
     mkdirSync(dest, { recursive: true });
     cb(null, dest);
   },
@@ -74,11 +74,11 @@ const jsonFilter = (_req: Request, file: Express.Multer.File, cb: FileFilterCall
   }
 };
 
-@Controller('restaurants')
+@Controller('locations')
 @UseGuards(JwtAuthGuard)
-export class RestaurantsController {
+export class LocationsController {
   constructor(
-    private readonly restaurantsService: RestaurantsService,
+    private readonly locationsService: LocationsService,
     private readonly ratingsService: RatingsService,
     private readonly enrichmentService: EnrichmentService,
   ) {}
@@ -101,7 +101,7 @@ export class RestaurantsController {
     if (!file) throw new BadRequestException('No file uploaded');
     const id = parseInt(cityId, 10);
     if (!id) throw new BadRequestException('cityId query parameter is required');
-    return this.restaurantsService.importFacebookEvents(file.buffer, id);
+    return this.locationsService.importFacebookEvents(file.buffer, id);
   }
 
   @Get('place-search')
@@ -115,7 +115,7 @@ export class RestaurantsController {
 
   @Get()
   findAll(@Query('cityId') cityId?: string, @Query('search') search?: string) {
-    return this.restaurantsService.findAll({
+    return this.locationsService.findAll({
       cityId: cityId ? parseInt(cityId, 10) : undefined,
       search,
     });
@@ -132,7 +132,7 @@ export class RestaurantsController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   findArchived(@Query('cityId') cityId?: string, @Query('search') search?: string) {
-    return this.restaurantsService.findAllArchived({
+    return this.locationsService.findAllArchived({
       cityId: cityId ? parseInt(cityId, 10) : undefined,
       search,
     });
@@ -145,15 +145,15 @@ export class RestaurantsController {
   ) {
     const isModOrAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
     return isModOrAdmin
-      ? this.restaurantsService.findOneWithModFields(id)
-      : this.restaurantsService.findOne(id);
+      ? this.locationsService.findOneWithModFields(id)
+      : this.locationsService.findOne(id);
   }
 
   @Post()
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
-  create(@Body() dto: CreateRestaurantDto, @CurrentUser() user: UserEntity) {
-    return this.restaurantsService.create(dto, user.id);
+  create(@Body() dto: CreateLocationDto, @CurrentUser() user: UserEntity) {
+    return this.locationsService.create(dto, user.id);
   }
 
   @Patch(':id')
@@ -161,24 +161,24 @@ export class RestaurantsController {
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateRestaurantDto,
+    @Body() dto: UpdateLocationDto,
     @CurrentUser() user: UserEntity,
   ) {
-    return this.restaurantsService.update(id, dto, user.id);
+    return this.locationsService.update(id, dto, user.id);
   }
 
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   remove(@Param('id', ParseIntPipe) id: number) {
-    return this.restaurantsService.remove(id);
+    return this.locationsService.remove(id);
   }
 
   @Patch(':id/restore')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   restore(@Param('id', ParseIntPipe) id: number) {
-    return this.restaurantsService.restore(id);
+    return this.locationsService.restore(id);
   }
 
   @Post(':id/photos')
@@ -196,7 +196,7 @@ export class RestaurantsController {
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: UserEntity,
   ) {
-    return this.restaurantsService.addPhoto(id, file, user);
+    return this.locationsService.addPhoto(id, file, user);
   }
 
   @Delete(':id/photos/:photoId')
@@ -206,15 +206,15 @@ export class RestaurantsController {
     @Param('id', ParseIntPipe) id: number,
     @Param('photoId', ParseIntPipe) photoId: number,
   ) {
-    return this.restaurantsService.removePhoto(id, photoId);
+    return this.locationsService.removePhoto(id, photoId);
   }
 
   @Get(':id/enrich/diagnose')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   async enrichDiagnose(@Param('id', ParseIntPipe) id: number) {
-    const restaurant = await this.restaurantsService.findOne(id);
-    return this.enrichmentService.diagnose(restaurant);
+    const location = await this.locationsService.findOne(id);
+    return this.enrichmentService.diagnose(location);
   }
 
   @Post(':id/enrich')
@@ -224,11 +224,11 @@ export class RestaurantsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: UserEntity,
   ) {
-    const restaurant = await this.restaurantsService.findOne(id);
-    const enrichResult = await this.enrichmentService.enrich(restaurant, user.id);
+    const location = await this.locationsService.findOne(id);
+    const enrichResult = await this.enrichmentService.enrich(location, user.id);
     return {
       ...enrichResult,
-      restaurant: await this.restaurantsService.findOne(id),
+      location: await this.locationsService.findOne(id),
     };
   }
 
@@ -237,9 +237,9 @@ export class RestaurantsController {
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async enrichBulk(@CurrentUser() user: UserEntity) {
-    const restaurants = await this.restaurantsService.findAll({});
-    void this.enrichmentService.bulkEnrich(restaurants, user.id);
-    return { started: true, total: restaurants.length };
+    const locations = await this.locationsService.findAll({});
+    void this.enrichmentService.bulkEnrich(locations, user.id);
+    return { started: true, total: locations.length };
   }
 
   // ── Ratings ──────────────────────────────────────────────────────────────────

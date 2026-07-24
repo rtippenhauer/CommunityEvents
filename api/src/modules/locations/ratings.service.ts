@@ -6,10 +6,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { RestaurantRatingEntity } from '../../database/entities/restaurant-rating.entity';
+import { LocationRatingEntity } from '../../database/entities/location-rating.entity';
 import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
-import { RestaurantsService } from './restaurants.service';
+import { LocationsService } from './locations.service';
 import { PointsService } from '../community/points.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
@@ -50,9 +50,9 @@ export interface RatingsResponse {
 }
 
 export interface RatingQueueItem {
-  restaurantId: number;
-  restaurantName: string;
-  restaurantPhotoUrl: string | null;
+  locationId: number;
+  locationName: string;
+  locationPhotoUrl: string | null;
   eventId: number;
   eventDate: string;
   alreadyRated: boolean;
@@ -61,18 +61,18 @@ export interface RatingQueueItem {
 @Injectable()
 export class RatingsService {
   constructor(
-    @InjectRepository(RestaurantRatingEntity)
-    private readonly ratingRepo: Repository<RestaurantRatingEntity>,
+    @InjectRepository(LocationRatingEntity)
+    private readonly ratingRepo: Repository<LocationRatingEntity>,
     @InjectRepository(EventEntity)
     private readonly eventRepo: Repository<EventEntity>,
     @InjectRepository(EventRsvpEntity)
     private readonly rsvpRepo: Repository<EventRsvpEntity>,
-    private readonly restaurantsService: RestaurantsService,
+    private readonly locationsService: LocationsService,
     private readonly pointsService: PointsService,
   ) {}
 
-  async getRatings(restaurantId: number, currentUser?: UserEntity): Promise<RatingsResponse> {
-    await this.restaurantsService.findOne(restaurantId); // 404 if not found
+  async getRatings(locationId: number, currentUser?: UserEntity): Promise<RatingsResponse> {
+    await this.locationsService.findOne(locationId); // 404 if not found
 
     const aggregate = await this.ratingRepo
       .createQueryBuilder('r')
@@ -82,7 +82,7 @@ export class RatingsService {
       .addSelect('AVG(r.value_rating)', 'avgValue')
       .addSelect('AVG(r.noise)', 'avgNoise')
       .addSelect('AVG((r.food + r.service + r.value_rating + r.noise) / 4)', 'avgOverall')
-      .where('r.restaurant_id = :restaurantId', { restaurantId })
+      .where('r.location_id = :locationId', { locationId })
       .getRawOne<{
         count: string;
         avgFood: string | null;
@@ -107,7 +107,7 @@ export class RatingsService {
       .addSelect('m.fullName', 'memberName')
       .addSelect('m.profilePhotoPath', 'memberPhoto')
       .addSelect("DATE_FORMAT(e.event_date, '%Y-%m-%d')", 'eventDate')
-      .where('r.restaurant_id = :restaurantId', { restaurantId })
+      .where('r.location_id = :locationId', { locationId })
       .orderBy('r.created_at', 'DESC')
       .limit(20)
       .getRawMany<{
@@ -138,14 +138,14 @@ export class RatingsService {
         .addSelect("DATE_FORMAT(e.event_date, '%Y-%m-%d')", 'eventDate')
         .where('rsvp.userId = :userId', { userId: currentUser.id })
         .andWhere('rsvp.status = :status', { status: RsvpStatus.GOING })
-        .andWhere('e.restaurantId = :restaurantId', { restaurantId })
+        .andWhere('e.locationId = :locationId', { locationId })
         .andWhere('(e.eventDate < :today OR (e.eventDate = :today AND e.eventTime <= :nowTime))', { today: todayStr, nowTime: nowTimeStr })
         .getRawMany<{ eventId: number; title: string; eventDate: string }>();
 
       const myRatingEventIds = new Set(
         (await this.ratingRepo.find({
           select: ['eventId'],
-          where: { memberId: currentUser.id, restaurantId },
+          where: { memberId: currentUser.id, locationId },
         })).map((r) => r.eventId),
       );
 
@@ -185,14 +185,14 @@ export class RatingsService {
     };
   }
 
-  async submitRating(restaurantId: number, user: UserEntity, dto: CreateRatingDto): Promise<RestaurantRatingEntity> {
+  async submitRating(locationId: number, user: UserEntity, dto: CreateRatingDto): Promise<LocationRatingEntity> {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Ratings require a validated account');
     }
 
     const event = await this.eventRepo.findOne({ where: { id: dto.eventId } });
     if (!event) throw new NotFoundException('Event not found');
-    if (event.restaurantId !== restaurantId) {
+    if (event.locationId !== locationId) {
       throw new BadRequestException('Event was not held at this restaurant');
     }
 
@@ -221,7 +221,7 @@ export class RatingsService {
     });
 
     const isNew = !existing;
-    const rating = existing ?? this.ratingRepo.create({ memberId: user.id, eventId: dto.eventId, restaurantId });
+    const rating = existing ?? this.ratingRepo.create({ memberId: user.id, eventId: dto.eventId, locationId });
     rating.food = dto.food;
     rating.service = dto.service;
     rating.valueRating = dto.valueRating;
@@ -230,7 +230,7 @@ export class RatingsService {
 
     const saved = await this.ratingRepo.save(rating);
     if (isNew) {
-      await this.pointsService.awardRating(user.id, restaurantId).catch(() => {});
+      await this.pointsService.awardRating(user.id, locationId).catch(() => {});
     }
     return saved;
   }
@@ -243,28 +243,28 @@ export class RatingsService {
     const rows = await this.rsvpRepo
       .createQueryBuilder('rsvp')
       .innerJoin('rsvp.event', 'e')
-      .leftJoin(RestaurantRatingEntity, 'rating', 'rating.memberId = :userId AND rating.eventId = e.id', { userId })
-      .select('e.restaurantId', 'restaurantId')
+      .leftJoin(LocationRatingEntity, 'rating', 'rating.memberId = :userId AND rating.eventId = e.id', { userId })
+      .select('e.locationId', 'locationId')
       .addSelect(
-        `COALESCE(NULLIF(e.restaurant_name, ''), (SELECT res.name FROM restaurants res WHERE res.id = e.restaurant_id LIMIT 1))`,
-        'restaurantName',
+        `COALESCE(NULLIF(e.location_name, ''), (SELECT res.name FROM locations res WHERE res.id = e.location_id LIMIT 1))`,
+        'locationName',
       )
       .addSelect('e.id', 'eventId')
       .addSelect("DATE_FORMAT(e.event_date, '%Y-%m-%d')", 'eventDate')
       .addSelect('rating.id', 'ratingId')
       .addSelect(
-        '(SELECT p.file_path FROM restaurant_photos p WHERE p.restaurant_id = e.restaurant_id ORDER BY p.sort_order ASC LIMIT 1)',
+        '(SELECT p.file_path FROM location_photos p WHERE p.location_id = e.location_id ORDER BY p.sort_order ASC LIMIT 1)',
         'photoUrl',
       )
       .where('rsvp.userId = :userId', { userId })
       .andWhere('rsvp.status = :status', { status: RsvpStatus.GOING })
       .andWhere('(rsvp.attended = 1 OR rsvp.attended IS NULL)')
       .andWhere('(e.eventDate < :today OR (e.eventDate = :today AND e.eventTime <= :nowTime))', { today: todayStr, nowTime: nowTimeStr })
-      .andWhere('e.restaurantId IS NOT NULL')
+      .andWhere('e.locationId IS NOT NULL')
       .orderBy('e.eventDate', 'DESC')
       .getRawMany<{
-        restaurantId: number;
-        restaurantName: string | null;
+        locationId: number;
+        locationName: string | null;
         eventId: number;
         eventDate: string;
         ratingId: number | null;
@@ -272,9 +272,9 @@ export class RatingsService {
       }>();
 
     return rows.map((row) => ({
-      restaurantId: Number(row.restaurantId),
-      restaurantName: row.restaurantName ?? 'Unknown Restaurant',
-      restaurantPhotoUrl: row.photoUrl ?? null,
+      locationId: Number(row.locationId),
+      locationName: row.locationName ?? 'Unknown Restaurant',
+      locationPhotoUrl: row.photoUrl ?? null,
       eventId: Number(row.eventId),
       eventDate: row.eventDate,
       alreadyRated: row.ratingId !== null,

@@ -2,9 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables } from './utils/test-app';
-import { seedCity, seedRestaurant, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { CityEntity } from '../src/database/entities/city.entity';
-import { RestaurantEntity } from '../src/database/entities/restaurant.entity';
+import { LocationEntity } from '../src/database/entities/location.entity';
 import { UserEntity, UserRole } from '../src/database/entities/user.entity';
 import { AchievementEntity } from '../src/database/entities/achievement.entity';
 
@@ -14,7 +14,7 @@ describe('Event-scoped achievement retroactive sync (e2e)', () => {
   let server: Parameters<typeof request>[0];
 
   let city: CityEntity;
-  let restaurant: RestaurantEntity;
+  let location: LocationEntity;
   let admin: UserEntity;
   let memberA: UserEntity;
   let memberB: UserEntity;
@@ -32,7 +32,7 @@ describe('Event-scoped achievement retroactive sync (e2e)', () => {
   beforeEach(async () => {
     await truncateAllTables(dataSource);
     city = await seedCity(dataSource);
-    restaurant = await seedRestaurant(dataSource, city.id);
+    location = await seedLocation(dataSource, city.id);
 
     admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
     memberA = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member-a@example.test' });
@@ -55,7 +55,7 @@ describe('Event-scoped achievement retroactive sync (e2e)', () => {
       .set('Cookie', adminCookie)
       .send({
         cityId: city.id,
-        restaurantId: restaurant.id,
+        locationId: location.id,
         title: 'Test Dinner',
         eventDate: '2027-01-05',
         eventTime: '18:30',

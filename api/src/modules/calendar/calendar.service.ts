@@ -224,8 +224,8 @@ export class CalendarService {
     const description = [
       'DinnerBears Dinner',
       '',
-      `🍽 ${event.restaurantName}`,
-      event.restaurantAddress || '',
+      `🍽 ${event.locationName}`,
+      event.locationAddress || '',
       '',
       `📅 ${dayName}, ${monthName} ${d} at ${timeStr}`,
       '',
@@ -238,9 +238,9 @@ export class CalendarService {
       'To manage your calendar subscription, visit your DinnerBears account settings.',
     ].filter(Boolean).join('\n');
 
-    const location = event.restaurantAddress
-      ? `${event.restaurantName}, ${event.restaurantAddress}`
-      : event.restaurantName;
+    const location = event.locationAddress
+      ? `${event.locationName}, ${event.locationAddress}`
+      : event.locationName;
 
     const lines = [
       'BEGIN:VEVENT',
@@ -250,7 +250,7 @@ export class CalendarService {
       `DTEND:${dtEnd}`,
       `LAST-MODIFIED:${lastMod}`,
       `SEQUENCE:${sequence}`,
-      foldIcsLine(`SUMMARY:${icsEscape(isCancelled ? `[CANCELLED] ${event.restaurantName}` : `DinnerBears Dinner at ${event.restaurantName}`)}`),
+      foldIcsLine(`SUMMARY:${icsEscape(isCancelled ? `[CANCELLED] ${event.locationName}` : `DinnerBears Dinner at ${event.locationName}`)}`),
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(description)}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
@@ -328,8 +328,8 @@ export class CalendarService {
     const description = [
       'DinnerBears Dinner',
       '',
-      `🍽 ${event.restaurantName}`,
-      event.restaurantAddress || '',
+      `🍽 ${event.locationName}`,
+      event.locationAddress || '',
       '',
       `📅 ${dayName}, ${monthName} ${d} at ${timeStr}`,
       '',
@@ -339,9 +339,9 @@ export class CalendarService {
       'Questions? Reply to hello@dinnerbears.com',
     ].join('\n');
 
-    const location = event.restaurantAddress
-      ? `${event.restaurantName}, ${event.restaurantAddress}`
-      : event.restaurantName;
+    const location = event.locationAddress
+      ? `${event.locationName}, ${event.locationAddress}`
+      : event.locationName;
 
     const lines = [
       'BEGIN:VCALENDAR',
@@ -356,7 +356,7 @@ export class CalendarService {
       `DTEND:${dtEnd}`,
       `LAST-MODIFIED:${lastMod}`,
       `SEQUENCE:${sequence}`,
-      foldIcsLine(`SUMMARY:${icsEscape(`DinnerBears Dinner at ${event.restaurantName}`)}`),
+      foldIcsLine(`SUMMARY:${icsEscape(`DinnerBears Dinner at ${event.locationName}`)}`),
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(description)}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),

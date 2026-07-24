@@ -6,7 +6,7 @@ import { ImageCropperComponent, ImageCroppedEvent } from 'ngx-image-cropper';
 
 export interface PhotoCropDialogData {
   file: File;
-  /** 'circle' for profile avatars (1:1 round), 'rectangle' for restaurant photos (4:3) */
+  /** 'circle' for profile avatars (1:1 round), 'rectangle' for location photos (4:3) */
   shape?: 'circle' | 'rectangle';
   /** Output format — 'png' preserves transparency (e.g. custom icons); defaults to 'jpeg' */
   format?: 'jpeg' | 'png';

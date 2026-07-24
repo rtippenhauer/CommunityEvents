@@ -42,11 +42,11 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
 
         @case ('ready') {
           <div class="join-card">
-            @if (preview()?.event?.restaurantPhotoUrl) {
+            @if (preview()?.event?.locationPhotoUrl) {
               <div class="event-photo">
                 <img
-                  [src]="preview()!.event!.restaurantPhotoUrl!"
-                  [alt]="preview()!.event!.restaurantName"
+                  [src]="preview()!.event!.locationPhotoUrl!"
+                  [alt]="preview()!.event!.locationName"
                 />
               </div>
             }
@@ -69,11 +69,11 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
                 </div>
                 <div class="meta-row">
                   <mat-icon>restaurant</mat-icon>
-                  <span>{{ preview()!.event!.restaurantName }}</span>
+                  <span>{{ preview()!.event!.locationName }}</span>
                 </div>
                 <div class="meta-row">
                   <mat-icon>location_on</mat-icon>
-                  <span>{{ preview()!.event!.restaurantAddress }}</span>
+                  <span>{{ preview()!.event!.locationAddress }}</span>
                 </div>
               </div>
 

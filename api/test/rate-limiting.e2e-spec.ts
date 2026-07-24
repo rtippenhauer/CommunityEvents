@@ -67,7 +67,7 @@ describe('Rate Limiting (e2e)', () => {
 
   describe('Generic read-route default (60/min, unchanged)', () => {
     it('still allows 60/min on a route with no explicit @Throttle', async () => {
-      const statuses = await fireSequential(61, () => request(server).get('/api/v1/restaurants'));
+      const statuses = await fireSequential(61, () => request(server).get('/api/v1/locations'));
       expect(statuses.slice(0, 60).some((s) => s === 429)).toBe(false);
       expect(statuses[60]).toBe(429);
     });
@@ -118,23 +118,23 @@ describe('Rate Limiting (e2e)', () => {
       expect(statuses[10]).toBe(429);
     });
 
-    it('throttles POST /restaurants/enrich/bulk at 5/min', async () => {
-      // No restaurants seeded, so the fire-and-forget bulk enrich has nothing
+    it('throttles POST /locations/enrich/bulk at 5/min', async () => {
+      // No locations seeded, so the fire-and-forget bulk enrich has nothing
       // to iterate — safe to call repeatedly without hitting a real API
       // (GOOGLE_PLACES_API_KEY is unset in the test env regardless).
       const statuses = await fireSequential(6, () =>
-        request(server).post('/api/v1/restaurants/enrich/bulk').set('Cookie', adminCookie),
+        request(server).post('/api/v1/locations/enrich/bulk').set('Cookie', adminCookie),
       );
       expect(statuses.slice(0, 5).some((s) => s === 429)).toBe(false);
       expect(statuses[5]).toBe(429);
     });
 
-    it('throttles GET /restaurants/place-search at 20/min', async () => {
+    it('throttles GET /locations/place-search at 20/min', async () => {
       // GOOGLE_PLACES_API_KEY is unset in the test env, so this short-circuits
       // to an empty array without a real network call.
       const statuses = await fireSequential(21, () =>
         request(server)
-          .get('/api/v1/restaurants/place-search')
+          .get('/api/v1/locations/place-search')
           .query({ q: 'test' })
           .set('Cookie', adminCookie),
       );

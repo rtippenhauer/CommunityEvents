@@ -9,10 +9,10 @@ import {
 } from 'typeorm';
 import { UserEntity } from './user.entity';
 import { EventEntity } from './event.entity';
-import { RestaurantEntity } from './restaurant.entity';
+import { LocationEntity } from './location.entity';
 
-@Entity('restaurant_ratings')
-export class RestaurantRatingEntity {
+@Entity('location_ratings')
+export class LocationRatingEntity {
   @PrimaryGeneratedColumn({ unsigned: true })
   id: number;
 
@@ -30,12 +30,12 @@ export class RestaurantRatingEntity {
   @JoinColumn({ name: 'event_id' })
   event: EventEntity;
 
-  @Column({ name: 'restaurant_id', unsigned: true })
-  restaurantId: number;
+  @Column({ name: 'location_id', unsigned: true })
+  locationId: number;
 
-  @ManyToOne(() => RestaurantEntity, { eager: false })
-  @JoinColumn({ name: 'restaurant_id' })
-  restaurant: RestaurantEntity;
+  @ManyToOne(() => LocationEntity, { eager: false })
+  @JoinColumn({ name: 'location_id' })
+  location: LocationEntity;
 
   @Column({ type: 'tinyint', unsigned: true })
   food: number;

@@ -57,7 +57,7 @@ export class InvitesController {
       throw new NotFoundException('Invite not found');
     }
     const event = invite.event;
-    const photo = event?.restaurant?.photos?.[0]?.filePath ?? null;
+    const photo = event?.location?.photos?.[0]?.filePath ?? null;
     return {
       token: invite.token,
       flavor: invite.inviteFlavor,
@@ -72,9 +72,9 @@ export class InvitesController {
             eventDate: event.eventDate,
             eventTime: event.eventTime,
             status: event.status,
-            restaurantName: event.restaurantName,
-            restaurantAddress: event.restaurantAddress,
-            restaurantPhotoUrl: photo,
+            locationName: event.locationName,
+            locationAddress: event.locationAddress,
+            locationPhotoUrl: photo,
           }
         : null,
     };

@@ -19,7 +19,7 @@ import { AuthService } from '../../core/services/auth.service';
 const TYPE_LABELS: Record<string, string> = {
   attendance: 'Attendance',
   coordinator: 'Coordinator',
-  coordinator_new_restaurant: 'Explorer',
+  new_location_coordinator: 'Explorer',
   invite: 'Invites',
   rating: 'Ratings',
 };

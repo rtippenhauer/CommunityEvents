@@ -83,9 +83,9 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
     } @else if (event()) {
       <div class="detail-layout">
         <!-- Photo -->
-        @if (event()!.restaurant?.photos?.length) {
+        @if (event()!.location?.photos?.length) {
           <div class="hero-photo">
-            <img [src]="event()!.restaurant!.photos[0].filePath" [alt]="event()!.restaurantName" />
+            <img [src]="event()!.location!.photos[0].filePath" [alt]="event()!.locationName" />
           </div>
         }
 
@@ -194,17 +194,17 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <mat-icon>restaurant</mat-icon>
                 <div>
                   <div class="info-label">Restaurant</div>
-                  @if (event()!.restaurant?.websiteUrl) {
+                  @if (event()!.location?.websiteUrl) {
                     <a
                       class="info-value map-link"
-                      [href]="event()!.restaurant!.websiteUrl!"
+                      [href]="event()!.location!.websiteUrl!"
                       target="_blank"
                       rel="noopener"
                     >
-                      {{ event()!.restaurantName }}
+                      {{ event()!.locationName }}
                     </a>
                   } @else {
-                    <div class="info-value">{{ event()!.restaurantName }}</div>
+                    <div class="info-value">{{ event()!.locationName }}</div>
                   }
                 </div>
               </div>
@@ -217,7 +217,7 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                     [href]="mapsUrl()"
                     target="_blank"
                     rel="noopener"
-                    >{{ event()!.restaurantAddress }}</a
+                    >{{ event()!.locationAddress }}</a
                   >
                 </div>
               </div>
@@ -2458,7 +2458,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
 
   mapsUrl(): string {
     const e = this.event()!;
-    return this.eventsService.mapsUrl(e.restaurantLat, e.restaurantLng, e.restaurantAddress);
+    return this.eventsService.mapsUrl(e.locationLat, e.locationLng, e.locationAddress);
   }
 
   googleCalendarUrl(): string {

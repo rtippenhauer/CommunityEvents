@@ -82,7 +82,7 @@ export class AppComponent {
   readonly isCommunityMenuActive = computed(() => {
     const url = this.currentUrl();
     return (
-      url.startsWith('/restaurants') ||
+      url.startsWith('/locations') ||
       url.startsWith('/merch') ||
       url.startsWith('/members') ||
       url.startsWith('/invite')

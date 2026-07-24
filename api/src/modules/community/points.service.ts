@@ -29,7 +29,7 @@ export interface PointLedgerDetailed {
 const POINT_TYPE_LABELS: Record<Exclude<PointType, PointType.ACHIEVEMENT>, string> = {
   [PointType.ATTENDANCE]: 'Attended a dinner',
   [PointType.COORDINATOR]: 'Coordinated a dinner',
-  [PointType.COORDINATOR_NEW_RESTAURANT]: 'Coordinated a dinner at a new restaurant',
+  [PointType.NEW_LOCATION_COORDINATOR]: 'Coordinated a dinner at a new restaurant',
   [PointType.INVITE]: 'Invited a member who attended their first dinner',
   [PointType.RATING]: 'Rated a restaurant',
   [PointType.CITY_HOPPER]: 'Dined in a new city',
@@ -80,23 +80,23 @@ export class PointsService {
     const exists = await this.pointRepo.findOne({
       where: [
         { userId, pointType: PointType.COORDINATOR, referenceId: eventId },
-        { userId, pointType: PointType.COORDINATOR_NEW_RESTAURANT, referenceId: eventId },
+        { userId, pointType: PointType.NEW_LOCATION_COORDINATOR, referenceId: eventId },
       ],
     });
     if (exists) return;
 
-    const event = await this.eventRepo.findOne({ where: { id: eventId }, relations: ['restaurant'] });
+    const event = await this.eventRepo.findOne({ where: { id: eventId }, relations: ['location'] });
     if (!event) return;
 
-    // Scout credit: restaurant was added to DinnerBears within the last week —
+    // Scout credit: location was added to DinnerBears within the last week —
     // meaning the coordinator suggested this new place and added it themselves.
     const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-    const restaurantAge = event.restaurant?.createdAt
-      ? Date.now() - new Date(event.restaurant.createdAt).getTime()
+    const locationAge = event.location?.createdAt
+      ? Date.now() - new Date(event.location.createdAt).getTime()
       : Infinity;
-    const isNewRestaurant = restaurantAge < ONE_WEEK_MS;
-    const pointType = isNewRestaurant ? PointType.COORDINATOR_NEW_RESTAURANT : PointType.COORDINATOR;
-    const points = isNewRestaurant ? 4 : 2;
+    const isNewLocation = locationAge < ONE_WEEK_MS;
+    const pointType = isNewLocation ? PointType.NEW_LOCATION_COORDINATOR : PointType.COORDINATOR;
+    const points = isNewLocation ? 4 : 2;
 
     await this.pointRepo.save(
       this.pointRepo.create({ userId, pointType, referenceId: eventId, points }),
@@ -105,14 +105,14 @@ export class PointsService {
     await this.achievementsService.checkCoordinatorAchievements(userId);
   }
 
-  async awardRating(userId: number, restaurantId: number): Promise<void> {
+  async awardRating(userId: number, locationId: number): Promise<void> {
     const exists = await this.pointRepo.findOne({
-      where: { userId, pointType: PointType.RATING, referenceId: restaurantId },
+      where: { userId, pointType: PointType.RATING, referenceId: locationId },
     });
     if (exists) return;
 
     await this.pointRepo.save(
-      this.pointRepo.create({ userId, pointType: PointType.RATING, referenceId: restaurantId, points: 1 }),
+      this.pointRepo.create({ userId, pointType: PointType.RATING, referenceId: locationId, points: 1 }),
     );
 
     await this.achievementsService.checkRatingAchievements(userId);

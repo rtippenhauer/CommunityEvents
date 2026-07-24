@@ -15,7 +15,7 @@ import { EventCardComponent } from '../../shared/components/event-card/event-car
 interface PublicStats {
   memberCount: number;
   dinnerCount: number;
-  restaurantCount: number;
+  locationCount: number;
 }
 
 @Component({
@@ -85,7 +85,7 @@ interface PublicStats {
         </div>
         <div class="stat-divider"></div>
         <div class="stat">
-          <span class="stat-number">{{ stats()!.restaurantCount }}</span>
+          <span class="stat-number">{{ stats()!.locationCount }}</span>
           <span class="stat-label">Restaurants</span>
         </div>
       </section>

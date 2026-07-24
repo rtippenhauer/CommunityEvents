@@ -10,7 +10,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-export class UpdateRestaurantDto {
+export class UpdateLocationDto {
   @IsString()
   @MaxLength(255)
   @IsOptional()
@@ -21,19 +21,19 @@ export class UpdateRestaurantDto {
   @IsOptional()
   address?: string;
 
-  @ValidateIf((o: UpdateRestaurantDto) => o.phone !== null)
+  @ValidateIf((o: UpdateLocationDto) => o.phone !== null)
   @IsString()
   @MaxLength(30)
   @IsOptional()
   phone?: string | null;
 
-  @ValidateIf((o: UpdateRestaurantDto) => o.websiteUrl !== null)
+  @ValidateIf((o: UpdateLocationDto) => o.websiteUrl !== null)
   @IsUrl()
   @MaxLength(500)
   @IsOptional()
   websiteUrl?: string | null;
 
-  @ValidateIf((o: UpdateRestaurantDto) => o.description !== null)
+  @ValidateIf((o: UpdateLocationDto) => o.description !== null)
   @IsString()
   @IsOptional()
   description?: string | null;
@@ -47,24 +47,24 @@ export class UpdateRestaurantDto {
   @IsOptional()
   isActive?: boolean;
 
-  @ValidateIf((o: UpdateRestaurantDto) => o.moderatorNotes !== null)
+  @ValidateIf((o: UpdateLocationDto) => o.moderatorNotes !== null)
   @IsString()
   @IsOptional()
   moderatorNotes?: string | null;
 
-  @ValidateIf((o: UpdateRestaurantDto) => o.contactName !== null)
+  @ValidateIf((o: UpdateLocationDto) => o.contactName !== null)
   @IsString()
   @MaxLength(100)
   @IsOptional()
   contactName?: string | null;
 
-  @ValidateIf((o: UpdateRestaurantDto) => o.contactPhone !== null)
+  @ValidateIf((o: UpdateLocationDto) => o.contactPhone !== null)
   @IsString()
   @MaxLength(30)
   @IsOptional()
   contactPhone?: string | null;
 
-  @ValidateIf((o: UpdateRestaurantDto) => o.contactEmail !== null)
+  @ValidateIf((o: UpdateLocationDto) => o.contactEmail !== null)
   @IsEmail()
   @MaxLength(150)
   @IsOptional()

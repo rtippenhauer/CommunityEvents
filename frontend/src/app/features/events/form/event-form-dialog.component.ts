@@ -16,7 +16,7 @@ export interface EventFormDialogData {
   event?: Event;
   preset?: {
     cityId?: number;
-    restaurantId?: number;
+    locationId?: number;
     title?: string;
     eventDate?: string;
     eventTime?: string;
@@ -43,7 +43,7 @@ interface City {
   id: number;
   name: string;
 }
-interface Restaurant {
+interface Location {
   id: number;
   name: string;
   cityId: number;
@@ -80,8 +80,8 @@ interface Restaurant {
 
         <mat-form-field appearance="outline">
           <mat-label>Restaurant</mat-label>
-          <mat-select formControlName="restaurantId">
-            @for (r of filteredRestaurants(); track r.id) {
+          <mat-select formControlName="locationId">
+            @for (r of filteredLocations(); track r.id) {
               <mat-option [value]="r.id">{{ r.name }}</mat-option>
             }
           </mat-select>
@@ -218,13 +218,13 @@ export class EventFormDialogComponent implements OnInit {
   readonly data = inject<EventFormDialogData>(MAT_DIALOG_DATA);
 
   readonly cities = signal<City[]>([]);
-  readonly restaurants = signal<Restaurant[]>([]);
-  readonly filteredRestaurants = signal<Restaurant[]>([]);
+  readonly locations = signal<Location[]>([]);
+  readonly filteredLocations = signal<Location[]>([]);
   readonly saving = signal(false);
 
   readonly form = this.fb.group({
     cityId: [0, [Validators.required, Validators.min(1)]],
-    restaurantId: [0, [Validators.required, Validators.min(1)]],
+    locationId: [0, [Validators.required, Validators.min(1)]],
     title: ['', Validators.required],
     eventDate: [nextTuesdayDate(), Validators.required],
     eventTime: ['', Validators.required],
@@ -240,32 +240,32 @@ export class EventFormDialogComponent implements OnInit {
       this.cities.set(c);
     });
 
-    this.http.get<Restaurant[]>('/api/v1/restaurants').subscribe((r) => {
-      this.restaurants.set(r);
+    this.http.get<Location[]>('/api/v1/locations').subscribe((r) => {
+      this.locations.set(r);
       const cityId = this.form.controls.cityId.value;
-      this.filterRestaurants(cityId);
+      this.filterLocations(cityId);
     });
 
     this.form.controls.cityId.valueChanges.subscribe((id) => {
-      this.filterRestaurants(id);
-      this.form.controls.restaurantId.setValue(0);
+      this.filterLocations(id);
+      this.form.controls.locationId.setValue(0);
     });
 
-    this.form.controls.restaurantId.valueChanges.subscribe((id) => {
+    this.form.controls.locationId.valueChanges.subscribe((id) => {
       if (!id) return;
-      const restaurant = this.restaurants().find((r) => r.id === id);
-      if (!restaurant) return;
+      const location = this.locations().find((r) => r.id === id);
+      if (!location) return;
 
-      // Sync city if the selected restaurant is in a different city (edit scenario)
-      if (this.form.controls.cityId.value !== restaurant.cityId) {
-        this.form.controls.cityId.setValue(restaurant.cityId, { emitEvent: false });
-        this.filterRestaurants(restaurant.cityId);
+      // Sync city if the selected location is in a different city (edit scenario)
+      if (this.form.controls.cityId.value !== location.cityId) {
+        this.form.controls.cityId.setValue(location.cityId, { emitEvent: false });
+        this.filterLocations(location.cityId);
       }
 
       // Auto-fill title if blank or still matches the generated pattern
       const currentTitle = this.form.controls.title.value;
       if (!currentTitle || /^Bear Dinner at /.test(currentTitle)) {
-        this.form.controls.title.setValue(`Bear Dinner at ${restaurant.name}`);
+        this.form.controls.title.setValue(`Bear Dinner at ${location.name}`);
       }
     });
 
@@ -273,7 +273,7 @@ export class EventFormDialogComponent implements OnInit {
       const e = this.data.event;
       this.form.patchValue({
         cityId: e.cityId,
-        restaurantId: e.restaurantId ?? 0,
+        locationId: e.locationId ?? 0,
         title: e.title,
         eventDate: parseLocalDate(e.eventDate),
         eventTime: e.eventTime.substring(0, 5),
@@ -287,20 +287,20 @@ export class EventFormDialogComponent implements OnInit {
       const p = this.data.preset;
       this.form.patchValue({
         cityId: p.cityId ?? 0,
-        restaurantId: p.restaurantId ?? 0,
+        locationId: p.locationId ?? 0,
         title: p.title ?? '',
         eventDate: p.eventDate ? parseLocalDate(p.eventDate) : nextTuesdayDate(),
         eventTime: p.eventTime ?? '18:30',
       });
-      if (p.cityId) this.filterRestaurants(p.cityId);
+      if (p.cityId) this.filterLocations(p.cityId);
     } else {
       this.form.patchValue({ eventTime: '18:30' });
     }
   }
 
-  private filterRestaurants(cityId: number): void {
-    const all = this.restaurants();
-    this.filteredRestaurants.set(cityId ? all.filter((r) => r.cityId === cityId) : all);
+  private filterLocations(cityId: number): void {
+    const all = this.locations();
+    this.filteredLocations.set(cityId ? all.filter((r) => r.cityId === cityId) : all);
   }
 
   save(): void {
@@ -313,7 +313,7 @@ export class EventFormDialogComponent implements OnInit {
     const val = this.form.getRawValue();
     const payload = {
       cityId: val.cityId,
-      restaurantId: val.restaurantId,
+      locationId: val.locationId,
       title: val.title.trim(),
       eventDate: toDateString(val.eventDate),
       eventTime: val.eventTime,

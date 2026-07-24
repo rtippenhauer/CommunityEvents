@@ -7,7 +7,7 @@ import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guar
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity } from '../../database/entities/user.entity';
 
-// Unlike restaurant photos, achievement icons, and custom icons (all served as
+// Unlike location photos, achievement icons, and custom icons (all served as
 // static assets — see main.ts), uploaded profile photos are streamed through
 // this route so they're only viewable by signed-in members, not the open web.
 @Controller('uploads/profiles')

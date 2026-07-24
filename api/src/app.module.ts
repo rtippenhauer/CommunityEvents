@@ -15,7 +15,7 @@ import { UsersModule } from './modules/users/users.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { FacebookGroupsModule } from './modules/facebook-groups/facebook-groups.module';
-import { RestaurantsModule } from './modules/restaurants/restaurants.module';
+import { LocationsModule } from './modules/locations/locations.module';
 import { EventsModule } from './modules/events/events.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { StatsModule } from './modules/stats/stats.module';
@@ -72,7 +72,7 @@ import { AppConfigModule } from './modules/app-config/app-config.module';
     AuditModule,
     NotificationsModule,
     FacebookGroupsModule,
-    RestaurantsModule,
+    LocationsModule,
     EventsModule,
     AdminModule,
     StatsModule,

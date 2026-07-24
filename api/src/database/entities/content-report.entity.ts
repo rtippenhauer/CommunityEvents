@@ -12,7 +12,7 @@ export enum ReportContentType {
   EVENT_COMMENT = 'event_comment',
   EVENT_COMMENT_REPLY = 'event_comment_reply',
   ANNOUNCEMENT_COMMENT = 'announcement_comment',
-  RESTAURANT_RATING = 'restaurant_rating',
+  LOCATION_RATING = 'location_rating',
 }
 
 export enum ReportStatus {

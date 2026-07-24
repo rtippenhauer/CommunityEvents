@@ -18,7 +18,7 @@ export class CreateEventDto {
 
   @IsInt()
   @IsPositive()
-  restaurantId: number;
+  locationId: number;
 
   @IsString()
   @MaxLength(255)

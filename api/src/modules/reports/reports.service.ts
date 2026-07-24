@@ -14,7 +14,7 @@ import {
 import { EventCommentEntity } from '../../database/entities/event-comment.entity';
 import { EventCommentReplyEntity } from '../../database/entities/event-comment-reply.entity';
 import { AnnouncementCommentEntity } from '../../database/entities/announcement-comment.entity';
-import { RestaurantRatingEntity } from '../../database/entities/restaurant-rating.entity';
+import { LocationRatingEntity } from '../../database/entities/location-rating.entity';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateReportDto } from './dto/create-report.dto';
@@ -37,8 +37,8 @@ export class ReportsService {
     private readonly replyRepo: Repository<EventCommentReplyEntity>,
     @InjectRepository(AnnouncementCommentEntity)
     private readonly annoCommentRepo: Repository<AnnouncementCommentEntity>,
-    @InjectRepository(RestaurantRatingEntity)
-    private readonly ratingRepo: Repository<RestaurantRatingEntity>,
+    @InjectRepository(LocationRatingEntity)
+    private readonly ratingRepo: Repository<LocationRatingEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly notificationsService: NotificationsService,
@@ -142,7 +142,7 @@ export class ReportsService {
         if (!a || a.deletedAt) throw new NotFoundException('Content not found');
         return { authorId: a.userId, preview: a.body.slice(0, 120), label: 'Announcement comment' };
       }
-      case ReportContentType.RESTAURANT_RATING: {
+      case ReportContentType.LOCATION_RATING: {
         const r = await this.ratingRepo.findOne({ where: { id } });
         if (!r) throw new NotFoundException('Content not found');
         const text = r.comment ?? `Food ${r.food}★ Service ${r.service}★ Value ${r.valueRating}★ Noise ${r.noise}★`;
@@ -162,7 +162,7 @@ export class ReportsService {
       case ReportContentType.ANNOUNCEMENT_COMMENT:
         await this.annoCommentRepo.update(id, { deletedAt: new Date() });
         break;
-      case ReportContentType.RESTAURANT_RATING:
+      case ReportContentType.LOCATION_RATING:
         await this.ratingRepo.delete(id);
         break;
     }

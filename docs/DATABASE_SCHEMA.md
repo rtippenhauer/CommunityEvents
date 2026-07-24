@@ -19,9 +19,9 @@ No `synchronize: true`. No manual schema changes.
 | `invites` | 2 | All invite types |
 | `facebook_group_config` | 2 | Configured Facebook groups |
 | `audit_log` | 2 | Immutable action log |
-| `restaurants` | 3 | Restaurant records |
-| `restaurant_photos` | 3 | Photos per restaurant |
-| `restaurant_ratings` | 9 | Member ratings per event visit |
+| `locations` | 3 | Location records |
+| `location_photos` | 3 | Photos per location |
+| `location_ratings` | 9 | Member ratings per event visit |
 | `events` | 4 | Weekly dinner events |
 | `event_rsvps` | 4 | Member RSVPs |
 | `event_guest_links` | 4 | Shareable/email guest invite links |
@@ -272,7 +272,7 @@ created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
 ---
 
-## restaurants
+## locations
 
 ```sql
 id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
@@ -301,11 +301,11 @@ FULLTEXT INDEX ft_name (name)
 
 ---
 
-## restaurant_photos
+## location_photos
 
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-restaurant_id   INT UNSIGNED NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE
+location_id   INT UNSIGNED NOT NULL REFERENCES locations(id) ON DELETE CASCADE
 file_path       VARCHAR(500) NOT NULL
 file_name       VARCHAR(255) NOT NULL
 mime_type       VARCHAR(100) NOT NULL
@@ -313,20 +313,20 @@ sort_order      INT NOT NULL DEFAULT 0
 uploaded_by     INT UNSIGNED NOT NULL REFERENCES users(id)
 created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
-INDEX idx_restaurant (restaurant_id)
+INDEX idx_location (location_id)
 ```
 
 ---
 
-## restaurant_ratings
+## location_ratings
 
-Phase 9. One rating per member per event (not per restaurant — a member can rate the same restaurant multiple times if they attend multiple events there).
+Phase 9. One rating per member per event (not per location — a member can rate the same location multiple times if they attend multiple events there).
 
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 member_id       INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
 event_id        INT UNSIGNED NOT NULL REFERENCES events(id) ON DELETE CASCADE
-restaurant_id   INT UNSIGNED NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE
+location_id   INT UNSIGNED NOT NULL REFERENCES locations(id) ON DELETE CASCADE
 food            TINYINT UNSIGNED NOT NULL       -- 1–5
 service         TINYINT UNSIGNED NOT NULL       -- 1–5
 value_rating    TINYINT UNSIGNED NOT NULL       -- 1–5
@@ -347,12 +347,12 @@ UNIQUE KEY uq_member_event (member_id, event_id)
 ```sql
 id                          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 city_id                     INT UNSIGNED NOT NULL REFERENCES cities(id)
-restaurant_id               INT UNSIGNED NULL REFERENCES restaurants(id) ON DELETE SET NULL
--- Snapshot fields (copied from restaurant at publish time)
-restaurant_name             VARCHAR(255) NOT NULL
-restaurant_address          VARCHAR(500) NOT NULL
-restaurant_lat              DECIMAL(10,7) NULL
-restaurant_lng              DECIMAL(10,7) NULL
+location_id               INT UNSIGNED NULL REFERENCES locations(id) ON DELETE SET NULL
+-- Snapshot fields (copied from location at publish time)
+location_name             VARCHAR(255) NOT NULL
+location_address          VARCHAR(500) NOT NULL
+location_lat              DECIMAL(10,7) NULL
+location_lng              DECIMAL(10,7) NULL
 -- Event fields
 title                       VARCHAR(255) NOT NULL
 description                 TEXT NULL
@@ -384,7 +384,7 @@ INDEX idx_city_date (city_id, event_date)
 INDEX idx_status (status)
 ```
 
-**Reservation assignee** is the member tagged as coordinator (suggests the restaurant, makes the reservation). See Phase 15 points system — coordinator earns Bear Points when the event concludes.
+**Reservation assignee** is the member tagged as coordinator (suggests the location, makes the reservation). See Phase 15 points system — coordinator earns Bear Points when the event concludes.
 
 ---
 
@@ -720,7 +720,7 @@ Phase 10.6. Unified reporting across all content types. One report per member pe
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 reporter_id     INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
 content_type    ENUM('event_comment','event_comment_reply',
-                     'announcement_comment','restaurant_rating') NOT NULL
+                     'announcement_comment','location_rating') NOT NULL
 content_id      INT UNSIGNED NOT NULL
 reason          VARCHAR(500) NULL
 status          ENUM('pending','reviewed','dismissed') NOT NULL DEFAULT 'pending'
@@ -799,7 +799,7 @@ name            VARCHAR(120) NOT NULL
 description     VARCHAR(500) NOT NULL
 icon            VARCHAR(255) NOT NULL DEFAULT 'emoji_events'  -- Material icon name, or "img:<path>" referencing a custom_icons row (Phase 17)
 image_path      VARCHAR(500) NULL               -- optional uploaded image (achievement-specific, distinct from the custom icon library)
-progress_type   ENUM('attendance','coordinator','new_restaurant_coordinator',
+progress_type   ENUM('attendance','coordinator','new_location_coordinator',
                      'invite','rating','founding','event','city_hopper',
                      'secret_dinner','login') NULL   -- NULL = one-time/manual grant; 'login' added Phase 17
 progress_target INT UNSIGNED NULL               -- threshold for progressive achievements
@@ -854,10 +854,9 @@ Phase 15. Ledger of all Bear Points awarded. One row per award event for auditab
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 user_id         INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
-point_type      ENUM('attendance','coordinator','coordinator_new_restaurant',
-                     'invite','rating','city_hopper','secret_dinner',
-                     'achievement') NOT NULL
-reference_id    INT UNSIGNED NOT NULL           -- event_id, restaurant_id, achievement_id, etc. for audit
+point_type      ENUM('attendance','coordinator','invite','rating','city_hopper',
+                     'secret_dinner','achievement','new_location_coordinator') NOT NULL
+reference_id    INT UNSIGNED NOT NULL           -- event_id, location_id, achievement_id, etc. for audit
 points          TINYINT NOT NULL DEFAULT 1
 awarded_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
@@ -957,8 +956,8 @@ only serve these three keys — see `LEGAL_CONFIG_KEYS` in
   `new Date().toISOString()` which gives UTC
 - RSVP cutoff = 150 minutes (2.5 hours) before event time; admins and
   moderators bypass this on both client and server
-- Uploaded file path conventions (2026-07-05): `restaurant_photos.file_path`
-  uses `/api/uploads/restaurants/<filename>` (public, static — used in
+- Uploaded file path conventions (2026-07-05): `location_photos.file_path`
+  uses `/api/uploads/locations/<filename>` (public, static — used in
   guest emails and social posts); `users.profile_photo_path` for an uploaded
   photo uses `/api/v1/uploads/profiles/<filename>` (auth-gated route, 401 if
   not signed in) — but for a preset avatar it's `/avatars/bear-*.jpg`

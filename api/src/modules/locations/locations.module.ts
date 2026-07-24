@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { RestaurantEntity } from '../../database/entities/restaurant.entity';
-import { RestaurantPhotoEntity } from '../../database/entities/restaurant-photo.entity';
-import { RestaurantRatingEntity } from '../../database/entities/restaurant-rating.entity';
+import { LocationEntity } from '../../database/entities/location.entity';
+import { LocationPhotoEntity } from '../../database/entities/location-photo.entity';
+import { LocationRatingEntity } from '../../database/entities/location-rating.entity';
 import { CityEntity } from '../../database/entities/city.entity';
 import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
-import { RestaurantsService } from './restaurants.service';
+import { LocationsService } from './locations.service';
 import { RatingsService } from './ratings.service';
-import { RestaurantsController } from './restaurants.controller';
+import { LocationsController } from './locations.controller';
 import { GeocodingService } from './geocoding.service';
 import { EnrichmentService } from './enrichment.service';
 import { CommunityModule } from '../community/community.module';
@@ -16,17 +16,17 @@ import { CommunityModule } from '../community/community.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      RestaurantEntity,
-      RestaurantPhotoEntity,
-      RestaurantRatingEntity,
+      LocationEntity,
+      LocationPhotoEntity,
+      LocationRatingEntity,
       CityEntity,
       EventEntity,
       EventRsvpEntity,
     ]),
     CommunityModule,
   ],
-  providers: [RestaurantsService, RatingsService, GeocodingService, EnrichmentService],
-  controllers: [RestaurantsController],
-  exports: [RestaurantsService],
+  providers: [LocationsService, RatingsService, GeocodingService, EnrichmentService],
+  controllers: [LocationsController],
+  exports: [LocationsService],
 })
-export class RestaurantsModule {}
+export class LocationsModule {}

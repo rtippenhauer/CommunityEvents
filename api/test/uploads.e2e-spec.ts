@@ -2,11 +2,11 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables } from './utils/test-app';
-import { seedCity, seedRestaurant, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { CityEntity } from '../src/database/entities/city.entity';
-import { RestaurantEntity } from '../src/database/entities/restaurant.entity';
+import { LocationEntity } from '../src/database/entities/location.entity';
 import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { RestaurantPhotoEntity } from '../src/database/entities/restaurant-photo.entity';
+import { LocationPhotoEntity } from '../src/database/entities/location-photo.entity';
 import { AchievementEntity } from '../src/database/entities/achievement.entity';
 
 // 1x1 transparent PNG, valid enough to pass the mimetype/extension filter —
@@ -23,7 +23,7 @@ describe('Uploads (e2e)', () => {
   let server: Parameters<typeof request>[0];
 
   let city: CityEntity;
-  let restaurant: RestaurantEntity;
+  let location: LocationEntity;
   let adminCookie: string;
   let moderatorCookie: string;
   let member: UserEntity;
@@ -41,7 +41,7 @@ describe('Uploads (e2e)', () => {
   beforeEach(async () => {
     await truncateAllTables(dataSource);
     city = await seedCity(dataSource);
-    restaurant = await seedRestaurant(dataSource, city.id);
+    location = await seedLocation(dataSource, city.id);
 
     const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
     const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
@@ -126,34 +126,34 @@ describe('Uploads (e2e)', () => {
     });
   });
 
-  describe('POST /restaurants/:id/photos + DELETE /restaurants/:id/photos/:photoId', () => {
+  describe('POST /locations/:id/photos + DELETE /locations/:id/photos/:photoId', () => {
     it('adds a photo as admin', async () => {
       const res = await request(server)
-        .post(`/api/v1/restaurants/${restaurant.id}/photos`)
+        .post(`/api/v1/locations/${location.id}/photos`)
         .set('Cookie', adminCookie)
-        .attach('photo', TINY_PNG, 'restaurant.png')
+        .attach('photo', TINY_PNG, 'location.png')
         .expect(201);
 
-      expect(res.body.filePath).toMatch(/^\/api\/uploads\/restaurants\/.+\.png$/);
-      expect(res.body.restaurantId).toBe(restaurant.id);
+      expect(res.body.filePath).toMatch(/^\/api\/uploads\/locations\/.+\.png$/);
+      expect(res.body.locationId).toBe(location.id);
     });
 
     it('adds a photo as moderator', async () => {
       await request(server)
-        .post(`/api/v1/restaurants/${restaurant.id}/photos`)
+        .post(`/api/v1/locations/${location.id}/photos`)
         .set('Cookie', moderatorCookie)
-        .attach('photo', TINY_PNG, 'restaurant.png')
+        .attach('photo', TINY_PNG, 'location.png')
         .expect(201);
     });
 
     it('assigns increasing sort order across multiple photos', async () => {
       const first = await request(server)
-        .post(`/api/v1/restaurants/${restaurant.id}/photos`)
+        .post(`/api/v1/locations/${location.id}/photos`)
         .set('Cookie', adminCookie)
         .attach('photo', TINY_PNG, 'first.png')
         .expect(201);
       const second = await request(server)
-        .post(`/api/v1/restaurants/${restaurant.id}/photos`)
+        .post(`/api/v1/locations/${location.id}/photos`)
         .set('Cookie', adminCookie)
         .attach('photo', TINY_PNG, 'second.png')
         .expect(201);
@@ -163,41 +163,41 @@ describe('Uploads (e2e)', () => {
 
     it('rejects a member adding a photo (mod/admin only)', async () => {
       await request(server)
-        .post(`/api/v1/restaurants/${restaurant.id}/photos`)
+        .post(`/api/v1/locations/${location.id}/photos`)
         .set('Cookie', memberCookie)
-        .attach('photo', TINY_PNG, 'restaurant.png')
+        .attach('photo', TINY_PNG, 'location.png')
         .expect(403);
     });
 
     it('rejects unauthenticated requests', async () => {
-      await request(server).post(`/api/v1/restaurants/${restaurant.id}/photos`).attach('photo', TINY_PNG, 'restaurant.png').expect(401);
+      await request(server).post(`/api/v1/locations/${location.id}/photos`).attach('photo', TINY_PNG, 'location.png').expect(401);
     });
 
     it('deletes a photo as admin', async () => {
       const created = await request(server)
-        .post(`/api/v1/restaurants/${restaurant.id}/photos`)
+        .post(`/api/v1/locations/${location.id}/photos`)
         .set('Cookie', adminCookie)
-        .attach('photo', TINY_PNG, 'restaurant.png')
+        .attach('photo', TINY_PNG, 'location.png')
         .expect(201);
 
       await request(server)
-        .delete(`/api/v1/restaurants/${restaurant.id}/photos/${created.body.id}`)
+        .delete(`/api/v1/locations/${location.id}/photos/${created.body.id}`)
         .set('Cookie', adminCookie)
         .expect(200);
 
-      const remaining = await dataSource.getRepository(RestaurantPhotoEntity).findOne({ where: { id: created.body.id } });
+      const remaining = await dataSource.getRepository(LocationPhotoEntity).findOne({ where: { id: created.body.id } });
       expect(remaining).toBeNull();
     });
 
     it('rejects a member deleting a photo (mod/admin only)', async () => {
       const created = await request(server)
-        .post(`/api/v1/restaurants/${restaurant.id}/photos`)
+        .post(`/api/v1/locations/${location.id}/photos`)
         .set('Cookie', adminCookie)
-        .attach('photo', TINY_PNG, 'restaurant.png')
+        .attach('photo', TINY_PNG, 'location.png')
         .expect(201);
 
       await request(server)
-        .delete(`/api/v1/restaurants/${restaurant.id}/photos/${created.body.id}`)
+        .delete(`/api/v1/locations/${location.id}/photos/${created.body.id}`)
         .set('Cookie', memberCookie)
         .expect(403);
     });

@@ -2,20 +2,20 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
-export interface RestaurantPhoto {
+export interface LocationPhoto {
   id: number;
   filePath: string;
   fileName: string;
   sortOrder: number;
 }
 
-interface RestaurantUser {
+interface LocationUser {
   id: number;
   fullName: string;
   profilePhotoPath: string | null;
 }
 
-export interface Restaurant {
+export interface Location {
   id: number;
   name: string;
   address: string;
@@ -27,12 +27,12 @@ export interface Restaurant {
   cityId: number;
   city: { id: number; name: string; subdomain: string };
   isActive: boolean;
-  photos: RestaurantPhoto[];
+  photos: LocationPhoto[];
   createdAt: string;
   updatedAt: string;
   enrichedAt: string | null;
-  createdByUser: RestaurantUser | null;
-  updatedByUser: RestaurantUser | null;
+  createdByUser: LocationUser | null;
+  updatedByUser: LocationUser | null;
   // Moderator-only fields (omitted for non-mod users)
   moderatorNotes?: string | null;
   contactName?: string | null;
@@ -40,7 +40,7 @@ export interface Restaurant {
   contactEmail?: string | null;
 }
 
-export interface CreateRestaurantPayload {
+export interface CreateLocationPayload {
   name: string;
   address: string;
   phone?: string | null;
@@ -53,7 +53,7 @@ export interface CreateRestaurantPayload {
   contactEmail?: string | null;
 }
 
-export interface UpdateRestaurantPayload extends Partial<CreateRestaurantPayload> {
+export interface UpdateLocationPayload extends Partial<CreateLocationPayload> {
   isActive?: boolean;
 }
 
@@ -103,9 +103,9 @@ export interface CreateRatingPayload {
 }
 
 export interface RatingQueueItem {
-  restaurantId: number;
-  restaurantName: string;
-  restaurantPhotoUrl: string | null;
+  locationId: number;
+  locationName: string;
+  locationPhotoUrl: string | null;
   eventId: number;
   eventDate: string;
   alreadyRated: boolean;
@@ -133,52 +133,52 @@ export interface ImportResult {
 }
 
 @Injectable({ providedIn: 'root' })
-export class RestaurantsService {
+export class LocationsService {
   private readonly http = inject(HttpClient);
-  private readonly base = '/api/v1/restaurants';
+  private readonly base = '/api/v1/locations';
 
-  getAll(cityId?: number, search?: string): Observable<Restaurant[]> {
+  getAll(cityId?: number, search?: string): Observable<Location[]> {
     const params: Record<string, string> = {};
     if (cityId) params['cityId'] = String(cityId);
     if (search) params['search'] = search;
-    return this.http.get<Restaurant[]>(this.base, { params });
+    return this.http.get<Location[]>(this.base, { params });
   }
 
-  getOne(id: number): Observable<Restaurant> {
-    return this.http.get<Restaurant>(`${this.base}/${id}`);
+  getOne(id: number): Observable<Location> {
+    return this.http.get<Location>(`${this.base}/${id}`);
   }
 
-  getArchived(cityId?: number, search?: string): Observable<Restaurant[]> {
+  getArchived(cityId?: number, search?: string): Observable<Location[]> {
     const params: Record<string, string> = {};
     if (cityId) params['cityId'] = String(cityId);
     if (search) params['search'] = search;
-    return this.http.get<Restaurant[]>(`${this.base}/archived`, { params });
+    return this.http.get<Location[]>(`${this.base}/archived`, { params });
   }
 
-  restore(id: number): Observable<Restaurant> {
-    return this.http.patch<Restaurant>(`${this.base}/${id}/restore`, {});
+  restore(id: number): Observable<Location> {
+    return this.http.patch<Location>(`${this.base}/${id}/restore`, {});
   }
 
-  create(payload: CreateRestaurantPayload): Observable<Restaurant> {
-    return this.http.post<Restaurant>(this.base, payload);
+  create(payload: CreateLocationPayload): Observable<Location> {
+    return this.http.post<Location>(this.base, payload);
   }
 
-  update(id: number, payload: UpdateRestaurantPayload): Observable<Restaurant> {
-    return this.http.patch<Restaurant>(`${this.base}/${id}`, payload);
+  update(id: number, payload: UpdateLocationPayload): Observable<Location> {
+    return this.http.patch<Location>(`${this.base}/${id}`, payload);
   }
 
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`${this.base}/${id}`);
   }
 
-  addPhoto(restaurantId: number, file: File): Observable<RestaurantPhoto> {
+  addPhoto(locationId: number, file: File): Observable<LocationPhoto> {
     const form = new FormData();
     form.append('photo', file);
-    return this.http.post<RestaurantPhoto>(`${this.base}/${restaurantId}/photos`, form);
+    return this.http.post<LocationPhoto>(`${this.base}/${locationId}/photos`, form);
   }
 
-  deletePhoto(restaurantId: number, photoId: number): Observable<void> {
-    return this.http.delete<void>(`${this.base}/${restaurantId}/photos/${photoId}`);
+  deletePhoto(locationId: number, photoId: number): Observable<void> {
+    return this.http.delete<void>(`${this.base}/${locationId}/photos/${photoId}`);
   }
 
   diagnose(id: number): Observable<unknown> {
@@ -189,8 +189,8 @@ export class RestaurantsService {
     return this.http.post<{ started: boolean; total: number }>(`${this.base}/enrich/bulk`, {});
   }
 
-  enrich(id: number): Observable<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; address: string | null; photoAdded: boolean; restaurant: Restaurant }> {
-    return this.http.post<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; address: string | null; photoAdded: boolean; restaurant: Restaurant }>(`${this.base}/${id}/enrich`, {});
+  enrich(id: number): Observable<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; address: string | null; photoAdded: boolean; location: Location }> {
+    return this.http.post<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; address: string | null; photoAdded: boolean; location: Location }>(`${this.base}/${id}/enrich`, {});
   }
 
   importFacebook(file: File, cityId: number): Observable<ImportResult> {
@@ -199,12 +199,12 @@ export class RestaurantsService {
     return this.http.post<ImportResult>(`${this.base}/import/facebook?cityId=${cityId}`, form);
   }
 
-  getRatings(restaurantId: number): Observable<RatingsResponse> {
-    return this.http.get<RatingsResponse>(`${this.base}/${restaurantId}/ratings`);
+  getRatings(locationId: number): Observable<RatingsResponse> {
+    return this.http.get<RatingsResponse>(`${this.base}/${locationId}/ratings`);
   }
 
-  submitRating(restaurantId: number, payload: CreateRatingPayload): Observable<unknown> {
-    return this.http.post(`${this.base}/${restaurantId}/ratings`, payload);
+  submitRating(locationId: number, payload: CreateRatingPayload): Observable<unknown> {
+    return this.http.post(`${this.base}/${locationId}/ratings`, payload);
   }
 
   placeSearch(q: string): Observable<PlaceSearchResult[]> {
@@ -215,10 +215,10 @@ export class RestaurantsService {
     return this.http.get<RatingQueueItem[]>(`${this.base}/rating-queue`);
   }
 
-  googleMapsUrl(restaurant: Restaurant): string | null {
-    if (restaurant.lat && restaurant.lng) {
-      return `https://www.google.com/maps?q=${restaurant.lat},${restaurant.lng}`;
+  googleMapsUrl(location: Location): string | null {
+    if (location.lat && location.lng) {
+      return `https://www.google.com/maps?q=${location.lat},${location.lng}`;
     }
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.address)}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.address)}`;
   }
 }

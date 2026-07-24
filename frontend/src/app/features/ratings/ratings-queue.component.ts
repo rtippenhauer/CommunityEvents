@@ -15,7 +15,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatChipsModule } from '@angular/material/chips';
-import { RestaurantsService, RatingQueueItem } from '../../core/services/restaurants.service';
+import { LocationsService, RatingQueueItem } from '../../core/services/locations.service';
 
 @Component({
   selector: 'app-ratings-queue',
@@ -75,17 +75,17 @@ import { RestaurantsService, RatingQueueItem } from '../../core/services/restaur
             <div
               class="queue-item"
               [class.already-rated]="item.alreadyRated"
-              (click)="goToRestaurant(item.restaurantId)"
+              (click)="goToLocation(item.locationId)"
             >
               <div class="item-photo">
-                @if (item.restaurantPhotoUrl) {
-                  <img [src]="item.restaurantPhotoUrl" [alt]="item.restaurantName" />
+                @if (item.locationPhotoUrl) {
+                  <img [src]="item.locationPhotoUrl" [alt]="item.locationName" />
                 } @else {
                   <div class="photo-placeholder"><mat-icon>restaurant</mat-icon></div>
                 }
               </div>
               <div class="item-info">
-                <span class="item-name">{{ item.restaurantName }}</span>
+                <span class="item-name">{{ item.locationName }}</span>
                 <span class="item-date">{{
                   item.eventDate + 'T12:00:00' | date: 'MMMM d, y'
                 }}</span>
@@ -263,7 +263,7 @@ import { RestaurantsService, RatingQueueItem } from '../../core/services/restaur
   ],
 })
 export class RatingsQueueComponent implements OnInit {
-  private readonly restaurantsService = inject(RestaurantsService);
+  private readonly locationsService = inject(LocationsService);
   private readonly router = inject(Router);
 
   readonly loading = signal(true);
@@ -275,13 +275,13 @@ export class RatingsQueueComponent implements OnInit {
     const q = this.search().toLowerCase();
     return this.items().filter((item) => {
       if (!this.showRated() && item.alreadyRated) return false;
-      if (q && !item.restaurantName.toLowerCase().includes(q)) return false;
+      if (q && !item.locationName.toLowerCase().includes(q)) return false;
       return true;
     });
   });
 
   ngOnInit(): void {
-    this.restaurantsService.getRatingQueue().subscribe({
+    this.locationsService.getRatingQueue().subscribe({
       next: (items) => {
         this.items.set(items);
         this.loading.set(false);
@@ -294,7 +294,7 @@ export class RatingsQueueComponent implements OnInit {
     this.search.set((event.target as HTMLInputElement).value);
   }
 
-  goToRestaurant(id: number): void {
-    void this.router.navigate(['/restaurants', id]);
+  goToLocation(id: number): void {
+    void this.router.navigate(['/locations', id]);
   }
 }

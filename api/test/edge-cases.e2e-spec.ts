@@ -2,9 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
-import { seedCity, seedRestaurant, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { CityEntity } from '../src/database/entities/city.entity';
-import { RestaurantEntity } from '../src/database/entities/restaurant.entity';
+import { LocationEntity } from '../src/database/entities/location.entity';
 import { UserEntity, UserRole } from '../src/database/entities/user.entity';
 
 // Builds a structurally valid (per validator.js's isEmail) but oversized email —
@@ -29,7 +29,7 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
   let server: Parameters<typeof request>[0];
 
   let city: CityEntity;
-  let restaurant: RestaurantEntity;
+  let location: LocationEntity;
   let admin: UserEntity;
   let adminCookie: string;
   let member: UserEntity;
@@ -48,7 +48,7 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
     await truncateAllTables(dataSource);
     resetThrottler(app);
     city = await seedCity(dataSource);
-    restaurant = await seedRestaurant(dataSource, city.id);
+    location = await seedLocation(dataSource, city.id);
 
     admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
     member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
@@ -64,7 +64,7 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
       .set('Cookie', adminCookie)
       .send({
         cityId: city.id,
-        restaurantId: restaurant.id,
+        locationId: location.id,
         title: 'Test Dinner',
         eventDate: eventDate.toISOString().slice(0, 10),
         eventTime: '18:30',
@@ -90,34 +90,34 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
         .expect(400);
     });
 
-    it('rejects a restaurant name over 255 chars', async () => {
+    it('rejects a location name over 255 chars', async () => {
       await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
         .send({ name: 'A'.repeat(256), address: '123 Test St', cityId: city.id })
         .expect(400);
     });
 
-    it('rejects a restaurant address over 500 chars', async () => {
+    it('rejects a location address over 500 chars', async () => {
       await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
         .send({ name: 'Boundary Bistro', address: 'A'.repeat(501), cityId: city.id })
         .expect(400);
     });
 
-    it('rejects a restaurant websiteUrl over 500 chars (regression: previously unbounded)', async () => {
+    it('rejects a location websiteUrl over 500 chars (regression: previously unbounded)', async () => {
       const url = `https://example.com/${'a'.repeat(500)}`;
       await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
         .send({ name: 'Boundary Bistro', address: '123 Test St', cityId: city.id, websiteUrl: url })
         .expect(400);
     });
 
-    it('rejects a restaurant contactEmail over 150 chars', async () => {
+    it('rejects a location contactEmail over 150 chars', async () => {
       await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
         .send({
           name: 'Boundary Bistro', address: '123 Test St', cityId: city.id,
@@ -187,7 +187,7 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
         .post('/api/v1/events')
         .set('Cookie', adminCookie)
         .send({
-          cityId: city.id, restaurantId: restaurant.id, title: 'A'.repeat(256),
+          cityId: city.id, locationId: location.id, title: 'A'.repeat(256),
           eventDate: '2027-06-01', eventTime: '18:30',
         })
         .expect(400);
@@ -202,10 +202,10 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
         .expect(400);
     });
 
-    it('rejects a restaurant rating comment over 1000 chars (validation runs before eligibility)', async () => {
+    it('rejects a location rating comment over 1000 chars (validation runs before eligibility)', async () => {
       const event = await createPublishedEvent();
       await request(server)
-        .post(`/api/v1/restaurants/${restaurant.id}/ratings`)
+        .post(`/api/v1/locations/${location.id}/ratings`)
         .set('Cookie', memberCookie)
         .send({
           eventId: event.id, food: 5, service: 5, valueRating: 5, noise: 5,
@@ -403,16 +403,16 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
   });
 
   describe('SQL-injection-shaped payloads are treated as inert data', () => {
-    it('stores a tautology payload as a literal restaurant name, not as SQL', async () => {
+    it('stores a tautology payload as a literal location name, not as SQL', async () => {
       const res = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
         .send({ name: SQLI_TAUTOLOGY, address: '123 Test St', cityId: city.id })
         .expect(201);
       expect(res.body.name).toBe(SQLI_TAUTOLOGY);
 
       const found = await request(server)
-        .get(`/api/v1/restaurants?search=${encodeURIComponent(SQLI_TAUTOLOGY)}`)
+        .get(`/api/v1/locations?search=${encodeURIComponent(SQLI_TAUTOLOGY)}`)
         .set('Cookie', memberCookie)
         .expect(200);
       expect(found.body.some((r: { id: number }) => r.id === res.body.id)).toBe(true);
@@ -420,7 +420,7 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
 
     it('handles a DROP-TABLE-shaped payload without error and leaves other data intact', async () => {
       await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
         .send({ name: SQLI_DROP, address: '123 Test St', cityId: city.id })
         .expect(201);

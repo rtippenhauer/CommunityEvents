@@ -1534,6 +1534,52 @@ monthly-by-nth-weekday patterns ("2nd Saturday"). The new-event form
 defaults its date/time off whichever pattern the fork has configured,
 instead of assuming DinnerBears' own weekly-Tuesday cadence.
 
+**Progress — restaurants → locations rename (2026-07-23):** the first
+decision above is implemented. Renamed throughout, identifiers only (UI
+copy still says "Restaurant" everywhere):
+- DB: `restaurants`/`restaurant_photos`/`restaurant_ratings` tables →
+  `locations`/`location_photos`/`location_ratings`; FK/index names to
+  match; `events.restaurant_*` snapshot columns → `location_*`. Enum
+  values normalized in the same pass: `content_reports.content_type`
+  `restaurant_rating` → `location_rating`; `member_points.point_type`
+  `coordinator_new_restaurant` and `achievements.progress_type`
+  `new_restaurant_coordinator` both → `new_location_coordinator` (fixes a
+  pre-existing word-order inconsistency between the two). New migrations
+  `RenameRestaurantsToLocations` and `MoveLocationUploads` (the latter also
+  moves physical files from `/uploads/restaurants/` to `/uploads/locations/`
+  and rewrites `file_path` rows) — both tested up *and* down against
+  seeded data in an ephemeral MySQL container, plus a full TypeORM
+  entity-mapping check, before being treated as done.
+- API: `RestaurantEntity`/`RestaurantPhotoEntity`/`RestaurantRatingEntity`
+  → `Location*Entity`; `modules/restaurants` → `modules/locations`
+  (controller/service/DTOs/enrichment/ratings/geocoding); route
+  `/api/v1/restaurants` → `/api/v1/locations`; all consumer modules
+  (events, invites, reports, stats, community achievements/points,
+  calendar) updated to match. User-facing strings deliberately preserved:
+  `NotFoundException('Restaurant not found')` and similar, the
+  `POINT_DESCRIPTIONS`/report labels, and the Claude enrichment prompt
+  wording.
+- Frontend: `features/restaurants` → `features/locations`
+  (`LocationsListComponent`, `LocationDetailComponent`,
+  `LocationFormDialogComponent`, etc.), `core/services/restaurants.service.ts`
+  → `locations.service.ts`, routes `/restaurants` → `/locations`. Template
+  text/labels/placeholders left as "Restaurant"; the nav and other
+  `<mat-icon>restaurant</mat-icon>` uses were **not** touched — that's
+  Google's Material Symbols icon name, unrelated to our domain model,
+  and there's no equivalent-looking `location_*` icon.
+- Tests/docs: `restaurants.e2e-spec.ts` → `locations.e2e-spec.ts`,
+  `seedRestaurant()` → `seedLocation()`, all other e2e specs updated to
+  match; `docs/DATABASE_SCHEMA.md` and `docs/restaurant-import-template.csv`
+  (→ `location-import-template.csv`) updated; `api/CLAUDE.md` and
+  `frontend/CLAUDE.md` module-structure sections updated.
+
+Verified: `tsc --noEmit` clean on both workspaces, full `ng build`
+succeeds, `locations.e2e-spec.ts` (17 tests) passes against the migrated
+schema. Not yet done: the rest of Phase 29's scope above (branding
+extraction, bootstrap script, `NEW_INSTANCE_SETUP.md`, `dinnerbears.com`
+hardcoding audit) and the remaining three decisions (location privacy,
+attendance, event cadence) are still unimplemented.
+
 ## Phase 30 — Editable Legal Copy (Terms, Privacy, About) ✅ Complete
 
 Started 2026-07-22. Split out of Phase 29 (white-label template,

@@ -2,9 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
-import { seedCity, seedRestaurant, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { CityEntity } from '../src/database/entities/city.entity';
-import { RestaurantEntity } from '../src/database/entities/restaurant.entity';
+import { LocationEntity } from '../src/database/entities/location.entity';
 import { UserEntity, UserRole, UserStatus } from '../src/database/entities/user.entity';
 import { OAuthAccountEntity, OAuthProvider } from '../src/database/entities/oauth-account.entity';
 import { LoginSessionEntity } from '../src/database/entities/login-session.entity';
@@ -20,7 +20,7 @@ describe('Account Lifecycle (e2e)', () => {
   let server: Parameters<typeof request>[0];
 
   let city: CityEntity;
-  let restaurant: RestaurantEntity;
+  let location: LocationEntity;
   let adminCookie: string;
 
   beforeAll(async () => {
@@ -36,7 +36,7 @@ describe('Account Lifecycle (e2e)', () => {
     await truncateAllTables(dataSource);
     resetThrottler(app);
     city = await seedCity(dataSource);
-    restaurant = await seedRestaurant(dataSource, city.id);
+    location = await seedLocation(dataSource, city.id);
     const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
     adminCookie = await loginAs(app, admin);
   });
@@ -49,7 +49,7 @@ describe('Account Lifecycle (e2e)', () => {
       .set('Cookie', adminCookie)
       .send({
         cityId: city.id,
-        restaurantId: restaurant.id,
+        locationId: location.id,
         title: 'Upcoming Dinner',
         eventDate: eventDate.toISOString().slice(0, 10),
         eventTime: '18:30',

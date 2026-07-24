@@ -8,7 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
   standalone: true,
   imports: [MatDialogModule, MatButtonModule, MatIconModule],
   template: `
-    <h2 mat-dialog-title>Enrichment Diagnosis — {{ data.restaurant?.name }}</h2>
+    <h2 mat-dialog-title>Enrichment Diagnosis — {{ data.location?.name }}</h2>
 
     <mat-dialog-content class="diagnose-content">
       <!-- API Keys -->
@@ -32,50 +32,50 @@ import { MatIconModule } from '@angular/material/icon';
         </div>
       </section>
 
-      <!-- Restaurant state -->
+      <!-- Location state -->
       <section>
         <h3>Current Restaurant Data</h3>
-        <div class="row"><b>Name:</b>&nbsp;{{ data.restaurant.name }}</div>
-        <div class="row"><b>Address:</b>&nbsp;{{ data.restaurant.address }}</div>
+        <div class="row"><b>Name:</b>&nbsp;{{ data.location.name }}</div>
+        <div class="row"><b>Address:</b>&nbsp;{{ data.location.address }}</div>
         <div class="row">
           <span
             class="icon"
-            [class.ok]="data.restaurant.hasDescription"
-            [class.warn]="!data.restaurant.hasDescription"
+            [class.ok]="data.location.hasDescription"
+            [class.warn]="!data.location.hasDescription"
           >
-            {{ data.restaurant.hasDescription ? '✓' : '○' }}
+            {{ data.location.hasDescription ? '✓' : '○' }}
           </span>
-          Description {{ data.restaurant.hasDescription ? 'exists' : 'missing' }}
+          Description {{ data.location.hasDescription ? 'exists' : 'missing' }}
         </div>
         <div class="row">
           <span
             class="icon"
-            [class.ok]="data.restaurant.hasPhone"
-            [class.warn]="!data.restaurant.hasPhone"
+            [class.ok]="data.location.hasPhone"
+            [class.warn]="!data.location.hasPhone"
           >
-            {{ data.restaurant.hasPhone ? '✓' : '○' }}
+            {{ data.location.hasPhone ? '✓' : '○' }}
           </span>
-          Phone {{ data.restaurant.hasPhone ? 'exists' : 'missing' }}
+          Phone {{ data.location.hasPhone ? 'exists' : 'missing' }}
         </div>
         <div class="row">
           <span
             class="icon"
-            [class.ok]="data.restaurant.hasWebsite"
-            [class.warn]="!data.restaurant.hasWebsite"
+            [class.ok]="data.location.hasWebsite"
+            [class.warn]="!data.location.hasWebsite"
           >
-            {{ data.restaurant.hasWebsite ? '✓' : '○' }}
+            {{ data.location.hasWebsite ? '✓' : '○' }}
           </span>
-          Website {{ data.restaurant.hasWebsite ? 'exists' : 'missing' }}
+          Website {{ data.location.hasWebsite ? 'exists' : 'missing' }}
         </div>
         <div class="row">
           <span
             class="icon"
-            [class.ok]="data.restaurant.photoCount > 0"
-            [class.warn]="data.restaurant.photoCount === 0"
+            [class.ok]="data.location.photoCount > 0"
+            [class.warn]="data.location.photoCount === 0"
           >
-            {{ data.restaurant.photoCount > 0 ? '✓' : '○' }}
+            {{ data.location.photoCount > 0 ? '✓' : '○' }}
           </span>
-          Photos: {{ data.restaurant.photoCount }}
+          Photos: {{ data.location.photoCount }}
         </div>
       </section>
 

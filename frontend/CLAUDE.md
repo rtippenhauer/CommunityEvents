@@ -21,7 +21,7 @@ src/app/
 └── features/
     ├── auth/           # Login, registration, OAuth callbacks
     ├── profile/        # Member profile, settings, notifications
-    ├── restaurants/    # Restaurant list and detail
+    ├── locations/      # Location list and detail (displayed as "Restaurant" in the UI)
     ├── events/         # Event list, detail, RSVP
     ├── announcements/  # Community announcements
     ├── admin/          # Admin panel (lazy, role-gated)

@@ -2,9 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
-import { seedCity, seedRestaurant, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { CityEntity } from '../src/database/entities/city.entity';
-import { RestaurantEntity } from '../src/database/entities/restaurant.entity';
+import { LocationEntity } from '../src/database/entities/location.entity';
 import { UserEntity, UserRole } from '../src/database/entities/user.entity';
 import { EventEntity, EventStatus } from '../src/database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../src/database/entities/event-rsvp.entity';
@@ -25,7 +25,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
   let calendarService: CalendarService;
 
   let city: CityEntity;
-  let restaurant: RestaurantEntity;
+  let location: LocationEntity;
   let admin: UserEntity;
   let member: UserEntity;
   let memberCookie: string;
@@ -44,7 +44,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
     await truncateAllTables(dataSource);
     resetThrottler(app);
     city = await seedCity(dataSource);
-    restaurant = await seedRestaurant(dataSource, city.id);
+    location = await seedLocation(dataSource, city.id);
 
     admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
     member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
@@ -56,9 +56,9 @@ describe('Calendar / ICS Feed (e2e)', () => {
     return repo.save(
       repo.create({
         cityId: city.id,
-        restaurantId: restaurant.id,
-        restaurantName: restaurant.name,
-        restaurantAddress: restaurant.address,
+        locationId: location.id,
+        locationName: location.name,
+        locationAddress: location.address,
         createdById: admin.id,
         title: 'Calendar Test Dinner',
         eventDate: dateOffset(14),
@@ -119,8 +119,8 @@ describe('Calendar / ICS Feed (e2e)', () => {
     });
 
     it('folds a line longer than 75 octets', async () => {
-      const longName = 'A'.repeat(120) + ' Restaurant';
-      await seedEvent({ restaurantName: longName });
+      const longName = 'A'.repeat(120) + ' Location';
+      await seedEvent({ locationName: longName });
       const token = await calendarService.getOrCreateToken(member.id);
 
       const res = await request(server).get('/api/v1/calendar/feed.ics').query({ token }).expect(200);
@@ -144,13 +144,13 @@ describe('Calendar / ICS Feed (e2e)', () => {
 
     it('cityFilter restricts the feed to the member\'s own city', async () => {
       const otherCity = await seedCity(dataSource);
-      const otherRestaurant = await seedRestaurant(dataSource, otherCity.id);
+      const otherLocation = await seedLocation(dataSource, otherCity.id);
       const otherCityEvent = await dataSource.getRepository(EventEntity).save(
         dataSource.getRepository(EventEntity).create({
           cityId: otherCity.id,
-          restaurantId: otherRestaurant.id,
-          restaurantName: otherRestaurant.name,
-          restaurantAddress: otherRestaurant.address,
+          locationId: otherLocation.id,
+          locationName: otherLocation.name,
+          locationAddress: otherLocation.address,
           createdById: admin.id,
           title: 'Other City Dinner',
           eventDate: dateOffset(14),
@@ -331,7 +331,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
 
   describe('CalendarService.buildInviteAttachment (Phase 16b — direct call, no HTTP side effect to observe)', () => {
     it('builds a METHOD:REQUEST invite with an ATTENDEE RSVP line and a DTSTAMP', () => {
-      const event = { id: 1, restaurantName: 'Test Place', restaurantAddress: '123 Main St', eventDate: dateOffset(14), eventTime: '18:30', updatedAt: new Date() } as EventEntity;
+      const event = { id: 1, locationName: 'Test Place', locationAddress: '123 Main St', eventDate: dateOffset(14), eventTime: '18:30', updatedAt: new Date() } as EventEntity;
 
       const ics = calendarService.buildInviteAttachment(event, { name: 'Guest Name', email: 'guest@example.test' }, 'http://localhost:8081');
 
@@ -348,7 +348,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
       // the exact same SEQUENCE every time — calendar clients had no signal
       // that a later email superseded an earlier one and created a duplicate
       // pending invitation per message instead of updating one in place.
-      const event = { id: 2, restaurantName: 'Test Place', restaurantAddress: '123 Main St', eventDate: dateOffset(14), eventTime: '18:30', updatedAt: new Date() } as EventEntity;
+      const event = { id: 2, locationName: 'Test Place', locationAddress: '123 Main St', eventDate: dateOffset(14), eventTime: '18:30', updatedAt: new Date() } as EventEntity;
       const recipient = { name: 'Guest Name', email: 'guest@example.test' };
 
       const first = calendarService.buildInviteAttachment(event, recipient, 'http://localhost:8081');

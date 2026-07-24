@@ -45,9 +45,9 @@ type PageState =
 
         @case ('open') {
           <div class="rsvp-card">
-            @if (info()!.restaurantPhotoUrl) {
+            @if (info()!.locationPhotoUrl) {
               <div class="event-photo">
-                <img [src]="info()!.restaurantPhotoUrl!" [alt]="info()!.restaurantName" />
+                <img [src]="info()!.locationPhotoUrl!" [alt]="info()!.locationName" />
               </div>
             }
 
@@ -69,12 +69,12 @@ type PageState =
                 </div>
                 <div class="meta-row">
                   <mat-icon>restaurant</mat-icon>
-                  <span>{{ info()!.restaurantName }}</span>
+                  <span>{{ info()!.locationName }}</span>
                 </div>
                 <div class="meta-row">
                   <mat-icon>location_on</mat-icon>
                   <a [href]="mapsUrl()" target="_blank" rel="noopener" class="address-link">
-                    {{ info()!.restaurantAddress }}
+                    {{ info()!.locationAddress }}
                   </a>
                 </div>
               </div>
@@ -121,7 +121,7 @@ type PageState =
               <mat-icon class="state-icon confirmed-icon">check_circle</mat-icon>
               <h2>You're going!</h2>
               <p>
-                See you at <strong>{{ info()!.restaurantName }}</strong> on
+                See you at <strong>{{ info()!.locationName }}</strong> on
                 {{ info()!.eventDate | date: 'MMMM d' }}.
               </p>
               <p class="state-sub">{{ info()!.invitedByName }} will have your spot reserved.</p>
@@ -142,7 +142,7 @@ type PageState =
               <mat-icon class="state-icon used-icon">check_circle</mat-icon>
               <h2>Already RSVP'd!</h2>
               <p>
-                You're confirmed for <strong>{{ info()!.restaurantName }}</strong> on
+                You're confirmed for <strong>{{ info()!.locationName }}</strong> on
                 {{ info()!.eventDate | date: 'MMMM d' }}.
               </p>
               <p class="state-sub">See you there!</p>
@@ -527,9 +527,9 @@ export class GuestRsvpComponent implements OnInit {
   mapsUrl(): string {
     const info = this.info()!;
     return this.eventsService.mapsUrl(
-      info.restaurantLat,
-      info.restaurantLng,
-      info.restaurantAddress,
+      info.locationLat,
+      info.locationLng,
+      info.locationAddress,
     );
   }
 }

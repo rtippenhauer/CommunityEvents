@@ -25,20 +25,20 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { EnrichDiagnoseDialogComponent } from './enrich-diagnose-dialog.component';
 import {
-  RestaurantsService,
-  Restaurant,
+  LocationsService,
+  Location,
   RatingsResponse,
   EligibleEvent,
-} from '../../../core/services/restaurants.service';
+} from '../../../core/services/locations.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { RestaurantFormDialogComponent } from '../form/restaurant-form-dialog.component';
+import { LocationFormDialogComponent } from '../form/location-form-dialog.component';
 import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-dialog/photo-crop-dialog.component';
 import { EventFormDialogComponent } from '../../events/form/event-form-dialog.component';
 import { Event as DinnerEvent } from '../../../core/services/events.service';
 import { ReportButtonComponent } from '../../../shared/components/report-button/report-button.component';
 
 @Component({
-  selector: 'app-restaurant-detail',
+  selector: 'app-location-detail',
   standalone: true,
   imports: [
     DatePipe,
@@ -62,11 +62,11 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
   template: `
     @if (loading()) {
       <div class="center"><mat-spinner /></div>
-    } @else if (restaurant()) {
+    } @else if (location()) {
       <div class="detail-page">
         <!-- Back + actions -->
         <div class="top-bar">
-          <button mat-button routerLink="/restaurants">
+          <button mat-button routerLink="/locations">
             <mat-icon>arrow_back</mat-icon> Restaurants
           </button>
           @if (isAdminOrMod()) {
@@ -96,7 +96,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                   </button>
                 }
                 @if (isAdmin()) {
-                  <button mat-menu-item class="delete-item" (click)="deleteRestaurant()">
+                  <button mat-menu-item class="delete-item" (click)="deleteLocation()">
                     <mat-icon color="warn">delete</mat-icon> Delete
                   </button>
                 }
@@ -113,11 +113,11 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         </div>
 
         <!-- Photo gallery -->
-        @if (restaurant()!.photos.length > 0) {
+        @if (location()!.photos.length > 0) {
           <div class="gallery">
-            @for (photo of restaurant()!.photos; track photo.id) {
+            @for (photo of location()!.photos; track photo.id) {
               <div class="gallery-item">
-                <img [src]="photo.filePath" [alt]="restaurant()!.name" />
+                <img [src]="photo.filePath" [alt]="location()!.name" />
                 @if (isAdminOrMod()) {
                   <button
                     mat-icon-button
@@ -136,78 +136,78 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         <!-- Info -->
         <mat-card class="info-card">
           <mat-card-header>
-            <mat-card-title>{{ restaurant()!.name }}</mat-card-title>
-            <mat-card-subtitle>{{ restaurant()!.city.name }}</mat-card-subtitle>
+            <mat-card-title>{{ location()!.name }}</mat-card-title>
+            <mat-card-subtitle>{{ location()!.city.name }}</mat-card-subtitle>
           </mat-card-header>
           <mat-card-content class="info-body">
             <div class="info-row">
               <mat-icon>location_on</mat-icon>
               <a [href]="mapsUrl()" target="_blank" rel="noopener" class="map-link">
-                {{ restaurant()!.address }}
+                {{ location()!.address }}
               </a>
             </div>
 
-            @if (restaurant()!.phone) {
+            @if (location()!.phone) {
               <div class="info-row">
                 <mat-icon>phone</mat-icon>
-                <a [href]="'tel:' + restaurant()!.phone">{{ restaurant()!.phone }}</a>
+                <a [href]="'tel:' + location()!.phone">{{ location()!.phone }}</a>
               </div>
             }
 
-            @if (restaurant()!.websiteUrl) {
+            @if (location()!.websiteUrl) {
               <div class="info-row">
                 <mat-icon>language</mat-icon>
-                <a [href]="restaurant()!.websiteUrl!" target="_blank" rel="noopener">
-                  {{ restaurant()!.websiteUrl }}
+                <a [href]="location()!.websiteUrl!" target="_blank" rel="noopener">
+                  {{ location()!.websiteUrl }}
                 </a>
               </div>
             }
 
-            @if (restaurant()!.description) {
-              <p class="description">{{ restaurant()!.description }}</p>
+            @if (location()!.description) {
+              <p class="description">{{ location()!.description }}</p>
             }
 
             <div class="audit-info">
-              @if (restaurant()!.createdByUser) {
+              @if (location()!.createdByUser) {
                 <div class="audit-row">
                   <img
                     class="audit-avatar"
                     [src]="
-                      restaurant()!.createdByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'
+                      location()!.createdByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'
                     "
-                    [alt]="restaurant()!.createdByUser!.fullName"
+                    [alt]="location()!.createdByUser!.fullName"
                   />
                   <span
-                    >Added by <strong>{{ restaurant()!.createdByUser!.fullName }}</strong> on
-                    {{ restaurant()!.createdAt | date: 'mediumDate' }}</span
+                    >Added by <strong>{{ location()!.createdByUser!.fullName }}</strong> on
+                    {{ location()!.createdAt | date: 'mediumDate' }}</span
                   >
                 </div>
               } @else {
                 <div class="audit-row muted">
-                  Added {{ restaurant()!.createdAt | date: 'mediumDate' }}
+                  Added {{ location()!.createdAt | date: 'mediumDate' }}
                 </div>
               }
               @if (
-                restaurant()!.updatedByUser && restaurant()!.updatedAt !== restaurant()!.createdAt
+                location()!.updatedByUser && location()!.updatedAt !== location()!.createdAt
               ) {
                 <div class="audit-row">
                   <img
                     class="audit-avatar"
                     [src]="
-                      restaurant()!.updatedByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'
+                      location()!.updatedByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'
                     "
-                    [alt]="restaurant()!.updatedByUser!.fullName"
+                    [alt]="location()!.updatedByUser!.fullName"
                   />
                   <span
-                    >Updated by <strong>{{ restaurant()!.updatedByUser!.fullName }}</strong> on
-                    {{ restaurant()!.updatedAt | date: 'mediumDate' }}</span
+                    >Updated by <strong>{{ location()!.updatedByUser!.fullName }}</strong> on
+                    {{ location()!.updatedAt | date: 'mediumDate' }}</span
                   >
                 </div>
               }
-              @if (restaurant()!.enrichedAt) {
+              @if (location()!.enrichedAt) {
                 <div class="audit-row muted">
                   <mat-icon class="audit-icon">auto_awesome</mat-icon>
-                  Enriched {{ restaurant()!.enrichedAt | date: 'mediumDate' }}
+                  Enriched {{ location()!.enrichedAt | date: 'mediumDate' }}
                 </div>
               }
             </div>
@@ -292,7 +292,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                             <mat-icon class="review-star">star</mat-icon>
                           </div>
                           <app-report-button
-                            contentType="restaurant_rating"
+                            contentType="location_rating"
                             [contentId]="review.id"
                             [authorId]="review.memberId"
                           />
@@ -385,10 +385,10 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         <!-- Moderator info (admin/mod only) -->
         @if (
           isAdminOrMod() &&
-          (restaurant()!.moderatorNotes ||
-            restaurant()!.contactName ||
-            restaurant()!.contactPhone ||
-            restaurant()!.contactEmail)
+          (location()!.moderatorNotes ||
+            location()!.contactName ||
+            location()!.contactPhone ||
+            location()!.contactEmail)
         ) {
           <mat-card class="mod-card">
             <mat-card-header>
@@ -397,35 +397,35 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
               </mat-card-title>
             </mat-card-header>
             <mat-card-content class="mod-body">
-              @if (restaurant()!.moderatorNotes) {
-                <p class="mod-notes">{{ restaurant()!.moderatorNotes }}</p>
+              @if (location()!.moderatorNotes) {
+                <p class="mod-notes">{{ location()!.moderatorNotes }}</p>
               }
               @if (
-                restaurant()!.contactName ||
-                restaurant()!.contactPhone ||
-                restaurant()!.contactEmail
+                location()!.contactName ||
+                location()!.contactPhone ||
+                location()!.contactEmail
               ) {
                 <div class="mod-contact">
                   <div class="mod-contact-label">Contact</div>
-                  @if (restaurant()!.contactName) {
+                  @if (location()!.contactName) {
                     <div class="mod-contact-row">
                       <mat-icon>person</mat-icon>
-                      <span>{{ restaurant()!.contactName }}</span>
+                      <span>{{ location()!.contactName }}</span>
                     </div>
                   }
-                  @if (restaurant()!.contactPhone) {
+                  @if (location()!.contactPhone) {
                     <div class="mod-contact-row">
                       <mat-icon>phone</mat-icon>
-                      <a [href]="'tel:' + restaurant()!.contactPhone">{{
-                        restaurant()!.contactPhone
+                      <a [href]="'tel:' + location()!.contactPhone">{{
+                        location()!.contactPhone
                       }}</a>
                     </div>
                   }
-                  @if (restaurant()!.contactEmail) {
+                  @if (location()!.contactEmail) {
                     <div class="mod-contact-row">
                       <mat-icon>email</mat-icon>
-                      <a [href]="'mailto:' + restaurant()!.contactEmail">{{
-                        restaurant()!.contactEmail
+                      <a [href]="'mailto:' + location()!.contactEmail">{{
+                        location()!.contactEmail
                       }}</a>
                     </div>
                   }
@@ -863,17 +863,17 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
     `,
   ],
 })
-export class RestaurantDetailComponent implements OnInit {
+export class LocationDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly restaurantsService = inject(RestaurantsService);
+  private readonly locationsService = inject(LocationsService);
   private readonly authService = inject(AuthService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
 
   @ViewChild('photoInput') photoInputRef!: ElementRef<HTMLInputElement>;
 
-  readonly restaurant = signal<Restaurant | null>(null);
+  readonly location = signal<Location | null>(null);
   readonly loading = signal(true);
   readonly enriching = signal(false);
 
@@ -939,8 +939,8 @@ export class RestaurantDetailComponent implements OnInit {
     if (!this.canSubmitRating()) return;
     this.ratingSaving.set(true);
     const v = this.ratingValues();
-    this.restaurantsService
-      .submitRating(this.restaurant()!.id, {
+    this.locationsService
+      .submitRating(this.location()!.id, {
         eventId: this.ratingEventCtrl.value!,
         food: v['food'],
         service: v['service'],
@@ -956,7 +956,7 @@ export class RestaurantDetailComponent implements OnInit {
           this.ratingCommentCtrl.setValue('');
           this.ratingEventCtrl.setValue(null);
           this.snackBar.open('Rating submitted!', 'OK', { duration: 3000 });
-          this.loadRatings(this.restaurant()!.id);
+          this.loadRatings(this.location()!.id);
         },
         error: () => {
           this.ratingSaving.set(false);
@@ -965,9 +965,9 @@ export class RestaurantDetailComponent implements OnInit {
       });
   }
 
-  private loadRatings(restaurantId: number): void {
+  private loadRatings(locationId: number): void {
     this.ratingsLoading.set(true);
-    this.restaurantsService.getRatings(restaurantId).subscribe({
+    this.locationsService.getRatings(locationId).subscribe({
       next: (r) => {
         this.ratings.set(r);
         this.ratingsLoading.set(false);
@@ -981,15 +981,15 @@ export class RestaurantDetailComponent implements OnInit {
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get('id'));
-    this.restaurantsService.getOne(id).subscribe({
+    this.locationsService.getOne(id).subscribe({
       next: (r) => {
-        this.restaurant.set(r);
+        this.location.set(r);
         this.loading.set(false);
         this.loadRatings(id);
       },
       error: () => {
         this.loading.set(false);
-        void this.router.navigate(['/restaurants']);
+        void this.router.navigate(['/locations']);
       },
     });
   }
@@ -1004,16 +1004,16 @@ export class RestaurantDetailComponent implements OnInit {
   }
 
   mapsUrl(): string {
-    return this.restaurantsService.googleMapsUrl(this.restaurant()!) ?? '#';
+    return this.locationsService.googleMapsUrl(this.location()!) ?? '#';
   }
 
   createEvent(): void {
-    const r = this.restaurant()!;
+    const r = this.location()!;
     const ref = this.dialog.open(EventFormDialogComponent, {
       data: {
         preset: {
           cityId: r.cityId,
-          restaurantId: r.id,
+          locationId: r.id,
           title: `Bear Dinner at ${r.name}`,
         },
       },
@@ -1026,14 +1026,14 @@ export class RestaurantDetailComponent implements OnInit {
   }
 
   openEdit(): void {
-    const ref = this.dialog.open(RestaurantFormDialogComponent, {
-      data: { restaurant: this.restaurant() },
+    const ref = this.dialog.open(LocationFormDialogComponent, {
+      data: { location: this.location() },
       width: '560px',
       maxWidth: '95vw',
     });
-    ref.afterClosed().subscribe((updated: Restaurant | undefined) => {
+    ref.afterClosed().subscribe((updated: Location | undefined) => {
       if (updated) {
-        this.restaurantsService.getOne(updated.id).subscribe((r) => this.restaurant.set(r));
+        this.locationsService.getOne(updated.id).subscribe((r) => this.location.set(r));
       }
     });
   }
@@ -1057,11 +1057,11 @@ export class RestaurantDetailComponent implements OnInit {
     ref.afterClosed().subscribe((blob: Blob | null) => {
       if (!blob) return;
       const cropped = new File([blob], 'photo.jpg', { type: 'image/jpeg' });
-      const id = this.restaurant()!.id;
-      this.restaurantsService.addPhoto(id, cropped).subscribe({
+      const id = this.location()!.id;
+      this.locationsService.addPhoto(id, cropped).subscribe({
         next: () => {
           this.snackBar.open('Photo added', 'OK', { duration: 3000 });
-          this.restaurantsService.getOne(id).subscribe((r) => this.restaurant.set(r));
+          this.locationsService.getOne(id).subscribe((r) => this.location.set(r));
         },
         error: () => this.snackBar.open('Upload failed', 'OK', { duration: 3000 }),
       });
@@ -1069,9 +1069,9 @@ export class RestaurantDetailComponent implements OnInit {
   }
 
   diagnose(): void {
-    const id = this.restaurant()!.id;
+    const id = this.location()!.id;
     this.enriching.set(true);
-    this.restaurantsService.diagnose(id).subscribe({
+    this.locationsService.diagnose(id).subscribe({
       next: (result) => {
         this.enriching.set(false);
         this.dialog.open(EnrichDiagnoseDialogComponent, {
@@ -1088,11 +1088,11 @@ export class RestaurantDetailComponent implements OnInit {
   }
 
   enrich(): void {
-    const id = this.restaurant()!.id;
+    const id = this.location()!.id;
     this.enriching.set(true);
-    this.restaurantsService.enrich(id).subscribe({
+    this.locationsService.enrich(id).subscribe({
       next: (res) => {
-        this.restaurant.set(res.restaurant);
+        this.location.set(res.location);
         this.enriching.set(false);
         const parts: string[] = [];
         if (res.placeFound) parts.push('found on Google Places');
@@ -1111,20 +1111,20 @@ export class RestaurantDetailComponent implements OnInit {
     });
   }
 
-  deleteRestaurant(): void {
-    const r = this.restaurant()!;
+  deleteLocation(): void {
+    const r = this.location()!;
     if (!window.confirm(`Delete "${r.name}"? This cannot be undone.`)) return;
-    this.restaurantsService.delete(r.id).subscribe({
-      next: () => void this.router.navigate(['/restaurants']),
+    this.locationsService.delete(r.id).subscribe({
+      next: () => void this.router.navigate(['/locations']),
       error: () => this.snackBar.open('Delete failed', 'OK', { duration: 3000 }),
     });
   }
 
   deletePhoto(photoId: number): void {
-    const id = this.restaurant()!.id;
-    this.restaurantsService.deletePhoto(id, photoId).subscribe({
+    const id = this.location()!.id;
+    this.locationsService.deletePhoto(id, photoId).subscribe({
       next: () => {
-        this.restaurant.update((r) =>
+        this.location.update((r) =>
           r ? { ...r, photos: r.photos.filter((p) => p.id !== photoId) } : r,
         );
         this.snackBar.open('Photo removed', 'OK', { duration: 3000 });

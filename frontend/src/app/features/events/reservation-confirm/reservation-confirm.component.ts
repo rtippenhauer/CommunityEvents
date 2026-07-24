@@ -42,7 +42,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
             <div class="event-details">
               <div class="detail-row">
                 <mat-icon>restaurant</mat-icon>
-                <span>{{ info()!.restaurantName }}</span>
+                <span>{{ info()!.locationName }}</span>
               </div>
               <div class="detail-row">
                 <mat-icon>event</mat-icon>
@@ -81,7 +81,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
               </div>
               <div class="detail-row">
                 <mat-icon>restaurant</mat-icon>
-                <span>{{ info()!.restaurantName }}</span>
+                <span>{{ info()!.locationName }}</span>
               </div>
               <div class="detail-row">
                 <mat-icon>event</mat-icon>

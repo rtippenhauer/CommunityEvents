@@ -25,7 +25,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
   event_comment: 'Event Comment',
   event_comment_reply: 'Reply',
   announcement_comment: 'Ann. Comment',
-  restaurant_rating: 'Rating',
+  location_rating: 'Rating',
 };
 
 @Component({
@@ -307,7 +307,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
         --mat-chip-container-color: #f3e5f5;
         --mat-chip-label-text-color: #6a1b9a;
       }
-      .type-restaurant_rating {
+      .type-location_rating {
         --mat-chip-container-color: #fff8e1;
         --mat-chip-label-text-color: #f57f17;
       }

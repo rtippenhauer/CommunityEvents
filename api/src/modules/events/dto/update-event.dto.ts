@@ -21,7 +21,7 @@ export class UpdateEventDto {
   @IsInt()
   @IsPositive()
   @IsOptional()
-  restaurantId?: number;
+  locationId?: number;
 
   @IsString()
   @MaxLength(255)

@@ -38,7 +38,7 @@ const CATEGORY_META: Record<
     description:
       'Earned by organizing dinners and making the reservation. Bonus points for introducing the group to a brand-new restaurant.',
   },
-  new_restaurant_coordinator: {
+  new_location_coordinator: {
     label: 'Scout',
     icon: 'travel_explore',
     isProgressive: true,
@@ -92,7 +92,7 @@ const CATEGORY_META: Record<
 const CATEGORY_ORDER = [
   'attendance',
   'coordinator',
-  'new_restaurant_coordinator',
+  'new_location_coordinator',
   'invite',
   'rating',
   'city_hopper',
@@ -805,7 +805,7 @@ export class AdminAchievementsComponent implements OnInit {
     const existing = this.groups().find((g) => g.type === type)?.achievements ?? [];
     const nextTarget =
       existing.length > 0 ? Math.max(...existing.map((a) => a.progressTarget ?? 0)) + 5 : 1;
-    const prefix = type === 'new_restaurant_coordinator' ? 'scout' : type;
+    const prefix = type === 'new_location_coordinator' ? 'scout' : type;
     return `${prefix}_${nextTarget}`;
   }
 

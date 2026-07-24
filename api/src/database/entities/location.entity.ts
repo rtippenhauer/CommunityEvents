@@ -9,7 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { CityEntity } from './city.entity';
-import { RestaurantPhotoEntity } from './restaurant-photo.entity';
+import { LocationPhotoEntity } from './location-photo.entity';
 import { UserEntity } from './user.entity';
 
 export enum ImportSource {
@@ -17,8 +17,8 @@ export enum ImportSource {
   FACEBOOK_IMPORT = 'facebook_import',
 }
 
-@Entity('restaurants')
-export class RestaurantEntity {
+@Entity('locations')
+export class LocationEntity {
   @PrimaryGeneratedColumn({ unsigned: true })
   id: number;
 
@@ -61,8 +61,8 @@ export class RestaurantEntity {
   })
   importedFrom: ImportSource;
 
-  @OneToMany(() => RestaurantPhotoEntity, (photo) => photo.restaurant, { eager: true })
-  photos: RestaurantPhotoEntity[];
+  @OneToMany(() => LocationPhotoEntity, (photo) => photo.location, { eager: true })
+  photos: LocationPhotoEntity[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

@@ -4,7 +4,7 @@ import { MemberAchievementEntity } from './member-achievement.entity';
 export enum ProgressType {
   ATTENDANCE = 'attendance',
   COORDINATOR = 'coordinator',
-  NEW_RESTAURANT_COORDINATOR = 'new_restaurant_coordinator',
+  NEW_LOCATION_COORDINATOR = 'new_location_coordinator',
   INVITE = 'invite',
   RATING = 'rating',
   FOUNDING = 'founding',

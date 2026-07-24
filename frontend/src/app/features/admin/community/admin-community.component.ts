@@ -22,7 +22,7 @@ interface LedgerRow {
 const TYPE_LABELS: Record<string, string> = {
   attendance: 'Attendance',
   coordinator: 'Coordinator',
-  coordinator_new_restaurant: 'Coordinator (New Restaurant)',
+  new_location_coordinator: 'Coordinator (New Restaurant)',
   invite: 'Invite',
   rating: 'Rating',
 };

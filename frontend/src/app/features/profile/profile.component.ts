@@ -36,7 +36,7 @@ interface MyProfile {
 const PROGRESS_LABELS: Record<string, string> = {
   attendance: 'Dinners Attended',
   coordinator: 'Events Coordinated',
-  new_restaurant_coordinator: 'New Restaurants Coordinated',
+  new_location_coordinator: 'New Restaurants Coordinated',
   invite: 'Members Invited',
   rating: 'Restaurant Ratings',
   founding: 'Founding Member',
@@ -46,7 +46,7 @@ const PROGRESS_LABELS: Record<string, string> = {
 const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = {
   attendance: { label: 'Attendance', icon: 'local_dining' },
   coordinator: { label: 'Coordinator', icon: 'event_available' },
-  new_restaurant_coordinator: { label: 'Scout', icon: 'travel_explore' },
+  new_location_coordinator: { label: 'Scout', icon: 'travel_explore' },
   invite: { label: 'Invites', icon: 'person_add' },
   rating: { label: 'Ratings', icon: 'star' },
   city_hopper: { label: 'City Hopper', icon: 'flight' },
@@ -60,7 +60,7 @@ const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = 
 const ACHIEVEMENT_CATEGORY_ORDER = [
   'attendance',
   'coordinator',
-  'new_restaurant_coordinator',
+  'new_location_coordinator',
   'invite',
   'rating',
   'city_hopper',

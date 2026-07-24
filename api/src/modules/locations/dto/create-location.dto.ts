@@ -1,6 +1,6 @@
 import { IsEmail, IsInt, IsOptional, IsPositive, IsString, IsUrl, MaxLength } from 'class-validator';
 
-export class CreateRestaurantDto {
+export class CreateLocationDto {
   @IsString()
   @MaxLength(255)
   name: string;
