@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { forkJoin } from 'rxjs';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -11,6 +12,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { EventsService, Event, EventStatus } from '../../../core/services/events.service';
+import { AppConfigService } from '../../../core/services/app-config.service';
 
 export interface EventFormDialogData {
   event?: Event;
@@ -23,11 +25,16 @@ export interface EventFormDialogData {
   };
 }
 
-function nextTuesdayDate(): Date {
+// Fallback used only for the form's initial synchronous value, before the
+// configured weekday/time (app_config event_cadence_weekday/_time) loads —
+// see EventFormDialogComponent.ngOnInit, which re-patches once it arrives.
+const DEFAULT_CADENCE_WEEKDAY = 2; // Tuesday
+const DEFAULT_CADENCE_TIME = '18:30';
+
+function nextWeekdayDate(weekday: number): Date {
   const today = new Date();
-  const daysUntil = (2 - today.getDay() + 7) % 7 || 7;
-  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysUntil);
-  return d;
+  const daysUntil = (weekday - today.getDay() + 7) % 7 || 7;
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysUntil);
 }
 
 function parseLocalDate(dateStr: string): Date {
@@ -215,6 +222,7 @@ export class EventFormDialogComponent implements OnInit {
   private readonly dialogRef = inject(MatDialogRef<EventFormDialogComponent>);
   private readonly snackBar = inject(MatSnackBar);
   private readonly http = inject(HttpClient);
+  private readonly appConfigService = inject(AppConfigService);
   readonly data = inject<EventFormDialogData>(MAT_DIALOG_DATA);
 
   readonly cities = signal<City[]>([]);
@@ -226,7 +234,7 @@ export class EventFormDialogComponent implements OnInit {
     cityId: [0, [Validators.required, Validators.min(1)]],
     locationId: [0, [Validators.required, Validators.min(1)]],
     title: ['', Validators.required],
-    eventDate: [nextTuesdayDate(), Validators.required],
+    eventDate: [nextWeekdayDate(DEFAULT_CADENCE_WEEKDAY), Validators.required],
     eventTime: ['', Validators.required],
     description: [''],
     additionalInfo: [''],
@@ -289,13 +297,38 @@ export class EventFormDialogComponent implements OnInit {
         cityId: p.cityId ?? 0,
         locationId: p.locationId ?? 0,
         title: p.title ?? '',
-        eventDate: p.eventDate ? parseLocalDate(p.eventDate) : nextTuesdayDate(),
-        eventTime: p.eventTime ?? '18:30',
       });
       if (p.cityId) this.filterLocations(p.cityId);
+      if (p.eventDate && p.eventTime) {
+        this.form.patchValue({
+          eventDate: parseLocalDate(p.eventDate),
+          eventTime: p.eventTime,
+        });
+      } else {
+        this.applyCadenceDefault(p.eventDate ? parseLocalDate(p.eventDate) : undefined, p.eventTime);
+      }
     } else {
-      this.form.patchValue({ eventTime: '18:30' });
+      this.applyCadenceDefault();
     }
+  }
+
+  // Fills in eventDate/eventTime from this fork's configured recurring-event
+  // day/time (app_config event_cadence_weekday/_time) — only next-<weekday>
+  // is supported today, not a monthly ("2nd Saturday") pattern.
+  private applyCadenceDefault(presetDate?: Date, presetTime?: string): void {
+    forkJoin([
+      this.appConfigService.getValue('event_cadence_weekday'),
+      this.appConfigService.getValue('event_cadence_time'),
+    ]).subscribe(([weekdayStr, time]) => {
+      const weekday = parseInt(weekdayStr, 10);
+      const resolvedWeekday = Number.isInteger(weekday) && weekday >= 0 && weekday <= 6
+        ? weekday
+        : DEFAULT_CADENCE_WEEKDAY;
+      this.form.patchValue({
+        eventDate: presetDate ?? nextWeekdayDate(resolvedWeekday),
+        eventTime: presetTime ?? (time || DEFAULT_CADENCE_TIME),
+      });
+    });
   }
 
   private filterLocations(cityId: number): void {

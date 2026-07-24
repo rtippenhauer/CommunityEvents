@@ -18,7 +18,9 @@ interface LocationUser {
 export interface Location {
   id: number;
   name: string;
-  address: string;
+  // Null when this is a private location and the viewer hasn't RSVP'd
+  // "Going" to an event held here (or isn't admin/mod) — see isPrivate.
+  address: string | null;
   lat: number | null;
   lng: number | null;
   phone: string | null;
@@ -27,6 +29,7 @@ export interface Location {
   cityId: number;
   city: { id: number; name: string; subdomain: string };
   isActive: boolean;
+  isPrivate: boolean;
   photos: LocationPhoto[];
   createdAt: string;
   updatedAt: string;
@@ -43,6 +46,7 @@ export interface Location {
 export interface CreateLocationPayload {
   name: string;
   address: string;
+  isPrivate?: boolean;
   phone?: string | null;
   websiteUrl?: string | null;
   description?: string | null;
@@ -219,6 +223,7 @@ export class LocationsService {
     if (location.lat && location.lng) {
       return `https://www.google.com/maps?q=${location.lat},${location.lng}`;
     }
+    if (!location.address) return null;
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.address)}`;
   }
 }

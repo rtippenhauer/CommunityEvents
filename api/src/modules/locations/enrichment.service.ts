@@ -523,7 +523,7 @@ export class EnrichmentService {
 
       const photo = this.photoRepo.create({
         locationId,
-        filePath: `/api/uploads/${filename}`,
+        filePath: `/api/uploads/locations/${filename}`,
         fileName: filename,
         mimeType: 'image/jpeg',
         sortOrder: 0,

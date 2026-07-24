@@ -73,7 +73,11 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
                 </div>
                 <div class="meta-row">
                   <mat-icon>location_on</mat-icon>
-                  <span>{{ preview()!.event!.locationAddress }}</span>
+                  @if (preview()!.event!.locationAddress) {
+                    <span>{{ preview()!.event!.locationAddress }}</span>
+                  } @else {
+                    <span class="address-hidden">Address available after you RSVP</span>
+                  }
                 </div>
               </div>
 
@@ -346,6 +350,11 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
           margin-top: 2px;
           color: var(--db-accent);
         }
+      }
+
+      .address-hidden {
+        font-style: italic;
+        color: #999;
       }
 
       .access-note {

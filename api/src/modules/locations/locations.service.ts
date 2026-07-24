@@ -9,6 +9,8 @@ import { GeocodingService } from './geocoding.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { toPublicUser } from '../../common/utils/public-user.util';
+import { LocationVisibilityService } from '../../common/services/location-visibility.service';
+import { AppConfigService } from '../app-config/app-config.service';
 
 export interface LocationQuery {
   cityId?: number;
@@ -64,6 +66,8 @@ export class LocationsService {
     @InjectRepository(CityEntity)
     private readonly cityRepo: Repository<CityEntity>,
     private readonly geocodingService: GeocodingService,
+    private readonly locationVisibility: LocationVisibilityService,
+    private readonly appConfigService: AppConfigService,
   ) {}
 
   async findAll(query: LocationQuery): Promise<LocationEntity[]> {
@@ -76,6 +80,18 @@ export class LocationsService {
       relations: ['city', 'photos'],
       order: { name: 'ASC' },
     });
+  }
+
+  // Member-facing reads (controller GET routes) — redacts address/lat/lng
+  // for private locations the requester hasn't earned visibility into.
+  async findAllForUser(query: LocationQuery, user: UserEntity | null): Promise<LocationEntity[]> {
+    const locations = await this.findAll(query);
+    return Promise.all(locations.map((l) => this.locationVisibility.redact(l, user)));
+  }
+
+  async findOneForUser(id: number, user: UserEntity | null): Promise<LocationEntity> {
+    const location = await this.findOne(id);
+    return this.locationVisibility.redact(location, user);
   }
 
   async findAllArchived(query: LocationQuery): Promise<LocationEntity[]> {
@@ -115,8 +131,11 @@ export class LocationsService {
 
   async create(dto: CreateLocationDto, userId?: number): Promise<LocationEntity> {
     const coords = await this.geocodingService.geocode(dto.address);
+    const isPrivate =
+      dto.isPrivate ?? (await this.appConfigService.getSiteSetting('location_privacy_default')) === 'private';
     const location = this.locationRepo.create({
       ...dto,
+      isPrivate,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
       createdById: userId ?? null,

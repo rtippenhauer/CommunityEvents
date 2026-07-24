@@ -7,6 +7,7 @@ import { UserEntity } from '../../database/entities/user.entity';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
+import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 
 export interface CalendarSettingsResponse {
   url: string;
@@ -36,6 +37,7 @@ export class CalendarService {
     @InjectRepository(EventRsvpEntity)
     private readonly rsvpRepo: Repository<EventRsvpEntity>,
     private readonly config: ConfigService,
+    private readonly locationVisibility: LocationVisibilityService,
   ) {}
 
   // ── Token management ────────────────────────────────────────────────────────
@@ -154,6 +156,7 @@ export class CalendarService {
 
     let qb = this.eventRepo
       .createQueryBuilder('e')
+      .leftJoinAndSelect('e.location', 'location')
       .where(
         '((e.status = :published AND e.eventDate >= :today) OR (e.status = :cancelled AND e.eventDate >= :cutoff))',
         { published: EventStatus.PUBLISHED, cancelled: EventStatus.CANCELLED, today, cutoff: cutoffDate },
@@ -221,11 +224,18 @@ export class CalendarService {
       ? `🤝 Your RSVP: ${{ going: 'GOING', maybe: 'MAYBE', not_going: 'NOT GOING' }[rsvpStatus] ?? rsvpStatus.toUpperCase()}`
       : `👉 RSVP now: ${appUrl}/events/${event.id}`;
 
+    const addressVisible = this.locationVisibility.canViewAddressSync(
+      event.location ?? { id: -1, isPrivate: false },
+      false,
+      rsvpStatus === RsvpStatus.GOING,
+    );
+    const locationAddress = addressVisible ? event.locationAddress : null;
+
     const description = [
       'DinnerBears Dinner',
       '',
       `🍽 ${event.locationName}`,
-      event.locationAddress || '',
+      locationAddress || '',
       '',
       `📅 ${dayName}, ${monthName} ${d} at ${timeStr}`,
       '',
@@ -238,8 +248,8 @@ export class CalendarService {
       'To manage your calendar subscription, visit your DinnerBears account settings.',
     ].filter(Boolean).join('\n');
 
-    const location = event.locationAddress
-      ? `${event.locationName}, ${event.locationAddress}`
+    const location = locationAddress
+      ? `${event.locationName}, ${locationAddress}`
       : event.locationName;
 
     const lines = [
@@ -296,10 +306,12 @@ export class CalendarService {
 
   // ── Email attachment (.ics for Phase 16b) ────────────────────────────────────
 
+  // locationAddress override — see buildGoogleCalendarUrl's note in events.service.ts.
   buildInviteAttachment(
     event: EventEntity,
     recipient: { name: string; email: string },
     appUrl: string,
+    locationAddress: string | null = event.locationAddress,
   ): string {
     const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
@@ -329,7 +341,7 @@ export class CalendarService {
       'DinnerBears Dinner',
       '',
       `🍽 ${event.locationName}`,
-      event.locationAddress || '',
+      locationAddress || '',
       '',
       `📅 ${dayName}, ${monthName} ${d} at ${timeStr}`,
       '',
@@ -339,8 +351,8 @@ export class CalendarService {
       'Questions? Reply to hello@dinnerbears.com',
     ].join('\n');
 
-    const location = event.locationAddress
-      ? `${event.locationName}, ${event.locationAddress}`
+    const location = locationAddress
+      ? `${event.locationName}, ${locationAddress}`
       : event.locationName;
 
     const lines = [

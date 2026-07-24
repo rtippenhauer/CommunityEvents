@@ -23,6 +23,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { EnrichDiagnoseDialogComponent } from './enrich-diagnose-dialog.component';
 import {
   LocationsService,
@@ -57,6 +58,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
     MatProgressSpinnerModule,
     MatSelectModule,
     MatSnackBarModule,
+    MatTooltipModule,
     ReportButtonComponent,
   ],
   template: `
@@ -136,15 +138,26 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         <!-- Info -->
         <mat-card class="info-card">
           <mat-card-header>
-            <mat-card-title>{{ location()!.name }}</mat-card-title>
+            <mat-card-title>
+              {{ location()!.name }}
+              @if (location()!.isPrivate) {
+                <mat-icon class="private-icon" matTooltip="Private location">lock</mat-icon>
+              }
+            </mat-card-title>
             <mat-card-subtitle>{{ location()!.city.name }}</mat-card-subtitle>
           </mat-card-header>
           <mat-card-content class="info-body">
             <div class="info-row">
               <mat-icon>location_on</mat-icon>
-              <a [href]="mapsUrl()" target="_blank" rel="noopener" class="map-link">
-                {{ location()!.address }}
-              </a>
+              @if (location()!.address) {
+                <a [href]="mapsUrl()" target="_blank" rel="noopener" class="map-link">
+                  {{ location()!.address }}
+                </a>
+              } @else {
+                <span class="address-hidden">
+                  <mat-icon class="lock-icon">lock</mat-icon> Address available after RSVP
+                </span>
+              }
             </div>
 
             @if (location()!.phone) {
@@ -529,6 +542,27 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
       }
       .map-link {
         color: var(--db-primary);
+      }
+      .private-icon {
+        font-size: 1rem;
+        width: 1rem;
+        height: 1rem;
+        vertical-align: middle;
+        margin-left: 4px;
+        color: #999;
+      }
+      .address-hidden {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-style: italic;
+        color: #999;
+        font-size: 0.9rem;
+        .lock-icon {
+          font-size: 0.95rem;
+          width: 0.95rem;
+          height: 0.95rem;
+        }
       }
       .description {
         margin: 16px 0 0;

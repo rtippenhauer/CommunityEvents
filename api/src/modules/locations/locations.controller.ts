@@ -114,11 +114,18 @@ export class LocationsController {
   }
 
   @Get()
-  findAll(@Query('cityId') cityId?: string, @Query('search') search?: string) {
-    return this.locationsService.findAll({
-      cityId: cityId ? parseInt(cityId, 10) : undefined,
-      search,
-    });
+  findAll(
+    @Query('cityId') cityId?: string,
+    @Query('search') search?: string,
+    @CurrentUser() user?: UserEntity,
+  ) {
+    return this.locationsService.findAllForUser(
+      {
+        cityId: cityId ? parseInt(cityId, 10) : undefined,
+        search,
+      },
+      user ?? null,
+    );
   }
 
   @Get('rating-queue')
@@ -146,7 +153,7 @@ export class LocationsController {
     const isModOrAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
     return isModOrAdmin
       ? this.locationsService.findOneWithModFields(id)
-      : this.locationsService.findOne(id);
+      : this.locationsService.findOneForUser(id, user);
   }
 
   @Post()

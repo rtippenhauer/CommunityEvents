@@ -212,13 +212,19 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <mat-icon>location_on</mat-icon>
                 <div>
                   <div class="info-label">Address</div>
-                  <a
-                    class="info-value map-link"
-                    [href]="mapsUrl()"
-                    target="_blank"
-                    rel="noopener"
-                    >{{ event()!.locationAddress }}</a
-                  >
+                  @if (event()!.locationAddress) {
+                    <a
+                      class="info-value map-link"
+                      [href]="mapsUrl()"
+                      target="_blank"
+                      rel="noopener"
+                      >{{ event()!.locationAddress }}</a
+                    >
+                  } @else {
+                    <div class="info-value address-hidden">
+                      <mat-icon class="lock-icon">lock</mat-icon> Available after you RSVP Going
+                    </div>
+                  }
                 </div>
               </div>
             </mat-card-content>
@@ -1258,6 +1264,18 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
         text-decoration: none;
         &:hover {
           text-decoration: underline;
+        }
+      }
+      .address-hidden {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-style: italic;
+        color: #999;
+        .lock-icon {
+          font-size: 0.95rem;
+          width: 0.95rem;
+          height: 0.95rem;
         }
       }
       .section {
@@ -2456,7 +2474,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     return formatEventTime(time);
   }
 
-  mapsUrl(): string {
+  mapsUrl(): string | null {
     const e = this.event()!;
     return this.eventsService.mapsUrl(e.locationLat, e.locationLng, e.locationAddress);
   }

@@ -12,6 +12,8 @@ import { LocationsController } from './locations.controller';
 import { GeocodingService } from './geocoding.service';
 import { EnrichmentService } from './enrichment.service';
 import { CommunityModule } from '../community/community.module';
+import { AppConfigModule } from '../app-config/app-config.module';
+import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 
 @Module({
   imports: [
@@ -24,9 +26,10 @@ import { CommunityModule } from '../community/community.module';
       EventRsvpEntity,
     ]),
     CommunityModule,
+    AppConfigModule,
   ],
-  providers: [LocationsService, RatingsService, GeocodingService, EnrichmentService],
+  providers: [LocationsService, RatingsService, GeocodingService, EnrichmentService, LocationVisibilityService],
   controllers: [LocationsController],
-  exports: [LocationsService],
+  exports: [LocationsService, LocationVisibilityService],
 })
 export class LocationsModule {}

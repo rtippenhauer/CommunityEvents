@@ -13,6 +13,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { LocationsService, Location } from '../../../core/services/locations.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -40,6 +41,7 @@ interface City {
     MatProgressSpinnerModule,
     MatSelectModule,
     MatSnackBarModule,
+    MatTooltipModule,
   ],
   template: `
     <div class="page-header">
@@ -115,9 +117,18 @@ interface City {
               }
             </div>
             <mat-card-content class="card-body">
-              <h3 class="location-name">{{ r.name }}</h3>
+              <h3 class="location-name">
+                {{ r.name }}
+                @if (r.isPrivate) {
+                  <mat-icon class="private-icon" matTooltip="Private location">lock</mat-icon>
+                }
+              </h3>
               <p class="location-city">{{ r.city.name }}</p>
-              <p class="location-address">{{ r.address }}</p>
+              @if (r.address) {
+                <p class="location-address">{{ r.address }}</p>
+              } @else {
+                <p class="location-address muted">Address available after RSVP</p>
+              }
               @if (r.description) {
                 <p class="location-desc">
                   {{ r.description | slice: 0 : 120 }}{{ r.description.length > 120 ? '…' : '' }}
@@ -232,6 +243,18 @@ interface City {
         margin: 0 0 8px;
         font-size: 0.85rem;
         color: #666;
+        &.muted {
+          font-style: italic;
+          color: #999;
+        }
+      }
+      .private-icon {
+        font-size: 1rem;
+        width: 1rem;
+        height: 1rem;
+        vertical-align: middle;
+        margin-left: 4px;
+        color: #999;
       }
       .location-desc {
         margin: 0;

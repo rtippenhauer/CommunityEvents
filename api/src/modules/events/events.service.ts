@@ -26,6 +26,7 @@ import { ConfigService } from '@nestjs/config';
 import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
+import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 
 export interface EventFilters {
   cityId?: number;
@@ -59,6 +60,7 @@ export class EventsService {
     private readonly pointsService: PointsService,
     private readonly achievementsService: AchievementsService,
     private readonly config: ConfigService,
+    private readonly locationVisibility: LocationVisibilityService,
   ) {}
 
   async findAll(filters: EventFilters): Promise<(EventEntity & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[]> {
@@ -171,6 +173,17 @@ export class EventsService {
         (e as any).reservationAssignee = toPublicUser(e.reservationAssignee);
         if (!isPrivileged) (e as any).reservationContactEmail = null;
       }
+
+      const hasGoingRsvp = myRsvpMap.get(e.id) === RsvpStatus.GOING;
+      if (e.location && !this.locationVisibility.canViewAddressSync(e.location, isPrivileged, hasGoingRsvp)) {
+        e.locationAddress = null as unknown as string;
+        e.locationLat = null;
+        e.locationLng = null;
+        (e.location as any).address = null;
+        (e.location as any).lat = null;
+        (e.location as any).lng = null;
+      }
+
       return Object.assign(e, {
         goingCount: goingCountMap.get(e.id) ?? 0,
         totalAttending: totalMap.get(e.id) ?? 0,
@@ -180,7 +193,7 @@ export class EventsService {
     });
   }
 
-  async findOne(id: number, callerRole?: UserRole): Promise<EventEntity & { publicRsvps: Pick<EventGuestLinkEntity, 'id' | 'recipientName' | 'cancelledAt'>[] }> {
+  async findOne(id: number, callerRole?: UserRole, callerId?: number): Promise<EventEntity & { publicRsvps: Pick<EventGuestLinkEntity, 'id' | 'recipientName' | 'cancelledAt'>[] }> {
     const event = await this.eventRepo.findOne({
       where: { id },
       relations: [
@@ -198,6 +211,18 @@ export class EventsService {
 
     const isValidatedMember = callerRole != null && callerRole !== UserRole.NON_VALIDATED;
     const isPrivileged = callerRole === UserRole.ADMIN || callerRole === UserRole.MODERATOR;
+
+    const hasGoingRsvp =
+      callerId != null &&
+      (event.rsvps?.some((r) => r.userId === callerId && r.status === RsvpStatus.GOING) ?? false);
+    if (event.location && !this.locationVisibility.canViewAddressSync(event.location, isPrivileged, hasGoingRsvp)) {
+      event.locationAddress = null as unknown as string;
+      event.locationLat = null;
+      event.locationLng = null;
+      (event.location as any).address = null;
+      (event.location as any).lat = null;
+      (event.location as any).lng = null;
+    }
 
     // Unauthenticated/non-validated callers don't get to know member identities
     // at all; validated members can see who's going (name/photo) but never the
@@ -439,7 +464,7 @@ export class EventsService {
     const timeDisplay = this.formatEventTimeDisplay(eh, emin);
     const eventUrl = `${appUrl}/events/${event.id}`;
 
-    const buildHtml = (recipientName: string) => `<!DOCTYPE html>
+    const buildHtml = (recipientName: string, showAddress: boolean) => `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
@@ -460,7 +485,7 @@ export class EventsService {
         <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay}
       </td></tr>
       <tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>${event.locationName}${event.locationAddress ? ` — ${event.locationAddress}` : ''}
+        <span style="color:#C9933A;margin-right:8px">📍</span>${event.locationName}${showAddress && event.locationAddress ? ` — ${event.locationAddress}` : ''}
       </td></tr>
     </table>
     <p style="text-align:center;margin:0 0 24px">
@@ -483,25 +508,40 @@ export class EventsService {
     });
     for (const rsvp of rsvps) {
       if (!rsvp.user?.email) continue;
+      const showAddress = this.locationVisibility.canViewAddressSync(
+        event.location ?? { id: -1, isPrivate: false },
+        this.locationVisibility.isAdminOrMod(rsvp.user),
+        rsvp.status === RsvpStatus.GOING,
+      );
       await this.emailService.queue({
         toEmail: rsvp.user.email,
         toName: rsvp.user.fullName,
         subject: `Updated: ${event.title}`,
-        htmlBody: buildHtml(rsvp.user.fullName),
+        htmlBody: buildHtml(rsvp.user.fullName, showAddress),
       });
     }
 
     const guestLinks = await this.guestLinkRepo.find({
       where: { eventId: event.id, cancelledAt: IsNull() },
+      relations: ['memberRsvp'],
     });
     for (const link of guestLinks) {
       if (!link.recipientEmail) continue;
       const name = link.recipientName ?? link.recipientEmail;
+      // A public/self-service guest RSVP is itself a confirmed "Going" —
+      // a member-invited guest link inherits the inviting member's status.
+      const showAddress =
+        link.source === 'public' ||
+        this.locationVisibility.canViewAddressSync(
+          event.location ?? { id: -1, isPrivate: false },
+          false,
+          link.memberRsvp?.status === RsvpStatus.GOING,
+        );
       await this.emailService.queue({
         toEmail: link.recipientEmail,
         toName: name,
         subject: `Updated: ${event.title}`,
-        htmlBody: buildHtml(name),
+        htmlBody: buildHtml(name, showAddress),
       });
     }
   }
@@ -592,6 +632,11 @@ export class EventsService {
 
   private async sendPublishInvites(event: EventEntity): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    // Every recipient here is, by construction, someone who hasn't RSVP'd yet
+    // (see the rsvpedIds filter below) — so for a private location, none of
+    // them have earned address visibility regardless of role.
+    const addressVisible = !event.location?.isPrivate;
+    const locationAddress = addressVisible ? event.locationAddress : null;
 
     const members = await this.userRepo
       .createQueryBuilder('u')
@@ -640,8 +685,8 @@ export class EventsService {
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay} ET
       </td></tr>
-      ${event.locationAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>${event.locationAddress}
+      ${locationAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📍</span>${locationAddress}
       </td></tr>` : ''}
     </table>
     <p style="margin:0 0 24px;font-size:0.9rem;color:#555">Open the attached calendar invite to Accept, Maybe, or Decline — your RSVP will update automatically. Or tap the button below to RSVP on the DinnerBears site.</p>
@@ -662,6 +707,7 @@ export class EventsService {
         event,
         { name: member.fullName, email: member.email },
         appUrl,
+        locationAddress,
       );
 
       await this.emailService.sendNow({
@@ -761,6 +807,13 @@ export class EventsService {
 
     const event = link.event;
     const photoUrl = event.location?.photos?.[0]?.filePath ?? null;
+    // A guest link is inherently pre-RSVP and unauthenticated, so a private
+    // location's address is always withheld here.
+    const addressVisible = this.locationVisibility.canViewAddressSync(
+      event.location ?? { id: -1, isPrivate: false },
+      false,
+      false,
+    );
 
     return {
       eventTitle: event.title,
@@ -768,9 +821,9 @@ export class EventsService {
       eventTime: event.eventTime,
       eventStatus: event.status,
       locationName: event.locationName,
-      locationAddress: event.locationAddress,
-      locationLat: event.locationLat,
-      locationLng: event.locationLng,
+      locationAddress: addressVisible ? event.locationAddress : null,
+      locationLat: addressVisible ? event.locationLat : null,
+      locationLng: addressVisible ? event.locationLng : null,
       locationPhotoUrl: photoUrl,
       invitedByName: link.createdBy?.fullName ?? 'DinnerBears',
       recipientName: link.recipientName,
@@ -832,7 +885,11 @@ export class EventsService {
     return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
   }
 
-  private buildGoogleCalendarUrl(event: EventEntity): string {
+  // locationAddress override lets callers pass '' when the viewer/recipient
+  // hasn't earned visibility into a private location's address — otherwise
+  // this "Add to Calendar" link would leak it even when the email body itself
+  // was correctly redacted.
+  private buildGoogleCalendarUrl(event: EventEntity, locationAddress = event.locationAddress): string {
     const [y, m, d] = event.eventDate.split('-').map(Number);
     const [h, min] = event.eventTime.split(':').map(Number);
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -845,7 +902,7 @@ export class EventsService {
     details.push(`View event: ${appUrl}/events/${event.id}`);
     const p = new URLSearchParams({
       action: 'TEMPLATE', text: event.title,
-      dates: `${start}/${end}`, location: event.locationAddress,
+      dates: `${start}/${end}`, location: locationAddress,
       details: details.join('\n\n'),
     });
     return `https://calendar.google.com/calendar/render?${p.toString()}`;
@@ -1096,6 +1153,13 @@ export class EventsService {
       const eventTimeDisplay = this.formatEventTimeDisplay(eh, emin);
       const photoUrl = event.location?.photos?.[0]?.filePath ?? null;
       const inviterName = rsvp.user?.fullName ?? null;
+      // The inviting member already has legitimate access (they RSVP'd Going
+      // themselves); a guest they personally invite inherits that visibility.
+      const addressVisible = this.locationVisibility.canViewAddressSync(
+        event.location ?? { id: -1, isPrivate: false },
+        false,
+        rsvp.status === RsvpStatus.GOING,
+      );
 
       void this.emailService.queue({
         toEmail: recipientEmail,
@@ -1109,14 +1173,14 @@ export class EventsService {
           eventDateDisplay,
           eventTimeDisplay,
           locationName: event.locationName ?? '',
-          locationAddress: event.locationAddress ?? '',
-          locationLat: event.locationLat ?? null,
-          locationLng: event.locationLng ?? null,
+          locationAddress: addressVisible ? (event.locationAddress ?? '') : '',
+          locationLat: addressVisible ? event.locationLat : null,
+          locationLng: addressVisible ? event.locationLng : null,
           photoUrl,
           description: event.description ?? null,
           additionalInfo: event.additionalInfo ?? null,
           manageUrl,
-          googleCalUrl: this.buildGoogleCalendarUrl(event),
+          googleCalUrl: this.buildGoogleCalendarUrl(event, addressVisible ? event.locationAddress : ''),
           icsUrl,
         }),
       }).catch((err: unknown) => {
@@ -1318,6 +1382,11 @@ export class EventsService {
     const eventTimeDisplay = this.formatEventTimeDisplay(eh, emin);
     const photoUrl = event.location?.photos?.[0]?.filePath ?? null;
     const inviterName = link.memberRsvp?.user?.fullName ?? null;
+    const addressVisible = this.locationVisibility.canViewAddressSync(
+      event.location ?? { id: -1, isPrivate: false },
+      false,
+      link.memberRsvp?.status === RsvpStatus.GOING,
+    );
 
     await this.emailService.queue({
       toEmail: link.recipientEmail,
@@ -1331,14 +1400,14 @@ export class EventsService {
         eventDateDisplay,
         eventTimeDisplay,
         locationName: event.locationName ?? '',
-        locationAddress: event.locationAddress ?? '',
-        locationLat: event.locationLat ?? null,
-        locationLng: event.locationLng ?? null,
+        locationAddress: addressVisible ? (event.locationAddress ?? '') : '',
+        locationLat: addressVisible ? event.locationLat : null,
+        locationLng: addressVisible ? event.locationLng : null,
         photoUrl,
         description: event.description ?? null,
         additionalInfo: event.additionalInfo ?? null,
         manageUrl,
-        googleCalUrl: this.buildGoogleCalendarUrl(event),
+        googleCalUrl: this.buildGoogleCalendarUrl(event, addressVisible ? event.locationAddress : ''),
         icsUrl,
       }),
     });

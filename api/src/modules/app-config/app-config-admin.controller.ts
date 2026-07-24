@@ -18,12 +18,17 @@ export class AppConfigAdminController {
     return this.appConfigService.getLegalConfig();
   }
 
+  @Get('site-settings')
+  getSiteSettings() {
+    return this.appConfigService.getSiteSettings();
+  }
+
   @Patch(':key')
   update(
     @Param('key') key: string,
     @Body() dto: UpdateAppConfigDto,
     @CurrentUser() user: UserEntity,
   ) {
-    return this.appConfigService.updateLegalConfig(key, dto.value, user.id);
+    return this.appConfigService.updateConfigValue(key, dto.value, user.id);
   }
 }

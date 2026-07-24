@@ -285,6 +285,10 @@ website_url         VARCHAR(500) NULL
 description         TEXT NULL
 city_id             INT UNSIGNED NOT NULL REFERENCES cities(id)
 is_active           TINYINT(1) NOT NULL DEFAULT 1
+is_private          TINYINT(1) NOT NULL DEFAULT 0   -- Phase 29: address/lat/lng hidden from members until
+                                                     -- they RSVP "Going" to an event here (admin/mod always see it);
+                                                     -- default for newly created rows comes from app_config
+                                                     -- location_privacy_default, overridable per row
 imported_from       ENUM('manual','facebook_import') NOT NULL DEFAULT 'manual'
 -- Moderator-only fields (Phase 8 — omitted from member API responses)
 moderator_notes     LONGTEXT NULL
@@ -921,13 +925,21 @@ Seed rows:
 - `legal_terms_html` (Phase 30) — Terms of Service body copy, rendered on `/terms`
 - `legal_privacy_html` (Phase 30) — Privacy Policy body copy, rendered on `/privacy`
 - `about_story_html` (Phase 30) — Home page "Our Story" narrative + milestone timeline
+- `location_privacy_default` (Phase 29) = `public` — privacy assigned to a newly
+  created location when its create payload doesn't specify `isPrivate` explicitly
+- `event_cadence_weekday` (Phase 29) = `2` — day of week (0=Sunday…6=Saturday) new
+  events default to; only a fixed weekly cadence is supported, not a monthly
+  ("2nd Saturday") pattern
+- `event_cadence_time` (Phase 29) = `18:30` — time of day (24h `HH:mm`) new events
+  default to
 
-The Phase 30 rows above are editable via the admin UI (`/admin/legal`), unlike the
-rest of this table which has no management UI yet. `AppConfigController`
-(`GET /api/v1/config/:key`, public) and `AppConfigAdminController`
-(`GET /api/v1/admin/config/legal`, `PATCH /api/v1/admin/config/:key`, admin-only)
-only serve these three keys — see `LEGAL_CONFIG_KEYS` in
-`api/src/modules/app-config/app-config.service.ts`.
+The Phase 30 and Phase 29 rows above are editable via the admin UI
+(`/admin/legal`, `/admin/settings`), unlike the rest of this table which has
+no management UI yet. `AppConfigController` (`GET /api/v1/config/:key`,
+public) and `AppConfigAdminController` (`GET /api/v1/admin/config/legal`,
+`GET /api/v1/admin/config/site-settings`, `PATCH /api/v1/admin/config/:key`,
+admin-only) only serve these six keys — see `LEGAL_CONFIG_KEYS` /
+`SITE_SETTING_KEYS` in `api/src/modules/app-config/app-config.service.ts`.
 
 ---
 

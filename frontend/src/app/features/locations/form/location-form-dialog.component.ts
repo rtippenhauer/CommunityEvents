@@ -9,6 +9,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -40,6 +41,7 @@ interface City {
     MatIconModule,
     MatInputModule,
     MatSelectModule,
+    MatSlideToggleModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
     MatTooltipModule,
@@ -137,6 +139,14 @@ interface City {
             <mat-hint>Full street address — used for geocoding</mat-hint>
             <mat-error>Address is required</mat-error>
           </mat-form-field>
+
+          <mat-slide-toggle formControlName="isPrivate" class="private-toggle">
+            Private location
+          </mat-slide-toggle>
+          <p class="private-hint">
+            Hides the address from members until they RSVP "Going" to an event here. Unauthenticated
+            visitors never see it.
+          </p>
 
           <mat-form-field appearance="outline">
             <mat-label>City</mat-label>
@@ -247,6 +257,14 @@ interface City {
         letter-spacing: 0.07em;
         color: #9c27b0;
         margin: 4px 0;
+      }
+      .private-toggle {
+        margin: 4px 0 0;
+      }
+      .private-hint {
+        margin: 2px 0 8px;
+        font-size: 0.78rem;
+        color: #888;
       }
 
       /* ── Place search results ── */
@@ -420,6 +438,7 @@ export class LocationFormDialogComponent implements OnInit {
   readonly form = this.fb.group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
     address: ['', [Validators.required, Validators.maxLength(500)]],
+    isPrivate: [false],
     cityId: [0, [Validators.required, Validators.min(1)]],
     phone: [''],
     websiteUrl: [''],
@@ -443,7 +462,8 @@ export class LocationFormDialogComponent implements OnInit {
       const r = this.data.location;
       this.form.patchValue({
         name: r.name,
-        address: r.address,
+        address: r.address ?? '',
+        isPrivate: r.isPrivate,
         cityId: r.cityId,
         phone: r.phone ?? '',
         websiteUrl: r.websiteUrl ?? '',
@@ -495,6 +515,7 @@ export class LocationFormDialogComponent implements OnInit {
     const payload = {
       name: val.name,
       address: val.address,
+      isPrivate: val.isPrivate,
       cityId: val.cityId,
       phone: val.phone.trim() || null,
       websiteUrl: val.websiteUrl.trim() || null,

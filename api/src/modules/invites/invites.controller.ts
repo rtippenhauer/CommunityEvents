@@ -7,10 +7,14 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { InviteType } from '../../database/entities/invite.entity';
+import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 
 @Controller('invites')
 export class InvitesController {
-  constructor(private readonly invitesService: InvitesService) {}
+  constructor(
+    private readonly invitesService: InvitesService,
+    private readonly locationVisibility: LocationVisibilityService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -58,6 +62,11 @@ export class InvitesController {
     }
     const event = invite.event;
     const photo = event?.location?.photos?.[0]?.filePath ?? null;
+    // Public/unauthenticated preview — a private location's address is
+    // always withheld here; the recipient sees it once they sign up and RSVP.
+    const addressVisible = event
+      ? this.locationVisibility.canViewAddressSync(event.location ?? { id: -1, isPrivate: false }, false, false)
+      : true;
     return {
       token: invite.token,
       flavor: invite.inviteFlavor,
@@ -73,7 +82,7 @@ export class InvitesController {
             eventTime: event.eventTime,
             status: event.status,
             locationName: event.locationName,
-            locationAddress: event.locationAddress,
+            locationAddress: addressVisible ? event.locationAddress : null,
             locationPhotoUrl: photo,
           }
         : null,

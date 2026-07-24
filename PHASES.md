@@ -1575,10 +1575,80 @@ copy still says "Restaurant" everywhere):
 
 Verified: `tsc --noEmit` clean on both workspaces, full `ng build`
 succeeds, `locations.e2e-spec.ts` (17 tests) passes against the migrated
-schema. Not yet done: the rest of Phase 29's scope above (branding
-extraction, bootstrap script, `NEW_INSTANCE_SETUP.md`, `dinnerbears.com`
-hardcoding audit) and the remaining three decisions (location privacy,
-attendance, event cadence) are still unimplemented.
+schema.
+
+**Progress — location privacy + event cadence (2026-07-23):** the second
+and fourth decisions above are implemented (attendance needed no code —
+see below).
+- **Location privacy:** `locations.is_private` column (default `false`,
+  existing rows unaffected). New shared `LocationVisibilityService`
+  (`api/src/common/services/location-visibility.service.ts`) is the single
+  source of truth for "can this viewer see this private location's
+  address": admin/mod always can; anyone else only after RSVPing "Going"
+  to an event at that location (checked either for a specific event, or
+  "any event at this location" on the standalone Locations pages).
+  Unauthenticated and not-yet-RSVP'd viewers simply never satisfy either
+  condition, so the same helper handles every surface with no special
+  casing: `LocationsService` (list/detail), `EventsService` (event
+  list/detail, guest-invite emails, publish/update broadcast emails —
+  each recipient gated individually since a broadcast can mix Going/Maybe
+  RSVPs and non-RSVP'd guest-link holders), `InvitesController`'s public
+  preview endpoint, and `CalendarService`'s personal ICS feed (gated per
+  event using that subscriber's own RSVP status). Caught and fixed a real
+  leak while wiring this up: `buildGoogleCalendarUrl`/`buildInviteAttachment`
+  read the raw event object directly for their "Add to Calendar" links,
+  bypassing the redaction already applied to the surrounding email body —
+  both now take an address override so gated callers can pass `''`.
+  New `app_config` row `location_privacy_default` (`public`/`private`)
+  sets the default for newly created locations; each location can still
+  override it individually via a new toggle in the location form. New
+  admin screen at `/admin/settings` edits this alongside the cadence
+  settings below. Verified with a new permanent suite,
+  `location-privacy.e2e-spec.ts` (14 tests, real HTTP requests against a
+  booted app) — covers admin/mod bypass, RSVP-unlocks-address, no leak to
+  a *different* non-RSVP'd member, unauthenticated preview, and the
+  config-default-vs-explicit-override behavior on create. The full
+  existing suite (events/rsvp/invites/locations/calendar — 156 tests) still
+  passes, confirming the shared-service refactor didn't regress anything.
+- **Event cadence:** `nextTuesdayDate()` in `event-form-dialog.component.ts`
+  replaced with `nextWeekdayDate(weekday)`, driven by two new `app_config`
+  rows — `event_cadence_weekday` (0=Sunday…6=Saturday, default `2`/Tuesday)
+  and `event_cadence_time` (default `18:30`) — fetched when the "new event"
+  dialog opens with no explicit preset date/time. Deliberately scoped to a
+  fixed weekly cadence only, per Rob's direction — a monthly ("2nd
+  Saturday") pattern isn't built pending confirmation of Sons' actual
+  schedule.
+- **Attendance:** no code needed — Rob confirmed Sons picks up with their
+  next event going forward, no historical import.
+
+Verified live in a real browser against a disposable local database + a
+temporary `ng serve --proxy-config` (never touched the shared stage DB
+`docker-compose.yml`/`.env` point at): logged in as both an admin and a
+plain member, created a private location and confirmed the address/lock
+icon behave exactly as designed on both the Locations list and detail
+pages for each role, edited `/admin/settings` and confirmed the change
+persisted and was picked up by the "Create Event" dialog's date default.
+
+**Bug fix found and fixed along the way (2026-07-23):** Rob hit a broken
+photo on a newly added location. Root cause pre-dates this phase (same bug
+exists on `main` under the old `restaurants/` naming):
+`EnrichmentService.downloadStreetViewPhoto` always saved its file to the
+correct `<uploadPath>/locations/` disk path, but recorded `file_path` as
+`/api/uploads/<filename>` — missing the `locations/` segment `main.ts`'s
+static route requires — so every location whose photo came from the
+Street View fallback (used when Google Places has no photos, e.g. a
+brand-new location or a private home) rendered a broken image. Fixed the
+write going forward; added `FixStreetViewPhotoPaths` migration to repair
+existing rows (verified against seeded broken + already-correct rows in
+an ephemeral DB — only the broken pattern matches, and after the first
+run every row looks identical to "always correct," so `down()` is an
+intentional no-op rather than risk corrupting good rows on revert). Rob
+chose to let this ride with Phase 29 rather than cut a separate hotfix
+branch off `main`.
+
+Not yet done: the rest of Phase 29's scope above (branding extraction,
+bootstrap script, `NEW_INSTANCE_SETUP.md`, `dinnerbears.com` hardcoding
+audit).
 
 ## Phase 30 — Editable Legal Copy (Terms, Privacy, About) ✅ Complete
 

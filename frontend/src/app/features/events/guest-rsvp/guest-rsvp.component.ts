@@ -73,9 +73,13 @@ type PageState =
                 </div>
                 <div class="meta-row">
                   <mat-icon>location_on</mat-icon>
-                  <a [href]="mapsUrl()" target="_blank" rel="noopener" class="address-link">
-                    {{ info()!.locationAddress }}
-                  </a>
+                  @if (info()!.locationAddress) {
+                    <a [href]="mapsUrl()" target="_blank" rel="noopener" class="address-link">
+                      {{ info()!.locationAddress }}
+                    </a>
+                  } @else {
+                    <span class="address-hidden">Address available after you RSVP</span>
+                  }
                 </div>
               </div>
 
@@ -332,6 +336,10 @@ type PageState =
           text-decoration: underline;
         }
       }
+      .address-hidden {
+        font-style: italic;
+        color: #999;
+      }
 
       .name-section {
         margin-bottom: 20px;
@@ -524,7 +532,7 @@ export class GuestRsvpComponent implements OnInit {
     return formatEventTime(time);
   }
 
-  mapsUrl(): string {
+  mapsUrl(): string | null {
     const info = this.info()!;
     return this.eventsService.mapsUrl(
       info.locationLat,

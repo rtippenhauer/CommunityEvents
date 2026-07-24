@@ -12,6 +12,7 @@ import { EmailModule } from '../email/email.module';
 import { InvitesModule } from '../invites/invites.module';
 import { CalendarModule } from '../calendar/calendar.module';
 import { CommunityModule } from '../community/community.module';
+import { LocationsModule } from '../locations/locations.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { CommunityModule } from '../community/community.module';
     InvitesModule,
     CalendarModule,
     CommunityModule,
+    LocationsModule,
   ],
   providers: [EventsService],
   controllers: [EventsController],

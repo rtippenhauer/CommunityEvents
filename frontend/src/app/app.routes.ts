@@ -274,6 +274,14 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    path: 'admin/settings',
+    loadComponent: () =>
+      import('./features/admin/settings/admin-settings.component').then(
+        (m) => m.AdminSettingsComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/feedback',
     loadComponent: () =>
       import('./features/admin/feedback/admin-feedback.component').then(

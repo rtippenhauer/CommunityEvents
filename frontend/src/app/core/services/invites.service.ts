@@ -18,7 +18,7 @@ export interface InvitePreview {
     eventTime: string;
     status: string;
     locationName: string;
-    locationAddress: string;
+    locationAddress: string | null;
     locationPhotoUrl: string | null;
   } | null;
 }

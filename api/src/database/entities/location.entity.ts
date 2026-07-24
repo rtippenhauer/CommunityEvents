@@ -53,6 +53,12 @@ export class LocationEntity {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  // When true, address/lat/lng are withheld from members until they RSVP
+  // "Going" to an event held here (or are admin/mod) — see
+  // common/utils/location-visibility.util.ts.
+  @Column({ name: 'is_private', default: false })
+  isPrivate: boolean;
+
   @Column({
     name: 'imported_from',
     type: 'enum',
