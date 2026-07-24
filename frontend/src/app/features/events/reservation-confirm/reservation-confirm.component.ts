@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, ReservationConfirmInfo } from '../../../core/services/events.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { formatEventTime } from '../../../shared/utils/format-event';
 
 type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
@@ -17,7 +18,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
     <div class="confirm-layout">
       <div class="confirm-card">
         <div class="card-header">
-          <img src="/assets/logo.png" alt="DinnerBears" class="logo" />
+          <img [src]="brandConfig.logoSrc()" [alt]="brandConfig.brand().name" class="logo" />
         </div>
 
         @if (state() === 'loading') {
@@ -263,6 +264,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
 export class ReservationConfirmComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly eventsService = inject(EventsService);
+  readonly brandConfig = inject(BrandConfigService);
 
   readonly state = signal<PageState>('loading');
   readonly info = signal<ReservationConfirmInfo | null>(null);

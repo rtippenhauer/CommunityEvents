@@ -6,7 +6,7 @@
   <!-- Mobile sidenav -->
   <mat-sidenav #sidenav mode="over" class="app-sidenav">
     <div class="sidenav-header">
-      <img src="assets/logo.png" height="40" [alt]="brandConfig.brand().name" class="sidenav-logo" />
+      <img [src]="brandConfig.logoSrc()" height="40" [alt]="brandConfig.brand().name" class="sidenav-logo" />
     </div>
     <mat-nav-list>
       <a mat-list-item routerLink="/" (click)="sidenav.close()">
@@ -163,7 +163,7 @@
 
         <!-- Logo (dark) -->
         <a routerLink="/" class="app-logo-link" [attr.aria-label]="brandConfig.brand().name + ' home'">
-          <img src="assets/logo.png" height="32" [alt]="brandConfig.brand().name" class="app-logo" />
+          <img [src]="brandConfig.logoSrc()" height="32" [alt]="brandConfig.brand().name" class="app-logo" />
           @if (isStage) {
             <span class="stage-badge">STAGE</span>
           }
@@ -388,7 +388,7 @@
     <app-ios-install-banner />
 
     <footer class="app-footer">
-      <img src="assets/logo.png" height="32" [alt]="brandConfig.brand().name" class="footer-logo" />
+      <img [src]="brandConfig.logoSrc()" height="32" [alt]="brandConfig.brand().name" class="footer-logo" />
       <p class="footer-tagline">{{ brandConfig.brand().tagline }}</p>
       <div class="footer-links">
         <a routerLink="/privacy">Privacy</a>

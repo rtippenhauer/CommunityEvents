@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, GuestLinkInfo } from '../../../core/services/events.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { formatEventTime } from '../../../shared/utils/format-event';
 
 type PageState =
@@ -35,7 +36,7 @@ type PageState =
   template: `
     <div class="guest-rsvp-page">
       <div class="brand-header">
-        <img src="/images/DinnerBearsIcon.png" alt="DinnerBears" class="brand-logo" />
+        <img [src]="brandConfig.iconSrc()" [alt]="brandConfig.brand().name" class="brand-logo" />
       </div>
 
       @switch (state()) {
@@ -455,6 +456,7 @@ type PageState =
 export class GuestRsvpComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly eventsService = inject(EventsService);
+  readonly brandConfig = inject(BrandConfigService);
 
   readonly state = signal<PageState>('loading');
   readonly info = signal<GuestLinkInfo | null>(null);

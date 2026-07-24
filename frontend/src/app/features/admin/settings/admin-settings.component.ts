@@ -9,7 +9,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { forkJoin } from 'rxjs';
-import { AppConfigService } from '../../../core/services/app-config.service';
+import { AppConfigService, BrandImageSlot } from '../../../core/services/app-config.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 const WEEKDAYS = [
@@ -119,6 +119,126 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
               nav sidebar) aren't auto-generated from these — a very different hue may look
               slightly off there until that's built.
             </p>
+
+            <div class="brand-images">
+              <h3 class="images-title">Images</h3>
+
+              <div class="image-row">
+                <div class="image-preview logo-preview">
+                  <img [src]="brandConfigService.logoSrc()" alt="Logo preview" />
+                </div>
+                <div class="image-controls">
+                  <div class="image-label">Logo <span>— nav bar &amp; footer wordmark</span></div>
+                  <div class="image-actions">
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="logoInput.click()"
+                      [disabled]="uploadingSlot() === 'logo'"
+                    >
+                      <mat-icon>upload</mat-icon>
+                      {{ uploadingSlot() === 'logo' ? 'Uploading…' : 'Upload' }}
+                    </button>
+                    @if (brandConfigService.brand().logoUrl) {
+                      <button
+                        mat-button
+                        type="button"
+                        (click)="resetImage('logo')"
+                        [disabled]="uploadingSlot() === 'logo'"
+                      >
+                        Reset
+                      </button>
+                    }
+                    <input
+                      #logoInput
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      hidden
+                      (change)="onImageSelected('logo', $event)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="image-row">
+                <div class="image-preview splash-preview">
+                  <img [src]="brandConfigService.splashSrc()" alt="Splash preview" />
+                </div>
+                <div class="image-controls">
+                  <div class="image-label">Splash <span>— login page hero image</span></div>
+                  <div class="image-actions">
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="splashInput.click()"
+                      [disabled]="uploadingSlot() === 'splash'"
+                    >
+                      <mat-icon>upload</mat-icon>
+                      {{ uploadingSlot() === 'splash' ? 'Uploading…' : 'Upload' }}
+                    </button>
+                    @if (brandConfigService.brand().splashUrl) {
+                      <button
+                        mat-button
+                        type="button"
+                        (click)="resetImage('splash')"
+                        [disabled]="uploadingSlot() === 'splash'"
+                      >
+                        Reset
+                      </button>
+                    }
+                    <input
+                      #splashInput
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      hidden
+                      (change)="onImageSelected('splash', $event)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="image-row">
+                <div class="image-preview icon-preview">
+                  <img [src]="brandConfigService.iconSrc()" alt="Icon preview" />
+                </div>
+                <div class="image-controls">
+                  <div class="image-label">Icon <span>— favicon &amp; small app marks</span></div>
+                  <div class="image-actions">
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="iconInput.click()"
+                      [disabled]="uploadingSlot() === 'icon'"
+                    >
+                      <mat-icon>upload</mat-icon>
+                      {{ uploadingSlot() === 'icon' ? 'Uploading…' : 'Upload' }}
+                    </button>
+                    @if (brandConfigService.brand().iconUrl) {
+                      <button
+                        mat-button
+                        type="button"
+                        (click)="resetImage('icon')"
+                        [disabled]="uploadingSlot() === 'icon'"
+                      >
+                        Reset
+                      </button>
+                    }
+                    <input
+                      #iconInput
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      hidden
+                      (change)="onImageSelected('icon', $event)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <p class="cadence-hint">
+                Uploads apply immediately (max 5&nbsp;MB; PNG, JPEG, WebP, or GIF). The installed-PWA
+                icon comes from a static manifest and still needs a file swap + rebuild to change.
+              </p>
+            </div>
           </mat-card-content>
         </mat-card>
 
@@ -233,6 +353,85 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
         font-size: 0.78rem;
         color: #888;
       }
+      .brand-images {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+      }
+      .images-title {
+        margin: 0 0 12px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--db-brown-dark);
+      }
+      .image-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 10px 0;
+        &:not(:last-of-type) {
+          border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+      }
+      .image-preview {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background:
+          repeating-conic-gradient(#eee 0% 25%, #fff 0% 50%) 50% / 16px 16px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        overflow: hidden;
+        img {
+          display: block;
+          object-fit: contain;
+        }
+      }
+      .logo-preview {
+        width: 120px;
+        height: 48px;
+        img {
+          max-width: 112px;
+          max-height: 40px;
+        }
+      }
+      .splash-preview {
+        width: 120px;
+        height: 68px;
+        img {
+          max-width: 100%;
+          max-height: 100%;
+        }
+      }
+      .icon-preview {
+        width: 56px;
+        height: 56px;
+        img {
+          max-width: 48px;
+          max-height: 48px;
+        }
+      }
+      .image-controls {
+        flex: 1;
+        min-width: 0;
+      }
+      .image-label {
+        font-weight: 500;
+        color: var(--db-text-dark);
+        margin-bottom: 6px;
+        span {
+          font-weight: 400;
+          color: #999;
+          font-size: 0.82rem;
+        }
+      }
+      .image-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
       .center {
         display: flex;
         justify-content: center;
@@ -243,12 +442,13 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 })
 export class AdminSettingsComponent implements OnInit {
   private readonly appConfigService = inject(AppConfigService);
-  private readonly brandConfigService = inject(BrandConfigService);
+  readonly brandConfigService = inject(BrandConfigService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(NonNullableFormBuilder);
 
   readonly loading = signal(true);
   readonly saving = signal(false);
+  readonly uploadingSlot = signal<BrandImageSlot | null>(null);
   readonly weekdays = WEEKDAYS;
 
   readonly form = this.fb.group({
@@ -291,6 +491,40 @@ export class AdminSettingsComponent implements OnInit {
     const value = (event.target as HTMLInputElement).value;
     this.form.controls[control].setValue(value);
     this.form.controls[control].markAsDirty();
+  }
+
+  onImageSelected(slot: BrandImageSlot, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    this.uploadingSlot.set(slot);
+    this.appConfigService.uploadBrandImage(slot, file).subscribe({
+      next: () => {
+        input.value = ''; // let the same file be re-selected later
+        // Re-fetch /config/branding so the preview and the whole running app
+        // pick up the new image without a reload.
+        void this.brandConfigService.refresh().finally(() => this.uploadingSlot.set(null));
+        this.snackBar.open('Image updated', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.uploadingSlot.set(null);
+        this.snackBar.open('Failed to upload image', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  resetImage(slot: BrandImageSlot): void {
+    this.uploadingSlot.set(slot);
+    this.appConfigService.resetBrandImage(slot).subscribe({
+      next: () => {
+        void this.brandConfigService.refresh().finally(() => this.uploadingSlot.set(null));
+        this.snackBar.open('Reverted to default', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.uploadingSlot.set(null);
+        this.snackBar.open('Failed to reset image', 'OK', { duration: 4000 });
+      },
+    });
   }
 
   save(): void {

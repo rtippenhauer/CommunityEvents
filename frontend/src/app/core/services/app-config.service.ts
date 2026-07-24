@@ -13,7 +13,12 @@ export type SiteSettingKey =
   | 'brand_tagline'
   | 'theme_color_primary'
   | 'theme_color_accent'
-  | 'theme_color_background';
+  | 'theme_color_background'
+  | 'brand_logo_url'
+  | 'brand_splash_url'
+  | 'brand_icon_url';
+
+export type BrandImageSlot = 'logo' | 'splash' | 'icon';
 
 export interface LegalConfigItem {
   configKey: LegalConfigKey;
@@ -51,5 +56,18 @@ export class AppConfigService {
 
   updateValue(key: LegalConfigKey | SiteSettingKey, value: string): Observable<LegalConfigItem> {
     return this.http.patch<LegalConfigItem>(`/api/v1/admin/config/${key}`, { value });
+  }
+
+  uploadBrandImage(slot: BrandImageSlot, file: File): Observable<{ value: string }> {
+    const form = new FormData();
+    form.append('image', file);
+    return this.http.post<{ value: string }>(`/api/v1/admin/config/branding/image/${slot}`, form);
+  }
+
+  resetBrandImage(slot: BrandImageSlot): Observable<{ value: string }> {
+    return this.http.patch<{ value: string }>(
+      `/api/v1/admin/config/branding/image/${slot}/reset`,
+      {},
+    );
   }
 }

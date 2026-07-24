@@ -31,7 +31,7 @@ import { environment } from '../../../../environments/environment';
       <!-- Splash panel -->
       <div class="splash-panel">
         <img
-          src="images/dinnerbears-splash.png"
+          [src]="brandConfig.splashSrc()"
           [alt]="brandConfig.brand().name + ' — ' + brandConfig.brand().tagline"
           class="splash-image"
         />

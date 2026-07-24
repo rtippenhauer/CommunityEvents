@@ -29,6 +29,9 @@ export const SITE_SETTING_KEYS = [
   'theme_color_primary',
   'theme_color_accent',
   'theme_color_background',
+  'brand_logo_url',
+  'brand_splash_url',
+  'brand_icon_url',
 ] as const;
 export type SiteSettingKey = (typeof SITE_SETTING_KEYS)[number];
 
@@ -51,6 +54,11 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   theme_color_primary: '#C9933A',
   theme_color_accent: '#C9933A',
   theme_color_background: '#FDFAF5',
+  // Empty = fall back to the frontend's compiled-in default asset. Set to an
+  // /api/uploads/branding/... path once an admin uploads a replacement.
+  brand_logo_url: '',
+  brand_splash_url: '',
+  brand_icon_url: '',
 };
 
 @Injectable()
@@ -112,15 +120,22 @@ export class AppConfigService {
     colorPrimary: string;
     colorAccent: string;
     colorBackground: string;
+    logoUrl: string;
+    splashUrl: string;
+    iconUrl: string;
   }> {
-    const [name, tagline, colorPrimary, colorAccent, colorBackground] = await Promise.all([
-      this.getSiteSetting('brand_name'),
-      this.getSiteSetting('brand_tagline'),
-      this.getSiteSetting('theme_color_primary'),
-      this.getSiteSetting('theme_color_accent'),
-      this.getSiteSetting('theme_color_background'),
-    ]);
-    return { name, tagline, colorPrimary, colorAccent, colorBackground };
+    const [name, tagline, colorPrimary, colorAccent, colorBackground, logoUrl, splashUrl, iconUrl] =
+      await Promise.all([
+        this.getSiteSetting('brand_name'),
+        this.getSiteSetting('brand_tagline'),
+        this.getSiteSetting('theme_color_primary'),
+        this.getSiteSetting('theme_color_accent'),
+        this.getSiteSetting('theme_color_background'),
+        this.getSiteSetting('brand_logo_url'),
+        this.getSiteSetting('brand_splash_url'),
+        this.getSiteSetting('brand_icon_url'),
+      ]);
+    return { name, tagline, colorPrimary, colorAccent, colorBackground, logoUrl, splashUrl, iconUrl };
   }
 
   async updateConfigValue(key: string, value: string, userId: number): Promise<AppConfigEntity> {
