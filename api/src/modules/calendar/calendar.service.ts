@@ -8,6 +8,7 @@ import { EventEntity, EventStatus } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
+import { calendarOrganizerEmail, supportEmail } from '../../common/config/instance-contact';
 
 export interface CalendarSettingsResponse {
   url: string;
@@ -130,10 +131,7 @@ export class CalendarService {
   }
 
   private organizerEmail(): string {
-    const override = this.config.get<string>('CALENDAR_ORGANIZER_EMAIL', '');
-    if (override) return override;
-    const url = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
-    return url.includes('stage') ? 'calendar-stage@dinnerbears.com' : 'calendar@dinnerbears.com';
+    return calendarOrganizerEmail(this.config);
   }
 
   private async buildFeed(user: UserEntity): Promise<string> {
@@ -244,7 +242,7 @@ export class CalendarService {
       `View details: ${appUrl}/events/${event.id}`,
       '',
       '---',
-      'Questions? Reply to hello@dinnerbears.com',
+      `Questions? Reply to ${supportEmail(this.config)}`,
       'To manage your calendar subscription, visit your DinnerBears account settings.',
     ].filter(Boolean).join('\n');
 
@@ -348,7 +346,7 @@ export class CalendarService {
       `View details and RSVP: ${appUrl}/events/${event.id}`,
       '',
       '---',
-      'Questions? Reply to hello@dinnerbears.com',
+      `Questions? Reply to ${supportEmail(this.config)}`,
     ].join('\n');
 
     const location = locationAddress

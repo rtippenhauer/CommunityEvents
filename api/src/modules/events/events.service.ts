@@ -27,6 +27,7 @@ import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
+import { eventOrganizerEmail } from '../../common/config/instance-contact';
 
 export interface EventFilters {
   cityId?: number;
@@ -1069,7 +1070,7 @@ export class EventsService {
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(descParts.join('\n'))}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=DinnerBears:mailto:noreply@dinnerbears.com`,
+      `ORGANIZER;CN=DinnerBears:mailto:${eventOrganizerEmail(this.config)}`,
       'END:VEVENT',
       'END:VCALENDAR',
     ];

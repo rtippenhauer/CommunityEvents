@@ -65,7 +65,13 @@ services:
       - APP_URL=${APP_URL}
       - ADMIN_EMAIL=${ADMIN_EMAIL}
       - CLOUDFLARE_EMAIL_SECRET=${CLOUDFLARE_EMAIL_SECRET}
+      # White-label: instance domain + public contact addresses. All optional —
+      # each derives a sensible default from APP_URL/BASE_DOMAIN when unset
+      # (see docs/NEW_INSTANCE_SETUP.md and common/config/instance-contact.ts).
+      - BASE_DOMAIN=${BASE_DOMAIN:-}
       - CALENDAR_ORGANIZER_EMAIL=${CALENDAR_ORGANIZER_EMAIL:-}
+      - EVENT_ORGANIZER_EMAIL=${EVENT_ORGANIZER_EMAIL:-}
+      - SUPPORT_EMAIL=${SUPPORT_EMAIL:-}
       - UPLOAD_PATH=/app/uploads
     volumes:
       - uploads:/app/uploads
