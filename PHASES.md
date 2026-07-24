@@ -1646,9 +1646,57 @@ intentional no-op rather than risk corrupting good rows on revert). Rob
 chose to let this ride with Phase 29 rather than cut a separate hotfix
 branch off `main`.
 
-Not yet done: the rest of Phase 29's scope above (branding extraction,
-bootstrap script, `NEW_INSTANCE_SETUP.md`, `dinnerbears.com` hardcoding
-audit).
+**Progress — branding config (2026-07-24):** app name, tagline, and 3 core
+colors (primary/accent/background) are now `app_config`-backed and
+admin-editable, scoped to "the config point + frontend" — backend emails
+and static pre-bootstrap files still say "DinnerBears" for now (see below).
+- New `app_config` keys (`brand_name`, `brand_tagline`, `theme_color_primary`,
+  `theme_color_accent`, `theme_color_background`) via `SeedBrandingConfig`
+  migration, and a bundled `GET /config/branding` endpoint (registered ahead
+  of the generic `:key` route). New "Branding" card in `/admin/settings`
+  (name/tagline fields + 3 color-picker rows) alongside the existing
+  Location Privacy / New Event Default cards.
+- Frontend: new `BrandConfigService`, loaded via `provideAppInitializer`
+  same as `AuthService.init()`. Sets a `brand` signal (nav/footer/login
+  alt text, tagline, copyright now read from it) and pushes colors onto
+  `document.documentElement` as CSS custom-property overrides — applies
+  live with no rebuild. Wired the page `Title` service to the brand name too.
+- **Found and fixed while browser-verifying:** the color picker only
+  recolored elements hand-styled with `var(--db-primary)` — Angular
+  Material's native `color="primary"`/`color="accent"` components (used in
+  46 files app-wide: raised/stroked buttons, slide-toggles, checkboxes,
+  form-field focus states) stayed the old amber-brown. Root cause:
+  `styles.scss` used `mat.all-component-themes($theme)`, which bakes
+  literal computed colors into each component's tokens rather than
+  referencing Material's own `--mat-sys-*` system-level CSS variables (that
+  its M3 component styles already fall back to internally). Rob chose to
+  fix this now rather than ship it as a documented gap. Fix: swapped to
+  `mat.theme($theme-config)` (styles.css dropped from ~95KB to ~37KB — no
+  more baked per-component literals), and `BrandConfigService` now also
+  sets `--mat-sys-primary`/`--mat-sys-tertiary` (Material's M2→M3 compat
+  layer maps `color="accent"` to tertiary, not secondary) plus their
+  `on-*` white text-color counterparts. Verified via Playwright screenshots
+  across locations list/create-dialog (buttons, slide-toggle), events list
+  (checkbox), and `/admin/settings` itself — all correctly follow a test
+  color change (amber → green) with no layout regressions.
+- Also cleaned up ~35 files of hardcoded/phantom color literals unrelated
+  to this round's admin-config wiring but blocking it from being trustworthy:
+  a `--db-blue` CSS variable referenced 15 times but never defined (always
+  silently falling through to a stale `#1e4d8c` hex fallback), plus
+  `--db-gold` and `--db-text-light` (also phantom, found via an exhaustive
+  sweep beyond what was originally flagged), and bare hex literals that
+  should have been `var(--db-*)` references. Reconciled `index.html`'s
+  `theme-color` meta tag and `public/manifest.webmanifest` (previously the
+  stale blue) to match the real live amber palette.
+- Verified: `SeedBrandingConfig` migration up/down against a fresh ephemeral
+  DB (full migration chain from scratch, not just this one), frontend
+  `tsc --noEmit` + `ng build` both clean, and full live browser verification
+  (never against the shared stage DB — a disposable local MySQL + API +
+  `ng serve --proxy-config`, same pattern as the privacy/cadence round).
+
+Not yet done: bootstrap script, `NEW_INSTANCE_SETUP.md`, and the backend
+`dinnerbears.com`/email-template hardcoding audit (explicitly deferred out
+of the branding round per Rob's "just the config point + frontend" scoping).
 
 ## Phase 30 — Editable Legal Copy (Terms, Privacy, About) ✅ Complete
 

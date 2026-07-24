@@ -24,6 +24,11 @@ export const SITE_SETTING_KEYS = [
   'location_privacy_default',
   'event_cadence_weekday',
   'event_cadence_time',
+  'brand_name',
+  'brand_tagline',
+  'theme_color_primary',
+  'theme_color_accent',
+  'theme_color_background',
 ] as const;
 export type SiteSettingKey = (typeof SITE_SETTING_KEYS)[number];
 
@@ -41,6 +46,11 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   location_privacy_default: 'public',
   event_cadence_weekday: '2', // 0 = Sunday … 6 = Saturday; 2 = Tuesday
   event_cadence_time: '18:30',
+  brand_name: 'DinnerBears',
+  brand_tagline: 'Good food. Great company. Bear memories.',
+  theme_color_primary: '#C9933A',
+  theme_color_accent: '#C9933A',
+  theme_color_background: '#FDFAF5',
 };
 
 @Injectable()
@@ -92,6 +102,25 @@ export class AppConfigService {
   async getSiteSetting(key: SiteSettingKey): Promise<string> {
     const row = await this.configRepo.findOne({ where: { configKey: key } });
     return row?.configValue ?? SITE_SETTING_DEFAULTS[key];
+  }
+
+  // Bundled for the public GET /config/branding endpoint — one request for
+  // the app shell to apply at bootstrap instead of five.
+  async getBrandingConfig(): Promise<{
+    name: string;
+    tagline: string;
+    colorPrimary: string;
+    colorAccent: string;
+    colorBackground: string;
+  }> {
+    const [name, tagline, colorPrimary, colorAccent, colorBackground] = await Promise.all([
+      this.getSiteSetting('brand_name'),
+      this.getSiteSetting('brand_tagline'),
+      this.getSiteSetting('theme_color_primary'),
+      this.getSiteSetting('theme_color_accent'),
+      this.getSiteSetting('theme_color_background'),
+    ]);
+    return { name, tagline, colorPrimary, colorAccent, colorBackground };
   }
 
   async updateConfigValue(key: string, value: string, userId: number): Promise<AppConfigEntity> {

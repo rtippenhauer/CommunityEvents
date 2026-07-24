@@ -8,7 +8,12 @@ export type LegalConfigKey = 'legal_terms_html' | 'legal_privacy_html' | 'about_
 export type SiteSettingKey =
   | 'location_privacy_default'
   | 'event_cadence_weekday'
-  | 'event_cadence_time';
+  | 'event_cadence_time'
+  | 'brand_name'
+  | 'brand_tagline'
+  | 'theme_color_primary'
+  | 'theme_color_accent'
+  | 'theme_color_background';
 
 export interface LegalConfigItem {
   configKey: LegalConfigKey;

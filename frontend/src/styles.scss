@@ -2,7 +2,7 @@
 
 // DinnerBears brand palette — warm amber/gold matching the brand art
 // Primary: amber gold #C9933A | Background: warm cream #FDFAF5 | Dark: #3D1C05
-$theme: mat.define-theme((
+$theme-config: (
   color: (
     theme-type: light,
     primary: mat.$orange-palette,
@@ -14,10 +14,15 @@ $theme: mat.define-theme((
   density: (
     scale: 0,
   ),
-));
-
+);
 html {
-  @include mat.all-component-themes($theme);
+  // mat.theme() (not mat.all-component-themes()) is deliberate: it emits
+  // --mat-sys-* system-level tokens that Material's M3 component styles
+  // fall back to at render time, rather than baking literal computed colors
+  // into each component's tokens. That's what lets BrandConfigService
+  // override the whole app's Material components (buttons, toggles,
+  // checkboxes, form-field focus, etc.) at runtime with no rebuild.
+  @include mat.theme($theme-config);
 }
 
 // Brand CSS variables — used throughout the app

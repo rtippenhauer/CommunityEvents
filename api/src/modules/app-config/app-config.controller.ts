@@ -8,6 +8,14 @@ import { AppConfigService } from './app-config.service';
 export class AppConfigController {
   constructor(private readonly appConfigService: AppConfigService) {}
 
+  // Declared before :key so it isn't swallowed by the generic route below —
+  // bundles all branding values into one request for app bootstrap instead
+  // of five separate GET /config/:key round-trips.
+  @Get('branding')
+  getBranding() {
+    return this.appConfigService.getBrandingConfig();
+  }
+
   @Get(':key')
   async getValue(@Param('key') key: string): Promise<{ value: string }> {
     return { value: await this.appConfigService.getPublicValue(key) };
