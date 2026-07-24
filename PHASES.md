@@ -1694,9 +1694,71 @@ and static pre-bootstrap files still say "DinnerBears" for now (see below).
   (never against the shared stage DB — a disposable local MySQL + API +
   `ng serve --proxy-config`, same pattern as the privacy/cadence round).
 
-Not yet done: bootstrap script, `NEW_INSTANCE_SETUP.md`, and the backend
-`dinnerbears.com`/email-template hardcoding audit (explicitly deferred out
-of the branding round per Rob's "just the config point + frontend" scoping).
+**Progress — brand images, single-city UX, hardcoding audit, bootstrap
+(2026-07-24):** the remaining phase scope is now built and verified.
+- **Brand images (admin-uploadable):** Rob chose to build real upload UI
+  rather than document a file-swap. Three configurable slots — `logo`
+  (nav/footer/reservation), `splash` (login hero), `icon` (favicon +
+  small marks on join/guest-rsvp). New `app_config` keys
+  `brand_logo_url`/`brand_splash_url`/`brand_icon_url` (empty = fall back to
+  the compiled-in default asset), served from `<UPLOAD_PATH>/branding/` via
+  a new static route, uploaded through `POST admin/config/branding/image/:slot`
+  (+ a `.../reset` PATCH), reusing the existing multer/disk-storage pattern
+  (5 MB, PNG/JPEG/WebP/GIF; unique filename doubles as cache-busting).
+  `getBrandingConfig()` + `/config/branding` now return the three URLs;
+  `BrandConfigService` exposes `logoSrc()`/`splashSrc()`/`iconSrc()` computed
+  sources (uploaded URL or default) that every `<img>` binds to, and swaps
+  the live favicon `<link>` at runtime. New "Images" section in
+  `/admin/settings` (preview + Upload + Reset per slot) calls
+  `BrandConfigService.refresh()` after each change so it applies with no
+  reload. The installed-PWA manifest icon remains a static file swap (noted
+  in the UI + setup doc); the in-app favicon does update at runtime.
+- **Single-region UX:** `CityService.currentCity` now falls back to the sole
+  active city when the host carries no chapter subdomain (root-domain fork),
+  and a new `isSingleCity` computed hides the city filter on the events,
+  locations, members, and leaderboard browse pages, and auto-selects + hides
+  the city field in the event and location create/edit forms and profile
+  settings. The public `/cities` endpoint already returns active-only, so
+  "one active city" is the trigger.
+- **`dinnerbears.com` hardcoding audit:** OAuth callback URIs were already
+  `APP_URL`-derived and CORS is handled at NGINX (nothing to change). New
+  `common/config/instance-contact.ts` derives public contact addresses from
+  `BASE_DOMAIN` (falling back to `APP_URL`'s host): calendar-feed reply-to
+  (`SUPPORT_EMAIL` → `hello@<domain>`), calendar organizer
+  (`CALENDAR_ORGANIZER_EMAIL` → `calendar@<domain>`), and .ics event organizer
+  (`EVENT_ORGANIZER_EMAIL` → `noreply@<domain>`) — previously hardcoded
+  `@dinnerbears.com`. Fixed a `FRONTEND_URL`-vs-`APP_URL` inconsistency in the
+  account-lock email and removed the now-dead `frontendUrl` field. The ICS
+  `UID:` scheme is left as a stable opaque internal id (round-trip-parsed on
+  import — not user-facing branding). New env vars added to
+  `docker-compose.yml`. Email *copy* still says the platform name generically
+  — deliberately out of scope, same as the branding round.
+- **Bootstrap:** `api/src/bootstrap.ts` (compiled to `dist/bootstrap.js` so it
+  runs in the devDep-pruned prod image via `node dist/bootstrap.js`, or
+  `npm run bootstrap` locally). Env-driven and idempotent: upserts one active
+  city (deactivating the seeded Cincinnati/Dayton defaults rather than
+  deleting, keeping FK refs valid), overrides only the branding values the
+  operator passes, ensures the `email_provider_config` row, and creates a
+  first password-based admin. A guardrail refuses to run on a DB that already
+  has non-automation users unless `INSTANCE_BOOTSTRAP_FORCE=true`.
+- **`docs/NEW_INSTANCE_SETUP.md`:** full operator runbook — external accounts
+  (Google/Facebook OAuth, Brevo/Resend, VAPID, Maps, Anthropic), the grouped
+  `.env` checklist, branding (UI vs. bootstrap vs. static file swap), build +
+  migrate + bootstrap, first sign-in, and known limitations.
+- Verified end-to-end against a disposable local MySQL (never the shared stage
+  DB): full migration chain + `bootstrap.ts` (fresh run, guardrail refusal,
+  idempotent force re-run all confirmed via direct SQL), backend + frontend
+  `tsc` and `ng build` clean, and a Playwright pass on a bootstrapped "Sons"
+  instance — dynamic name/tagline/colors, city filter hidden, image upload
+  applying live to the nav + preview with working fallback and reset, and
+  the bootstrap-created password admin signing in.
+
+**Definition of done:** met, with one carried-forward deferral — **monthly
+"Nth weekday" event cadence** (e.g. "2nd Saturday") is still not built; the
+configurable cadence covers a fixed weekly day/time only, pending Sons'
+confirmed schedule (Rob's call to leave it for a later, isolated round rather
+than reopen the phase). Everything else in the scope above is implemented and
+verified.
 
 ## Phase 30 — Editable Legal Copy (Terms, Privacy, About) ✅ Complete
 
