@@ -83,9 +83,9 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
     } @else if (event()) {
       <div class="detail-layout">
         <!-- Photo -->
-        @if (event()!.restaurant?.photos?.length) {
+        @if (event()!.location?.photos?.length) {
           <div class="hero-photo">
-            <img [src]="event()!.restaurant!.photos[0].filePath" [alt]="event()!.restaurantName" />
+            <img [src]="event()!.location!.photos[0].filePath" [alt]="event()!.locationName" />
           </div>
         }
 
@@ -194,17 +194,17 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <mat-icon>restaurant</mat-icon>
                 <div>
                   <div class="info-label">Restaurant</div>
-                  @if (event()!.restaurant?.websiteUrl) {
+                  @if (event()!.location?.websiteUrl) {
                     <a
                       class="info-value map-link"
-                      [href]="event()!.restaurant!.websiteUrl!"
+                      [href]="event()!.location!.websiteUrl!"
                       target="_blank"
                       rel="noopener"
                     >
-                      {{ event()!.restaurantName }}
+                      {{ event()!.locationName }}
                     </a>
                   } @else {
-                    <div class="info-value">{{ event()!.restaurantName }}</div>
+                    <div class="info-value">{{ event()!.locationName }}</div>
                   }
                 </div>
               </div>
@@ -212,13 +212,19 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <mat-icon>location_on</mat-icon>
                 <div>
                   <div class="info-label">Address</div>
-                  <a
-                    class="info-value map-link"
-                    [href]="mapsUrl()"
-                    target="_blank"
-                    rel="noopener"
-                    >{{ event()!.restaurantAddress }}</a
-                  >
+                  @if (event()!.locationAddress) {
+                    <a
+                      class="info-value map-link"
+                      [href]="mapsUrl()"
+                      target="_blank"
+                      rel="noopener"
+                      >{{ event()!.locationAddress }}</a
+                    >
+                  } @else {
+                    <div class="info-value address-hidden">
+                      <mat-icon class="lock-icon">lock</mat-icon> Available after you RSVP Going
+                    </div>
+                  }
                 </div>
               </div>
             </mat-card-content>
@@ -1260,6 +1266,18 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
           text-decoration: underline;
         }
       }
+      .address-hidden {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-style: italic;
+        color: #999;
+        .lock-icon {
+          font-size: 0.95rem;
+          width: 0.95rem;
+          height: 0.95rem;
+        }
+      }
       .section {
         margin-bottom: 24px;
         h3 {
@@ -2035,14 +2053,14 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
         display: flex;
         align-items: flex-start;
         gap: 14px;
-        background: linear-gradient(135deg, #1e4d8c 0%, #2a6bbf 100%);
+        background: linear-gradient(135deg, var(--db-primary) 0%, #2a6bbf 100%);
         color: #fff;
         border-radius: 12px;
         padding: 14px 16px;
         margin-bottom: 16px;
         box-shadow: 0 2px 10px rgba(30, 77, 140, 0.25);
         mat-icon {
-          color: #c9933a;
+          color: var(--db-primary);
           font-size: 2rem;
           width: 2rem;
           height: 2rem;
@@ -2081,7 +2099,7 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
       }
       .special-dinner-title {
         font-size: 0.78rem;
-        color: #c9933a;
+        color: var(--db-primary);
         font-weight: 600;
         font-style: italic;
       }
@@ -2456,9 +2474,9 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     return formatEventTime(time);
   }
 
-  mapsUrl(): string {
+  mapsUrl(): string | null {
     const e = this.event()!;
-    return this.eventsService.mapsUrl(e.restaurantLat, e.restaurantLng, e.restaurantAddress);
+    return this.eventsService.mapsUrl(e.locationLat, e.locationLng, e.locationAddress);
   }
 
   googleCalendarUrl(): string {

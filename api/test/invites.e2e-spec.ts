@@ -2,9 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
-import { seedCity, seedRestaurant, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { CityEntity } from '../src/database/entities/city.entity';
-import { RestaurantEntity } from '../src/database/entities/restaurant.entity';
+import { LocationEntity } from '../src/database/entities/location.entity';
 import { UserEntity, UserRole } from '../src/database/entities/user.entity';
 import { InviteEntity, InviteFlavor, InviteType } from '../src/database/entities/invite.entity';
 import { FacebookGroupConfigEntity } from '../src/database/entities/facebook-group-config.entity';
@@ -16,7 +16,7 @@ describe('Invites (e2e)', () => {
   let server: Parameters<typeof request>[0];
 
   let city: CityEntity;
-  let restaurant: RestaurantEntity;
+  let location: LocationEntity;
   let admin: UserEntity;
   let adminCookie: string;
   let moderatorCookie: string;
@@ -36,7 +36,7 @@ describe('Invites (e2e)', () => {
     await truncateAllTables(dataSource);
     resetThrottler(app);
     city = await seedCity(dataSource);
-    restaurant = await seedRestaurant(dataSource, city.id);
+    location = await seedLocation(dataSource, city.id);
 
     admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
     const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
@@ -54,7 +54,7 @@ describe('Invites (e2e)', () => {
       .set('Cookie', adminCookie)
       .send({
         cityId: city.id,
-        restaurantId: restaurant.id,
+        locationId: location.id,
         title: 'Future Dinner',
         eventDate: eventDate.toISOString().slice(0, 10),
         eventTime: '18:30',

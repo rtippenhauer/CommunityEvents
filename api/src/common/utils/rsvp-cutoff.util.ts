@@ -1,7 +1,7 @@
 /**
  * RSVP for an event closes 150 minutes (2.5 hours) before its start time,
  * Eastern time — the point at which the reservation coordinator finalizes
- * the headcount with the restaurant. Shared by RSVP enforcement and event
+ * the headcount with the location. Shared by RSVP enforcement and event
  * invite-link expiration so both agree on the exact same cutoff instant.
  */
 const RSVP_CUTOFF_MINUTES_BEFORE = 150;

@@ -13,7 +13,7 @@
 src/modules/
 ├── auth/           # JWT, Google OAuth, Facebook OAuth, strategies
 ├── users/          # User CRUD, profile, account management
-├── restaurants/    # Restaurant CRUD, geocoding, photos
+├── locations/      # Location CRUD, geocoding, photos (displayed as "Restaurant" in the UI)
 ├── events/         # Event CRUD, RSVP, guest RSVP, calendar export
 ├── announcements/  # Announcements, comments, flagging
 ├── notifications/  # In-app notifications, push, SSE

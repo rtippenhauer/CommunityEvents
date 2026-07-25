@@ -4,7 +4,7 @@ import { UserEntity } from './user.entity';
 export enum PointType {
   ATTENDANCE = 'attendance',
   COORDINATOR = 'coordinator',
-  COORDINATOR_NEW_RESTAURANT = 'coordinator_new_restaurant',
+  NEW_LOCATION_COORDINATOR = 'new_location_coordinator',
   INVITE = 'invite',
   RATING = 'rating',
   CITY_HOPPER = 'city_hopper',

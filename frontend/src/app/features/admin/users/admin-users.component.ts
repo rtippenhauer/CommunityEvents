@@ -392,11 +392,11 @@ interface AdminUser {
       }
       .role-admin {
         --mat-chip-label-text-color: #fff;
-        background: #1e4d8c !important;
+        background: var(--db-primary) !important;
       }
       .role-moderator {
         --mat-chip-label-text-color: #fff;
-        background: #c9933a !important;
+        background: var(--db-primary) !important;
       }
       .role-member {
         background: #e0e0e0 !important;
@@ -407,7 +407,7 @@ interface AdminUser {
       }
       .role-invited {
         background: #e1e8f0 !important;
-        --mat-chip-label-text-color: #1e4d8c !important;
+        --mat-chip-label-text-color: var(--db-primary) !important;
       }
       .status-active {
         background: #c8e6c9 !important;

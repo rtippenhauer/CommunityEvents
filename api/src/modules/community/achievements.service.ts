@@ -102,7 +102,7 @@ export class AchievementsService {
     const totalCoord = await this.pointRepo.count({
       where: [
         { userId, pointType: PointType.COORDINATOR },
-        { userId, pointType: PointType.COORDINATOR_NEW_RESTAURANT },
+        { userId, pointType: PointType.NEW_LOCATION_COORDINATOR },
       ],
     });
     if (totalCoord >= 1)   await this.grant(userId, 'first_coordinator');
@@ -112,15 +112,15 @@ export class AchievementsService {
     if (totalCoord >= 50)  await this.grant(userId, 'grand_maestro');
     if (totalCoord >= 100) await this.grant(userId, 'legendary_maestro');
 
-    const newRestaurantCount = await this.pointRepo.count({
-      where: { userId, pointType: PointType.COORDINATOR_NEW_RESTAURANT },
+    const newLocationCount = await this.pointRepo.count({
+      where: { userId, pointType: PointType.NEW_LOCATION_COORDINATOR },
     });
-    if (newRestaurantCount >= 1)   await this.grant(userId, 'scout');
-    if (newRestaurantCount >= 5)   await this.grant(userId, 'culinary_explorer');
-    if (newRestaurantCount >= 10)  await this.grant(userId, 'trailblazer');
-    if (newRestaurantCount >= 25)  await this.grant(userId, 'culinary_pioneer');
-    if (newRestaurantCount >= 50)  await this.grant(userId, 'master_explorer');
-    if (newRestaurantCount >= 100) await this.grant(userId, 'legendary_scout');
+    if (newLocationCount >= 1)   await this.grant(userId, 'scout');
+    if (newLocationCount >= 5)   await this.grant(userId, 'culinary_explorer');
+    if (newLocationCount >= 10)  await this.grant(userId, 'trailblazer');
+    if (newLocationCount >= 25)  await this.grant(userId, 'culinary_pioneer');
+    if (newLocationCount >= 50)  await this.grant(userId, 'master_explorer');
+    if (newLocationCount >= 100) await this.grant(userId, 'legendary_scout');
   }
 
   async checkRatingAchievements(userId: number): Promise<void> {
@@ -242,8 +242,8 @@ export class AchievementsService {
       countMap[r.point_type] = Number(r.cnt);
     }
     const attendanceCount = countMap['attendance'] ?? 0;
-    const coordinatorCount = (countMap['coordinator'] ?? 0) + (countMap['coordinator_new_restaurant'] ?? 0);
-    const newRestaurantCount = countMap['coordinator_new_restaurant'] ?? 0;
+    const coordinatorCount = (countMap['coordinator'] ?? 0) + (countMap['new_location_coordinator'] ?? 0);
+    const newLocationCount = countMap['new_location_coordinator'] ?? 0;
     const inviteCount = countMap['invite'] ?? 0;
     const ratingCount = countMap['rating'] ?? 0;
     const cityHopperCount = countMap['city_hopper'] ?? 0;
@@ -261,7 +261,7 @@ export class AchievementsService {
         switch (a.progressType) {
           case ProgressType.ATTENDANCE: progressCurrent = attendanceCount; break;
           case ProgressType.COORDINATOR: progressCurrent = coordinatorCount; break;
-          case ProgressType.NEW_RESTAURANT_COORDINATOR: progressCurrent = newRestaurantCount; break;
+          case ProgressType.NEW_LOCATION_COORDINATOR: progressCurrent = newLocationCount; break;
           case ProgressType.INVITE: progressCurrent = inviteCount; break;
           case ProgressType.RATING: progressCurrent = ratingCount; break;
           case ProgressType.CITY_HOPPER: progressCurrent = cityHopperCount; break;

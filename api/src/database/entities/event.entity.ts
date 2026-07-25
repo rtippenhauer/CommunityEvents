@@ -9,7 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { CityEntity } from './city.entity';
-import { RestaurantEntity } from './restaurant.entity';
+import { LocationEntity } from './location.entity';
 import { UserEntity } from './user.entity';
 import { EventRsvpEntity } from './event-rsvp.entity';
 
@@ -31,25 +31,25 @@ export class EventEntity {
   @JoinColumn({ name: 'city_id' })
   city: CityEntity;
 
-  @Column({ name: 'restaurant_id', unsigned: true, nullable: true })
-  restaurantId: number | null;
+  @Column({ name: 'location_id', unsigned: true, nullable: true })
+  locationId: number | null;
 
-  @ManyToOne(() => RestaurantEntity, { nullable: true, eager: false })
-  @JoinColumn({ name: 'restaurant_id' })
-  restaurant: RestaurantEntity | null;
+  @ManyToOne(() => LocationEntity, { nullable: true, eager: false })
+  @JoinColumn({ name: 'location_id' })
+  location: LocationEntity | null;
 
-  // Snapshot fields — copied from restaurant at publish time
-  @Column({ name: 'restaurant_name', length: 255 })
-  restaurantName: string;
+  // Snapshot fields — copied from location at publish time
+  @Column({ name: 'location_name', length: 255 })
+  locationName: string;
 
-  @Column({ name: 'restaurant_address', length: 500 })
-  restaurantAddress: string;
+  @Column({ name: 'location_address', length: 500 })
+  locationAddress: string;
 
-  @Column({ name: 'restaurant_lat', type: 'decimal', precision: 10, scale: 7, nullable: true })
-  restaurantLat: number | null;
+  @Column({ name: 'location_lat', type: 'decimal', precision: 10, scale: 7, nullable: true })
+  locationLat: number | null;
 
-  @Column({ name: 'restaurant_lng', type: 'decimal', precision: 10, scale: 7, nullable: true })
-  restaurantLng: number | null;
+  @Column({ name: 'location_lng', type: 'decimal', precision: 10, scale: 7, nullable: true })
+  locationLng: number | null;
 
   @Column({ length: 255 })
   title: string;

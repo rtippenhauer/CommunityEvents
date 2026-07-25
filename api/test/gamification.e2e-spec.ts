@@ -2,9 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
-import { seedCity, seedRestaurant, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { CityEntity } from '../src/database/entities/city.entity';
-import { RestaurantEntity } from '../src/database/entities/restaurant.entity';
+import { LocationEntity } from '../src/database/entities/location.entity';
 import { UserEntity, UserRole } from '../src/database/entities/user.entity';
 import { EventEntity } from '../src/database/entities/event.entity';
 import { MemberAchievementEntity } from '../src/database/entities/member-achievement.entity';
@@ -21,7 +21,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
   let achievementsService: AchievementsService;
 
   let city: CityEntity;
-  let restaurant: RestaurantEntity;
+  let location: LocationEntity;
   let admin: UserEntity;
   let adminCookie: string;
   let moderatorCookie: string;
@@ -43,7 +43,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
     await truncateAllTables(dataSource);
     resetThrottler(app);
     city = await seedCity(dataSource);
-    restaurant = await seedRestaurant(dataSource, city.id);
+    location = await seedLocation(dataSource, city.id);
 
     admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
     const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
@@ -84,9 +84,9 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
     return repo.save(
       repo.create({
         cityId: city.id,
-        restaurantId: restaurant.id,
-        restaurantName: restaurant.name,
-        restaurantAddress: restaurant.address,
+        locationId: location.id,
+        locationName: location.name,
+        locationAddress: location.address,
         createdById: admin.id,
         title: 'Gamification Test Dinner',
         eventDate: '2027-01-05',
@@ -121,22 +121,22 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
   });
 
   describe('Coordinator achievement tiers', () => {
-    it('grants first_coordinator and scout after coordinating at a brand-new restaurant', async () => {
+    it('grants first_coordinator and scout after coordinating at a brand-new location', async () => {
       const event = await seedEvent();
       await pointsService.awardCoordinator(member.id, event.id);
 
       const points = await dataSource
         .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.COORDINATOR_NEW_RESTAURANT, referenceId: event.id } });
+        .findOne({ where: { userId: member.id, pointType: PointType.NEW_LOCATION_COORDINATOR, referenceId: event.id } });
       expect(points!.points).toBe(4);
       expect(await hasEarned(member.id, 'first_coordinator')).toBe(true);
       expect(await hasEarned(member.id, 'scout')).toBe(true);
     });
 
-    it('grants only the base coordinator credit at an established restaurant', async () => {
-      await dataSource.query('UPDATE restaurants SET created_at = ? WHERE id = ?', [
+    it('grants only the base coordinator credit at an established location', async () => {
+      await dataSource.query('UPDATE locations SET created_at = ? WHERE id = ?', [
         new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-        restaurant.id,
+        location.id,
       ]);
       const event = await seedEvent();
       await pointsService.awardCoordinator(member.id, event.id);
@@ -151,10 +151,10 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
 
   describe('Rating achievement tiers', () => {
     it('grants first_review and critic after 5 ratings', async () => {
-      const restaurants = await Promise.all(
-        Array.from({ length: 5 }, (_, i) => seedRestaurant(dataSource, city.id, { name: `Rated Restaurant ${i}` })),
+      const locations = await Promise.all(
+        Array.from({ length: 5 }, (_, i) => seedLocation(dataSource, city.id, { name: `Rated Location ${i}` })),
       );
-      for (const r of restaurants) {
+      for (const r of locations) {
         await pointsService.awardRating(member.id, r.id);
       }
 

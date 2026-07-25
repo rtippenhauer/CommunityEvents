@@ -9,7 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { CityEntity } from './city.entity';
-import { RestaurantPhotoEntity } from './restaurant-photo.entity';
+import { LocationPhotoEntity } from './location-photo.entity';
 import { UserEntity } from './user.entity';
 
 export enum ImportSource {
@@ -17,8 +17,8 @@ export enum ImportSource {
   FACEBOOK_IMPORT = 'facebook_import',
 }
 
-@Entity('restaurants')
-export class RestaurantEntity {
+@Entity('locations')
+export class LocationEntity {
   @PrimaryGeneratedColumn({ unsigned: true })
   id: number;
 
@@ -53,6 +53,12 @@ export class RestaurantEntity {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  // When true, address/lat/lng are withheld from members until they RSVP
+  // "Going" to an event held here (or are admin/mod) — see
+  // common/utils/location-visibility.util.ts.
+  @Column({ name: 'is_private', default: false })
+  isPrivate: boolean;
+
   @Column({
     name: 'imported_from',
     type: 'enum',
@@ -61,8 +67,8 @@ export class RestaurantEntity {
   })
   importedFrom: ImportSource;
 
-  @OneToMany(() => RestaurantPhotoEntity, (photo) => photo.restaurant, { eager: true })
-  photos: RestaurantPhotoEntity[];
+  @OneToMany(() => LocationPhotoEntity, (photo) => photo.location, { eager: true })
+  photos: LocationPhotoEntity[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { EventsService, GuestLinkInfo } from '../../../core/services/events.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { formatEventTime } from '../../../shared/utils/format-event';
 
 type PageState =
@@ -35,7 +36,7 @@ type PageState =
   template: `
     <div class="guest-rsvp-page">
       <div class="brand-header">
-        <img src="/images/DinnerBearsIcon.png" alt="DinnerBears" class="brand-logo" />
+        <img [src]="brandConfig.iconSrc()" [alt]="brandConfig.brand().name" class="brand-logo" />
       </div>
 
       @switch (state()) {
@@ -45,9 +46,9 @@ type PageState =
 
         @case ('open') {
           <div class="rsvp-card">
-            @if (info()!.restaurantPhotoUrl) {
+            @if (info()!.locationPhotoUrl) {
               <div class="event-photo">
-                <img [src]="info()!.restaurantPhotoUrl!" [alt]="info()!.restaurantName" />
+                <img [src]="info()!.locationPhotoUrl!" [alt]="info()!.locationName" />
               </div>
             }
 
@@ -69,13 +70,17 @@ type PageState =
                 </div>
                 <div class="meta-row">
                   <mat-icon>restaurant</mat-icon>
-                  <span>{{ info()!.restaurantName }}</span>
+                  <span>{{ info()!.locationName }}</span>
                 </div>
                 <div class="meta-row">
                   <mat-icon>location_on</mat-icon>
-                  <a [href]="mapsUrl()" target="_blank" rel="noopener" class="address-link">
-                    {{ info()!.restaurantAddress }}
-                  </a>
+                  @if (info()!.locationAddress) {
+                    <a [href]="mapsUrl()" target="_blank" rel="noopener" class="address-link">
+                      {{ info()!.locationAddress }}
+                    </a>
+                  } @else {
+                    <span class="address-hidden">Address available after you RSVP</span>
+                  }
                 </div>
               </div>
 
@@ -121,7 +126,7 @@ type PageState =
               <mat-icon class="state-icon confirmed-icon">check_circle</mat-icon>
               <h2>You're going!</h2>
               <p>
-                See you at <strong>{{ info()!.restaurantName }}</strong> on
+                See you at <strong>{{ info()!.locationName }}</strong> on
                 {{ info()!.eventDate | date: 'MMMM d' }}.
               </p>
               <p class="state-sub">{{ info()!.invitedByName }} will have your spot reserved.</p>
@@ -142,7 +147,7 @@ type PageState =
               <mat-icon class="state-icon used-icon">check_circle</mat-icon>
               <h2>Already RSVP'd!</h2>
               <p>
-                You're confirmed for <strong>{{ info()!.restaurantName }}</strong> on
+                You're confirmed for <strong>{{ info()!.locationName }}</strong> on
                 {{ info()!.eventDate | date: 'MMMM d' }}.
               </p>
               <p class="state-sub">See you there!</p>
@@ -224,7 +229,7 @@ type PageState =
     `
       .guest-rsvp-page {
         min-height: 100vh;
-        background: var(--db-cream, #fdfaf5);
+        background: var(--db-cream);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -285,7 +290,7 @@ type PageState =
       }
 
       .invite-icon {
-        color: var(--db-amber, #c9933a);
+        color: var(--db-amber);
         font-size: 1.2rem;
         width: 1.2rem;
         height: 1.2rem;
@@ -326,11 +331,15 @@ type PageState =
       }
 
       .address-link {
-        color: var(--db-primary, #1e4d8c);
+        color: var(--db-primary);
         text-decoration: none;
         &:hover {
           text-decoration: underline;
         }
+      }
+      .address-hidden {
+        font-style: italic;
+        color: #999;
       }
 
       .name-section {
@@ -447,6 +456,7 @@ type PageState =
 export class GuestRsvpComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly eventsService = inject(EventsService);
+  readonly brandConfig = inject(BrandConfigService);
 
   readonly state = signal<PageState>('loading');
   readonly info = signal<GuestLinkInfo | null>(null);
@@ -524,12 +534,12 @@ export class GuestRsvpComponent implements OnInit {
     return formatEventTime(time);
   }
 
-  mapsUrl(): string {
+  mapsUrl(): string | null {
     const info = this.info()!;
     return this.eventsService.mapsUrl(
-      info.restaurantLat,
-      info.restaurantLng,
-      info.restaurantAddress,
+      info.locationLat,
+      info.locationLng,
+      info.locationAddress,
     );
   }
 }

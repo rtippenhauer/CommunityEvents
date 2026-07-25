@@ -18,10 +18,10 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
     >
       <!-- Photo header — keep exactly as-is -->
       <div class="card-photo" [class.compact]="compact()">
-        @if (event().restaurant?.photos?.length) {
+        @if (event().location?.photos?.length) {
           <img
-            [src]="event().restaurant!.photos[0].filePath"
-            [alt]="event().restaurantName"
+            [src]="event().location!.photos[0].filePath"
+            [alt]="event().locationName"
             loading="lazy"
           />
         } @else {
@@ -44,8 +44,8 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         @if (!compact()) {
           <div class="card-city">{{ event().city.name }}</div>
         }
-        <div class="card-restaurant" [class.muted]="event().status === 'cancelled'">
-          {{ event().restaurantName }}
+        <div class="card-location" [class.muted]="event().status === 'cancelled'">
+          {{ event().locationName }}
         </div>
       </div>
 
@@ -192,7 +192,7 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         margin-bottom: 3px;
       }
 
-      .card-restaurant {
+      .card-location {
         font-size: 0.95rem;
         font-weight: 600;
         color: var(--db-brown);

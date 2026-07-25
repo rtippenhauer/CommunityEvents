@@ -51,7 +51,6 @@ function isCdnPhoto(path: string | null, hosts: string[]): boolean {
 
 @Injectable()
 export class AuthService {
-  private readonly frontendUrl: string;
   private readonly loginWindowMs: number;
 
   constructor(
@@ -76,7 +75,6 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly achievementsService: AchievementsService,
   ) {
-    this.frontendUrl = this.configService.get<string>('APP_URL', 'http://localhost:8081');
     this.loginWindowMs = this.configService.get<string>('IS_STAGE') === 'true'
       ? STAGE_LOGIN_WINDOW_MS
       : PROD_LOGIN_WINDOW_MS;
@@ -814,9 +812,9 @@ export class AuthService {
           <p>Hi ${user.fullName},</p>
           <p>We detected <strong>${attempts} failed login attempts</strong> on your DinnerBears account and have temporarily locked it.</p>
           <p>If this was you, please wait a few minutes and try again.</p>
-          <p>If you don't recognize this activity, <a href="${process.env.FRONTEND_URL ?? 'https://dinnerbears.com'}/auth/forgot-password">reset your password immediately</a>.</p>
+          <p>If you don't recognize this activity, <a href="${this.configService.get<string>('APP_URL', 'https://dinnerbears.com')}/auth/forgot-password">reset your password immediately</a>.</p>
         `,
-        textBody: `Hi ${user.fullName}, we detected ${attempts} failed login attempts and temporarily locked your account. If this wasn't you, reset your password at ${process.env.FRONTEND_URL ?? 'https://dinnerbears.com'}/auth/forgot-password`,
+        textBody: `Hi ${user.fullName}, we detected ${attempts} failed login attempts and temporarily locked your account. If this wasn't you, reset your password at ${this.configService.get<string>('APP_URL', 'https://dinnerbears.com')}/auth/forgot-password`,
       });
     } catch {
       // Non-fatal

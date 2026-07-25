@@ -197,7 +197,7 @@ interface Invite {
           font-size: 2.5rem;
           width: 2.5rem;
           height: 2.5rem;
-          color: var(--db-blue, #1e4d8c);
+          color: var(--db-primary);
           margin-top: 4px;
           flex-shrink: 0;
         }

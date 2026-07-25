@@ -6,7 +6,7 @@
   <!-- Mobile sidenav -->
   <mat-sidenav #sidenav mode="over" class="app-sidenav">
     <div class="sidenav-header">
-      <img src="assets/logo.png" height="40" alt="DinnerBears" class="sidenav-logo" />
+      <img [src]="brandConfig.logoSrc()" height="40" [alt]="brandConfig.brand().name" class="sidenav-logo" />
     </div>
     <mat-nav-list>
       <a mat-list-item routerLink="/" (click)="sidenav.close()">
@@ -37,7 +37,7 @@
           <a mat-list-item routerLink="/leaderboard" (click)="sidenav.close()">
             <mat-icon matListItemIcon>emoji_events</mat-icon> Leaderboard
           </a>
-          <a mat-list-item routerLink="/restaurants" (click)="sidenav.close()">
+          <a mat-list-item routerLink="/locations" (click)="sidenav.close()">
             <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
           </a>
           @if (isMerchOpen()) {
@@ -100,6 +100,9 @@
             <a mat-list-item routerLink="/admin/legal" (click)="sidenav.close()">
               <mat-icon matListItemIcon>gavel</mat-icon> Legal Copy
             </a>
+            <a mat-list-item routerLink="/admin/settings" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>tune</mat-icon> Site Settings
+            </a>
           }
 
           <mat-divider />
@@ -159,8 +162,8 @@
         }
 
         <!-- Logo (dark) -->
-        <a routerLink="/" class="app-logo-link" aria-label="DinnerBears home">
-          <img src="assets/logo.png" height="32" alt="DinnerBears" class="app-logo" />
+        <a routerLink="/" class="app-logo-link" [attr.aria-label]="brandConfig.brand().name + ' home'">
+          <img [src]="brandConfig.logoSrc()" height="32" [alt]="brandConfig.brand().name" class="app-logo" />
           @if (isStage) {
             <span class="stage-badge">STAGE</span>
           }
@@ -201,7 +204,7 @@
                 <a mat-menu-item routerLink="/leaderboard">
                   <mat-icon>emoji_events</mat-icon> Leaderboard
                 </a>
-                <a mat-menu-item routerLink="/restaurants">
+                <a mat-menu-item routerLink="/locations">
                   <mat-icon>restaurant</mat-icon> Restaurants
                 </a>
                 @if (isMerchOpen()) {
@@ -305,6 +308,9 @@
               <a mat-menu-item routerLink="/admin/legal">
                 <mat-icon>gavel</mat-icon> Legal Copy
               </a>
+              <a mat-menu-item routerLink="/admin/settings">
+                <mat-icon>tune</mat-icon> Site Settings
+              </a>
             </mat-menu>
 
             <mat-menu #adminMembersMenu="matMenu" panelClass="nav-menu">
@@ -382,14 +388,14 @@
     <app-ios-install-banner />
 
     <footer class="app-footer">
-      <img src="assets/logo.png" height="32" alt="DinnerBears" class="footer-logo" />
-      <p class="footer-tagline">Good food. Great company. Bear memories.</p>
+      <img [src]="brandConfig.logoSrc()" height="32" [alt]="brandConfig.brand().name" class="footer-logo" />
+      <p class="footer-tagline">{{ brandConfig.brand().tagline }}</p>
       <div class="footer-links">
         <a routerLink="/privacy">Privacy</a>
         <span class="footer-dot">&middot;</span>
         <a routerLink="/terms">Terms</a>
       </div>
-      <p class="footer-copy">&copy; {{ currentYear }} DinnerBears.Com, LLC</p>
+      <p class="footer-copy">&copy; {{ currentYear }} {{ brandConfig.brand().name }}.Com, LLC</p>
     </footer>
 
   </mat-sidenav-content>

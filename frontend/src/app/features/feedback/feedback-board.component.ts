@@ -247,7 +247,7 @@ const COMPLETED_STATUSES = new Set(['shipped', 'wont_fix', 'closed']);
       }
       .active-sort {
         font-weight: 700;
-        color: var(--db-blue, #1e4d8c);
+        color: var(--db-primary);
       }
 
       .center {

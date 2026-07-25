@@ -369,7 +369,7 @@ const ICON_NAMES: string[] = [
         font-size: 1.6rem;
         width: 1.6rem;
         height: 1.6rem;
-        color: #c9933a;
+        color: var(--db-primary);
         flex-shrink: 0;
       }
       .icon-preview-img {

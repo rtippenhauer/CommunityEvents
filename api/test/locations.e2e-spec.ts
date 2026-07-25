@@ -6,7 +6,7 @@ import { seedCity, seedUser, loginAs } from './utils/seed';
 import { CityEntity } from '../src/database/entities/city.entity';
 import { UserRole } from '../src/database/entities/user.entity';
 
-describe('Restaurants CRUD (e2e)', () => {
+describe('Locations CRUD (e2e)', () => {
   let app: INestApplication;
   let dataSource: DataSource;
   let server: Parameters<typeof request>[0];
@@ -34,7 +34,7 @@ describe('Restaurants CRUD (e2e)', () => {
     memberCookie = await loginAs(app, member);
   });
 
-  function validRestaurantPayload(overrides: Record<string, unknown> = {}) {
+  function validLocationPayload(overrides: Record<string, unknown> = {}) {
     return {
       name: 'The Test Bistro',
       address: '456 Sample Ave, Test City, OH 45202',
@@ -43,12 +43,12 @@ describe('Restaurants CRUD (e2e)', () => {
     };
   }
 
-  describe('POST /restaurants (create)', () => {
-    it('creates a restaurant when authenticated as admin', async () => {
+  describe('POST /locations (create)', () => {
+    it('creates a location when authenticated as admin', async () => {
       const res = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
       expect(res.body).toMatchObject({ name: 'The Test Bistro', cityId: city.id });
@@ -57,7 +57,7 @@ describe('Restaurants CRUD (e2e)', () => {
 
     it('rejects a payload missing required fields', async () => {
       const res = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
         .send({ cityId: city.id })
         .expect(400);
@@ -67,76 +67,76 @@ describe('Restaurants CRUD (e2e)', () => {
 
     it('rejects an invalid field value (malformed website URL)', async () => {
       await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload({ websiteUrl: 'not-a-url' }))
+        .send(validLocationPayload({ websiteUrl: 'not-a-url' }))
         .expect(400);
     });
 
     it('rejects unauthenticated requests', async () => {
-      await request(server).post('/api/v1/restaurants').send(validRestaurantPayload()).expect(401);
+      await request(server).post('/api/v1/locations').send(validLocationPayload()).expect(401);
     });
 
     it('rejects requests from a member (insufficient role)', async () => {
       await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', memberCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(403);
     });
   });
 
-  describe('GET /restaurants (read list) and GET /restaurants/:id (read one)', () => {
-    it('lists created restaurants', async () => {
+  describe('GET /locations (read list) and GET /locations/:id (read one)', () => {
+    it('lists created locations', async () => {
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
-      const res = await request(server).get('/api/v1/restaurants').set('Cookie', memberCookie).expect(200);
+      const res = await request(server).get('/api/v1/locations').set('Cookie', memberCookie).expect(200);
       expect(res.body.some((r: { id: number }) => r.id === created.body.id)).toBe(true);
     });
 
-    it('reads a single restaurant by id', async () => {
+    it('reads a single location by id', async () => {
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
       const res = await request(server)
-        .get(`/api/v1/restaurants/${created.body.id}`)
+        .get(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', memberCookie)
         .expect(200);
       expect(res.body.name).toBe('The Test Bistro');
     });
 
-    it('returns 404 for a nonexistent restaurant', async () => {
-      await request(server).get('/api/v1/restaurants/999999').set('Cookie', memberCookie).expect(404);
+    it('returns 404 for a nonexistent location', async () => {
+      await request(server).get('/api/v1/locations/999999').set('Cookie', memberCookie).expect(404);
     });
 
     it('rejects unauthenticated requests', async () => {
-      await request(server).get('/api/v1/restaurants').expect(401);
+      await request(server).get('/api/v1/locations').expect(401);
     });
   });
 
-  describe('PATCH /restaurants/:id (update)', () => {
-    it('updates a restaurant when authenticated as admin', async () => {
+  describe('PATCH /locations/:id (update)', () => {
+    it('updates a location when authenticated as admin', async () => {
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
       await request(server)
-        .patch(`/api/v1/restaurants/${created.body.id}`)
+        .patch(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', adminCookie)
         .send({ name: 'The Updated Bistro' })
         .expect(200);
 
       const fetched = await request(server)
-        .get(`/api/v1/restaurants/${created.body.id}`)
+        .get(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', memberCookie)
         .expect(200);
       expect(fetched.body.name).toBe('The Updated Bistro');
@@ -144,93 +144,93 @@ describe('Restaurants CRUD (e2e)', () => {
 
     it('rejects unauthenticated requests', async () => {
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
       await request(server)
-        .patch(`/api/v1/restaurants/${created.body.id}`)
+        .patch(`/api/v1/locations/${created.body.id}`)
         .send({ name: 'Nope' })
         .expect(401);
     });
 
     it('rejects requests from a member (insufficient role)', async () => {
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
       await request(server)
-        .patch(`/api/v1/restaurants/${created.body.id}`)
+        .patch(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', memberCookie)
         .send({ name: 'Nope' })
         .expect(403);
     });
   });
 
-  describe('DELETE /restaurants/:id (soft delete/status) and restore', () => {
-    it('soft-deletes a restaurant when authenticated as admin', async () => {
+  describe('DELETE /locations/:id (soft delete/status) and restore', () => {
+    it('soft-deletes a location when authenticated as admin', async () => {
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
       await request(server)
-        .delete(`/api/v1/restaurants/${created.body.id}`)
+        .delete(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', adminCookie)
         .expect(200);
 
       await request(server)
-        .get(`/api/v1/restaurants/${created.body.id}`)
+        .get(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', memberCookie)
         .expect(404);
     });
 
-    it('restores a soft-deleted restaurant when authenticated as admin', async () => {
+    it('restores a soft-deleted location when authenticated as admin', async () => {
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
       await request(server)
-        .delete(`/api/v1/restaurants/${created.body.id}`)
+        .delete(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', adminCookie)
         .expect(200);
 
       await request(server)
-        .patch(`/api/v1/restaurants/${created.body.id}/restore`)
+        .patch(`/api/v1/locations/${created.body.id}/restore`)
         .set('Cookie', adminCookie)
         .expect(200);
 
       await request(server)
-        .get(`/api/v1/restaurants/${created.body.id}`)
+        .get(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', memberCookie)
         .expect(200);
     });
 
     it('rejects unauthenticated delete requests', async () => {
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
-      await request(server).delete(`/api/v1/restaurants/${created.body.id}`).expect(401);
+      await request(server).delete(`/api/v1/locations/${created.body.id}`).expect(401);
     });
 
     it('rejects delete requests from a member (insufficient role)', async () => {
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
       await request(server)
-        .delete(`/api/v1/restaurants/${created.body.id}`)
+        .delete(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', memberCookie)
         .expect(403);
     });
@@ -243,13 +243,13 @@ describe('Restaurants CRUD (e2e)', () => {
       const moderatorCookie = await loginAs(app, moderator);
 
       const created = await request(server)
-        .post('/api/v1/restaurants')
+        .post('/api/v1/locations')
         .set('Cookie', adminCookie)
-        .send(validRestaurantPayload())
+        .send(validLocationPayload())
         .expect(201);
 
       await request(server)
-        .delete(`/api/v1/restaurants/${created.body.id}`)
+        .delete(`/api/v1/locations/${created.body.id}`)
         .set('Cookie', moderatorCookie)
         .expect(403);
     });

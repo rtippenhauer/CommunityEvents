@@ -9,10 +9,10 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
-  RestaurantsService,
+  LocationsService,
   ImportResult,
   ImportDetail,
-} from '../../../core/services/restaurants.service';
+} from '../../../core/services/locations.service';
 
 interface City {
   id: number;
@@ -362,7 +362,7 @@ type DialogStep = 'form' | 'importing' | 'done';
 export class FacebookImportDialogComponent implements OnInit {
   private readonly dialogRef = inject(MatDialogRef<FacebookImportDialogComponent>);
   private readonly http = inject(HttpClient);
-  private readonly restaurantsService = inject(RestaurantsService);
+  private readonly locationsService = inject(LocationsService);
 
   readonly step = signal<DialogStep>('form');
   readonly cities = signal<City[]>([]);
@@ -412,7 +412,7 @@ export class FacebookImportDialogComponent implements OnInit {
 
     this.step.set('importing');
 
-    this.restaurantsService.importFacebook(file, cityId).subscribe({
+    this.locationsService.importFacebook(file, cityId).subscribe({
       next: (res) => {
         this.result.set(res);
         this.step.set('done');

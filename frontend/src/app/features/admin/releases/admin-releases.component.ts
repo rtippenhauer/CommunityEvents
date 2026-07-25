@@ -292,7 +292,7 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
         border: 1px solid rgba(0, 0, 0, 0.23);
         border-radius: 4px;
         &:focus-within {
-          border-color: var(--db-blue, #1e4d8c);
+          border-color: var(--db-primary);
           border-width: 2px;
         }
       }
@@ -422,7 +422,7 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
           font-size: 1rem;
           width: 1rem;
           height: 1rem;
-          color: var(--db-blue, #1e4d8c);
+          color: var(--db-primary);
           flex-shrink: 0;
           margin-top: 1px;
         }
@@ -460,7 +460,7 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
         font-weight: 800;
         padding: 2px 8px;
         border-radius: 10px;
-        background: var(--db-blue, #1e4d8c);
+        background: var(--db-primary);
         color: white;
       }
       .pub-date {

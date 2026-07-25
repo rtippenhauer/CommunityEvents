@@ -91,18 +91,18 @@ export const routes: Routes = [
       ),
   },
   {
-    path: 'restaurants',
+    path: 'locations',
     loadComponent: () =>
-      import('./features/restaurants/list/restaurants-list.component').then(
-        (m) => m.RestaurantsListComponent,
+      import('./features/locations/list/locations-list.component').then(
+        (m) => m.LocationsListComponent,
       ),
     canActivate: [validatedMemberGuard],
   },
   {
-    path: 'restaurants/:id',
+    path: 'locations/:id',
     loadComponent: () =>
-      import('./features/restaurants/detail/restaurant-detail.component').then(
-        (m) => m.RestaurantDetailComponent,
+      import('./features/locations/detail/location-detail.component').then(
+        (m) => m.LocationDetailComponent,
       ),
     canActivate: [validatedMemberGuard],
   },
@@ -270,6 +270,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/admin/legal/admin-legal.component').then(
         (m) => m.AdminLegalComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
+    path: 'admin/settings',
+    loadComponent: () =>
+      import('./features/admin/settings/admin-settings.component').then(
+        (m) => m.AdminSettingsComponent,
       ),
     canActivate: [authGuard, adminGuard],
   },

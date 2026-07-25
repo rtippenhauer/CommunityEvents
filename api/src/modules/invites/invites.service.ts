@@ -188,7 +188,7 @@ export class InvitesService {
   async findByToken(token: string): Promise<InviteEntity | null> {
     return this.inviteRepo.findOne({
       where: { token },
-      relations: ['event', 'event.restaurant', 'event.restaurant.photos'],
+      relations: ['event', 'event.location', 'event.location.photos'],
     });
   }
 }

@@ -2,9 +2,9 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables } from './utils/test-app';
-import { seedCity, seedRestaurant, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { CityEntity } from '../src/database/entities/city.entity';
-import { RestaurantEntity } from '../src/database/entities/restaurant.entity';
+import { LocationEntity } from '../src/database/entities/location.entity';
 import { UserRole } from '../src/database/entities/user.entity';
 
 describe('Events CRUD (e2e)', () => {
@@ -13,7 +13,7 @@ describe('Events CRUD (e2e)', () => {
   let server: Parameters<typeof request>[0];
 
   let city: CityEntity;
-  let restaurant: RestaurantEntity;
+  let location: LocationEntity;
   let adminCookie: string;
   let memberCookie: string;
 
@@ -29,7 +29,7 @@ describe('Events CRUD (e2e)', () => {
   beforeEach(async () => {
     await truncateAllTables(dataSource);
     city = await seedCity(dataSource);
-    restaurant = await seedRestaurant(dataSource, city.id);
+    location = await seedLocation(dataSource, city.id);
 
     const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
     const member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
@@ -40,7 +40,7 @@ describe('Events CRUD (e2e)', () => {
   function validEventPayload(overrides: Record<string, unknown> = {}) {
     return {
       cityId: city.id,
-      restaurantId: restaurant.id,
+      locationId: location.id,
       title: 'Tuesday Dinner',
       eventDate: '2027-01-05',
       eventTime: '18:30',
@@ -59,7 +59,7 @@ describe('Events CRUD (e2e)', () => {
       expect(res.body).toMatchObject({
         title: 'Tuesday Dinner',
         cityId: city.id,
-        restaurantId: restaurant.id,
+        locationId: location.id,
         status: 'draft',
       });
       expect(res.body.id).toEqual(expect.any(Number));
@@ -69,7 +69,7 @@ describe('Events CRUD (e2e)', () => {
       const res = await request(server)
         .post('/api/v1/events')
         .set('Cookie', adminCookie)
-        .send({ cityId: city.id, restaurantId: restaurant.id })
+        .send({ cityId: city.id, locationId: location.id })
         .expect(400);
 
       expect(res.body.message).toEqual(expect.any(Array));
@@ -83,11 +83,11 @@ describe('Events CRUD (e2e)', () => {
         .expect(400);
     });
 
-    it('rejects a restaurantId that does not exist', async () => {
+    it('rejects a locationId that does not exist', async () => {
       await request(server)
         .post('/api/v1/events')
         .set('Cookie', adminCookie)
-        .send(validEventPayload({ restaurantId: 999999 }))
+        .send(validEventPayload({ locationId: 999999 }))
         .expect(404);
     });
 

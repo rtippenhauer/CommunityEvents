@@ -239,13 +239,13 @@ export interface AchievementAdminDialogData {
       }
       .ach-exists-title {
         font-size: 0.8rem;
-        color: #c9933a;
+        color: var(--db-primary);
         font-weight: 600;
         font-style: italic;
       }
       .ach-exists-pts {
         font-size: 0.8rem;
-        color: #1e4d8c;
+        color: var(--db-primary);
         font-weight: 700;
       }
       .ach-upload-btn {

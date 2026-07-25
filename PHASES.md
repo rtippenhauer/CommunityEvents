@@ -1454,6 +1454,312 @@ the sync logic exists to do it correctly.
 
 ---
 
+## Phase 29 — White-Label Template for a New Group ✅ Complete
+
+Started 2026-07-21. Rob wants to stand up a second, separately-branded
+community dining site for a different group (Southwest Ohio) — a fork of
+this codebase with its own domain, database, secrets, and branding, not
+another city inside DinnerBears itself. The new site is single-region —
+no multi-city subdomain switching needed. Branched as
+`phase-29-white-label-template`.
+
+Scope:
+- Extract hardcoded branding into a single theme/config point: app name,
+  tagline, primary/accent/background colors, logo + splash images,
+  favicon/PWA icons
+- Terms/Privacy/About copy being admin-editable rather than hardcoded —
+  split out into its own **Phase 30** (see below) since it stands on its
+  own and doesn't depend on anything else here. Once done, this phase's
+  bootstrap script seeds each fork's database with that operator's own
+  starting copy, not DinnerBears' text as a "placeholder"
+- Fix `CityService.currentCity` (`frontend/src/app/core/services/city.service.ts`)
+  to fall back to the sole active city when there's no subdomain match
+  (root-domain deployments), instead of requiring subdomain routing
+- Simplify/hide the city-selector nav dropdown when only one city exists
+- Bootstrap script or seed migration: creates the one city row,
+  `app_config` row, `email_provider_config` row, and first admin user for
+  a fresh database
+- New `docs/NEW_INSTANCE_SETUP.md`: step-by-step for a new operator —
+  their own Google OAuth app, Facebook app (Go-Live checklist), Brevo/Resend
+  account, VAPID keypair generation, Docker Compose stack, MySQL instance,
+  domain/DNS, `.env` checklist
+- Audit for any remaining hardcoded `dinnerbears.com` assumptions in the
+  API (redirect URIs, CORS origins, email templates, `APP_URL` usage) and
+  parameterize them
+
+**Definition of done:** A second operator can clone the repo, follow
+`docs/NEW_INSTANCE_SETUP.md` top to bottom with their own
+domain/branding/secrets/database, run `docker compose up`, and reach a
+fully working single-city instance with their own name/colors/logo and no
+DinnerBears branding or subdomain assumptions left over. Terms, Privacy,
+and About copy are editable directly from the admin UI on both instances,
+not hardcoded in either one.
+
+**Decision — restaurants vs. locations (resolved 2026-07-23):** the
+Southwest Ohio group ("Sons") holds dinners at members' houses, not
+restaurants. Rob's call: rename the concept generically to "location" in
+the shared codebase — table, entity, module, API routes, frontend feature
+folder — but the *displayed word* in app copy stays "Restaurant" for every
+fork (no per-fork config value for the label after all; that earlier idea
+is dropped as unnecessary complexity). So `restaurants` →
+`locations`/`LocationEntity`/etc. under the hood, while UI strings keep
+saying "Restaurant."
+
+**Decision — location privacy (resolved 2026-07-23):** rather than
+hardcoding private-address behavior for Sons, add an `app_config`
+preference (per fork, same pattern as Phase 30's config rows) controlling
+whether locations are private: if enabled, a location's full address is
+hidden from members who haven't RSVP'd "Going" (and from logged-out
+visitors), only becoming visible to members RSVP'd Going. DinnerBears
+leaves this off (restaurant addresses stay public); Sons turns it on. Real
+access-control work in the locations API/frontend, not just a label
+change.
+
+**Decision — attendance migration (resolved 2026-07-23):** Sons moves
+attendance tracking into this app outright — no ongoing sync or import
+tooling against their Google Doc. It's an organizational cutover (Sons
+stops updating the Doc and starts using our RSVP/attendance flow), not a
+data-migration feature to build. Our attendance-driven features
+(achievements, points) become authoritative for them from day one, same as
+for DinnerBears. Payment/charging is still out of scope for DinnerBears
+itself — if Sons needs it, integrate with whatever mechanism they already
+use rather than build a native payment feature.
+
+**Decision — event cadence default (resolved 2026-07-23):** replace the
+hardcoded `nextTuesdayDate()` in
+`frontend/src/app/features/events/form/event-form-dialog.component.ts`
+with an `app_config` preference describing each fork's recurring event
+cycle, covering both weekly-by-weekday patterns ("next Tuesday") and
+monthly-by-nth-weekday patterns ("2nd Saturday"). The new-event form
+defaults its date/time off whichever pattern the fork has configured,
+instead of assuming DinnerBears' own weekly-Tuesday cadence.
+
+**Progress — restaurants → locations rename (2026-07-23):** the first
+decision above is implemented. Renamed throughout, identifiers only (UI
+copy still says "Restaurant" everywhere):
+- DB: `restaurants`/`restaurant_photos`/`restaurant_ratings` tables →
+  `locations`/`location_photos`/`location_ratings`; FK/index names to
+  match; `events.restaurant_*` snapshot columns → `location_*`. Enum
+  values normalized in the same pass: `content_reports.content_type`
+  `restaurant_rating` → `location_rating`; `member_points.point_type`
+  `coordinator_new_restaurant` and `achievements.progress_type`
+  `new_restaurant_coordinator` both → `new_location_coordinator` (fixes a
+  pre-existing word-order inconsistency between the two). New migrations
+  `RenameRestaurantsToLocations` and `MoveLocationUploads` (the latter also
+  moves physical files from `/uploads/restaurants/` to `/uploads/locations/`
+  and rewrites `file_path` rows) — both tested up *and* down against
+  seeded data in an ephemeral MySQL container, plus a full TypeORM
+  entity-mapping check, before being treated as done.
+- API: `RestaurantEntity`/`RestaurantPhotoEntity`/`RestaurantRatingEntity`
+  → `Location*Entity`; `modules/restaurants` → `modules/locations`
+  (controller/service/DTOs/enrichment/ratings/geocoding); route
+  `/api/v1/restaurants` → `/api/v1/locations`; all consumer modules
+  (events, invites, reports, stats, community achievements/points,
+  calendar) updated to match. User-facing strings deliberately preserved:
+  `NotFoundException('Restaurant not found')` and similar, the
+  `POINT_DESCRIPTIONS`/report labels, and the Claude enrichment prompt
+  wording.
+- Frontend: `features/restaurants` → `features/locations`
+  (`LocationsListComponent`, `LocationDetailComponent`,
+  `LocationFormDialogComponent`, etc.), `core/services/restaurants.service.ts`
+  → `locations.service.ts`, routes `/restaurants` → `/locations`. Template
+  text/labels/placeholders left as "Restaurant"; the nav and other
+  `<mat-icon>restaurant</mat-icon>` uses were **not** touched — that's
+  Google's Material Symbols icon name, unrelated to our domain model,
+  and there's no equivalent-looking `location_*` icon.
+- Tests/docs: `restaurants.e2e-spec.ts` → `locations.e2e-spec.ts`,
+  `seedRestaurant()` → `seedLocation()`, all other e2e specs updated to
+  match; `docs/DATABASE_SCHEMA.md` and `docs/restaurant-import-template.csv`
+  (→ `location-import-template.csv`) updated; `api/CLAUDE.md` and
+  `frontend/CLAUDE.md` module-structure sections updated.
+
+Verified: `tsc --noEmit` clean on both workspaces, full `ng build`
+succeeds, `locations.e2e-spec.ts` (17 tests) passes against the migrated
+schema.
+
+**Progress — location privacy + event cadence (2026-07-23):** the second
+and fourth decisions above are implemented (attendance needed no code —
+see below).
+- **Location privacy:** `locations.is_private` column (default `false`,
+  existing rows unaffected). New shared `LocationVisibilityService`
+  (`api/src/common/services/location-visibility.service.ts`) is the single
+  source of truth for "can this viewer see this private location's
+  address": admin/mod always can; anyone else only after RSVPing "Going"
+  to an event at that location (checked either for a specific event, or
+  "any event at this location" on the standalone Locations pages).
+  Unauthenticated and not-yet-RSVP'd viewers simply never satisfy either
+  condition, so the same helper handles every surface with no special
+  casing: `LocationsService` (list/detail), `EventsService` (event
+  list/detail, guest-invite emails, publish/update broadcast emails —
+  each recipient gated individually since a broadcast can mix Going/Maybe
+  RSVPs and non-RSVP'd guest-link holders), `InvitesController`'s public
+  preview endpoint, and `CalendarService`'s personal ICS feed (gated per
+  event using that subscriber's own RSVP status). Caught and fixed a real
+  leak while wiring this up: `buildGoogleCalendarUrl`/`buildInviteAttachment`
+  read the raw event object directly for their "Add to Calendar" links,
+  bypassing the redaction already applied to the surrounding email body —
+  both now take an address override so gated callers can pass `''`.
+  New `app_config` row `location_privacy_default` (`public`/`private`)
+  sets the default for newly created locations; each location can still
+  override it individually via a new toggle in the location form. New
+  admin screen at `/admin/settings` edits this alongside the cadence
+  settings below. Verified with a new permanent suite,
+  `location-privacy.e2e-spec.ts` (14 tests, real HTTP requests against a
+  booted app) — covers admin/mod bypass, RSVP-unlocks-address, no leak to
+  a *different* non-RSVP'd member, unauthenticated preview, and the
+  config-default-vs-explicit-override behavior on create. The full
+  existing suite (events/rsvp/invites/locations/calendar — 156 tests) still
+  passes, confirming the shared-service refactor didn't regress anything.
+- **Event cadence:** `nextTuesdayDate()` in `event-form-dialog.component.ts`
+  replaced with `nextWeekdayDate(weekday)`, driven by two new `app_config`
+  rows — `event_cadence_weekday` (0=Sunday…6=Saturday, default `2`/Tuesday)
+  and `event_cadence_time` (default `18:30`) — fetched when the "new event"
+  dialog opens with no explicit preset date/time. Deliberately scoped to a
+  fixed weekly cadence only, per Rob's direction — a monthly ("2nd
+  Saturday") pattern isn't built pending confirmation of Sons' actual
+  schedule.
+- **Attendance:** no code needed — Rob confirmed Sons picks up with their
+  next event going forward, no historical import.
+
+Verified live in a real browser against a disposable local database + a
+temporary `ng serve --proxy-config` (never touched the shared stage DB
+`docker-compose.yml`/`.env` point at): logged in as both an admin and a
+plain member, created a private location and confirmed the address/lock
+icon behave exactly as designed on both the Locations list and detail
+pages for each role, edited `/admin/settings` and confirmed the change
+persisted and was picked up by the "Create Event" dialog's date default.
+
+**Bug fix found and fixed along the way (2026-07-23):** Rob hit a broken
+photo on a newly added location. Root cause pre-dates this phase (same bug
+exists on `main` under the old `restaurants/` naming):
+`EnrichmentService.downloadStreetViewPhoto` always saved its file to the
+correct `<uploadPath>/locations/` disk path, but recorded `file_path` as
+`/api/uploads/<filename>` — missing the `locations/` segment `main.ts`'s
+static route requires — so every location whose photo came from the
+Street View fallback (used when Google Places has no photos, e.g. a
+brand-new location or a private home) rendered a broken image. Fixed the
+write going forward; added `FixStreetViewPhotoPaths` migration to repair
+existing rows (verified against seeded broken + already-correct rows in
+an ephemeral DB — only the broken pattern matches, and after the first
+run every row looks identical to "always correct," so `down()` is an
+intentional no-op rather than risk corrupting good rows on revert). Rob
+chose to let this ride with Phase 29 rather than cut a separate hotfix
+branch off `main`.
+
+**Progress — branding config (2026-07-24):** app name, tagline, and 3 core
+colors (primary/accent/background) are now `app_config`-backed and
+admin-editable, scoped to "the config point + frontend" — backend emails
+and static pre-bootstrap files still say "DinnerBears" for now (see below).
+- New `app_config` keys (`brand_name`, `brand_tagline`, `theme_color_primary`,
+  `theme_color_accent`, `theme_color_background`) via `SeedBrandingConfig`
+  migration, and a bundled `GET /config/branding` endpoint (registered ahead
+  of the generic `:key` route). New "Branding" card in `/admin/settings`
+  (name/tagline fields + 3 color-picker rows) alongside the existing
+  Location Privacy / New Event Default cards.
+- Frontend: new `BrandConfigService`, loaded via `provideAppInitializer`
+  same as `AuthService.init()`. Sets a `brand` signal (nav/footer/login
+  alt text, tagline, copyright now read from it) and pushes colors onto
+  `document.documentElement` as CSS custom-property overrides — applies
+  live with no rebuild. Wired the page `Title` service to the brand name too.
+- **Found and fixed while browser-verifying:** the color picker only
+  recolored elements hand-styled with `var(--db-primary)` — Angular
+  Material's native `color="primary"`/`color="accent"` components (used in
+  46 files app-wide: raised/stroked buttons, slide-toggles, checkboxes,
+  form-field focus states) stayed the old amber-brown. Root cause:
+  `styles.scss` used `mat.all-component-themes($theme)`, which bakes
+  literal computed colors into each component's tokens rather than
+  referencing Material's own `--mat-sys-*` system-level CSS variables (that
+  its M3 component styles already fall back to internally). Rob chose to
+  fix this now rather than ship it as a documented gap. Fix: swapped to
+  `mat.theme($theme-config)` (styles.css dropped from ~95KB to ~37KB — no
+  more baked per-component literals), and `BrandConfigService` now also
+  sets `--mat-sys-primary`/`--mat-sys-tertiary` (Material's M2→M3 compat
+  layer maps `color="accent"` to tertiary, not secondary) plus their
+  `on-*` white text-color counterparts. Verified via Playwright screenshots
+  across locations list/create-dialog (buttons, slide-toggle), events list
+  (checkbox), and `/admin/settings` itself — all correctly follow a test
+  color change (amber → green) with no layout regressions.
+- Also cleaned up ~35 files of hardcoded/phantom color literals unrelated
+  to this round's admin-config wiring but blocking it from being trustworthy:
+  a `--db-blue` CSS variable referenced 15 times but never defined (always
+  silently falling through to a stale `#1e4d8c` hex fallback), plus
+  `--db-gold` and `--db-text-light` (also phantom, found via an exhaustive
+  sweep beyond what was originally flagged), and bare hex literals that
+  should have been `var(--db-*)` references. Reconciled `index.html`'s
+  `theme-color` meta tag and `public/manifest.webmanifest` (previously the
+  stale blue) to match the real live amber palette.
+- Verified: `SeedBrandingConfig` migration up/down against a fresh ephemeral
+  DB (full migration chain from scratch, not just this one), frontend
+  `tsc --noEmit` + `ng build` both clean, and full live browser verification
+  (never against the shared stage DB — a disposable local MySQL + API +
+  `ng serve --proxy-config`, same pattern as the privacy/cadence round).
+
+**Progress — brand images, single-city UX, hardcoding audit, bootstrap
+(2026-07-24):** the remaining phase scope is now built and verified.
+- **Brand images (admin-uploadable):** Rob chose to build real upload UI
+  rather than document a file-swap. Three configurable slots — `logo`
+  (nav/footer/reservation), `splash` (login hero), `icon` (favicon +
+  small marks on join/guest-rsvp). New `app_config` keys
+  `brand_logo_url`/`brand_splash_url`/`brand_icon_url` (empty = fall back to
+  the compiled-in default asset), served from `<UPLOAD_PATH>/branding/` via
+  a new static route, uploaded through `POST admin/config/branding/image/:slot`
+  (+ a `.../reset` PATCH), reusing the existing multer/disk-storage pattern
+  (5 MB, PNG/JPEG/WebP/GIF; unique filename doubles as cache-busting).
+  `getBrandingConfig()` + `/config/branding` now return the three URLs;
+  `BrandConfigService` exposes `logoSrc()`/`splashSrc()`/`iconSrc()` computed
+  sources (uploaded URL or default) that every `<img>` binds to, and swaps
+  the live favicon `<link>` at runtime. New "Images" section in
+  `/admin/settings` (preview + Upload + Reset per slot) calls
+  `BrandConfigService.refresh()` after each change so it applies with no
+  reload. The installed-PWA manifest icon remains a static file swap (noted
+  in the UI + setup doc); the in-app favicon does update at runtime.
+- **Single-region UX:** `CityService.currentCity` now falls back to the sole
+  active city when the host carries no chapter subdomain (root-domain fork),
+  and a new `isSingleCity` computed hides the city filter on the events,
+  locations, members, and leaderboard browse pages, and auto-selects + hides
+  the city field in the event and location create/edit forms and profile
+  settings. The public `/cities` endpoint already returns active-only, so
+  "one active city" is the trigger.
+- **`dinnerbears.com` hardcoding audit:** OAuth callback URIs were already
+  `APP_URL`-derived and CORS is handled at NGINX (nothing to change). New
+  `common/config/instance-contact.ts` derives public contact addresses from
+  `BASE_DOMAIN` (falling back to `APP_URL`'s host): calendar-feed reply-to
+  (`SUPPORT_EMAIL` → `hello@<domain>`), calendar organizer
+  (`CALENDAR_ORGANIZER_EMAIL` → `calendar@<domain>`), and .ics event organizer
+  (`EVENT_ORGANIZER_EMAIL` → `noreply@<domain>`) — previously hardcoded
+  `@dinnerbears.com`. Fixed a `FRONTEND_URL`-vs-`APP_URL` inconsistency in the
+  account-lock email and removed the now-dead `frontendUrl` field. The ICS
+  `UID:` scheme is left as a stable opaque internal id (round-trip-parsed on
+  import — not user-facing branding). New env vars added to
+  `docker-compose.yml`. Email *copy* still says the platform name generically
+  — deliberately out of scope, same as the branding round.
+- **Bootstrap:** `api/src/bootstrap.ts` (compiled to `dist/bootstrap.js` so it
+  runs in the devDep-pruned prod image via `node dist/bootstrap.js`, or
+  `npm run bootstrap` locally). Env-driven and idempotent: upserts one active
+  city (deactivating the seeded Cincinnati/Dayton defaults rather than
+  deleting, keeping FK refs valid), overrides only the branding values the
+  operator passes, ensures the `email_provider_config` row, and creates a
+  first password-based admin. A guardrail refuses to run on a DB that already
+  has non-automation users unless `INSTANCE_BOOTSTRAP_FORCE=true`.
+- **`docs/NEW_INSTANCE_SETUP.md`:** full operator runbook — external accounts
+  (Google/Facebook OAuth, Brevo/Resend, VAPID, Maps, Anthropic), the grouped
+  `.env` checklist, branding (UI vs. bootstrap vs. static file swap), build +
+  migrate + bootstrap, first sign-in, and known limitations.
+- Verified end-to-end against a disposable local MySQL (never the shared stage
+  DB): full migration chain + `bootstrap.ts` (fresh run, guardrail refusal,
+  idempotent force re-run all confirmed via direct SQL), backend + frontend
+  `tsc` and `ng build` clean, and a Playwright pass on a bootstrapped "Sons"
+  instance — dynamic name/tagline/colors, city filter hidden, image upload
+  applying live to the nav + preview with working fallback and reset, and
+  the bootstrap-created password admin signing in.
+
+**Definition of done:** met, with one carried-forward deferral — **monthly
+"Nth weekday" event cadence** (e.g. "2nd Saturday") is still not built; the
+configurable cadence covers a fixed weekly day/time only, pending Sons'
+confirmed schedule (Rob's call to leave it for a later, isolated round rather
+than reopen the phase). Everything else in the scope above is implemented and
+verified.
+
 ## Phase 30 — Editable Legal Copy (Terms, Privacy, About) ✅ Complete
 
 Started 2026-07-22. Split out of Phase 29 (white-label template,

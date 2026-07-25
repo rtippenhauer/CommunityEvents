@@ -22,7 +22,7 @@ interface LedgerRow {
 const TYPE_LABELS: Record<string, string> = {
   attendance: 'Attendance',
   coordinator: 'Coordinator',
-  coordinator_new_restaurant: 'Coordinator (New Restaurant)',
+  new_location_coordinator: 'Coordinator (New Restaurant)',
   invite: 'Invite',
   rating: 'Rating',
 };
@@ -188,7 +188,7 @@ const TYPE_LABELS: Record<string, string> = {
       .ach-title-badge {
         font-size: 0.75rem;
         background: #eaf0fa;
-        color: #1e4d8c;
+        color: var(--db-primary);
         border-radius: 10px;
         padding: 2px 8px;
       }

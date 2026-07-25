@@ -11,10 +11,12 @@ export interface PostTextInvite {
   expiresAt: string;
 }
 
-interface EventRestaurant {
+interface EventLocation {
   id: number;
   name: string;
-  address: string;
+  isPrivate: boolean;
+  // Null when private and the viewer hasn't RSVP'd "Going" (or isn't admin/mod).
+  address: string | null;
   lat: number | null;
   lng: number | null;
   websiteUrl: string | null;
@@ -55,12 +57,13 @@ export interface Event {
   id: number;
   cityId: number;
   city: { id: number; name: string; subdomain: string };
-  restaurantId: number | null;
-  restaurant: EventRestaurant | null;
-  restaurantName: string;
-  restaurantAddress: string;
-  restaurantLat: number | null;
-  restaurantLng: number | null;
+  locationId: number | null;
+  location: EventLocation | null;
+  locationName: string;
+  // Null when the location is private and the viewer hasn't earned visibility.
+  locationAddress: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
   title: string;
   description: string | null;
   additionalInfo: string | null;
@@ -96,7 +99,7 @@ export interface Event {
 
 export interface ReservationConfirmInfo {
   eventTitle: string;
-  restaurantName: string;
+  locationName: string;
   eventDate: string;
   eventTime: string;
   inviteToken?: string;
@@ -107,11 +110,11 @@ export interface GuestLinkInfo {
   eventDate: string;
   eventTime: string;
   eventStatus: string;
-  restaurantName: string;
-  restaurantAddress: string;
-  restaurantLat: number | null;
-  restaurantLng: number | null;
-  restaurantPhotoUrl: string | null;
+  locationName: string;
+  locationAddress: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
+  locationPhotoUrl: string | null;
   invitedByName: string;
   recipientName: string | null;
   usedAt: string | null;
@@ -121,7 +124,7 @@ export interface GuestLinkInfo {
 
 export interface CreateEventPayload {
   cityId: number;
-  restaurantId: number;
+  locationId: number;
   title: string;
   description?: string | null;
   additionalInfo?: string | null;
@@ -134,7 +137,7 @@ export interface CreateEventPayload {
 
 export interface UpdateEventPayload {
   cityId?: number;
-  restaurantId?: number;
+  locationId?: number;
   title?: string;
   description?: string | null;
   additionalInfo?: string | null;
@@ -210,8 +213,9 @@ export class EventsService {
     return this.http.post<{ success: boolean }>(`${this.base}/${eventId}/public-rsvp`, { name, email });
   }
 
-  mapsUrl(lat: number | null, lng: number | null, address: string): string {
+  mapsUrl(lat: number | null, lng: number | null, address: string | null): string | null {
     if (lat && lng) return `https://www.google.com/maps?q=${lat},${lng}`;
+    if (!address) return null;
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
   }
 
@@ -221,7 +225,7 @@ export class EventsService {
     const pad = (n: number) => String(n).padStart(2, '0');
     const startDt = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
     const endDt = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
-    const details: string[] = [`🍽️ ${event.restaurantName}`];
+    const details: string[] = [`🍽️ ${event.locationName}`];
     if (event.description) details.push(event.description);
     if (event.additionalInfo) details.push(event.additionalInfo);
     details.push(`View event: ${window.location.origin}/events/${event.id}`);
@@ -229,7 +233,7 @@ export class EventsService {
       action: 'TEMPLATE',
       text: event.title,
       dates: `${startDt}/${endDt}`,
-      location: event.restaurantAddress,
+      location: event.locationAddress ?? event.locationName,
       details: details.join('\n\n'),
     });
     return `https://calendar.google.com/calendar/render?${params.toString()}`;
@@ -254,9 +258,9 @@ export class EventsService {
     } else {
       const lines = [
         `🐻 DinnerBears Dinner Night!\n`,
-        `🍽️ ${event.restaurantName}`,
+        `🍽️ ${event.locationName}`,
         `📅 ${dateStr} at ${timeStr}`,
-        `📍 ${event.restaurantAddress}`,
+        `📍 ${event.locationAddress ?? 'Address available after RSVP'}`,
       ];
       if (event.description) lines.push(`\n${event.description}`);
       lines.push(`\nRSVP: ${window.location.origin}/events/${event.id}`);

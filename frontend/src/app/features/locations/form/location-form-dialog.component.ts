@@ -9,18 +9,19 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
-  Restaurant,
-  RestaurantsService,
+  Location,
+  LocationsService,
   PlaceSearchResult,
-} from '../../../core/services/restaurants.service';
+} from '../../../core/services/locations.service';
 import { AuthService } from '../../../core/services/auth.service';
 
-export interface RestaurantFormDialogData {
-  restaurant?: Restaurant;
+export interface LocationFormDialogData {
+  location?: Location;
 }
 
 interface City {
@@ -29,7 +30,7 @@ interface City {
 }
 
 @Component({
-  selector: 'app-restaurant-form-dialog',
+  selector: 'app-location-form-dialog',
   standalone: true,
   imports: [
     ReactiveFormsModule,
@@ -40,21 +41,22 @@ interface City {
     MatIconModule,
     MatInputModule,
     MatSelectModule,
+    MatSlideToggleModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
     MatTooltipModule,
   ],
   template: `
     <h2 mat-dialog-title>
-      @if (savedRestaurant()) {
+      @if (savedLocation()) {
         Restaurant Added
       } @else {
-        {{ data.restaurant ? 'Edit' : 'Add' }} Restaurant
+        {{ data.location ? 'Edit' : 'Add' }} Restaurant
       }
     </h2>
 
     <mat-dialog-content>
-      @if (savedRestaurant(); as r) {
+      @if (savedLocation(); as r) {
         <!-- ── Read-only saved view ── -->
         <div class="saved-view">
           @if (r.photos?.length) {
@@ -90,7 +92,7 @@ interface City {
         </div>
       } @else {
         <!-- ── Edit form ── -->
-        <form [formGroup]="form" class="restaurant-form">
+        <form [formGroup]="form" class="location-form">
           <div class="name-field-wrap">
             <mat-form-field appearance="outline" class="name-field">
               <mat-label>Name</mat-label>
@@ -138,15 +140,25 @@ interface City {
             <mat-error>Address is required</mat-error>
           </mat-form-field>
 
-          <mat-form-field appearance="outline">
-            <mat-label>City</mat-label>
-            <mat-select formControlName="cityId">
-              @for (city of cities; track city.id) {
-                <mat-option [value]="city.id">{{ city.name }}</mat-option>
-              }
-            </mat-select>
-            <mat-error>City is required</mat-error>
-          </mat-form-field>
+          <mat-slide-toggle formControlName="isPrivate" class="private-toggle">
+            Private location
+          </mat-slide-toggle>
+          <p class="private-hint">
+            Hides the address from members until they RSVP "Going" to an event here. Unauthenticated
+            visitors never see it.
+          </p>
+
+          @if (cities.length > 1) {
+            <mat-form-field appearance="outline">
+              <mat-label>City</mat-label>
+              <mat-select formControlName="cityId">
+                @for (city of cities; track city.id) {
+                  <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                }
+              </mat-select>
+              <mat-error>City is required</mat-error>
+            </mat-form-field>
+          }
 
           <mat-form-field appearance="outline">
             <mat-label>Phone</mat-label>
@@ -197,9 +209,9 @@ interface City {
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
-      @if (savedRestaurant(); as r) {
+      @if (savedLocation(); as r) {
         <button mat-button (click)="close()">Close</button>
-        <button mat-raised-button color="primary" (click)="viewRestaurant(r.id)">
+        <button mat-raised-button color="primary" (click)="viewLocation(r.id)">
           <mat-icon>open_in_new</mat-icon> View Restaurant
         </button>
       } @else if (enriching()) {
@@ -224,7 +236,7 @@ interface City {
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
-      .restaurant-form {
+      .location-form {
         display: flex;
         flex-direction: column;
         gap: 8px;
@@ -247,6 +259,14 @@ interface City {
         letter-spacing: 0.07em;
         color: #9c27b0;
         margin: 4px 0;
+      }
+      .private-toggle {
+        margin: 4px 0 0;
+      }
+      .private-hint {
+        margin: 2px 0 8px;
+        font-size: 0.78rem;
+        color: #888;
       }
 
       /* ── Place search results ── */
@@ -399,13 +419,13 @@ interface City {
     `,
   ],
 })
-export class RestaurantFormDialogComponent implements OnInit {
-  readonly data = inject<RestaurantFormDialogData>(MAT_DIALOG_DATA);
-  private readonly dialogRef = inject(MatDialogRef<RestaurantFormDialogComponent>);
+export class LocationFormDialogComponent implements OnInit {
+  readonly data = inject<LocationFormDialogData>(MAT_DIALOG_DATA);
+  private readonly dialogRef = inject(MatDialogRef<LocationFormDialogComponent>);
   private readonly router = inject(Router);
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly http = inject(HttpClient);
-  private readonly restaurantsService = inject(RestaurantsService);
+  private readonly locationsService = inject(LocationsService);
   private readonly authService = inject(AuthService);
   private readonly snackBar = inject(MatSnackBar);
 
@@ -414,12 +434,13 @@ export class RestaurantFormDialogComponent implements OnInit {
   readonly searching = signal(false);
   readonly enriching = signal(false);
   readonly placeResults = signal<PlaceSearchResult[]>([]);
-  readonly savedRestaurant = signal<Restaurant | null>(null);
+  readonly savedLocation = signal<Location | null>(null);
   private placeSelected = false;
 
   readonly form = this.fb.group({
     name: ['', [Validators.required, Validators.maxLength(255)]],
     address: ['', [Validators.required, Validators.maxLength(500)]],
+    isPrivate: [false],
     cityId: [0, [Validators.required, Validators.min(1)]],
     phone: [''],
     websiteUrl: [''],
@@ -438,12 +459,19 @@ export class RestaurantFormDialogComponent implements OnInit {
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((cities) => {
       this.cities = cities;
+      // Single-region fork: the city selector is hidden (see template), so
+      // auto-select the sole city for new locations. Edit mode patches cityId
+      // synchronously below before this async callback resolves.
+      if (cities.length === 1 && !this.form.controls.cityId.value) {
+        this.form.controls.cityId.setValue(cities[0].id);
+      }
     });
-    if (this.data.restaurant) {
-      const r = this.data.restaurant;
+    if (this.data.location) {
+      const r = this.data.location;
       this.form.patchValue({
         name: r.name,
-        address: r.address,
+        address: r.address ?? '',
+        isPrivate: r.isPrivate,
         cityId: r.cityId,
         phone: r.phone ?? '',
         websiteUrl: r.websiteUrl ?? '',
@@ -461,7 +489,7 @@ export class RestaurantFormDialogComponent implements OnInit {
     if (!q) return;
     this.searching.set(true);
     this.placeResults.set([]);
-    this.restaurantsService.placeSearch(q).subscribe({
+    this.locationsService.placeSearch(q).subscribe({
       next: (results) => {
         this.searching.set(false);
         this.placeResults.set(results);
@@ -495,6 +523,7 @@ export class RestaurantFormDialogComponent implements OnInit {
     const payload = {
       name: val.name,
       address: val.address,
+      isPrivate: val.isPrivate,
       cityId: val.cityId,
       phone: val.phone.trim() || null,
       websiteUrl: val.websiteUrl.trim() || null,
@@ -502,28 +531,28 @@ export class RestaurantFormDialogComponent implements OnInit {
       ...modFields,
     };
 
-    const req$ = this.data.restaurant
-      ? this.restaurantsService.update(this.data.restaurant.id, payload)
-      : this.restaurantsService.create(payload);
+    const req$ = this.data.location
+      ? this.locationsService.update(this.data.location.id, payload)
+      : this.locationsService.create(payload);
 
     req$.subscribe({
-      next: (restaurant) => {
+      next: (location) => {
         this.saving = false;
-        if (this.placeSelected && !this.data.restaurant) {
+        if (this.placeSelected && !this.data.location) {
           // Auto-enrich then show read-only view
           this.enriching.set(true);
-          this.restaurantsService.enrich(restaurant.id).subscribe({
+          this.locationsService.enrich(location.id).subscribe({
             next: (result) => {
               this.enriching.set(false);
-              this.savedRestaurant.set(result.restaurant);
+              this.savedLocation.set(result.location);
             },
             error: () => {
               this.enriching.set(false);
-              this.savedRestaurant.set(restaurant);
+              this.savedLocation.set(location);
             },
           });
         } else {
-          this.dialogRef.close(restaurant);
+          this.dialogRef.close(location);
         }
       },
       error: (err: HttpErrorResponse) => {
@@ -536,12 +565,12 @@ export class RestaurantFormDialogComponent implements OnInit {
     });
   }
 
-  viewRestaurant(id: number): void {
-    void this.router.navigate(['/restaurants', id]);
-    this.dialogRef.close(this.savedRestaurant());
+  viewLocation(id: number): void {
+    void this.router.navigate(['/locations', id]);
+    this.dialogRef.close(this.savedLocation());
   }
 
   close(): void {
-    this.dialogRef.close(this.savedRestaurant());
+    this.dialogRef.close(this.savedLocation());
   }
 }

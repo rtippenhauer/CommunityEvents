@@ -9,5 +9,6 @@ import { AppConfigAdminController } from './app-config-admin.controller';
   imports: [TypeOrmModule.forFeature([AppConfigEntity])],
   providers: [AppConfigService],
   controllers: [AppConfigController, AppConfigAdminController],
+  exports: [AppConfigService],
 })
 export class AppConfigModule {}

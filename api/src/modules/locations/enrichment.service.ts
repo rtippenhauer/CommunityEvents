@@ -6,8 +6,8 @@ import { writeFile } from 'fs/promises';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import Anthropic from '@anthropic-ai/sdk';
-import { RestaurantEntity } from '../../database/entities/restaurant.entity';
-import { RestaurantPhotoEntity } from '../../database/entities/restaurant-photo.entity';
+import { LocationEntity } from '../../database/entities/location.entity';
+import { LocationPhotoEntity } from '../../database/entities/location-photo.entity';
 
 export interface EnrichResult {
   name: string | null;
@@ -24,7 +24,7 @@ export interface EnrichDiagnosis {
     googlePlaces: boolean;
     anthropic: boolean;
   };
-  restaurant: {
+  location: {
     name: string;
     address: string;
     hasDescription: boolean;
@@ -103,20 +103,20 @@ export class EnrichmentService {
 
   constructor(
     private readonly configService: ConfigService,
-    @InjectRepository(RestaurantEntity)
-    private readonly restaurantRepo: Repository<RestaurantEntity>,
-    @InjectRepository(RestaurantPhotoEntity)
-    private readonly photoRepo: Repository<RestaurantPhotoEntity>,
+    @InjectRepository(LocationEntity)
+    private readonly locationRepo: Repository<LocationEntity>,
+    @InjectRepository(LocationPhotoEntity)
+    private readonly photoRepo: Repository<LocationPhotoEntity>,
   ) {
     this.googleKey = configService.get<string>('GOOGLE_PLACES_API_KEY');
     const anthropicKey = configService.get<string>('ANTHROPIC_API_KEY');
     this.anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
-    // This service only ever writes restaurant photos, so point directly at that subfolder
-    this.uploadPath = join(configService.get<string>('UPLOAD_PATH') ?? '/app/uploads', 'restaurants');
+    // This service only ever writes location photos, so point directly at that subfolder
+    this.uploadPath = join(configService.get<string>('UPLOAD_PATH') ?? '/app/uploads', 'locations');
   }
 
   async bulkEnrich(
-    restaurants: RestaurantEntity[],
+    locations: LocationEntity[],
     uploaderId: number,
     onProgress?: (done: number, total: number, name: string) => void,
   ): Promise<{ enriched: number; skipped: number; errors: number }> {
@@ -124,26 +124,26 @@ export class EnrichmentService {
     let skipped = 0;
     let errors = 0;
 
-    for (let i = 0; i < restaurants.length; i++) {
-      const restaurant = restaurants[i];
-      onProgress?.(i, restaurants.length, restaurant.name);
+    for (let i = 0; i < locations.length; i++) {
+      const location = locations[i];
+      onProgress?.(i, locations.length, location.name);
       try {
-        const result = await this.enrich(restaurant, uploaderId);
+        const result = await this.enrich(location, uploaderId);
         const updated =
           result.description || result.phone || result.website || result.address || result.photoAdded;
         if (updated) {
           enriched++;
-          this.logger.log(`[Bulk] ${i + 1}/${restaurants.length} enriched: ${restaurant.name}`);
+          this.logger.log(`[Bulk] ${i + 1}/${locations.length} enriched: ${location.name}`);
         } else {
           skipped++;
-          this.logger.log(`[Bulk] ${i + 1}/${restaurants.length} nothing new: ${restaurant.name}`);
+          this.logger.log(`[Bulk] ${i + 1}/${locations.length} nothing new: ${location.name}`);
         }
       } catch (err) {
         errors++;
-        this.logger.error(`[Bulk] ${i + 1}/${restaurants.length} error: ${restaurant.name}`, err);
+        this.logger.error(`[Bulk] ${i + 1}/${locations.length} error: ${location.name}`, err);
       }
-      // 400ms delay between restaurants to stay well within Google rate limits
-      if (i < restaurants.length - 1) {
+      // 400ms delay between locations to stay well within Google rate limits
+      if (i < locations.length - 1) {
         await new Promise((r) => setTimeout(r, 400));
       }
     }
@@ -152,7 +152,7 @@ export class EnrichmentService {
     return { enriched, skipped, errors };
   }
 
-  async enrich(restaurant: RestaurantEntity, uploaderId: number): Promise<EnrichResult> {
+  async enrich(location: LocationEntity, uploaderId: number): Promise<EnrichResult> {
     const result: EnrichResult = {
       name: null,
       description: null,
@@ -166,14 +166,14 @@ export class EnrichmentService {
     let placeData: PlaceDetailsResponse['result'] | null = null;
 
     if (this.googleKey) {
-      placeData = await this.fetchPlaceDetails(restaurant.name, restaurant.address);
+      placeData = await this.fetchPlaceDetails(location.name, location.address);
       if (placeData) {
         result.placeFound = true;
 
         if (placeData.name) {
           const locality = placeData.address_components
             ? this.parseLocalityFromComponents(placeData.address_components)
-            : restaurant.city?.name ?? null;
+            : location.city?.name ?? null;
           // Strip "- City, ST" disambiguation suffixes Google Places sometimes includes
           const baseName =
             placeData.name.replace(/\s*[-–—]\s*.+,\s*[A-Z]{2}\b.*$/, '').trim() ||
@@ -193,29 +193,29 @@ export class EnrichmentService {
           result.address = placeData.formatted_address;
         }
         if (placeData.photos?.length) {
-          const needed = Math.max(0, 5 - restaurant.photos.length);
+          const needed = Math.max(0, 5 - location.photos.length);
           if (needed > 0) {
-            const start = restaurant.photos.length; // skip photos already downloaded in prior enrichments
+            const start = location.photos.length; // skip photos already downloaded in prior enrichments
             const refs = placeData.photos.slice(start, start + needed).map((p) => p.photo_reference);
-            const added = await this.downloadPlacePhotos(restaurant.id, refs, uploaderId, restaurant.photos.length);
+            const added = await this.downloadPlacePhotos(location.id, refs, uploaderId, location.photos.length);
             result.photoAdded = added > 0;
           }
         }
         // Street View fallback for addresses with no Places photos (e.g. private homes)
-        if (!result.photoAdded && restaurant.photos.length === 0) {
+        if (!result.photoAdded && location.photos.length === 0) {
           result.photoAdded = await this.downloadStreetViewPhoto(
-            restaurant.id,
-            restaurant.address,
-            restaurant.city?.name,
+            location.id,
+            location.address,
+            location.city?.name,
             uploaderId,
           );
         }
-      } else if (restaurant.photos.length === 0) {
+      } else if (location.photos.length === 0) {
         // No Places match at all — try Street View directly
         result.photoAdded = await this.downloadStreetViewPhoto(
-          restaurant.id,
-          restaurant.address,
-          restaurant.city?.name,
+          location.id,
+          location.address,
+          location.city?.name,
           uploaderId,
         );
       }
@@ -223,15 +223,15 @@ export class EnrichmentService {
 
     if (this.anthropic) {
       result.description = await this.generateDescription(
-        restaurant.name,
-        restaurant.address,
-        restaurant.city?.name,
+        location.name,
+        location.address,
+        location.city?.name,
         placeData?.editorial_summary?.overview,
       );
     }
 
     // Persist updates directly
-    const updates: Partial<RestaurantEntity> = { enrichedAt: new Date() };
+    const updates: Partial<LocationEntity> = { enrichedAt: new Date() };
     if (result.name) updates.name = result.name;
     if (result.description) updates.description = result.description;
     if (result.phone) updates.phone = result.phone;
@@ -243,24 +243,24 @@ export class EnrichmentService {
         updates.lng = placeData.geometry.location.lng;
       }
     }
-    await this.restaurantRepo.update(restaurant.id, updates);
+    await this.locationRepo.update(location.id, updates);
 
     return result;
   }
 
-  async diagnose(restaurant: RestaurantEntity): Promise<EnrichDiagnosis> {
+  async diagnose(location: LocationEntity): Promise<EnrichDiagnosis> {
     const diagnosis: EnrichDiagnosis = {
       keys: {
         googlePlaces: !!this.googleKey,
         anthropic: !!this.anthropic,
       },
-      restaurant: {
-        name: restaurant.name,
-        address: restaurant.address,
-        hasDescription: !!restaurant.description,
-        hasPhone: !!restaurant.phone,
-        hasWebsite: !!restaurant.websiteUrl,
-        photoCount: restaurant.photos?.length ?? 0,
+      location: {
+        name: location.name,
+        address: location.address,
+        hasDescription: !!location.description,
+        hasPhone: !!location.phone,
+        hasWebsite: !!location.websiteUrl,
+        photoCount: location.photos?.length ?? 0,
       },
       places: null,
       claude: { status: 'skipped', reason: '', generatedDescription: null },
@@ -272,7 +272,7 @@ export class EnrichmentService {
     if (!this.googleKey) {
       diagnosis.places = null;
     } else {
-      const query = `${restaurant.name} ${restaurant.address}`;
+      const query = `${location.name} ${location.address}`;
       const searchUrl =
         `https://maps.googleapis.com/maps/api/place/findplacefromtext/json` +
         `?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id&key=${this.googleKey}`;
@@ -328,15 +328,15 @@ export class EnrichmentService {
       };
 
       if (placeId && detailsStatus === 'OK') {
-        if (!restaurant.phone && phone) diagnosis.willUpdate.push(`phone → ${phone}`);
-        else if (restaurant.phone) diagnosis.willSkip.push(`phone (already set: ${restaurant.phone})`);
+        if (!location.phone && phone) diagnosis.willUpdate.push(`phone → ${phone}`);
+        else if (location.phone) diagnosis.willSkip.push(`phone (already set: ${location.phone})`);
         else diagnosis.willSkip.push('phone (not in Places result)');
 
-        if (!restaurant.websiteUrl && website) diagnosis.willUpdate.push(`website → ${website}`);
-        else if (restaurant.websiteUrl) diagnosis.willSkip.push(`website (already set)`);
+        if (!location.websiteUrl && website) diagnosis.willUpdate.push(`website → ${website}`);
+        else if (location.websiteUrl) diagnosis.willSkip.push(`website (already set)`);
         else diagnosis.willSkip.push('website (not in Places result)');
 
-        if (formattedAddress && formattedAddress !== restaurant.address) {
+        if (formattedAddress && formattedAddress !== location.address) {
           diagnosis.willUpdate.push(`address → ${formattedAddress}`);
         } else if (formattedAddress) {
           diagnosis.willSkip.push('address (already matches Places result)');
@@ -344,7 +344,7 @@ export class EnrichmentService {
           diagnosis.willSkip.push('address (not in Places result)');
         }
 
-        const currentPhotos = restaurant.photos?.length ?? 0;
+        const currentPhotos = location.photos?.length ?? 0;
         const canAdd = Math.max(0, 5 - currentPhotos);
         if (canAdd > 0 && photoCount > 0) {
           diagnosis.willUpdate.push(`photos (will download up to ${Math.min(canAdd, photoCount)} of ${photoCount} Places photo(s))`);
@@ -368,9 +368,9 @@ export class EnrichmentService {
       try {
         const editorial = diagnosis.places?.editorialSummary ?? undefined;
         const generated = await this.generateDescription(
-          restaurant.name,
-          restaurant.address,
-          restaurant.city?.name,
+          location.name,
+          location.address,
+          location.city?.name,
           editorial,
         );
         diagnosis.claude = {
@@ -378,7 +378,7 @@ export class EnrichmentService {
           reason: generated ? 'Successfully generated' : 'Claude returned empty response',
           generatedDescription: generated,
         };
-        const action = diagnosis.restaurant.hasDescription ? 'replace existing' : 'new';
+        const action = diagnosis.location.hasDescription ? 'replace existing' : 'new';
         if (generated) diagnosis.willUpdate.push(`description (Claude — ${action})`);
       } catch (err) {
         diagnosis.claude = {
@@ -446,7 +446,7 @@ export class EnrichmentService {
   }
 
   private async downloadPlacePhotos(
-    restaurantId: number,
+    locationId: number,
     photoReferences: string[],
     uploaderId: number,
     startSortOrder: number,
@@ -468,8 +468,8 @@ export class EnrichmentService {
         await writeFile(join(this.uploadPath, filename), buffer);
 
         const photo = this.photoRepo.create({
-          restaurantId,
-          filePath: `/api/uploads/restaurants/${filename}`,
+          locationId,
+          filePath: `/api/uploads/locations/${filename}`,
           fileName: filename,
           mimeType: 'image/jpeg',
           sortOrder: startSortOrder + i,
@@ -485,7 +485,7 @@ export class EnrichmentService {
   }
 
   private async downloadStreetViewPhoto(
-    restaurantId: number,
+    locationId: number,
     address: string,
     cityName: string | undefined,
     uploaderId: number,
@@ -522,8 +522,8 @@ export class EnrichmentService {
       await writeFile(join(this.uploadPath, filename), buffer);
 
       const photo = this.photoRepo.create({
-        restaurantId,
-        filePath: `/api/uploads/${filename}`,
+        locationId,
+        filePath: `/api/uploads/locations/${filename}`,
         fileName: filename,
         mimeType: 'image/jpeg',
         sortOrder: 0,

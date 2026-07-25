@@ -1,9 +1,13 @@
-import { IsEmail, IsInt, IsOptional, IsPositive, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsInt, IsOptional, IsPositive, IsString, IsUrl, MaxLength } from 'class-validator';
 
-export class CreateRestaurantDto {
+export class CreateLocationDto {
   @IsString()
   @MaxLength(255)
   name: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isPrivate?: boolean;
 
   @IsString()
   @MaxLength(500)

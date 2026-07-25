@@ -65,15 +65,17 @@ interface Member {
               <mat-option value="alpha">Alphabetical</mat-option>
             </mat-select>
           </mat-form-field>
-          <mat-form-field appearance="outline" class="city-field">
-            <mat-label>City</mat-label>
-            <mat-select [value]="cityFilter()" (selectionChange)="cityFilter.set($event.value)">
-              <mat-option [value]="null">All Cities</mat-option>
-              @for (city of cityService.cities(); track city.id) {
-                <mat-option [value]="city.id">{{ city.name }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
+          @if (!cityService.isSingleCity()) {
+            <mat-form-field appearance="outline" class="city-field">
+              <mat-label>City</mat-label>
+              <mat-select [value]="cityFilter()" (selectionChange)="cityFilter.set($event.value)">
+                <mat-option [value]="null">All Cities</mat-option>
+                @for (city of cityService.cities(); track city.id) {
+                  <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          }
           @if (showRoles()) {
             <mat-form-field appearance="outline" class="role-field">
               <mat-label>Role</mat-label>
@@ -309,7 +311,7 @@ interface Member {
         cursor: zoom-in;
         transition: box-shadow 0.15s;
         &:hover {
-          box-shadow: 0 0 0 3px var(--db-amber, #c9933a);
+          box-shadow: 0 0 0 3px var(--db-amber);
         }
         img {
           width: 100%;
@@ -411,11 +413,11 @@ interface Member {
       }
       .role-admin {
         --mat-chip-label-text-color: #fff;
-        background: #1e4d8c !important;
+        background: var(--db-primary) !important;
       }
       .role-moderator {
         --mat-chip-label-text-color: #fff;
-        background: #c9933a !important;
+        background: var(--db-primary) !important;
       }
       .chip-banned {
         background: #ffccbc !important;
@@ -449,7 +451,7 @@ interface Member {
       .new-badge {
         font-size: 0.62rem;
         font-weight: 700;
-        background: #1e4d8c;
+        background: var(--db-primary);
         color: #fff;
         border-radius: 10px;
         padding: 1px 7px;
@@ -458,7 +460,7 @@ interface Member {
       }
       .member-title {
         font-size: 0.72rem;
-        color: #c9933a;
+        color: var(--db-primary);
         font-style: italic;
       }
       .provider-badges {

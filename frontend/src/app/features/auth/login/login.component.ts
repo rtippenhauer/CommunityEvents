@@ -9,6 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../../core/services/auth.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { environment } from '../../../../environments/environment';
 
 @Component({
@@ -30,8 +31,8 @@ import { environment } from '../../../../environments/environment';
       <!-- Splash panel -->
       <div class="splash-panel">
         <img
-          src="images/dinnerbears-splash.png"
-          alt="DinnerBears — Good food. Great company. Bear memories."
+          [src]="brandConfig.splashSrc()"
+          [alt]="brandConfig.brand().name + ' — ' + brandConfig.brand().tagline"
           class="splash-image"
         />
       </div>
@@ -39,7 +40,7 @@ import { environment } from '../../../../environments/environment';
       <!-- Login panel -->
       <div class="login-panel">
         <div class="login-box">
-          <p class="tagline">Good food. Great company. Bear memories.</p>
+          <p class="tagline">{{ brandConfig.brand().tagline }}</p>
 
           @if (inviteToken()) {
             <p class="invite-notice">
@@ -168,7 +169,7 @@ import { environment } from '../../../../environments/environment';
             </button>
           }
 
-          <p class="invite-help">Don't have an invite? Contact a DinnerBears member to get one.</p>
+          <p class="invite-help">Don't have an invite? Contact a {{ brandConfig.brand().name }} member to get one.</p>
         </div>
       </div>
     </div>
@@ -358,6 +359,7 @@ export class LoginComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
+  readonly brandConfig = inject(BrandConfigService);
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly snackBar = inject(MatSnackBar);
 

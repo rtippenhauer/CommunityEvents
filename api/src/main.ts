@@ -38,9 +38,10 @@ async function bootstrap(): Promise<void> {
   // Public upload categories, served as static assets with no auth check.
   // Profile photos are intentionally excluded — see ProfilePhotosController,
   // which gates them behind OptionalJwtAuthGuard instead.
-  app.useStaticAssets(join(uploadPath, 'restaurants'), { prefix: '/api/uploads/restaurants' });
+  app.useStaticAssets(join(uploadPath, 'locations'), { prefix: '/api/uploads/locations' });
   app.useStaticAssets(join(uploadPath, 'achievements'), { prefix: '/api/uploads/achievements' });
   app.useStaticAssets(join(uploadPath, 'custom-icons'), { prefix: '/api/uploads/custom-icons' });
+  app.useStaticAssets(join(uploadPath, 'branding'), { prefix: '/api/uploads/branding' });
 
   app.useGlobalPipes(
     new ValidationPipe({

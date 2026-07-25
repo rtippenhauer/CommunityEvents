@@ -51,7 +51,7 @@ interface MemberProfile {
 const PROGRESS_LABELS: Record<string, string> = {
   attendance: 'Dinners Attended',
   coordinator: 'Events Coordinated',
-  new_restaurant_coordinator: 'New Restaurants Coordinated',
+  new_location_coordinator: 'New Restaurants Coordinated',
   invite: 'Members Invited',
   rating: 'Restaurant Ratings',
   founding: 'Founding Member',
@@ -61,7 +61,7 @@ const PROGRESS_LABELS: Record<string, string> = {
 const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = {
   attendance: { label: 'Attendance', icon: 'local_dining' },
   coordinator: { label: 'Coordinator', icon: 'event_available' },
-  new_restaurant_coordinator: { label: 'Scout', icon: 'travel_explore' },
+  new_location_coordinator: { label: 'Scout', icon: 'travel_explore' },
   invite: { label: 'Invites', icon: 'person_add' },
   rating: { label: 'Ratings', icon: 'star' },
   city_hopper: { label: 'City Hopper', icon: 'flight' },
@@ -75,7 +75,7 @@ const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = 
 const ACHIEVEMENT_CATEGORY_ORDER = [
   'attendance',
   'coordinator',
-  'new_restaurant_coordinator',
+  'new_location_coordinator',
   'invite',
   'rating',
   'city_hopper',
@@ -642,11 +642,11 @@ interface AchievementGroup {
       }
       .role-admin {
         --mat-chip-label-text-color: #fff;
-        background: #1e4d8c !important;
+        background: var(--db-primary) !important;
       }
       .role-moderator {
         --mat-chip-label-text-color: #fff;
-        background: #c9933a !important;
+        background: var(--db-primary) !important;
       }
       .chip-banned {
         background: #ffccbc !important;
@@ -717,7 +717,7 @@ interface AchievementGroup {
         align-items: center;
         gap: 8px;
         padding: 12px 16px;
-        background: #1e4d8c;
+        background: var(--db-primary);
         color: #fff;
       }
       .ach-group-icon {
@@ -735,7 +735,7 @@ interface AchievementGroup {
       .ach-complete-badge {
         font-size: 0.7rem;
         font-weight: 700;
-        background: #c9933a;
+        background: var(--db-primary);
         color: #fff;
         border-radius: 10px;
         padding: 2px 8px;
@@ -754,7 +754,7 @@ interface AchievementGroup {
         }
       }
       .ach-icon {
-        color: #c9933a;
+        color: var(--db-primary);
         font-size: 1.5rem;
         width: 1.5rem;
         height: 1.5rem;
@@ -783,7 +783,7 @@ interface AchievementGroup {
       .ach-title-badge {
         font-size: 0.68rem;
         font-weight: 700;
-        background: #c9933a;
+        background: var(--db-primary);
         color: #fff;
         border-radius: 8px;
         padding: 1px 7px;
@@ -829,7 +829,7 @@ interface AchievementGroup {
       }
       .ach-next-title-hint {
         font-size: 0.7rem;
-        color: #c9933a;
+        color: var(--db-primary);
         font-weight: 600;
       }
       .ach-next-desc {

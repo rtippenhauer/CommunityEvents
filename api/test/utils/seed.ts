@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { CityEntity } from '../../src/database/entities/city.entity';
 import { UserEntity, UserRole, UserStatus } from '../../src/database/entities/user.entity';
-import { RestaurantEntity } from '../../src/database/entities/restaurant.entity';
+import { LocationEntity } from '../../src/database/entities/location.entity';
 import { AuthService } from '../../src/modules/auth/auth.service';
 
 // Shared across specs that need a real bcrypt hash on a seeded user (login,
@@ -29,15 +29,15 @@ export async function seedCity(dataSource: DataSource, overrides: Partial<CityEn
   );
 }
 
-export async function seedRestaurant(
+export async function seedLocation(
   dataSource: DataSource,
   cityId: number,
-  overrides: Partial<RestaurantEntity> = {},
-): Promise<RestaurantEntity> {
-  const repo = dataSource.getRepository(RestaurantEntity);
+  overrides: Partial<LocationEntity> = {},
+): Promise<LocationEntity> {
+  const repo = dataSource.getRepository(LocationEntity);
   return repo.save(
     repo.create({
-      name: overrides.name ?? `Test Restaurant ${unique('restaurant')}`,
+      name: overrides.name ?? `Test Location ${unique('location')}`,
       address: overrides.address ?? '123 Test St, Test City, OH 45202',
       cityId,
       ...overrides,

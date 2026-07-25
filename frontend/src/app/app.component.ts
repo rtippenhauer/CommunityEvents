@@ -15,6 +15,7 @@ import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs';
 import { environment } from '../environments/environment';
 import { AuthService } from './core/services/auth.service';
+import { BrandConfigService } from './core/services/brand-config.service';
 import { CityService } from './core/services/city.service';
 import { FeedbackService } from './core/services/feedback.service';
 import { MerchService } from './core/services/merch.service';
@@ -47,6 +48,7 @@ import { SplashComponent, SplashDialogData } from './shared/components/splash/sp
 export class AppComponent {
   private readonly breakpointObserver = inject(BreakpointObserver);
   readonly authService = inject(AuthService);
+  readonly brandConfig = inject(BrandConfigService);
   private readonly cityService = inject(CityService);
   readonly feedbackService = inject(FeedbackService);
   private readonly merchService = inject(MerchService);
@@ -82,7 +84,7 @@ export class AppComponent {
   readonly isCommunityMenuActive = computed(() => {
     const url = this.currentUrl();
     return (
-      url.startsWith('/restaurants') ||
+      url.startsWith('/locations') ||
       url.startsWith('/merch') ||
       url.startsWith('/members') ||
       url.startsWith('/invite')

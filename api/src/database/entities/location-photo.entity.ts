@@ -6,20 +6,20 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { RestaurantEntity } from './restaurant.entity';
+import { LocationEntity } from './location.entity';
 import { UserEntity } from './user.entity';
 
-@Entity('restaurant_photos')
-export class RestaurantPhotoEntity {
+@Entity('location_photos')
+export class LocationPhotoEntity {
   @PrimaryGeneratedColumn({ unsigned: true })
   id: number;
 
-  @Column({ name: 'restaurant_id', unsigned: true })
-  restaurantId: number;
+  @Column({ name: 'location_id', unsigned: true })
+  locationId: number;
 
-  @ManyToOne(() => RestaurantEntity, (r) => r.photos, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'restaurant_id' })
-  restaurant: RestaurantEntity;
+  @ManyToOne(() => LocationEntity, (l) => l.photos, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'location_id' })
+  location: LocationEntity;
 
   @Column({ name: 'file_path', length: 500 })
   filePath: string;

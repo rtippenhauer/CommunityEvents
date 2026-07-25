@@ -9,3 +9,9 @@ once that release's draft has been created.
 
 - Terms of Service, Privacy Policy, and the home page's "Our Story" section can now be updated by an admin at any time — no code change or app update required
 - Minor cleanup of outdated placeholder pages behind the scenes
+
+## Site Customization & Admin Controls
+
+- Admins can now set the site name, tagline, colors, and logo/splash/icon images right from Site Settings — changes apply instantly, no rebuild
+- New events can default to your group's usual day and time
+- Locations can keep their address hidden until a member RSVPs "Going"

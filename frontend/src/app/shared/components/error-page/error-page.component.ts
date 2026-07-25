@@ -113,7 +113,7 @@ import { MatIconModule } from '@angular/material/icon';
         margin: 0;
         font-size: 0.83rem;
         color: #888;
-        background: #fdfaf5;
+        background: var(--db-cream);
         border-radius: 6px;
         padding: 10px 14px;
         line-height: 1.5;

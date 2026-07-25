@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { forkJoin } from 'rxjs';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -11,23 +12,29 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { EventsService, Event, EventStatus } from '../../../core/services/events.service';
+import { AppConfigService } from '../../../core/services/app-config.service';
 
 export interface EventFormDialogData {
   event?: Event;
   preset?: {
     cityId?: number;
-    restaurantId?: number;
+    locationId?: number;
     title?: string;
     eventDate?: string;
     eventTime?: string;
   };
 }
 
-function nextTuesdayDate(): Date {
+// Fallback used only for the form's initial synchronous value, before the
+// configured weekday/time (app_config event_cadence_weekday/_time) loads —
+// see EventFormDialogComponent.ngOnInit, which re-patches once it arrives.
+const DEFAULT_CADENCE_WEEKDAY = 2; // Tuesday
+const DEFAULT_CADENCE_TIME = '18:30';
+
+function nextWeekdayDate(weekday: number): Date {
   const today = new Date();
-  const daysUntil = (2 - today.getDay() + 7) % 7 || 7;
-  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysUntil);
-  return d;
+  const daysUntil = (weekday - today.getDay() + 7) % 7 || 7;
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysUntil);
 }
 
 function parseLocalDate(dateStr: string): Date {
@@ -43,7 +50,7 @@ interface City {
   id: number;
   name: string;
 }
-interface Restaurant {
+interface Location {
   id: number;
   name: string;
   cityId: number;
@@ -68,20 +75,22 @@ interface Restaurant {
 
     <mat-dialog-content>
       <form [formGroup]="form" class="event-form">
-        <mat-form-field appearance="outline">
-          <mat-label>City</mat-label>
-          <mat-select formControlName="cityId">
-            @for (city of cities(); track city.id) {
-              <mat-option [value]="city.id">{{ city.name }}</mat-option>
-            }
-          </mat-select>
-          <mat-error>City is required</mat-error>
-        </mat-form-field>
+        @if (cities().length > 1) {
+          <mat-form-field appearance="outline">
+            <mat-label>City</mat-label>
+            <mat-select formControlName="cityId">
+              @for (city of cities(); track city.id) {
+                <mat-option [value]="city.id">{{ city.name }}</mat-option>
+              }
+            </mat-select>
+            <mat-error>City is required</mat-error>
+          </mat-form-field>
+        }
 
         <mat-form-field appearance="outline">
           <mat-label>Restaurant</mat-label>
-          <mat-select formControlName="restaurantId">
-            @for (r of filteredRestaurants(); track r.id) {
+          <mat-select formControlName="locationId">
+            @for (r of filteredLocations(); track r.id) {
               <mat-option [value]="r.id">{{ r.name }}</mat-option>
             }
           </mat-select>
@@ -215,18 +224,19 @@ export class EventFormDialogComponent implements OnInit {
   private readonly dialogRef = inject(MatDialogRef<EventFormDialogComponent>);
   private readonly snackBar = inject(MatSnackBar);
   private readonly http = inject(HttpClient);
+  private readonly appConfigService = inject(AppConfigService);
   readonly data = inject<EventFormDialogData>(MAT_DIALOG_DATA);
 
   readonly cities = signal<City[]>([]);
-  readonly restaurants = signal<Restaurant[]>([]);
-  readonly filteredRestaurants = signal<Restaurant[]>([]);
+  readonly locations = signal<Location[]>([]);
+  readonly filteredLocations = signal<Location[]>([]);
   readonly saving = signal(false);
 
   readonly form = this.fb.group({
     cityId: [0, [Validators.required, Validators.min(1)]],
-    restaurantId: [0, [Validators.required, Validators.min(1)]],
+    locationId: [0, [Validators.required, Validators.min(1)]],
     title: ['', Validators.required],
-    eventDate: [nextTuesdayDate(), Validators.required],
+    eventDate: [nextWeekdayDate(DEFAULT_CADENCE_WEEKDAY), Validators.required],
     eventTime: ['', Validators.required],
     description: [''],
     additionalInfo: [''],
@@ -238,34 +248,41 @@ export class EventFormDialogComponent implements OnInit {
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((c) => {
       this.cities.set(c);
+      // Single-region fork: there's only one city and its selector is hidden
+      // (see template), so auto-select it for new events. The guard leaves an
+      // already-set value alone — edit mode patches cityId synchronously below
+      // before this async callback fires.
+      if (c.length === 1 && !this.form.controls.cityId.value) {
+        this.form.controls.cityId.setValue(c[0].id);
+      }
     });
 
-    this.http.get<Restaurant[]>('/api/v1/restaurants').subscribe((r) => {
-      this.restaurants.set(r);
+    this.http.get<Location[]>('/api/v1/locations').subscribe((r) => {
+      this.locations.set(r);
       const cityId = this.form.controls.cityId.value;
-      this.filterRestaurants(cityId);
+      this.filterLocations(cityId);
     });
 
     this.form.controls.cityId.valueChanges.subscribe((id) => {
-      this.filterRestaurants(id);
-      this.form.controls.restaurantId.setValue(0);
+      this.filterLocations(id);
+      this.form.controls.locationId.setValue(0);
     });
 
-    this.form.controls.restaurantId.valueChanges.subscribe((id) => {
+    this.form.controls.locationId.valueChanges.subscribe((id) => {
       if (!id) return;
-      const restaurant = this.restaurants().find((r) => r.id === id);
-      if (!restaurant) return;
+      const location = this.locations().find((r) => r.id === id);
+      if (!location) return;
 
-      // Sync city if the selected restaurant is in a different city (edit scenario)
-      if (this.form.controls.cityId.value !== restaurant.cityId) {
-        this.form.controls.cityId.setValue(restaurant.cityId, { emitEvent: false });
-        this.filterRestaurants(restaurant.cityId);
+      // Sync city if the selected location is in a different city (edit scenario)
+      if (this.form.controls.cityId.value !== location.cityId) {
+        this.form.controls.cityId.setValue(location.cityId, { emitEvent: false });
+        this.filterLocations(location.cityId);
       }
 
       // Auto-fill title if blank or still matches the generated pattern
       const currentTitle = this.form.controls.title.value;
       if (!currentTitle || /^Bear Dinner at /.test(currentTitle)) {
-        this.form.controls.title.setValue(`Bear Dinner at ${restaurant.name}`);
+        this.form.controls.title.setValue(`Bear Dinner at ${location.name}`);
       }
     });
 
@@ -273,7 +290,7 @@ export class EventFormDialogComponent implements OnInit {
       const e = this.data.event;
       this.form.patchValue({
         cityId: e.cityId,
-        restaurantId: e.restaurantId ?? 0,
+        locationId: e.locationId ?? 0,
         title: e.title,
         eventDate: parseLocalDate(e.eventDate),
         eventTime: e.eventTime.substring(0, 5),
@@ -287,20 +304,45 @@ export class EventFormDialogComponent implements OnInit {
       const p = this.data.preset;
       this.form.patchValue({
         cityId: p.cityId ?? 0,
-        restaurantId: p.restaurantId ?? 0,
+        locationId: p.locationId ?? 0,
         title: p.title ?? '',
-        eventDate: p.eventDate ? parseLocalDate(p.eventDate) : nextTuesdayDate(),
-        eventTime: p.eventTime ?? '18:30',
       });
-      if (p.cityId) this.filterRestaurants(p.cityId);
+      if (p.cityId) this.filterLocations(p.cityId);
+      if (p.eventDate && p.eventTime) {
+        this.form.patchValue({
+          eventDate: parseLocalDate(p.eventDate),
+          eventTime: p.eventTime,
+        });
+      } else {
+        this.applyCadenceDefault(p.eventDate ? parseLocalDate(p.eventDate) : undefined, p.eventTime);
+      }
     } else {
-      this.form.patchValue({ eventTime: '18:30' });
+      this.applyCadenceDefault();
     }
   }
 
-  private filterRestaurants(cityId: number): void {
-    const all = this.restaurants();
-    this.filteredRestaurants.set(cityId ? all.filter((r) => r.cityId === cityId) : all);
+  // Fills in eventDate/eventTime from this fork's configured recurring-event
+  // day/time (app_config event_cadence_weekday/_time) — only next-<weekday>
+  // is supported today, not a monthly ("2nd Saturday") pattern.
+  private applyCadenceDefault(presetDate?: Date, presetTime?: string): void {
+    forkJoin([
+      this.appConfigService.getValue('event_cadence_weekday'),
+      this.appConfigService.getValue('event_cadence_time'),
+    ]).subscribe(([weekdayStr, time]) => {
+      const weekday = parseInt(weekdayStr, 10);
+      const resolvedWeekday = Number.isInteger(weekday) && weekday >= 0 && weekday <= 6
+        ? weekday
+        : DEFAULT_CADENCE_WEEKDAY;
+      this.form.patchValue({
+        eventDate: presetDate ?? nextWeekdayDate(resolvedWeekday),
+        eventTime: presetTime ?? (time || DEFAULT_CADENCE_TIME),
+      });
+    });
+  }
+
+  private filterLocations(cityId: number): void {
+    const all = this.locations();
+    this.filteredLocations.set(cityId ? all.filter((r) => r.cityId === cityId) : all);
   }
 
   save(): void {
@@ -313,7 +355,7 @@ export class EventFormDialogComponent implements OnInit {
     const val = this.form.getRawValue();
     const payload = {
       cityId: val.cityId,
-      restaurantId: val.restaurantId,
+      locationId: val.locationId,
       title: val.title.trim(),
       eventDate: toDateString(val.eventDate),
       eventTime: val.eventTime,

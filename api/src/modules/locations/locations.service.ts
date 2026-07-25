@@ -1,16 +1,18 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Like, Repository } from 'typeorm';
-import { RestaurantEntity, ImportSource } from '../../database/entities/restaurant.entity';
-import { RestaurantPhotoEntity } from '../../database/entities/restaurant-photo.entity';
+import { LocationEntity, ImportSource } from '../../database/entities/location.entity';
+import { LocationPhotoEntity } from '../../database/entities/location-photo.entity';
 import { CityEntity } from '../../database/entities/city.entity';
 import { UserEntity } from '../../database/entities/user.entity';
 import { GeocodingService } from './geocoding.service';
-import { CreateRestaurantDto } from './dto/create-restaurant.dto';
-import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
+import { CreateLocationDto } from './dto/create-location.dto';
+import { UpdateLocationDto } from './dto/update-location.dto';
 import { toPublicUser } from '../../common/utils/public-user.util';
+import { LocationVisibilityService } from '../../common/services/location-visibility.service';
+import { AppConfigService } from '../app-config/app-config.service';
 
-export interface RestaurantQuery {
+export interface LocationQuery {
   cityId?: number;
   search?: string;
 }
@@ -53,45 +55,59 @@ interface FacebookEvent {
 }
 
 @Injectable()
-export class RestaurantsService {
-  private readonly logger = new Logger(RestaurantsService.name);
+export class LocationsService {
+  private readonly logger = new Logger(LocationsService.name);
 
   constructor(
-    @InjectRepository(RestaurantEntity)
-    private readonly restaurantRepo: Repository<RestaurantEntity>,
-    @InjectRepository(RestaurantPhotoEntity)
-    private readonly photoRepo: Repository<RestaurantPhotoEntity>,
+    @InjectRepository(LocationEntity)
+    private readonly locationRepo: Repository<LocationEntity>,
+    @InjectRepository(LocationPhotoEntity)
+    private readonly photoRepo: Repository<LocationPhotoEntity>,
     @InjectRepository(CityEntity)
     private readonly cityRepo: Repository<CityEntity>,
     private readonly geocodingService: GeocodingService,
+    private readonly locationVisibility: LocationVisibilityService,
+    private readonly appConfigService: AppConfigService,
   ) {}
 
-  async findAll(query: RestaurantQuery): Promise<RestaurantEntity[]> {
+  async findAll(query: LocationQuery): Promise<LocationEntity[]> {
     const where: Record<string, unknown> = { isActive: true };
     if (query.cityId) where['cityId'] = query.cityId;
     if (query.search) where['name'] = Like(`%${query.search}%`);
 
-    return this.restaurantRepo.find({
+    return this.locationRepo.find({
       where,
       relations: ['city', 'photos'],
       order: { name: 'ASC' },
     });
   }
 
-  async findAllArchived(query: RestaurantQuery): Promise<RestaurantEntity[]> {
+  // Member-facing reads (controller GET routes) — redacts address/lat/lng
+  // for private locations the requester hasn't earned visibility into.
+  async findAllForUser(query: LocationQuery, user: UserEntity | null): Promise<LocationEntity[]> {
+    const locations = await this.findAll(query);
+    return Promise.all(locations.map((l) => this.locationVisibility.redact(l, user)));
+  }
+
+  async findOneForUser(id: number, user: UserEntity | null): Promise<LocationEntity> {
+    const location = await this.findOne(id);
+    return this.locationVisibility.redact(location, user);
+  }
+
+  async findAllArchived(query: LocationQuery): Promise<LocationEntity[]> {
     const where: Record<string, unknown> = { isActive: false };
     if (query.cityId) where['cityId'] = query.cityId;
     if (query.search) where['name'] = Like(`%${query.search}%`);
 
-    return this.restaurantRepo.find({
+    return this.locationRepo.find({
       where,
       relations: ['city', 'photos'],
       order: { name: 'ASC' },
     });
   }
 
-  async findOne(id: number): Promise<RestaurantEntity> {
-    const r = await this.restaurantRepo.findOne({
+  async findOne(id: number): Promise<LocationEntity> {
+    const r = await this.locationRepo.findOne({
       where: { id, isActive: true },
       relations: ['city', 'photos', 'createdByUser', 'updatedByUser'],
     });
@@ -99,8 +115,8 @@ export class RestaurantsService {
     return Object.assign(r, { createdByUser: toPublicUser(r.createdByUser), updatedByUser: toPublicUser(r.updatedByUser) });
   }
 
-  async findOneWithModFields(id: number): Promise<RestaurantEntity> {
-    const r = await this.restaurantRepo
+  async findOneWithModFields(id: number): Promise<LocationEntity> {
+    const r = await this.locationRepo
       .createQueryBuilder('r')
       .addSelect(['r.moderatorNotes', 'r.contactName', 'r.contactPhone', 'r.contactEmail'])
       .leftJoinAndSelect('r.city', 'city')
@@ -113,64 +129,67 @@ export class RestaurantsService {
     return Object.assign(r, { createdByUser: toPublicUser(r.createdByUser), updatedByUser: toPublicUser(r.updatedByUser) });
   }
 
-  async create(dto: CreateRestaurantDto, userId?: number): Promise<RestaurantEntity> {
+  async create(dto: CreateLocationDto, userId?: number): Promise<LocationEntity> {
     const coords = await this.geocodingService.geocode(dto.address);
-    const restaurant = this.restaurantRepo.create({
+    const isPrivate =
+      dto.isPrivate ?? (await this.appConfigService.getSiteSetting('location_privacy_default')) === 'private';
+    const location = this.locationRepo.create({
       ...dto,
+      isPrivate,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
       createdById: userId ?? null,
       updatedById: userId ?? null,
     });
-    const saved = await this.restaurantRepo.save(restaurant);
+    const saved = await this.locationRepo.save(location);
     return this.findOne(saved.id);
   }
 
-  async update(id: number, dto: UpdateRestaurantDto | Record<string, unknown>, userId?: number): Promise<RestaurantEntity> {
-    const restaurant = await this.findOne(id);
-    const addressChanged = (dto as UpdateRestaurantDto).address && (dto as UpdateRestaurantDto).address !== restaurant.address;
+  async update(id: number, dto: UpdateLocationDto | Record<string, unknown>, userId?: number): Promise<LocationEntity> {
+    const location = await this.findOne(id);
+    const addressChanged = (dto as UpdateLocationDto).address && (dto as UpdateLocationDto).address !== location.address;
 
-    Object.assign(restaurant, dto);
+    Object.assign(location, dto);
 
-    if (userId) restaurant.updatedById = userId;
+    if (userId) location.updatedById = userId;
 
     if (addressChanged) {
-      const coords = await this.geocodingService.geocode((dto as UpdateRestaurantDto).address!);
-      restaurant.lat = coords?.lat ?? null;
-      restaurant.lng = coords?.lng ?? null;
+      const coords = await this.geocodingService.geocode((dto as UpdateLocationDto).address!);
+      location.lat = coords?.lat ?? null;
+      location.lng = coords?.lng ?? null;
     }
 
-    await this.restaurantRepo.save(restaurant);
+    await this.locationRepo.save(location);
     return this.findOne(id);
   }
 
   async remove(id: number): Promise<void> {
-    await this.restaurantRepo.update(id, { isActive: false });
+    await this.locationRepo.update(id, { isActive: false });
   }
 
-  async restore(id: number): Promise<RestaurantEntity> {
-    const restaurant = await this.restaurantRepo.findOne({ where: { id, isActive: false } });
-    if (!restaurant) throw new NotFoundException('Archived restaurant not found');
-    restaurant.isActive = true;
-    await this.restaurantRepo.save(restaurant);
+  async restore(id: number): Promise<LocationEntity> {
+    const location = await this.locationRepo.findOne({ where: { id, isActive: false } });
+    if (!location) throw new NotFoundException('Archived restaurant not found');
+    location.isActive = true;
+    await this.locationRepo.save(location);
     return this.findOne(id);
   }
 
   async addPhoto(
-    restaurantId: number,
+    locationId: number,
     file: Express.Multer.File,
     uploader: UserEntity,
-  ): Promise<RestaurantPhotoEntity> {
-    await this.findOne(restaurantId);
+  ): Promise<LocationPhotoEntity> {
+    await this.findOne(locationId);
     const maxOrder = await this.photoRepo
       .createQueryBuilder('p')
       .select('MAX(p.sort_order)', 'max')
-      .where('p.restaurant_id = :restaurantId', { restaurantId })
+      .where('p.location_id = :locationId', { locationId })
       .getRawOne<{ max: number | null }>();
 
-    const url = `/api/uploads/restaurants/${file.filename}`;
+    const url = `/api/uploads/locations/${file.filename}`;
     const photo = this.photoRepo.create({
-      restaurantId,
+      locationId,
       filePath: url,
       fileName: file.filename,
       mimeType: file.mimetype,
@@ -180,18 +199,18 @@ export class RestaurantsService {
     return this.photoRepo.save(photo);
   }
 
-  async removePhoto(restaurantId: number, photoId: number): Promise<void> {
+  async removePhoto(locationId: number, photoId: number): Promise<void> {
     const photo = await this.photoRepo.findOne({
-      where: { id: photoId, restaurantId },
+      where: { id: photoId, locationId },
     });
     if (!photo) throw new NotFoundException('Photo not found');
     await this.photoRepo.remove(photo);
   }
 
-  async reorderPhotos(restaurantId: number, orderedIds: number[]): Promise<void> {
+  async reorderPhotos(locationId: number, orderedIds: number[]): Promise<void> {
     await Promise.all(
       orderedIds.map((id, index) =>
-        this.photoRepo.update({ id, restaurantId }, { sortOrder: index }),
+        this.photoRepo.update({ id, locationId }, { sortOrder: index }),
       ),
     );
   }
@@ -215,7 +234,7 @@ export class RestaurantsService {
 
     const cities = await this.cityRepo.find({ where: { isActive: true } });
 
-    const existing = await this.restaurantRepo.find({ select: ['name', 'address'] });
+    const existing = await this.locationRepo.find({ select: ['name', 'address'] });
     const existingNames = new Set(existing.map((r) => r.name.toLowerCase()));
     const existingAddresses = new Set(
       existing.filter((r) => r.address).map((r) => r.address.toLowerCase().trim()),
@@ -230,7 +249,7 @@ export class RestaurantsService {
       const place = event.place ?? event.location;
       const eventTitle = event.name?.trim() ?? '';
 
-      const name = this.extractRestaurantName(eventTitle);
+      const name = this.extractLocationName(eventTitle);
       if (!name) {
         if (eventTitle) {
           this.logger.log(`[FB Import] Skipping — no pattern match: "${eventTitle}"`);
@@ -276,11 +295,11 @@ export class RestaurantsService {
       }
 
       const resolvedCityId = this.detectCity(address, cities, cityId);
-      const websiteUrl = this.extractRestaurantUrl(event.description);
+      const websiteUrl = this.extractLocationUrl(event.description);
       const description = event.description?.trim().slice(0, 2000) || null;
 
       try {
-        const restaurant = this.restaurantRepo.create({
+        const location = this.locationRepo.create({
           name,
           address,
           cityId: resolvedCityId,
@@ -291,7 +310,7 @@ export class RestaurantsService {
           importedFrom: ImportSource.FACEBOOK_IMPORT,
           isActive: true,
         });
-        await this.restaurantRepo.save(restaurant);
+        await this.locationRepo.save(location);
         existingNames.add(name.toLowerCase());
         existingAddresses.add(address.toLowerCase().trim());
         details.push({ name, status: 'inserted' });
@@ -308,7 +327,7 @@ export class RestaurantsService {
   // Splits event title on word-boundary "at"; finds the first split where the
   // left side has a group keyword (bears, dinner, night…) and right side does not.
   // Handles: "Monthly Bear Dinner at Cincinnati Bears in Dayton at El Rancho" → "El Rancho"
-  private extractRestaurantName(title: string): string | null {
+  private extractLocationName(title: string): string | null {
     const groupKeywords = /\b(?:bears?|dinner|night|evening|monthly|weekly)\b/i;
     const parts = title.split(/\bat\b/i);
     if (parts.length === 1) return null;
@@ -333,7 +352,7 @@ export class RestaurantsService {
     return null;
   }
 
-  private extractRestaurantUrl(description: string | undefined | null): string | null {
+  private extractLocationUrl(description: string | undefined | null): string | null {
     if (!description) return null;
     const matches = description.match(/https?:\/\/[^\s,)>"']+/gi);
     if (!matches) return null;

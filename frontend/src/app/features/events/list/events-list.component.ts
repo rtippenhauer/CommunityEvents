@@ -78,15 +78,17 @@ interface City {
         <mat-datepicker #picker />
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="city-field">
-        <mat-label>City</mat-label>
-        <mat-select [formControl]="cityCtrl">
-          <mat-option [value]="null">All cities</mat-option>
-          @for (city of cities(); track city.id) {
-            <mat-option [value]="city.id">{{ city.name }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
+      @if (!cityService.isSingleCity()) {
+        <mat-form-field appearance="outline" class="city-field">
+          <mat-label>City</mat-label>
+          <mat-select [formControl]="cityCtrl">
+            <mat-option [value]="null">All cities</mat-option>
+            @for (city of cities(); track city.id) {
+              <mat-option [value]="city.id">{{ city.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+      }
 
       @if (isLoggedIn()) {
         <mat-checkbox
@@ -179,7 +181,7 @@ interface City {
 export class EventsListComponent implements OnInit {
   private readonly eventsService = inject(EventsService);
   private readonly authService = inject(AuthService);
-  private readonly cityService = inject(CityService);
+  readonly cityService = inject(CityService);
   private readonly dialog = inject(MatDialog);
   private readonly http = inject(HttpClient);
 

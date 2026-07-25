@@ -13,11 +13,12 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { debounceTime, distinctUntilChanged } from 'rxjs';
-import { RestaurantsService, Restaurant } from '../../../core/services/restaurants.service';
+import { LocationsService, Location } from '../../../core/services/locations.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CityService } from '../../../core/services/city.service';
-import { RestaurantFormDialogComponent } from '../form/restaurant-form-dialog.component';
+import { LocationFormDialogComponent } from '../form/location-form-dialog.component';
 import { FacebookImportDialogComponent } from '../import/facebook-import-dialog.component';
 
 interface City {
@@ -26,7 +27,7 @@ interface City {
 }
 
 @Component({
-  selector: 'app-restaurants-list',
+  selector: 'app-locations-list',
   standalone: true,
   imports: [
     ReactiveFormsModule,
@@ -40,6 +41,7 @@ interface City {
     MatProgressSpinnerModule,
     MatSelectModule,
     MatSnackBarModule,
+    MatTooltipModule,
   ],
   template: `
     <div class="page-header">
@@ -78,29 +80,31 @@ interface City {
         <input matInput [formControl]="searchCtrl" placeholder="Restaurant name…" />
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="city-field">
-        <mat-label>City</mat-label>
-        <mat-select [formControl]="cityCtrl">
-          <mat-option [value]="null">All cities</mat-option>
-          @for (city of cities(); track city.id) {
-            <mat-option [value]="city.id">{{ city.name }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
+      @if (!cityService.isSingleCity()) {
+        <mat-form-field appearance="outline" class="city-field">
+          <mat-label>City</mat-label>
+          <mat-select [formControl]="cityCtrl">
+            <mat-option [value]="null">All cities</mat-option>
+            @for (city of cities(); track city.id) {
+              <mat-option [value]="city.id">{{ city.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+      }
     </div>
 
     <!-- Results -->
     @if (loading()) {
       <div class="center"><mat-spinner /></div>
-    } @else if (restaurants().length === 0) {
+    } @else if (locations().length === 0) {
       <p class="empty">
         {{ showArchived() ? 'No archived restaurants.' : 'No restaurants found.' }}
       </p>
     } @else {
-      <div class="restaurant-grid">
-        @for (r of restaurants(); track r.id) {
+      <div class="location-grid">
+        @for (r of locations(); track r.id) {
           <mat-card
-            class="restaurant-card"
+            class="location-card"
             [class.archived-card]="showArchived()"
             (click)="!showArchived() && goToDetail(r.id)"
             [attr.role]="showArchived() ? null : 'button'"
@@ -115,11 +119,20 @@ interface City {
               }
             </div>
             <mat-card-content class="card-body">
-              <h3 class="restaurant-name">{{ r.name }}</h3>
-              <p class="restaurant-city">{{ r.city.name }}</p>
-              <p class="restaurant-address">{{ r.address }}</p>
+              <h3 class="location-name">
+                {{ r.name }}
+                @if (r.isPrivate) {
+                  <mat-icon class="private-icon" matTooltip="Private location">lock</mat-icon>
+                }
+              </h3>
+              <p class="location-city">{{ r.city.name }}</p>
+              @if (r.address) {
+                <p class="location-address">{{ r.address }}</p>
+              } @else {
+                <p class="location-address muted">Address available after RSVP</p>
+              }
               @if (r.description) {
-                <p class="restaurant-desc">
+                <p class="location-desc">
                   {{ r.description | slice: 0 : 120 }}{{ r.description.length > 120 ? '…' : '' }}
                 </p>
               }
@@ -171,12 +184,12 @@ interface City {
       .city-field {
         width: 180px;
       }
-      .restaurant-grid {
+      .location-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 20px;
       }
-      .restaurant-card {
+      .location-card {
         cursor: pointer;
         transition:
           box-shadow 0.2s,
@@ -216,24 +229,36 @@ interface City {
       .card-body {
         padding: 12px 16px 16px;
       }
-      .restaurant-name {
+      .location-name {
         margin: 0 0 4px;
         font-size: 1.1rem;
         font-weight: 600;
         color: var(--db-brown-dark);
       }
-      .restaurant-city {
+      .location-city {
         margin: 0 0 4px;
         font-size: 0.8rem;
         color: var(--db-primary);
         font-weight: 500;
       }
-      .restaurant-address {
+      .location-address {
         margin: 0 0 8px;
         font-size: 0.85rem;
         color: #666;
+        &.muted {
+          font-style: italic;
+          color: #999;
+        }
       }
-      .restaurant-desc {
+      .private-icon {
+        font-size: 1rem;
+        width: 1rem;
+        height: 1rem;
+        vertical-align: middle;
+        margin-left: 4px;
+        color: #999;
+      }
+      .location-desc {
         margin: 0;
         font-size: 0.85rem;
         color: #555;
@@ -252,16 +277,16 @@ interface City {
     `,
   ],
 })
-export class RestaurantsListComponent implements OnInit {
-  private readonly restaurantsService = inject(RestaurantsService);
+export class LocationsListComponent implements OnInit {
+  private readonly locationsService = inject(LocationsService);
   private readonly authService = inject(AuthService);
-  private readonly cityService = inject(CityService);
+  readonly cityService = inject(CityService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
   private readonly http = inject(HttpClient);
 
-  readonly restaurants = signal<Restaurant[]>([]);
+  readonly locations = signal<Location[]>([]);
   readonly cities = signal<City[]>([]);
   readonly loading = signal(true);
   readonly enrichingAll = signal(false);
@@ -294,11 +319,11 @@ export class RestaurantsListComponent implements OnInit {
     const cityId = this.cityCtrl.value ?? undefined;
     const search = this.searchCtrl.value ?? undefined;
     const obs = this.showArchived()
-      ? this.restaurantsService.getArchived(cityId, search)
-      : this.restaurantsService.getAll(cityId, search);
+      ? this.locationsService.getArchived(cityId, search)
+      : this.locationsService.getAll(cityId, search);
     obs.subscribe({
       next: (r) => {
-        this.restaurants.set(r);
+        this.locations.set(r);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
@@ -319,9 +344,9 @@ export class RestaurantsListComponent implements OnInit {
     this.load();
   }
 
-  restore(r: Restaurant, event: Event): void {
+  restore(r: Location, event: Event): void {
     event.stopPropagation();
-    this.restaurantsService.restore(r.id).subscribe({
+    this.locationsService.restore(r.id).subscribe({
       next: () => {
         this.snackBar.open(`${r.name} restored`, 'OK', { duration: 3000 });
         this.load();
@@ -331,28 +356,28 @@ export class RestaurantsListComponent implements OnInit {
   }
 
   goToDetail(id: number): void {
-    void this.router.navigate(['/restaurants', id]);
+    void this.router.navigate(['/locations', id]);
   }
 
   openCreate(): void {
-    const ref = this.dialog.open(RestaurantFormDialogComponent, {
+    const ref = this.dialog.open(LocationFormDialogComponent, {
       data: {},
       width: '560px',
       maxWidth: '95vw',
     });
-    ref.afterClosed().subscribe((r: Restaurant | undefined) => {
+    ref.afterClosed().subscribe((r: Location | undefined) => {
       if (r) this.load();
     });
   }
 
   bulkEnrich(): void {
-    const count = this.restaurants().length;
+    const count = this.locations().length;
     const confirmed = window.confirm(
       `Enrich all ${count} restaurants with Google Places + Claude descriptions?\n\nThis runs in the background — check Unraid logs for progress. Takes ~${Math.ceil((count * 0.7) / 60)} minutes.`,
     );
     if (!confirmed) return;
     this.enrichingAll.set(true);
-    this.restaurantsService.bulkEnrich().subscribe({
+    this.locationsService.bulkEnrich().subscribe({
       next: (res) => {
         this.enrichingAll.set(false);
         this.snackBar.open(

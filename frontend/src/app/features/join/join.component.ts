@@ -10,6 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { InvitesService, InvitePreview } from '../../core/services/invites.service';
 import { AuthService } from '../../core/services/auth.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 import { environment } from '../../../environments/environment';
 import { formatEventTime } from '../../shared/utils/format-event';
 
@@ -31,7 +32,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
   template: `
     <div class="join-page">
       <div class="brand-header">
-        <img src="/images/DinnerBearsIcon.png" alt="DinnerBears" class="brand-logo" />
+        <img [src]="brandConfig.iconSrc()" [alt]="brandConfig.brand().name" class="brand-logo" />
         <p class="brand-tagline">Good food. Great company. Bear memories.</p>
       </div>
 
@@ -42,11 +43,11 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
 
         @case ('ready') {
           <div class="join-card">
-            @if (preview()?.event?.restaurantPhotoUrl) {
+            @if (preview()?.event?.locationPhotoUrl) {
               <div class="event-photo">
                 <img
-                  [src]="preview()!.event!.restaurantPhotoUrl!"
-                  [alt]="preview()!.event!.restaurantName"
+                  [src]="preview()!.event!.locationPhotoUrl!"
+                  [alt]="preview()!.event!.locationName"
                 />
               </div>
             }
@@ -69,11 +70,15 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
                 </div>
                 <div class="meta-row">
                   <mat-icon>restaurant</mat-icon>
-                  <span>{{ preview()!.event!.restaurantName }}</span>
+                  <span>{{ preview()!.event!.locationName }}</span>
                 </div>
                 <div class="meta-row">
                   <mat-icon>location_on</mat-icon>
-                  <span>{{ preview()!.event!.restaurantAddress }}</span>
+                  @if (preview()!.event!.locationAddress) {
+                    <span>{{ preview()!.event!.locationAddress }}</span>
+                  } @else {
+                    <span class="address-hidden">Address available after you RSVP</span>
+                  }
                 </div>
               </div>
 
@@ -348,6 +353,11 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
         }
       }
 
+      .address-hidden {
+        font-style: italic;
+        color: #999;
+      }
+
       .access-note {
         display: flex;
         align-items: flex-start;
@@ -446,7 +456,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
       .expires-note {
         margin: 0;
         font-size: 0.78rem;
-        color: var(--db-text-light);
+        color: var(--db-text-mid);
         text-align: center;
       }
 
@@ -488,6 +498,7 @@ export class JoinComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly invitesService = inject(InvitesService);
   private readonly authService = inject(AuthService);
+  readonly brandConfig = inject(BrandConfigService);
   private readonly fb = inject(NonNullableFormBuilder);
 
   readonly state = signal<PageState>('loading');

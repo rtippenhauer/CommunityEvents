@@ -7,6 +7,8 @@ import { UserEntity } from '../../database/entities/user.entity';
 import { EventEntity, EventStatus } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
+import { LocationVisibilityService } from '../../common/services/location-visibility.service';
+import { calendarOrganizerEmail, supportEmail } from '../../common/config/instance-contact';
 
 export interface CalendarSettingsResponse {
   url: string;
@@ -36,6 +38,7 @@ export class CalendarService {
     @InjectRepository(EventRsvpEntity)
     private readonly rsvpRepo: Repository<EventRsvpEntity>,
     private readonly config: ConfigService,
+    private readonly locationVisibility: LocationVisibilityService,
   ) {}
 
   // ── Token management ────────────────────────────────────────────────────────
@@ -128,10 +131,7 @@ export class CalendarService {
   }
 
   private organizerEmail(): string {
-    const override = this.config.get<string>('CALENDAR_ORGANIZER_EMAIL', '');
-    if (override) return override;
-    const url = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
-    return url.includes('stage') ? 'calendar-stage@dinnerbears.com' : 'calendar@dinnerbears.com';
+    return calendarOrganizerEmail(this.config);
   }
 
   private async buildFeed(user: UserEntity): Promise<string> {
@@ -154,6 +154,7 @@ export class CalendarService {
 
     let qb = this.eventRepo
       .createQueryBuilder('e')
+      .leftJoinAndSelect('e.location', 'location')
       .where(
         '((e.status = :published AND e.eventDate >= :today) OR (e.status = :cancelled AND e.eventDate >= :cutoff))',
         { published: EventStatus.PUBLISHED, cancelled: EventStatus.CANCELLED, today, cutoff: cutoffDate },
@@ -221,11 +222,18 @@ export class CalendarService {
       ? `🤝 Your RSVP: ${{ going: 'GOING', maybe: 'MAYBE', not_going: 'NOT GOING' }[rsvpStatus] ?? rsvpStatus.toUpperCase()}`
       : `👉 RSVP now: ${appUrl}/events/${event.id}`;
 
+    const addressVisible = this.locationVisibility.canViewAddressSync(
+      event.location ?? { id: -1, isPrivate: false },
+      false,
+      rsvpStatus === RsvpStatus.GOING,
+    );
+    const locationAddress = addressVisible ? event.locationAddress : null;
+
     const description = [
       'DinnerBears Dinner',
       '',
-      `🍽 ${event.restaurantName}`,
-      event.restaurantAddress || '',
+      `🍽 ${event.locationName}`,
+      locationAddress || '',
       '',
       `📅 ${dayName}, ${monthName} ${d} at ${timeStr}`,
       '',
@@ -234,13 +242,13 @@ export class CalendarService {
       `View details: ${appUrl}/events/${event.id}`,
       '',
       '---',
-      'Questions? Reply to hello@dinnerbears.com',
+      `Questions? Reply to ${supportEmail(this.config)}`,
       'To manage your calendar subscription, visit your DinnerBears account settings.',
     ].filter(Boolean).join('\n');
 
-    const location = event.restaurantAddress
-      ? `${event.restaurantName}, ${event.restaurantAddress}`
-      : event.restaurantName;
+    const location = locationAddress
+      ? `${event.locationName}, ${locationAddress}`
+      : event.locationName;
 
     const lines = [
       'BEGIN:VEVENT',
@@ -250,7 +258,7 @@ export class CalendarService {
       `DTEND:${dtEnd}`,
       `LAST-MODIFIED:${lastMod}`,
       `SEQUENCE:${sequence}`,
-      foldIcsLine(`SUMMARY:${icsEscape(isCancelled ? `[CANCELLED] ${event.restaurantName}` : `DinnerBears Dinner at ${event.restaurantName}`)}`),
+      foldIcsLine(`SUMMARY:${icsEscape(isCancelled ? `[CANCELLED] ${event.locationName}` : `DinnerBears Dinner at ${event.locationName}`)}`),
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(description)}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
@@ -296,10 +304,12 @@ export class CalendarService {
 
   // ── Email attachment (.ics for Phase 16b) ────────────────────────────────────
 
+  // locationAddress override — see buildGoogleCalendarUrl's note in events.service.ts.
   buildInviteAttachment(
     event: EventEntity,
     recipient: { name: string; email: string },
     appUrl: string,
+    locationAddress: string | null = event.locationAddress,
   ): string {
     const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
@@ -328,20 +338,20 @@ export class CalendarService {
     const description = [
       'DinnerBears Dinner',
       '',
-      `🍽 ${event.restaurantName}`,
-      event.restaurantAddress || '',
+      `🍽 ${event.locationName}`,
+      locationAddress || '',
       '',
       `📅 ${dayName}, ${monthName} ${d} at ${timeStr}`,
       '',
       `View details and RSVP: ${appUrl}/events/${event.id}`,
       '',
       '---',
-      'Questions? Reply to hello@dinnerbears.com',
+      `Questions? Reply to ${supportEmail(this.config)}`,
     ].join('\n');
 
-    const location = event.restaurantAddress
-      ? `${event.restaurantName}, ${event.restaurantAddress}`
-      : event.restaurantName;
+    const location = locationAddress
+      ? `${event.locationName}, ${locationAddress}`
+      : event.locationName;
 
     const lines = [
       'BEGIN:VCALENDAR',
@@ -356,7 +366,7 @@ export class CalendarService {
       `DTEND:${dtEnd}`,
       `LAST-MODIFIED:${lastMod}`,
       `SEQUENCE:${sequence}`,
-      foldIcsLine(`SUMMARY:${icsEscape(`DinnerBears Dinner at ${event.restaurantName}`)}`),
+      foldIcsLine(`SUMMARY:${icsEscape(`DinnerBears Dinner at ${event.locationName}`)}`),
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(description)}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),

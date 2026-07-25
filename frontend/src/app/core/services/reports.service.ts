@@ -6,7 +6,7 @@ export type ReportContentType =
   | 'event_comment'
   | 'event_comment_reply'
   | 'announcement_comment'
-  | 'restaurant_rating';
+  | 'location_rating';
 
 export interface AdminReport {
   id: number;

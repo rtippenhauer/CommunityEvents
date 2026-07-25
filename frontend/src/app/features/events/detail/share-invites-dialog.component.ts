@@ -217,7 +217,7 @@ export interface ShareInvitesDialogData {
         font-size: 1rem;
         color: var(--db-brown-dark);
         mat-icon {
-          color: #c9933a;
+          color: var(--db-primary);
         }
       }
       .new-link-btn {

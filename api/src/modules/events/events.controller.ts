@@ -119,7 +119,7 @@ export class EventsController {
   @UseGuards(OptionalJwtAuthGuard)
   @Header('Cache-Control', 'no-store')
   findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: UserEntity) {
-    return this.eventsService.findOne(id, user?.role);
+    return this.eventsService.findOne(id, user?.role, user?.id);
   }
 
   @Post()

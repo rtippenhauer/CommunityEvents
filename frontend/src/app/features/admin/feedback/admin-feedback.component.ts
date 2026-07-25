@@ -534,7 +534,7 @@ import {
         border-radius: 4px;
         margin-bottom: 8px;
         &:focus-within {
-          border-color: var(--db-blue, #1e4d8c);
+          border-color: var(--db-primary);
         }
       }
       .note-quill {

@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables } from './utils/test-app';
-import { seedCity, seedRestaurant, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { UserRole } from '../src/database/entities/user.entity';
 
 describe('Event Comments CRUD (e2e)', () => {
@@ -28,7 +28,7 @@ describe('Event Comments CRUD (e2e)', () => {
   beforeEach(async () => {
     await truncateAllTables(dataSource);
     const city = await seedCity(dataSource);
-    const restaurant = await seedRestaurant(dataSource, city.id);
+    const location = await seedLocation(dataSource, city.id);
 
     const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
     const member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
@@ -47,7 +47,7 @@ describe('Event Comments CRUD (e2e)', () => {
       .set('Cookie', adminCookie)
       .send({
         cityId: city.id,
-        restaurantId: restaurant.id,
+        locationId: location.id,
         title: 'Comment Test Dinner',
         eventDate: '2027-02-01',
         eventTime: '18:00',

@@ -14,7 +14,7 @@ import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.e
 import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { InviteEntity, InviteFlavor, InviteType } from '../../database/entities/invite.entity';
-import { RestaurantEntity } from '../../database/entities/restaurant.entity';
+import { LocationEntity } from '../../database/entities/location.entity';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { SetReservationDto } from './dto/set-reservation.dto';
@@ -26,6 +26,8 @@ import { ConfigService } from '@nestjs/config';
 import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
+import { LocationVisibilityService } from '../../common/services/location-visibility.service';
+import { eventOrganizerEmail } from '../../common/config/instance-contact';
 
 export interface EventFilters {
   cityId?: number;
@@ -48,8 +50,8 @@ export class EventsService {
     private readonly rsvpRepo: Repository<EventRsvpEntity>,
     @InjectRepository(EventGuestLinkEntity)
     private readonly guestLinkRepo: Repository<EventGuestLinkEntity>,
-    @InjectRepository(RestaurantEntity)
-    private readonly restaurantRepo: Repository<RestaurantEntity>,
+    @InjectRepository(LocationEntity)
+    private readonly locationRepo: Repository<LocationEntity>,
     @InjectRepository(InviteEntity)
     private readonly inviteRepo: Repository<InviteEntity>,
     @InjectRepository(UserEntity)
@@ -59,14 +61,15 @@ export class EventsService {
     private readonly pointsService: PointsService,
     private readonly achievementsService: AchievementsService,
     private readonly config: ConfigService,
+    private readonly locationVisibility: LocationVisibilityService,
   ) {}
 
   async findAll(filters: EventFilters): Promise<(EventEntity & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[]> {
     const qb = this.eventRepo
       .createQueryBuilder('e')
       .leftJoinAndSelect('e.city', 'city')
-      .leftJoinAndSelect('e.restaurant', 'restaurant')
-      .leftJoinAndSelect('restaurant.photos', 'photos')
+      .leftJoinAndSelect('e.location', 'location')
+      .leftJoinAndSelect('location.photos', 'photos')
       .leftJoinAndSelect('e.createdByUser', 'createdByUser');
 
     if (filters.cityId) {
@@ -171,6 +174,17 @@ export class EventsService {
         (e as any).reservationAssignee = toPublicUser(e.reservationAssignee);
         if (!isPrivileged) (e as any).reservationContactEmail = null;
       }
+
+      const hasGoingRsvp = myRsvpMap.get(e.id) === RsvpStatus.GOING;
+      if (e.location && !this.locationVisibility.canViewAddressSync(e.location, isPrivileged, hasGoingRsvp)) {
+        e.locationAddress = null as unknown as string;
+        e.locationLat = null;
+        e.locationLng = null;
+        (e.location as any).address = null;
+        (e.location as any).lat = null;
+        (e.location as any).lng = null;
+      }
+
       return Object.assign(e, {
         goingCount: goingCountMap.get(e.id) ?? 0,
         totalAttending: totalMap.get(e.id) ?? 0,
@@ -180,13 +194,13 @@ export class EventsService {
     });
   }
 
-  async findOne(id: number, callerRole?: UserRole): Promise<EventEntity & { publicRsvps: Pick<EventGuestLinkEntity, 'id' | 'recipientName' | 'cancelledAt'>[] }> {
+  async findOne(id: number, callerRole?: UserRole, callerId?: number): Promise<EventEntity & { publicRsvps: Pick<EventGuestLinkEntity, 'id' | 'recipientName' | 'cancelledAt'>[] }> {
     const event = await this.eventRepo.findOne({
       where: { id },
       relations: [
         'city',
-        'restaurant',
-        'restaurant.photos',
+        'location',
+        'location.photos',
         'createdByUser',
         'rsvps',
         'rsvps.user',
@@ -198,6 +212,18 @@ export class EventsService {
 
     const isValidatedMember = callerRole != null && callerRole !== UserRole.NON_VALIDATED;
     const isPrivileged = callerRole === UserRole.ADMIN || callerRole === UserRole.MODERATOR;
+
+    const hasGoingRsvp =
+      callerId != null &&
+      (event.rsvps?.some((r) => r.userId === callerId && r.status === RsvpStatus.GOING) ?? false);
+    if (event.location && !this.locationVisibility.canViewAddressSync(event.location, isPrivileged, hasGoingRsvp)) {
+      event.locationAddress = null as unknown as string;
+      event.locationLat = null;
+      event.locationLng = null;
+      (event.location as any).address = null;
+      (event.location as any).lat = null;
+      (event.location as any).lng = null;
+    }
 
     // Unauthenticated/non-validated callers don't get to know member identities
     // at all; validated members can see who's going (name/photo) but never the
@@ -243,19 +269,19 @@ export class EventsService {
   }
 
   async create(dto: CreateEventDto, userId: number): Promise<EventEntity> {
-    const restaurant = await this.restaurantRepo.findOne({
-      where: { id: dto.restaurantId },
+    const location = await this.locationRepo.findOne({
+      where: { id: dto.locationId },
       relations: ['city'],
     });
-    if (!restaurant) throw new NotFoundException(`Restaurant ${dto.restaurantId} not found`);
+    if (!location) throw new NotFoundException(`Restaurant ${dto.locationId} not found`);
 
     const event = this.eventRepo.create({
       cityId: dto.cityId,
-      restaurantId: restaurant.id,
-      restaurantName: restaurant.name,
-      restaurantAddress: restaurant.address,
-      restaurantLat: restaurant.lat,
-      restaurantLng: restaurant.lng,
+      locationId: location.id,
+      locationName: location.name,
+      locationAddress: location.address,
+      locationLat: location.lat,
+      locationLng: location.lng,
       title: dto.title,
       description: dto.description ?? null,
       additionalInfo: dto.additionalInfo ?? null,
@@ -287,23 +313,23 @@ export class EventsService {
     // Track meaningful changes for update-notification email
     const changedDate = dto.eventDate !== undefined && dto.eventDate !== event.eventDate;
     const changedTime = dto.eventTime !== undefined && dto.eventTime !== event.eventTime.substring(0, 5);
-    const changedRestaurant = dto.restaurantId !== undefined && dto.restaurantId !== event.restaurantId;
+    const changedLocation = dto.locationId !== undefined && dto.locationId !== event.locationId;
 
     if (dto.cityId !== undefined) event.cityId = dto.cityId;
 
-    if (dto.restaurantId && dto.restaurantId !== event.restaurantId) {
-      const restaurant = await this.restaurantRepo.findOne({
-        where: { id: dto.restaurantId },
+    if (dto.locationId && dto.locationId !== event.locationId) {
+      const location = await this.locationRepo.findOne({
+        where: { id: dto.locationId },
       });
-      if (!restaurant) throw new NotFoundException(`Restaurant ${dto.restaurantId} not found`);
+      if (!location) throw new NotFoundException(`Restaurant ${dto.locationId} not found`);
       // Must set the relation object so TypeORM uses the new FK on save,
       // not the old relation it loaded from findOne
-      event.restaurant = restaurant;
-      event.restaurantId = restaurant.id;
-      event.restaurantName = restaurant.name;
-      event.restaurantAddress = restaurant.address;
-      event.restaurantLat = restaurant.lat;
-      event.restaurantLng = restaurant.lng;
+      event.location = location;
+      event.locationId = location.id;
+      event.locationName = location.name;
+      event.locationAddress = location.address;
+      event.locationLat = location.lat;
+      event.locationLng = location.lng;
     }
 
     if (dto.title !== undefined) event.title = dto.title;
@@ -328,13 +354,13 @@ export class EventsService {
 
     await this.eventRepo.save(event);
 
-    // Reload with fresh relations so the response reflects any restaurant/city change
+    // Reload with fresh relations so the response reflects any location/city change
     const saved = await this.findOne(event.id, callerRole);
 
     if (saved.status === EventStatus.CANCELLED && wasPublished) {
       void this.sendCancellationEmails(saved);
       void this.calendarService.invalidateAll();
-    } else if (wasPublished && saved.status === EventStatus.PUBLISHED && (changedDate || changedTime || changedRestaurant)) {
+    } else if (wasPublished && saved.status === EventStatus.PUBLISHED && (changedDate || changedTime || changedLocation)) {
       void this.sendUpdateEmails(saved);
       void this.calendarService.invalidateAll();
     } else if (!wasPublished && saved.status === EventStatus.PUBLISHED) {
@@ -383,7 +409,7 @@ export class EventsService {
         <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay}
       </td></tr>
       <tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span>${event.restaurantName}
+        <span style="color:#C9933A;margin-right:8px">🍽️</span>${event.locationName}
       </td></tr>
     </table>
     ${reasonBlock}
@@ -439,7 +465,7 @@ export class EventsService {
     const timeDisplay = this.formatEventTimeDisplay(eh, emin);
     const eventUrl = `${appUrl}/events/${event.id}`;
 
-    const buildHtml = (recipientName: string) => `<!DOCTYPE html>
+    const buildHtml = (recipientName: string, showAddress: boolean) => `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
@@ -460,7 +486,7 @@ export class EventsService {
         <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay}
       </td></tr>
       <tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>${event.restaurantName}${event.restaurantAddress ? ` — ${event.restaurantAddress}` : ''}
+        <span style="color:#C9933A;margin-right:8px">📍</span>${event.locationName}${showAddress && event.locationAddress ? ` — ${event.locationAddress}` : ''}
       </td></tr>
     </table>
     <p style="text-align:center;margin:0 0 24px">
@@ -483,25 +509,40 @@ export class EventsService {
     });
     for (const rsvp of rsvps) {
       if (!rsvp.user?.email) continue;
+      const showAddress = this.locationVisibility.canViewAddressSync(
+        event.location ?? { id: -1, isPrivate: false },
+        this.locationVisibility.isAdminOrMod(rsvp.user),
+        rsvp.status === RsvpStatus.GOING,
+      );
       await this.emailService.queue({
         toEmail: rsvp.user.email,
         toName: rsvp.user.fullName,
         subject: `Updated: ${event.title}`,
-        htmlBody: buildHtml(rsvp.user.fullName),
+        htmlBody: buildHtml(rsvp.user.fullName, showAddress),
       });
     }
 
     const guestLinks = await this.guestLinkRepo.find({
       where: { eventId: event.id, cancelledAt: IsNull() },
+      relations: ['memberRsvp'],
     });
     for (const link of guestLinks) {
       if (!link.recipientEmail) continue;
       const name = link.recipientName ?? link.recipientEmail;
+      // A public/self-service guest RSVP is itself a confirmed "Going" —
+      // a member-invited guest link inherits the inviting member's status.
+      const showAddress =
+        link.source === 'public' ||
+        this.locationVisibility.canViewAddressSync(
+          event.location ?? { id: -1, isPrivate: false },
+          false,
+          link.memberRsvp?.status === RsvpStatus.GOING,
+        );
       await this.emailService.queue({
         toEmail: link.recipientEmail,
         toName: name,
         subject: `Updated: ${event.title}`,
-        htmlBody: buildHtml(name),
+        htmlBody: buildHtml(name, showAddress),
       });
     }
   }
@@ -592,6 +633,11 @@ export class EventsService {
 
   private async sendPublishInvites(event: EventEntity): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    // Every recipient here is, by construction, someone who hasn't RSVP'd yet
+    // (see the rsvpedIds filter below) — so for a private location, none of
+    // them have earned address visibility regardless of role.
+    const addressVisible = !event.location?.isPrivate;
+    const locationAddress = addressVisible ? event.locationAddress : null;
 
     const members = await this.userRepo
       .createQueryBuilder('u')
@@ -635,13 +681,13 @@ export class EventsService {
     <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You're invited to dinner! 🐻</h1>
     <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.restaurantName}</strong>
+        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.locationName}</strong>
       </td></tr>
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay} ET
       </td></tr>
-      ${event.restaurantAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>${event.restaurantAddress}
+      ${locationAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📍</span>${locationAddress}
       </td></tr>` : ''}
     </table>
     <p style="margin:0 0 24px;font-size:0.9rem;color:#555">Open the attached calendar invite to Accept, Maybe, or Decline — your RSVP will update automatically. Or tap the button below to RSVP on the DinnerBears site.</p>
@@ -662,12 +708,13 @@ export class EventsService {
         event,
         { name: member.fullName, email: member.email },
         appUrl,
+        locationAddress,
       );
 
       await this.emailService.sendNow({
         toEmail: member.email,
         toName: member.fullName,
-        subject: `DinnerBears dinner at ${event.restaurantName} — ${dateDisplay}`,
+        subject: `DinnerBears dinner at ${event.locationName} — ${dateDisplay}`,
         htmlBody: html,
         attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
       }).catch((err: unknown) => {
@@ -704,13 +751,13 @@ export class EventsService {
     <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You're going! 🎉</h1>
     <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.restaurantName}</strong>
+        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.locationName}</strong>
       </td></tr>
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay} ET
       </td></tr>
-      ${event.restaurantAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>${event.restaurantAddress}
+      ${event.locationAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
+        <span style="color:#C9933A;margin-right:8px">📍</span>${event.locationAddress}
       </td></tr>` : ''}
     </table>
     <p style="margin:0 0 24px;font-size:0.9rem;color:#555">A calendar invite is attached — open it to add this dinner to your calendar. You can Accept, Maybe, or Decline directly from the invite.</p>
@@ -736,7 +783,7 @@ export class EventsService {
     await this.emailService.sendNow({
       toEmail: user.email,
       toName: user.fullName,
-      subject: `You're going to DinnerBears at ${event.restaurantName}!`,
+      subject: `You're going to DinnerBears at ${event.locationName}!`,
       htmlBody: html,
       attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
     }).catch((err: unknown) => {
@@ -755,23 +802,30 @@ export class EventsService {
   async getGuestLink(token: string) {
     const link = await this.guestLinkRepo.findOne({
       where: { token },
-      relations: ['event', 'event.restaurant', 'event.restaurant.photos', 'createdBy'],
+      relations: ['event', 'event.location', 'event.location.photos', 'createdBy'],
     });
     if (!link) throw new NotFoundException('Guest link not found');
 
     const event = link.event;
-    const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
+    const photoUrl = event.location?.photos?.[0]?.filePath ?? null;
+    // A guest link is inherently pre-RSVP and unauthenticated, so a private
+    // location's address is always withheld here.
+    const addressVisible = this.locationVisibility.canViewAddressSync(
+      event.location ?? { id: -1, isPrivate: false },
+      false,
+      false,
+    );
 
     return {
       eventTitle: event.title,
       eventDate: event.eventDate,
       eventTime: event.eventTime,
       eventStatus: event.status,
-      restaurantName: event.restaurantName,
-      restaurantAddress: event.restaurantAddress,
-      restaurantLat: event.restaurantLat,
-      restaurantLng: event.restaurantLng,
-      restaurantPhotoUrl: photoUrl,
+      locationName: event.locationName,
+      locationAddress: addressVisible ? event.locationAddress : null,
+      locationLat: addressVisible ? event.locationLat : null,
+      locationLng: addressVisible ? event.locationLng : null,
+      locationPhotoUrl: photoUrl,
       invitedByName: link.createdBy?.fullName ?? 'DinnerBears',
       recipientName: link.recipientName,
       usedAt: link.usedAt,
@@ -832,20 +886,24 @@ export class EventsService {
     return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
   }
 
-  private buildGoogleCalendarUrl(event: EventEntity): string {
+  // locationAddress override lets callers pass '' when the viewer/recipient
+  // hasn't earned visibility into a private location's address — otherwise
+  // this "Add to Calendar" link would leak it even when the email body itself
+  // was correctly redacted.
+  private buildGoogleCalendarUrl(event: EventEntity, locationAddress = event.locationAddress): string {
     const [y, m, d] = event.eventDate.split('-').map(Number);
     const [h, min] = event.eventTime.split(':').map(Number);
     const pad = (n: number) => String(n).padStart(2, '0');
     const start = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
     const end = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
-    const details: string[] = [`🍽️ ${event.restaurantName}`];
+    const details: string[] = [`🍽️ ${event.locationName}`];
     if (event.description) details.push(event.description);
     if (event.additionalInfo) details.push(event.additionalInfo);
     details.push(`View event: ${appUrl}/events/${event.id}`);
     const p = new URLSearchParams({
       action: 'TEMPLATE', text: event.title,
-      dates: `${start}/${end}`, location: event.restaurantAddress,
+      dates: `${start}/${end}`, location: locationAddress,
       details: details.join('\n\n'),
     });
     return `https://calendar.google.com/calendar/render?${p.toString()}`;
@@ -858,10 +916,10 @@ export class EventsService {
     eventTitle: string;
     eventDateDisplay: string;
     eventTimeDisplay: string;
-    restaurantName: string;
-    restaurantAddress: string;
-    restaurantLat: number | null;
-    restaurantLng: number | null;
+    locationName: string;
+    locationAddress: string;
+    locationLat: number | null;
+    locationLng: number | null;
     photoUrl: string | null;
     description: string | null;
     additionalInfo: string | null;
@@ -871,20 +929,20 @@ export class EventsService {
   }): string {
     const {
       appUrl, inviterName, eventTitle, eventDateDisplay, eventTimeDisplay,
-      restaurantName, restaurantAddress, restaurantLat, restaurantLng,
+      locationName, locationAddress, locationLat, locationLng,
       photoUrl, description, additionalInfo, manageUrl, googleCalUrl, icsUrl,
     } = params;
 
     const logoUrl = `${appUrl}/assets/logo.png`;
-    const mapsUrl = (restaurantLat && restaurantLng)
-      ? `https://www.google.com/maps?q=${restaurantLat},${restaurantLng}`
-      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantAddress)}`;
+    const mapsUrl = (locationLat && locationLng)
+      ? `https://www.google.com/maps?q=${locationLat},${locationLng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationAddress)}`;
 
     const icsHost = appUrl.replace(/^https?:\/\//, '');
     const appleCalUrl = `webcal://${icsHost}${icsUrl.replace(appUrl, '')}`;
 
     const photoRow = photoUrl
-      ? `<tr><td style="padding:0;line-height:0"><img src="${appUrl}${photoUrl}" alt="${restaurantName}" width="600" style="display:block;width:100%;max-height:260px;object-fit:cover" /></td></tr>`
+      ? `<tr><td style="padding:0;line-height:0"><img src="${appUrl}${photoUrl}" alt="${locationName}" width="600" style="display:block;width:100%;max-height:260px;object-fit:cover" /></td></tr>`
       : '';
 
     const inviterRow = inviterName
@@ -930,11 +988,11 @@ export class EventsService {
         <strong>${eventDateDisplay}</strong> at ${eventTimeDisplay}
       </td></tr>
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span>${restaurantName}
+        <span style="color:#C9933A;margin-right:8px">🍽️</span>${locationName}
       </td></tr>
       <tr><td style="padding:10px 16px;font-size:0.9rem">
         <span style="color:#C9933A;margin-right:8px">📍</span>
-        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${restaurantAddress}</a>
+        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${locationAddress}</a>
       </td></tr>
     </table>
 
@@ -985,15 +1043,15 @@ export class EventsService {
     const lastMod = toIcsUtcString(new Date(event.updatedAt));
     const sequence = Math.floor(new Date(event.updatedAt).getTime() / 60000) % 999999;
 
-    const descParts: string[] = [`🍽️ ${event.restaurantName}`];
-    if (event.restaurantAddress) descParts.push(event.restaurantAddress);
+    const descParts: string[] = [`🍽️ ${event.locationName}`];
+    if (event.locationAddress) descParts.push(event.locationAddress);
     if (event.description) descParts.push('', event.description);
     if (event.additionalInfo) descParts.push('', event.additionalInfo);
     if (descriptionSuffix) descParts.push('', descriptionSuffix);
 
-    const location = event.restaurantAddress
-      ? `${event.restaurantName}, ${event.restaurantAddress}`
-      : event.restaurantName;
+    const location = event.locationAddress
+      ? `${event.locationName}, ${event.locationAddress}`
+      : event.locationName;
 
     const lines = [
       'BEGIN:VCALENDAR',
@@ -1008,11 +1066,11 @@ export class EventsService {
       `LAST-MODIFIED:${lastMod}`,
       `SEQUENCE:${sequence}`,
       `STATUS:${event.status === EventStatus.CANCELLED ? 'CANCELLED' : 'CONFIRMED'}`,
-      foldIcsLine(`SUMMARY:${icsEscape(`DinnerBears Dinner at ${event.restaurantName}`)}`),
+      foldIcsLine(`SUMMARY:${icsEscape(`DinnerBears Dinner at ${event.locationName}`)}`),
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(descParts.join('\n'))}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=DinnerBears:mailto:noreply@dinnerbears.com`,
+      `ORGANIZER;CN=DinnerBears:mailto:${eventOrganizerEmail(this.config)}`,
       'END:VEVENT',
       'END:VCALENDAR',
     ];
@@ -1046,7 +1104,7 @@ export class EventsService {
   ): Promise<EventGuestLinkEntity> {
     const event = await this.eventRepo.findOne({
       where: { id: eventId },
-      relations: ['restaurant'],
+      relations: ['location'],
     });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
@@ -1094,8 +1152,15 @@ export class EventsService {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
       });
       const eventTimeDisplay = this.formatEventTimeDisplay(eh, emin);
-      const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
+      const photoUrl = event.location?.photos?.[0]?.filePath ?? null;
       const inviterName = rsvp.user?.fullName ?? null;
+      // The inviting member already has legitimate access (they RSVP'd Going
+      // themselves); a guest they personally invite inherits that visibility.
+      const addressVisible = this.locationVisibility.canViewAddressSync(
+        event.location ?? { id: -1, isPrivate: false },
+        false,
+        rsvp.status === RsvpStatus.GOING,
+      );
 
       void this.emailService.queue({
         toEmail: recipientEmail,
@@ -1108,15 +1173,15 @@ export class EventsService {
           eventTitle: event.title,
           eventDateDisplay,
           eventTimeDisplay,
-          restaurantName: event.restaurantName ?? '',
-          restaurantAddress: event.restaurantAddress ?? '',
-          restaurantLat: event.restaurantLat ?? null,
-          restaurantLng: event.restaurantLng ?? null,
+          locationName: event.locationName ?? '',
+          locationAddress: addressVisible ? (event.locationAddress ?? '') : '',
+          locationLat: addressVisible ? event.locationLat : null,
+          locationLng: addressVisible ? event.locationLng : null,
           photoUrl,
           description: event.description ?? null,
           additionalInfo: event.additionalInfo ?? null,
           manageUrl,
-          googleCalUrl: this.buildGoogleCalendarUrl(event),
+          googleCalUrl: this.buildGoogleCalendarUrl(event, addressVisible ? event.locationAddress : ''),
           icsUrl,
         }),
       }).catch((err: unknown) => {
@@ -1130,7 +1195,7 @@ export class EventsService {
   async createPublicRsvp(eventId: number, name: string, email: string): Promise<void> {
     const event = await this.eventRepo.findOne({
       where: { id: eventId },
-      relations: ['city', 'restaurant'],
+      relations: ['city', 'location'],
     });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
@@ -1175,7 +1240,7 @@ export class EventsService {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
     const eventTimeDisplay = this.formatEventTimeDisplay(eh, emin);
-    const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
+    const photoUrl = event.location?.photos?.[0]?.filePath ?? null;
 
     await this.emailService.queue({
       toEmail: email,
@@ -1188,10 +1253,10 @@ export class EventsService {
         eventTitle: event.title,
         eventDateDisplay,
         eventTimeDisplay,
-        restaurantName: event.restaurantName ?? '',
-        restaurantAddress: event.restaurantAddress ?? '',
-        restaurantLat: event.restaurantLat ?? null,
-        restaurantLng: event.restaurantLng ?? null,
+        locationName: event.locationName ?? '',
+        locationAddress: event.locationAddress ?? '',
+        locationLat: event.locationLat ?? null,
+        locationLng: event.locationLng ?? null,
         photoUrl,
         description: event.description ?? null,
         additionalInfo: event.additionalInfo ?? null,
@@ -1300,7 +1365,7 @@ export class EventsService {
   async resendGuestInvite(guestLinkId: number): Promise<void> {
     const link = await this.guestLinkRepo.findOne({
       where: { id: guestLinkId },
-      relations: ['event', 'event.restaurant', 'event.restaurant.photos', 'memberRsvp', 'memberRsvp.user'],
+      relations: ['event', 'event.location', 'event.location.photos', 'memberRsvp', 'memberRsvp.user'],
     });
     if (!link) throw new NotFoundException('Guest link not found');
     if (!link.recipientEmail) throw new BadRequestException('This guest link has no email address to resend to');
@@ -1316,8 +1381,13 @@ export class EventsService {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
     const eventTimeDisplay = this.formatEventTimeDisplay(eh, emin);
-    const photoUrl = event.restaurant?.photos?.[0]?.filePath ?? null;
+    const photoUrl = event.location?.photos?.[0]?.filePath ?? null;
     const inviterName = link.memberRsvp?.user?.fullName ?? null;
+    const addressVisible = this.locationVisibility.canViewAddressSync(
+      event.location ?? { id: -1, isPrivate: false },
+      false,
+      link.memberRsvp?.status === RsvpStatus.GOING,
+    );
 
     await this.emailService.queue({
       toEmail: link.recipientEmail,
@@ -1330,15 +1400,15 @@ export class EventsService {
         eventTitle: event.title,
         eventDateDisplay,
         eventTimeDisplay,
-        restaurantName: event.restaurantName ?? '',
-        restaurantAddress: event.restaurantAddress ?? '',
-        restaurantLat: event.restaurantLat ?? null,
-        restaurantLng: event.restaurantLng ?? null,
+        locationName: event.locationName ?? '',
+        locationAddress: addressVisible ? (event.locationAddress ?? '') : '',
+        locationLat: addressVisible ? event.locationLat : null,
+        locationLng: addressVisible ? event.locationLng : null,
         photoUrl,
         description: event.description ?? null,
         additionalInfo: event.additionalInfo ?? null,
         manageUrl,
-        googleCalUrl: this.buildGoogleCalendarUrl(event),
+        googleCalUrl: this.buildGoogleCalendarUrl(event, addressVisible ? event.locationAddress : ''),
         icsUrl,
       }),
     });
@@ -1371,7 +1441,7 @@ export class EventsService {
     return users.map((u) => ({ id: u.id, fullName: u.fullName }));
   }
 
-  async getReservationInfo(token: string): Promise<{ eventTitle: string; restaurantName: string; eventDate: string; eventTime: string; inviteToken?: string }> {
+  async getReservationInfo(token: string): Promise<{ eventTitle: string; locationName: string; eventDate: string; eventTime: string; inviteToken?: string }> {
     const event = await this.eventRepo.findOne({ where: { reservationConfirmToken: token } });
     if (!event) throw new NotFoundException('Confirmation link not found');
     let inviteToken: string | undefined;
@@ -1389,7 +1459,7 @@ export class EventsService {
     }
     return {
       eventTitle: event.title,
-      restaurantName: event.restaurantName,
+      locationName: event.locationName,
       eventDate: event.eventDate,
       eventTime: event.eventTime,
       ...(inviteToken ? { inviteToken } : {}),
@@ -1399,7 +1469,7 @@ export class EventsService {
   async setReservation(eventId: number, dto: SetReservationDto, callerUser?: UserEntity): Promise<EventEntity> {
     const event = await this.eventRepo.findOne({
       where: { id: eventId },
-      relations: ['restaurant', 'reservationAssignee'],
+      relations: ['location', 'reservationAssignee'],
     });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
 
@@ -1537,12 +1607,12 @@ export class EventsService {
     const ctaUrl = confirmUrl ?? eventUrl;
     const ctaLabel = confirmUrl ? 'Mark Reservation as Made' : 'View Event';
 
-    const mapsUrl = (event.restaurantLat && event.restaurantLng)
-      ? `https://www.google.com/maps?q=${event.restaurantLat},${event.restaurantLng}`
-      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.restaurantAddress)}`;
+    const mapsUrl = (event.locationLat && event.locationLng)
+      ? `https://www.google.com/maps?q=${event.locationLat},${event.locationLng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.locationAddress)}`;
 
-    const phone = event.restaurant?.phone ?? null;
-    const websiteUrl = event.restaurant?.websiteUrl ?? null;
+    const phone = event.location?.phone ?? null;
+    const websiteUrl = event.location?.websiteUrl ?? null;
     const phoneRow = phone
       ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">📞</span>
@@ -1578,13 +1648,13 @@ export class EventsService {
       </td></tr>
       <tr><td style="padding:10px 16px;${phone || websiteUrl ? 'border-bottom:1px solid #e8e0d6;' : ''}font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">📍</span>
-        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${event.restaurantName} — ${event.restaurantAddress}</a>
+        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${event.locationName} — ${event.locationAddress}</a>
       </td></tr>
       ${phoneRow}
       ${websiteRow}
     </table>
     <p style="margin:0 0 12px;font-size:0.9rem;color:#555">
-      Please call <strong>${event.restaurantName}</strong> and make a reservation for about
+      Please call <strong>${event.locationName}</strong> and make a reservation for about
       <strong>20&ndash;25 people</strong> to start. A few things to mention when you call:
     </p>
     <ul style="margin:0 0 16px;padding-left:20px;font-size:0.9rem;color:#555;line-height:1.7">
@@ -1621,7 +1691,7 @@ export class EventsService {
     });
   }
 
-  async confirmReservation(token: string): Promise<{ eventTitle: string; restaurantName: string; eventDate: string; eventTime: string; inviteToken?: string }> {
+  async confirmReservation(token: string): Promise<{ eventTitle: string; locationName: string; eventDate: string; eventTime: string; inviteToken?: string }> {
     const event = await this.eventRepo.findOne({ where: { reservationConfirmToken: token } });
     if (!event) throw new NotFoundException('Confirmation link not found or already used');
     event.reservationConfirmed = true;
@@ -1643,7 +1713,7 @@ export class EventsService {
     }
     return {
       eventTitle: event.title,
-      restaurantName: event.restaurantName,
+      locationName: event.locationName,
       eventDate: event.eventDate,
       eventTime: event.eventTime,
       ...(inviteToken ? { inviteToken } : {}),
@@ -1670,7 +1740,7 @@ export class EventsService {
 
     const events = await this.eventRepo
       .createQueryBuilder('e')
-      .leftJoinAndSelect('e.restaurant', 'restaurant')
+      .leftJoinAndSelect('e.location', 'location')
       .where('e.status = :status', { status: EventStatus.PUBLISHED })
       .andWhere('e.reservationSeatsEmailSent = 0')
       .andWhere('(e.reservationAssigneeId IS NOT NULL OR e.reservationContactEmail IS NOT NULL)')
@@ -1721,12 +1791,12 @@ export class EventsService {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
     const timeDisplay = this.formatEventTimeDisplay(eh, emin);
-    const mapsUrl = (event.restaurantLat && event.restaurantLng)
-      ? `https://www.google.com/maps?q=${event.restaurantLat},${event.restaurantLng}`
-      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.restaurantAddress)}`;
+    const mapsUrl = (event.locationLat && event.locationLng)
+      ? `https://www.google.com/maps?q=${event.locationLat},${event.locationLng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.locationAddress)}`;
 
-    const rPhone = event.restaurant?.phone ?? null;
-    const rWebsite = event.restaurant?.websiteUrl ?? null;
+    const rPhone = event.location?.phone ?? null;
+    const rWebsite = event.location?.websiteUrl ?? null;
     const rPhoneRow = rPhone
       ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">📞</span>
@@ -1762,7 +1832,7 @@ export class EventsService {
       </td></tr>
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">📍</span>
-        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${event.restaurantName} — ${event.restaurantAddress}</a>
+        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${event.locationName} — ${event.locationAddress}</a>
       </td></tr>
       ${rPhoneRow}
       ${rWebsiteRow}
@@ -1773,7 +1843,7 @@ export class EventsService {
       </td></tr>
     </table>
     <p style="margin:0 0 16px;font-size:0.9rem;color:#555">
-      The event starts in about 2 hours. Please call <strong>${event.restaurantName}</strong> now and update the reservation
+      The event starts in about 2 hours. Please call <strong>${event.locationName}</strong> now and update the reservation
       to <strong>${suggestedCount} people</strong> (${goingCount} confirmed + 3 for walk-ins).
     </p>
     <p style="text-align:center;margin:0 0 20px">
@@ -1795,7 +1865,7 @@ export class EventsService {
     await this.emailService.queue({
       toEmail: recipientEmail,
       toName: recipientName,
-      subject: `Headcount update for ${event.title} — please call ${event.restaurantName}`,
+      subject: `Headcount update for ${event.title} — please call ${event.locationName}`,
       htmlBody: html,
     });
   }
