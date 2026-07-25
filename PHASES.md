@@ -1454,7 +1454,7 @@ the sync logic exists to do it correctly.
 
 ---
 
-## Phase 29 — White-Label Template for a New Group
+## Phase 29 — White-Label Template for a New Group ✅ Complete
 
 Started 2026-07-21. Rob wants to stand up a second, separately-branded
 community dining site for a different group (Southwest Ohio) — a fork of

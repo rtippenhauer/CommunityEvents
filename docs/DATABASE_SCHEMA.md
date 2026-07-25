@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-07-23_
+_Last updated: 2026-07-24_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -932,14 +932,26 @@ Seed rows:
   ("2nd Saturday") pattern
 - `event_cadence_time` (Phase 29) = `18:30` — time of day (24h `HH:mm`) new events
   default to
+- `brand_name` (Phase 29) = `DinnerBears` — app name shown in nav/footer/page title
+- `brand_tagline` (Phase 29) = `Good food. Great company. Bear memories.`
+- `theme_color_primary` (Phase 29) = `#C9933A` — primary brand color (also drives
+  Angular Material `--mat-sys-*` tokens at runtime)
+- `theme_color_accent` (Phase 29) = `#C9933A`
+- `theme_color_background` (Phase 29) = `#FDFAF5`
+- `brand_logo_url` / `brand_splash_url` / `brand_icon_url` (Phase 29) — **not
+  seeded** (empty default); set to an `/api/uploads/branding/<file>` path when an
+  admin uploads a replacement image, else the frontend uses its compiled-in
+  default asset
 
 The Phase 30 and Phase 29 rows above are editable via the admin UI
 (`/admin/legal`, `/admin/settings`), unlike the rest of this table which has
-no management UI yet. `AppConfigController` (`GET /api/v1/config/:key`,
-public) and `AppConfigAdminController` (`GET /api/v1/admin/config/legal`,
-`GET /api/v1/admin/config/site-settings`, `PATCH /api/v1/admin/config/:key`,
-admin-only) only serve these six keys — see `LEGAL_CONFIG_KEYS` /
-`SITE_SETTING_KEYS` in `api/src/modules/app-config/app-config.service.ts`.
+no management UI yet. `AppConfigController` (`GET /api/v1/config/:key` and
+`GET /api/v1/config/branding`, public) and `AppConfigAdminController`
+(`GET /api/v1/admin/config/legal`, `GET /api/v1/admin/config/site-settings`,
+`PATCH /api/v1/admin/config/:key`, plus branding-image upload/reset at
+`POST|PATCH /api/v1/admin/config/branding/image/:slot`, admin-only) only serve
+these keys — see `LEGAL_CONFIG_KEYS` / `SITE_SETTING_KEYS` in
+`api/src/modules/app-config/app-config.service.ts`.
 
 ---
 
@@ -974,3 +986,7 @@ admin-only) only serve these six keys — see `LEGAL_CONFIG_KEYS` /
   photo uses `/api/v1/uploads/profiles/<filename>` (auth-gated route, 401 if
   not signed in) — but for a preset avatar it's `/avatars/bear-*.jpg`
   (static frontend asset, always public, unrelated to `UPLOAD_PATH`)
+- Brand images (Phase 29): admin-uploaded logo/splash/icon are stored under
+  `<UPLOAD_PATH>/branding/` and served public+static at
+  `/api/uploads/branding/<filename>`; the resulting path is saved to the
+  `brand_logo_url`/`brand_splash_url`/`brand_icon_url` `app_config` rows
