@@ -9,6 +9,10 @@ export class CreateLocationDto {
   @IsOptional()
   isPrivate?: boolean;
 
+  @IsBoolean()
+  @IsOptional()
+  isResidence?: boolean;
+
   @IsString()
   @MaxLength(500)
   address: string;

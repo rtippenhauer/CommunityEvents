@@ -163,6 +163,23 @@ export class EnrichmentService {
       placeFound: false,
     };
 
+    // Residences aren't businesses — skip the Google Places lookup (which would
+    // rewrite the name/phone/website/address to some nearby business) and the
+    // "restaurant" description. Only try a Street View photo of the address, and
+    // never touch the address itself.
+    if (location.isResidence) {
+      if (this.googleKey && location.photos.length === 0) {
+        result.photoAdded = await this.downloadStreetViewPhoto(
+          location.id,
+          location.address,
+          location.city?.name,
+          uploaderId,
+        );
+      }
+      await this.locationRepo.update(location.id, { enrichedAt: new Date() });
+      return result;
+    }
+
     let placeData: PlaceDetailsResponse['result'] | null = null;
 
     if (this.googleKey) {

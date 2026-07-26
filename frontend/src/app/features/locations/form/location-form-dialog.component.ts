@@ -149,6 +149,15 @@ interface City {
             visitors never see it.
           </p>
 
+          <mat-slide-toggle formControlName="isResidence" class="private-toggle">
+            Residence
+          </mat-slide-toggle>
+          <p class="private-hint">
+            A private home, not a business. Enrichment won't look it up as a business — it only
+            pulls a Street View photo and leaves the address as entered. Name it however you like
+            (e.g. "Rob &amp; Terry's").
+          </p>
+
           @if (cities.length > 1) {
             <mat-form-field appearance="outline">
               <mat-label>City</mat-label>
@@ -443,6 +452,7 @@ export class LocationFormDialogComponent implements OnInit {
     name: ['', [Validators.required, Validators.maxLength(255)]],
     address: ['', [Validators.required, Validators.maxLength(500)]],
     isPrivate: [false],
+    isResidence: [false],
     cityId: [0, [Validators.required, Validators.min(1)]],
     phone: [''],
     websiteUrl: [''],
@@ -474,6 +484,7 @@ export class LocationFormDialogComponent implements OnInit {
         name: r.name,
         address: r.address ?? '',
         isPrivate: r.isPrivate,
+        isResidence: r.isResidence,
         cityId: r.cityId,
         phone: r.phone ?? '',
         websiteUrl: r.websiteUrl ?? '',
@@ -526,6 +537,7 @@ export class LocationFormDialogComponent implements OnInit {
       name: val.name,
       address: val.address,
       isPrivate: val.isPrivate,
+      isResidence: val.isResidence,
       cityId: val.cityId,
       phone: val.phone.trim() || null,
       websiteUrl: val.websiteUrl.trim() || null,

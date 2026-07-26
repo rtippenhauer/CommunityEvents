@@ -51,6 +51,10 @@ export class UpdateLocationDto {
   @IsOptional()
   isPrivate?: boolean;
 
+  @IsBoolean()
+  @IsOptional()
+  isResidence?: boolean;
+
   @ValidateIf((o: UpdateLocationDto) => o.moderatorNotes !== null)
   @IsString()
   @IsOptional()

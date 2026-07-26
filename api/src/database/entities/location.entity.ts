@@ -59,6 +59,12 @@ export class LocationEntity {
   @Column({ name: 'is_private', default: false })
   isPrivate: boolean;
 
+  // A private home / non-business venue. Enrichment skips the Google Places
+  // business lookup (no name/phone/website/description rewrite and the address
+  // is left untouched) and only tries to pull a Street View photo.
+  @Column({ name: 'is_residence', default: false })
+  isResidence: boolean;
+
   @Column({
     name: 'imported_from',
     type: 'enum',
