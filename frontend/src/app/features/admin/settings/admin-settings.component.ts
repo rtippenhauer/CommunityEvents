@@ -551,15 +551,16 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
         color: #888;
       }
       .terms-intro {
-        margin: 0 0 14px;
+        margin: 0 0 20px;
       }
       .term-row {
         display: flex;
         gap: 16px;
         flex-wrap: wrap;
+        margin-bottom: 16px;
         mat-form-field {
           flex: 1;
-          min-width: 160px;
+          min-width: 200px;
         }
       }
       .brand-images {

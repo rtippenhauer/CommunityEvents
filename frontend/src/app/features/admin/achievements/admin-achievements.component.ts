@@ -79,7 +79,7 @@ function buildCategoryMeta(b: BrandConfigService): Record<string, CategoryMeta> 
       description: `Earned by attending events flagged as secret — where the ${loc} isn't revealed until the day of the ${dinner}.`,
     },
     founding: {
-      label: 'Founding Bear',
+      label: 'Founding Member',
       icon: 'history_edu',
       isProgressive: false,
       description:
@@ -158,7 +158,7 @@ interface AddForm extends EditForm {
           mat-stroked-button
           (click)="backfillFounders()"
           [disabled]="backfilling()"
-          matTooltip="Grant Founding Bear to all active members who don't already have it"
+          matTooltip="Grant Founding Member to all active members who don't already have it"
         >
           @if (backfilling()) {
             <mat-spinner diameter="16" />
@@ -824,8 +824,8 @@ export class AdminAchievementsComponent implements OnInit {
         this.backfilling.set(false);
         const msg =
           granted > 0
-            ? `Founding Bear granted to ${granted} new member(s)`
-            : 'All active members already have Founding Bear';
+            ? `Founding Member granted to ${granted} new member(s)`
+            : 'All active members already have Founding Member';
         this.snackBar.open(msg, 'OK', { duration: 4000 });
       },
       error: () => {

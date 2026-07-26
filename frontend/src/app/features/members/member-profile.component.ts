@@ -74,7 +74,7 @@ function buildAchievementCategories(
     rating: { label: 'Ratings', icon: 'star' },
     city_hopper: { label: 'City Hopper', icon: 'flight' },
     secret_dinner: { label: `Secret ${b.dinnerPlural()}`, icon: 'lock' },
-    founding: { label: 'Founding Bear', icon: 'history_edu' },
+    founding: { label: 'Founding Member', icon: 'history_edu' },
     event: { label: `Special ${b.dinnerPlural()}`, icon: 'celebration' },
     login: { label: 'Site Visits', icon: 'login' },
     other: { label: 'Special', icon: 'emoji_events' },

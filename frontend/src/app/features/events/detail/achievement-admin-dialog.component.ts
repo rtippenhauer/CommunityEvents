@@ -160,7 +160,7 @@ export interface AchievementAdminDialogData {
               matInput
               [value]="formTitle()"
               (input)="formTitle.set($any($event.target).value)"
-              placeholder="e.g. Founding Bear"
+              placeholder="e.g. Trailblazer"
             />
           </mat-form-field>
           <mat-form-field appearance="outline" class="ach-field ach-field-xs">

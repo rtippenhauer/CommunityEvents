@@ -49,14 +49,14 @@ import { MerchService } from '../../../core/services/merch.service';
               </mat-form-field>
 
               <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
-                <mat-label>Founding Bear Exclusive Product URL</mat-label>
+                <mat-label>Founding Member Exclusive Product URL</mat-label>
                 <input
                   matInput
                   formControlName="foundingBearProductUrl"
                   placeholder="https://dinnerbears.printful.me/product/..."
                 />
                 <mat-hint>
-                  Only shown to members with the Founding Bear achievement. Use an
+                  Only shown to members with the Founding Member achievement. Use an
                   unlisted/unpublished Printful product link — leave blank until that product
                   exists.
                 </mat-hint>

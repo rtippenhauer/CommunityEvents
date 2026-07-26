@@ -82,11 +82,18 @@ export class LocationsService {
     });
   }
 
-  // Member-facing reads (controller GET routes) — redacts address/lat/lng
-  // for private locations the requester hasn't earned visibility into.
+  // Member-facing reads (controller GET routes). Private locations are hidden
+  // from the browsable list entirely for anyone who isn't admin/mod — members
+  // only encounter them contextually through an event they're attending (where
+  // the address is separately gated by redact()). For privileged viewers the
+  // full set is returned; redact() then still nulls address/lat/lng for anyone
+  // without earned visibility.
   async findAllForUser(query: LocationQuery, user: UserEntity | null): Promise<LocationEntity[]> {
     const locations = await this.findAll(query);
-    return Promise.all(locations.map((l) => this.locationVisibility.redact(l, user)));
+    const visible = this.locationVisibility.isAdminOrMod(user)
+      ? locations
+      : locations.filter((l) => !l.isPrivate);
+    return Promise.all(visible.map((l) => this.locationVisibility.redact(l, user)));
   }
 
   async findOneForUser(id: number, user: UserEntity | null): Promise<LocationEntity> {
