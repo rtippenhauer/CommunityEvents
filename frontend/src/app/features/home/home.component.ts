@@ -752,7 +752,11 @@ export class HomeComponent implements OnInit {
   // clearing a block in the editor actually hide its home-page section.
   hasContent(html: string): boolean {
     if (!html) return false;
-    if (/<(img|iframe|video)\b/i.test(html)) return true;
-    return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim().length > 0;
+    // Parse rather than regex-strip tags: DOMParser reads visible text via
+    // textContent without executing scripts or loading resources, and avoids
+    // the incomplete-sanitization pitfalls of single-pass tag removal.
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    if (doc.querySelector('img, iframe, video')) return true;
+    return normalizeNbsp(doc.body.textContent ?? '').trim().length > 0;
   }
 }
