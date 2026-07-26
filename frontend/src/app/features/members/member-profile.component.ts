@@ -163,8 +163,8 @@ interface AchievementGroup {
                     />
                   } @else {
                     <img
-                      src="/avatars/bear-default.jpg"
-                      alt="Bear avatar"
+                      src="/assets/default-avatar.svg"
+                      alt="Member"
                       class="profile-photo"
                       [class.photo-banned]="profile()!.status === 'suspended'"
                     />
@@ -252,7 +252,7 @@ interface AchievementGroup {
                         />
                       } @else {
                         <img
-                          src="/avatars/bear-default.jpg"
+                          src="/assets/default-avatar.svg"
                           [alt]="profile()!.invitedBy!.fullName"
                         />
                       }
@@ -273,7 +273,7 @@ interface AchievementGroup {
                           @if (m.profilePhotoPath) {
                             <img [src]="m.profilePhotoPath" [alt]="m.fullName" />
                           } @else {
-                            <img src="/avatars/bear-default.jpg" [alt]="m.fullName" />
+                            <img src="/assets/default-avatar.svg" [alt]="m.fullName" />
                           }
                         </div>
                         <span>{{ m.fullName }}</span>

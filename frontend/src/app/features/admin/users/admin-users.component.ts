@@ -81,7 +81,7 @@ interface AdminUser {
                       @if (u.profilePhotoPath) {
                         <img [src]="u.profilePhotoPath" [alt]="u.fullName" />
                       } @else {
-                        <img src="/avatars/bear-default.jpg" alt="Bear avatar" />
+                        <img src="/assets/default-avatar.svg" alt="Member" />
                       }
                     </div>
                   </td>

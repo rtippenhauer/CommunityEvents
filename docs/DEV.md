@@ -71,7 +71,9 @@ All scripts run from the **repo root**.
 bash scripts/publish-latest.sh
 ```
 
-Builds `rtippenhauer/dinnerbears:latest` for `linux/amd64` and pushes to Docker Hub.
+Builds `rtippenhauer/community-events:latest` for `linux/amd64` and pushes to Docker Hub.
+This one generic image serves every instance (DinnerBears, Sons, …); all branding
+is runtime (DB + `.env`), so there is no per-instance build.
 
 ### Staging image (`stage` tag)
 
@@ -82,7 +84,9 @@ bash scripts/publish-stage.sh
 bash scripts/publish-stage.sh --no-cache
 ```
 
-Builds `rtippenhauer/dinnerbears:stage` and pushes to Docker Hub.
+Builds `rtippenhauer/community-events:stage` and pushes to Docker Hub. Stage vs prod
+is a runtime distinction (the `IS_STAGE` env var), so this is the same production
+build as `:latest` — just a separately-promotable tag.
 
 ---
 

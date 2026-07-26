@@ -2,6 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
+import { reshade, darkenBy } from '../utils/color.util';
 
 export interface BrandConfig {
   name: string;
@@ -12,6 +13,15 @@ export interface BrandConfig {
   logoUrl: string;
   splashUrl: string;
   iconUrl: string;
+  storyUrl: string;
+  // Per-instance values that used to be compiled into the frontend bundle
+  // (environment.*.ts). Now served from this instance's .env via
+  // /config/branding so one generic image serves any instance.
+  vapidPublicKey: string | null;
+  facebookAppId: string | null;
+  isStage: boolean;
+  appUrl: string;
+  baseDomain: string;
 }
 
 // Compiled-in default assets a fresh fork ships with. Used whenever the
@@ -35,6 +45,16 @@ const DEFAULT_BRAND: BrandConfig = {
   logoUrl: '',
   splashUrl: '',
   iconUrl: '',
+  storyUrl: '',
+  // Null/empty until the branding fetch resolves. A network hiccup leaves push
+  // and Facebook login disabled (feature-detected off a null key) rather than
+  // crashing the shell — the same graceful-degradation the old baked-in
+  // `null` defaults gave.
+  vapidPublicKey: null,
+  facebookAppId: null,
+  isStage: false,
+  appUrl: '',
+  baseDomain: '',
 };
 
 // Loaded once via provideAppInitializer (see app.config.ts), same pattern
@@ -57,6 +77,16 @@ export class BrandConfigService {
   readonly logoSrc = computed(() => this.brand().logoUrl || DEFAULT_LOGO);
   readonly splashSrc = computed(() => this.brand().splashUrl || DEFAULT_SPLASH);
   readonly iconSrc = computed(() => this.brand().iconUrl || DEFAULT_ICON);
+  // No compiled-in fallback: empty means the home-page story image is hidden.
+  readonly storyImageUrl = computed(() => this.brand().storyUrl);
+
+  // Per-instance runtime values (formerly environment.*.ts). Read as signals so
+  // callers stay reactive if branding is ever refreshed mid-session.
+  readonly vapidPublicKey = computed(() => this.brand().vapidPublicKey);
+  readonly facebookAppId = computed(() => this.brand().facebookAppId);
+  readonly isStage = computed(() => this.brand().isStage);
+  readonly appUrl = computed(() => this.brand().appUrl);
+  readonly baseDomain = computed(() => this.brand().baseDomain);
 
   async init(): Promise<void> {
     try {
@@ -67,7 +97,9 @@ export class BrandConfigService {
       // index.html's static <title> is what search engines/the initial tab
       // title show — this only updates the *live* tab title once Angular
       // has booted. Per-route titles (if ever added) would override this.
-      this.titleService.setTitle(config.name);
+      // Stage instances get a " (Stage)" suffix so the tab stays distinguishable
+      // from prod now that there's no separate stage build/index.html.
+      this.titleService.setTitle(config.isStage ? `${config.name} (Stage)` : config.name);
     } catch {
       // Keep the built-in default — styles.scss already renders it, so a
       // failed fetch here is a no-op, not a broken page.
@@ -101,6 +133,42 @@ export class BrandConfigService {
     // "tertiary" system color, not "secondary".
     root.setProperty('--mat-sys-tertiary', config.colorAccent);
     root.setProperty('--mat-sys-on-tertiary', '#ffffff');
+
+    this.applyChrome(config.colorPrimary, config.colorBackground);
+  }
+
+  // Derive the dark "chrome" palette (toolbar, sidenav, footer, stage banner,
+  // hover shades) from the single configured primary + background, so a fork
+  // gets a coherent dark UI in its own hue instead of DinnerBears' hardcoded
+  // browns. styles.scss keeps the browns as the compiled-in fallback for the
+  // pre-JS paint; these runtime values override them once branding loads.
+  // Absolute target lightness values are chosen to sit near DinnerBears'
+  // original hand-picked browns when primary is the amber default — a
+  // different brand hue (e.g. Sons' green) yields the equivalent dark tones in
+  // that hue. Saturation is forced up for the darkest tones so they read as a
+  // rich shade of the brand rather than muddy near-black.
+  private applyChrome(primary: string, background: string): void {
+    const root = document.documentElement.style;
+    // Dark brown/chrome family — target lightness, boosted saturation.
+    root.setProperty('--db-brown', reshade(primary, 9, 80));
+    root.setProperty('--db-brown-dark', reshade(primary, 13, 80));
+    root.setProperty('--db-brown-nav', reshade(primary, 13, 80));
+    root.setProperty('--db-brown-card', reshade(primary, 16, 80));
+    root.setProperty('--db-brown-mid', reshade(primary, 24, 85));
+    // Stage banner — a saturated mid-dark shade of the brand.
+    root.setProperty('--db-banner', reshade(primary, 35, 90));
+    // Hover shades of the primary (keep the brand's own saturation).
+    root.setProperty('--db-primary-dark', reshade(primary, 37));
+    root.setProperty('--db-amber-dark', reshade(primary, 37));
+    // Accent for text/marks sitting ON the dark chrome (stats strip, story
+    // section). The raw primary works on light backgrounds, but a *dark* brand
+    // color (e.g. Sons' green) has almost no contrast against its own derived
+    // dark-chrome shade — so use a lightened tint here instead.
+    root.setProperty('--db-accent-on-dark', reshade(primary, 66));
+    // Muted secondary-text-on-dark tone: a light, desaturated brand tint.
+    root.setProperty('--db-cream-muted', reshade(primary, 65, 38));
+    // Slightly darker cream, derived from the background (the inset nav band).
+    root.setProperty('--db-cream-dark', darkenBy(background, 8));
   }
 
   // Swaps the live favicon + apple-touch-icon <link>s. index.html's static

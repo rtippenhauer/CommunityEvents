@@ -21,14 +21,17 @@ export function toPublicUser(user: UserEntity | null | undefined): PublicUser | 
  * Same as toPublicUser, but for responses served to fully anonymous callers
  * (no login at all). Uploaded profile photos require a login to view
  * (ProfilePhotosController), so serving one here would just 401 in the
- * visitor's browser — this nulls it out instead. Preset avatars
- * (/avatars/bear-*.jpg) are static assets and always safe to show.
+ * visitor's browser — this nulls it out instead. Preset avatars are safe to
+ * show: the static bear set (/avatars/*) and admin-uploaded ones
+ * (/api/uploads/avatars/*) are both served without an auth check.
  */
 export function toAnonSafeUser(user: UserEntity | null | undefined): PublicUser | null {
   const pub = toPublicUser(user);
   if (!pub) return null;
-  const isPresetAvatar = pub.profilePhotoPath?.startsWith('/avatars/') ?? false;
-  return { ...pub, profilePhotoPath: isPresetAvatar ? pub.profilePhotoPath : null };
+  const path = pub.profilePhotoPath;
+  const isPresetAvatar =
+    (path?.startsWith('/avatars/') || path?.startsWith('/api/uploads/avatars/')) ?? false;
+  return { ...pub, profilePhotoPath: isPresetAvatar ? path : null };
 }
 
 /**

@@ -7,10 +7,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { forkJoin } from 'rxjs';
 import { AppConfigService, BrandImageSlot } from '../../../core/services/app-config.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
+import { AvatarsService, Avatar } from '../../../core/services/avatars.service';
 
 const WEEKDAYS = [
   { value: '0', label: 'Sunday' },
@@ -36,6 +38,7 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
     MatInputModule,
     MatProgressSpinnerModule,
     MatSelectModule,
+    MatSlideToggleModule,
     MatSnackBarModule,
   ],
   template: `
@@ -234,11 +237,103 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
                 </div>
               </div>
 
+              <div class="image-row">
+                <div class="image-preview splash-preview">
+                  @if (brandConfigService.brand().storyUrl) {
+                    <img [src]="brandConfigService.brand().storyUrl" alt="Story image preview" />
+                  } @else {
+                    <span class="no-image-hint">None</span>
+                  }
+                </div>
+                <div class="image-controls">
+                  <div class="image-label">
+                    Story Brand Image <span>— home page "Our Story" section (hidden if none)</span>
+                  </div>
+                  <div class="image-actions">
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="storyInput.click()"
+                      [disabled]="uploadingSlot() === 'story'"
+                    >
+                      <mat-icon>upload</mat-icon>
+                      {{ uploadingSlot() === 'story' ? 'Uploading…' : 'Upload' }}
+                    </button>
+                    @if (brandConfigService.brand().storyUrl) {
+                      <button
+                        mat-button
+                        type="button"
+                        (click)="resetImage('story')"
+                        [disabled]="uploadingSlot() === 'story'"
+                      >
+                        Remove
+                      </button>
+                    }
+                    <input
+                      #storyInput
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      hidden
+                      (change)="onImageSelected('story', $event)"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <p class="cadence-hint">
                 Uploads apply immediately (max 5&nbsp;MB; PNG, JPEG, WebP, or GIF). The installed-PWA
                 icon comes from a static manifest and still needs a file swap + rebuild to change.
               </p>
             </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Avatars</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <p class="cadence-hint">
+              Preset profile pictures members can choose from. Upload your own set (max 5&nbsp;MB;
+              PNG, JPEG, WebP, or GIF). Removing one doesn't affect members who already picked it
+              until they choose another.
+            </p>
+            <div class="avatar-admin-grid">
+              @for (avatar of avatars(); track avatar.id) {
+                <div class="avatar-admin-tile">
+                  <img [src]="avatar.path" [alt]="avatar.label" />
+                  <button
+                    mat-icon-button
+                    class="avatar-delete"
+                    type="button"
+                    [attr.aria-label]="'Remove ' + avatar.label"
+                    (click)="deleteAvatar(avatar)"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </div>
+              } @empty {
+                <p class="avatar-empty">
+                  No avatars yet — upload some for members to choose from.
+                </p>
+              }
+            </div>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="avatarInput.click()"
+              [disabled]="uploadingAvatar()"
+            >
+              <mat-icon>upload</mat-icon>
+              {{ uploadingAvatar() ? 'Uploading…' : 'Add avatar' }}
+            </button>
+            <input
+              #avatarInput
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              hidden
+              (change)="onAvatarSelected($event)"
+            />
           </mat-card-content>
         </mat-card>
 
@@ -286,6 +381,23 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
             <p class="cadence-hint">
               New events default to the next occurrence of this day/time. Only a fixed weekly
               cadence is supported today — a monthly ("2nd Saturday") pattern isn't built yet.
+            </p>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Home Page</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <form [formGroup]="form">
+              <mat-slide-toggle formControlName="showStats" color="primary">
+                Show the stats bar (members / dinners / restaurants)
+              </mat-slide-toggle>
+            </form>
+            <p class="cadence-hint">
+              Turn off to hide the counts strip on the home page. Edit the hero text and "Our
+              Story" copy under <strong>Admin → Content &amp; Legal</strong>.
             </p>
           </mat-card-content>
         </mat-card>
@@ -338,6 +450,50 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
         padding: 0;
         cursor: pointer;
         background: none;
+      }
+      .avatar-admin-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 8px 0 16px;
+      }
+      .avatar-admin-tile {
+        position: relative;
+        width: 64px;
+        height: 64px;
+        img {
+          width: 64px;
+          height: 64px;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 2px solid #ddd;
+        }
+      }
+      .avatar-admin-tile .avatar-delete {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        width: 24px;
+        height: 24px;
+        line-height: 24px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 50%;
+        mat-icon {
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          line-height: 16px;
+        }
+      }
+      .avatar-empty {
+        color: var(--db-brown-mid);
+        font-size: 0.9rem;
+        margin: 4px 0;
+      }
+      .no-image-hint {
+        color: #999;
+        font-size: 0.8rem;
       }
       .cadence-form {
         display: flex;
@@ -443,12 +599,15 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 export class AdminSettingsComponent implements OnInit {
   private readonly appConfigService = inject(AppConfigService);
   readonly brandConfigService = inject(BrandConfigService);
+  private readonly avatarsService = inject(AvatarsService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(NonNullableFormBuilder);
 
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly uploadingSlot = signal<BrandImageSlot | null>(null);
+  readonly avatars = signal<Avatar[]>([]);
+  readonly uploadingAvatar = signal(false);
   readonly weekdays = WEEKDAYS;
 
   readonly form = this.fb.group({
@@ -460,6 +619,7 @@ export class AdminSettingsComponent implements OnInit {
     locationPrivacyDefault: this.fb.control<'public' | 'private'>('public'),
     eventCadenceWeekday: this.fb.control('2'),
     eventCadenceTime: this.fb.control('18:30'),
+    showStats: this.fb.control(true),
   });
 
   ngOnInit(): void {
@@ -476,10 +636,19 @@ export class AdminSettingsComponent implements OnInit {
             (byKey.get('location_privacy_default') as 'public' | 'private' | undefined) ?? 'public',
           eventCadenceWeekday: byKey.get('event_cadence_weekday') ?? '2',
           eventCadenceTime: byKey.get('event_cadence_time') ?? '18:30',
+          showStats: byKey.get('home_show_stats') !== 'false',
         });
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
+    });
+    this.loadAvatars();
+  }
+
+  private loadAvatars(): void {
+    this.avatarsService.listAdmin().subscribe({
+      next: (list) => this.avatars.set(list),
+      error: () => {},
     });
   }
 
@@ -513,6 +682,38 @@ export class AdminSettingsComponent implements OnInit {
     });
   }
 
+  onAvatarSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    // Default the label to the filename (sans extension); admins can't rename
+    // in-UI yet, so a sensible auto-label keeps the picker tooltips meaningful.
+    const label = file.name.replace(/\.[^.]+$/, '').slice(0, 100) || 'Avatar';
+    this.uploadingAvatar.set(true);
+    this.avatarsService.upload(file, label).subscribe({
+      next: (avatar) => {
+        input.value = '';
+        this.avatars.update((list) => [...list, avatar]);
+        this.uploadingAvatar.set(false);
+        this.snackBar.open('Avatar added', 'OK', { duration: 3000 });
+      },
+      error: () => {
+        this.uploadingAvatar.set(false);
+        this.snackBar.open('Failed to add avatar', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  deleteAvatar(avatar: Avatar): void {
+    this.avatarsService.remove(avatar.id).subscribe({
+      next: () => {
+        this.avatars.update((list) => list.filter((a) => a.id !== avatar.id));
+        this.snackBar.open('Avatar removed', 'OK', { duration: 3000 });
+      },
+      error: () => this.snackBar.open('Failed to remove avatar', 'OK', { duration: 4000 }),
+    });
+  }
+
   resetImage(slot: BrandImageSlot): void {
     this.uploadingSlot.set(slot);
     this.appConfigService.resetBrandImage(slot).subscribe({
@@ -540,6 +741,7 @@ export class AdminSettingsComponent implements OnInit {
       this.appConfigService.updateValue('location_privacy_default', val.locationPrivacyDefault),
       this.appConfigService.updateValue('event_cadence_weekday', val.eventCadenceWeekday),
       this.appConfigService.updateValue('event_cadence_time', val.eventCadenceTime),
+      this.appConfigService.updateValue('home_show_stats', val.showStats ? 'true' : 'false'),
     ]).subscribe({
       next: () => {
         this.saving.set(false);

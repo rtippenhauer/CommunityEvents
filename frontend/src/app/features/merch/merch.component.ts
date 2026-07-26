@@ -5,6 +5,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MerchService, MerchLinks } from '../../core/services/merch.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-merch',
@@ -12,15 +13,15 @@ import { MerchService, MerchLinks } from '../../core/services/merch.service';
   imports: [MatButtonModule, MatCardModule, MatIconModule, MatProgressSpinnerModule],
   template: `
     <div class="merch-page">
-      <h1>DinnerBears Merch</h1>
+      <h1>{{ brandConfig.brand().name }} Merch</h1>
 
       @if (loading()) {
         <div class="center"><mat-spinner /></div>
       } @else if (!links()?.storeUrl && !links()?.foundingBearProductUrl) {
         <mat-card class="store-card">
           <mat-card-content>
-            <div class="store-icon">🐻</div>
-            <h3>The DinnerBears Store</h3>
+            <div class="store-icon">🛍️</div>
+            <h3>The Store</h3>
             <p>The store is closed right now — check back soon!</p>
           </mat-card-content>
         </mat-card>
@@ -28,9 +29,9 @@ import { MerchService, MerchLinks } from '../../core/services/merch.service';
         @if (links()?.storeUrl; as storeUrl) {
           <mat-card class="store-card">
             <mat-card-content>
-              <div class="store-icon">🐻</div>
-              <h3>The DinnerBears Store</h3>
-              <p>Bear-themed tees, hats, and more — printed and shipped by Printful.</p>
+              <div class="store-icon">🛍️</div>
+              <h3>The Store</h3>
+              <p>Tees, hats, and more — printed and shipped by Printful.</p>
               <a mat-raised-button color="primary" [href]="storeUrl" target="_blank" rel="noopener">
                 <mat-icon>storefront</mat-icon> Visit the Store
               </a>
@@ -107,6 +108,7 @@ import { MerchService, MerchLinks } from '../../core/services/merch.service';
 })
 export class MerchComponent implements OnInit {
   private readonly merchService = inject(MerchService);
+  readonly brandConfig = inject(BrandConfigService);
 
   readonly links = signal<MerchLinks | null>(null);
   readonly loading = signal(true);

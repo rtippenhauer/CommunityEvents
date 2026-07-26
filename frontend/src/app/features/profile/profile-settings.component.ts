@@ -85,7 +85,9 @@ interface AvatarEntry {
                 @if (photoUrl()) {
                   <img [src]="photoUrl()!" alt="Profile photo" class="profile-photo" />
                 } @else {
-                  <img src="/avatars/bear-default.jpg" alt="Bear avatar" class="profile-photo" />
+                  <mat-icon class="profile-photo-placeholder" aria-label="No profile photo"
+                    >account_circle</mat-icon
+                  >
                 }
               </div>
             </div>
@@ -111,7 +113,7 @@ interface AvatarEntry {
             }
             @if (avatarOpen()) {
               <mat-tab-group animationDuration="150ms" class="avatar-picker">
-                <mat-tab label="Choose a Bear">
+                <mat-tab label="Choose an avatar">
                   <div class="avatar-tab-actions">
                     <button
                       mat-stroked-button
@@ -209,7 +211,7 @@ interface AvatarEntry {
           @if (emailStatus() === 'unsubscribed') {
             <div class="email-status-banner unsubscribed-banner">
               <mat-icon>unsubscribe</mat-icon>
-              <span>You are currently unsubscribed from all DinnerBears emails.</span>
+              <span>You are currently unsubscribed from all emails.</span>
               <button mat-stroked-button color="primary" (click)="resubscribe()">
                 Resubscribe
               </button>
@@ -339,7 +341,7 @@ interface AvatarEntry {
         </mat-card-header>
         <mat-card-content>
           <p class="cal-desc">
-            Add your DinnerBears dinners to your calendar. Updates automatically when you RSVP or
+            Add your dinners to your calendar. Updates automatically when you RSVP or
             event details change.
           </p>
           @if (calendarUrl()) {
@@ -456,6 +458,14 @@ interface AvatarEntry {
         height: 100%;
         object-fit: cover;
         object-position: center top;
+        display: block;
+      }
+      .profile-photo-placeholder {
+        width: 96px;
+        height: 96px;
+        font-size: 96px;
+        line-height: 96px;
+        color: var(--db-cream-muted, #bbb);
         display: block;
       }
       .profile-form {
@@ -664,7 +674,7 @@ export class ProfileSettingsComponent implements OnInit {
 
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((cities) => this.cities.set(cities));
-    this.http.get<AvatarEntry[]>('/avatars/manifest.json').subscribe({
+    this.http.get<AvatarEntry[]>('/api/v1/avatars/manifest').subscribe({
       next: (avatars) => this.presetAvatars.set(avatars),
       error: () => {},
     });

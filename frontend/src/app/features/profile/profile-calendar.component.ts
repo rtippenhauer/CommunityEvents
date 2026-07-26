@@ -28,7 +28,7 @@ import { CalendarService, CalendarSettings } from '../../core/services/calendar.
     <div class="cal-page">
       <h1 class="page-title">Calendar Subscription</h1>
       <p class="page-subtitle">
-        Subscribe to your personal DinnerBears feed so upcoming dinners appear automatically in
+        Subscribe to your personal feed so upcoming dinners appear automatically in
         Apple Calendar, Google Calendar, Outlook, or any iCal-compatible app.
       </p>
 
@@ -112,7 +112,7 @@ import { CalendarService, CalendarSettings } from '../../core/services/calendar.
               >
                 <mat-radio-button value="all">
                   <span class="radio-title">All cities</span>
-                  <span class="radio-desc">Show dinners from every DinnerBears chapter</span>
+                  <span class="radio-desc">Show dinners from every chapter</span>
                 </mat-radio-button>
                 <mat-radio-button value="city">
                   <span class="radio-title">My city only</span>

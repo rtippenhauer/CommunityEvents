@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
 import { DataSource, Not, Repository } from 'typeorm';
@@ -11,6 +11,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
+import { AvatarsService } from '../avatars/avatars.service';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
 
 @Injectable()
@@ -28,6 +29,7 @@ export class UsersService {
     private readonly dataSource: DataSource,
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
+    private readonly avatarsService: AvatarsService,
   ) {}
 
   async findById(id: number) {
@@ -49,6 +51,12 @@ export class UsersService {
   }
 
   async setAvatar(userId: number, avatarPath: string): Promise<{ url: string }> {
+    // Authoritative check: the path must be one of THIS instance's preset
+    // avatars (avatar table), not just well-formed — otherwise a member could
+    // point their photo at any /avatars/… or /api/uploads/avatars/… path.
+    if (!(await this.avatarsService.pathExists(avatarPath))) {
+      throw new BadRequestException('Unknown avatar');
+    }
     await this.userRepo.update(userId, { profilePhotoPath: avatarPath });
     return { url: avatarPath };
   }

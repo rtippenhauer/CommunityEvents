@@ -9,6 +9,7 @@ import { EventsService, Event } from '../../core/services/events.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CityService } from '../../core/services/city.service';
 import { AppConfigService } from '../../core/services/app-config.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
 import { EventCardComponent } from '../../shared/components/event-card/event-card.component';
 
@@ -32,12 +33,14 @@ interface PublicStats {
     <!-- Hero -->
     <section class="hero">
       <div class="hero-text">
-        <span class="eyebrow">Cincinnati &amp; Dayton</span>
-        <h1>Good food.<br />Good people.<br /><em>Every week.</em></h1>
-        <p class="hero-sub">
-          DinnerBears is an invite-only community for people who love discovering great restaurants
-          together. Weekly dinners, real connections.
-        </p>
+        @if (hasContent(heroContent())) {
+          <div class="hero-copy" [innerHTML]="heroHtml()"></div>
+        } @else {
+          <div class="hero-copy">
+            <h1>Welcome to {{ brandName().name }}</h1>
+            <p>An invite-only community. Sign in to see what's coming up.</p>
+          </div>
+        }
         <div class="hero-actions">
           <a mat-raised-button color="primary" routerLink="/calendar" class="cta-btn">
             <mat-icon>calendar_month</mat-icon> View Calendar
@@ -72,7 +75,7 @@ interface PublicStats {
     </section>
 
     <!-- Stats strip -->
-    @if (stats()) {
+    @if (showStats() && stats()) {
       <section class="stats-strip">
         <div class="stat">
           <span class="stat-number">{{ stats()!.memberCount }}</span>
@@ -91,59 +94,43 @@ interface PublicStats {
       </section>
     }
 
-    <!-- How it works -->
-    <section class="how">
-      <span class="section-label">How it works</span>
-      <h2>Simple, social, delicious.</h2>
-      <div class="steps">
-        <div class="step">
-          <div class="step-num">01</div>
-          <h3>Get Invited</h3>
-          <p>DinnerBears is invite-only. A current member sends you a link to join.</p>
-        </div>
-        <div class="step">
-          <div class="step-num">02</div>
-          <h3>See the Week's Dinner</h3>
-          <p>Each week a new restaurant is chosen. Browse the details and who's coming.</p>
-        </div>
-        <div class="step">
-          <div class="step-num">03</div>
-          <h3>RSVP &amp; Show Up</h3>
-          <p>Claim your spot, show up, and enjoy a great meal with great people.</p>
-        </div>
-      </div>
-    </section>
+    <!-- How it works (editable rich-text block; hidden when empty) -->
+    @if (hasContent(howItWorksContent())) {
+      <section class="how">
+        <span class="section-label">How it works</span>
+        <div class="how-copy" [innerHTML]="howItWorksHtml()"></div>
+      </section>
+    }
 
-    <!-- Our Story / Map -->
-    <section class="story-section" id="story">
-      <div class="story-inner">
-        <div class="story-map" (click)="showMapLightbox.set(true)">
-          <img
-            src="/images/story-map.png"
-            alt="Places We've Been — DinnerBears restaurant map"
-            class="map-img"
-          />
-          <p class="map-caption">🐾 Places We've Been — Cincinnati &amp; Dayton</p>
-        </div>
+    <!-- Our Story -->
+    @if (brandConfig.storyImageUrl() || hasContent(storyContent())) {
+      <section class="story-section" id="story">
+        <div class="story-inner" [class.no-story-image]="!brandConfig.storyImageUrl()">
+          @if (brandConfig.storyImageUrl(); as storyImg) {
+            <div class="story-map" (click)="showMapLightbox.set(true)">
+              <img [src]="storyImg" [alt]="brandName().name + ' story'" class="map-img" />
+            </div>
 
-        @if (showMapLightbox()) {
-          <div class="map-lightbox" (click)="showMapLightbox.set(false)">
-            <button
-              class="lightbox-close"
-              (click)="$event.stopPropagation(); showMapLightbox.set(false)"
-            >
-              ✕
-            </button>
-            <img
-              src="/images/story-map.png"
-              alt="DinnerBears restaurant map — full size"
-              (click)="$event.stopPropagation()"
-            />
-          </div>
-        }
-        <div class="story-copy" [innerHTML]="storyHtml()"></div>
-      </div>
-    </section>
+            @if (showMapLightbox()) {
+              <div class="map-lightbox" (click)="showMapLightbox.set(false)">
+                <button
+                  class="lightbox-close"
+                  (click)="$event.stopPropagation(); showMapLightbox.set(false)"
+                >
+                  ✕
+                </button>
+                <img
+                  [src]="storyImg"
+                  [alt]="brandName().name + ' story'"
+                  (click)="$event.stopPropagation()"
+                />
+              </div>
+            }
+          }
+          <div class="story-copy" [innerHTML]="storyHtml()"></div>
+        </div>
+      </section>
+    }
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
@@ -196,6 +183,44 @@ interface PublicStats {
         color: #666;
         max-width: 440px;
         margin-bottom: 2rem;
+      }
+
+      /* Editable hero rich-text block (home_hero_html). Styles the plain tags
+         the admin rich-text editor produces so a fork's hero reads like the
+         built-in one without needing specific CSS classes. */
+      .hero-copy {
+        margin-bottom: 2rem;
+        max-width: 460px;
+        ::ng-deep {
+          h1,
+          h2 {
+            font-family: var(--db-font-display);
+            font-size: clamp(2.2rem, 4vw, 3.4rem);
+            font-weight: 600;
+            line-height: 1.12;
+            color: var(--db-brown-dark);
+            margin: 0 0 1.25rem;
+            em {
+              font-style: italic;
+              color: var(--db-accent);
+            }
+          }
+          h3 {
+            font-family: var(--db-font-display);
+            font-size: 1.4rem;
+            color: var(--db-brown-dark);
+            margin: 0 0 0.75rem;
+          }
+          p {
+            font-size: 1.02rem;
+            line-height: 1.7;
+            color: #666;
+            margin: 0 0 1rem;
+          }
+          a {
+            color: var(--db-accent);
+          }
+        }
       }
 
       .hero-actions {
@@ -291,7 +316,7 @@ interface PublicStats {
         font-family: var(--db-font-display);
         font-size: 2.4rem;
         font-weight: 600;
-        color: var(--db-amber);
+        color: var(--db-accent-on-dark, var(--db-amber));
         line-height: 1;
       }
 
@@ -332,6 +357,81 @@ interface PublicStats {
         font-weight: 600;
         color: var(--db-brown-dark);
         margin: 0 0 3rem;
+      }
+
+      /* Editable "How it works" rich-text block (home_howitworks_html). Styles
+         the plain tags the admin editor produces, on the light section bg.
+         Each <h3> gets an auto-numbered step marker (01, 02, …), and the steps
+         flow into a responsive multi-column layout to echo the built-in look. */
+      .how-copy {
+        counter-reset: how-step;
+        max-width: 720px;
+        ::ng-deep {
+          h2 {
+            font-family: var(--db-font-display);
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--db-brown-dark);
+            margin: 0 0 2rem;
+          }
+          h3 {
+            counter-increment: how-step;
+            font-family: var(--db-font-display);
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--db-brown-dark);
+            margin: 1.75rem 0 0.35rem;
+            &::before {
+              content: '0' counter(how-step) '  ';
+              font-weight: 900;
+              color: var(--db-accent);
+              opacity: 0.55;
+              margin-right: 0.4rem;
+            }
+          }
+          p {
+            font-size: 0.92rem;
+            line-height: 1.65;
+            color: #666;
+            margin: 0 0 0.5rem;
+            padding-left: 2.1rem;
+          }
+          a {
+            color: var(--db-accent);
+          }
+
+          /* Optional structured grid: if the HTML uses the .steps/.step/.step-num
+             markup (set via SQL — the WYSIWYG editor can't make divs), it renders
+             as the original three-column 01/02/03 grid instead of the prose list. */
+          .steps {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2.5rem;
+            margin-top: 1rem;
+          }
+          .step-num {
+            font-size: 3rem;
+            font-weight: 900;
+            line-height: 1;
+            color: var(--db-accent);
+            opacity: 0.28;
+            margin-bottom: 0.5rem;
+          }
+          .step h3 {
+            margin: 0 0 0.4rem;
+            &::before {
+              content: none;
+            }
+          }
+          .step p {
+            padding-left: 0;
+          }
+          @media (max-width: 768px) {
+            .steps {
+              grid-template-columns: 1fr;
+            }
+          }
+        }
       }
 
       .steps {
@@ -381,6 +481,12 @@ interface PublicStats {
         align-items: center;
       }
 
+      /* No story image uploaded → story copy spans the full width. */
+      .story-inner.no-story-image {
+        grid-template-columns: 1fr;
+        max-width: 720px;
+      }
+
       .story-map {
         text-align: center;
       }
@@ -400,8 +506,29 @@ interface PublicStats {
       }
 
       .story-copy {
+        /* Base color for admin-entered story HTML sitting on the dark story
+           band. The DinnerBears default copy carries .story-* classes (styled
+           below); a fork's plain <p>/<h*> from the rich-text editor inherits
+           these instead of defaulting to unreadable dark text. */
+        color: var(--db-cream-muted);
+        line-height: 1.8;
+
+        ::ng-deep {
+          h1,
+          h2,
+          h3,
+          h4,
+          strong,
+          b {
+            color: var(--db-cream);
+          }
+          a {
+            color: var(--db-accent-on-dark, var(--db-amber));
+          }
+        }
+
         ::ng-deep .section-label {
-          color: var(--db-amber);
+          color: var(--db-accent-on-dark, var(--db-amber));
         }
 
         ::ng-deep .story-headline {
@@ -421,7 +548,7 @@ interface PublicStats {
         }
 
         ::ng-deep .story-quote {
-          border-left: 3px solid var(--db-amber);
+          border-left: 3px solid var(--db-accent-on-dark, var(--db-amber));
           padding: 0.65rem 1.1rem;
           font-style: italic;
           font-size: 0.92rem;
@@ -445,7 +572,7 @@ interface PublicStats {
         }
 
         ::ng-deep .ms-date {
-          color: var(--db-amber);
+          color: var(--db-accent-on-dark, var(--db-amber));
           font-weight: 600;
           white-space: nowrap;
           width: 105px;
@@ -545,13 +672,20 @@ export class HomeComponent implements OnInit {
   private readonly cityService = inject(CityService);
   private readonly http = inject(HttpClient);
   private readonly appConfigService = inject(AppConfigService);
+  readonly brandConfig = inject(BrandConfigService);
   private readonly sanitizer = inject(DomSanitizer);
+
+  // Instance name for the hero fallback + how-it-works copy.
+  readonly brandName = this.brandConfig.brand;
 
   readonly events = signal<Event[]>([]);
   readonly loading = signal(true);
   readonly stats = signal<PublicStats | null>(null);
+  readonly showStats = signal(true);
   readonly showMapLightbox = signal(false);
-  private readonly storyContent = signal('');
+  readonly storyContent = signal('');
+  readonly heroContent = signal('');
+  readonly howItWorksContent = signal('');
 
   private readonly loadEventsEffect = effect(() => {
     // Re-runs once currentCity() resolves from undefined -> a city (or stays
@@ -579,6 +713,18 @@ export class HomeComponent implements OnInit {
       next: (value) => this.storyContent.set(value),
       error: () => this.storyContent.set(''),
     });
+    this.appConfigService.getValue('home_hero_html').subscribe({
+      next: (value) => this.heroContent.set(value),
+      error: () => this.heroContent.set(''),
+    });
+    this.appConfigService.getValue('home_howitworks_html').subscribe({
+      next: (value) => this.howItWorksContent.set(value),
+      error: () => this.howItWorksContent.set(''),
+    });
+    this.appConfigService.getValue('home_show_stats').subscribe({
+      next: (value) => this.showStats.set(value !== 'false'),
+      error: () => this.showStats.set(true),
+    });
   }
 
   isLoggedIn(): boolean {
@@ -591,5 +737,22 @@ export class HomeComponent implements OnInit {
 
   storyHtml(): SafeHtml {
     return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(this.storyContent()));
+  }
+
+  heroHtml(): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(this.heroContent()));
+  }
+
+  howItWorksHtml(): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(this.howItWorksContent()));
+  }
+
+  // The rich-text editor stores "<p><br></p>" (not "") when a block is cleared,
+  // so treat any markup with no visible text/media as empty — that's what lets
+  // clearing a block in the editor actually hide its home-page section.
+  hasContent(html: string): boolean {
+    if (!html) return false;
+    if (/<(img|iframe|video)\b/i.test(html)) return true;
+    return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim().length > 0;
   }
 }

@@ -31,7 +31,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
             <mat-icon class="state-icon error-icon">error_outline</mat-icon>
             <h2>Link not found</h2>
             <p>This confirmation link is invalid or has already expired.</p>
-            <a mat-stroked-button routerLink="/">Go to DinnerBears</a>
+            <a mat-stroked-button routerLink="/">Go to home</a>
           </div>
         } @else if (state() === 'confirmed') {
           <div class="state-body success-state">
@@ -55,7 +55,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
             </div>
             @if (info()!.inviteToken) {
               <div class="join-cta">
-                <p class="join-heading">New to DinnerBears?</p>
+                <p class="join-heading">New here?</p>
                 <p class="join-sub">
                   Create your account and you'll be added to this dinner automatically.
                 </p>

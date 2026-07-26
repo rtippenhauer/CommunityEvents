@@ -28,10 +28,14 @@ const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 
 // Maps the :slot route param to its app_config key. The frontend falls back to
 // its compiled-in default asset whenever the stored value is empty.
-const BRAND_IMAGE_SLOTS: Record<string, 'brand_logo_url' | 'brand_splash_url' | 'brand_icon_url'> = {
+const BRAND_IMAGE_SLOTS: Record<
+  string,
+  'brand_logo_url' | 'brand_splash_url' | 'brand_icon_url' | 'brand_story_url'
+> = {
   logo: 'brand_logo_url',
   splash: 'brand_splash_url',
   icon: 'brand_icon_url',
+  story: 'brand_story_url',
 };
 
 const brandImageStorage = diskStorage({

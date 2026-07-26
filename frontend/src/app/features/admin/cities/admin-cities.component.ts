@@ -7,7 +7,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { AdminCity, CitiesAdminService } from '../../../core/services/cities-admin.service';
 import { CityFormDialogComponent, CityFormDialogData } from './city-form-dialog.component';
-import { environment } from '../../../../environments/environment';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 interface AdminUser {
   id: number;
@@ -165,8 +165,11 @@ export class AdminCitiesComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly citiesAdminService = inject(CitiesAdminService);
   private readonly dialog = inject(MatDialog);
+  private readonly brandConfig = inject(BrandConfigService);
 
-  readonly baseDomain = environment.baseDomain;
+  get baseDomain(): string {
+    return this.brandConfig.baseDomain();
+  }
   readonly loading = signal(true);
   private readonly cities = signal<AdminCity[]>([]);
   private readonly users = signal<AdminUser[]>([]);

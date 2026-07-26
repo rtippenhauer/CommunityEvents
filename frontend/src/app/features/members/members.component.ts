@@ -100,7 +100,7 @@ interface Member {
           @for (member of members(); track member.id) {
             <div class="member-card mystery-card">
               <div class="avatar avatar-mystery">
-                <img src="/avatars/bear-default.jpg" alt="Mystery Bear" />
+                <img src="/assets/default-avatar.svg" alt="Mystery member" />
               </div>
               <div class="member-info">
                 <span class="member-name mystery-name">Mystery Bear</span>
@@ -143,7 +143,7 @@ interface Member {
                 @if (member.profilePhotoPath) {
                   <img [src]="member.profilePhotoPath" [alt]="member.fullName" />
                 } @else {
-                  <img src="/avatars/bear-default.jpg" alt="Bear avatar" />
+                  <img src="/assets/default-avatar.svg" alt="Member" />
                 }
               </div>
               <div class="member-info">
@@ -561,7 +561,7 @@ export class MembersComponent implements OnInit {
   openLightbox(member: Member, event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    const src = member.profilePhotoPath ?? '/avatars/bear-default.jpg';
+    const src = member.profilePhotoPath ?? '/assets/default-avatar.svg';
     this.lightboxSrc.set(src);
     this.lightboxName.set(member.fullName);
   }

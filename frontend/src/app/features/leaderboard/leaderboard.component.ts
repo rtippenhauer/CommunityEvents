@@ -83,7 +83,7 @@ const TYPE_LABELS: Record<string, string> = {
                   @if (entry.profilePhotoPath) {
                     <img [src]="entry.profilePhotoPath" [alt]="entry.fullName" />
                   } @else {
-                    <img src="/avatars/bear-default.jpg" alt="Bear avatar" />
+                    <img src="/assets/default-avatar.svg" alt="Member" />
                   }
                 </span>
                 <span class="member-info">

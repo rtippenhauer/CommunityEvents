@@ -3,12 +3,18 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
-export type LegalConfigKey = 'legal_terms_html' | 'legal_privacy_html' | 'about_story_html';
+export type LegalConfigKey =
+  | 'legal_terms_html'
+  | 'legal_privacy_html'
+  | 'about_story_html'
+  | 'home_hero_html'
+  | 'home_howitworks_html';
 
 export type SiteSettingKey =
   | 'location_privacy_default'
   | 'event_cadence_weekday'
   | 'event_cadence_time'
+  | 'home_show_stats'
   | 'brand_name'
   | 'brand_tagline'
   | 'theme_color_primary'
@@ -16,9 +22,10 @@ export type SiteSettingKey =
   | 'theme_color_background'
   | 'brand_logo_url'
   | 'brand_splash_url'
-  | 'brand_icon_url';
+  | 'brand_icon_url'
+  | 'brand_story_url';
 
-export type BrandImageSlot = 'logo' | 'splash' | 'icon';
+export type BrandImageSlot = 'logo' | 'splash' | 'icon' | 'story';
 
 export interface LegalConfigItem {
   configKey: LegalConfigKey;

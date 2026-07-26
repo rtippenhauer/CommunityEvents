@@ -635,7 +635,7 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                     @for (r of event()!.rsvps; track r.id) {
                       <li class="attendee-row attendee-mystery">
                         <div class="attendee-avatar attendee-avatar-mystery">
-                          <img src="/avatars/bear-default.jpg" alt="Mystery Bear" />
+                          <img src="/assets/default-avatar.svg" alt="Mystery member" />
                         </div>
                         <div class="attendee-info">
                           <span class="attendee-name mystery-name">Mystery Bear</span>
@@ -2820,7 +2820,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         const msg = err?.error?.message;
         this.publicRsvpError.set(
           msg === 'already_a_member'
-            ? 'This email belongs to a DinnerBears member — please log in to RSVP.'
+            ? 'This email belongs to a member — please log in to RSVP.'
             : (msg ?? 'Something went wrong. Please try again.'),
         );
       },

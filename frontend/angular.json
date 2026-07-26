@@ -62,24 +62,6 @@
                 }
               ]
             },
-            "stage": {
-              "index": {
-                "input": "src/index.stage.html",
-                "output": "index.html"
-              },
-              "budgets": [
-                { "type": "initial", "maximumWarning": "1mb", "maximumError": "2mb" },
-                { "type": "anyComponentStyle", "maximumWarning": "20kB", "maximumError": "24kB" }
-              ],
-              "outputHashing": "all",
-              "serviceWorker": "src/ngsw-config.json",
-              "fileReplacements": [
-                {
-                  "replace": "src/environments/environment.ts",
-                  "with": "src/environments/environment.stage.ts"
-                }
-              ]
-            },
             "development": {
               "optimization": false,
               "extractLicenses": false,

@@ -9,7 +9,7 @@ import { RouterLink } from '@angular/router';
   imports: [MatIconModule, MatDividerModule, RouterLink],
   template: `
     <div class="deletion-page">
-      <h1>DinnerBears — Account &amp; Data Deletion</h1>
+      <h1>Account &amp; Data Deletion</h1>
 
       <section>
         <h2>Remove Facebook Login (keep your account)</h2>
@@ -18,7 +18,7 @@ import { RouterLink } from '@angular/router';
           deleting your account:
         </p>
         <ol>
-          <li>Log into DinnerBears.</li>
+          <li>Log in.</li>
           <li>
             Go to
             <a routerLink="/account/settings"
@@ -29,16 +29,16 @@ import { RouterLink } from '@angular/router';
           <li>Confirm the disconnection.</li>
         </ol>
         <p>
-          Your Facebook User ID and access tokens are immediately removed from DinnerBears systems.
+          Your Facebook User ID and access tokens are immediately removed from our systems.
         </p>
       </section>
 
       <mat-divider></mat-divider>
 
       <section>
-        <h2>Delete your DinnerBears account</h2>
+        <h2>Delete your account</h2>
         <ol>
-          <li>Log into DinnerBears.</li>
+          <li>Log in.</li>
           <li>
             Go to
             <a routerLink="/account/settings"><strong>Account Settings → Danger Zone</strong></a

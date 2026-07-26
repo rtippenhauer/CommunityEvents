@@ -40,7 +40,7 @@ interface CalendarDay {
       <div class="page-header">
         <div>
           <h2 class="page-title">Calendar</h2>
-          <p class="page-sub">Browse upcoming and past DinnerBears events</p>
+          <p class="page-sub">Browse upcoming and past events</p>
         </div>
         @if (isLoggedIn()) {
           <app-calendar-subscribe />

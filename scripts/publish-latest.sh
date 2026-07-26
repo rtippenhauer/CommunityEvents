@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="rtippenhauer/dinnerbears:latest"
+# One generic image serves every instance (DinnerBears, Sons, …); all branding
+# is runtime (DB + .env via /config/branding), so there's no per-instance build.
+IMAGE="rtippenhauer/community-events:latest"
 START=$(date +%s)
 
 GIT_COMMIT=$(git rev-parse HEAD)

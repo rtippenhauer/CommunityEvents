@@ -142,20 +142,40 @@ GOOGLE_PLACES_API_KEY=...
 
 ## 5. Branding
 
-**Name, tagline, and colors** are all editable at runtime from **Admin → Site
-Settings** (`/admin/settings`) once you're signed in — no rebuild. You can also
-pre-seed them in step 7 (bootstrap) via `INSTANCE_*` env vars.
+**Everything visible is runtime — there is no per-instance build.** One generic
+image (`rtippenhauer/community-events`) serves every instance; all branding comes
+from *your* database (`app_config`) + `.env`, served to the app via
+`/config/branding`. To add an instance you never touch or rebuild code.
 
-**Images** (logo, login splash, small app/favicon icon) can be uploaded from the
-same Site Settings screen and apply immediately. Two things upload can **not**
-change at runtime, because they're static files served before the app boots —
-edit these in your fork if you want them fully branded, then rebuild:
+**Name, tagline, and colors** are editable at runtime from **Admin → Site
+Settings** (`/admin/settings`) once you're signed in. You can also pre-seed them
+in step 7 (bootstrap) via `INSTANCE_*` env vars.
 
-- `frontend/src/index.html` — the `<title>` and `<meta name="theme-color">`.
-- `frontend/public/manifest.webmanifest` — the installed-PWA name + icon
-  (`frontend/public/images/`), used when a member installs the app to their home
-  screen. (The in-app favicon *does* update at runtime from your uploaded icon;
-  only the installed-PWA icon needs the file swap.)
+- The **chrome** (toolbar, sidenav, footer, and stage banner) is **derived
+  automatically** from your primary color — pick green and the dark UI becomes
+  dark green, no separate setting. (Derived shades sit close to, but won't
+  exactly match, hand-tuned values; a very light primary may read low-contrast
+  on white text.)
+
+**Images** (logo, login splash, small app/favicon icon) upload from the same
+screen and apply immediately.
+
+**Avatars** — the preset profile pictures members choose from — are managed under
+**Admin → Site Settings → Avatars** (upload / remove). A fresh instance starts
+empty (bootstrap clears DinnerBears' default bear set), so upload your own set
+before inviting members.
+
+Only two cosmetic, pre-boot bits are **not** per-instance yet, because they're
+static files baked into the shared image and shown before the app boots:
+
+- `frontend/src/index.html` — the `<title>` and `<meta name="theme-color">` shown
+  in the browser tab before Angular loads. The *live* tab title (and favicon)
+  update at runtime from your branding; only this initial flash is the shared
+  default. Stage instances get a "(Stage)" title suffix automatically.
+- `frontend/public/manifest.webmanifest` — the installed-PWA name + icon, used
+  when a member installs the app to their home screen. (The in-app favicon *does*
+  update at runtime from your uploaded icon; only the installed-PWA icon is
+  static.)
 
 ## 6. Build & start the stack
 
@@ -169,9 +189,10 @@ The container entrypoint runs database **migrations automatically** on startup
 
 ## 7. Bootstrap your instance (one time)
 
-Migrations leave the database seeded with DinnerBears' *default* cities and
-copy. The bootstrap step turns that into **your** instance: one active city,
-your branding, an email-config row, and your first admin (email + password).
+Migrations leave the database seeded with DinnerBears' *default* cities, copy,
+and bear avatars. The bootstrap step turns that into **your** instance: one
+active city, your branding, an email-config row, your first admin (email +
+password), and a cleared avatar set (so a non-bear group doesn't inherit bears).
 
 Run it once, passing your values as env vars. In the production container:
 
@@ -186,8 +207,11 @@ docker exec \
   -e INSTANCE_ADMIN_EMAIL="you@YOUR_DOMAIN" \
   -e INSTANCE_ADMIN_NAME="Your Name" \
   -e INSTANCE_ADMIN_PASSWORD="a-strong-password" \
-  dinnerbears-api node /app/dist/bootstrap.js
+  <your-container> node /app/dist/bootstrap.js
 ```
+
+(`<your-container>` is your instance's container name, e.g. `Sons-Stage` — find
+it with `docker ps`.)
 
 (From a local checkout with DB access you can instead run `cd api && npm run
 bootstrap` with the same env vars.)
@@ -215,9 +239,11 @@ anything omitted keeps its default for you to edit later in the UI.
    email + password.
 2. Finish branding under **Admin → Site Settings**: upload your logo / splash /
    icon, tweak colors, set the app name/tagline.
-3. Set your defaults there too: **Location Privacy** (public restaurants vs.
+3. Upload your **Avatars** (Site Settings → Avatars) — a fresh instance starts
+   with none, since bootstrap cleared DinnerBears' bear set.
+4. Set your defaults there too: **Location Privacy** (public restaurants vs.
    addresses hidden until RSVP) and the **New Event** default day/time.
-4. Start inviting members from the invite screens.
+5. Start inviting members from the invite screens.
 
 ## 9. Known limitations / follow-ups
 

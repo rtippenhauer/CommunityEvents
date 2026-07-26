@@ -6,7 +6,7 @@ set -euo pipefail
 export MSYS_NO_PATHCONV=1
 
 TAG="${1:-stage}"
-IMAGE="rtippenhauer/dinnerbears:${TAG}"
+IMAGE="rtippenhauer/community-events:${TAG}"
 SEVERITY="${2:-HIGH,CRITICAL,MEDIUM}"
 
 echo "==> Scanning $IMAGE (severity: $SEVERITY)"

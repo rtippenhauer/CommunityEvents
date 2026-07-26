@@ -51,8 +51,8 @@ Phase $ARGUMENTS is complete.
 
 8. Build and push the stage image: `bash scripts/publish-stage.sh`. This
    updates the `stage` tag on Docker Hub only — never touches
-   `rtippenhauer/dinnerbears:latest` (prod), which is exclusively `/release`'s
-   job.
+   `rtippenhauer/community-events:latest` (prod), which is exclusively
+   `/release`'s job.
 
 9. Report back a short summary: files updated, commit + tag created, PR
    merged into `main`, stage image rebuilt and pushed.

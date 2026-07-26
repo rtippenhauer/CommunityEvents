@@ -134,7 +134,7 @@ type PageState =
                 <p class="join-text">Want to discover future dinners and join the group?</p>
                 <a mat-raised-button color="primary" href="/login" class="join-btn">
                   <mat-icon>group_add</mat-icon>
-                  Join DinnerBears
+                  Join
                 </a>
               </div>
             </div>
@@ -168,7 +168,7 @@ type PageState =
                 <p class="join-text">Want to discover future dinners and join the group?</p>
                 <a mat-raised-button color="primary" href="/login" class="join-btn">
                   <mat-icon>group_add</mat-icon>
-                  Join DinnerBears
+                  Join
                 </a>
               </div>
             </div>
@@ -221,7 +221,7 @@ type PageState =
         }
       }
 
-      <p class="footer-brand">DinnerBears &mdash; Good food. Great company. Bear memories.</p>
+      <p class="footer-brand">{{ brandConfig.brand().name }} &mdash; {{ brandConfig.brand().tagline }}</p>
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.Eager,

@@ -30,7 +30,7 @@ const cardCache = new Map<number, MemberCardData>();
       <div class="card-inner">
         <a [routerLink]="['/members', member()!.id]" class="card-avatar">
           <img
-            [src]="member()!.profilePhotoPath ?? '/avatars/bear-default.jpg'"
+            [src]="member()!.profilePhotoPath ?? '/assets/default-avatar.svg'"
             [alt]="member()!.fullName"
           />
         </a>

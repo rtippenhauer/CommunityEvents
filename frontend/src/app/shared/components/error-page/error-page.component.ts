@@ -129,7 +129,7 @@ export class ErrorPageComponent {
   readonly icon = input('error_outline');
   readonly title = input('Something went wrong');
   readonly body = input(
-    'Please try again, or contact a DinnerBears admin if the problem continues.',
+    'Please try again, or contact an admin if the problem continues.',
   );
   readonly showLoginButton = input(false);
   readonly showHomeButton = input(false);

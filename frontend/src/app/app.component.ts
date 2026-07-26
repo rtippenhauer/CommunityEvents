@@ -57,7 +57,9 @@ export class AppComponent {
   private splashDialogOpen = false;
 
   readonly currentYear = new Date().getFullYear();
-  readonly isStage = environment.isStage;
+  get isStage(): boolean {
+    return this.brandConfig.isStage();
+  }
 
   private readonly router = inject(Router);
 
@@ -174,18 +176,23 @@ export class AppComponent {
     // Safety net for unrecognized hosts (typo'd DNS entry, a decommissioned
     // city, someone hitting the wildcard cert directly): city-scoped features
     // like Facebook login assume the current hostname is either a known
-    // chapter subdomain or the environment's own canonical root. Skipped in
+    // chapter subdomain or the instance's own canonical root. The canonical
+    // root now comes from the runtime branding config (APP_URL) rather than a
+    // compiled-in constant, so one image can serve any instance. Skipped in
     // local dev, where the hostname is never one of those anyway.
     effect(() => {
       if (!environment.production) return;
       if (this.cityService.cities().length === 0) return; // wait for the list to load
 
+      const appUrl = this.brandConfig.appUrl();
+      if (!appUrl) return; // no canonical URL configured — nothing to redirect to
+
       const hostname = window.location.hostname.toLowerCase();
-      const rootHostname = new URL(environment.rootUrl).hostname.toLowerCase();
+      const rootHostname = new URL(appUrl).hostname.toLowerCase();
       const isKnownHost = hostname === rootHostname || this.cityService.currentCity() !== undefined;
 
       if (!isKnownHost) {
-        window.location.href = environment.rootUrl;
+        window.location.href = appUrl;
       }
     });
 
