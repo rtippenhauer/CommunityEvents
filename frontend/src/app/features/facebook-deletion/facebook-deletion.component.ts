@@ -15,7 +15,7 @@ import { AccountService, DeletionStatus } from '../../core/services/account.serv
       } @else if (statusCode() === 'completed') {
         <mat-icon class="status-icon done">check_circle</mat-icon>
         <h1>Data Deleted</h1>
-        <p class="lead">Your Facebook data has been deleted from DinnerBears.</p>
+        <p class="lead">Your Facebook data has been deleted from our systems.</p>
         @if (code()) {
           <div class="code-box">
             <span class="code-label">Confirmation Code</span>
@@ -43,7 +43,7 @@ import { AccountService, DeletionStatus } from '../../core/services/account.serv
         <h1>Facebook Data Deletion</h1>
         <p class="lead">Your request has been received and processed.</p>
         <p>
-          All Facebook login data associated with your DinnerBears account has been removed from our
+          All Facebook login data associated with your account has been removed from our
           systems.
         </p>
       }

@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IMAGE="rtippenhauer/dinnerbears:stage"
+# One generic image serves every instance (DinnerBears, Sons, …) — stage vs
+# prod is a runtime distinction (the IS_STAGE env var), so the stage tag is the
+# same production build as :latest, just a separately-promotable tag.
+IMAGE="rtippenhauer/community-events:stage"
 EXTRA_FLAGS=""
 START=$(date +%s)
 if [[ "${1:-}" == "--no-cache" ]]; then
@@ -14,7 +17,6 @@ echo "==> Building $IMAGE (commit $GIT_COMMIT)"
 docker build \
   --platform linux/amd64 \
   $EXTRA_FLAGS \
-  --build-arg ANGULAR_CONFIG=stage \
   --build-arg GIT_COMMIT="$GIT_COMMIT" \
   -t "$IMAGE" \
   .

@@ -10,7 +10,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../../core/services/auth.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
-import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-login',
@@ -387,8 +386,9 @@ export class LoginComponent implements OnInit {
     const token = this.route.snapshot.queryParamMap.get('token');
     this.inviteToken.set(token);
 
-    if (environment.facebookAppId) {
-      this.loadFbSdk(environment.facebookAppId);
+    const facebookAppId = this.brandConfig.facebookAppId();
+    if (facebookAppId) {
+      this.loadFbSdk(facebookAppId);
     }
   }
 

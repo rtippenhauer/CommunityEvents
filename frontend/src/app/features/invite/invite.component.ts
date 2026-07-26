@@ -398,7 +398,7 @@ export class InviteComponent implements OnInit {
         this.creating.set(false);
         const msg = err?.error?.message;
         if (msg === 'already_a_member') {
-          this.snackBar.open('This person is already a DinnerBears member.', 'OK', {
+          this.snackBar.open('This person is already a member.', 'OK', {
             duration: 5000,
           });
         } else if (msg === 'invite_already_exists') {

@@ -1,12 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { SwPush } from '@angular/service-worker';
-import { environment } from '../../../environments/environment';
+import { BrandConfigService } from './brand-config.service';
 
 @Injectable({ providedIn: 'root' })
 export class PushNotificationService {
   private readonly http = inject(HttpClient);
   private readonly swPush = inject(SwPush);
+  private readonly brand = inject(BrandConfigService);
 
   private get isIos(): boolean {
     return typeof navigator !== 'undefined' &&
@@ -24,7 +25,7 @@ export class PushNotificationService {
   }
 
   get isSupported(): boolean {
-    if (!environment.vapidPublicKey) return false;
+    if (!this.brand.vapidPublicKey()) return false;
     // On iOS, Web Push only works in standalone (home-screen) mode, iOS 16.4+
     if (this.isIos) return this.isIosStandalone && this.swPush.isEnabled;
     return this.swPush.isEnabled;
@@ -33,11 +34,12 @@ export class PushNotificationService {
   readonly subscription$ = this.swPush.subscription;
 
   async requestSubscription(): Promise<void> {
-    if (!this.swPush.isEnabled || !environment.vapidPublicKey) return;
+    const vapidPublicKey = this.brand.vapidPublicKey();
+    if (!this.swPush.isEnabled || !vapidPublicKey) return;
     if (Notification.permission === 'denied') {
       throw new Error('PERMISSION_DENIED');
     }
-    const sub = await this.swPush.requestSubscription({ serverPublicKey: environment.vapidPublicKey });
+    const sub = await this.swPush.requestSubscription({ serverPublicKey: vapidPublicKey });
     const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
     await this.http.post('/api/v1/notifications/push/subscribe', {
       endpoint: json.endpoint,

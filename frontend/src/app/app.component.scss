@@ -1,7 +1,7 @@
 // ── Stage environment indicator ───────────────────────────────────────────────
 
 .stage-banner {
-  background: #b34a00;
+  background: var(--db-banner, #b34a00);
   color: #fff;
   text-align: center;
   font-size: 0.72rem;
@@ -16,7 +16,7 @@
 
 .stage-badge {
   display: inline-block;
-  background: #b34a00;
+  background: var(--db-banner, #b34a00);
   color: #fff;
   font-size: 0.55rem;
   font-weight: 800;
@@ -79,7 +79,7 @@
 }
 
 .app-toolbar {
-  background: linear-gradient(135deg, var(--db-brown-nav) 0%, #4A2208 100%) !important;
+  background: linear-gradient(135deg, var(--db-brown-nav) 0%, var(--db-brown-card, #4A2208) 100%) !important;
   color: var(--db-cream) !important;
   padding: 0 12px;
   gap: 0;

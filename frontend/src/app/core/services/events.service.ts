@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { BrandConfigService } from './brand-config.service';
 
 export type EventStatus = 'draft' | 'published' | 'cancelled';
 
@@ -152,6 +153,7 @@ export interface UpdateEventPayload {
 @Injectable({ providedIn: 'root' })
 export class EventsService {
   private readonly http = inject(HttpClient);
+  private readonly brandConfig = inject(BrandConfigService);
   private readonly base = '/api/v1/events';
 
   private readonly noCache = { headers: { 'Cache-Control': 'no-cache' } };
@@ -249,15 +251,16 @@ export class EventsService {
     const ampm = h >= 12 ? 'PM' : 'AM';
     const timeStr = `${h % 12 || 12}:${String(min).padStart(2, '0')} ${ampm}`;
 
+    const brandName = this.brandConfig.brand().name;
     const inviteBlock = invite ? this.formatInviteBlock(invite) : null;
-    const noInviteLine = `\nDinnerBears is invite-only. Interested in joining? Ask a member to invite you!`;
+    const noInviteLine = `\n${brandName} is invite-only. Interested in joining? Ask a member to invite you!`;
 
     let text: string;
     if (event.facebookShareText) {
       text = event.facebookShareText;
     } else {
       const lines = [
-        `🐻 DinnerBears Dinner Night!\n`,
+        `${brandName} Dinner Night!\n`,
         `🍽️ ${event.locationName}`,
         `📅 ${dateStr} at ${timeStr}`,
         `📍 ${event.locationAddress ?? 'Address available after RSVP'}`,
@@ -277,8 +280,8 @@ export class EventsService {
 
   private formatInviteBlock(invite: PostTextInvite): string {
     const roleLine = invite.flavor === 'non_validated'
-      ? 'Not a DinnerBears member yet? RSVP as a guest using this link:'
-      : 'New here? Join DinnerBears using this invite link:';
+      ? `Not a ${this.brandConfig.brand().name} member yet? RSVP as a guest using this link:`
+      : 'New here? Join using this invite link:';
 
     const limits: string[] = [];
     if (invite.maxUses != null) limits.push(`limited to ${invite.maxUses} uses`);

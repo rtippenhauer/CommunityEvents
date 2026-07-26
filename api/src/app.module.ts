@@ -30,6 +30,7 @@ import { CalendarModule } from './modules/calendar/calendar.module';
 import { CommunityModule } from './modules/community/community.module';
 import { MerchModule } from './modules/merch/merch.module';
 import { AppConfigModule } from './modules/app-config/app-config.module';
+import { AvatarsModule } from './modules/avatars/avatars.module';
 
 @Module({
   imports: [
@@ -87,6 +88,7 @@ import { AppConfigModule } from './modules/app-config/app-config.module';
     CommunityModule,
     MerchModule,
     AppConfigModule,
+    AvatarsModule,
   ],
   controllers: [AppController],
   providers: [

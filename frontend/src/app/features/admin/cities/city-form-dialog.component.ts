@@ -9,7 +9,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AdminCity, CitiesAdminService } from '../../../core/services/cities-admin.service';
-import { environment } from '../../../../environments/environment';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 export interface CityFormDialogData {
   city?: AdminCity;
@@ -92,8 +92,11 @@ export class CityFormDialogComponent {
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly citiesAdminService = inject(CitiesAdminService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly brandConfig = inject(BrandConfigService);
 
-  readonly baseDomain = environment.baseDomain;
+  get baseDomain(): string {
+    return this.brandConfig.baseDomain();
+  }
   saving = false;
 
   readonly form = this.fb.group({

@@ -136,6 +136,26 @@ async function main(): Promise<void> {
     await upsertSiteSetting(qr, 'theme_color_background', process.env.INSTANCE_THEME_BACKGROUND?.trim(),
       'Page background color');
 
+    // ── Avatars: clear the seeded DinnerBears bear set ──────────────────────
+    // The CreateAvatarsTable migration seeds 32 bear presets so DinnerBears is
+    // unchanged, but a fresh fork (esp. a non-bear group) shouldn't inherit
+    // them — it uploads its own set in /admin/avatars. Only removes the static
+    // bear defaults, never any avatars this instance already uploaded.
+    const clearedAvatars = (await qr.query(
+      `DELETE FROM avatar WHERE path LIKE '/avatars/bear-%'`,
+    )) as { affectedRows?: number };
+    if (clearedAvatars.affectedRows) {
+      console.log(`\nAvatars:\n  • cleared ${clearedAvatars.affectedRows} default bear avatar(s)`);
+    }
+
+    // Clear DinnerBears' seeded home-page story image + hero copy so a fresh
+    // fork shows its own (or the generic branded fallback) rather than
+    // DinnerBears' map and "weekly dinners" wording.
+    await qr.query(
+      `UPDATE app_config SET config_value = ''
+       WHERE config_key IN ('brand_story_url', 'home_hero_html', 'home_howitworks_html')`,
+    );
+
     // ── Email provider config (leave an existing configured row untouched) ──
     await qr.query(
       `INSERT IGNORE INTO email_provider_config

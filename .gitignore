@@ -2,6 +2,10 @@
 .env
 .env.*
 !.env.example
+# Per-instance deployment secrets (sons-stage.env, dinnerbears-prod.env, etc.)
+*.env
+# Per-instance env files, organized as env/<instance>/<environment>/
+/env/
 
 # Dependencies
 node_modules/

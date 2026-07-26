@@ -18,7 +18,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
       <div class="page-header">
         <div>
           <h1>Release Notes</h1>
-          <p class="subtitle">What's new in DinnerBears.</p>
+          <p class="subtitle">What's new.</p>
         </div>
         @if (!isNonValidated()) {
           <button mat-stroked-button routerLink="/feedback">

@@ -129,7 +129,7 @@ interface AchievementGroup {
             @if (photoUrl()) {
               <img [src]="photoUrl()!" alt="Profile photo" class="profile-photo" />
             } @else {
-              <img src="/avatars/bear-default.jpg" alt="Bear avatar" class="profile-photo" />
+              <img src="/assets/default-avatar.svg" alt="Member" class="profile-photo" />
             }
           </div>
           <div class="profile-info">
@@ -154,7 +154,7 @@ interface AchievementGroup {
                     @if (inviter.profilePhotoPath) {
                       <img [src]="inviter.profilePhotoPath" [alt]="inviter.fullName" />
                     } @else {
-                      <img src="/avatars/bear-default.jpg" [alt]="inviter.fullName" />
+                      <img src="/assets/default-avatar.svg" [alt]="inviter.fullName" />
                     }
                   </div>
                   <span>{{ inviter.fullName }}</span>
@@ -171,7 +171,7 @@ interface AchievementGroup {
                         @if (m.profilePhotoPath) {
                           <img [src]="m.profilePhotoPath" [alt]="m.fullName" />
                         } @else {
-                          <img src="/avatars/bear-default.jpg" [alt]="m.fullName" />
+                          <img src="/assets/default-avatar.svg" [alt]="m.fullName" />
                         }
                       </div>
                       <span>{{ m.fullName }}</span>

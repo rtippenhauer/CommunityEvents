@@ -42,6 +42,7 @@ async function bootstrap(): Promise<void> {
   app.useStaticAssets(join(uploadPath, 'achievements'), { prefix: '/api/uploads/achievements' });
   app.useStaticAssets(join(uploadPath, 'custom-icons'), { prefix: '/api/uploads/custom-icons' });
   app.useStaticAssets(join(uploadPath, 'branding'), { prefix: '/api/uploads/branding' });
+  app.useStaticAssets(join(uploadPath, 'avatars'), { prefix: '/api/uploads/avatars' });
 
   app.useGlobalPipes(
     new ValidationPipe({

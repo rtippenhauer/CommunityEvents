@@ -51,7 +51,7 @@ interface City {
   template: `
     @if (!isLoggedIn()) {
       <div class="guest-banner">
-        <span>Join DinnerBears to RSVP for events.</span>
+        <span>Join to RSVP for events.</span>
       </div>
     }
 

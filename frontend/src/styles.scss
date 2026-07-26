@@ -44,6 +44,8 @@ html {
   --db-brown-nav:   #3D1C05;   // nav/sidenav background
   --db-brown-card:  #4A2208;   // card on dark backgrounds
   --db-cream-muted: #C8A882;   // secondary text on dark
+  --db-banner:      #b34a00;   // stage-environment banner (derived from primary at runtime)
+  --db-accent-on-dark: #E0B45E; // lightened accent for text on dark chrome (derived at runtime)
   --db-green:       #5DCA98;   // spots available
   --db-red-overlay: rgba(180, 20, 20, 0.75); // cancelled overlay
   --db-font-display:'Fraunces', serif;

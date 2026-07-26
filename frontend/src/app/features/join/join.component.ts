@@ -11,7 +11,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { InvitesService, InvitePreview } from '../../core/services/invites.service';
 import { AuthService } from '../../core/services/auth.service';
 import { BrandConfigService } from '../../core/services/brand-config.service';
-import { environment } from '../../../environments/environment';
 import { formatEventTime } from '../../shared/utils/format-event';
 
 type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked';
@@ -33,7 +32,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
     <div class="join-page">
       <div class="brand-header">
         <img [src]="brandConfig.iconSrc()" [alt]="brandConfig.brand().name" class="brand-logo" />
-        <p class="brand-tagline">Good food. Great company. Bear memories.</p>
+        <p class="brand-tagline">{{ brandConfig.brand().tagline }}</p>
       </div>
 
       @switch (state()) {
@@ -55,7 +54,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
             <div class="card-body">
               <p class="join-label">
                 <mat-icon class="label-icon">group_add</mat-icon>
-                You're invited to DinnerBears!
+                You're invited!
               </p>
 
               <h1 class="event-title">{{ preview()!.event!.title }}</h1>
@@ -213,7 +212,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
             <mat-icon class="status-icon">schedule</mat-icon>
             <h2>This invite has expired</h2>
             <p>
-              This invite link is no longer valid. Please ask a DinnerBears member for a new one.
+              This invite link is no longer valid. Please ask a member for a new one.
             </p>
           </div>
         }
@@ -223,7 +222,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
             <mat-icon class="status-icon">group_off</mat-icon>
             <h2>This invite link is full</h2>
             <p>
-              This invite has reached its maximum number of uses. Please ask a DinnerBears member
+              This invite has reached its maximum number of uses. Please ask a member
               for a new one.
             </p>
           </div>
@@ -234,7 +233,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
             <mat-icon class="status-icon">block</mat-icon>
             <h2>This invite has been revoked</h2>
             <p>
-              This invite link is no longer active. Please ask a DinnerBears member for a new one.
+              This invite link is no longer active. Please ask a member for a new one.
             </p>
           </div>
         }
@@ -530,8 +529,9 @@ export class JoinComponent implements OnInit {
           this.state.set('full');
         } else {
           this.state.set('ready');
-          if (environment.facebookAppId) {
-            this.loadFbSdk(environment.facebookAppId);
+          const facebookAppId = this.brandConfig.facebookAppId();
+          if (facebookAppId) {
+            this.loadFbSdk(facebookAppId);
           }
         }
       },

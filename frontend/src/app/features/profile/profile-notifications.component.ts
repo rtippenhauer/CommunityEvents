@@ -43,7 +43,7 @@ interface NotifPrefs {
           @if (emailStatus() === 'unsubscribed') {
             <div class="email-status-banner unsubscribed-banner">
               <mat-icon>unsubscribe</mat-icon>
-              <span>You are currently unsubscribed from all DinnerBears emails.</span>
+              <span>You are currently unsubscribed from all emails.</span>
               <button mat-stroked-button color="primary" (click)="resubscribe()">
                 Resubscribe
               </button>

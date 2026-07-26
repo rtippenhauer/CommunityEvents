@@ -15,3 +15,10 @@ once that release's draft has been created.
 - Admins can now set the site name, tagline, colors, and logo/splash/icon images right from Site Settings — changes apply instantly, no rebuild
 - New events can default to your group's usual day and time
 - Locations can keep their address hidden until a member RSVPs "Going"
+
+## Home Page & Branding Controls
+
+- The home page hero, "How it works", and "Our Story" sections are now fully editable from the admin panel — rewrite them, or clear one to hide that section, with no code change
+- Toggle the home-page stats bar on or off from Site Settings
+- Upload a home-page "Story" image and manage the preset profile avatars members can choose from
+- Site colors now flow through the whole interface automatically from your chosen primary color

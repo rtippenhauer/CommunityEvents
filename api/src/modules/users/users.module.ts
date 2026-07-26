@@ -9,6 +9,7 @@ import { UsersController } from './users.controller';
 import { ProfilePhotosController } from './profile-photos.controller';
 import { EmailModule } from '../email/email.module';
 import { AuditModule } from '../audit/audit.module';
+import { AvatarsModule } from '../avatars/avatars.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AuditModule } from '../audit/audit.module';
     ]),
     EmailModule,
     AuditModule,
+    AvatarsModule,
   ],
   providers: [UsersService],
   controllers: [UsersController, ProfilePhotosController],

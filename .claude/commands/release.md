@@ -19,4 +19,4 @@ If $ARGUMENTS is empty, ask Rob what version number to use before doing anything
    tags from `/phase-done` aren't pushed to GitHub as a side effect.
 9. Build and push the stage image: `bash scripts/publish-stage.sh`
 10. Build and push the prod image: `bash scripts/publish-latest.sh`
-11. Report back a short summary: draft release created (unpublished) at www.dinnerbears.com, version bumped, commit + tag pushed, both `rtippenhauer/dinnerbears:stage` and `rtippenhauer/dinnerbears:latest` pushed to Docker Hub. Remind Rob the release is sitting as an unpublished draft at `/admin/releases/new` — he reviews and publishes it himself when ready.
+11. Report back a short summary: draft release created (unpublished) at www.dinnerbears.com, version bumped, commit + tag pushed, both `rtippenhauer/community-events:stage` and `rtippenhauer/community-events:latest` pushed to Docker Hub. Remind Rob the release is sitting as an unpublished draft at `/admin/releases/new` — he reviews and publishes it himself when ready.

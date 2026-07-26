@@ -20,7 +20,7 @@ import { firstValueFrom } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AccountService, ConnectedProviders } from '../../core/services/account.service';
 import { AuthService } from '../../core/services/auth.service';
-import { environment } from '../../../environments/environment';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-account-settings',
@@ -46,7 +46,7 @@ import { environment } from '../../../environments/environment';
       <mat-card class="settings-card">
         <mat-card-header>
           <mat-card-title>Connected Accounts</mat-card-title>
-          <mat-card-subtitle>Manage how you log in to DinnerBears</mat-card-subtitle>
+          <mat-card-subtitle>Manage how you log in</mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>
           @if (loading()) {
@@ -191,7 +191,7 @@ import { environment } from '../../../environments/environment';
           </mat-card-header>
           <mat-card-content>
             <p class="danger-description">
-              Permanently delete your DinnerBears account and all associated login credentials. Your
+              Permanently delete your account and all associated login credentials. Your
               name and email will be deleted within 30 days.
             </p>
             <button
@@ -360,7 +360,7 @@ import { environment } from '../../../environments/environment';
             <h2>Disconnect {{ pendingProvider() | titlecase }}?</h2>
             <p>
               You will no longer be able to log in with {{ pendingProvider() | titlecase }}. Your
-              DinnerBears account and all history will remain.
+              account and all history will remain.
             </p>
             <div class="dialog-actions">
               <button mat-button (click)="cancelDisconnect()">Cancel</button>
@@ -404,7 +404,7 @@ import { environment } from '../../../environments/environment';
         <div class="dialog-backdrop">
           <div class="dialog-panel" (click)="$event.stopPropagation()">
             <mat-icon class="dialog-warn-icon">delete_forever</mat-icon>
-            <h2>Delete your DinnerBears account?</h2>
+            <h2>Delete your account?</h2>
             <ul class="delete-details">
               <li>Your account will be <strong>immediately deactivated</strong>.</li>
               <li>All login credentials are removed now.</li>
@@ -673,6 +673,7 @@ export class AccountSettingsComponent implements OnInit {
   readonly showChangePw = signal(false);
 
   private readonly fb = inject(NonNullableFormBuilder);
+  private readonly brandConfig = inject(BrandConfigService);
   readonly setPasswordForm = this.fb.group({
     email: ['', [Validators.required, Validators.email]],
     newPassword: ['', [Validators.required, Validators.minLength(8)]],
@@ -685,7 +686,9 @@ export class AccountSettingsComponent implements OnInit {
     confirmPassword: ['', Validators.required],
   });
 
-  readonly facebookEnabled = !!environment.facebookAppId;
+  get facebookEnabled(): boolean {
+    return !!this.brandConfig.facebookAppId();
+  }
   readonly fbReady = signal(false);
   readonly fbLinking = signal(false);
 
@@ -695,8 +698,9 @@ export class AccountSettingsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadProviders();
-    if (environment.facebookAppId) {
-      this.loadFbSdk(environment.facebookAppId);
+    const facebookAppId = this.brandConfig.facebookAppId();
+    if (facebookAppId) {
+      this.loadFbSdk(facebookAppId);
     }
   }
 
@@ -756,10 +760,11 @@ export class AccountSettingsComponent implements OnInit {
   }
 
   connectFacebook(): void {
-    if (!environment.facebookAppId) return;
+    const facebookAppId = this.brandConfig.facebookAppId();
+    if (!facebookAppId) return;
     const win = window as any;
     if (!win.FB || !win.__fbDone) {
-      this.loadFbSdk(environment.facebookAppId);
+      this.loadFbSdk(facebookAppId);
       return;
     }
     this.fbLinking.set(true);

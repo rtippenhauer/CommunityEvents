@@ -15,6 +15,8 @@ interface LegalTab {
 }
 
 const TABS: LegalTab[] = [
+  { key: 'home_hero_html', label: 'Home Hero' },
+  { key: 'home_howitworks_html', label: 'How It Works' },
   { key: 'legal_terms_html', label: 'Terms of Service' },
   { key: 'legal_privacy_html', label: 'Privacy Policy' },
   { key: 'about_story_html', label: 'About / Our Story' },
@@ -34,10 +36,10 @@ const TABS: LegalTab[] = [
   template: `
     <div class="legal-admin-page">
       <div class="page-header">
-        <h1>Legal &amp; Story Copy</h1>
+        <h1>Content &amp; Legal Copy</h1>
         <p class="subtitle">
-          Edit Terms of Service, Privacy Policy, and the home page's "Our Story" copy. Changes
-          go live immediately — no deploy needed.
+          Edit the home-page hero, Terms of Service, Privacy Policy, and the home page's "Our
+          Story" copy. Changes go live immediately — no deploy needed.
         </p>
       </div>
 
@@ -156,6 +158,8 @@ export class AdminLegalComponent implements OnInit {
   };
 
   readonly form = this.fb.group({
+    home_hero_html: [''],
+    home_howitworks_html: [''],
     legal_terms_html: [''],
     legal_privacy_html: [''],
     about_story_html: [''],
@@ -169,6 +173,8 @@ export class AdminLegalComponent implements OnInit {
           string
         >;
         this.form.setValue({
+          home_hero_html: values.home_hero_html ?? '',
+          home_howitworks_html: values.home_howitworks_html ?? '',
           legal_terms_html: values.legal_terms_html ?? '',
           legal_privacy_html: values.legal_privacy_html ?? '',
           about_story_html: values.about_story_html ?? '',

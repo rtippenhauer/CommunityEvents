@@ -102,7 +102,7 @@ interface Location {
           <input
             matInput
             formControlName="title"
-            placeholder="DinnerBears Cincinnati — June 2026"
+            placeholder="Downtown Dinner — June 2026"
           />
           <mat-error>Title is required</mat-error>
         </mat-form-field>

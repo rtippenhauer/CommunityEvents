@@ -78,7 +78,7 @@ const CATEGORY_META: Record<
     icon: 'history_edu',
     isProgressive: false,
     description:
-      'A one-time badge granted to members who were part of DinnerBears before the platform launched. Backfilled at deploy.',
+      'A one-time badge granted to members who were part of the community before the platform launched. Backfilled at deploy.',
   },
   event: {
     label: 'Special Dinners',

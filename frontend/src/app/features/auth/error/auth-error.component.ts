@@ -13,13 +13,13 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
   no_invite: {
     icon: 'mail_lock',
     title: 'Account not found',
-    body: "We couldn't find a DinnerBears account linked to your sign-in. DinnerBears is invite-only — if you've received an invite link, use it to sign up.",
+    body: "We couldn't find an account linked to your sign-in. This community is invite-only — if you've received an invite link, use it to sign up.",
     showInviteHint: true,
   },
   not_active: {
     icon: 'block',
     title: 'Account unavailable',
-    body: 'Your account is not currently active. If you think this is a mistake, reach out to a DinnerBears admin.',
+    body: 'Your account is not currently active. If you think this is a mistake, reach out to an admin.',
     showInviteHint: false,
   },
   invalid_invite: {
@@ -37,7 +37,7 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
   invite_expired: {
     icon: 'timer_off',
     title: 'Invite expired',
-    body: 'This invite link has expired. Ask a DinnerBears member to send you a new one.',
+    body: 'This invite link has expired. Ask a member to send you a new one.',
     showInviteHint: true,
   },
   invite_email_mismatch: {
@@ -55,7 +55,7 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
   provider_not_linked: {
     icon: 'link_off',
     title: 'Facebook login not connected',
-    body: 'Facebook is not linked to your DinnerBears account. Sign in with Google instead, then reconnect Facebook from Account Settings if you want to use it again.',
+    body: 'Facebook is not linked to your account. Sign in with Google instead, then reconnect Facebook from Account Settings if you want to use it again.',
     showInviteHint: false,
   },
 };
@@ -63,7 +63,7 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
 const FALLBACK: ErrorContent = {
   icon: 'error_outline',
   title: 'Sign-in failed',
-  body: 'Something went wrong while signing you in. Please try again, or contact a DinnerBears admin if the problem continues.',
+  body: 'Something went wrong while signing you in. Please try again, or contact an admin if the problem continues.',
   showInviteHint: false,
 };
 

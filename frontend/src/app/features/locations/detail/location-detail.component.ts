@@ -186,7 +186,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                   <img
                     class="audit-avatar"
                     [src]="
-                      location()!.createdByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'
+                      location()!.createdByUser!.profilePhotoPath || '/assets/default-avatar.svg'
                     "
                     [alt]="location()!.createdByUser!.fullName"
                   />
@@ -207,7 +207,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                   <img
                     class="audit-avatar"
                     [src]="
-                      location()!.updatedByUser!.profilePhotoPath || '/avatars/bear-chef.jpg'
+                      location()!.updatedByUser!.profilePhotoPath || '/assets/default-avatar.svg'
                     "
                     [alt]="location()!.updatedByUser!.fullName"
                   />
@@ -288,7 +288,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
                         <div class="review-header">
                           <img
                             class="review-avatar"
-                            [src]="review.memberPhoto || '/avatars/bear-chef.jpg'"
+                            [src]="review.memberPhoto || '/assets/default-avatar.svg'"
                             [alt]="review.memberName"
                           />
                           <div>
