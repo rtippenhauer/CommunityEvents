@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-07-24_
+_Last updated: 2026-07-26_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -50,6 +50,7 @@ No `synchronize: true`. No manual schema changes.
 | `member_achievements` | 15 | Earned achievements per member |
 | `member_points` | 15 | Bear Points ledger (one row per award event) |
 | `custom_icons` | 17 | Reusable icon library for achievements |
+| `avatar` | 31 | Per-instance preset profile avatars (admin-managed) |
 
 ---
 
@@ -900,6 +901,30 @@ INDEX idx_created (created_at)
 
 ---
 
+## avatar
+
+Phase 31. Per-instance preset profile avatars a member can pick from — replaces
+the old static `public/avatars/manifest.json`. Admin-managed (upload/remove) via
+the `avatars` module.
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+path            VARCHAR(500) NOT NULL UNIQUE
+label           VARCHAR(100) NOT NULL
+sort_order      INT NOT NULL DEFAULT 0
+created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+```
+
+`path` is either a static asset shipped in the image (`/avatars/bear-*.jpg`,
+the 32 seeded DinnerBears bears) or an uploaded one
+(`/api/uploads/avatars/<file>`). A fresh fork's bootstrap deletes the seeded
+bears so it starts empty. Served public via `GET /api/v1/avatars/manifest`;
+admin CRUD at `GET|POST /api/v1/admin/avatars`, `PATCH|DELETE
+/api/v1/admin/avatars/:id`. `UsersService.setAvatar` validates a chosen path
+against this table.
+
+---
+
 ## app_config
 
 ```sql
@@ -942,6 +967,15 @@ Seed rows:
   seeded** (empty default); set to an `/api/uploads/branding/<file>` path when an
   admin uploads a replacement image, else the frontend uses its compiled-in
   default asset
+- `brand_story_url` (Phase 31) — home-page "Our Story" image; seeded to
+  `/images/story-map.png` for DinnerBears, cleared by bootstrap for a fork
+  (empty = the image is hidden)
+- `home_hero_html` (Phase 31) — home-page hero rich-text block
+- `home_howitworks_html` (Phase 31) — home-page "How it works" rich-text block
+  (supports the `.steps/.step/.step-num` grid markup when set as raw HTML)
+- `home_show_stats` (Phase 31) = `true` — toggles the home-page stats strip
+- All Phase 31 home rows are seeded with DinnerBears' copy and cleared by
+  bootstrap for a fresh fork; each home section hides when its value is empty
 
 The Phase 30 and Phase 29 rows above are editable via the admin UI
 (`/admin/legal`, `/admin/settings`), unlike the rest of this table which has

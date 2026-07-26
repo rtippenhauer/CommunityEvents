@@ -1818,3 +1818,98 @@ this phase (confirmed harmless in production either way — nginx's
 the admin UI and see it reflected live on the public pages, with no code
 change or deploy. Phase 29's bootstrap script (once built) seeds a new
 fork's own starting copy into these same `app_config` rows.
+
+## Phase 31 — Runtime White-Label (one image, DB-driven) ✅ Complete
+
+Started 2026-07-24 on `phase-31-runtime-white-label`. Standing up the "Sons"
+(Southern Ohio Naturist Society) instance on `sons-stage.rtippenhauer.com`
+exposed that the frontend bundle still hardcoded per-instance values at
+**build time** (`environment.stage.ts`: `rootUrl`, `baseDomain`,
+`vapidPublicKey`, `facebookAppId`, `isStage`), plus a brown "chrome" palette
+and a static bear-avatar set. Goal: **one generic image serves every
+instance**, everything resolved at runtime from the instance's DB + `.env`.
+
+Locked decisions: avatars = admin-uploadable per instance; chrome = derived
+from the primary color at runtime; the published image renamed to
+`rtippenhauer/community-events`.
+
+Scope delivered:
+- **Runtime config decoupling** — `/config/branding` (`AppConfigService.getBrandingConfig`)
+  extended to also return `vapidPublicKey` / `facebookAppId` / `isStage` /
+  `appUrl` / `baseDomain` from the instance's own `.env` (baseDomain via the
+  shared `instance-contact.ts` derivation). Every frontend consumer migrated
+  off `environment.*` to `BrandConfigService` (push, Facebook login ×3, stage
+  banner, the safety-net redirect, admin-cities). `environment.*.ts` collapsed
+  to `{ production, apiUrl }`; the separate `stage` Angular build config
+  removed (stage vs prod is now the runtime `IS_STAGE` flag; the tab title
+  gets a "(Stage)" suffix).
+- **Chrome from primary** — new `core/utils/color.util.ts` (hex↔HSL);
+  `BrandConfigService.applyColors` derives `--db-brown-*` / `--db-banner` /
+  `--db-accent-on-dark` from the configured primary. Hardcoded `#b34a00` /
+  `#4A2208` in `app.component.scss` replaced with the derived vars.
+- **Admin-uploadable avatars** — new `avatar` table + `avatars` module
+  (public `GET /avatars/manifest`, admin CRUD/upload to the uploads volume);
+  migration seeds DinnerBears' 32 bears; bootstrap clears them for a fresh
+  fork. `UsersService.setAvatar` now validates the path against the avatar
+  table. The bear fallbacks across ~9 components replaced with a neutral
+  `default-avatar.svg`.
+- **Admin-uploadable home Story image** (`brand_story_url`) + **three editable
+  home rich-text blocks** — hero (`home_hero_html`), "How it works"
+  (`home_howitworks_html`), and the existing story copy — edited in the
+  ngx-quill editor (`/admin/legal`, retitled "Content & Legal"), each hidden
+  when cleared (`hasContent()` treats the editor's `<p><br></p>` as empty).
+  The "How it works" CSS renders either a numbered prose list (WYSIWYG) or the
+  original 3-column `.steps` grid (raw HTML). Migrations seed DinnerBears'
+  copy; bootstrap clears them for forks.
+- **Home stats-bar toggle** (`home_show_stats`) with an admin switch.
+- **App-wide de-branding** — ~20 components + `events.service` share text had
+  hardcoded "DinnerBears"/bear wording replaced with the runtime brand
+  name/tagline or neutral phrasing.
+- Image renamed to `rtippenhauer/community-events` in the publish/scan scripts
+  and the `/release`, `/phase-done`, DEV docs; `NEW_INSTANCE_SETUP.md` updated.
+
+### Deployment lessons (not code)
+Standing up stage surfaced several environment gotchas, none of them Phase-31
+code: a **stale Unraid container template** kept re-pinning the old
+`dinnerbears:stage` image on every edit; a **98%-full `docker.img`** stalled
+MySQL writes and wedged logins (a hung write, not the DB — reads kept working);
+and **duplicate `access_token` cookies** (one `Secure`, one not — from
+`NODE_ENV` flipping between deploys) caused "logs in but won't stick." Fixes:
+edit the template's Repository, enlarge/prune the vDisk, clear cookies, and set
+`NODE_ENV=production` + `IS_STAGE=true` per instance.
+
+### Verification
+Both DinnerBears-Stage and Sons-Stage run the single `community-events:stage`
+image; `/config/branding` confirmed resolving each instance's own
+appUrl/baseDomain/isStage/VAPID/story values, login working, and the home
+page fully branded per instance. API + frontend build clean; e2e spec
+(`api/test/white-label.e2e-spec.ts`) added for the branding-config fields and
+avatars CRUD.
+
+**Definition of done:** one generic image, configured entirely from DB +
+`.env`, serves DinnerBears and Sons with per-instance branding, avatars, home
+content, and no leftover DinnerBears wording. ✓
+
+**Deferred to Phase 32:** configurable terminology (Restaurant / Dinner / Bear
+Points → per-instance terms), and background removal/flattening for
+admin-uploaded logo images. `.env.example` documentation check also pending
+(a local permission guard blocked editing it this phase).
+
+## Phase 32 — Configurable Terminology ✅ In Progress
+
+The UI still hardcodes DinnerBears/dining-specific nouns — "Restaurant(s)"
+(~23 spots: nav, leaderboard stat, locations pages, event forms), "Dinner(s)"
+(~60 spots), and "Bear Points" (the leaderboard) — which don't fit a
+non-dining instance like Sons (a naturist social club that meets at members'
+homes). Phase 29 renamed the *database* entity restaurants→locations but left
+the **display term** hardcoded.
+
+Planned scope:
+- Admin-configurable terminology settings (like the brand name): location term
+  (singular/plural), event term (singular/plural), and points term — with the
+  current DinnerBears words as defaults.
+- Replacement pass swapping the hardcoded nouns for the configured term via
+  `BrandConfigService`, same approach as Phase 31's de-branding pass.
+- **Logo background handling** (carried from Phase 31): admin-uploaded logos
+  with an opaque background show a white box against the dark nav — strip or
+  flatten it on upload, or render logos on a matching backdrop.
