@@ -23,6 +23,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 import { PushNotificationService } from '../../core/services/push.service';
 import { PhotoCropDialogComponent } from '../../shared/components/photo-crop-dialog/photo-crop-dialog.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -341,8 +342,8 @@ interface AvatarEntry {
         </mat-card-header>
         <mat-card-content>
           <p class="cal-desc">
-            Add your dinners to your calendar. Updates automatically when you RSVP or
-            event details change.
+            Add your {{ brand.dinnerPluralLower() }} to your calendar. Updates automatically when you
+            RSVP or event details change.
           </p>
           @if (calendarUrl()) {
             <div class="cal-buttons">
@@ -644,6 +645,7 @@ interface AvatarEntry {
 })
 export class ProfileSettingsComponent implements OnInit {
   readonly authService = inject(AuthService);
+  readonly brand = inject(BrandConfigService);
   readonly pushService = inject(PushNotificationService);
   private readonly http = inject(HttpClient);
   private readonly fb = inject(NonNullableFormBuilder);

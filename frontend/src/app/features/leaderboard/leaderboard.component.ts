@@ -15,6 +15,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { CommunityService, LeaderboardEntry } from '../../core/services/community.service';
 import { CityService } from '../../core/services/city.service';
 import { AuthService } from '../../core/services/auth.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 
 const TYPE_LABELS: Record<string, string> = {
   attendance: 'Attendance',
@@ -38,7 +39,7 @@ const TYPE_LABELS: Record<string, string> = {
     <div class="lb-container">
       <div class="lb-header">
         <div class="lb-title-row">
-          <h2>Bear Points Leaderboard</h2>
+          <h2>{{ brand.points() }} Leaderboard</h2>
           @if (!cityService.isSingleCity()) {
             <mat-form-field appearance="outline" class="city-filter">
               <mat-label>City</mat-label>
@@ -56,7 +57,10 @@ const TYPE_LABELS: Record<string, string> = {
       @if (loading()) {
         <div class="loading"><mat-spinner diameter="40" /></div>
       } @else if (entries().length === 0) {
-        <p class="empty">No Bear Points awarded yet — attend a dinner to get on the board!</p>
+        <p class="empty">
+          No {{ brand.points() }} awarded yet — attend a {{ brand.dinnerSingularLower() }} to get on
+          the board!
+        </p>
       } @else {
         <div class="lb-table">
           <div class="lb-row lb-head">
@@ -280,6 +284,7 @@ export class LeaderboardComponent implements OnInit {
   private readonly authService = inject(AuthService);
 
   readonly cityService = inject(CityService);
+  readonly brand = inject(BrandConfigService);
   readonly cities = this.cityService.cities;
 
   readonly loading = signal(true);

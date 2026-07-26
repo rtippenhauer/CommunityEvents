@@ -18,6 +18,7 @@ import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { LocationsService, Location } from '../../../core/services/locations.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CityService } from '../../../core/services/city.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { LocationFormDialogComponent } from '../form/location-form-dialog.component';
 import { FacebookImportDialogComponent } from '../import/facebook-import-dialog.component';
 
@@ -45,7 +46,7 @@ interface City {
   ],
   template: `
     <div class="page-header">
-      <h1>{{ showArchived() ? 'Archived Restaurants' : 'Restaurants' }}</h1>
+      <h1>{{ showArchived() ? 'Archived ' + brand.locationPlural() : brand.locationPlural() }}</h1>
       <div class="header-actions">
         @if (isAdmin()) {
           <button mat-stroked-button (click)="toggleArchived()">
@@ -66,7 +67,7 @@ interface City {
             Enrich All
           </button>
           <button mat-raised-button color="primary" (click)="openCreate()">
-            <mat-icon>add</mat-icon> Add Restaurant
+            <mat-icon>add</mat-icon> Add {{ brand.locationSingular() }}
           </button>
         }
       </div>
@@ -77,7 +78,7 @@ interface City {
       <mat-form-field appearance="outline" class="search-field">
         <mat-label>Search</mat-label>
         <mat-icon matPrefix>search</mat-icon>
-        <input matInput [formControl]="searchCtrl" placeholder="Restaurant name…" />
+        <input matInput [formControl]="searchCtrl" [placeholder]="brand.locationSingular() + ' name…'" />
       </mat-form-field>
 
       @if (!cityService.isSingleCity()) {
@@ -98,7 +99,11 @@ interface City {
       <div class="center"><mat-spinner /></div>
     } @else if (locations().length === 0) {
       <p class="empty">
-        {{ showArchived() ? 'No archived restaurants.' : 'No restaurants found.' }}
+        {{
+          showArchived()
+            ? 'No archived ' + brand.locationPluralLower() + '.'
+            : 'No ' + brand.locationPluralLower() + ' found.'
+        }}
       </p>
     } @else {
       <div class="location-grid">
@@ -281,6 +286,7 @@ export class LocationsListComponent implements OnInit {
   private readonly locationsService = inject(LocationsService);
   private readonly authService = inject(AuthService);
   readonly cityService = inject(CityService);
+  readonly brand = inject(BrandConfigService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
@@ -351,7 +357,12 @@ export class LocationsListComponent implements OnInit {
         this.snackBar.open(`${r.name} restored`, 'OK', { duration: 3000 });
         this.load();
       },
-      error: () => this.snackBar.open('Failed to restore restaurant', 'OK', { duration: 3000 }),
+      error: () =>
+        this.snackBar.open(
+          `Failed to restore ${this.brand.locationSingularLower()}`,
+          'OK',
+          { duration: 3000 },
+        ),
     });
   }
 
@@ -373,7 +384,7 @@ export class LocationsListComponent implements OnInit {
   bulkEnrich(): void {
     const count = this.locations().length;
     const confirmed = window.confirm(
-      `Enrich all ${count} restaurants with Google Places + Claude descriptions?\n\nThis runs in the background — check Unraid logs for progress. Takes ~${Math.ceil((count * 0.7) / 60)} minutes.`,
+      `Enrich all ${count} ${this.brand.locationPluralLower()} with Google Places + Claude descriptions?\n\nThis runs in the background — check Unraid logs for progress. Takes ~${Math.ceil((count * 0.7) / 60)} minutes.`,
     );
     if (!confirmed) return;
     this.enrichingAll.set(true);
@@ -381,7 +392,7 @@ export class LocationsListComponent implements OnInit {
       next: (res) => {
         this.enrichingAll.set(false);
         this.snackBar.open(
-          `Enriching ${res.total} restaurants in background — check logs for progress`,
+          `Enriching ${res.total} ${this.brand.locationPluralLower()} in background — check logs for progress`,
           'OK',
           { duration: 6000 },
         );

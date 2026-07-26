@@ -23,7 +23,12 @@ export type SiteSettingKey =
   | 'brand_logo_url'
   | 'brand_splash_url'
   | 'brand_icon_url'
-  | 'brand_story_url';
+  | 'brand_story_url'
+  | 'term_location_singular'
+  | 'term_location_plural'
+  | 'term_dinner_singular'
+  | 'term_dinner_plural'
+  | 'term_points';
 
 export type BrandImageSlot = 'logo' | 'splash' | 'icon' | 'story';
 

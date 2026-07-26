@@ -37,6 +37,7 @@ import { PhotoCropDialogComponent } from '../../../shared/components/photo-crop-
 import { EventFormDialogComponent } from '../../events/form/event-form-dialog.component';
 import { Event as DinnerEvent } from '../../../core/services/events.service';
 import { ReportButtonComponent } from '../../../shared/components/report-button/report-button.component';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-location-detail',
@@ -69,7 +70,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         <!-- Back + actions -->
         <div class="top-bar">
           <button mat-button routerLink="/locations">
-            <mat-icon>arrow_back</mat-icon> Restaurants
+            <mat-icon>arrow_back</mat-icon> {{ brand.locationPlural() }}
           </button>
           @if (isAdminOrMod()) {
             <div class="actions">
@@ -449,7 +450,7 @@ import { ReportButtonComponent } from '../../../shared/components/report-button/
         }
       </div>
     } @else {
-      <p class="empty">Restaurant not found.</p>
+      <p class="empty">{{ brand.locationSingular() }} not found.</p>
     }
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
@@ -904,6 +905,7 @@ export class LocationDetailComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
+  readonly brand = inject(BrandConfigService);
 
   @ViewChild('photoInput') photoInputRef!: ElementRef<HTMLInputElement>;
 
@@ -1048,7 +1050,7 @@ export class LocationDetailComponent implements OnInit {
         preset: {
           cityId: r.cityId,
           locationId: r.id,
-          title: `Bear Dinner at ${r.name}`,
+          title: `${this.brand.dinnerSingular()} at ${r.name}`,
         },
       },
       width: '600px',

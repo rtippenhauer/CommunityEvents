@@ -19,6 +19,7 @@ import {
   PlaceSearchResult,
 } from '../../../core/services/locations.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 export interface LocationFormDialogData {
   location?: Location;
@@ -49,9 +50,9 @@ interface City {
   template: `
     <h2 mat-dialog-title>
       @if (savedLocation()) {
-        Restaurant Added
+        {{ brand.locationSingular() }} Added
       } @else {
-        {{ data.location ? 'Edit' : 'Add' }} Restaurant
+        {{ data.location ? 'Edit' : 'Add' }} {{ brand.locationSingular() }}
       }
     </h2>
 
@@ -79,8 +80,8 @@ interface City {
           </div>
           @if (!r.description && !r.phone && !r.websiteUrl) {
             <p class="saved-no-enrich">
-              Enrichment found no additional data — you can add details manually from the restaurant
-              page.
+              Enrichment found no additional data — you can add details manually from the
+              {{ ' ' + brand.locationSingularLower() }} page.
             </p>
           }
         </div>
@@ -212,7 +213,7 @@ interface City {
       @if (savedLocation(); as r) {
         <button mat-button (click)="close()">Close</button>
         <button mat-raised-button color="primary" (click)="viewLocation(r.id)">
-          <mat-icon>open_in_new</mat-icon> View Restaurant
+          <mat-icon>open_in_new</mat-icon> View {{ brand.locationSingular() }}
         </button>
       } @else if (enriching()) {
         <!-- no actions while enriching -->
@@ -428,6 +429,7 @@ export class LocationFormDialogComponent implements OnInit {
   private readonly locationsService = inject(LocationsService);
   private readonly authService = inject(AuthService);
   private readonly snackBar = inject(MatSnackBar);
+  readonly brand = inject(BrandConfigService);
 
   cities: City[] = [];
   saving = false;

@@ -9,6 +9,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CommunityService, EventAchievement } from '../../../core/services/community.service';
 import { IconPickerComponent } from '../../../shared/components/icon-picker/icon-picker.component';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 export interface AchievementAdminDialogData {
   eventId: number;
@@ -31,7 +32,9 @@ export interface AchievementAdminDialogData {
     MatTooltipModule,
   ],
   template: `
-    <h2 mat-dialog-title><mat-icon>local_activity</mat-icon> Special Dinner Achievement</h2>
+    <h2 mat-dialog-title>
+      <mat-icon>local_activity</mat-icon> Special {{ brand.dinnerSingular() }} Achievement
+    </h2>
     <mat-dialog-content>
       @if (achievement()) {
         @if (editMode()) {
@@ -303,6 +306,7 @@ export interface AchievementAdminDialogData {
 export class AchievementAdminDialogComponent {
   private readonly communityService = inject(CommunityService);
   private readonly snackBar = inject(MatSnackBar);
+  readonly brand = inject(BrandConfigService);
   readonly data = inject<AchievementAdminDialogData>(MAT_DIALOG_DATA);
 
   readonly achievement = signal<EventAchievement | null>(this.data.achievement);

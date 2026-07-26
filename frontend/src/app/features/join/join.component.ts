@@ -85,7 +85,8 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
                 <p class="access-note">
                   <mat-icon class="note-icon">info_outline</mat-icon>
                   You'll join as a guest member — you can RSVP and view events right away. A
-                  moderator can upgrade you to full membership after meeting you at dinner.
+                  moderator can upgrade you to full membership after meeting you at a
+                  {{ ' ' + brandConfig.dinnerSingularLower() }}.
                 </p>
               }
 

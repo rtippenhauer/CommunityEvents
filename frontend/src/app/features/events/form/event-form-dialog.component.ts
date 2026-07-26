@@ -13,6 +13,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { EventsService, Event, EventStatus } from '../../../core/services/events.service';
 import { AppConfigService } from '../../../core/services/app-config.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 export interface EventFormDialogData {
   event?: Event;
@@ -88,13 +89,13 @@ interface Location {
         }
 
         <mat-form-field appearance="outline">
-          <mat-label>Restaurant</mat-label>
+          <mat-label>{{ brand.locationSingular() }}</mat-label>
           <mat-select formControlName="locationId">
             @for (r of filteredLocations(); track r.id) {
               <mat-option [value]="r.id">{{ r.name }}</mat-option>
             }
           </mat-select>
-          <mat-error>Restaurant is required</mat-error>
+          <mat-error>{{ brand.locationSingular() }} is required</mat-error>
         </mat-form-field>
 
         <mat-form-field appearance="outline">
@@ -102,7 +103,7 @@ interface Location {
           <input
             matInput
             formControlName="title"
-            placeholder="Downtown Dinner — June 2026"
+            [placeholder]="'Downtown ' + brand.dinnerSingular() + ' — June 2026'"
           />
           <mat-error>Title is required</mat-error>
         </mat-form-field>
@@ -164,7 +165,8 @@ interface Location {
 
         <label class="secret-toggle">
           <input type="checkbox" formControlName="isSecret" />
-          Secret dinner (attendees earn a surprise bonus achievement after the event)
+          Secret {{ brand.dinnerSingularLower() }} (attendees earn a surprise bonus achievement after
+          the event)
         </label>
       </form>
     </mat-dialog-content>
@@ -225,6 +227,7 @@ export class EventFormDialogComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly http = inject(HttpClient);
   private readonly appConfigService = inject(AppConfigService);
+  readonly brand = inject(BrandConfigService);
   readonly data = inject<EventFormDialogData>(MAT_DIALOG_DATA);
 
   readonly cities = signal<City[]>([]);
@@ -279,10 +282,14 @@ export class EventFormDialogComponent implements OnInit {
         this.filterLocations(location.cityId);
       }
 
-      // Auto-fill title if blank or still matches the generated pattern
+      // Auto-fill title if blank or still matches the generated pattern. Accept
+      // both the current configured "{term} at " prefix and the legacy
+      // "Bear Dinner at " so existing DinnerBears events editing still updates.
+      const dinnerTerm = this.brand.dinnerSingular();
       const currentTitle = this.form.controls.title.value;
-      if (!currentTitle || /^Bear Dinner at /.test(currentTitle)) {
-        this.form.controls.title.setValue(`Bear Dinner at ${location.name}`);
+      const generatedPrefixes = [`${dinnerTerm} at `, 'Bear Dinner at '];
+      if (!currentTitle || generatedPrefixes.some((p) => currentTitle.startsWith(p))) {
+        this.form.controls.title.setValue(`${dinnerTerm} at ${location.name}`);
       }
     });
 

@@ -55,7 +55,8 @@ type PageState =
             <div class="card-body">
               <p class="invited-by">
                 <mat-icon class="invite-icon">celebration</mat-icon>
-                <strong>{{ info()!.invitedByName }}</strong> invited you to dinner!
+                <strong>{{ info()!.invitedByName }}</strong> invited you to
+                {{ ' ' + brandConfig.dinnerSingularLower() }}!
               </p>
 
               <h1 class="event-title">{{ info()!.eventTitle }}</h1>
@@ -131,7 +132,9 @@ type PageState =
               </p>
               <p class="state-sub">{{ info()!.invitedByName }} will have your spot reserved.</p>
               <div class="join-cta">
-                <p class="join-text">Want to discover future dinners and join the group?</p>
+                <p class="join-text">
+                  Want to discover future {{ brandConfig.dinnerPluralLower() }} and join the group?
+                </p>
                 <a mat-raised-button color="primary" href="/login" class="join-btn">
                   <mat-icon>group_add</mat-icon>
                   Join
@@ -165,7 +168,9 @@ type PageState =
                 }
               </button>
               <div class="join-cta">
-                <p class="join-text">Want to discover future dinners and join the group?</p>
+                <p class="join-text">
+                  Want to discover future {{ brandConfig.dinnerPluralLower() }} and join the group?
+                </p>
                 <a mat-raised-button color="primary" href="/login" class="join-btn">
                   <mat-icon>group_add</mat-icon>
                   Join
@@ -193,7 +198,7 @@ type PageState =
             <div class="card-body state-body">
               <mat-icon class="state-icon expired-icon">schedule</mat-icon>
               <h2>This link has expired</h2>
-              <p>The dinner was on {{ info()!.eventDate | date: 'MMMM d, y' }}.</p>
+              <p>The {{ brandConfig.dinnerSingularLower() }} was on {{ info()!.eventDate | date: 'MMMM d, y' }}.</p>
             </div>
           </div>
         }

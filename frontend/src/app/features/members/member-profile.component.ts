@@ -20,6 +20,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 import { CommunityService, Achievement, PointSummary } from '../../core/services/community.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PointsHistoryDialogComponent } from './points-history-dialog.component';
@@ -48,29 +49,37 @@ interface MemberProfile {
   isAutomationAccount?: boolean;
 }
 
-const PROGRESS_LABELS: Record<string, string> = {
-  attendance: 'Dinners Attended',
-  coordinator: 'Events Coordinated',
-  new_location_coordinator: 'New Restaurants Coordinated',
-  invite: 'Members Invited',
-  rating: 'Restaurant Ratings',
-  founding: 'Founding Member',
-  event: 'Special Dinner',
-};
+// Built from the configured terminology (see brand-config) so labels track a
+// renamed instance's venue/gathering terms.
+function buildProgressLabels(b: BrandConfigService): Record<string, string> {
+  return {
+    attendance: `${b.dinnerPlural()} Attended`,
+    coordinator: 'Events Coordinated',
+    new_location_coordinator: `New ${b.locationPlural()} Coordinated`,
+    invite: 'Members Invited',
+    rating: `${b.locationSingular()} Ratings`,
+    founding: 'Founding Member',
+    event: `Special ${b.dinnerSingular()}`,
+  };
+}
 
-const ACHIEVEMENT_CATEGORIES: Record<string, { label: string; icon: string }> = {
-  attendance: { label: 'Attendance', icon: 'local_dining' },
-  coordinator: { label: 'Coordinator', icon: 'event_available' },
-  new_location_coordinator: { label: 'Scout', icon: 'travel_explore' },
-  invite: { label: 'Invites', icon: 'person_add' },
-  rating: { label: 'Ratings', icon: 'star' },
-  city_hopper: { label: 'City Hopper', icon: 'flight' },
-  secret_dinner: { label: 'Secret Dinners', icon: 'lock' },
-  founding: { label: 'Founding Bear', icon: 'history_edu' },
-  event: { label: 'Special Dinners', icon: 'celebration' },
-  login: { label: 'Site Visits', icon: 'login' },
-  other: { label: 'Special', icon: 'emoji_events' },
-};
+function buildAchievementCategories(
+  b: BrandConfigService,
+): Record<string, { label: string; icon: string }> {
+  return {
+    attendance: { label: 'Attendance', icon: 'local_dining' },
+    coordinator: { label: 'Coordinator', icon: 'event_available' },
+    new_location_coordinator: { label: 'Scout', icon: 'travel_explore' },
+    invite: { label: 'Invites', icon: 'person_add' },
+    rating: { label: 'Ratings', icon: 'star' },
+    city_hopper: { label: 'City Hopper', icon: 'flight' },
+    secret_dinner: { label: `Secret ${b.dinnerPlural()}`, icon: 'lock' },
+    founding: { label: 'Founding Bear', icon: 'history_edu' },
+    event: { label: `Special ${b.dinnerPlural()}`, icon: 'celebration' },
+    login: { label: 'Site Visits', icon: 'login' },
+    other: { label: 'Special', icon: 'emoji_events' },
+  };
+}
 
 const ACHIEVEMENT_CATEGORY_ORDER = [
   'attendance',
@@ -855,6 +864,7 @@ export class MemberProfileComponent implements OnInit {
   private readonly communityService = inject(CommunityService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
+  readonly brand = inject(BrandConfigService);
 
   readonly loading = signal(true);
   readonly validating = signal(false);
@@ -891,7 +901,10 @@ export class MemberProfileComponent implements OnInit {
         if ((next?.progressCurrent ?? 0) === 0) continue;
       }
 
-      const config = ACHIEVEMENT_CATEGORIES[cat] ?? { label: cat, icon: 'emoji_events' };
+      const config = buildAchievementCategories(this.brand)[cat] ?? {
+        label: cat,
+        icon: 'emoji_events',
+      };
       groups.push({
         category: cat,
         label: config.label,
@@ -939,7 +952,7 @@ export class MemberProfileComponent implements OnInit {
   }
 
   progressLabel(type: string | null): string {
-    return type ? (PROGRESS_LABELS[type] ?? type) : '';
+    return type ? (buildProgressLabels(this.brand)[type] ?? type) : '';
   }
 
   isImgIcon(icon: string): boolean {

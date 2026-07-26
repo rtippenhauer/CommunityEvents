@@ -2,6 +2,7 @@ import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-enrich-diagnose-dialog',
@@ -34,7 +35,7 @@ import { MatIconModule } from '@angular/material/icon';
 
       <!-- Location state -->
       <section>
-        <h3>Current Restaurant Data</h3>
+        <h3>Current {{ brand.locationSingular() }} Data</h3>
         <div class="row"><b>Name:</b>&nbsp;{{ data.location.name }}</div>
         <div class="row"><b>Address:</b>&nbsp;{{ data.location.address }}</div>
         <div class="row">
@@ -247,4 +248,5 @@ import { MatIconModule } from '@angular/material/icon';
 })
 export class EnrichDiagnoseDialogComponent {
   readonly data = inject(MAT_DIALOG_DATA);
+  readonly brand = inject(BrandConfigService);
 }

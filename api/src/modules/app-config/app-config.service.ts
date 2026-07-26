@@ -41,6 +41,15 @@ export const SITE_SETTING_KEYS = [
   'brand_splash_url',
   'brand_icon_url',
   'brand_story_url',
+  // Configurable per-instance terminology (Phase 32). Singular + plural stored
+  // separately rather than derived (naive "+s" pluralization is unreliable), so
+  // a fork can set e.g. Location/Locations, Meeting/Meetings. Points is a single
+  // label since it never appears pluralized differently.
+  'term_location_singular',
+  'term_location_plural',
+  'term_dinner_singular',
+  'term_dinner_plural',
+  'term_points',
 ] as const;
 export type SiteSettingKey = (typeof SITE_SETTING_KEYS)[number];
 
@@ -74,6 +83,13 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   // migration seeds DinnerBears' existing map here; a fresh fork's bootstrap
   // clears it so a new instance shows just the story copy until it uploads one.
   brand_story_url: '',
+  // Terminology defaults keep DinnerBears' original wording; a fork overrides
+  // these in /admin/settings (e.g. Sons → Location(s)/Meeting(s)/Points).
+  term_location_singular: 'Location',
+  term_location_plural: 'Locations',
+  term_dinner_singular: 'Event',
+  term_dinner_plural: 'Events',
+  term_points: 'Points',
 };
 
 @Injectable()
@@ -150,6 +166,13 @@ export class AppConfigService {
     isStage: boolean;
     appUrl: string;
     baseDomain: string;
+    terms: {
+      locationSingular: string;
+      locationPlural: string;
+      dinnerSingular: string;
+      dinnerPlural: string;
+      points: string;
+    };
   }> {
     const [
       name,
@@ -161,6 +184,11 @@ export class AppConfigService {
       splashUrl,
       iconUrl,
       storyUrl,
+      locationSingular,
+      locationPlural,
+      dinnerSingular,
+      dinnerPlural,
+      points,
     ] = await Promise.all([
       this.getSiteSetting('brand_name'),
       this.getSiteSetting('brand_tagline'),
@@ -171,6 +199,11 @@ export class AppConfigService {
       this.getSiteSetting('brand_splash_url'),
       this.getSiteSetting('brand_icon_url'),
       this.getSiteSetting('brand_story_url'),
+      this.getSiteSetting('term_location_singular'),
+      this.getSiteSetting('term_location_plural'),
+      this.getSiteSetting('term_dinner_singular'),
+      this.getSiteSetting('term_dinner_plural'),
+      this.getSiteSetting('term_points'),
     ]);
     return {
       name,
@@ -182,6 +215,13 @@ export class AppConfigService {
       splashUrl,
       iconUrl,
       storyUrl,
+      terms: {
+        locationSingular,
+        locationPlural,
+        dinnerSingular,
+        dinnerPlural,
+        points,
+      },
       vapidPublicKey: this.config.get<string>('VAPID_PUBLIC_KEY') ?? null,
       facebookAppId: this.config.get<string>('FACEBOOK_APP_ID') ?? null,
       isStage: this.config.get<string>('IS_STAGE') === 'true',

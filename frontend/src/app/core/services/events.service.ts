@@ -260,7 +260,7 @@ export class EventsService {
       text = event.facebookShareText;
     } else {
       const lines = [
-        `${brandName} Dinner Night!\n`,
+        `${brandName} ${this.brandConfig.dinnerSingular()} Night!\n`,
         `🍽️ ${event.locationName}`,
         `📅 ${dateStr} at ${timeStr}`,
         `📍 ${event.locationAddress ?? 'Address available after RSVP'}`,

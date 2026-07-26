@@ -38,7 +38,7 @@
             <mat-icon matListItemIcon>emoji_events</mat-icon> Leaderboard
           </a>
           <a mat-list-item routerLink="/locations" (click)="sidenav.close()">
-            <mat-icon matListItemIcon>restaurant</mat-icon> Restaurants
+            <mat-icon matListItemIcon>restaurant</mat-icon> {{ brandConfig.locationPlural() }}
           </a>
           @if (isMerchOpen()) {
             <a mat-list-item routerLink="/merch" (click)="sidenav.close()">
@@ -205,7 +205,7 @@
                   <mat-icon>emoji_events</mat-icon> Leaderboard
                 </a>
                 <a mat-menu-item routerLink="/locations">
-                  <mat-icon>restaurant</mat-icon> Restaurants
+                  <mat-icon>restaurant</mat-icon> {{ brandConfig.locationPlural() }}
                 </a>
                 @if (isMerchOpen()) {
                   <a mat-menu-item routerLink="/merch">

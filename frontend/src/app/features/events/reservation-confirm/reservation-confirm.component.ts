@@ -57,7 +57,8 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
               <div class="join-cta">
                 <p class="join-heading">New here?</p>
                 <p class="join-sub">
-                  Create your account and you'll be added to this dinner automatically.
+                  Create your account and you'll be added to this
+                  {{ ' ' + brandConfig.dinnerSingularLower() }} automatically.
                 </p>
                 <a mat-raised-button color="primary" [href]="'/login?token=' + info()!.inviteToken">
                   <mat-icon>person_add</mat-icon> Create My Account
@@ -71,7 +72,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
             <h2>Confirm the Reservation</h2>
             <p class="ready-sub">
               You've been asked to make the reservation for this event. Once you've called the
-              restaurant, click the button below.
+              {{ ' ' + brandConfig.locationSingularLower() }}, click the button below.
             </p>
             <div class="event-details">
               <div class="detail-row">

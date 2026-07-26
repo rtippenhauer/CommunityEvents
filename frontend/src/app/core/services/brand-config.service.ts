@@ -22,6 +22,18 @@ export interface BrandConfig {
   isStage: boolean;
   appUrl: string;
   baseDomain: string;
+  // Per-instance terminology (Phase 32). Singular + plural kept separate so a
+  // fork can rename e.g. Restaurant→Location, Dinner→Meeting without unreliable
+  // auto-pluralization; points is a single label.
+  terms: BrandTerms;
+}
+
+export interface BrandTerms {
+  locationSingular: string;
+  locationPlural: string;
+  dinnerSingular: string;
+  dinnerPlural: string;
+  points: string;
 }
 
 // Compiled-in default assets a fresh fork ships with. Used whenever the
@@ -55,6 +67,15 @@ const DEFAULT_BRAND: BrandConfig = {
   isStage: false,
   appUrl: '',
   baseDomain: '',
+  // DinnerBears' original wording — the compiled-in default until branding
+  // resolves, mirroring the API's SITE_SETTING_DEFAULTS terms.
+  terms: {
+    locationSingular: 'Location',
+    locationPlural: 'Locations',
+    dinnerSingular: 'Event',
+    dinnerPlural: 'Events',
+    points: 'Points',
+  },
 };
 
 // Loaded once via provideAppInitializer (see app.config.ts), same pattern
@@ -87,6 +108,20 @@ export class BrandConfigService {
   readonly isStage = computed(() => this.brand().isStage);
   readonly appUrl = computed(() => this.brand().appUrl);
   readonly baseDomain = computed(() => this.brand().baseDomain);
+
+  // Configurable terminology (Phase 32). Components bind these instead of
+  // hardcoding "Restaurant"/"Dinner"/"Bear Points". Title-cased as stored;
+  // use the *Lower variants for mid-sentence copy ("attend a dinner").
+  readonly terms = computed(() => this.brand().terms);
+  readonly locationSingular = computed(() => this.terms().locationSingular);
+  readonly locationPlural = computed(() => this.terms().locationPlural);
+  readonly dinnerSingular = computed(() => this.terms().dinnerSingular);
+  readonly dinnerPlural = computed(() => this.terms().dinnerPlural);
+  readonly points = computed(() => this.terms().points);
+  readonly locationSingularLower = computed(() => this.locationSingular().toLowerCase());
+  readonly locationPluralLower = computed(() => this.locationPlural().toLowerCase());
+  readonly dinnerSingularLower = computed(() => this.dinnerSingular().toLowerCase());
+  readonly dinnerPluralLower = computed(() => this.dinnerPlural().toLowerCase());
 
   async init(): Promise<void> {
     try {
