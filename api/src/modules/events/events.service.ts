@@ -183,6 +183,8 @@ export class EventsService {
         (e.location as any).address = null;
         (e.location as any).lat = null;
         (e.location as any).lng = null;
+        // Withhold photos too — a private venue's picture can reveal it.
+        (e.location as any).photos = [];
       }
 
       return Object.assign(e, {
@@ -223,6 +225,10 @@ export class EventsService {
       (event.location as any).address = null;
       (event.location as any).lat = null;
       (event.location as any).lng = null;
+      // A private venue's photos can reveal the address too (Street View, a
+      // house shot) — withhold them until the viewer earns visibility. Emptied
+      // server-side so the image URLs never reach the client.
+      (event.location as any).photos = [];
     }
 
     // Unauthenticated/non-validated callers don't get to know member identities

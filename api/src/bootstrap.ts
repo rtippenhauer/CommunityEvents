@@ -156,6 +156,20 @@ async function main(): Promise<void> {
        WHERE config_key IN ('brand_story_url', 'home_hero_html', 'home_howitworks_html')`,
     );
 
+    // Delete DinnerBears' seeded terminology rows so a fresh fork falls back to
+    // the generic code defaults (Restaurant / Event / Points). These must be
+    // DELETEd, not blanked — getSiteSetting only falls back to the default on a
+    // missing row, so an empty value would leave the UI with no term at all.
+    // The operator renames them afterwards in /admin/settings → Terminology.
+    const clearedTerms = (await qr.query(
+      `DELETE FROM app_config
+       WHERE config_key IN ('term_location_singular', 'term_location_plural',
+         'term_dinner_singular', 'term_dinner_plural', 'term_points')`,
+    )) as { affectedRows?: number };
+    if (clearedTerms.affectedRows) {
+      console.log(`  • cleared ${clearedTerms.affectedRows} seeded terminology row(s)`);
+    }
+
     // ── Email provider config (leave an existing configured row untouched) ──
     await qr.query(
       `INSERT IGNORE INTO email_provider_config

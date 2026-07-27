@@ -22,6 +22,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { EventsService, Event } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CityService } from '../../../core/services/city.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { EventCardComponent } from '../../../shared/components/event-card/event-card.component';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 import { CalendarSubscribeComponent } from '../../../shared/components/calendar-subscribe/calendar-subscribe.component';
@@ -56,7 +57,7 @@ interface City {
     }
 
     <div class="page-header">
-      <h1>Upcoming Dinners</h1>
+      <h1>Upcoming {{ brand.dinnerPlural() }}</h1>
       @if (isAdminOrMod()) {
         <button mat-raised-button color="primary" (click)="openCreate()">
           <mat-icon>add</mat-icon> Create Event
@@ -182,6 +183,7 @@ export class EventsListComponent implements OnInit {
   private readonly eventsService = inject(EventsService);
   private readonly authService = inject(AuthService);
   readonly cityService = inject(CityService);
+  readonly brand = inject(BrandConfigService);
   private readonly dialog = inject(MatDialog);
   private readonly http = inject(HttpClient);
 

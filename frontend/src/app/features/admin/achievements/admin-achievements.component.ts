@@ -20,74 +20,80 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CommunityService, AdminAchievement } from '../../../core/services/community.service';
 import { IconPickerComponent } from '../../../shared/components/icon-picker/icon-picker.component';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
-const CATEGORY_META: Record<
-  string,
-  { label: string; icon: string; isProgressive: boolean; description: string }
-> = {
-  attendance: {
-    label: 'Attendance',
-    icon: 'local_dining',
-    isProgressive: true,
-    description: 'Earned by showing up to dinners. One point awarded per event attended.',
-  },
-  coordinator: {
-    label: 'Coordinator',
-    icon: 'event_available',
-    isProgressive: true,
-    description:
-      'Earned by organizing dinners and making the reservation. Bonus points for introducing the group to a brand-new restaurant.',
-  },
-  new_location_coordinator: {
-    label: 'Scout',
-    icon: 'travel_explore',
-    isProgressive: true,
-    description:
-      "A subset of coordination — tracks how many times a coordinator brought the group to a restaurant we'd never visited before.",
-  },
-  invite: {
-    label: 'Invites',
-    icon: 'person_add',
-    isProgressive: true,
-    description:
-      'Awarded to the member who invited someone, once that invitee attends their first dinner.',
-  },
-  rating: {
-    label: 'Ratings',
-    icon: 'star',
-    isProgressive: true,
-    description:
-      'Earned by submitting restaurant ratings after a dinner. Encourages feedback that helps coordinators pick great spots.',
-  },
-  city_hopper: {
-    label: 'City Hopper',
-    icon: 'flight',
-    isProgressive: true,
-    description:
-      'Awarded when a member travels to attend a dinner outside their home city. Marked by the coordinator in the attendance panel.',
-  },
-  secret_dinner: {
-    label: 'Secret Dinners',
-    icon: 'lock',
-    isProgressive: true,
-    description:
-      "Earned by attending events flagged as secret — where the restaurant isn't revealed until the day of the dinner.",
-  },
-  founding: {
-    label: 'Founding Bear',
-    icon: 'history_edu',
-    isProgressive: false,
-    description:
-      'A one-time badge granted to members who were part of the community before the platform launched. Backfilled at deploy.',
-  },
-  event: {
-    label: 'Special Dinners',
-    icon: 'celebration',
-    isProgressive: false,
-    description:
-      'One-off achievements tied to a specific event. Created per-event in the event detail panel and awarded to attendees.',
-  },
-};
+interface CategoryMeta {
+  label: string;
+  icon: string;
+  isProgressive: boolean;
+  description: string;
+}
+
+// Built at runtime from the configured terminology so labels/descriptions read
+// correctly for renamed instances (e.g. Sons → Locations / Meetings).
+function buildCategoryMeta(b: BrandConfigService): Record<string, CategoryMeta> {
+  const loc = b.locationSingularLower();
+  const dinner = b.dinnerSingularLower();
+  const dinners = b.dinnerPluralLower();
+  return {
+    attendance: {
+      label: 'Attendance',
+      icon: 'local_dining',
+      isProgressive: true,
+      description: `Earned by showing up to ${dinners}. One point awarded per event attended.`,
+    },
+    coordinator: {
+      label: 'Coordinator',
+      icon: 'event_available',
+      isProgressive: true,
+      description: `Earned by organizing ${dinners} and making the reservation. Bonus points for introducing the group to a brand-new ${loc}.`,
+    },
+    new_location_coordinator: {
+      label: 'Scout',
+      icon: 'travel_explore',
+      isProgressive: true,
+      description: `A subset of coordination — tracks how many times a coordinator brought the group to a ${loc} we'd never visited before.`,
+    },
+    invite: {
+      label: 'Invites',
+      icon: 'person_add',
+      isProgressive: true,
+      description: `Awarded to the member who invited someone, once that invitee attends their first ${dinner}.`,
+    },
+    rating: {
+      label: 'Ratings',
+      icon: 'star',
+      isProgressive: true,
+      description: `Earned by submitting ${loc} ratings after a ${dinner}. Encourages feedback that helps coordinators pick great spots.`,
+    },
+    city_hopper: {
+      label: 'City Hopper',
+      icon: 'flight',
+      isProgressive: true,
+      description: `Awarded when a member travels to attend a ${dinner} outside their home city. Marked by the coordinator in the attendance panel.`,
+    },
+    secret_dinner: {
+      label: `Secret ${b.dinnerPlural()}`,
+      icon: 'lock',
+      isProgressive: true,
+      description: `Earned by attending events flagged as secret — where the ${loc} isn't revealed until the day of the ${dinner}.`,
+    },
+    founding: {
+      label: 'Founding Member',
+      icon: 'history_edu',
+      isProgressive: false,
+      description:
+        'A one-time badge granted to members who were part of the community before the platform launched. Backfilled at deploy.',
+    },
+    event: {
+      label: `Special ${b.dinnerPlural()}`,
+      icon: 'celebration',
+      isProgressive: false,
+      description:
+        'One-off achievements tied to a specific event. Created per-event in the event detail panel and awarded to attendees.',
+    },
+  };
+}
 
 const CATEGORY_ORDER = [
   'attendance',
@@ -152,7 +158,7 @@ interface AddForm extends EditForm {
           mat-stroked-button
           (click)="backfillFounders()"
           [disabled]="backfilling()"
-          matTooltip="Grant Founding Bear to all active members who don't already have it"
+          matTooltip="Grant Founding Member to all active members who don't already have it"
         >
           @if (backfilling()) {
             <mat-spinner diameter="16" />
@@ -642,6 +648,7 @@ interface AddForm extends EditForm {
 export class AdminAchievementsComponent implements OnInit {
   private readonly communityService = inject(CommunityService);
   private readonly snackBar = inject(MatSnackBar);
+  readonly brand = inject(BrandConfigService);
 
   readonly loading = signal(true);
   readonly saving = signal(false);
@@ -670,12 +677,13 @@ export class AdminAchievementsComponent implements OnInit {
       if (!map.has(type)) map.set(type, []);
       map.get(type)!.push(a);
     }
+    const meta = buildCategoryMeta(this.brand);
     return CATEGORY_ORDER.filter((t) => map.has(t)).map((t) => ({
       type: t,
-      label: CATEGORY_META[t]?.label ?? t,
-      icon: CATEGORY_META[t]?.icon ?? 'emoji_events',
-      isProgressive: CATEGORY_META[t]?.isProgressive ?? false,
-      description: CATEGORY_META[t]?.description ?? '',
+      label: meta[t]?.label ?? t,
+      icon: meta[t]?.icon ?? 'emoji_events',
+      isProgressive: meta[t]?.isProgressive ?? false,
+      description: meta[t]?.description ?? '',
       achievements: map.get(t)!,
     }));
   });
@@ -816,8 +824,8 @@ export class AdminAchievementsComponent implements OnInit {
         this.backfilling.set(false);
         const msg =
           granted > 0
-            ? `Founding Bear granted to ${granted} new member(s)`
-            : 'All active members already have Founding Bear';
+            ? `Founding Member granted to ${granted} new member(s)`
+            : 'All active members already have Founding Member';
         this.snackBar.open(msg, 'OK', { duration: 4000 });
       },
       error: () => {

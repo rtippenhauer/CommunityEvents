@@ -5,6 +5,7 @@ import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { CommunityService, PointLedgerEntry } from '../../core/services/community.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 
 export interface PointsHistoryDialogData {
   memberId: number;
@@ -15,7 +16,7 @@ export interface PointsHistoryDialogData {
   standalone: true,
   imports: [DatePipe, MatButtonModule, MatDialogModule, MatIconModule, MatProgressSpinnerModule],
   template: `
-    <h2 mat-dialog-title><mat-icon>pets</mat-icon> Bear Points History</h2>
+    <h2 mat-dialog-title><mat-icon>pets</mat-icon> {{ brand.points() }} History</h2>
     <mat-dialog-content>
       @if (loading()) {
         <div class="ph-loading"><mat-spinner diameter="24" /></div>
@@ -98,6 +99,7 @@ export interface PointsHistoryDialogData {
 })
 export class PointsHistoryDialogComponent {
   private readonly communityService = inject(CommunityService);
+  readonly brand = inject(BrandConfigService);
   readonly data = inject<PointsHistoryDialogData>(MAT_DIALOG_DATA);
 
   readonly loading = signal(true);

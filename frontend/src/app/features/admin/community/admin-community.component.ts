@@ -10,6 +10,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CommunityService, Achievement } from '../../../core/services/community.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 interface LedgerRow {
   id: number;
@@ -19,10 +20,11 @@ interface LedgerRow {
   awardedAt: string;
 }
 
+// new_location_coordinator's label is built at runtime from the configured
+// venue term (see typeLabel) so it stays consistent for renamed instances.
 const TYPE_LABELS: Record<string, string> = {
   attendance: 'Attendance',
   coordinator: 'Coordinator',
-  new_location_coordinator: 'Coordinator (New Restaurant)',
   invite: 'Invite',
   rating: 'Rating',
 };
@@ -55,7 +57,7 @@ const TYPE_LABELS: Record<string, string> = {
         <!-- Points ledger -->
         <mat-card>
           <mat-card-header>
-            <mat-card-title>Bear Points Ledger (Total: {{ totalPoints() }})</mat-card-title>
+            <mat-card-title>{{ brand.points() }} Ledger (Total: {{ totalPoints() }})</mat-card-title>
           </mat-card-header>
           <mat-card-content>
             @if (ledger().length === 0) {
@@ -203,6 +205,7 @@ export class AdminCommunityComponent implements OnInit {
   private readonly communityService = inject(CommunityService);
   private readonly route = inject(ActivatedRoute);
   private readonly snackBar = inject(MatSnackBar);
+  readonly brand = inject(BrandConfigService);
 
   readonly loading = signal(true);
   readonly ledger = signal<LedgerRow[]>([]);
@@ -257,6 +260,9 @@ export class AdminCommunityComponent implements OnInit {
   }
 
   typeLabel(type: string): string {
+    if (type === 'new_location_coordinator') {
+      return `Coordinator (New ${this.brand.locationSingular()})`;
+    }
     return TYPE_LABELS[type] ?? type;
   }
 

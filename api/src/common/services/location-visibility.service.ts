@@ -75,7 +75,9 @@ export class LocationVisibilityService {
   ): Promise<T> {
     const visible = await this.canViewAddress(location, user, eventId);
     if (visible) return location;
-    return { ...location, address: null, lat: null, lng: null };
+    // Photos of a private venue can reveal it (Street View / a house shot), so
+    // withhold them alongside the address until visibility is earned.
+    return { ...location, address: null, lat: null, lng: null, photos: [] };
   }
 
   // Same idea, for objects carrying an event's location *snapshot* fields

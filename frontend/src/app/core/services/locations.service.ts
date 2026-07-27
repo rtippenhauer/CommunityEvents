@@ -30,6 +30,7 @@ export interface Location {
   city: { id: number; name: string; subdomain: string };
   isActive: boolean;
   isPrivate: boolean;
+  isResidence: boolean;
   photos: LocationPhoto[];
   createdAt: string;
   updatedAt: string;
@@ -47,6 +48,7 @@ export interface CreateLocationPayload {
   name: string;
   address: string;
   isPrivate?: boolean;
+  isResidence?: boolean;
   phone?: string | null;
   websiteUrl?: string | null;
   description?: string | null;

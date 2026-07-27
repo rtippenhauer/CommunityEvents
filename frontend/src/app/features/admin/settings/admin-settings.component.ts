@@ -13,6 +13,7 @@ import { forkJoin } from 'rxjs';
 import { AppConfigService, BrandImageSlot } from '../../../core/services/app-config.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { AvatarsService, Avatar } from '../../../core/services/avatars.service';
+import { stripLogoBackground } from '../../../shared/utils/strip-logo-background';
 
 const WEEKDAYS = [
   { value: '0', label: 'Sunday' },
@@ -392,13 +393,53 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
           <mat-card-content>
             <form [formGroup]="form">
               <mat-slide-toggle formControlName="showStats" color="primary">
-                Show the stats bar (members / dinners / restaurants)
+                Show the stats bar (members / {{ brandConfigService.dinnerPluralLower() }} /
+                {{ brandConfigService.locationPluralLower() }})
               </mat-slide-toggle>
             </form>
             <p class="cadence-hint">
               Turn off to hide the counts strip on the home page. Edit the hero text and "Our
               Story" copy under <strong>Admin → Content &amp; Legal</strong>.
             </p>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Terminology</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <p class="cadence-hint terms-intro">
+              Rename the core concepts to fit your group. Enter the words as they should appear in
+              headings and buttons — they're lowercased automatically where they appear mid-sentence.
+            </p>
+            <form [formGroup]="form">
+              <div class="term-row">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Venue (singular)</mat-label>
+                  <input matInput formControlName="termLocationSingular" placeholder="Location" />
+                </mat-form-field>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Venue (plural)</mat-label>
+                  <input matInput formControlName="termLocationPlural" placeholder="Locations" />
+                </mat-form-field>
+              </div>
+              <div class="term-row">
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Gathering (singular)</mat-label>
+                  <input matInput formControlName="termDinnerSingular" placeholder="Event" />
+                </mat-form-field>
+                <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                  <mat-label>Gathering (plural)</mat-label>
+                  <input matInput formControlName="termDinnerPlural" placeholder="Events" />
+                </mat-form-field>
+              </div>
+              <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
+                <mat-label>Points label</mat-label>
+                <input matInput formControlName="termPoints" placeholder="Points" />
+                <mat-hint>Appears as "{{ form.controls.termPoints.value }} Leaderboard", etc.</mat-hint>
+              </mat-form-field>
+            </form>
           </mat-card-content>
         </mat-card>
 
@@ -508,6 +549,19 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
         margin: 8px 0 0;
         font-size: 0.78rem;
         color: #888;
+      }
+      .terms-intro {
+        margin: 0 0 20px;
+      }
+      .term-row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+        mat-form-field {
+          flex: 1;
+          min-width: 200px;
+        }
       }
       .brand-images {
         margin-top: 20px;
@@ -620,6 +674,11 @@ export class AdminSettingsComponent implements OnInit {
     eventCadenceWeekday: this.fb.control('2'),
     eventCadenceTime: this.fb.control('18:30'),
     showStats: this.fb.control(true),
+    termLocationSingular: this.fb.control('Location', [Validators.required]),
+    termLocationPlural: this.fb.control('Locations', [Validators.required]),
+    termDinnerSingular: this.fb.control('Event', [Validators.required]),
+    termDinnerPlural: this.fb.control('Events', [Validators.required]),
+    termPoints: this.fb.control('Points', [Validators.required]),
   });
 
   ngOnInit(): void {
@@ -637,6 +696,11 @@ export class AdminSettingsComponent implements OnInit {
           eventCadenceWeekday: byKey.get('event_cadence_weekday') ?? '2',
           eventCadenceTime: byKey.get('event_cadence_time') ?? '18:30',
           showStats: byKey.get('home_show_stats') !== 'false',
+          termLocationSingular: byKey.get('term_location_singular') || 'Location',
+          termLocationPlural: byKey.get('term_location_plural') || 'Locations',
+          termDinnerSingular: byKey.get('term_dinner_singular') || 'Event',
+          termDinnerPlural: byKey.get('term_dinner_plural') || 'Events',
+          termPoints: byKey.get('term_points') || 'Points',
         });
         this.loading.set(false);
       },
@@ -667,18 +731,25 @@ export class AdminSettingsComponent implements OnInit {
     const file = input.files?.[0];
     if (!file) return;
     this.uploadingSlot.set(slot);
-    this.appConfigService.uploadBrandImage(slot, file).subscribe({
-      next: () => {
-        input.value = ''; // let the same file be re-selected later
-        // Re-fetch /config/branding so the preview and the whole running app
-        // pick up the new image without a reload.
-        void this.brandConfigService.refresh().finally(() => this.uploadingSlot.set(null));
-        this.snackBar.open('Image updated', 'OK', { duration: 3000 });
-      },
-      error: () => {
-        this.uploadingSlot.set(null);
-        this.snackBar.open('Failed to upload image', 'OK', { duration: 4000 });
-      },
+    // The logo sits on the dark nav/footer, so strip a solid background box to
+    // transparent before uploading (no-op fallback if it can't be processed).
+    // Other slots (splash/icon/story) render on light surfaces — upload as-is.
+    const prepared: Promise<File> =
+      slot === 'logo' ? stripLogoBackground(file) : Promise.resolve(file);
+    void prepared.then((uploadFile) => {
+      this.appConfigService.uploadBrandImage(slot, uploadFile).subscribe({
+        next: () => {
+          input.value = ''; // let the same file be re-selected later
+          // Re-fetch /config/branding so the preview and the whole running app
+          // pick up the new image without a reload.
+          void this.brandConfigService.refresh().finally(() => this.uploadingSlot.set(null));
+          this.snackBar.open('Image updated', 'OK', { duration: 3000 });
+        },
+        error: () => {
+          this.uploadingSlot.set(null);
+          this.snackBar.open('Failed to upload image', 'OK', { duration: 4000 });
+        },
+      });
     });
   }
 
@@ -742,6 +813,11 @@ export class AdminSettingsComponent implements OnInit {
       this.appConfigService.updateValue('event_cadence_weekday', val.eventCadenceWeekday),
       this.appConfigService.updateValue('event_cadence_time', val.eventCadenceTime),
       this.appConfigService.updateValue('home_show_stats', val.showStats ? 'true' : 'false'),
+      this.appConfigService.updateValue('term_location_singular', val.termLocationSingular.trim()),
+      this.appConfigService.updateValue('term_location_plural', val.termLocationPlural.trim()),
+      this.appConfigService.updateValue('term_dinner_singular', val.termDinnerSingular.trim()),
+      this.appConfigService.updateValue('term_dinner_plural', val.termDinnerPlural.trim()),
+      this.appConfigService.updateValue('term_points', val.termPoints.trim()),
     ]).subscribe({
       next: () => {
         this.saving.set(false);

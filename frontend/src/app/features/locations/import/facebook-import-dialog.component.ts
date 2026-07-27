@@ -13,6 +13,7 @@ import {
   ImportResult,
   ImportDetail,
 } from '../../../core/services/locations.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 interface City {
   id: number;
@@ -35,13 +36,13 @@ type DialogStep = 'form' | 'importing' | 'done';
     MatTooltipModule,
   ],
   template: `
-    <h2 mat-dialog-title>Import Restaurants from Facebook</h2>
+    <h2 mat-dialog-title>Import {{ brand.locationPlural() }} from Facebook</h2>
 
     <mat-dialog-content class="import-content">
       @if (step() === 'form') {
         <p class="instructions">
           Export your Facebook Group's event data, then upload the events JSON file below.
-          Restaurants already in the database are skipped automatically.
+          {{ brand.locationPlural() }} already in the database are skipped automatically.
         </p>
 
         <ol class="steps">
@@ -101,7 +102,7 @@ type DialogStep = 'form' | 'importing' | 'done';
       @if (step() === 'importing') {
         <div class="spinner-wrap">
           <mat-spinner diameter="48" />
-          <p>Importing restaurants and geocoding addresses…</p>
+          <p>Importing {{ brand.locationPluralLower() }} and geocoding addresses…</p>
           <p class="hint">This may take a moment if geocoding is enabled.</p>
         </div>
       }
@@ -363,6 +364,7 @@ export class FacebookImportDialogComponent implements OnInit {
   private readonly dialogRef = inject(MatDialogRef<FacebookImportDialogComponent>);
   private readonly http = inject(HttpClient);
   private readonly locationsService = inject(LocationsService);
+  readonly brand = inject(BrandConfigService);
 
   readonly step = signal<DialogStep>('form');
   readonly cities = signal<City[]>([]);

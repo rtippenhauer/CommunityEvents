@@ -16,6 +16,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatChipsModule } from '@angular/material/chips';
 import { LocationsService, RatingQueueItem } from '../../core/services/locations.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-ratings-queue',
@@ -34,14 +35,16 @@ import { LocationsService, RatingQueueItem } from '../../core/services/locations
     <div class="ratings-container">
       <div class="ratings-header">
         <h2 class="ratings-title">Rate Your Visits</h2>
-        <p class="ratings-subtitle">Restaurants you've attended — share your experience.</p>
+        <p class="ratings-subtitle">
+          {{ brand.locationPlural() }} you've attended — share your experience.
+        </p>
       </div>
 
       <div class="ratings-controls">
         <mat-form-field appearance="outline" class="search-field">
-          <mat-label>Search restaurants</mat-label>
+          <mat-label>Search {{ brand.locationPluralLower() }}</mat-label>
           <mat-icon matPrefix>search</mat-icon>
-          <input matInput (input)="onSearch($event)" placeholder="Restaurant name…" />
+          <input matInput (input)="onSearch($event)" [placeholder]="brand.locationSingular() + ' name…'" />
         </mat-form-field>
 
         <mat-slide-toggle
@@ -265,6 +268,7 @@ import { LocationsService, RatingQueueItem } from '../../core/services/locations
 export class RatingsQueueComponent implements OnInit {
   private readonly locationsService = inject(LocationsService);
   private readonly router = inject(Router);
+  readonly brand = inject(BrandConfigService);
 
   readonly loading = signal(true);
   readonly items = signal<RatingQueueItem[]>([]);

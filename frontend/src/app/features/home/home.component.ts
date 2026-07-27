@@ -60,10 +60,10 @@ interface PublicStats {
         } @else if (events().length === 0) {
           <div class="no-events">
             <mat-icon>event_busy</mat-icon>
-            <p>No upcoming dinners right now.<br />Check back soon!</p>
+            <p>No upcoming {{ brandConfig.dinnerPluralLower() }} right now.<br />Check back soon!</p>
           </div>
         } @else {
-          <h3 class="upcoming-label">Upcoming Dinners</h3>
+          <h3 class="upcoming-label">Upcoming {{ brandConfig.dinnerPlural() }}</h3>
           <div class="event-cards">
             @for (e of events(); track e.id) {
               <app-event-card [event]="e" />
@@ -84,12 +84,12 @@ interface PublicStats {
         <div class="stat-divider"></div>
         <div class="stat">
           <span class="stat-number">{{ stats()!.dinnerCount }}</span>
-          <span class="stat-label">Dinners Had</span>
+          <span class="stat-label">{{ brandConfig.dinnerPlural() }} Had</span>
         </div>
         <div class="stat-divider"></div>
         <div class="stat">
           <span class="stat-number">{{ stats()!.locationCount }}</span>
-          <span class="stat-label">Restaurants</span>
+          <span class="stat-label">{{ brandConfig.locationPlural() }}</span>
         </div>
       </section>
     }
@@ -752,7 +752,11 @@ export class HomeComponent implements OnInit {
   // clearing a block in the editor actually hide its home-page section.
   hasContent(html: string): boolean {
     if (!html) return false;
-    if (/<(img|iframe|video)\b/i.test(html)) return true;
-    return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim().length > 0;
+    // Parse rather than regex-strip tags: DOMParser reads visible text via
+    // textContent without executing scripts or loading resources, and avoids
+    // the incomplete-sanitization pitfalls of single-pass tag removal.
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    if (doc.querySelector('img, iframe, video')) return true;
+    return normalizeNbsp(doc.body.textContent ?? '').trim().length > 0;
   }
 }

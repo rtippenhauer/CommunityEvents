@@ -40,6 +40,7 @@ import {
   RsvpStatus,
 } from '../../../core/services/events.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { CommunityService, EventAchievement } from '../../../core/services/community.service';
 import {
   EventCommentsService,
@@ -87,6 +88,11 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
           <div class="hero-photo">
             <img [src]="event()!.location!.photos[0].filePath" [alt]="event()!.locationName" />
           </div>
+        } @else if (isPrivateHidden()) {
+          <div class="hero-photo hero-private">
+            <mat-icon>lock</mat-icon>
+            <span>Photo available after you RSVP Going</span>
+          </div>
         }
 
         <div class="detail-content">
@@ -125,7 +131,7 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 }
                 @if (isAdmin()) {
                   <button mat-menu-item (click)="openAchievementAdminDialog()">
-                    <mat-icon>local_activity</mat-icon> Special Dinner Achievement
+                    <mat-icon>local_activity</mat-icon> Special {{ brand.dinnerSingular() }} Achievement
                   </button>
                 }
               </mat-menu>
@@ -168,7 +174,7 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                 <mat-icon>{{ eventAchievement()!.icon || 'local_activity' }}</mat-icon>
               }
               <div class="special-dinner-text">
-                <span class="special-dinner-label">Special Dinner</span>
+                <span class="special-dinner-label">Special {{ brand.dinnerSingular() }}</span>
                 <span class="special-dinner-name">{{ eventAchievement()!.name }}</span>
                 <span class="special-dinner-desc">{{ eventAchievement()!.description }}</span>
                 @if (eventAchievement()!.title) {
@@ -193,7 +199,7 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
               <div class="info-row">
                 <mat-icon>restaurant</mat-icon>
                 <div>
-                  <div class="info-label">Restaurant</div>
+                  <div class="info-label">{{ brand.locationSingular() }}</div>
                   @if (event()!.location?.websiteUrl) {
                     <a
                       class="info-value map-link"
@@ -1163,6 +1169,24 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
           width: 100%;
           height: 100%;
           object-fit: cover;
+        }
+      }
+      .hero-private {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: linear-gradient(135deg, var(--db-brown-dark) 0%, var(--db-brown-mid) 100%);
+        color: #fff;
+        font-size: 0.9rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        mat-icon {
+          font-size: 34px;
+          width: 34px;
+          height: 34px;
+          opacity: 0.9;
         }
       }
       .status-row {
@@ -2246,6 +2270,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   private readonly router = inject(Router);
   private readonly eventsService = inject(EventsService);
   private readonly authService = inject(AuthService);
+  readonly brand = inject(BrandConfigService);
   private readonly communityService = inject(CommunityService);
   private readonly commentsService = inject(EventCommentsService);
   private readonly clipboard = inject(Clipboard);
@@ -2477,6 +2502,13 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   mapsUrl(): string | null {
     const e = this.event()!;
     return this.eventsService.mapsUrl(e.locationLat, e.locationLng, e.locationAddress);
+  }
+
+  // Private venue whose address (and, server-side, photos) are withheld from
+  // this viewer until they RSVP Going.
+  isPrivateHidden(): boolean {
+    const loc = this.event()!.location;
+    return !!loc?.isPrivate && !loc.address;
   }
 
   googleCalendarUrl(): string {
@@ -2741,13 +2773,13 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         const resync = updated.secretDinnerResync;
         if (resync?.enabled === true && resync.awarded > 0) {
           this.snackBar.open(
-            `Secret dinner marked — awarded ${resync.awarded} already-attended member${resync.awarded === 1 ? '' : 's'}`,
+            `Secret ${this.brand.dinnerSingularLower()} marked — awarded ${resync.awarded} already-attended member${resync.awarded === 1 ? '' : 's'}`,
             'OK',
             { duration: 4000 },
           );
         } else if (resync?.enabled === false && resync.removed > 0) {
           this.snackBar.open(
-            `Secret dinner unmarked — removed points from ${resync.removed} member${resync.removed === 1 ? '' : 's'}`,
+            `Secret ${this.brand.dinnerSingularLower()} unmarked — removed points from ${resync.removed} member${resync.removed === 1 ? '' : 's'}`,
             'OK',
             { duration: 4000 },
           );

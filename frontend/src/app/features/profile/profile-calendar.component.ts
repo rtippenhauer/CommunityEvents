@@ -9,6 +9,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CalendarService, CalendarSettings } from '../../core/services/calendar.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-profile-calendar',
@@ -28,8 +29,8 @@ import { CalendarService, CalendarSettings } from '../../core/services/calendar.
     <div class="cal-page">
       <h1 class="page-title">Calendar Subscription</h1>
       <p class="page-subtitle">
-        Subscribe to your personal feed so upcoming dinners appear automatically in
-        Apple Calendar, Google Calendar, Outlook, or any iCal-compatible app.
+        Subscribe to your personal feed so upcoming {{ brand.dinnerPluralLower() }} appear
+        automatically in Apple Calendar, Google Calendar, Outlook, or any iCal-compatible app.
       </p>
 
       @if (loading()) {
@@ -112,11 +113,13 @@ import { CalendarService, CalendarSettings } from '../../core/services/calendar.
               >
                 <mat-radio-button value="all">
                   <span class="radio-title">All cities</span>
-                  <span class="radio-desc">Show dinners from every chapter</span>
+                  <span class="radio-desc">Show {{ brand.dinnerPluralLower() }} from every chapter</span>
                 </mat-radio-button>
                 <mat-radio-button value="city">
                   <span class="radio-title">My city only</span>
-                  <span class="radio-desc">Show only {{ settings()!.cityName }} dinners</span>
+                  <span class="radio-desc"
+                    >Show only {{ settings()!.cityName }} {{ brand.dinnerPluralLower() }}</span
+                  >
                 </mat-radio-button>
               </mat-radio-group>
             </div>
@@ -134,8 +137,8 @@ import { CalendarService, CalendarSettings } from '../../core/services/calendar.
                 </mat-slide-toggle>
               </div>
               <p class="setting-hint">
-                When off, all upcoming dinners appear in your calendar. When on, only events where
-                you've RSVPd Going or Maybe will appear.
+                When off, all upcoming {{ brand.dinnerPluralLower() }} appear in your calendar. When
+                on, only events where you've RSVPd Going or Maybe will appear.
               </p>
             </div>
           </mat-card-content>
@@ -150,8 +153,9 @@ import { CalendarService, CalendarSettings } from '../../core/services/calendar.
           <mat-card-content>
             <div class="setting-group" style="padding-top:8px">
               <p class="setting-hint" style="margin-bottom:16px">
-                When a new dinner is posted, automatically send you a calendar invite email. Accept
-                to RSVP Going, Decline to mark yourself Not Going — right from your calendar app.
+                When a new {{ brand.dinnerSingularLower() }} is posted, automatically send you a
+                calendar invite email. Accept to RSVP Going, Decline to mark yourself Not Going —
+                right from your calendar app.
               </p>
               <mat-radio-group
                 class="radio-group"
@@ -165,13 +169,13 @@ import { CalendarService, CalendarSettings } from '../../core/services/calendar.
                 <mat-radio-button value="city">
                   <span class="radio-title">My city only</span>
                   <span class="radio-desc"
-                    >Send invites for {{ settings()!.cityName }} dinners only</span
+                    >Send invites for {{ settings()!.cityName }} {{ brand.dinnerPluralLower() }} only</span
                   >
                 </mat-radio-button>
                 <mat-radio-button value="all">
                   <span class="radio-title">All cities</span>
                   <span class="radio-desc"
-                    >Send invites for every new dinner across all chapters</span
+                    >Send invites for every new {{ brand.dinnerSingularLower() }} across all chapters</span
                   >
                 </mat-radio-button>
               </mat-radio-group>
@@ -308,6 +312,7 @@ import { CalendarService, CalendarSettings } from '../../core/services/calendar.
 export class ProfileCalendarComponent implements OnInit {
   private readonly calendarService = inject(CalendarService);
   private readonly snackBar = inject(MatSnackBar);
+  readonly brand = inject(BrandConfigService);
 
   readonly loading = signal(true);
   readonly settings = signal<CalendarSettings | null>(null);

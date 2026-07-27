@@ -286,10 +286,13 @@ website_url         VARCHAR(500) NULL
 description         TEXT NULL
 city_id             INT UNSIGNED NOT NULL REFERENCES cities(id)
 is_active           TINYINT(1) NOT NULL DEFAULT 1
-is_private          TINYINT(1) NOT NULL DEFAULT 0   -- Phase 29: address/lat/lng hidden from members until
-                                                     -- they RSVP "Going" to an event here (admin/mod always see it);
-                                                     -- default for newly created rows comes from app_config
-                                                     -- location_privacy_default, overridable per row
+is_private          TINYINT(1) NOT NULL DEFAULT 0   -- Phase 29: address/lat/lng (and, Phase 32, photos) hidden
+                                                     -- from members until they RSVP "Going" to an event here
+                                                     -- (admin/mod always see it); default for newly created rows
+                                                     -- comes from app_config location_privacy_default, per-row overridable
+is_residence        TINYINT(1) NOT NULL DEFAULT 0   -- Phase 32: a private home / non-business venue. Enrichment
+                                                     -- skips the Google Places business lookup (no name/phone/website/
+                                                     -- description/address rewrite) and only tries a Street View photo
 imported_from       ENUM('manual','facebook_import') NOT NULL DEFAULT 'manual'
 -- Moderator-only fields (Phase 8 — omitted from member API responses)
 moderator_notes     LONGTEXT NULL
@@ -976,6 +979,13 @@ Seed rows:
 - `home_show_stats` (Phase 31) = `true` — toggles the home-page stats strip
 - All Phase 31 home rows are seeded with DinnerBears' copy and cleared by
   bootstrap for a fresh fork; each home section hides when its value is empty
+- `term_location_singular` / `term_location_plural` / `term_dinner_singular` /
+  `term_dinner_plural` / `term_points` (Phase 32) — per-instance terminology
+  (defaults `Location`/`Locations`/`Event`/`Events`/`Points`). Migration
+  `1785000000004` seeds DinnerBears' historical words (`Restaurant(s)`,
+  `Dinner(s)`, `Bear Points`); a fork's bootstrap **deletes** these rows so
+  `getSiteSetting` falls back to the code defaults (delete, not blank — an empty
+  value would leave the UI with no term)
 
 The Phase 30 and Phase 29 rows above are editable via the admin UI
 (`/admin/legal`, `/admin/settings`), unlike the rest of this table which has

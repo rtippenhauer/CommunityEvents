@@ -4,6 +4,7 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatIconModule } from '@angular/material/icon';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { SplashItem } from '../../../core/services/splash.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { normalizeNbsp } from '../../utils/normalize-nbsp';
 
 export interface SplashDialogData {
@@ -111,7 +112,7 @@ function buildBurst(id: number): Burst {
             <h2 class="splash-name">{{ data.item.achievement.name }}</h2>
             <p class="splash-desc">{{ data.item.achievement.description }}</p>
             @if (data.item.achievement.points > 0) {
-              <div class="splash-points">+{{ data.item.achievement.points }} Bear Points</div>
+              <div class="splash-points">+{{ data.item.achievement.points }} {{ brand.points() }}</div>
             }
             @if (data.item.achievement.title) {
               <div class="splash-title-hint">
@@ -314,6 +315,7 @@ export class SplashComponent implements OnDestroy {
   readonly data = inject<SplashDialogData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<SplashComponent>);
   private readonly sanitizer = inject(DomSanitizer);
+  readonly brand = inject(BrandConfigService);
 
   readonly isPatriotic =
     this.data.item.kind === 'achievement' && this.data.item.achievement.key === 'patriotic_bear';
