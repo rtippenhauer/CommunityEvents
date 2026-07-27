@@ -9,7 +9,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { forkJoin } from 'rxjs';
 import { AppConfigService, BrandImageSlot } from '../../../core/services/app-config.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { AvatarsService, Avatar } from '../../../core/services/avatars.service';
@@ -857,36 +856,38 @@ export class AdminSettingsComponent implements OnInit {
     if (this.form.invalid) return;
     this.saving.set(true);
     const val = this.form.getRawValue();
-    forkJoin([
-      this.appConfigService.updateValue('brand_name', val.brandName),
-      this.appConfigService.updateValue('brand_tagline', val.brandTagline),
-      this.appConfigService.updateValue('theme_color_primary', val.colorPrimary),
-      this.appConfigService.updateValue('theme_color_accent', val.colorAccent),
-      this.appConfigService.updateValue('theme_color_background', val.colorBackground),
-      this.appConfigService.updateValue('location_privacy_default', val.locationPrivacyDefault),
-      this.appConfigService.updateValue('event_cadence_weekday', val.eventCadenceWeekday),
-      this.appConfigService.updateValue('event_cadence_time', val.eventCadenceTime),
-      this.appConfigService.updateValue('home_show_stats', val.showStats ? 'true' : 'false'),
-      this.appConfigService.updateValue('term_location_singular', val.termLocationSingular.trim()),
-      this.appConfigService.updateValue('term_location_plural', val.termLocationPlural.trim()),
-      this.appConfigService.updateValue('term_dinner_singular', val.termDinnerSingular.trim()),
-      this.appConfigService.updateValue('term_dinner_plural', val.termDinnerPlural.trim()),
-      this.appConfigService.updateValue('term_points', val.termPoints.trim()),
-      this.appConfigService.updateValue('feature_ratings', val.featureRatings ? 'true' : 'false'),
-      this.appConfigService.updateValue('feature_ratings_residences', val.featureRatingsResidences ? 'true' : 'false'),
-      this.appConfigService.updateValue('feature_leaderboard', val.featureLeaderboard ? 'true' : 'false'),
-      this.appConfigService.updateValue('feature_merch', val.featureMerch ? 'true' : 'false'),
-      this.appConfigService.updateValue('feature_members', val.featureMembers ? 'true' : 'false'),
-    ]).subscribe({
-      next: () => {
-        this.saving.set(false);
-        this.snackBar.open('Settings saved', 'OK', { duration: 3000 });
-        void this.brandConfigService.init();
-      },
-      error: () => {
-        this.saving.set(false);
-        this.snackBar.open('Failed to save settings', 'OK', { duration: 3000 });
-      },
-    });
+    this.appConfigService
+      .updateValues([
+        { key: 'brand_name', value: val.brandName },
+        { key: 'brand_tagline', value: val.brandTagline },
+        { key: 'theme_color_primary', value: val.colorPrimary },
+        { key: 'theme_color_accent', value: val.colorAccent },
+        { key: 'theme_color_background', value: val.colorBackground },
+        { key: 'location_privacy_default', value: val.locationPrivacyDefault },
+        { key: 'event_cadence_weekday', value: val.eventCadenceWeekday },
+        { key: 'event_cadence_time', value: val.eventCadenceTime },
+        { key: 'home_show_stats', value: val.showStats ? 'true' : 'false' },
+        { key: 'term_location_singular', value: val.termLocationSingular.trim() },
+        { key: 'term_location_plural', value: val.termLocationPlural.trim() },
+        { key: 'term_dinner_singular', value: val.termDinnerSingular.trim() },
+        { key: 'term_dinner_plural', value: val.termDinnerPlural.trim() },
+        { key: 'term_points', value: val.termPoints.trim() },
+        { key: 'feature_ratings', value: val.featureRatings ? 'true' : 'false' },
+        { key: 'feature_ratings_residences', value: val.featureRatingsResidences ? 'true' : 'false' },
+        { key: 'feature_leaderboard', value: val.featureLeaderboard ? 'true' : 'false' },
+        { key: 'feature_merch', value: val.featureMerch ? 'true' : 'false' },
+        { key: 'feature_members', value: val.featureMembers ? 'true' : 'false' },
+      ])
+      .subscribe({
+        next: () => {
+          this.saving.set(false);
+          this.snackBar.open('Settings saved', 'OK', { duration: 3000 });
+          void this.brandConfigService.init();
+        },
+        error: () => {
+          this.saving.set(false);
+          this.snackBar.open('Failed to save settings', 'OK', { duration: 3000 });
+        },
+      });
   }
 }
