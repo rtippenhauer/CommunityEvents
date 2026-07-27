@@ -44,7 +44,7 @@ export class CalendarController {
     if (!token) throw new UnauthorizedException('Calendar token required');
     const ics = await this.calendarService.getFeed(token);
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-    res.setHeader('Content-Disposition', 'inline; filename="dinnerbears.ics"');
+    res.setHeader('Content-Disposition', 'inline; filename="calendar.ics"');
     res.end(ics);
   }
 

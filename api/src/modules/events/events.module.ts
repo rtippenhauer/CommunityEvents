@@ -13,6 +13,7 @@ import { InvitesModule } from '../invites/invites.module';
 import { CalendarModule } from '../calendar/calendar.module';
 import { CommunityModule } from '../community/community.module';
 import { LocationsModule } from '../locations/locations.module';
+import { AppConfigModule } from '../app-config/app-config.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { LocationsModule } from '../locations/locations.module';
     CalendarModule,
     CommunityModule,
     LocationsModule,
+    AppConfigModule,
   ],
   providers: [EventsService],
   controllers: [EventsController],
