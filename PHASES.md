@@ -1895,21 +1895,67 @@ Points → per-instance terms), and background removal/flattening for
 admin-uploaded logo images. `.env.example` documentation check also pending
 (a local permission guard blocked editing it this phase).
 
-## Phase 32 — Configurable Terminology ✅ In Progress
+## Phase 32 — Configurable Terminology + White-Label Polish ✅ Complete
 
-The UI still hardcodes DinnerBears/dining-specific nouns — "Restaurant(s)"
-(~23 spots: nav, leaderboard stat, locations pages, event forms), "Dinner(s)"
-(~60 spots), and "Bear Points" (the leaderboard) — which don't fit a
-non-dining instance like Sons (a naturist social club that meets at members'
-homes). Phase 29 renamed the *database* entity restaurants→locations but left
-the **display term** hardcoded.
+The UI hardcoded DinnerBears/dining-specific nouns — "Restaurant(s)", "Dinner(s)",
+and "Bear Points" — which don't fit a non-dining instance like Sons (a naturist
+social club that meets at members' homes). Phase 29 renamed the *database* entity
+restaurants→locations but left the **display term** hardcoded.
 
-Planned scope:
-- Admin-configurable terminology settings (like the brand name): location term
-  (singular/plural), event term (singular/plural), and points term — with the
-  current DinnerBears words as defaults.
-- Replacement pass swapping the hardcoded nouns for the configured term via
-  `BrandConfigService`, same approach as Phase 31's de-branding pass.
-- **Logo background handling** (carried from Phase 31): admin-uploaded logos
-  with an opaque background show a white box against the dark nav — strip or
-  flatten it on upload, or render logos on a matching backdrop.
+Delivered:
+- **Admin-configurable terminology** — five `term_*` `app_config` rows
+  (location singular/plural, gathering singular/plural, points) served on
+  `/config/branding` and exposed as `BrandConfigService` signals (with `*Lower`
+  variants for mid-sentence copy). Edited from a new "Terminology" card in
+  `/admin/settings`. Defaults are **generic/de-branded** (Location(s) /
+  Event(s) / Points); migration `1785000000004` seeds DinnerBears' historical
+  words so prod is unchanged, and a fork's bootstrap DELETEs those rows to fall
+  back to the code defaults (delete, not blank — `getSiteSetting` only falls
+  back on a missing row).
+- App-wide replacement sweep (~30 files) swapping the hardcoded nouns for the
+  signals, **including compound labels** (Secret/Special {Event}, achievement
+  category labels/descriptions, default event title, calendar/guest-RSVP copy);
+  module-level label maps converted to term-aware factory functions.
+- **Logo background strip** — `shared/utils/strip-logo-background.ts` flood-fills
+  a solid background box to transparent on logo upload (client-side canvas;
+  safe no-op fallback), so an uploaded logo no longer shows a white box on the
+  dark nav.
+- **Residence locations** — `is_residence` flag (migration `1785000000005`) +
+  form toggle. Enrichment skips the Google Places business lookup and the
+  "restaurant" description for a residence, only attempting a Street View photo,
+  and never rewrites the address.
+- **Private-venue photos hidden until RSVP** — the events redaction and the
+  locations `redact()` helper now strip `location.photos` alongside the address
+  server-side; event cards show a "Private until RSVP" cover and the
+  event-detail hero a matching panel (mirroring the Cancelled treatment).
+- **Founding Bear → Founding Member** — migration `1785000000006` renames the
+  achievement (name/title + any selected title) for forks but skips DinnerBears
+  (detected by `dinnerbears.com` domain OR `brand_name` still "DinnerBears").
+  Hardcoded frontend "Founding Bear" strings de-branded to "Founding Member".
+- **De-branded member-invite email** — reads `brand_name` instead of hardcoded
+  "DinnerBears" (subject + htmlBody + Brevo `brand_name` param).
+- Private locations hidden from the browsable `/locations` list for non-admin/mod
+  viewers (`findAllForUser` filter).
+- `.env.example` (repo root) now documents `IS_STAGE` and `BASE_DOMAIN`.
+
+## Phase 33 — White-Label Finishing Touches ✅ In Progress
+
+Items deferred out of Phase 32 as the white-label work is finished off:
+- **De-brand the remaining transactional emails** — the event-published notice,
+  RSVP confirmation, event reminder, and the calendar `.ics` summary still
+  hardcode "DinnerBears" in `events.service.ts` (~5 spots); read `brand_name`
+  the way the invite email now does. (Brevo *dashboard* templates override the
+  code htmlBody — a fork pointing `BREVO_TEMPLATE_*` at DinnerBears-branded
+  templates must de-brand/unset those separately; dashboard action, not code.)
+- **Per-instance feature/menu toggles** — pull out the feature/nav-item list and
+  let an instance turn features off (still being scoped; early candidate:
+  disable **ratings for Residences**, which don't make sense for a private home).
+- **Founding Member label consistency** — the frontend labels (merch, achievement
+  category header) read "Founding Member" globally, so on DinnerBears the badge
+  stays "Founding Bear" while those labels say "Founding Member"; optionally
+  derive the labels from the achievement record so DinnerBears reads fully
+  "Founding Bear".
+- **Location-detail photo cover** — the location-detail page redacts private
+  photos server-side but lacks the "Private until RSVP" visual cover the event
+  surfaces have.
+- Still deferred from earlier: monthly "Nth weekday" event cadence.

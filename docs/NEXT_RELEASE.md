@@ -22,3 +22,10 @@ once that release's draft has been created.
 - Toggle the home-page stats bar on or off from Site Settings
 - Upload a home-page "Story" image and manage the preset profile avatars members can choose from
 - Site colors now flow through the whole interface automatically from your chosen primary color
+
+## Group Terminology & Location Privacy
+
+- Admins can rename the core terms the site uses — "Restaurant", "Dinner", and "Bear Points" — to whatever fits your group
+- Locations can be marked as a private residence, so they're treated as a home rather than looked up as a business
+- Private venues now keep their photos hidden — not just the address — until a member RSVPs "Going"
+- More of the app, including invitation emails, now reflects your group's own name and branding
