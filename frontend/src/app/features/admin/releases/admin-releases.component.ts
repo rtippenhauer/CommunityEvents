@@ -174,7 +174,7 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
               @for (r of releases(); track r.id) {
                 <div class="release-row" [class.draft]="!r.publishedAt">
                   <div class="release-row-header">
-                    <span class="version-badge">v{{ r.version }}</span>
+                    <span class="version-badge">{{ versionLabel(r) }}</span>
                     @if (r.publishedAt) {
                       <span class="pub-date">{{ r.publishedAt | date: 'MMM d, y' }}</span>
                       <button
@@ -592,6 +592,10 @@ export class AdminReleasesComponent implements OnInit {
     if (unique.length === 1) return unique[0];
     if (unique.length === 2) return `${unique[0]} and ${unique[1]}`;
     return `${unique.slice(0, -1).join(', ')}, and ${unique[unique.length - 1]}`;
+  }
+
+  versionLabel(release: Release): string {
+    return /^\d/.test(release.version) ? `v${release.version}` : release.version;
   }
 
   catLabel(c: string): string {

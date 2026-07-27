@@ -8,7 +8,7 @@ import { CreateReleaseDto } from './dto/create-release.dto';
 import { UpdateReleaseDto } from './dto/update-release.dto';
 import * as sanitizeHtml from 'sanitize-html';
 
-const ALLOWED_HTML = {
+export const ALLOWED_HTML = {
   allowedTags: sanitizeHtml.defaults.allowedTags.concat(['s', 'u']),
   allowedAttributes: { a: ['href', 'target', 'rel'], ...sanitizeHtml.defaults.allowedAttributes },
 };

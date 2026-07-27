@@ -30,6 +30,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
@@ -130,6 +131,7 @@ export class LocationsController {
 
   @Get('rating-queue')
   @UseGuards(JwtAuthGuard)
+  @RequireFeature('feature_ratings')
   getRatingQueue(@CurrentUser() user: UserEntity) {
     return this.ratingsService.getRatingQueue(user.id);
   }
@@ -252,6 +254,7 @@ export class LocationsController {
   // ── Ratings ──────────────────────────────────────────────────────────────────
 
   @Get(':id/ratings')
+  @RequireFeature('feature_ratings')
   getRatings(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: UserEntity,
@@ -260,6 +263,7 @@ export class LocationsController {
   }
 
   @Post(':id/ratings')
+  @RequireFeature('feature_ratings')
   submitRating(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateRatingDto,

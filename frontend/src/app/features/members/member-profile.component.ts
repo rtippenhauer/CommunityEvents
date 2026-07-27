@@ -58,7 +58,7 @@ function buildProgressLabels(b: BrandConfigService): Record<string, string> {
     new_location_coordinator: `New ${b.locationPlural()} Coordinated`,
     invite: 'Members Invited',
     rating: `${b.locationSingular()} Ratings`,
-    founding: 'Founding Member',
+    founding: b.foundingLabel(),
     event: `Special ${b.dinnerSingular()}`,
   };
 }
@@ -74,7 +74,7 @@ function buildAchievementCategories(
     rating: { label: 'Ratings', icon: 'star' },
     city_hopper: { label: 'City Hopper', icon: 'flight' },
     secret_dinner: { label: `Secret ${b.dinnerPlural()}`, icon: 'lock' },
-    founding: { label: 'Founding Member', icon: 'history_edu' },
+    founding: { label: b.foundingLabel(), icon: 'history_edu' },
     event: { label: `Special ${b.dinnerPlural()}`, icon: 'celebration' },
     login: { label: 'Site Visits', icon: 'login' },
     other: { label: 'Special', icon: 'emoji_events' },

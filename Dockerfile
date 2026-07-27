@@ -13,6 +13,7 @@ WORKDIR /app
 COPY api/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --fetch-timeout=120000
 COPY api/ .
+COPY docs/NEXT_RELEASE.md ./release-notes/_draft.md
 RUN npm run build
 RUN npm prune --omit=dev
 
@@ -38,6 +39,7 @@ WORKDIR /app
 COPY --from=api-build /app/dist ./dist
 COPY --from=api-build /app/node_modules ./node_modules
 COPY --from=api-build /app/package.json ./package.json
+COPY --from=api-build /app/release-notes ./release-notes
 
 # Angular static files → nginx webroot
 COPY --from=frontend-build /app/dist/dinnerbears/browser /usr/share/nginx/html

@@ -4,6 +4,7 @@ import { adminGuard } from './core/guards/admin.guard';
 import { moderatorGuard } from './core/guards/moderator.guard';
 import { validatedMemberGuard } from './core/guards/validated-member.guard';
 import { unsavedChangesGuard } from './core/guards/unsaved-changes.guard';
+import { featureGuard } from './core/guards/feature.guard';
 
 export const routes: Routes = [
   {
@@ -110,7 +111,7 @@ export const routes: Routes = [
     path: 'merch',
     loadComponent: () =>
       import('./features/merch/merch.component').then((m) => m.MerchComponent),
-    canActivate: [validatedMemberGuard],
+    canActivate: [validatedMemberGuard, featureGuard('merch')],
   },
   {
     path: 'calendar',
@@ -122,7 +123,7 @@ export const routes: Routes = [
     path: 'ratings',
     loadComponent: () =>
       import('./features/ratings/ratings-queue.component').then((m) => m.RatingsQueueComponent),
-    canActivate: [validatedMemberGuard],
+    canActivate: [validatedMemberGuard, featureGuard('ratings')],
   },
   {
     path: 'rsvp-guest',
@@ -157,13 +158,13 @@ export const routes: Routes = [
     path: 'leaderboard',
     loadComponent: () =>
       import('./features/leaderboard/leaderboard.component').then((m) => m.LeaderboardComponent),
-    canActivate: [validatedMemberGuard],
+    canActivate: [validatedMemberGuard, featureGuard('leaderboard')],
   },
   {
     path: 'members',
     loadComponent: () =>
       import('./features/members/members.component').then((m) => m.MembersComponent),
-    canActivate: [authGuard],
+    canActivate: [authGuard, featureGuard('members')],
   },
   {
     path: 'members/:id',
@@ -368,6 +369,13 @@ export const routes: Routes = [
         (m) => m.AdminCommunityComponent,
       ),
     canActivate: [authGuard, moderatorGuard],
+  },
+  {
+    path: 'feature-unavailable',
+    loadComponent: () =>
+      import('./features/feature-unavailable/feature-unavailable.component').then(
+        (m) => m.FeatureUnavailableComponent,
+      ),
   },
   {
     path: '**',

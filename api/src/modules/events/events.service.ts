@@ -28,6 +28,7 @@ import { toPublicUser } from '../../common/utils/public-user.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { eventOrganizerEmail } from '../../common/config/instance-contact';
+import { AppConfigService } from '../app-config/app-config.service';
 
 export interface EventFilters {
   cityId?: number;
@@ -62,7 +63,37 @@ export class EventsService {
     private readonly achievementsService: AchievementsService,
     private readonly config: ConfigService,
     private readonly locationVisibility: LocationVisibilityService,
+    private readonly appConfig: AppConfigService,
   ) {}
+
+  // Per-instance branding for transactional emails / calendar files. Reads the
+  // same configurable rows the UI uses (Phase 32) so a fork's emails carry its
+  // own name/tagline/event term instead of hardcoded "DinnerBears". The event
+  // term (`term_dinner_*`) is title-case in config (DinnerBears pins "Dinner");
+  // lowercase variants are provided for mid-sentence use.
+  private async getEmailBrand(): Promise<{
+    brandName: string;
+    tagline: string;
+    eventSingular: string;
+    eventPlural: string;
+    eventSingularLower: string;
+    eventPluralLower: string;
+  }> {
+    const [brandName, tagline, eventSingular, eventPlural] = await Promise.all([
+      this.appConfig.getSiteSetting('brand_name'),
+      this.appConfig.getSiteSetting('brand_tagline'),
+      this.appConfig.getSiteSetting('term_dinner_singular'),
+      this.appConfig.getSiteSetting('term_dinner_plural'),
+    ]);
+    return {
+      brandName,
+      tagline,
+      eventSingular,
+      eventPlural,
+      eventSingularLower: eventSingular.toLowerCase(),
+      eventPluralLower: eventPlural.toLowerCase(),
+    };
+  }
 
   async findAll(filters: EventFilters): Promise<(EventEntity & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[]> {
     const qb = this.eventRepo
@@ -383,6 +414,7 @@ export class EventsService {
 
   private async sendCancellationEmails(event: EventEntity): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const { brandName, tagline, eventSingularLower } = await this.getEmailBrand();
     const [ey, em, ed] = event.eventDate.split('-').map(Number);
     const [eh, emin] = event.eventTime.split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
@@ -402,7 +434,7 @@ export class EventsService {
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
   <tr><td style="background:#3D1C05;padding:20px;text-align:center">
-    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+    <img src="${appUrl}/assets/logo.png" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
@@ -419,10 +451,10 @@ export class EventsService {
       </td></tr>
     </table>
     ${reasonBlock}
-    <p style="margin:20px 0 0;font-size:0.88rem;color:#888">We hope to see you at the next DinnerBears dinner!</p>
+    <p style="margin:20px 0 0;font-size:0.88rem;color:#888">We hope to see you at the next ${brandName} ${eventSingularLower}!</p>
   </td></tr>
   <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
-    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+    <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
 </td></tr>
@@ -463,6 +495,7 @@ export class EventsService {
 
   private async sendUpdateEmails(event: EventEntity): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const { brandName, tagline } = await this.getEmailBrand();
     const [ey, em, ed] = event.eventDate.split('-').map(Number);
     const [eh, emin] = event.eventTime.split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
@@ -479,7 +512,7 @@ export class EventsService {
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
   <tr><td style="background:#3D1C05;padding:20px;text-align:center">
-    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+    <img src="${appUrl}/assets/logo.png" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
@@ -501,7 +534,7 @@ export class EventsService {
     <p style="margin:0;font-size:0.85rem;color:#888">If you can no longer attend, you can update your RSVP on the event page.</p>
   </td></tr>
   <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
-    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+    <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
 </td></tr>
@@ -639,6 +672,7 @@ export class EventsService {
 
   private async sendPublishInvites(event: EventEntity): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const { brandName, tagline, eventSingularLower } = await this.getEmailBrand();
     // Every recipient here is, by construction, someone who hasn't RSVP'd yet
     // (see the rsvpedIds filter below) — so for a private location, none of
     // them have earned address visibility regardless of role.
@@ -680,11 +714,11 @@ export class EventsService {
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
   <tr><td style="background:#3D1C05;padding:20px;text-align:center">
-    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+    <img src="${appUrl}/assets/logo.png" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${member.fullName},</p>
-    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You're invited to dinner! 🐻</h1>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You're invited to ${eventSingularLower}! 🐻</h1>
     <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.locationName}</strong>
@@ -696,13 +730,13 @@ export class EventsService {
         <span style="color:#C9933A;margin-right:8px">📍</span>${locationAddress}
       </td></tr>` : ''}
     </table>
-    <p style="margin:0 0 24px;font-size:0.9rem;color:#555">Open the attached calendar invite to Accept, Maybe, or Decline — your RSVP will update automatically. Or tap the button below to RSVP on the DinnerBears site.</p>
+    <p style="margin:0 0 24px;font-size:0.9rem;color:#555">Open the attached calendar invite to Accept, Maybe, or Decline — your RSVP will update automatically. Or tap the button below to RSVP on the ${brandName} site.</p>
     <p style="text-align:center;margin:0 0 24px">
       <a href="${eventUrl}" style="background:#3D1C05;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View &amp; RSVP</a>
     </p>
   </td></tr>
   <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
-    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+    <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
 </td></tr>
@@ -710,7 +744,7 @@ export class EventsService {
 </body>
 </html>`;
 
-      const icsContent = this.calendarService.buildInviteAttachment(
+      const icsContent = await this.calendarService.buildInviteAttachment(
         event,
         { name: member.fullName, email: member.email },
         appUrl,
@@ -720,7 +754,7 @@ export class EventsService {
       await this.emailService.sendNow({
         toEmail: member.email,
         toName: member.fullName,
-        subject: `DinnerBears dinner at ${event.locationName} — ${dateDisplay}`,
+        subject: `${brandName} ${eventSingularLower} at ${event.locationName} — ${dateDisplay}`,
         htmlBody: html,
         attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
       }).catch((err: unknown) => {
@@ -734,6 +768,7 @@ export class EventsService {
     if (!user?.email) return;
 
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const { brandName, tagline, eventSingularLower } = await this.getEmailBrand();
     const [ey, em, ed] = event.eventDate.split('-').map(Number);
     const [eh, emin] = event.eventTime.split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
@@ -750,7 +785,7 @@ export class EventsService {
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
   <tr><td style="background:#3D1C05;padding:20px;text-align:center">
-    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+    <img src="${appUrl}/assets/logo.png" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${user.fullName},</p>
@@ -766,13 +801,13 @@ export class EventsService {
         <span style="color:#C9933A;margin-right:8px">📍</span>${event.locationAddress}
       </td></tr>` : ''}
     </table>
-    <p style="margin:0 0 24px;font-size:0.9rem;color:#555">A calendar invite is attached — open it to add this dinner to your calendar. You can Accept, Maybe, or Decline directly from the invite.</p>
+    <p style="margin:0 0 24px;font-size:0.9rem;color:#555">A calendar invite is attached — open it to add this ${eventSingularLower} to your calendar. You can Accept, Maybe, or Decline directly from the invite.</p>
     <p style="text-align:center;margin:0 0 24px">
       <a href="${eventUrl}" style="background:#3D1C05;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Event</a>
     </p>
   </td></tr>
   <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
-    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+    <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
 </td></tr>
@@ -780,7 +815,7 @@ export class EventsService {
 </body>
 </html>`;
 
-    const icsContent = this.calendarService.buildInviteAttachment(
+    const icsContent = await this.calendarService.buildInviteAttachment(
       event,
       { name: user.fullName, email: user.email },
       appUrl,
@@ -789,7 +824,7 @@ export class EventsService {
     await this.emailService.sendNow({
       toEmail: user.email,
       toName: user.fullName,
-      subject: `You're going to DinnerBears at ${event.locationName}!`,
+      subject: `You're going to ${brandName} at ${event.locationName}!`,
       htmlBody: html,
       attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
     }).catch((err: unknown) => {
@@ -832,7 +867,7 @@ export class EventsService {
       locationLat: addressVisible ? event.locationLat : null,
       locationLng: addressVisible ? event.locationLng : null,
       locationPhotoUrl: photoUrl,
-      invitedByName: link.createdBy?.fullName ?? 'DinnerBears',
+      invitedByName: link.createdBy?.fullName ?? (await this.appConfig.getSiteSetting('brand_name')),
       recipientName: link.recipientName,
       usedAt: link.usedAt,
       cancelledAt: link.cancelledAt,
@@ -917,6 +952,9 @@ export class EventsService {
 
   private buildGuestEmail(params: {
     appUrl: string;
+    brandName: string;
+    tagline: string;
+    eventSingularLower: string;
     inviterName: string | null;
     subject: string;
     eventTitle: string;
@@ -934,7 +972,7 @@ export class EventsService {
     icsUrl: string;
   }): string {
     const {
-      appUrl, inviterName, eventTitle, eventDateDisplay, eventTimeDisplay,
+      appUrl, brandName, tagline, eventSingularLower, inviterName, eventTitle, eventDateDisplay, eventTimeDisplay,
       locationName, locationAddress, locationLat, locationLng,
       photoUrl, description, additionalInfo, manageUrl, googleCalUrl, icsUrl,
     } = params;
@@ -952,8 +990,8 @@ export class EventsService {
       : '';
 
     const inviterRow = inviterName
-      ? `<p style="margin:0 0 16px;font-size:1rem;color:#6B4226">🎉 <strong>${inviterName}</strong> invited you to dinner!</p>`
-      : `<p style="margin:0 0 16px;font-size:1rem;color:#6B4226">🎉 You're on the guest list for a DinnerBears dinner!</p>`;
+      ? `<p style="margin:0 0 16px;font-size:1rem;color:#6B4226">🎉 <strong>${inviterName}</strong> invited you to ${eventSingularLower}!</p>`
+      : `<p style="margin:0 0 16px;font-size:1rem;color:#6B4226">🎉 You're on the guest list for a ${brandName} ${eventSingularLower}!</p>`;
 
     const descriptionBlock = description
       ? `<p style="margin:16px 0 0;font-size:0.95rem;color:#444;line-height:1.6">${description}</p>`
@@ -976,7 +1014,7 @@ export class EventsService {
 
   <!-- Header -->
   <tr><td style="background:#3D1C05;padding:20px;text-align:center">
-    <img src="${logoUrl}" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+    <img src="${logoUrl}" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
 
   <!-- Hero photo -->
@@ -1029,7 +1067,7 @@ export class EventsService {
 
   <!-- Footer -->
   <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
-    <p style="margin:0 0 6px;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+    <p style="margin:0 0 6px;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
     <p style="margin:0;font-size:0.72rem;color:#bbb">This link is yours — don't share it. It expires when the event starts.</p>
   </td></tr>
 
@@ -1040,8 +1078,13 @@ export class EventsService {
 </html>`;
   }
 
-  private buildIcs(event: EventEntity, descriptionSuffix?: string): string {
+  private buildIcs(
+    event: EventEntity,
+    brand: { brandName: string; eventSingular: string },
+    descriptionSuffix?: string,
+  ): string {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const { brandName, eventSingular } = brand;
 
     const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
@@ -1062,7 +1105,7 @@ export class EventsService {
     const lines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//DinnerBears//DinnerBears Calendar//EN',
+      `PRODID:-//${brandName}//${brandName} Calendar//EN`,
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       'BEGIN:VEVENT',
@@ -1072,11 +1115,11 @@ export class EventsService {
       `LAST-MODIFIED:${lastMod}`,
       `SEQUENCE:${sequence}`,
       `STATUS:${event.status === EventStatus.CANCELLED ? 'CANCELLED' : 'CONFIRMED'}`,
-      foldIcsLine(`SUMMARY:${icsEscape(`DinnerBears Dinner at ${event.locationName}`)}`),
+      foldIcsLine(`SUMMARY:${icsEscape(`${brandName} ${eventSingular} at ${event.locationName}`)}`),
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(descParts.join('\n'))}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=DinnerBears:mailto:${eventOrganizerEmail(this.config)}`,
+      `ORGANIZER;CN=${brandName}:mailto:${eventOrganizerEmail(this.config)}`,
       'END:VEVENT',
       'END:VCALENDAR',
     ];
@@ -1087,7 +1130,8 @@ export class EventsService {
   async generateIcs(id: number): Promise<string> {
     const event = await this.findOne(id);
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
-    return this.buildIcs(event, `View event: ${appUrl}/events/${id}`);
+    const { brandName, eventSingular } = await this.getEmailBrand();
+    return this.buildIcs(event, { brandName, eventSingular }, `View event: ${appUrl}/events/${id}`);
   }
 
   async generateGuestIcs(token: string): Promise<{ ics: string; eventId: number }> {
@@ -1098,7 +1142,8 @@ export class EventsService {
     if (!link) throw new NotFoundException('Guest link not found');
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const manageUrl = `${appUrl}/rsvp-guest?token=${token}`;
-    const ics = this.buildIcs(link.event, `Manage your RSVP: ${manageUrl}`);
+    const { brandName, eventSingular } = await this.getEmailBrand();
+    const ics = this.buildIcs(link.event, { brandName, eventSingular }, `Manage your RSVP: ${manageUrl}`);
     return { ics, eventId: link.event.id };
   }
 
@@ -1149,6 +1194,7 @@ export class EventsService {
     // Fire-and-forget — email delivery is best-effort and must not block returning the link
     if (recipientEmail) {
       const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+      const { brandName, tagline, eventSingularLower } = await this.getEmailBrand();
       const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
       const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
 
@@ -1171,11 +1217,14 @@ export class EventsService {
       void this.emailService.queue({
         toEmail: recipientEmail,
         toName: recipientName ?? undefined,
-        subject: `You're invited to a DinnerBears dinner!`,
+        subject: `You're invited to a ${brandName} ${eventSingularLower}!`,
         htmlBody: this.buildGuestEmail({
           appUrl,
+          brandName,
+          tagline,
+          eventSingularLower,
           inviterName,
-          subject: `You're invited to a DinnerBears dinner!`,
+          subject: `You're invited to a ${brandName} ${eventSingularLower}!`,
           eventTitle: event.title,
           eventDateDisplay,
           eventTimeDisplay,
@@ -1237,6 +1286,7 @@ export class EventsService {
     const saved = await this.guestLinkRepo.save(link);
 
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const { brandName, tagline, eventSingularLower } = await this.getEmailBrand();
     const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
     const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
 
@@ -1251,11 +1301,14 @@ export class EventsService {
     await this.emailService.queue({
       toEmail: email,
       toName: name,
-      subject: `You're going to a DinnerBears dinner!`,
+      subject: `You're going to a ${brandName} ${eventSingularLower}!`,
       htmlBody: this.buildGuestEmail({
         appUrl,
+        brandName,
+        tagline,
+        eventSingularLower,
         inviterName: null,
-        subject: `You're going to a DinnerBears dinner!`,
+        subject: `You're going to a ${brandName} ${eventSingularLower}!`,
         eventTitle: event.title,
         eventDateDisplay,
         eventTimeDisplay,
@@ -1378,6 +1431,7 @@ export class EventsService {
 
     const event = link.event;
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const { brandName, tagline, eventSingularLower } = await this.getEmailBrand();
     const manageUrl = `${appUrl}/rsvp-guest?token=${link.token}`;
     const icsUrl = `${appUrl}/api/v1/events/guest-ics/${link.token}`;
 
@@ -1398,11 +1452,14 @@ export class EventsService {
     await this.emailService.queue({
       toEmail: link.recipientEmail,
       toName: link.recipientName ?? undefined,
-      subject: `You're invited to a DinnerBears dinner!`,
+      subject: `You're invited to a ${brandName} ${eventSingularLower}!`,
       htmlBody: this.buildGuestEmail({
         appUrl,
+        brandName,
+        tagline,
+        eventSingularLower,
         inviterName,
-        subject: `You're invited to a DinnerBears dinner!`,
+        subject: `You're invited to a ${brandName} ${eventSingularLower}!`,
         eventTitle: event.title,
         eventDateDisplay,
         eventTimeDisplay,
@@ -1602,6 +1659,7 @@ export class EventsService {
     signupUrl?: string,
   ): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const { brandName, tagline, eventSingularLower } = await this.getEmailBrand();
     const [ey, em, ed] = event.eventDate.split('-').map(Number);
     const [eh, emin] = event.eventTime.split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
@@ -1640,11 +1698,11 @@ export class EventsService {
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
   <tr><td style="background:#3D1C05;padding:20px;text-align:center">
-    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+    <img src="${appUrl}/assets/logo.png" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
-    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You've been asked to make the dinner reservation</h1>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You've been asked to make the ${eventSingularLower} reservation</h1>
     <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.title}</strong>
@@ -1664,7 +1722,7 @@ export class EventsService {
       <strong>20&ndash;25 people</strong> to start. A few things to mention when you call:
     </p>
     <ul style="margin:0 0 16px;padding-left:20px;font-size:0.9rem;color:#555;line-height:1.7">
-      <li>DinnerBears members typically start arriving <strong>30 minutes early</strong>, so give them a heads-up.</li>
+      <li>${brandName} members typically start arriving <strong>30 minutes early</strong>, so give them a heads-up.</li>
       <li>You'll receive a follow-up email <strong>2 hours before the event</strong> with an updated headcount &mdash; please plan to call the venue that day to confirm the final count.</li>
     </ul>
     <p style="text-align:center;margin:0 0 24px">
@@ -1675,13 +1733,13 @@ export class EventsService {
     </p>
     ${signupUrl ? `
     <div style="margin-top:24px;padding:16px;background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;text-align:center">
-      <p style="margin:0 0 10px;font-size:0.88rem;color:#555;font-weight:600">New to DinnerBears?</p>
-      <p style="margin:0 0 12px;font-size:0.85rem;color:#777">Create your account and you'll be auto-RSVPed to this dinner.</p>
+      <p style="margin:0 0 10px;font-size:0.88rem;color:#555;font-weight:600">New to ${brandName}?</p>
+      <p style="margin:0 0 12px;font-size:0.85rem;color:#777">Create your account and you'll be auto-RSVPed to this ${eventSingularLower}.</p>
       <a href="${signupUrl}" style="background:#1E4D8C;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.9rem;display:inline-block">Create My Account</a>
     </div>` : ''}
   </td></tr>
   <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
-    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+    <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
 </td></tr>
@@ -1768,6 +1826,7 @@ export class EventsService {
 
   private async sendSeatsReminderEmail(event: EventEntity): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const { brandName, tagline, eventSingularLower } = await this.getEmailBrand();
 
     // Resolve recipient
     let recipientEmail: string | null = event.reservationContactEmail;
@@ -1824,11 +1883,11 @@ export class EventsService {
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
   <tr><td style="background:#3D1C05;padding:20px;text-align:center">
-    <img src="${appUrl}/assets/logo.png" alt="DinnerBears" height="100" style="display:inline-block;height:100px" />
+    <img src="${appUrl}/assets/logo.png" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
-    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">Updated headcount for tonight's dinner</h1>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">Updated headcount for tonight's ${eventSingularLower}</h1>
     <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
       <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
         <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.title}</strong>
@@ -1860,7 +1919,7 @@ export class EventsService {
     </p>
   </td></tr>
   <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
-    <p style="margin:0;font-size:0.78rem;color:#999">DinnerBears — Good food. Great company. Bear memories.</p>
+    <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
 </td></tr>

@@ -50,8 +50,36 @@ export const SITE_SETTING_KEYS = [
   'term_dinner_singular',
   'term_dinner_plural',
   'term_points',
+  // Per-instance feature toggles (Phase 33). Stored as 'true'/'false'; all
+  // default 'true' so nothing is disabled unless an admin turns it off.
+  'feature_ratings',
+  'feature_ratings_residences',
+  'feature_leaderboard',
+  'feature_merch',
+  'feature_members',
 ] as const;
 export type SiteSettingKey = (typeof SITE_SETTING_KEYS)[number];
+
+// The subset of SITE_SETTING_KEYS that are boolean feature toggles. Kept
+// separate so the admin UI can render them as switches (not text fields) and
+// the branding endpoint can surface them as a typed `features` map.
+export const FEATURE_KEYS = [
+  'feature_ratings',
+  'feature_ratings_residences',
+  'feature_leaderboard',
+  'feature_merch',
+  'feature_members',
+] as const;
+export type FeatureKey = (typeof FEATURE_KEYS)[number];
+
+// Camel-cased feature map surfaced on /config/branding for the frontend.
+export interface FeatureFlags {
+  ratings: boolean;
+  ratingsResidences: boolean;
+  leaderboard: boolean;
+  merch: boolean;
+  members: boolean;
+}
 
 function isSiteSettingKey(key: string): key is SiteSettingKey {
   return (SITE_SETTING_KEYS as readonly string[]).includes(key);
@@ -90,6 +118,13 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   term_dinner_singular: 'Event',
   term_dinner_plural: 'Events',
   term_points: 'Points',
+  // Feature toggles default on — an absent row resolves to enabled, so a fork
+  // (or DinnerBears) keeps every feature until an admin turns one off.
+  feature_ratings: 'true',
+  feature_ratings_residences: 'true',
+  feature_leaderboard: 'true',
+  feature_merch: 'true',
+  feature_members: 'true',
 };
 
 @Injectable()
@@ -144,6 +179,24 @@ export class AppConfigService {
     return row?.configValue ?? SITE_SETTING_DEFAULTS[key];
   }
 
+  // Server-side feature-flag check used by FeatureGuard and any service that
+  // needs to enforce a toggle (never trust the client having hidden the nav).
+  // A missing/blank row resolves to the default ('true' = enabled).
+  async isFeatureEnabled(key: FeatureKey): Promise<boolean> {
+    return (await this.getSiteSetting(key)) !== 'false';
+  }
+
+  async getFeatureFlags(): Promise<FeatureFlags> {
+    const [ratings, ratingsResidences, leaderboard, merch, members] = await Promise.all([
+      this.isFeatureEnabled('feature_ratings'),
+      this.isFeatureEnabled('feature_ratings_residences'),
+      this.isFeatureEnabled('feature_leaderboard'),
+      this.isFeatureEnabled('feature_merch'),
+      this.isFeatureEnabled('feature_members'),
+    ]);
+    return { ratings, ratingsResidences, leaderboard, merch, members };
+  }
+
   // Bundled for the public GET /config/branding endpoint — one request for
   // the app shell to apply at bootstrap instead of five. Beyond the DB-backed
   // branding rows, this also surfaces the handful of per-instance values that
@@ -173,6 +226,7 @@ export class AppConfigService {
       dinnerPlural: string;
       points: string;
     };
+    features: FeatureFlags;
   }> {
     const [
       name,
@@ -189,6 +243,7 @@ export class AppConfigService {
       dinnerSingular,
       dinnerPlural,
       points,
+      features,
     ] = await Promise.all([
       this.getSiteSetting('brand_name'),
       this.getSiteSetting('brand_tagline'),
@@ -204,6 +259,7 @@ export class AppConfigService {
       this.getSiteSetting('term_dinner_singular'),
       this.getSiteSetting('term_dinner_plural'),
       this.getSiteSetting('term_points'),
+      this.getFeatureFlags(),
     ]);
     return {
       name,
@@ -222,6 +278,7 @@ export class AppConfigService {
         dinnerPlural,
         points,
       },
+      features,
       vapidPublicKey: this.config.get<string>('VAPID_PUBLIC_KEY') ?? null,
       facebookAppId: this.config.get<string>('FACEBOOK_APP_ID') ?? null,
       isStage: this.config.get<string>('IS_STAGE') === 'true',

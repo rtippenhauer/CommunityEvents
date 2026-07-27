@@ -43,9 +43,9 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
           <mat-card class="exclusive-card">
             <mat-card-content>
               <div class="store-icon">🏆</div>
-              <h3>Founding Member Exclusive</h3>
+              <h3>{{ brandConfig.foundingLabel() }} Exclusive</h3>
               <p>
-                A special tee only available to Founding Members — thanks for being here from the
+                A special tee only available to {{ brandConfig.foundingLabel() }}s — thanks for being here from the
                 start.
               </p>
               <a

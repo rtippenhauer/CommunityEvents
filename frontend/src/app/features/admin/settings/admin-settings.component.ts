@@ -443,6 +443,40 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
           </mat-card-content>
         </mat-card>
 
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Features</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <p class="cadence-hint terms-intro">
+              Turn features off to hide them for this site. A disabled feature's nav item disappears
+              and its page shows a "not available" notice — the change applies immediately.
+            </p>
+            <form [formGroup]="form" class="feature-toggles">
+              <mat-slide-toggle formControlName="featureRatings" color="primary">
+                Ratings <span class="toggle-sub">— Rate Visits, the rating queue, and venue ratings</span>
+              </mat-slide-toggle>
+              <mat-slide-toggle
+                formControlName="featureRatingsResidences"
+                color="primary"
+                [disabled]="!form.controls.featureRatings.value"
+              >
+                Ratings on residences
+                <span class="toggle-sub">— allow rating {{ brandConfigService.locationPluralLower() }} marked as a residence</span>
+              </mat-slide-toggle>
+              <mat-slide-toggle formControlName="featureLeaderboard" color="primary">
+                Leaderboard <span class="toggle-sub">— the {{ brandConfigService.points() }} ranking page</span>
+              </mat-slide-toggle>
+              <mat-slide-toggle formControlName="featureMerch" color="primary">
+                Merch <span class="toggle-sub">— the merch store page</span>
+              </mat-slide-toggle>
+              <mat-slide-toggle formControlName="featureMembers" color="primary">
+                Members directory <span class="toggle-sub">— the browsable member list</span>
+              </mat-slide-toggle>
+            </form>
+          </mat-card-content>
+        </mat-card>
+
         <button
           mat-raised-button
           color="primary"
@@ -552,6 +586,16 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
       }
       .terms-intro {
         margin: 0 0 20px;
+      }
+      .feature-toggles {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .toggle-sub {
+        font-weight: 400;
+        color: #999;
+        font-size: 0.82rem;
       }
       .term-row {
         display: flex;
@@ -679,6 +723,11 @@ export class AdminSettingsComponent implements OnInit {
     termDinnerSingular: this.fb.control('Event', [Validators.required]),
     termDinnerPlural: this.fb.control('Events', [Validators.required]),
     termPoints: this.fb.control('Points', [Validators.required]),
+    featureRatings: this.fb.control(true),
+    featureRatingsResidences: this.fb.control(true),
+    featureLeaderboard: this.fb.control(true),
+    featureMerch: this.fb.control(true),
+    featureMembers: this.fb.control(true),
   });
 
   ngOnInit(): void {
@@ -701,6 +750,11 @@ export class AdminSettingsComponent implements OnInit {
           termDinnerSingular: byKey.get('term_dinner_singular') || 'Event',
           termDinnerPlural: byKey.get('term_dinner_plural') || 'Events',
           termPoints: byKey.get('term_points') || 'Points',
+          featureRatings: byKey.get('feature_ratings') !== 'false',
+          featureRatingsResidences: byKey.get('feature_ratings_residences') !== 'false',
+          featureLeaderboard: byKey.get('feature_leaderboard') !== 'false',
+          featureMerch: byKey.get('feature_merch') !== 'false',
+          featureMembers: byKey.get('feature_members') !== 'false',
         });
         this.loading.set(false);
       },
@@ -818,6 +872,11 @@ export class AdminSettingsComponent implements OnInit {
       this.appConfigService.updateValue('term_dinner_singular', val.termDinnerSingular.trim()),
       this.appConfigService.updateValue('term_dinner_plural', val.termDinnerPlural.trim()),
       this.appConfigService.updateValue('term_points', val.termPoints.trim()),
+      this.appConfigService.updateValue('feature_ratings', val.featureRatings ? 'true' : 'false'),
+      this.appConfigService.updateValue('feature_ratings_residences', val.featureRatingsResidences ? 'true' : 'false'),
+      this.appConfigService.updateValue('feature_leaderboard', val.featureLeaderboard ? 'true' : 'false'),
+      this.appConfigService.updateValue('feature_merch', val.featureMerch ? 'true' : 'false'),
+      this.appConfigService.updateValue('feature_members', val.featureMembers ? 'true' : 'false'),
     ]).subscribe({
       next: () => {
         this.saving.set(false);

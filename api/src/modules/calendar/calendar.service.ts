@@ -9,6 +9,7 @@ import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { calendarOrganizerEmail, supportEmail } from '../../common/config/instance-contact';
+import { AppConfigService } from '../app-config/app-config.service';
 
 export interface CalendarSettingsResponse {
   url: string;
@@ -39,7 +40,20 @@ export class CalendarService {
     private readonly rsvpRepo: Repository<EventRsvpEntity>,
     private readonly config: ConfigService,
     private readonly locationVisibility: LocationVisibilityService,
+    private readonly appConfig: AppConfigService,
   ) {}
+
+  // Per-instance branding for generated calendar files (Phase 32/33). Same
+  // configurable rows the UI/emails read, so a fork's .ics carries its own
+  // name and event term instead of hardcoded "DinnerBears"/"Dinner".
+  private async getBrand(): Promise<{ brandName: string; eventSingular: string; eventPlural: string }> {
+    const [brandName, eventSingular, eventPlural] = await Promise.all([
+      this.appConfig.getSiteSetting('brand_name'),
+      this.appConfig.getSiteSetting('term_dinner_singular'),
+      this.appConfig.getSiteSetting('term_dinner_plural'),
+    ]);
+    return { brandName, eventSingular, eventPlural };
+  }
 
   // ── Token management ────────────────────────────────────────────────────────
 
@@ -125,9 +139,9 @@ export class CalendarService {
     return ics;
   }
 
-  private appName(): string {
+  private appName(brandName: string): string {
     const url = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
-    return url.includes('stage') ? 'DinnerBears - Stage' : 'DinnerBears';
+    return url.includes('stage') ? `${brandName} - Stage` : brandName;
   }
 
   private organizerEmail(): string {
@@ -136,6 +150,7 @@ export class CalendarService {
 
   private async buildFeed(user: UserEntity): Promise<string> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const brand = await this.getBrand();
 
     const rsvps = await this.rsvpRepo.find({
       where: { userId: user.id },
@@ -172,18 +187,18 @@ export class CalendarService {
       events = events.filter((e) => rsvpMap.has(e.id));
     }
 
-    if (events.length === 0) return this.emptyFeed();
+    if (events.length === 0) return this.emptyFeed(brand);
 
-    const vevents = events.map((e) => this.buildVEvent(e, rsvpMap.get(e.id) ?? null, appUrl));
+    const vevents = events.map((e) => this.buildVEvent(e, rsvpMap.get(e.id) ?? null, appUrl, brand));
 
     const lines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//DinnerBears//DinnerBears Calendar//EN',
+      `PRODID:-//${brand.brandName}//${brand.brandName} Calendar//EN`,
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
-      foldIcsLine(`X-WR-CALNAME:${this.appName()} — ${user.fullName}`),
-      'X-WR-CALDESC:Your upcoming DinnerBears dinners',
+      foldIcsLine(`X-WR-CALNAME:${this.appName(brand.brandName)} — ${user.fullName}`),
+      `X-WR-CALDESC:Your upcoming ${brand.brandName} ${brand.eventPlural.toLowerCase()}`,
       'REFRESH-INTERVAL;VALUE=DURATION:PT15M',
       'X-PUBLISHED-TTL:PT15M',
       'X-WR-TIMEZONE:America/New_York',
@@ -198,7 +213,9 @@ export class CalendarService {
     event: EventEntity,
     rsvpStatus: string | null,
     appUrl: string,
+    brand: { brandName: string; eventSingular: string; eventPlural: string },
   ): string[] {
+    const { brandName, eventSingular } = brand;
 
     const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
@@ -230,7 +247,7 @@ export class CalendarService {
     const locationAddress = addressVisible ? event.locationAddress : null;
 
     const description = [
-      'DinnerBears Dinner',
+      `${brandName} ${eventSingular}`,
       '',
       `🍽 ${event.locationName}`,
       locationAddress || '',
@@ -243,7 +260,7 @@ export class CalendarService {
       '',
       '---',
       `Questions? Reply to ${supportEmail(this.config)}`,
-      'To manage your calendar subscription, visit your DinnerBears account settings.',
+      `To manage your calendar subscription, visit your ${brandName} account settings.`,
     ].filter(Boolean).join('\n');
 
     const location = locationAddress
@@ -258,11 +275,11 @@ export class CalendarService {
       `DTEND:${dtEnd}`,
       `LAST-MODIFIED:${lastMod}`,
       `SEQUENCE:${sequence}`,
-      foldIcsLine(`SUMMARY:${icsEscape(isCancelled ? `[CANCELLED] ${event.locationName}` : `DinnerBears Dinner at ${event.locationName}`)}`),
+      foldIcsLine(`SUMMARY:${icsEscape(isCancelled ? `[CANCELLED] ${event.locationName}` : `${brandName} ${eventSingular} at ${event.locationName}`)}`),
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(description)}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=DinnerBears:mailto:${this.organizerEmail()}`,
+      `ORGANIZER;CN=${brandName}:mailto:${this.organizerEmail()}`,
       `STATUS:${isCancelled ? 'CANCELLED' : 'CONFIRMED'}`,
       'END:VEVENT',
     ];
@@ -270,15 +287,15 @@ export class CalendarService {
     return lines;
   }
 
-  private emptyFeed(): string {
+  private emptyFeed(brand: { brandName: string; eventPlural: string }): string {
     return [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//DinnerBears//DinnerBears Calendar//EN',
+      `PRODID:-//${brand.brandName}//${brand.brandName} Calendar//EN`,
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
-      `X-WR-CALNAME:${this.appName()}`,
-      'X-WR-CALDESC:Your upcoming DinnerBears dinners',
+      `X-WR-CALNAME:${this.appName(brand.brandName)}`,
+      `X-WR-CALDESC:Your upcoming ${brand.brandName} ${brand.eventPlural.toLowerCase()}`,
       'REFRESH-INTERVAL;VALUE=DURATION:PT15M',
       'X-PUBLISHED-TTL:PT15M',
       'END:VCALENDAR',
@@ -305,12 +322,13 @@ export class CalendarService {
   // ── Email attachment (.ics for Phase 16b) ────────────────────────────────────
 
   // locationAddress override — see buildGoogleCalendarUrl's note in events.service.ts.
-  buildInviteAttachment(
+  async buildInviteAttachment(
     event: EventEntity,
     recipient: { name: string; email: string },
     appUrl: string,
     locationAddress: string | null = event.locationAddress,
-  ): string {
+  ): Promise<string> {
+    const { brandName, eventSingular } = await this.getBrand();
     const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
     const dtStart = toIcsUtcString(startUtc);
@@ -336,7 +354,7 @@ export class CalendarService {
     const timeStr = `${hour12}:${String(min).padStart(2, '0')} ${ampm} ET`;
 
     const description = [
-      'DinnerBears Dinner',
+      `${brandName} ${eventSingular}`,
       '',
       `🍽 ${event.locationName}`,
       locationAddress || '',
@@ -356,7 +374,7 @@ export class CalendarService {
     const lines = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//DinnerBears//DinnerBears Calendar//EN',
+      `PRODID:-//${brandName}//${brandName} Calendar//EN`,
       'CALSCALE:GREGORIAN',
       'METHOD:REQUEST',
       'BEGIN:VEVENT',
@@ -366,11 +384,11 @@ export class CalendarService {
       `DTEND:${dtEnd}`,
       `LAST-MODIFIED:${lastMod}`,
       `SEQUENCE:${sequence}`,
-      foldIcsLine(`SUMMARY:${icsEscape(`DinnerBears Dinner at ${event.locationName}`)}`),
+      foldIcsLine(`SUMMARY:${icsEscape(`${brandName} ${eventSingular} at ${event.locationName}`)}`),
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(description)}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=DinnerBears:mailto:${this.organizerEmail()}`,
+      `ORGANIZER;CN=${brandName}:mailto:${this.organizerEmail()}`,
       foldIcsLine(`ATTENDEE;CN=${icsEscape(recipient.name)};RSVP=TRUE:mailto:${recipient.email}`),
       'STATUS:CONFIRMED',
       'END:VEVENT',

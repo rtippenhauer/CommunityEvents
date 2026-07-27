@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ReleasesService, Release } from '../../core/services/releases.service';
 import { AuthService } from '../../core/services/auth.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
 
 @Component({
@@ -39,7 +40,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
           @for (release of releases(); track release.id) {
             <article class="release-card">
               <div class="release-version-row">
-                <span class="version-badge">v{{ release.version }}</span>
+                <span class="version-badge">{{ versionLabel(release) }}</span>
                 <span class="release-date">{{ release.publishedAt | date: 'MMMM d, y' }}</span>
               </div>
               <h2 class="release-title">{{ release.title }}</h2>
@@ -202,6 +203,7 @@ export class UpdatesComponent implements OnInit {
   private readonly releasesService = inject(ReleasesService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly authService = inject(AuthService);
+  private readonly brandConfig = inject(BrandConfigService);
 
   isNonValidated(): boolean {
     return this.authService.isNonValidated();
@@ -221,7 +223,23 @@ export class UpdatesComponent implements OnInit {
   }
 
   safeHtml(content: string): SafeHtml {
-    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(content));
+    return this.sanitizer.bypassSecurityTrustHtml(normalizeNbsp(this.substituteTerms(content)));
+  }
+
+  versionLabel(release: Release): string {
+    return /^\d/.test(release.version) ? `v${release.version}` : release.version;
+  }
+
+  // Shared release notes (see docs/RELEASE_NOTE_PIPELINE_SPEC.md) ship with
+  // {{points}}/{{locations}}/{{events}} placeholder tokens instead of
+  // hardcoded wording, so one note reads correctly on every fork's own
+  // terminology. Instance-specific notes never contain these tokens, so this
+  // is a no-op for them.
+  private substituteTerms(content: string): string {
+    return content
+      .replace(/\{\{\s*points\s*\}\}/gi, this.brandConfig.points())
+      .replace(/\{\{\s*locations\s*\}\}/gi, this.brandConfig.locationPluralLower())
+      .replace(/\{\{\s*events\s*\}\}/gi, this.brandConfig.dinnerPluralLower());
   }
 
   creditedItems(release: Release): Release['linkedFeedback'] {

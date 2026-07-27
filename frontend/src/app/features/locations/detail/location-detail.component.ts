@@ -134,6 +134,11 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
               </div>
             }
           </div>
+        } @else if (showPrivateCover()) {
+          <div class="private-cover">
+            <mat-icon class="private-cover-icon">lock</mat-icon>
+            <span>Private until RSVP</span>
+          </div>
         }
 
         <!-- Info -->
@@ -228,10 +233,10 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
           </mat-card-content>
         </mat-card>
 
-        <!-- Ratings -->
+        <!-- Ratings (hidden when the feature is off or suppressed for residences) -->
         @if (ratingsLoading()) {
           <div class="ratings-loading"><mat-spinner diameter="24" /></div>
-        } @else if (ratings()) {
+        } @else if (showRatings() && ratings()) {
           <mat-card class="ratings-card">
             <mat-card-header>
               <mat-card-title class="ratings-title">
@@ -487,6 +492,28 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
         overflow-x: auto;
         margin-bottom: 20px;
         padding-bottom: 4px;
+      }
+      .private-cover {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 160px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        background: rgba(44, 21, 3, 0.6);
+        color: #fff;
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      }
+      .private-cover-icon {
+        font-size: 30px;
+        width: 30px;
+        height: 30px;
       }
       .gallery-item {
         position: relative;
@@ -920,6 +947,24 @@ export class LocationDetailComponent implements OnInit {
   readonly showRatingForm = signal(false);
   readonly ratingSaving = signal(false);
 
+  // Ratings are hidden when the instance has the ratings feature off, or when
+  // this is a Residence and residence-ratings are suppressed (Phase 33). The
+  // API enforces the same rules; this keeps the section from showing at all.
+  readonly showRatings = computed(() => {
+    const loc = this.location();
+    if (!loc || !this.brand.ratingsEnabled()) return false;
+    if (loc.isResidence && !this.brand.ratingsResidencesEnabled()) return false;
+    return true;
+  });
+
+  // A private location whose address is withheld also has its photos redacted
+  // server-side (viewer hasn't RSVP'd / isn't privileged). Mirror the event
+  // surfaces' "Private until RSVP" cover instead of showing an empty photo area.
+  readonly showPrivateCover = computed(() => {
+    const loc = this.location();
+    return !!loc?.isPrivate && !loc.address;
+  });
+
   readonly ratingEventCtrl = new FormControl<number | null>(null, Validators.required);
   readonly ratingCommentCtrl = new FormControl('', { nonNullable: true });
 
@@ -1021,7 +1066,7 @@ export class LocationDetailComponent implements OnInit {
       next: (r) => {
         this.location.set(r);
         this.loading.set(false);
-        this.loadRatings(id);
+        if (this.showRatings()) this.loadRatings(id);
       },
       error: () => {
         this.loading.set(false);

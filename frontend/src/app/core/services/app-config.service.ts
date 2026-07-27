@@ -28,7 +28,12 @@ export type SiteSettingKey =
   | 'term_location_plural'
   | 'term_dinner_singular'
   | 'term_dinner_plural'
-  | 'term_points';
+  | 'term_points'
+  | 'feature_ratings'
+  | 'feature_ratings_residences'
+  | 'feature_leaderboard'
+  | 'feature_merch'
+  | 'feature_members';
 
 export type BrandImageSlot = 'logo' | 'splash' | 'icon' | 'story';
 

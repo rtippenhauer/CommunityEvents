@@ -26,6 +26,10 @@ export interface BrandConfig {
   // fork can rename e.g. Restaurant→Location, Dinner→Meeting without unreliable
   // auto-pluralization; points is a single label.
   terms: BrandTerms;
+  // Per-instance feature toggles (Phase 33). All default true; a fork turns
+  // features off in /admin/settings. The nav hides disabled items and a route
+  // guard blocks direct navigation — but the API is the real enforcement.
+  features: BrandFeatures;
 }
 
 export interface BrandTerms {
@@ -34,6 +38,14 @@ export interface BrandTerms {
   dinnerSingular: string;
   dinnerPlural: string;
   points: string;
+}
+
+export interface BrandFeatures {
+  ratings: boolean;
+  ratingsResidences: boolean;
+  leaderboard: boolean;
+  merch: boolean;
+  members: boolean;
 }
 
 // Compiled-in default assets a fresh fork ships with. Used whenever the
@@ -75,6 +87,15 @@ const DEFAULT_BRAND: BrandConfig = {
     dinnerSingular: 'Event',
     dinnerPlural: 'Events',
     points: 'Points',
+  },
+  // Everything enabled until branding resolves — matches the API defaults, so
+  // a slow/failed fetch never hides a feature that's actually on.
+  features: {
+    ratings: true,
+    ratingsResidences: true,
+    leaderboard: true,
+    merch: true,
+    members: true,
   },
 };
 
@@ -122,6 +143,25 @@ export class BrandConfigService {
   readonly locationPluralLower = computed(() => this.locationPlural().toLowerCase());
   readonly dinnerSingularLower = computed(() => this.dinnerSingular().toLowerCase());
   readonly dinnerPluralLower = computed(() => this.dinnerPlural().toLowerCase());
+
+  // Per-instance feature toggles (Phase 33). Nav items bind these to hide
+  // disabled features; a functional route guard reads the same signals. The
+  // server still enforces via @RequireFeature, so hiding is UX, not security.
+  readonly features = computed(() => this.brand().features);
+  readonly ratingsEnabled = computed(() => this.features().ratings);
+  readonly ratingsResidencesEnabled = computed(() => this.features().ratingsResidences);
+  readonly leaderboardEnabled = computed(() => this.features().leaderboard);
+  readonly merchEnabled = computed(() => this.features().merch);
+  readonly membersEnabled = computed(() => this.features().members);
+
+  // Founding-achievement label. DinnerBears keeps "Founding Bear"; every fork
+  // reads the generic "Founding Member" — matching the same brand_name rule the
+  // RenameFoundingBearAchievement migration uses server-side, so the surrounding
+  // UI labels (merch, achievement category headers) stay consistent with the
+  // actual badge name. Append "s" for the plural ("Founding Bears"/"Members").
+  readonly foundingLabel = computed(() =>
+    this.brand().name.trim().toLowerCase() === 'dinnerbears' ? 'Founding Bear' : 'Founding Member',
+  );
 
   async init(): Promise<void> {
     try {

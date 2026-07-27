@@ -8,6 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MerchService } from '../../../core/services/merch.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-admin-merch',
@@ -49,14 +50,14 @@ import { MerchService } from '../../../core/services/merch.service';
               </mat-form-field>
 
               <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
-                <mat-label>Founding Member Exclusive Product URL</mat-label>
+                <mat-label>{{ brand.foundingLabel() }} Exclusive Product URL</mat-label>
                 <input
                   matInput
                   formControlName="foundingBearProductUrl"
                   placeholder="https://dinnerbears.printful.me/product/..."
                 />
                 <mat-hint>
-                  Only shown to members with the Founding Member achievement. Use an
+                  Only shown to members with the {{ brand.foundingLabel() }} achievement. Use an
                   unlisted/unpublished Printful product link — leave blank until that product
                   exists.
                 </mat-hint>
@@ -97,6 +98,7 @@ import { MerchService } from '../../../core/services/merch.service';
 })
 export class AdminMerchComponent implements OnInit {
   private readonly merchService = inject(MerchService);
+  readonly brand = inject(BrandConfigService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(NonNullableFormBuilder);
 
