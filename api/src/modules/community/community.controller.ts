@@ -12,6 +12,7 @@ import type { FileFilterCallback } from 'multer';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { PointsService } from './points.service';
 import { AchievementsService } from './achievements.service';
@@ -75,6 +76,7 @@ export class CommunityController {
   @Get('leaderboard')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.MEMBER, UserRole.ADMIN, UserRole.MODERATOR)
+  @RequireFeature('feature_leaderboard')
   async getLeaderboard(@Query('cityId') cityId?: string) {
     const cid = cityId ? parseInt(cityId, 10) : undefined;
     return this.pointsService.getLeaderboard(cid);

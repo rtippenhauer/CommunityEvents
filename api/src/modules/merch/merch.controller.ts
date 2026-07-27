@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 
 @Controller('merch')
@@ -13,6 +14,7 @@ export class MerchController {
   constructor(private readonly merchService: MerchService) {}
 
   @Get()
+  @RequireFeature('feature_merch')
   getLinks(@CurrentUser() user: UserEntity) {
     return this.merchService.getLinksForUser(user.id);
   }

@@ -11,6 +11,7 @@ import { EventEntity } from '../../database/entities/event.entity';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { LocationsService } from './locations.service';
 import { PointsService } from '../community/points.service';
+import { AppConfigService } from '../app-config/app-config.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 
@@ -69,10 +70,22 @@ export class RatingsService {
     private readonly rsvpRepo: Repository<EventRsvpEntity>,
     private readonly locationsService: LocationsService,
     private readonly pointsService: PointsService,
+    private readonly appConfig: AppConfigService,
   ) {}
 
+  // Residence-ratings sub-rule (Phase 33): when `feature_ratings_residences`
+  // is off, a Residence location behaves as non-rateable even though the
+  // overall ratings feature is on — rating someone's private home makes little
+  // sense. Returns true when residence ratings are globally suppressed.
+  private async residenceRatingsSuppressed(): Promise<boolean> {
+    return !(await this.appConfig.isFeatureEnabled('feature_ratings_residences'));
+  }
+
   async getRatings(locationId: number, currentUser?: UserEntity): Promise<RatingsResponse> {
-    await this.locationsService.findOne(locationId); // 404 if not found
+    const location = await this.locationsService.findOne(locationId); // 404 if not found
+    // When residence ratings are suppressed, a residence keeps any existing
+    // reviews visible but offers no new ones — clear the eligible-events list.
+    const suppressForResidence = location.isResidence && (await this.residenceRatingsSuppressed());
 
     const aggregate = await this.ratingRepo
       .createQueryBuilder('r')
@@ -125,7 +138,7 @@ export class RatingsService {
       }>();
 
     const eligibleEvents: EligibleEvent[] = [];
-    if (currentUser && currentUser.role !== UserRole.NON_VALIDATED) {
+    if (!suppressForResidence && currentUser && currentUser.role !== UserRole.NON_VALIDATED) {
       const now = new Date();
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
@@ -196,6 +209,11 @@ export class RatingsService {
       throw new BadRequestException('Event was not held at this restaurant');
     }
 
+    const location = await this.locationsService.findOne(locationId);
+    if (location.isResidence && (await this.residenceRatingsSuppressed())) {
+      throw new ForbiddenException('Ratings are not available for this location');
+    }
+
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
@@ -239,10 +257,12 @@ export class RatingsService {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+    const excludeResidences = await this.residenceRatingsSuppressed();
 
-    const rows = await this.rsvpRepo
+    const qb = this.rsvpRepo
       .createQueryBuilder('rsvp')
       .innerJoin('rsvp.event', 'e')
+      .leftJoin('e.location', 'loc')
       .leftJoin(LocationRatingEntity, 'rating', 'rating.memberId = :userId AND rating.eventId = e.id', { userId })
       .select('e.locationId', 'locationId')
       .addSelect(
@@ -261,15 +281,22 @@ export class RatingsService {
       .andWhere('(rsvp.attended = 1 OR rsvp.attended IS NULL)')
       .andWhere('(e.eventDate < :today OR (e.eventDate = :today AND e.eventTime <= :nowTime))', { today: todayStr, nowTime: nowTimeStr })
       .andWhere('e.locationId IS NOT NULL')
-      .orderBy('e.eventDate', 'DESC')
-      .getRawMany<{
-        locationId: number;
-        locationName: string | null;
-        eventId: number;
-        eventDate: string;
-        ratingId: number | null;
-        photoUrl: string | null;
-      }>();
+      .orderBy('e.eventDate', 'DESC');
+
+    // Residence-ratings sub-rule: drop events held at Residence locations when
+    // residence ratings are suppressed, so they never surface in the queue.
+    if (excludeResidences) {
+      qb.andWhere('(loc.id IS NULL OR loc.is_residence = 0)');
+    }
+
+    const rows = await qb.getRawMany<{
+      locationId: number;
+      locationName: string | null;
+      eventId: number;
+      eventDate: string;
+      ratingId: number | null;
+      photoUrl: string | null;
+    }>();
 
     return rows.map((row) => ({
       locationId: Number(row.locationId),

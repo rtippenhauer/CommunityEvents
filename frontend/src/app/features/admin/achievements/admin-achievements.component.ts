@@ -79,7 +79,7 @@ function buildCategoryMeta(b: BrandConfigService): Record<string, CategoryMeta> 
       description: `Earned by attending events flagged as secret — where the ${loc} isn't revealed until the day of the ${dinner}.`,
     },
     founding: {
-      label: 'Founding Member',
+      label: b.foundingLabel(),
       icon: 'history_edu',
       isProgressive: false,
       description:
@@ -158,7 +158,7 @@ interface AddForm extends EditForm {
           mat-stroked-button
           (click)="backfillFounders()"
           [disabled]="backfilling()"
-          matTooltip="Grant Founding Member to all active members who don't already have it"
+          [matTooltip]="'Grant ' + brand.foundingLabel() + ' to all active members who do not already have it'"
         >
           @if (backfilling()) {
             <mat-spinner diameter="16" />
@@ -822,10 +822,11 @@ export class AdminAchievementsComponent implements OnInit {
     this.communityService.adminBackfillFounders().subscribe({
       next: ({ granted }) => {
         this.backfilling.set(false);
+        const label = this.brand.foundingLabel();
         const msg =
           granted > 0
-            ? `Founding Member granted to ${granted} new member(s)`
-            : 'All active members already have Founding Member';
+            ? `${label} granted to ${granted} new member(s)`
+            : `All active members already have ${label}`;
         this.snackBar.open(msg, 'OK', { duration: 4000 });
       },
       error: () => {

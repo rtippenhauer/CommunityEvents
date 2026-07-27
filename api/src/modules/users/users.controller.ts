@@ -30,6 +30,7 @@ import { SetAvatarDto } from './dto/set-avatar.dto';
 import { UpdateNotificationPrefsDto } from './dto/update-notification-prefs.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { UserEntity, EmailStatus, UserRole } from '../../database/entities/user.entity';
 import { EmailService } from '../email/email.service';
 import { SuppressionReason } from '../../database/entities/email-suppression.entity';
@@ -65,6 +66,7 @@ export class UsersController {
   }
 
   @Get('members')
+  @RequireFeature('feature_members')
   getMembers(@CurrentUser() user: UserEntity, @Query('sort') sort?: string) {
     const sortParam = sort === 'alpha' ? 'alpha' : 'newest';
     return this.usersService.findMembers(user.role, sortParam);
