@@ -17,6 +17,7 @@ import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
 import { AppConfigService } from './app-config.service';
 import { UpdateAppConfigDto } from './dto/update-app-config.dto';
+import { BulkUpdateAppConfigDto } from './dto/bulk-update-app-config.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -112,6 +113,15 @@ export class AppConfigAdminController {
     if (!key) throw new BadRequestException('Unknown brand image slot');
     await this.appConfigService.updateConfigValue(key, '', user.id);
     return { value: '' };
+  }
+
+  // Saves many keys in one request — used by /admin/settings' single Save
+  // button, which previously fired one PATCH per field and could trip the
+  // global write-rate-limit on a double-click or retry (see AppConfigService
+  // .updateConfigValues for detail).
+  @Patch('bulk')
+  bulkUpdate(@Body() dto: BulkUpdateAppConfigDto, @CurrentUser() user: UserEntity) {
+    return this.appConfigService.updateConfigValues(dto.entries, user.id);
   }
 
   @Patch(':key')

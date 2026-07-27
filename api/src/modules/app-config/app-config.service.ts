@@ -302,4 +302,28 @@ export class AppConfigService {
     row.updatedBy = userId;
     return this.configRepo.save(row);
   }
+
+  // Saves many keys in one call — used by the /admin/settings form, which
+  // otherwise fired one PATCH per field (19 as of Phase 33's feature toggles)
+  // and could trip the global write-rate-limit fallback in
+  // ThrottlerAuditGuard (30 writes/60s/IP) on a double-click or retry.
+  async updateConfigValues(
+    entries: Array<{ key: string; value: string }>,
+    userId: number,
+  ): Promise<void> {
+    for (const { key } of entries) {
+      if (!isKnownConfigKey(key)) {
+        throw new NotFoundException(`Unknown config key: ${key}`);
+      }
+    }
+    for (const { key, value } of entries) {
+      let row = await this.configRepo.findOne({ where: { configKey: key } });
+      if (!row) {
+        row = this.configRepo.create({ configKey: key, configValue: '' });
+      }
+      row.configValue = value;
+      row.updatedBy = userId;
+      await this.configRepo.save(row);
+    }
+  }
 }

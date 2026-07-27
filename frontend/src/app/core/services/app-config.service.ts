@@ -75,6 +75,14 @@ export class AppConfigService {
     return this.http.patch<LegalConfigItem>(`/api/v1/admin/config/${key}`, { value });
   }
 
+  // Saves many keys in a single request — use this instead of calling
+  // updateValue() in a loop/forkJoin, which fires one PATCH per key and can
+  // trip the global write-rate-limit (30 writes/60s/IP) on a double-click or
+  // retry once a form has more than a handful of fields.
+  updateValues(entries: Array<{ key: LegalConfigKey | SiteSettingKey; value: string }>): Observable<void> {
+    return this.http.patch<void>('/api/v1/admin/config/bulk', { entries });
+  }
+
   uploadBrandImage(slot: BrandImageSlot, file: File): Observable<{ value: string }> {
     const form = new FormData();
     form.append('image', file);
