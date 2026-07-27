@@ -1938,24 +1938,76 @@ Delivered:
   viewers (`findAllForUser` filter).
 - `.env.example` (repo root) now documents `IS_STAGE` and `BASE_DOMAIN`.
 
-## Phase 33 — White-Label Finishing Touches ✅ In Progress
+## Phase 33 — White-Label Finishing Touches ✅ Complete
 
 Items deferred out of Phase 32 as the white-label work is finished off:
-- **De-brand the remaining transactional emails** — the event-published notice,
-  RSVP confirmation, event reminder, and the calendar `.ics` summary still
-  hardcode "DinnerBears" in `events.service.ts` (~5 spots); read `brand_name`
-  the way the invite email now does. (Brevo *dashboard* templates override the
-  code htmlBody — a fork pointing `BREVO_TEMPLATE_*` at DinnerBears-branded
-  templates must de-brand/unset those separately; dashboard action, not code.)
-- **Per-instance feature/menu toggles** — pull out the feature/nav-item list and
-  let an instance turn features off (still being scoped; early candidate:
-  disable **ratings for Residences**, which don't make sense for a private home).
-- **Founding Member label consistency** — the frontend labels (merch, achievement
-  category header) read "Founding Member" globally, so on DinnerBears the badge
-  stays "Founding Bear" while those labels say "Founding Member"; optionally
-  derive the labels from the achievement record so DinnerBears reads fully
-  "Founding Bear".
-- **Location-detail photo cover** — the location-detail page redacts private
-  photos server-side but lacks the "Private until RSVP" visual cover the event
-  surfaces have.
-- Still deferred from earlier: monthly "Nth weekday" event cadence.
+- **De-branded the remaining transactional emails** — the event-published
+  notice, RSVP confirmation, event reminder, and the calendar `.ics` summary
+  in `events.service.ts` plus the calendar feed in `calendar.service.ts` now
+  read `brand_name`/`brand_tagline`/`term_dinner_*` via new `getEmailBrand()`/
+  `getBrand()` helpers, the same way the Phase 32 invite email does. DinnerBears
+  output is byte-identical (terms still pin Dinner/Dinners). The ICS UID
+  (`dinnerbears-event-{id}@dinnerbears.com`) was deliberately left unchanged —
+  `processRsvpReply` and existing calendar entries key off it. (Brevo
+  *dashboard* templates still override the code htmlBody — a fork pointing
+  `BREVO_TEMPLATE_*` at DinnerBears-branded templates must de-brand/unset
+  those separately; dashboard action, not code.)
+- **Per-instance feature/menu toggles** — a general on/off framework, not a
+  one-off: `feature_*` boolean `app_config` rows (migration
+  `1785000000007`, default `'true'` so nothing changes for DinnerBears or a
+  fresh fork) cover **Ratings, the points Leaderboard, Merch, and the Members
+  directory**, plus a `feature_ratings_residences` sub-rule (ratings can stay
+  on globally but be suppressed specifically for Residence locations). Server
+  side: `AppConfigService.getFeatureFlags()`/`isFeatureEnabled()`, surfaced on
+  `/config/branding`, enforced by a global `FeatureGuard` +
+  `@RequireFeature('feature_x')` decorator (404 when off) applied to the
+  ratings, leaderboard, merch, and members endpoints — the real enforcement is
+  server-side, never just a hidden nav item. Frontend: `BrandConfigService`
+  feature signals, nav items gated with `@if`, a `featureGuard()` route guard
+  redirecting to a new `/feature-unavailable` page, and a "Features" card with
+  slide-toggles in `/admin/settings`.
+- **Founding Member label consistency** — a new `BrandConfigService.foundingLabel()`
+  computed signal reads `brand_name` the same way the Phase 32 achievement-rename
+  migration does: `'Founding Bear'` on DinnerBears, `'Founding Member'`
+  everywhere else. Wired into all 5 surfaces that previously hardcoded
+  "Founding Member" (profile/member-profile category maps, merch store copy,
+  admin-achievements labels, admin-merch labels).
+- **Location-detail photo cover** — added a `showPrivateCover` computed (same
+  `isPrivate && !address` redaction signal the event card already used) and a
+  "Private until RSVP" overlay in the photo area, mirroring the event-card
+  treatment from Phase 32.
+
+**Shared release-note pipeline** (built alongside the above, not originally
+scoped into Phase 33 but landed on this branch): release notes describing
+code changes now ship *with the code* instead of requiring a manual API call.
+`api/release-notes/<version>.md` files are baked into the Docker image; a new
+boot-time `ReleaseNotesImporterService` (`OnApplicationBootstrap`) reads them
+and upserts into each instance's own `releases` table on every container
+start — markdown→HTML via `marked` (pinned to `^15.0.12`; v16+ dropped
+CommonJS support, which broke this project's `ts-jest` setup — flagged as a
+later swap to `markdown-it`), sanitized with the same policy the admin editor
+already used. Finalized notes publish on every instance automatically —
+cutting a release *is* the publish approval now, a scoped exception to
+"Claude never publishes." The in-progress `docs/NEXT_RELEASE.md` draft is
+copied into the image as `_draft.md` and surfaces only on stage
+(`IS_STAGE=true`, under a placeholder `'Upcoming'` version), never prod, and
+is removed again once empty or once `IS_STAGE` flips off. The frontend
+substitutes `{{points}}`/`{{locations}}`/`{{events}}` tokens per-instance so
+one shared note reads correctly on every fork's own terminology. `/release`
+and `/phase-done` were rewritten to match — see
+`docs/RELEASE_NOTE_PIPELINE_SPEC.md` for the full design and
+`api/test/release-notes-import.e2e-spec.ts` for coverage.
+
+Monthly "Nth weekday" event cadence (carried forward since Phase 29, see its
+Definition of Done note above) is explicitly pushed out of Phase 33 as well —
+it will get its own later phase rather than ride along here.
+
+### Verification
+- `cd api && npm run build` — clean.
+- `cd api && npm run test:e2e` — full suite green except 3 pre-existing
+  failures (`location-privacy`, `calendar`, `uploads` specs) confirmed via
+  `git stash` to already fail on the unmodified branch tip, unrelated to this
+  phase's changes.
+- `docker build --target api-build` + `docker run ... ls/cat` confirmed
+  `release-notes/_draft.md` actually lands in the built image.
+- `cd frontend && npx tsc --noEmit -p tsconfig.app.json` — clean.

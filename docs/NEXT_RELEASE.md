@@ -29,3 +29,13 @@ once that release's draft has been created.
 - Locations can be marked as a private residence, so they're treated as a home rather than looked up as a business
 - Private venues now keep their photos hidden — not just the address — until a member RSVPs "Going"
 - More of the app, including invitation emails, now reflects your group's own name and branding
+
+## Built for Other Groups, Not Just Us
+
+The whole site can now be relaunched under a different group's name, colors, and terminology while keeping the same look, feel, and features that make it work — so other organizations can run their own version without starting from scratch.
+
+- Every email a member receives — event invitations, RSVP confirmations, reminders, and calendar invites — now uses your group's own name instead of being hardcoded
+- Admins can turn specific site features (Ratings, the {{points}} Leaderboard, the Merch store, the Members directory) on or off to match what their group actually wants to offer
+- The "Founding Member" language across badges, merch, and achievements now consistently matches each group's own branding
+- {{locations}} marked as private now show a clear "Private until RSVP" cover on their photos, matching how private {{events}} already work
+- Release notes like this one are now generated automatically as part of shipping new updates — so what's new is always accurate and up to date, without manual publishing
