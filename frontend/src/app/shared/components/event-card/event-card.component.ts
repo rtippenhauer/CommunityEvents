@@ -29,9 +29,13 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         }
         @if (event().status === 'cancelled') {
           <div class="cancelled-overlay">CANCELLED</div>
-        }
-        @if (event().status === 'draft') {
+        } @else if (event().status === 'draft') {
           <div class="draft-overlay">DRAFT</div>
+        } @else if (isPrivateHidden) {
+          <div class="private-overlay">
+            <mat-icon class="private-overlay-icon">lock</mat-icon>
+            <span>Private until RSVP</span>
+          </div>
         }
         <div class="card-photo-fade"></div>
       </div>
@@ -169,6 +173,27 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
       }
       .draft-overlay {
         background: rgba(160, 110, 0, 0.68);
+      }
+      .private-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        background: rgba(44, 21, 3, 0.6);
+        color: #fff;
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      }
+      .private-overlay-icon {
+        font-size: 26px;
+        width: 26px;
+        height: 26px;
       }
 
       // ── Card body ─────────────────────────────────────────────────────────────
@@ -315,6 +340,13 @@ export class EventCardComponent {
   get totalAttending() {
     const event = this.event();
     return event.totalAttending ?? event.goingCount ?? 0;
+  }
+  // A private venue whose address is withheld from this viewer — the backend
+  // also strips its photos, so cover the placeholder to make the state clear
+  // rather than showing a bare gradient.
+  get isPrivateHidden(): boolean {
+    const loc = this.event().location;
+    return !!loc?.isPrivate && !loc.address;
   }
   get isPast(): boolean {
     const now = new Date();

@@ -88,6 +88,11 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
           <div class="hero-photo">
             <img [src]="event()!.location!.photos[0].filePath" [alt]="event()!.locationName" />
           </div>
+        } @else if (isPrivateHidden()) {
+          <div class="hero-photo hero-private">
+            <mat-icon>lock</mat-icon>
+            <span>Photo available after you RSVP Going</span>
+          </div>
         }
 
         <div class="detail-content">
@@ -1164,6 +1169,24 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
           width: 100%;
           height: 100%;
           object-fit: cover;
+        }
+      }
+      .hero-private {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: linear-gradient(135deg, var(--db-brown-dark) 0%, var(--db-brown-mid) 100%);
+        color: #fff;
+        font-size: 0.9rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        mat-icon {
+          font-size: 34px;
+          width: 34px;
+          height: 34px;
+          opacity: 0.9;
         }
       }
       .status-row {
@@ -2479,6 +2502,13 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   mapsUrl(): string | null {
     const e = this.event()!;
     return this.eventsService.mapsUrl(e.locationLat, e.locationLng, e.locationAddress);
+  }
+
+  // Private venue whose address (and, server-side, photos) are withheld from
+  // this viewer until they RSVP Going.
+  isPrivateHidden(): boolean {
+    const loc = this.event()!.location;
+    return !!loc?.isPrivate && !loc.address;
   }
 
   googleCalendarUrl(): string {
