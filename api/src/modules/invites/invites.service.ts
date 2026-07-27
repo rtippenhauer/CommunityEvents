@@ -9,6 +9,7 @@ import { EventEntity } from '../../database/entities/event.entity';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
+import { AppConfigService } from '../app-config/app-config.service';
 import { ConfigService } from '@nestjs/config';
 import { computeRsvpCutoffAt } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
@@ -26,6 +27,7 @@ export class InvitesService {
     private readonly eventRepo: Repository<EventEntity>,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
+    private readonly appConfig: AppConfigService,
   ) {}
 
   async create(dto: CreateInviteDto, creator: UserEntity): Promise<InviteEntity> {
@@ -82,22 +84,24 @@ export class InvitesService {
 
     if (dto.type === InviteType.MEMBER && dto.boundToEmail) {
       const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+      const brandName = await this.appConfig.getSiteSetting('brand_name');
       const inviteUrl = `${appUrl}/login?token=${saved.token}`;
-      const inviterName = creator.fullName || 'A DinnerBears member';
+      const inviterName = creator.fullName || `A ${brandName} member`;
 
       await this.emailService.queue({
         toEmail: dto.boundToEmail,
         toName: dto.boundToName ?? undefined,
-        subject: `${inviterName} invited you to DinnerBears!`,
+        subject: `${inviterName} invited you to ${brandName}!`,
         templateId: EmailTemplate.INVITE,
         templateParams: {
           inviter_name: inviterName,
           invite_url: inviteUrl,
           invitee_name: dto.boundToName ?? dto.boundToEmail,
+          brand_name: brandName,
         },
         htmlBody: `
-          <h2>You're invited to DinnerBears!</h2>
-          <p><strong>${inviterName}</strong> has invited you to join DinnerBears — a community of people who love good food and great company.</p>
+          <h2>You're invited to ${brandName}!</h2>
+          <p><strong>${inviterName}</strong> has invited you to join ${brandName} — a community of people who love good food and great company.</p>
           <p><a href="${inviteUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Accept Invite</a></p>
           <p style="color:#888;font-size:0.85em">This link expires in 48 hours and can only be used by this email address.</p>
         `,
