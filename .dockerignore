@@ -15,9 +15,11 @@ api/dist
 
 # Dev/docs — not needed in build context
 docs/
+!docs/NEXT_RELEASE.md
 scripts/
 .vscode/
 .idea/
 *.md
 !frontend/*.md
 !api/*.md
+!api/release-notes/

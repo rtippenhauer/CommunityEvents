@@ -6,8 +6,16 @@ Phase $ARGUMENTS is complete.
    Append it to `docs/NEXT_RELEASE.md` under a heading for this phase's area
    (create the file from the template below if it doesn't exist yet). Don't
    remove or rewrite existing entries already in the file — only add to it.
-   This is a draft accumulator, not a publish action — it does not touch the
-   `releases` table or the production API.
+   Write copy using the `{{points}}`/`{{locations}}`/`{{events}}` placeholder
+   tokens instead of hardcoded DinnerBears wording, since this draft ships to
+   every fork (see `docs/RELEASE_NOTE_PIPELINE_SPEC.md`). This step itself is
+   still just a draft accumulator — it doesn't touch the `releases` table or
+   any production API directly — but the stage image rebuilt in step 8 below
+   ships this updated draft, and a boot-time importer
+   (`ReleaseNotesImporterService`) automatically publishes it to stage's
+   `/updates` page once that container restarts (gated on `IS_STAGE=true` —
+   it never surfaces on prod until `/release` finalizes it). No separate
+   publish action needed on Rob's part.
 
    ```
    # Next Release — Draft Notes
