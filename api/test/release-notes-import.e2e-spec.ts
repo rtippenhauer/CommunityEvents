@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { join } from 'path';
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { seedCity, seedUser } from './utils/seed';
-import { UserRole } from '../src/database/entities/user.entity';
+import { UserEntity, UserRole } from '../src/database/entities/user.entity';
 import { ReleaseEntity } from '../src/database/entities/release.entity';
 import { ReleaseNotesImporterService } from '../src/modules/releases/release-notes-importer.service';
 
@@ -115,5 +115,23 @@ describe('Release notes boot-time import (e2e)', () => {
   it('does not crash when the release-notes directory is missing', async () => {
     configService.set('RELEASE_NOTES_DIR', MISSING_DIR);
     await expect(importer.importAll()).resolves.toBeUndefined();
+  });
+
+  // Regression (found live on stage.dinnerbears.com 2026-07-27): the account
+  // lookup used to filter on role AUTOMATION too, so temporarily elevating
+  // the account via the admin role-picker (a supported, documented flow —
+  // see users.service.ts's isAutomationAccount comment) made the importer
+  // silently skip every import until the role was flipped back. Matching by
+  // email alone (like isAutomationAccount does) fixes this.
+  it('still finds the automation account by email when its role has been temporarily elevated', async () => {
+    await releaseRepo().manager
+      .getRepository(UserEntity)
+      .update({ email: 'automation@dinnerbears.internal' }, { role: UserRole.ADMIN });
+
+    await importer.importAll();
+
+    const release = await releaseRepo().findOne({ where: { version: '9.9.9' } });
+    expect(release).not.toBeNull();
+    expect(release!.publishedAt).not.toBeNull();
   });
 });

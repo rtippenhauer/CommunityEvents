@@ -7,7 +7,7 @@ import { join } from 'path';
 import { marked } from 'marked';
 import * as sanitizeHtml from 'sanitize-html';
 import { ReleaseEntity } from '../../database/entities/release.entity';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserEntity } from '../../database/entities/user.entity';
 import { ALLOWED_HTML } from './releases.service';
 
 const DRAFT_FILE = '_draft.md';
@@ -75,7 +75,13 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
   }
 
   private async getAutomationAuthorId(): Promise<number | null> {
-    const user = await this.userRepo.findOne({ where: { email: AUTOMATION_EMAIL, role: UserRole.AUTOMATION } });
+    // Matched by email alone, not role — the account's role is mutable
+    // (Rob's admin role-picker can temporarily elevate it to member/
+    // moderator/admin for testing, same pattern users.service.ts's
+    // isAutomationAccount flag relies on), so filtering on role too would
+    // make this silently stop finding the account whenever it's elevated at
+    // boot time, even though the account otherwise still exists.
+    const user = await this.userRepo.findOne({ where: { email: AUTOMATION_EMAIL } });
     return user?.id ?? null;
   }
 
