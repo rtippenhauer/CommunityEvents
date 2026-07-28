@@ -42,6 +42,7 @@ describe('Release notes boot-time import (e2e)', () => {
     await seedUser(dataSource, city.id, {
       role: UserRole.AUTOMATION,
       email: 'automation@dinnerbears.internal',
+      fullName: 'Claude Automation',
     });
   });
 
@@ -122,8 +123,8 @@ describe('Release notes boot-time import (e2e)', () => {
   // the account via the admin role-picker (a supported, documented flow —
   // see users.service.ts's isAutomationAccount comment) made the importer
   // silently skip every import until the role was flipped back. Matching by
-  // email alone (like isAutomationAccount does) fixes this.
-  it('still finds the automation account by email when its role has been temporarily elevated', async () => {
+  // name + email instead (role can be any level) fixes this.
+  it('still finds the automation account by name+email when its role has been temporarily elevated', async () => {
     await releaseRepo().manager
       .getRepository(UserEntity)
       .update({ email: 'automation@dinnerbears.internal' }, { role: UserRole.ADMIN });
