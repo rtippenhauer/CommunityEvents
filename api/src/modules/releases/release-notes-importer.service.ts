@@ -14,6 +14,7 @@ const DRAFT_FILE = '_draft.md';
 const DRAFT_VERSION = 'Upcoming';
 const DRAFT_TITLE = "What's New (In Progress)";
 const AUTOMATION_EMAIL = 'automation@dinnerbears.internal';
+const AUTOMATION_NAME = 'Claude Automation';
 
 // Shared release notes (see docs/RELEASE_NOTE_PIPELINE_SPEC.md) ship inside the
 // Docker image — one markdown file per finalized version under release-notes/,
@@ -75,13 +76,17 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
   }
 
   private async getAutomationAuthorId(): Promise<number | null> {
-    // Matched by email alone, not role — the account's role is mutable
+    // Matched by name + email, not role — the account's role is mutable
     // (Rob's admin role-picker can temporarily elevate it to member/
     // moderator/admin for testing, same pattern users.service.ts's
     // isAutomationAccount flag relies on), so filtering on role too would
     // make this silently stop finding the account whenever it's elevated at
-    // boot time, even though the account otherwise still exists.
-    const user = await this.userRepo.findOne({ where: { email: AUTOMATION_EMAIL } });
+    // boot time, even though the account otherwise still exists. Name is
+    // included alongside the (already-unique) email as a belt-and-suspenders
+    // check that this is specifically the seeded Claude Automation account.
+    const user = await this.userRepo.findOne({
+      where: { email: AUTOMATION_EMAIL, fullName: AUTOMATION_NAME },
+    });
     return user?.id ?? null;
   }
 
