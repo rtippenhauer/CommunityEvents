@@ -2011,3 +2011,71 @@ it will get its own later phase rather than ride along here.
 - `docker build --target api-build` + `docker run ... ls/cat` confirmed
   `release-notes/_draft.md` actually lands in the built image.
 - `cd frontend && npx tsc --noEmit -p tsconfig.app.json` — clean.
+
+## Phase 34 — Live-Fire Reliability Fixes ✅ Complete
+
+Not a planned phase — four ad hoc bugfixes surfaced by actually exercising
+Phase 33's white-label work live on `stage.dinnerbears.com` and
+`sons-stage.rtippenhauer.com` right after it shipped. Each landed as its own
+branch/PR (never merged into a shared phase branch, since none existed):
+
+- **`/admin/settings` save could 429 under the write rate limit** (PR #24).
+  The settings form fired one `PATCH /admin/config/:key` per field via
+  `forkJoin` — 19 requests as of Phase 33's five new feature-toggle fields,
+  up from 14 before. A double-click or retry pushed past
+  `ThrottlerAuditGuard`'s global write-rate-limit fallback (30 writes/60s/IP),
+  which manifested as a wall of 429s and some fields (e.g. `feature_merch`)
+  silently failing to save. Fixed with a new `PATCH /admin/config/bulk`
+  endpoint (`BulkUpdateAppConfigDto`, validates every key up front so an
+  unknown key rejects the whole batch rather than partially applying it); the
+  settings form now calls it once. New e2e coverage in
+  `api/test/app-config-bulk-update.e2e-spec.ts`, including a regression test
+  that fires the full 19-field payload twice back-to-back.
+- **Release-notes importer silently skipped imports when the automation
+  account was role-elevated** (PR #25, then tightened further in PR #26).
+  `ReleaseNotesImporterService.getAutomationAuthorId()` originally matched on
+  `email + role: AUTOMATION`. Temporarily elevating that account to
+  `admin`/`member`/`moderator` via the admin role-picker — a supported,
+  documented flow (see `users.service.ts`'s `isAutomationAccount` comment) —
+  made the importer find nothing and quietly skip the whole import at boot.
+  Fixed to match by `full_name` + `email` only (role can legitimately be
+  anything at boot time), the same identification pattern
+  `isAutomationAccount` already used. Regression test covers the
+  elevated-role case.
+- **Transactional email logos were still hardcoded to DinnerBears' asset**
+  (PR #27). Phase 33's email de-branding pass fixed the brand name/tagline/
+  terms text in every transactional email, but every email's `<img>` logo
+  still pointed at `${appUrl}/assets/logo.png` — the frontend's *compiled-in*
+  DinnerBears bear-paw asset, which never resolved to a fork's admin-uploaded
+  logo. Found via a real RSVP-confirmation email sent from sons-stage.
+  `getEmailBrand()` now also resolves `logoUrl` (the uploaded `brand_logo_url`
+  when set, else the same compiled-in fallback path the frontend's
+  `BrandConfigService.logoSrc` uses), threaded through all 7 email templates
+  that render a logo (event-published, RSVP confirmation, cancellation,
+  update, guest invite ×3 via a shared `buildGuestEmail` helper, reservation
+  request, seats reminder) — the 2 `.ics`-calendar-only callers are
+  unaffected (no image in calendar text). DinnerBears itself is unchanged
+  (`brand_logo_url` is empty there).
+- **`stage.dinnerbears.com`'s missing `/app/appdata` volume mount** — not a
+  code bug. The container had no volume mapping for `/app/appdata` at all, so
+  `entrypoint.sh`'s `.env` load (`if [ -f /app/appdata/.env ]; then ...`)
+  silently no-op'd — no error, no crash, just every var from that file
+  (VAPID keys, `CLAUDE_AUTOMATION_SECRET`, `IS_STAGE`, everything) resolving
+  to unset. Symptoms looked like three unrelated bugs (missing VAPID warning,
+  automation-login 401, no release notes on that one instance while
+  sons-stage worked fine) until traced to one root cause. Fixed by adding the
+  volume mapping in Unraid and recreating the container — see
+  `reference_unraid_deploy_gotchas` memory for the full diagnosis chain and
+  checklist, since it's the kind of failure mode likely to recur on another
+  instance.
+
+### Verification
+- `cd api && npm run build` — clean after each fix.
+- Targeted e2e coverage per fix: `app-config-bulk-update` (5 new cases),
+  `release-notes-import` (regression case added, 8 total), `events` +
+  `email-push` + `rsvp` + `invites` (146 cases, no regressions from the
+  logo-threading change).
+- Each fix verified live against `stage.dinnerbears.com` and/or
+  `sons-stage.rtippenhauer.com` after rebuilding and pushing the stage image,
+  not just in the test suite — this whole phase originated from live testing,
+  not a spec.

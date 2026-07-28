@@ -39,3 +39,8 @@ The whole site can now be relaunched under a different group's name, colors, and
 - The "Founding Member" language across badges, merch, and achievements now consistently matches each group's own branding
 - {{locations}} marked as private now show a clear "Private until RSVP" cover on their photos, matching how private {{events}} already work
 - Release notes like this one are now generated automatically as part of shipping new updates — so what's new is always accurate and up to date, without manual publishing
+
+## Reliability Fixes
+
+- Fixed an issue where saving Site Settings with several changes at once could fail partway through and need a retry
+- Transactional emails (RSVP confirmations, invitations, reminders) now always show your group's own uploaded logo instead of the default one
