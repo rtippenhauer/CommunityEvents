@@ -16,4 +16,9 @@ export class UpsertRsvpDto {
   @MaxLength(200, { each: true })
   @ArrayMaxSize(9)
   guestNames?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  bringingItem?: string;
 }

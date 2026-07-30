@@ -24,6 +24,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { SetRoleDto } from './dto/set-role.dto';
+import { SetMembershipDto } from './dto/set-membership.dto';
 import { UpdateEmailConfigDto } from './dto/update-email-config.dto';
 
 @Controller('admin')
@@ -84,6 +85,17 @@ export class AdminController {
     @CurrentUser() actor: UserEntity,
   ) {
     return this.adminService.setRole(id, actor.id, body.role);
+  }
+
+  @Post('users/:id/membership')
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  @HttpCode(200)
+  setMembership(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: SetMembershipDto,
+    @CurrentUser() actor: UserEntity,
+  ) {
+    return this.adminService.setMembership(id, actor.id, body.hasMembership, body.membershipExpiresAt);
   }
 
   @Get('users/:id/email-suppressed')

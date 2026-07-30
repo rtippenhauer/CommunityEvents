@@ -92,6 +92,18 @@ export class UserEntity {
   @Column({ type: 'enum', enum: UserRole, default: UserRole.MEMBER })
   role: UserRole;
 
+  // Phase 35 (membership fee): whether this member has paid dues, and when that
+  // membership expires. Memberships always run calendar-year (expire Jan 1 of the
+  // following year regardless of payment date — see AdminService.setMembership).
+  // Enforcement (blocking a Going RSVP once the member's free first meeting is
+  // used) lives in EventsService.upsertRsvp, gated by the feature_require_membership
+  // toggle.
+  @Column({ name: 'has_membership', type: 'tinyint', default: false })
+  hasMembership: boolean;
+
+  @Column({ name: 'membership_expires_at', type: 'datetime', nullable: true })
+  membershipExpiresAt: Date | null;
+
   @Column({ name: 'profile_photo_path', type: 'varchar', length: 500, nullable: true })
   profilePhotoPath: string | null;
 

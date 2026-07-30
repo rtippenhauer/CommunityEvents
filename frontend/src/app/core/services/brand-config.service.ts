@@ -46,6 +46,7 @@ export interface BrandFeatures {
   leaderboard: boolean;
   merch: boolean;
   members: boolean;
+  requireMembership: boolean;
 }
 
 // Compiled-in default assets a fresh fork ships with. Used whenever the
@@ -89,13 +90,17 @@ const DEFAULT_BRAND: BrandConfig = {
     points: 'Points',
   },
   // Everything enabled until branding resolves — matches the API defaults, so
-  // a slow/failed fetch never hides a feature that's actually on.
+  // a slow/failed fetch never hides a feature that's actually on. Exception:
+  // requireMembership defaults false, matching the API's off-by-default
+  // SITE_SETTING_DEFAULTS — a brand-new concept nothing depends on, so a
+  // failed fetch should never suddenly start enforcing membership.
   features: {
     ratings: true,
     ratingsResidences: true,
     leaderboard: true,
     merch: true,
     members: true,
+    requireMembership: false,
   },
 };
 
@@ -153,6 +158,11 @@ export class BrandConfigService {
   readonly leaderboardEnabled = computed(() => this.features().leaderboard);
   readonly merchEnabled = computed(() => this.features().merch);
   readonly membersEnabled = computed(() => this.features().members);
+  // Membership fee (Phase 35) — unlike the others above, this is not just a
+  // nav/route gate: the server enforces the actual RSVP block in upsertRsvp.
+  // This signal drives the admin-settings toggle and admin-users' membership
+  // column/edit UI visibility.
+  readonly requireMembershipEnabled = computed(() => this.features().requireMembership);
 
   // Founding-achievement label. DinnerBears keeps "Founding Bear"; every fork
   // reads the generic "Founding Member" — matching the same brand_name rule the

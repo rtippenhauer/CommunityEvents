@@ -472,6 +472,14 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
               <mat-slide-toggle formControlName="featureMembers" color="primary">
                 Members directory <span class="toggle-sub">— the browsable member list</span>
               </mat-slide-toggle>
+              <mat-slide-toggle formControlName="featureRequireMembership" color="primary">
+                Require membership fee
+                <span class="toggle-sub"
+                  >— members get one free {{ brandConfigService.dinnerSingularLower() }}, then need an
+                  active membership to RSVP Going. Set membership status per member on the Members
+                  page.</span
+                >
+              </mat-slide-toggle>
             </form>
           </mat-card-content>
         </mat-card>
@@ -727,6 +735,7 @@ export class AdminSettingsComponent implements OnInit {
     featureLeaderboard: this.fb.control(true),
     featureMerch: this.fb.control(true),
     featureMembers: this.fb.control(true),
+    featureRequireMembership: this.fb.control(false),
   });
 
   ngOnInit(): void {
@@ -754,6 +763,7 @@ export class AdminSettingsComponent implements OnInit {
           featureLeaderboard: byKey.get('feature_leaderboard') !== 'false',
           featureMerch: byKey.get('feature_merch') !== 'false',
           featureMembers: byKey.get('feature_members') !== 'false',
+          featureRequireMembership: byKey.get('feature_require_membership') === 'true',
         });
         this.loading.set(false);
       },
@@ -877,6 +887,7 @@ export class AdminSettingsComponent implements OnInit {
         { key: 'feature_leaderboard', value: val.featureLeaderboard ? 'true' : 'false' },
         { key: 'feature_merch', value: val.featureMerch ? 'true' : 'false' },
         { key: 'feature_members', value: val.featureMembers ? 'true' : 'false' },
+        { key: 'feature_require_membership', value: val.featureRequireMembership ? 'true' : 'false' },
       ])
       .subscribe({
         next: () => {

@@ -33,7 +33,8 @@ export type SiteSettingKey =
   | 'feature_ratings_residences'
   | 'feature_leaderboard'
   | 'feature_merch'
-  | 'feature_members';
+  | 'feature_members'
+  | 'feature_require_membership';
 
 export type BrandImageSlot = 'logo' | 'splash' | 'icon' | 'story';
 
