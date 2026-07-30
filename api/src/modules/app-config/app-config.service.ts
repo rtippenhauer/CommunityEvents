@@ -57,6 +57,10 @@ export const SITE_SETTING_KEYS = [
   'feature_leaderboard',
   'feature_merch',
   'feature_members',
+  // Membership fee (Phase 35). Off by default — a brand-new concept nothing
+  // depends on, unlike the Phase 33 toggles which defaulted on for
+  // backward-compat.
+  'feature_require_membership',
 ] as const;
 export type SiteSettingKey = (typeof SITE_SETTING_KEYS)[number];
 
@@ -69,6 +73,7 @@ export const FEATURE_KEYS = [
   'feature_leaderboard',
   'feature_merch',
   'feature_members',
+  'feature_require_membership',
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -79,6 +84,7 @@ export interface FeatureFlags {
   leaderboard: boolean;
   merch: boolean;
   members: boolean;
+  requireMembership: boolean;
 }
 
 function isSiteSettingKey(key: string): key is SiteSettingKey {
@@ -125,6 +131,9 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   feature_leaderboard: 'true',
   feature_merch: 'true',
   feature_members: 'true',
+  // Off by default — a fresh instance never enforces membership until an
+  // admin explicitly opts in.
+  feature_require_membership: 'false',
 };
 
 @Injectable()
@@ -187,14 +196,15 @@ export class AppConfigService {
   }
 
   async getFeatureFlags(): Promise<FeatureFlags> {
-    const [ratings, ratingsResidences, leaderboard, merch, members] = await Promise.all([
+    const [ratings, ratingsResidences, leaderboard, merch, members, requireMembership] = await Promise.all([
       this.isFeatureEnabled('feature_ratings'),
       this.isFeatureEnabled('feature_ratings_residences'),
       this.isFeatureEnabled('feature_leaderboard'),
       this.isFeatureEnabled('feature_merch'),
       this.isFeatureEnabled('feature_members'),
+      this.isFeatureEnabled('feature_require_membership'),
     ]);
-    return { ratings, ratingsResidences, leaderboard, merch, members };
+    return { ratings, ratingsResidences, leaderboard, merch, members, requireMembership };
   }
 
   // Bundled for the public GET /config/branding endpoint — one request for

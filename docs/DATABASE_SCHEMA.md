@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-07-27_
+_Last updated: 2026-07-29_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -86,6 +86,11 @@ password_reset_expires_at       DATETIME NULL               -- Phase 11
 city_id                         INT UNSIGNED NOT NULL REFERENCES cities(id)
 role                            ENUM('non_validated','member','moderator','admin')
                                 NOT NULL DEFAULT 'member'
+-- Membership fee (Phase 35): tracked/enforced only when feature_require_membership
+-- (app_config) is on. Memberships run calendar-year — admin-set expiration
+-- defaults to Jan 1 of the following year (AdminService.setMembership).
+has_membership                  TINYINT(1) NOT NULL DEFAULT 0
+membership_expires_at           DATETIME NULL
 profile_photo_path              VARCHAR(500) NULL
 status                          ENUM('active','suspended','deleted') NOT NULL DEFAULT 'active'
 -- Invite lineage
@@ -405,10 +410,15 @@ user_id             INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
 status              ENUM('going','maybe','not_going') NOT NULL DEFAULT 'going'
 additional_guests   TINYINT UNSIGNED NOT NULL DEFAULT 0  -- 0–9
 guest_names         JSON NULL                -- array of named guest strings
+bringing_item       VARCHAR(200) NULL        -- Phase 35: optional note on what this
+                    -- member is bringing, shown for Residence-location events. Not
+                    -- location-gated server-side (same trust model as guest_names).
 attended            TINYINT(1) NULL DEFAULT NULL
                     -- NULL = not yet marked; true/false set by mod after event
 is_walkin           TINYINT(1) NOT NULL DEFAULT 0
                     -- true for members added by mod at the door (no prior RSVP)
+from_other_city     TINYINT(1) NOT NULL DEFAULT 0
+                    -- true when a member attends an event outside their home city
 created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 

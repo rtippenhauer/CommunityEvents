@@ -396,6 +396,18 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                         }
                       </div>
 
+                      @if (myRsvp()!.status === 'going' && isResidenceEvent() && !isNonValidated()) {
+                        <mat-form-field appearance="outline" class="bringing-field">
+                          <mat-label>What are you bringing? (optional)</mat-label>
+                          <input
+                            matInput
+                            [formControl]="bringingCtrl"
+                            maxlength="200"
+                            (blur)="updateBringingItem()"
+                          />
+                        </mat-form-field>
+                      }
+
                       <!-- Guest panel -->
                       @if (myRsvp()!.additionalGuests > 0 && !isNonValidated()) {
                         <div class="guest-panel">
@@ -676,6 +688,9 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                                 >
                               }
                             </span>
+                          }
+                          @if (r.status === 'going' && isResidenceEvent() && r.bringingItem) {
+                            <span class="attendee-bringing">🍴 {{ r.bringingItem }}</span>
                           }
                         </div>
                       </li>
@@ -1465,6 +1480,10 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
       .guests-select {
         width: 130px;
       }
+      .bringing-field {
+        width: 100%;
+        margin-top: 8px;
+      }
       .cancel-rsvp-btn {
         font-size: 0.8rem;
       }
@@ -1678,6 +1697,12 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
       .guest-names-inline {
         color: #666;
         font-style: italic;
+      }
+      .attendee-bringing {
+        display: block;
+        font-size: 0.8rem;
+        color: #888;
+        margin-top: 2px;
       }
       .attendee-avatar-guest {
         background: #e8e0d6;
@@ -2279,6 +2304,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   private readonly fb = inject(NonNullableFormBuilder);
 
   readonly event = signal<Event | null>(null);
+  readonly isResidenceEvent = computed(() => !!this.event()?.location?.isResidence);
   readonly loading = signal(true);
   readonly rsvpLoading = signal(false);
   readonly savingNames = signal(false);
@@ -2323,6 +2349,8 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
 
   readonly guestOptions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
   readonly guestsCtrl = new FormControl<number>(0, { nonNullable: true });
+  // Residence events only (Phase 35) — optional note on what a member is bringing.
+  readonly bringingCtrl = new FormControl<string>('', { nonNullable: true });
 
   readonly guestNamesForm = this.fb.group({ names: this.fb.array<string>([]) });
   readonly guestEmailsForm = this.fb.group({ emails: this.fb.array<string>([]) });
@@ -2468,6 +2496,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         const my = e.rsvps.find((r) => r.userId === this.authService.currentUser()?.id);
         if (my) {
           this.guestsCtrl.setValue(my.additionalGuests);
+          this.bringingCtrl.setValue(my.bringingItem ?? '');
           this.rebuildNameControls(my.additionalGuests, my.guestNames);
         }
         if (e.status === 'published' && this.authService.isLoggedIn()) {
@@ -2561,6 +2590,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.event.set(e);
         const my = e.rsvps.find((r) => r.userId === this.authService.currentUser()?.id);
         this.guestsCtrl.setValue(my?.additionalGuests ?? 0);
+        this.bringingCtrl.setValue(my?.bringingItem ?? '');
         this.rebuildNameControls(
           my?.additionalGuests ?? 0,
           my?.guestNames ?? null,
@@ -2576,15 +2606,15 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   addRsvp(status: RsvpStatus = 'going'): void {
     const id = this.event()!.id;
     this.rsvpLoading.set(true);
-    this.eventsService.rsvp(id, status, 0).subscribe({
+    this.eventsService.rsvp(id, status, 0, undefined, this.bringingCtrl.value || undefined).subscribe({
       next: () => {
         this.refreshEvent(id);
         const msg = status === 'going' ? "You're going! 🎉" : 'Marked as Maybe!';
         this.snackBar.open(msg, 'OK', { duration: 3000 });
       },
-      error: () => {
+      error: (err) => {
         this.rsvpLoading.set(false);
-        this.snackBar.open('RSVP failed', 'OK', { duration: 3000 });
+        this.snackBar.open(err?.error?.message ?? 'RSVP failed', 'OK', { duration: 4000 });
       },
     });
   }
@@ -2598,16 +2628,16 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     const rsvp = this.myRsvp()!;
     this.rsvpLoading.set(true);
     this.eventsService
-      .rsvp(id, newStatus, rsvp.additionalGuests, rsvp.guestNames ?? undefined)
+      .rsvp(id, newStatus, rsvp.additionalGuests, rsvp.guestNames ?? undefined, rsvp.bringingItem ?? undefined)
       .subscribe({
         next: () => {
           this.refreshEvent(id);
           const msg = newStatus === 'going' ? 'Changed to Going!' : 'Changed to Maybe!';
           this.snackBar.open(msg, 'OK', { duration: 2000 });
         },
-        error: () => {
+        error: (err) => {
           this.rsvpLoading.set(false);
-          this.snackBar.open('Failed to update', 'OK', { duration: 3000 });
+          this.snackBar.open(err?.error?.message ?? 'Failed to update', 'OK', { duration: 4000 });
         },
       });
   }
@@ -2618,11 +2648,28 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     const names = this.guestNameControls.map((c) => c.value);
     const emails = this.guestEmailControls.map((c) => c.value);
     const status = this.myRsvp()?.status ?? 'going';
-    this.eventsService.rsvp(id, status, additionalGuests, names).subscribe({
+    this.eventsService.rsvp(id, status, additionalGuests, names, this.bringingCtrl.value || undefined).subscribe({
       next: () =>
         this.refreshEvent(id, emails, additionalGuests > oldCount ? additionalGuests - 1 : null),
       error: () => this.snackBar.open('Failed to update guests', 'OK', { duration: 3000 }),
     });
+  }
+
+  // Residence events only (Phase 35) — saved on blur so a member can type
+  // freely without re-submitting the whole RSVP on every keystroke.
+  updateBringingItem(): void {
+    const id = this.event()!.id;
+    const rsvp = this.myRsvp();
+    if (!rsvp) return;
+    const value = this.bringingCtrl.value;
+    if ((rsvp.bringingItem ?? '') === value) return; // unchanged, skip the request
+    this.eventsService
+      .rsvp(id, rsvp.status, rsvp.additionalGuests, rsvp.guestNames ?? undefined, value || undefined)
+      .subscribe({
+        next: () => this.refreshEvent(id),
+        error: (err) =>
+          this.snackBar.open(err?.error?.message ?? 'Failed to save', 'OK', { duration: 3000 }),
+      });
   }
 
   removeRsvp(): void {

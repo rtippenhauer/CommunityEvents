@@ -26,6 +26,8 @@ export interface AdminUserRow {
   oauthProviders: Array<{ provider: string; providerId: string; email: string | null }>;
   isPendingInvite: boolean;
   inviteExpiresAt: Date | null;
+  hasMembership: boolean;
+  membershipExpiresAt: Date | null;
 }
 
 export interface AuditLogFilter {
@@ -84,6 +86,8 @@ export class AdminService {
         'u.created_at AS createdAt',
         'u.last_login_at AS lastLoginAt',
         'u.login_count AS loginCount',
+        'u.has_membership AS hasMembership',
+        'u.membership_expires_at AS membershipExpiresAt',
       ])
       .where('u.deleted_at IS NULL')
       .orderBy('u.created_at', 'DESC')
@@ -140,6 +144,8 @@ export class AdminService {
         oauthProviders: [],
         isPendingInvite: true,
         inviteExpiresAt: i.expiresAt,
+        hasMembership: false,
+        membershipExpiresAt: null,
       }));
   }
 
@@ -302,4 +308,41 @@ export class AdminService {
       metadata: { from: previousRole, to: role },
     });
   }
+
+  // Membership fee (Phase 35). Admin/moderator marks a member as having paid
+  // dues; an explicit expiresAt overrides the default (Jan 1 of the following
+  // year, computed in Eastern time so a payment recorded late on Dec 31
+  // doesn't roll two Januaries out). Turning membership off clears the
+  // expiration too, rather than leaving a stale date around.
+  async setMembership(
+    targetId: number,
+    actorId: number,
+    hasMembership: boolean,
+    expiresAt?: string,
+  ): Promise<{ hasMembership: boolean; membershipExpiresAt: Date | null }> {
+    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('User not found');
+
+    const membershipExpiresAt = hasMembership
+      ? (expiresAt ? new Date(expiresAt) : nextJanuaryFirstEastern())
+      : null;
+    await this.userRepo.update(targetId, { hasMembership, membershipExpiresAt });
+    await this.auditService.log({
+      userId: actorId,
+      action: 'user.membership_change',
+      entityType: 'user',
+      entityId: targetId,
+      metadata: { hasMembership, membershipExpiresAt },
+    });
+    return { hasMembership, membershipExpiresAt };
+  }
+}
+
+function nextJanuaryFirstEastern(): Date {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+  }).formatToParts(new Date());
+  const currentYear = Number(parts.find((p) => p.type === 'year')!.value);
+  return new Date(`${currentYear + 1}-01-01T00:00:00`);
 }

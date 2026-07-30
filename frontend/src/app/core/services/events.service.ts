@@ -16,6 +16,7 @@ interface EventLocation {
   id: number;
   name: string;
   isPrivate: boolean;
+  isResidence: boolean;
   // Null when private and the viewer hasn't RSVP'd "Going" (or isn't admin/mod).
   address: string | null;
   lat: number | null;
@@ -44,6 +45,7 @@ export interface Rsvp {
   status: RsvpStatus;
   additionalGuests: number;
   guestNames: string[] | null;
+  bringingItem: string | null;
   guestLinks: GuestLink[] | undefined;
   createdAt: string;
 }
@@ -183,8 +185,19 @@ export class EventsService {
     return this.http.delete<void>(`${this.base}/${id}`);
   }
 
-  rsvp(eventId: number, status: RsvpStatus, additionalGuests: number, guestNames?: string[]): Observable<Rsvp> {
-    return this.http.post<Rsvp>(`${this.base}/${eventId}/rsvp`, { status, additionalGuests, guestNames });
+  rsvp(
+    eventId: number,
+    status: RsvpStatus,
+    additionalGuests: number,
+    guestNames?: string[],
+    bringingItem?: string,
+  ): Observable<Rsvp> {
+    return this.http.post<Rsvp>(`${this.base}/${eventId}/rsvp`, {
+      status,
+      additionalGuests,
+      guestNames,
+      bringingItem,
+    });
   }
 
   unrsvp(eventId: number): Observable<void> {

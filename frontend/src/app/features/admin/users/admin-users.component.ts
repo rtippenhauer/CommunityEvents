@@ -1,8 +1,10 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { MatChipsModule } from '@angular/material/chips';
@@ -12,6 +14,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 interface OAuthProvider {
@@ -37,6 +42,8 @@ interface AdminUser {
   oauthProviders: OAuthProvider[];
   isPendingInvite: boolean;
   inviteExpiresAt: string | null;
+  hasMembership: boolean;
+  membershipExpiresAt: string | null;
 }
 
 @Component({
@@ -45,6 +52,7 @@ interface AdminUser {
   imports: [
     DatePipe,
     RouterLink,
+    ReactiveFormsModule,
     MatCardModule,
     MatTableModule,
     MatChipsModule,
@@ -54,6 +62,9 @@ interface AdminUser {
     MatInputModule,
     MatFormFieldModule,
     MatButtonModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    MatCheckboxModule,
     MatSnackBarModule,
   ],
   template: `
@@ -131,6 +142,53 @@ interface AdminUser {
                   <th mat-header-cell *matHeaderCellDef>Status</th>
                   <td mat-cell *matCellDef="let u">
                     <mat-chip [class]="'status-' + u.status">{{ u.status }}</mat-chip>
+                  </td>
+                </ng-container>
+
+                <ng-container matColumnDef="membership">
+                  <th mat-header-cell *matHeaderCellDef>Membership</th>
+                  <td mat-cell *matCellDef="let u" (click)="$event.stopPropagation()">
+                    @if (u.isPendingInvite) {
+                      —
+                    } @else if (editingMembershipId() === u.id) {
+                      <div class="membership-edit-row">
+                        <mat-checkbox
+                          [checked]="membershipHasCtrl.value"
+                          (change)="membershipHasCtrl.setValue($event.checked)"
+                          >Has membership</mat-checkbox
+                        >
+                        @if (membershipHasCtrl.value) {
+                          <mat-form-field appearance="outline" class="membership-date-field">
+                            <mat-label>Expires</mat-label>
+                            <input matInput [matDatepicker]="expiresPicker" [formControl]="membershipDateCtrl" />
+                            <mat-datepicker-toggle matIconSuffix [for]="expiresPicker" />
+                            <mat-datepicker #expiresPicker />
+                          </mat-form-field>
+                        }
+                        <div class="membership-edit-actions">
+                          <button
+                            mat-icon-button
+                            (click)="saveMembership(u.id)"
+                            matTooltip="Save"
+                            [disabled]="savingMembershipId() === u.id"
+                          >
+                            <mat-icon>check</mat-icon>
+                          </button>
+                          <button mat-icon-button (click)="cancelMembershipEdit()" matTooltip="Cancel">
+                            <mat-icon>close</mat-icon>
+                          </button>
+                        </div>
+                      </div>
+                    } @else {
+                      <span class="membership-cell" (click)="startMembershipEdit(u)">
+                        <mat-chip [class]="membershipClass(u)">{{ membershipLabel(u) }}</mat-chip>
+                        @if (u.hasMembership && u.membershipExpiresAt) {
+                          <span class="membership-expiry"
+                            >until {{ u.membershipExpiresAt | date: 'mediumDate' }}</span
+                          >
+                        }
+                      </span>
+                    }
                   </td>
                 </ng-container>
 
@@ -422,6 +480,41 @@ interface AdminUser {
         background: #eeeeee !important;
         color: #888;
       }
+      .membership-active {
+        background: #c8e6c9 !important;
+      }
+      .membership-expired {
+        background: #ffccbc !important;
+      }
+      .membership-none {
+        background: #eeeeee !important;
+        color: #888;
+      }
+      .membership-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        cursor: pointer;
+        align-items: flex-start;
+      }
+      .membership-expiry {
+        font-size: 0.7rem;
+        color: #999;
+      }
+      .membership-edit-row {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 180px;
+        padding: 8px 0;
+      }
+      .membership-date-field {
+        width: 160px;
+      }
+      .membership-edit-actions {
+        display: flex;
+        gap: 4px;
+      }
       .name-pending {
         font-weight: 500;
         color: var(--db-brown-dark);
@@ -499,20 +592,24 @@ export class AdminUsersComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
+  private readonly brand = inject(BrandConfigService);
 
   readonly isAdmin = () => this.authService.currentUser()?.role === 'admin';
 
-  readonly columns = [
+  // Membership column only shown when the site actually uses the feature —
+  // avoids clutter for instances that never turned it on.
+  readonly columns = computed(() => [
     'photo',
     'name',
     'role',
     'status',
+    ...(this.brand.requireMembershipEnabled() ? ['membership'] : []),
     'email',
     'invitedBy',
     'joined',
     'lastLogin',
     'actions',
-  ];
+  ]);
   readonly loading = signal(true);
   readonly users = signal<AdminUser[]>([]);
   readonly filtered = signal<AdminUser[]>([]);
@@ -521,6 +618,12 @@ export class AdminUsersComponent implements OnInit {
   readonly confirmVouchId = signal<number | null>(null);
   readonly vouchingId = signal<number | null>(null);
   readonly suppressingId = signal<number | null>(null);
+
+  // Membership fee (Phase 35) inline edit state.
+  readonly editingMembershipId = signal<number | null>(null);
+  readonly savingMembershipId = signal<number | null>(null);
+  readonly membershipHasCtrl = new FormControl<boolean>(false, { nonNullable: true });
+  readonly membershipDateCtrl = new FormControl<Date | null>(null);
 
   ngOnInit(): void {
     this.http.get<AdminUser[]>('/api/v1/admin/users').subscribe({
@@ -609,6 +712,60 @@ export class AdminUsersComponent implements OnInit {
         this.vouchingId.set(null);
         this.confirmVouchId.set(null);
         this.snackBar.open(err?.error?.message ?? 'Vouch failed', 'OK', { duration: 4000 });
+      },
+    });
+  }
+
+  // ── Membership fee (Phase 35) ────────────────────────────────────────────────
+
+  membershipLabel(u: AdminUser): string {
+    if (!u.hasMembership) return 'None';
+    if (u.membershipExpiresAt && new Date(u.membershipExpiresAt) <= new Date()) return 'Expired';
+    return 'Member';
+  }
+
+  membershipClass(u: AdminUser): string {
+    if (!u.hasMembership) return 'membership-none';
+    if (u.membershipExpiresAt && new Date(u.membershipExpiresAt) <= new Date()) return 'membership-expired';
+    return 'membership-active';
+  }
+
+  startMembershipEdit(u: AdminUser): void {
+    this.editingMembershipId.set(u.id);
+    this.membershipHasCtrl.setValue(u.hasMembership);
+    this.membershipDateCtrl.setValue(u.membershipExpiresAt ? new Date(u.membershipExpiresAt) : null);
+  }
+
+  cancelMembershipEdit(): void {
+    this.editingMembershipId.set(null);
+  }
+
+  saveMembership(id: number): void {
+    this.savingMembershipId.set(id);
+    const hasMembership = this.membershipHasCtrl.value;
+    const date = this.membershipDateCtrl.value;
+    const body: { hasMembership: boolean; membershipExpiresAt?: string } = { hasMembership };
+    if (hasMembership && date) {
+      body.membershipExpiresAt = date.toISOString();
+    }
+    this.http.post<{ hasMembership: boolean; membershipExpiresAt: string | null }>(
+      `/api/v1/admin/users/${id}/membership`,
+      body,
+    ).subscribe({
+      next: (updated) => {
+        this.savingMembershipId.set(null);
+        this.editingMembershipId.set(null);
+        const upd = (u: AdminUser) =>
+          u.id === id
+            ? { ...u, hasMembership: updated.hasMembership, membershipExpiresAt: updated.membershipExpiresAt }
+            : u;
+        this.users.update((us) => us.map(upd));
+        this.filtered.update((us) => us.map(upd));
+        this.snackBar.open('Membership updated', 'OK', { duration: 3000 });
+      },
+      error: (err) => {
+        this.savingMembershipId.set(null);
+        this.snackBar.open(err?.error?.message ?? 'Failed to update membership', 'OK', { duration: 4000 });
       },
     });
   }

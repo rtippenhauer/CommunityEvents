@@ -608,6 +608,7 @@ export class EventsService {
     status: RsvpStatus,
     additionalGuests: number,
     guestNames?: string[],
+    bringingItem?: string,
     userRole?: UserRole,
   ): Promise<EventRsvpEntity> {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
@@ -647,12 +648,37 @@ export class EventsService {
       throw new ForbiddenException('RSVP is closed — cannot increase guest count after the deadline');
     }
 
+    // Membership fee (Phase 35): once a member has attended at least one event
+    // (their free first meeting), a Going RSVP requires an active, non-expired
+    // membership. Maybe is never blocked — only a Going RSVP unlocks address/
+    // location visibility, so gating Maybe wouldn't serve the fee's purpose.
+    if (status === RsvpStatus.GOING && !isPrivileged) {
+      const requireMembership = await this.appConfig.isFeatureEnabled('feature_require_membership');
+      if (requireMembership) {
+        const user = await this.userRepo.findOne({ where: { id: userId } });
+        const hasActiveMembership = !!user?.hasMembership &&
+          !!user.membershipExpiresAt &&
+          user.membershipExpiresAt > new Date();
+        if (!hasActiveMembership) {
+          const hasAttendedBefore = await this.rsvpRepo.exists({ where: { userId, attended: true } });
+          if (hasAttendedBefore) {
+            throw new ForbiddenException(
+              'An active membership is required to RSVP — your first meeting is free, but this one needs a membership. Contact an admin.',
+            );
+          }
+        }
+      }
+    }
+
     let saved: EventRsvpEntity;
     if (existing) {
       existing.status = status;
       existing.additionalGuests = additionalGuests;
       if (guestNames !== undefined) {
         existing.guestNames = guestNames.length > 0 ? guestNames : null;
+      }
+      if (bringingItem !== undefined) {
+        existing.bringingItem = bringingItem.trim() || null;
       }
       saved = await this.rsvpRepo.save(existing);
     } else {
@@ -663,6 +689,7 @@ export class EventsService {
           status,
           additionalGuests,
           guestNames: guestNames && guestNames.length > 0 ? guestNames : null,
+          bringingItem: bringingItem?.trim() || null,
         }),
       );
     }

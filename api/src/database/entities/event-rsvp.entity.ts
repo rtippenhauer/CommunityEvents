@@ -46,6 +46,12 @@ export class EventRsvpEntity {
   @Column({ name: 'guest_names', type: 'json', nullable: true })
   guestNames: string[] | null;
 
+  // Phase 35: optional free-text note on what this member is bringing, shown
+  // in the attendee list for Residence-location events. Not location-gated
+  // server-side — same trust model as guestNames.
+  @Column({ name: 'bringing_item', type: 'varchar', length: 200, nullable: true })
+  bringingItem: string | null;
+
   @Column({ type: 'tinyint', nullable: true, default: null })
   attended: boolean | null;
 
