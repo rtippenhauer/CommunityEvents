@@ -44,3 +44,9 @@ The whole site can now be relaunched under a different group's name, colors, and
 
 - Fixed an issue where saving Site Settings with several changes at once could fail partway through and need a retry
 - Transactional emails (RSVP confirmations, invitations, reminders) now always show your group's own uploaded logo instead of the default one
+
+## Membership Fees & Residence Potlucks
+
+- Admins can now require an active membership to RSVP "Going" — turn it on in Site Settings, then mark each member's membership status and expiration from the Members page. Every member's first {{events}} is always free before this kicks in
+- Memberships run on a calendar year and expire January 1
+- For {{events}} at a residence, members can now say what they're bringing when they RSVP "Going" — it shows right next to their name on the guest list, so nobody shows up with three bags of chips and no dip

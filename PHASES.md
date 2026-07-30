@@ -2079,3 +2079,69 @@ branch/PR (never merged into a shared phase branch, since none existed):
   `sons-stage.rtippenhauer.com` after rebuilding and pushing the stage image,
   not just in the test suite — this whole phase originated from live testing,
   not a spec.
+
+## Phase 35 — Membership Fee + Residence Bringing Item ✅ Complete
+
+Two admin-requested features, refined through several rounds of clarification
+on the exact enforcement rules before landing on this design.
+
+**Membership fee.** A new `feature_require_membership` toggle (`app_config`,
+default `'false'` — a brand-new concept nothing depends on, unlike Phase 33's
+toggles which defaulted on) in Site Settings → Features. When on:
+- Two new columns on `users`: `has_membership` (tinyint, default 0) and
+  `membership_expires_at` (datetime, nullable) — migration
+  `1785000000008-AddMembershipToUsers`.
+- Admins/moderators mark a member's membership from the Members page
+  (`admin-users.component.ts`): a new `membership` column (only rendered when
+  the toggle is on — `columns` is a `computed()` signal reading
+  `BrandConfigService.requireMembershipEnabled()`) shows a Member/Expired/None
+  chip + expiration date, with an inline edit row (checkbox + `mat-datepicker`,
+  same confirm/cancel micro-interaction pattern as the existing vouch/delete
+  row actions) submitting to `POST /admin/users/:id/membership`
+  (`SetMembershipDto`, `AdminService.setMembership`, admin+moderator, logged
+  via `AuditService`). Leaving the expiration blank defaults it to **January 1
+  of the following year**, computed server-side in Eastern time
+  (`nextJanuaryFirstEastern()`) so a payment recorded late on Dec 31 doesn't
+  roll two Januaries out. Turning membership off clears the expiration too.
+- Enforcement lives in `EventsService.upsertRsvp`, alongside the existing
+  RSVP-cutoff checks and using the same `isPrivileged` (admin/moderator)
+  bypass: a Going RSVP is blocked with a 403 once (a) the toggle is on, (b)
+  the member has no active (non-expired) membership, **and** (c) they've
+  attended at least one event before (`event_rsvps.attended = true` on any
+  past RSVP, via `Repository.exists()`). A member's very first RSVP is
+  therefore always free by construction — they can't have attended anything
+  yet. Maybe RSVPs are never blocked, matching the existing rule that only a
+  Going RSVP unlocks address/location visibility
+  (`LocationVisibilityService.canViewAddressSync(..., hasGoingRsvp)`).
+- `event-detail.component.ts`'s RSVP error handlers (`addRsvp`,
+  `onRsvpStatusChange`) now surface `err?.error?.message` instead of a
+  generic "RSVP failed" toast — needed to actually show the membership-block
+  message to the member, and incidentally fixes the same problem for the
+  pre-existing RSVP-cutoff messages.
+
+**Residence "what are you bringing."** A new nullable `bringing_item VARCHAR(200)`
+column on `event_rsvps` (migration `1785000000009-AddBringingItemToEventRsvps`,
+same shape as the existing `guest_names` column/migration). Optional — not
+location-gated server-side, same trust model as `guest_names`; the UI only
+*offers* the input for events at Residence locations
+(`isResidenceEvent = computed(() => !!event()?.location?.isResidence)`).
+Saved on blur from a dedicated field in the RSVP panel, and shown next to the
+attendee's name (🍴 icon) in the Going list, gated to the same
+validated-member view that already conditionally shows guest names. The
+events **list** view's `attendeeSnippet` (name+photo only, no RSVP detail)
+is intentionally untouched — extending it wasn't requested.
+
+### Verification
+- `cd api && npm run build` and `cd frontend && npx tsc --noEmit -p tsconfig.app.json` —
+  both clean.
+- New `api/test/membership.e2e-spec.ts` (16 cases): free-first-meeting
+  allowed; blocked once attended-before + no membership; allowed with an
+  active membership; still blocked when membership is expired; Maybe never
+  blocked; admin/moderator bypass; no enforcement when the toggle is off;
+  `POST /admin/users/:id/membership` default/explicit/cleared expiration +
+  role gating; `bringingItem` persists/round-trips, normalizes blank to
+  `null`, works regardless of location type, rejects over 200 chars.
+- Full e2e suite (577 cases) run for regressions: 575 pass; the 3 failures
+  (`uploads`, `location-privacy`, `calendar` specs) are the same pre-existing,
+  unrelated failures confirmed via `git stash` against the unmodified branch
+  tip in earlier phases — not introduced by this phase.
