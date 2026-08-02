@@ -193,6 +193,8 @@ export class InvitesService {
     return this.inviteRepo.findOne({
       where: { token },
       relations: ['event', 'event.location', 'event.location.photos'],
+      // Keep photos[0] ("the cover photo") consistent with events.service.ts's ordering.
+      order: { event: { location: { photos: { id: 'ASC' } } } },
     });
   }
 }
