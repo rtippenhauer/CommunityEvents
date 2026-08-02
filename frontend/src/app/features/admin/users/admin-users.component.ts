@@ -320,10 +320,10 @@ interface AdminUser {
                   </td>
                 </ng-container>
 
-                <tr mat-header-row *matHeaderRowDef="columns"></tr>
+                <tr mat-header-row *matHeaderRowDef="columns()"></tr>
                 <tr
                   mat-row
-                  *matRowDef="let row; columns: columns"
+                  *matRowDef="let row; columns: columns()"
                   [class.user-row]="!row.isPendingInvite"
                   (click)="!row.isPendingInvite && viewProfile(row.id)"
                 ></tr>

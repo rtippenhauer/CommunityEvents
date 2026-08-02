@@ -138,6 +138,13 @@ export class EventsService {
         qb.orderBy('e.eventDate', 'DESC').addOrderBy('e.eventTime', 'DESC');
       }
     }
+    // Without an explicit order, MySQL can return the photos join in a
+    // different order than other queries (e.g. findOne), and every caller
+    // treats photos[0] as "the cover photo" — so an unordered join makes the
+    // same location show a different card image on different pages. Must be
+    // added after the .orderBy() calls above, since .orderBy() resets prior
+    // ordering (unlike .addOrderBy()).
+    qb.addOrderBy('photos.id', 'ASC');
 
     const events = await qb.getMany();
     if (events.length === 0) {
@@ -249,6 +256,8 @@ export class EventsService {
         'rsvps.guestLinks',
         'reservationAssignee',
       ],
+      // Keep photos[0] ("the cover photo") consistent with findAll's ordering.
+      order: { location: { photos: { id: 'ASC' } } },
     });
     if (!event) throw new NotFoundException(`Event ${id} not found`);
 
