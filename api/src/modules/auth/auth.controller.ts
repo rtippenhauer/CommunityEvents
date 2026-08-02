@@ -78,6 +78,18 @@ export class AuthController {
     };
   }
 
+  // A cookie's Secure flag is part of the browser's storage key, so a NODE_ENV
+  // flip between deploys (secure: true one day, false the next) leaves the old
+  // cookie sitting alongside the new one instead of being overwritten — and
+  // whichever the browser happens to send can carry a dead session, making a
+  // fresh login look like it "didn't stick." Clear both variants before every
+  // login so at most one access_token cookie can ever exist, regardless of past
+  // NODE_ENV misconfiguration.
+  private clearStaleAccessTokenCookies(res: Response): void {
+    res.clearCookie('access_token', { path: '/', domain: this.baseDomain, secure: true });
+    res.clearCookie('access_token', { path: '/', domain: this.baseDomain, secure: false });
+  }
+
   // --- Google OAuth ---
 
   @Get('google')
@@ -99,6 +111,7 @@ export class AuthController {
       ipAddress: req.ip,
     });
 
+    this.clearStaleAccessTokenCookies(res);
     res.cookie('access_token', accessToken, this.accessTokenCookieOptions());
 
     const originHost = req.authOriginHost;
@@ -163,6 +176,7 @@ export class AuthController {
       ipAddress: req.ip,
     });
 
+    this.clearStaleAccessTokenCookies(res);
     res.cookie('access_token', accessToken, this.accessTokenCookieOptions());
 
     return { message: 'ok' };
@@ -317,6 +331,7 @@ export class AuthController {
         ipAddress: (req as unknown as { ip: string }).ip,
       });
 
+    this.clearStaleAccessTokenCookies(res);
     (res as unknown as { cookie: (...args: unknown[]) => void }).cookie(
       'access_token',
       accessToken,
@@ -407,7 +422,7 @@ export class AuthController {
         await this.authService.logout(payload.jti, req.user.id);
       }
     }
-    res.clearCookie('access_token', { path: '/', domain: this.baseDomain });
+    this.clearStaleAccessTokenCookies(res);
     return { message: 'Logged out' };
   }
 }
