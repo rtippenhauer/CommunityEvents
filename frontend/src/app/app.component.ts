@@ -18,6 +18,7 @@ import { AuthService } from './core/services/auth.service';
 import { BrandConfigService } from './core/services/brand-config.service';
 import { CityService } from './core/services/city.service';
 import { FeedbackService } from './core/services/feedback.service';
+import { HealthService } from './core/services/health.service';
 import { MerchService } from './core/services/merch.service';
 import { SplashService } from './core/services/splash.service';
 import { NotificationBellComponent } from './shared/components/notification-bell/notification-bell.component';
@@ -53,6 +54,7 @@ export class AppComponent {
   readonly feedbackService = inject(FeedbackService);
   private readonly merchService = inject(MerchService);
   private readonly splashService = inject(SplashService);
+  readonly healthService = inject(HealthService);
   private readonly dialog = inject(MatDialog);
   private splashDialogOpen = false;
 
@@ -173,6 +175,8 @@ export class AppComponent {
   });
 
   constructor() {
+    this.healthService.load();
+
     // Safety net for unrecognized hosts (typo'd DNS entry, a decommissioned
     // city, someone hitting the wildcard cert directly): city-scoped features
     // like Facebook login assume the current hostname is either a known
