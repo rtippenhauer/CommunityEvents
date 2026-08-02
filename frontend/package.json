@@ -1,6 +1,6 @@
 {
   "name": "dinnerbears",
-  "version": "1.4.6",
+  "version": "1.5.0",
   "scripts": {
     "ng": "ng",
     "prestart": "node scripts/gen-bg-manifest.js",
