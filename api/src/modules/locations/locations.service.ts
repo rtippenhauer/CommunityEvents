@@ -78,7 +78,9 @@ export class LocationsService {
     return this.locationRepo.find({
       where,
       relations: ['city', 'photos'],
-      order: { name: 'ASC' },
+      // photos: { id: 'ASC' } keeps photos[0] ("the cover photo" in list
+      // thumbnails) consistent with findOne's ordering below.
+      order: { name: 'ASC', photos: { id: 'ASC' } },
     });
   }
 
@@ -109,7 +111,7 @@ export class LocationsService {
     return this.locationRepo.find({
       where,
       relations: ['city', 'photos'],
-      order: { name: 'ASC' },
+      order: { name: 'ASC', photos: { id: 'ASC' } },
     });
   }
 
@@ -117,6 +119,7 @@ export class LocationsService {
     const r = await this.locationRepo.findOne({
       where: { id, isActive: true },
       relations: ['city', 'photos', 'createdByUser', 'updatedByUser'],
+      order: { photos: { id: 'ASC' } },
     });
     if (!r) throw new NotFoundException('Restaurant not found');
     return Object.assign(r, { createdByUser: toPublicUser(r.createdByUser), updatedByUser: toPublicUser(r.updatedByUser) });
@@ -131,6 +134,7 @@ export class LocationsService {
       .leftJoinAndSelect('r.createdByUser', 'createdByUser')
       .leftJoinAndSelect('r.updatedByUser', 'updatedByUser')
       .where('r.id = :id AND r.isActive = 1', { id })
+      .addOrderBy('photos.id', 'ASC')
       .getOne();
     if (!r) throw new NotFoundException('Restaurant not found');
     return Object.assign(r, { createdByUser: toPublicUser(r.createdByUser), updatedByUser: toPublicUser(r.updatedByUser) });

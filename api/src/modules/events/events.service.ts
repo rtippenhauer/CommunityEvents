@@ -888,6 +888,8 @@ export class EventsService {
     const link = await this.guestLinkRepo.findOne({
       where: { token },
       relations: ['event', 'event.location', 'event.location.photos', 'createdBy'],
+      // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
+      order: { event: { location: { photos: { id: 'ASC' } } } },
     });
     if (!link) throw new NotFoundException('Guest link not found');
 
@@ -1200,6 +1202,8 @@ export class EventsService {
     const event = await this.eventRepo.findOne({
       where: { id: eventId },
       relations: ['location'],
+      // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
+      order: { location: { photos: { id: 'ASC' } } },
     });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
@@ -1296,6 +1300,8 @@ export class EventsService {
     const event = await this.eventRepo.findOne({
       where: { id: eventId },
       relations: ['city', 'location'],
+      // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
+      order: { location: { photos: { id: 'ASC' } } },
     });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
@@ -1471,6 +1477,8 @@ export class EventsService {
     const link = await this.guestLinkRepo.findOne({
       where: { id: guestLinkId },
       relations: ['event', 'event.location', 'event.location.photos', 'memberRsvp', 'memberRsvp.user'],
+      // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
+      order: { event: { location: { photos: { id: 'ASC' } } } },
     });
     if (!link) throw new NotFoundException('Guest link not found');
     if (!link.recipientEmail) throw new BadRequestException('This guest link has no email address to resend to');

@@ -107,6 +107,13 @@ export const routes: Routes = [
       ),
     canActivate: [validatedMemberGuard],
   },
+  // Pre-rename URLs (restaurants -> locations) — keeps old bookmarks/shared
+  // links/emails from 404ing after the Phase 29 rename.
+  { path: 'restaurants', redirectTo: '/locations' },
+  {
+    path: 'restaurants/:id',
+    redirectTo: (redirectData) => `/locations/${redirectData.params['id']}`,
+  },
   {
     path: 'merch',
     loadComponent: () =>
