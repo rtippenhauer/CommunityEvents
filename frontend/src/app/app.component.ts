@@ -235,6 +235,13 @@ export class AppComponent {
             // the patriotic splash's own (larger) intrinsic sizing — let the
             // component's own CSS be the only thing constraining its size.
             maxWidth: 'none',
+            // Default autoFocus ('first-tabbable') focuses the "Nice!"/"Next"
+            // button at the bottom of the card, which scrolls the scrollable
+            // .splash-card container down to reveal it — landing on the
+            // bottom of a long release note instead of the top. The heading
+            // is near the top in every splash kind and keeps scroll position
+            // sane (and reads better for screen readers than "button").
+            autoFocus: 'first-heading',
           })
           .afterClosed()
           .subscribe(() => {
