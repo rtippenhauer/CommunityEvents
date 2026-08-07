@@ -148,6 +148,20 @@ export class AnnouncementsService {
     return this.commentRepo.save(comment);
   }
 
+  // Author-only, deliberately unlike deleteComment (which moderators can do):
+  // editing leaves the member's name on words they didn't write.
+  async editComment(commentId: number, userId: number, dto: CreateCommentDto) {
+    const comment = await this.commentRepo.findOne({ where: { id: commentId } });
+    if (!comment || comment.deletedAt) throw new NotFoundException('Comment not found');
+    if (comment.userId !== userId) {
+      throw new ForbiddenException('Cannot edit another member\'s comment');
+    }
+
+    comment.body = dto.body;
+    comment.editedAt = new Date();
+    return this.commentRepo.save(comment);
+  }
+
   async deleteComment(commentId: number, userId: number, userRole: UserRole) {
     const comment = await this.commentRepo.findOne({ where: { id: commentId } });
     if (!comment) throw new NotFoundException('Comment not found');

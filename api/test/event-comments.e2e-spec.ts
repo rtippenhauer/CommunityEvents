@@ -119,6 +119,124 @@ describe('Event Comments CRUD (e2e)', () => {
     });
   });
 
+  describe('PATCH /events/:eventId/comments/:commentId (edit)', () => {
+    const create = (cookie: string, body = 'Original text') =>
+      request(server)
+        .post(`/api/v1/events/${eventId}/comments`)
+        .set('Cookie', cookie)
+        .send({ body })
+        .expect(201);
+
+    it('edits your own comment and stamps editedAt', async () => {
+      const created = await create(memberCookie);
+      expect(created.body.editedAt).toBeNull();
+
+      const res = await request(server)
+        .patch(`/api/v1/events/${eventId}/comments/${created.body.id}`)
+        .set('Cookie', memberCookie)
+        .send({ body: 'Revised text' })
+        .expect(200);
+
+      expect(res.body.body).toBe('Revised text');
+      expect(res.body.editedAt).not.toBeNull();
+
+      const list = await request(server)
+        .get(`/api/v1/events/${eventId}/comments`)
+        .set('Cookie', memberCookie)
+        .expect(200);
+      const found = list.body.find((c: { id: number }) => c.id === created.body.id);
+      expect(found.body).toBe('Revised text');
+      expect(found.editedAt).not.toBeNull();
+    });
+
+    it('rejects editing another member\'s comment', async () => {
+      const created = await create(memberCookie);
+
+      await request(server)
+        .patch(`/api/v1/events/${eventId}/comments/${created.body.id}`)
+        .set('Cookie', otherMemberCookie)
+        .send({ body: 'Hijacked' })
+        .expect(403);
+    });
+
+    // Deliberately unlike DELETE, which admins may perform on any comment:
+    // editing leaves the original author's name on words they did not write.
+    it('rejects an admin editing another member\'s comment', async () => {
+      const created = await create(memberCookie);
+
+      await request(server)
+        .patch(`/api/v1/events/${eventId}/comments/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .send({ body: 'Moderator rewrite' })
+        .expect(403);
+    });
+
+    it('returns 404 editing a deleted comment', async () => {
+      const created = await create(memberCookie);
+      await request(server)
+        .delete(`/api/v1/events/${eventId}/comments/${created.body.id}`)
+        .set('Cookie', memberCookie)
+        .expect(200);
+
+      await request(server)
+        .patch(`/api/v1/events/${eventId}/comments/${created.body.id}`)
+        .set('Cookie', memberCookie)
+        .send({ body: 'Back from the dead' })
+        .expect(404);
+    });
+
+    it('returns 404 for a nonexistent comment', async () => {
+      await request(server)
+        .patch(`/api/v1/events/${eventId}/comments/999999`)
+        .set('Cookie', memberCookie)
+        .send({ body: 'Nope' })
+        .expect(404);
+    });
+
+    it('rejects an empty body', async () => {
+      const created = await create(memberCookie);
+
+      await request(server)
+        .patch(`/api/v1/events/${eventId}/comments/${created.body.id}`)
+        .set('Cookie', memberCookie)
+        .send({ body: '' })
+        .expect(400);
+    });
+
+    it('rejects unauthenticated requests', async () => {
+      const created = await create(memberCookie);
+
+      await request(server)
+        .patch(`/api/v1/events/${eventId}/comments/${created.body.id}`)
+        .send({ body: 'Anon edit' })
+        .expect(401);
+    });
+
+    it('edits your own reply and rejects editing someone else\'s', async () => {
+      const comment = await create(memberCookie, 'Top-level comment');
+      const reply = await request(server)
+        .post(`/api/v1/events/${eventId}/comments/${comment.body.id}/replies`)
+        .set('Cookie', otherMemberCookie)
+        .send({ body: 'A reply' })
+        .expect(201);
+      expect(reply.body.editedAt).toBeNull();
+
+      const res = await request(server)
+        .patch(`/api/v1/events/${eventId}/comments/${comment.body.id}/replies/${reply.body.id}`)
+        .set('Cookie', otherMemberCookie)
+        .send({ body: 'A revised reply' })
+        .expect(200);
+      expect(res.body.body).toBe('A revised reply');
+      expect(res.body.editedAt).not.toBeNull();
+
+      await request(server)
+        .patch(`/api/v1/events/${eventId}/comments/${comment.body.id}/replies/${reply.body.id}`)
+        .set('Cookie', memberCookie)
+        .send({ body: 'Not mine to change' })
+        .expect(403);
+    });
+  });
+
   describe('DELETE /events/:eventId/comments/:commentId', () => {
     it('deletes your own comment', async () => {
       const created = await request(server)

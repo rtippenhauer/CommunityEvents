@@ -7,6 +7,7 @@ import {
   HttpCode,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -46,6 +47,19 @@ export class AnnouncementsController {
       throw new ForbiddenException('Non-validated members cannot post comments');
     }
     return this.announcementsService.addComment(id, user.id, dto);
+  }
+
+  @Patch('comments/:commentId')
+  @UseGuards(JwtAuthGuard)
+  editComment(
+    @Param('commentId', ParseIntPipe) commentId: number,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser() user: UserEntity,
+  ) {
+    if (user.role === UserRole.NON_VALIDATED) {
+      throw new ForbiddenException('Non-validated members cannot post comments');
+    }
+    return this.announcementsService.editComment(commentId, user.id, dto);
   }
 
   @Delete('comments/:commentId')
