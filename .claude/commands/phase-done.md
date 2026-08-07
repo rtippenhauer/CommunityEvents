@@ -2,6 +2,11 @@ Phase $ARGUMENTS is complete.
 
 0. Confirm the current branch is this phase's branch (`phase-$ARGUMENTS-*`), not `main`. If somehow on `main`, stop and ask Rob before committing anything — all phase work and its doc updates belong on the phase branch; the merge into `main` happens later in this same command (step 7), not before it.
 
+   This command assumes `/phase-testing` has already put the phase on stage and
+   Rob has confirmed it looks right. If that hasn't happened, say so and offer to
+   run `/phase-testing` first rather than merging untested work — step 7 merges
+   into `main`, which is the point of no return.
+
 1. Provide a customer-friendly release note summary of everything completed.
    Append it to `docs/NEXT_RELEASE.md` under a heading for this phase's area
    (create the file from the template below if it doesn't exist yet). Don't
@@ -61,6 +66,15 @@ Phase $ARGUMENTS is complete.
    updates the `stage` tag on Docker Hub only — never touches
    `rtippenhauer/community-events:latest` (prod), which is exclusively
    `/release`'s job.
+
+   If `/phase-testing` already pushed this phase to stage, this is **not** a
+   second deploy of new code — it is a re-stamp. Two things genuinely changed:
+   the merge commit is now `main`'s HEAD (and the footer displays the running
+   commit, so stage would otherwise report a commit that no longer exists on any
+   branch), and step 1's `docs/NEXT_RELEASE.md` entry ships in
+   `release-notes/_draft.md` for the first time, which is what surfaces this
+   phase on stage's `/updates` page. Tell Rob a container restart is still
+   required for either to take effect.
 
 9. Report back a short summary: files updated, commit + tag created, PR
    merged into `main`, stage image rebuilt and pushed.
