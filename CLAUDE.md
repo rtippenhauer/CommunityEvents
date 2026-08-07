@@ -33,20 +33,51 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-Phase 35 (membership fee + Residence bringing item) is complete and merged into `main`. Delivered: **membership fee enforcement** — a new `feature_require_membership` toggle (off by default) in Site Settings; admins mark a member's `has_membership`/`membership_expires_at` from the Members page (inline chip + datepicker edit, `POST /admin/users/:id/membership`, defaulting expiration to Jan 1 of the following year in Eastern time when none is given); `EventsService.upsertRsvp` blocks a Going RSVP once a member has attended at least one prior event and has no active (non-expired) membership — their first attended-eligible RSVP is always free, Maybe is never blocked, admins/moderators always bypass. Also: **Residence "what are you bringing"** — a new optional `bringing_item` column on `event_rsvps`, surfaced as a text field on the RSVP panel only for events at Residence locations, shown next to the attendee's name in the Going list. Riding along: the RSVP-status-change error handlers in `event-detail.component.ts` now surface the server's actual error message (e.g. the membership-required message) instead of a generic "RSVP failed" toast.
+Phase 36 (comment editing) is complete and merged into `main`. Delivered: members
+can now **edit their own comments** on all three comment surfaces — event comments,
+event comment replies (`PATCH /events/:eventId/comments/:commentId[/replies/:replyId]`),
+and announcement comments (`PATCH /announcements/comments/:commentId`). Editing is
+**author-only by design** — deliberately unlike delete, which moderators/admins may
+perform on anyone's comment — because rewording text that stays attributed to its
+original author is a worse failure mode than removing it; admins and moderators get
+a 403 on edit, asserted in tests. Each edit stamps a new nullable `edited_at` column
+on `event_comments`, `event_comment_replies`, and `announcement_comments`, which
+drives an "(edited)" marker with the exact time on hover. Deleted comments report a
+null `editedAt` alongside their nulled-out body and cannot be edited (404). No time
+window on edits. Riding along: a real bug fix — the announcement "Add a comment" form
+bound `(submit)` on a `<form>` with no `[formGroup]`, so nothing called
+`preventDefault()` and every post reloaded the whole SPA (the POST usually won the
+race, which is why it never looked broken); now `[formGroup]` + `(ngSubmit)`, and no
+bare `(submit)` bindings remain anywhere in the app.
 
-No phase is currently scoped/in-progress. Candidates for a future phase: monthly "Nth weekday" event cadence (e.g. "2nd Saturday", carried forward since Phase 29 — needs Sons' schedule to motivate it) and swapping the release-note pipeline's `marked` dependency (pinned `^15.0.12` — v16+ dropped CommonJS support) for `markdown-it`. See wishlist memory for both.
+No phase is currently scoped/in-progress. Candidates for a future phase: monthly
+"Nth weekday" event cadence (e.g. "2nd Saturday", carried forward since Phase 29 —
+needs Sons' schedule to motivate it) and swapping the release-note pipeline's `marked`
+dependency (pinned `^15.0.12` — v16+ dropped CommonJS support) for `markdown-it`. See
+wishlist memory for both.
 
-Deployment note: each instance needs its Unraid template set to `NODE_ENV=production` + `IS_STAGE=true` (a `staging` value leaves cookies non-Secure and can leak stack traces).
+Deployment note: each instance needs its Unraid template set to `NODE_ENV=production`
++ `IS_STAGE=true` (a `staging` value leaves cookies non-Secure and can leak stack
+traces). Images are `rtippenhauer/community-events:stage` and `:latest` — one generic
+image serves every instance, with stage vs prod a runtime distinction.
 
-Phase 28 (retroactive event-achievement sync) is fully merged into `main` and rebuilt to stage (`rtippenhauer/dinnerbears:stage`, 2026-07-20) — not yet in a production release; the next `/release` will pick it up. Toggling an event's secret-dinner flag, or creating/deleting its one-off Special Dinner Achievement, now retroactively syncs points and badges for members already marked attended, scoped to that one event so cost stays flat as the event catalog grows. The Angular 19→22 major upgrade (Phase 27) is done (all 3 npm-audit vulnerabilities that motivated it are closed). The frontend has zero unit tests (`frontend/src/**/*.spec.ts` — none exist) — flagged repeatedly but not yet undertaken; would need its own scoped phase since there's no existing harness/pattern to build on.
+The frontend has zero unit tests (`frontend/src/**/*.spec.ts` — none exist) — flagged
+repeatedly but not yet undertaken; would need its own scoped phase since there's no
+existing harness/pattern to build on. Two pre-existing e2e failures live on `main`
+(`uploads`, `location-privacy`) plus two `calendar.e2e-spec.ts` typecheck errors —
+unrelated to recent work, but they make "the suite is green" a claim worth checking
+rather than assuming.
 
-The `bugfix-hide-unconfigured-facebook-login` fix is merged into `main` and rebuilt/pushed to prod (`rtippenhauer/dinnerbears:latest`, 2026-07-21) — the Facebook App ID is nulled out on prod until the Facebook app actually completes Go-Live setup.
+The `bugfix-hide-unconfigured-facebook-login` fix is merged into `main` and pushed to
+prod — the Facebook App ID is nulled out on prod until the Facebook app actually
+completes Go-Live setup.
 
-Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18: `.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL updated — webhook events are confirmed flowing.
+Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18:
+`.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL
+updated — webhook events are confirmed flowing.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

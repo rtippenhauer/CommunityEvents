@@ -7,5 +7,6 @@ once that release's draft has been created.
 
 ## Comments
 
-- You can now edit your own comments and replies, anywhere they appear —
-  on events and on announcements. Edited comments are marked "(edited)".
+- You can now edit your own comments and replies, anywhere they appear — on
+  {{events}} and on announcements. Edited comments are marked "(edited)".
+- Posting a comment on an announcement no longer reloads the whole page.

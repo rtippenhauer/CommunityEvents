@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-07-29_
+_Last updated: 2026-08-07_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -701,9 +701,9 @@ id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 announcement_id     INT UNSIGNED NOT NULL REFERENCES announcements(id) ON DELETE CASCADE
 user_id             INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
 body                TEXT NOT NULL
-is_hidden           TINYINT(1) NOT NULL DEFAULT 0
+edited_at           DATETIME NULL                   -- Phase 36; NULL until first edit, drives "(edited)"
 created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+deleted_at          DATETIME NULL                   -- soft delete
 
 INDEX idx_announcement (announcement_id)
 ```
@@ -761,6 +761,7 @@ id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 event_id    INT UNSIGNED NOT NULL REFERENCES events(id) ON DELETE CASCADE
 member_id   INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
 body        TEXT NOT NULL
+edited_at   DATETIME NULL                   -- Phase 36; NULL until first edit, drives "(edited)"
 created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 deleted_at  DATETIME NULL                   -- soft delete; shows "removed" placeholder
 
@@ -779,6 +780,7 @@ id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 comment_id  INT UNSIGNED NOT NULL REFERENCES event_comments(id) ON DELETE CASCADE
 member_id   INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
 body        TEXT NOT NULL
+edited_at   DATETIME NULL                   -- Phase 36; NULL until first edit, drives "(edited)"
 created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 deleted_at  DATETIME NULL
 

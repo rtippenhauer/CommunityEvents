@@ -2145,3 +2145,71 @@ is intentionally untouched — extending it wasn't requested.
   (`uploads`, `location-privacy`, `calendar` specs) are the same pre-existing,
   unrelated failures confirmed via `git stash` against the unmodified branch
   tip in earlier phases — not introduced by this phase.
+
+
+## Phase 36 — Comment Editing ✅ Complete
+
+Members can now edit their own comments anywhere they appear in the app. Scoped
+after checking every comment-like surface: event comments, event comment replies,
+and announcement comments are the three real ones. Location *rating* comments were
+already editable by re-submitting a rating (`RatingsService` upserts on the
+existing row), so they needed no work.
+
+**Decisions taken up front**, since each changed the shape of the work:
+- **Author-only.** Deliberately *unlike* delete, which moderators and admins may
+  perform on anyone's comment. Rewording text that stays attributed to its original
+  author is a worse failure mode than removing the comment outright, so admins and
+  moderators get a 403 on edit. Asserted in tests on both surfaces so it can't
+  silently regress into mirroring the delete rule.
+- **No time window.** A member can edit their own comment however old.
+- **"(edited)" marker**, not silent edits and not full revision history.
+
+**Schema.** Migration `1785000000011-AddEditedAtToComments` adds a nullable
+`edited_at DATETIME` to all three tables in one migration, each guarded by an
+`information_schema` existence check so a re-run is a no-op. `edited_at` stays
+`NULL` until the first edit — a non-null value is exactly what "this no longer
+matches what was posted" means, so it drives the marker with no extra flag.
+
+**API.**
+- `PATCH /events/:eventId/comments/:commentId` and
+  `PATCH /events/:eventId/comments/:commentId/replies/:replyId`
+  (`EventCommentsService.editComment` / `.editReply`).
+- `PATCH /announcements/comments/:commentId`
+  (`AnnouncementsService.editComment`), mirroring the existing DELETE route
+  shape and the same non-validated-member block as posting.
+- Reuses `CreateCommentDto`, so the 1–2000 char validation is shared with create.
+- Editing a soft-deleted comment 404s rather than resurrecting it. `CommentView` /
+  `CommentReplyView` gained `editedAt`, nulled out for deleted comments alongside
+  the already-nulled body.
+
+**Frontend.** Inline edit forms on `event-detail.component.ts` (a single
+`editingTarget` signal of `{kind, id}` — only one comment or reply is editable at a
+time, so per-item signals would be waste) and `announcement-detail.component.ts`.
+The edit button renders only for the author; the "(edited)" marker carries the exact
+edit time on hover.
+
+**Bug found and fixed along the way.** The announcement "Add a comment" form bound
+`(submit)` on a `<form>` with no `[formGroup]`. `FormGroupDirective` is what normally
+intercepts the native submit and calls `preventDefault()` — importing
+`ReactiveFormsModule` does not — so every comment post ran the handler *and then* let
+the browser do a real form submission, reloading the whole SPA. Reproduced before
+fixing (a marker set on `window` was gone after clicking Post) and re-verified after.
+The comment usually still saved, which is why this never looked broken: the POST
+normally wins the race against the navigation that aborts it, though on a slow
+connection it would be cancelled instead. Fixed by wrapping the existing control in a
+one-field `FormGroup` and switching to `(ngSubmit)`. A follow-up commit brought
+`admin-announcements.component.ts` to `(ngSubmit)` too — that one was *not* broken
+(it has a `[formGroup]`), purely consistency. No bare `(submit)` bindings remain.
+
+**Testing.**
+- 13 new e2e cases (8 in `event-comments.e2e-spec.ts`, 5 in
+  `announcements.e2e-spec.ts`). Announcement comments had **no** e2e coverage at all
+  before this phase.
+- Migration exercised up → down → up → re-run against real MySQL; the re-run
+  correctly reports no pending migrations.
+- Browser-verified against a local stack across all three surfaces: edit button
+  appears only on your own items, edits save, the marker renders, changes survive a
+  reload.
+- Full e2e suite: 588 pass. The failures in `uploads`, `location-privacy` and the two
+  `calendar.e2e-spec.ts` typecheck errors are the same pre-existing ones, re-confirmed
+  this phase by `git stash`-ing the branch and running them against clean `main`.
