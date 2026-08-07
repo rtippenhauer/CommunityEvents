@@ -122,6 +122,29 @@ PR, merged with a real merge commit — never squash, so the phase's local
 `phase-<N>` tag and full commit history stay reachable from `main`). By the
 time `/release` runs, the phase branch is already merged and deleted.
 
+The full arc of a phase is three commands:
+
+| Command | Does | Touches `main`? |
+| --- | --- | --- |
+| `/phase-start <N>` | Cuts the phase branch | No |
+| `/phase-testing <N>` | Pushes the **unmerged** branch to stage + gives Rob testing notes | No |
+| `/phase-done <N>` | Docs, tag, merge to `main`, re-stamp stage | Yes |
+
+`/phase-testing` exists so a phase gets exercised on a real container while it
+is still cheap to fix — an unmerged branch. Fixes found during testing go on
+the same branch and it is re-run; only once Rob confirms stage looks right does
+`/phase-done` merge. It can be run as many times as needed and never touches
+`main`, tags, docs, or `:latest`.
+
+`/phase-done` rebuilds stage again at the end. That is a re-stamp, not a second
+deploy: the merge commit becomes `main`'s HEAD (and the footer shows the running
+commit), and the `docs/NEXT_RELEASE.md` entry written in step 1 ships in
+`release-notes/_draft.md` for the first time, which is what surfaces the phase
+on stage's `/updates` page.
+
+Pushing a stage image never deploys it — the Unraid container has to be
+restarted by hand, every time.
+
 Branch naming: `phase-<number>-<kebab-case-slug>`, e.g.
 `phase-25-angular-19-22-upgrade`.
 
