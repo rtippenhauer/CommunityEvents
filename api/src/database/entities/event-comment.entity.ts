@@ -33,6 +33,9 @@ export class EventCommentEntity {
   @Column({ type: 'text' })
   body: string;
 
+  @Column({ name: 'edited_at', type: 'datetime', nullable: true })
+  editedAt: Date | null;
+
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt: Date | null;
 

@@ -291,4 +291,86 @@ describe('Announcements CRUD (e2e)', () => {
         .expect(403);
     });
   });
+  describe('PATCH /announcements/comments/:commentId (edit)', () => {
+    // Publishes an announcement and drops a member comment on it, returning
+    // the comment id — comments are only reachable on published announcements.
+    async function seedComment(cookie: string, body = 'Original comment') {
+      const created = await request(server)
+        .post('/api/v1/admin/announcements')
+        .set('Cookie', adminCookie)
+        .send(validAnnouncementPayload())
+        .expect(201);
+      await request(server)
+        .post(`/api/v1/admin/announcements/${created.body.id}/publish`)
+        .set('Cookie', adminCookie)
+        .expect(201);
+
+      const comment = await request(server)
+        .post(`/api/v1/announcements/${created.body.id}/comments`)
+        .set('Cookie', cookie)
+        .send({ body })
+        .expect(201);
+      return { announcementId: created.body.id, comment: comment.body };
+    }
+
+    it('edits your own comment and stamps editedAt', async () => {
+      const { announcementId, comment } = await seedComment(memberCookie);
+      expect(comment.editedAt ?? null).toBeNull();
+
+      const res = await request(server)
+        .patch(`/api/v1/announcements/comments/${comment.id}`)
+        .set('Cookie', memberCookie)
+        .send({ body: 'Revised comment' })
+        .expect(200);
+      expect(res.body.body).toBe('Revised comment');
+      expect(res.body.editedAt).not.toBeNull();
+
+      const fetched = await request(server)
+        .get(`/api/v1/announcements/${announcementId}`)
+        .set('Cookie', memberCookie)
+        .expect(200);
+      const found = fetched.body.comments.find((c: { id: number }) => c.id === comment.id);
+      expect(found.body).toBe('Revised comment');
+      expect(found.editedAt).not.toBeNull();
+    });
+
+    // Deliberately unlike DELETE, which moderators may perform on any comment:
+    // editing leaves the original author's name on words they did not write.
+    it('rejects a moderator editing another member\'s comment', async () => {
+      const { comment } = await seedComment(memberCookie);
+
+      await request(server)
+        .patch(`/api/v1/announcements/comments/${comment.id}`)
+        .set('Cookie', moderatorCookie)
+        .send({ body: 'Moderator rewrite' })
+        .expect(403);
+    });
+
+    it('returns 404 for a nonexistent comment', async () => {
+      await request(server)
+        .patch('/api/v1/announcements/comments/999999')
+        .set('Cookie', memberCookie)
+        .send({ body: 'Nope' })
+        .expect(404);
+    });
+
+    it('rejects an empty body', async () => {
+      const { comment } = await seedComment(memberCookie);
+
+      await request(server)
+        .patch(`/api/v1/announcements/comments/${comment.id}`)
+        .set('Cookie', memberCookie)
+        .send({ body: '' })
+        .expect(400);
+    });
+
+    it('rejects unauthenticated requests', async () => {
+      const { comment } = await seedComment(memberCookie);
+
+      await request(server)
+        .patch(`/api/v1/announcements/comments/${comment.id}`)
+        .send({ body: 'Anon edit' })
+        .expect(401);
+    });
+  });
 });

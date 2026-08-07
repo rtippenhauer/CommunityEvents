@@ -14,6 +14,7 @@ export interface AnnouncementComment {
   user: AnnouncementAuthor;
   body: string;
   createdAt: string;
+  editedAt: string | null;
   deletedAt: string | null;
 }
 
@@ -49,6 +50,10 @@ export class AnnouncementsService {
 
   addComment(announcementId: number, body: string): Observable<AnnouncementComment> {
     return this.http.post<AnnouncementComment>(`${this.base}/${announcementId}/comments`, { body });
+  }
+
+  editComment(commentId: number, body: string): Observable<AnnouncementComment> {
+    return this.http.patch<AnnouncementComment>(`${this.base}/comments/${commentId}`, { body });
   }
 
   deleteComment(commentId: number): Observable<void> {

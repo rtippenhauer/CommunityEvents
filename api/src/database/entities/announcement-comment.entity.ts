@@ -31,6 +31,9 @@ export class AnnouncementCommentEntity {
   @Column({ type: 'text' })
   body: string;
 
+  @Column({ name: 'edited_at', type: 'datetime', nullable: true })
+  editedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

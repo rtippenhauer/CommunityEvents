@@ -9,6 +9,7 @@ export interface CommentReply {
   memberPhoto: string | null;
   body: string | null;
   deleted: boolean;
+  editedAt: string | null;
   createdAt: string;
 }
 
@@ -19,6 +20,7 @@ export interface Comment {
   memberPhoto: string | null;
   body: string | null;
   deleted: boolean;
+  editedAt: string | null;
   createdAt: string;
   replies: CommentReply[];
 }
@@ -52,12 +54,23 @@ export class EventCommentsService {
     return this.http.post<Comment>(`/api/v1/events/${eventId}/comments`, { body });
   }
 
+  editComment(eventId: number, commentId: number, body: string): Observable<Comment> {
+    return this.http.patch<Comment>(`/api/v1/events/${eventId}/comments/${commentId}`, { body });
+  }
+
   deleteComment(eventId: number, commentId: number): Observable<void> {
     return this.http.delete<void>(`/api/v1/events/${eventId}/comments/${commentId}`);
   }
 
   addReply(eventId: number, commentId: number, body: string): Observable<CommentReply> {
     return this.http.post<CommentReply>(`/api/v1/events/${eventId}/comments/${commentId}/replies`, { body });
+  }
+
+  editReply(eventId: number, commentId: number, replyId: number, body: string): Observable<CommentReply> {
+    return this.http.patch<CommentReply>(
+      `/api/v1/events/${eventId}/comments/${commentId}/replies/${replyId}`,
+      { body },
+    );
   }
 
   deleteReply(eventId: number, commentId: number, replyId: number): Observable<void> {

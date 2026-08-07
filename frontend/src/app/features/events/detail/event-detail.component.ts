@@ -983,6 +983,27 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                           <span class="comment-time">{{
                             comment.createdAt | date: 'MMM d, y · h:mm a'
                           }}</span>
+                          @if (comment.editedAt) {
+                            <span
+                              class="comment-edited"
+                              [matTooltip]="
+                                'Edited ' + (comment.editedAt | date: 'MMM d, y · h:mm a')
+                              "
+                              >(edited)</span
+                            >
+                          }
+                          @if (
+                            comment.memberId === currentUserId() && !isEditing('comment', comment.id)
+                          ) {
+                            <button
+                              mat-icon-button
+                              class="comment-edit-btn"
+                              matTooltip="Edit"
+                              (click)="startEdit('comment', comment.id, comment.body)"
+                            >
+                              <mat-icon>edit</mat-icon>
+                            </button>
+                          }
                           @if (comment.memberId === currentUserId() || isAdminOrMod()) {
                             <button
                               mat-icon-button
@@ -999,18 +1020,47 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                             [authorId]="comment.memberId"
                           />
                         </div>
-                        <p class="comment-body">{{ comment.body }}</p>
-                        @if (!isNonValidated()) {
-                          <button
-                            mat-button
-                            class="reply-toggle-btn"
-                            (click)="
-                              replyingToId.set(replyingToId() === comment.id ? null : comment.id);
-                              newReplyBody.set('')
-                            "
-                          >
-                            <mat-icon>reply</mat-icon> Reply
-                          </button>
+                        @if (isEditing('comment', comment.id)) {
+                          <div class="edit-form">
+                            <mat-form-field appearance="outline" class="comment-field">
+                              <mat-label>Edit your comment…</mat-label>
+                              <textarea
+                                matInput
+                                [value]="editBody()"
+                                (input)="editBody.set($any($event.target).value)"
+                                rows="3"
+                                maxlength="2000"
+                              ></textarea>
+                            </mat-form-field>
+                            <div class="comment-form-actions">
+                              <button mat-button (click)="cancelEdit()">Cancel</button>
+                              <button
+                                mat-raised-button
+                                color="primary"
+                                (click)="saveEdit(comment.id)"
+                                [disabled]="!editBody().trim() || savingEdit()"
+                              >
+                                @if (savingEdit()) {
+                                  <mat-spinner diameter="16" />
+                                }
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        } @else {
+                          <p class="comment-body">{{ comment.body }}</p>
+                          @if (!isNonValidated()) {
+                            <button
+                              mat-button
+                              class="reply-toggle-btn"
+                              (click)="
+                                replyingToId.set(replyingToId() === comment.id ? null : comment.id);
+                                newReplyBody.set('')
+                              "
+                            >
+                              <mat-icon>reply</mat-icon> Reply
+                            </button>
+                          }
                         }
                       }
                       @if (comment.replies.length > 0) {
@@ -1027,6 +1077,27 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                                   <span class="comment-time">{{
                                     reply.createdAt | date: 'MMM d, y · h:mm a'
                                   }}</span>
+                                  @if (reply.editedAt) {
+                                    <span
+                                      class="comment-edited"
+                                      [matTooltip]="
+                                        'Edited ' + (reply.editedAt | date: 'MMM d, y · h:mm a')
+                                      "
+                                      >(edited)</span
+                                    >
+                                  }
+                                  @if (
+                                    reply.memberId === currentUserId() && !isEditing('reply', reply.id)
+                                  ) {
+                                    <button
+                                      mat-icon-button
+                                      class="comment-edit-btn"
+                                      matTooltip="Edit"
+                                      (click)="startEdit('reply', reply.id, reply.body)"
+                                    >
+                                      <mat-icon>edit</mat-icon>
+                                    </button>
+                                  }
                                   @if (reply.memberId === currentUserId() || isAdminOrMod()) {
                                     <button
                                       mat-icon-button
@@ -1043,7 +1114,36 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
                                     [authorId]="reply.memberId"
                                   />
                                 </div>
-                                <p class="comment-body">{{ reply.body }}</p>
+                                @if (isEditing('reply', reply.id)) {
+                                  <div class="edit-form">
+                                    <mat-form-field appearance="outline" class="comment-field">
+                                      <mat-label>Edit your reply…</mat-label>
+                                      <textarea
+                                        matInput
+                                        [value]="editBody()"
+                                        (input)="editBody.set($any($event.target).value)"
+                                        rows="2"
+                                        maxlength="2000"
+                                      ></textarea>
+                                    </mat-form-field>
+                                    <div class="comment-form-actions">
+                                      <button mat-button (click)="cancelEdit()">Cancel</button>
+                                      <button
+                                        mat-raised-button
+                                        color="primary"
+                                        (click)="saveEdit(comment.id, reply.id)"
+                                        [disabled]="!editBody().trim() || savingEdit()"
+                                      >
+                                        @if (savingEdit()) {
+                                          <mat-spinner diameter="16" />
+                                        }
+                                        Save
+                                      </button>
+                                    </div>
+                                  </div>
+                                } @else {
+                                  <p class="comment-body">{{ reply.body }}</p>
+                                }
                               }
                             </div>
                           }
@@ -2224,6 +2324,26 @@ import { formatEventTime, initials as sharedInitials } from '../../../shared/uti
         color: #999;
         flex: 1;
       }
+      .comment-edited {
+        font-size: 0.72rem;
+        color: #999;
+        font-style: italic;
+      }
+      .edit-form {
+        margin-top: 8px;
+      }
+      .comment-edit-btn {
+        width: 28px;
+        height: 28px;
+        line-height: 28px;
+        mat-icon {
+          font-size: 0.95rem;
+        }
+        color: #bbb !important;
+        &:hover {
+          color: var(--db-brown-dark) !important;
+        }
+      }
       .comment-delete-btn {
         width: 28px;
         height: 28px;
@@ -2321,6 +2441,11 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly commentsLoading = signal(false);
   readonly newCommentBody = signal('');
   readonly submittingComment = signal(false);
+  // A single edit slot: only one comment or reply is editable at a time, so
+  // the target is identified by kind + id rather than a per-item signal.
+  readonly editingTarget = signal<{ kind: 'comment' | 'reply'; id: number } | null>(null);
+  readonly editBody = signal('');
+  readonly savingEdit = signal(false);
   readonly replyingToId = signal<number | null>(null);
   readonly newReplyBody = signal('');
   readonly submittingReply = signal(false);
@@ -3054,6 +3179,72 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
         this.snackBar.open('Failed to post comment', 'OK', { duration: 3000 });
       },
     });
+  }
+
+  isEditing(kind: 'comment' | 'reply', id: number): boolean {
+    const t = this.editingTarget();
+    return t !== null && t.kind === kind && t.id === id;
+  }
+
+  startEdit(kind: 'comment' | 'reply', id: number, body: string | null): void {
+    this.editingTarget.set({ kind, id });
+    this.editBody.set(body ?? '');
+    this.replyingToId.set(null);
+  }
+
+  cancelEdit(): void {
+    this.editingTarget.set(null);
+    this.editBody.set('');
+  }
+
+  // replyId omitted edits the top-level comment; supplied edits that reply.
+  saveEdit(commentId: number, replyId?: number): void {
+    const body = this.editBody().trim();
+    if (!body || this.savingEdit()) return;
+    const id = this.event()!.id;
+    this.savingEdit.set(true);
+
+    const done = () => {
+      this.savingEdit.set(false);
+      this.cancelEdit();
+    };
+    const fail = (err: { error?: { message?: string } }) => {
+      this.savingEdit.set(false);
+      this.snackBar.open(err?.error?.message ?? 'Failed to save changes', 'OK', { duration: 3000 });
+    };
+
+    if (replyId === undefined) {
+      this.commentsService.editComment(id, commentId, body).subscribe({
+        next: (updated) => {
+          this.comments.update((list) =>
+            list.map((c) =>
+              c.id === commentId ? { ...c, body: updated.body, editedAt: updated.editedAt } : c,
+            ),
+          );
+          done();
+        },
+        error: fail,
+      });
+    } else {
+      this.commentsService.editReply(id, commentId, replyId, body).subscribe({
+        next: (updated) => {
+          this.comments.update((list) =>
+            list.map((c) =>
+              c.id === commentId
+                ? {
+                    ...c,
+                    replies: c.replies.map((r) =>
+                      r.id === replyId ? { ...r, body: updated.body, editedAt: updated.editedAt } : r,
+                    ),
+                  }
+                : c,
+            ),
+          );
+          done();
+        },
+        error: fail,
+      });
+    }
   }
 
   deleteComment(commentId: number): void {

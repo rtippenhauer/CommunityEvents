@@ -46,7 +46,7 @@ import { CityService } from '../../../core/services/city.service';
       @if (showForm()) {
         <div class="form-panel">
           <h2 class="form-title">{{ editingId() ? 'Edit' : 'New' }} Announcement</h2>
-          <form [formGroup]="form" (submit)="save()">
+          <form [formGroup]="form" (ngSubmit)="save()">
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Title</mat-label>
               <input matInput formControlName="title" maxlength="200" />
