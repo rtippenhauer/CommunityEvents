@@ -1,7 +1,7 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
@@ -70,10 +70,10 @@ import { ReportButtonComponent } from '../../shared/components/report-button/rep
           </h2>
 
           @if (isLoggedIn() && !isNonValidated()) {
-            <form class="comment-form" (submit)="submitComment()">
+            <form class="comment-form" [formGroup]="commentForm" (ngSubmit)="submitComment()">
               <mat-form-field appearance="outline" class="comment-field">
                 <mat-label>Add a comment</mat-label>
-                <textarea matInput [formControl]="commentCtrl" rows="2" maxlength="2000"></textarea>
+                <textarea matInput formControlName="body" rows="2" maxlength="2000"></textarea>
               </mat-form-field>
               <button
                 mat-raised-button
@@ -345,6 +345,10 @@ export class AnnouncementDetailComponent implements OnInit {
     nonNullable: true,
     validators: [Validators.required, Validators.maxLength(2000)],
   });
+  // Wraps commentCtrl only so the <form> has a [formGroup] to bind to —
+  // without one, (ngSubmit) never fires and a native submit would reload
+  // the page instead.
+  readonly commentForm = new FormGroup({ body: this.commentCtrl });
 
   readonly editingId = signal<number | null>(null);
   readonly savingEdit = signal(false);
