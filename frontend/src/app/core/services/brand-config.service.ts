@@ -90,13 +90,16 @@ const DEFAULT_BRAND: BrandConfig = {
     points: 'Points',
   },
   // Everything enabled until branding resolves — matches the API defaults, so
-  // a slow/failed fetch never hides a feature that's actually on. Exception:
-  // requireMembership defaults false, matching the API's off-by-default
-  // SITE_SETTING_DEFAULTS — a brand-new concept nothing depends on, so a
-  // failed fetch should never suddenly start enforcing membership.
+  // a slow/failed fetch never hides a feature that's actually on. Two
+  // exceptions, both mirroring an off-by-default API value so the fallback
+  // never enables something the server would refuse: requireMembership (a
+  // brand-new concept nothing depends on — a failed fetch should never
+  // suddenly start enforcing membership) and ratingsResidences (Phase 37 —
+  // offering a rating form the API answers with a 403 is worse than briefly
+  // hiding one).
   features: {
     ratings: true,
-    ratingsResidences: true,
+    ratingsResidences: false,
     leaderboard: true,
     merch: true,
     members: true,

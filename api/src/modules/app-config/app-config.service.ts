@@ -127,7 +127,9 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   // Feature toggles default on — an absent row resolves to enabled, so a fork
   // (or DinnerBears) keeps every feature until an admin turns one off.
   feature_ratings: 'true',
-  feature_ratings_residences: 'true',
+  // Phase 37: residences are not rateable by default — rating someone's
+  // private home doesn't make sense. Still admin-overridable per instance.
+  feature_ratings_residences: 'false',
   feature_leaderboard: 'true',
   feature_merch: 'true',
   feature_members: 'true',
