@@ -8,9 +8,10 @@
     "prebuild": "node scripts/gen-bg-manifest.js",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test",
+    "test": "ng test --watch=false --browsers=ChromeHeadless",
     "lint": "eslint \"src/**/*.{ts,html}\"",
-    "format": "prettier --write \"src/**/*.{ts,html,scss}\""
+    "format": "prettier --write \"src/**/*.{ts,html,scss}\"",
+    "test:watch": "ng test"
   },
   "private": true,
   "dependencies": {

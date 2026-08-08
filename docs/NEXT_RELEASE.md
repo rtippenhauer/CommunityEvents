@@ -18,3 +18,10 @@ once that release's draft has been created.
   appear for them, and past visits to a residence have dropped out of your
   rating queue. Ratings for regular {{locations}} are unchanged, and admins can
   turn residence ratings back on in Site Settings if their group wants them.
+
+## Calendar
+
+- Fixed replies to calendar invitations bouncing instead of being recorded. If
+  you accepted or declined a {{events}} from your calendar app recently and got
+  a delivery-failure message back, that RSVP did not reach us — please RSVP on
+  the site. New replies work normally.
