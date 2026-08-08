@@ -33,54 +33,69 @@ dinnerbears/
 ```
 
 ## Current Development Phase
-Phase 37 (residences are not rateable) is complete and merged into `main`. It
-turned out to be a default-flip, not a feature build: Phase 33 had already
-shipped `feature_ratings_residences` as a working admin toggle covering all
-three paths (`submitRating` 403s, the eligible-events list clears, residence
-events drop out of the rating queue) and the frontend already gated on it — the
-toggle just defaulted **on**. Migration `1785000000012` flips it off on running
-instances, `FEATURE_DEFAULTS` flips so a fresh fork and an absent row both
-resolve to off, and `brand-config.service.ts`'s client-side fallback flips too
-(it fails closed here — offering a rating form the API answers with 403 is worse
-than briefly hiding one). The migration also **deletes** ratings already recorded
-against residences; `down()` cannot undo that, deliberately. It does NOT delete
-the `member_points` rows those ratings earned (RATING, 1pt) or the achievements
-they unlocked — members keep points they legitimately earned.
+Phase 38 (frontend unit tests + the www mail-domain fix) is complete and merged
+into `main`.
 
-No phase is currently scoped/in-progress. Next up by Rob's own sequencing:
-**frontend UI tests** — `frontend/src/**/*.spec.ts` still has zero files, so it
-needs its own scoped phase to build a harness from nothing. `api/src` now has
-exactly one unit spec (`instance-contact.spec.ts`, from the www-mail bugfix) if a
-pattern is wanted. Also raised but not scoped: an admin config screen so a new
-instance needs no `.env` edits, and broader CMS work (adding a menu item + page).
-Longer-standing candidates: monthly "Nth weekday" event cadence and swapping the
-release-note pipeline's `marked` (pinned `^15.0.12`) for `markdown-it`.
+**Correcting a long-standing wrong assumption in this file:** the frontend was
+never missing a test harness. `angular.json` already had a `@angular/build:karma`
+target, `tsconfig.spec.json` was present and correct, `karma` + `jasmine-core`
+were installed, and `ng test` was wired up. Nobody had written a spec. There are
+now **91**, covering `BrandConfigService`, all six route guards, `AuthService`,
+`authInterceptor`, `SplashService`, and the events/locations/comments/announcements
+HTTP services, plus one component spec (`LocationDetailComponent`) pinning Phase
+37's residence rate-gating. `npm test` runs headless single-shot (works with no
+`CHROME_BIN` set, exits 0); `npm run test:watch` is the interactive form. `api/src`
+has one unit spec, `instance-contact.spec.ts`. Deliberately *not* covered: the
+other ~18 thin HTTP-wrapper services and the remaining 63 components, which are
+mostly template with little logic — more specs there would cost maintenance
+without buying signal.
+
+Also fixed here: **`calendar@www.<domain>` bounced every inbound calendar RSVP
+reply.** `baseDomain()` applied its `www.` strip only to the `APP_URL` fallback,
+so an explicit `BASE_DOMAIN` carrying `www.` flowed into every derived address.
+`www.dinnerbears.com` has no MX record, so those replies died at the sender.
+Now stripped whatever the source, with 11 unit tests. Prod is *also* patched via
+`CALENDAR_ORGANIZER_EMAIL` + `SUPPORT_EMAIL` env overrides; once this ships those
+become optional rather than load-bearing.
+
+And `scripts/test-db-up.sh` now brings up the e2e MySQL and waits until it can
+actually take an authenticated query. `mysqladmin ping` is not sufficient — on
+first-run init the image runs a temporary server that answers ping before root
+grants are final, which produced a random-looking `Access denied`.
+
+No phase is currently scoped/in-progress. Raised but not scoped: an admin config
+screen so a new instance needs no `.env` edits, and broader CMS work (adding a
+menu item + page). Longer-standing: monthly "Nth weekday" event cadence, and
+swapping the release-note pipeline's `marked` (pinned `^15.0.12`) for
+`markdown-it`.
 
 Deployment note: each instance needs its Unraid template set to `NODE_ENV=production`
 + `IS_STAGE=true` (a `staging` value leaves cookies non-Secure and can leak stack
 traces). Images are `rtippenhauer/community-events:stage` and `:latest` — one generic
 image serves every instance, with stage vs prod a runtime distinction. Docker Desktop
-is currently allotted ~1.9GiB, which is not enough to run the Angular *production*
-build alongside another container — stage builds fail with a bare `exit code 1` when
-that happens. Stop other containers or raise the memory allotment.
+is allotted ~1.9GiB, which cannot run the Angular *production* build alongside another
+container; stage builds then fail with a bare `exit code 1` (an OOM kill). Stop the
+test DB first, or raise the allotment.
 
 Prod runs `BASE_DOMAIN=www.dinnerbears.com`, and `www` is genuinely the only public
-web host (the apex publishes MX only, no A record). That split broke every derived
-contact address; see the wishlist/memory notes and the `bugfix-www-mail-domain`
-branch. Prod is currently patched via `CALENDAR_ORGANIZER_EMAIL` + `SUPPORT_EMAIL`
-env overrides — correct but fragile, since a new instance would inherit the bug.
+web host — the apex publishes MX only, no A record. That split is why the mail
+derivation had to strip `www` rather than the env var being "wrong". The same value
+is also the auth cookie scope, where it means `cincinnati.dinnerbears.com` is a
+*sibling* of the cookie domain rather than a child, so sessions would not carry to
+city subdomains. Left alone deliberately: nobody uses those subdomains today, and
+changing a live cookie domain strands old cookies for up to 7 days. Revisit before
+promoting any city subdomain.
 
-The frontend has zero unit tests. Two pre-existing e2e failures live on `main`
-(`uploads`, `location-privacy`) plus two `calendar.e2e-spec.ts` typecheck errors —
-unrelated to recent work, but they make "the suite is green" a claim worth checking
-rather than assuming.
+Two pre-existing e2e failures live on `main` (`uploads`, `location-privacy`) plus
+two `calendar.e2e-spec.ts` typecheck errors — unrelated to recent work, but they
+make "the suite is green" a claim worth checking rather than assuming.
 
 Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18:
 `.env.example` documented, stage/prod `.env` set, and Brevo's dashboard webhook URL
 updated — webhook events are confirmed flowing.
 
 ## Completed Phases
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37 ✓ — see PHASES.md for details.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38 ✓ — see PHASES.md for details.
 
 ## Angular Conventions (STRICT)
 - **Standalone components only** — never use NgModules

@@ -2279,3 +2279,99 @@ exposed a gap in `/phase-testing` itself, whose pre-flight check built with
 `--configuration development` while the Dockerfile uses `production` — so the one
 check meant to catch breakage before it reached a container could not see this
 class of failure.
+
+
+## Phase 38 — Frontend Unit Tests + www Mail-Domain Fix ✅ Complete
+
+The long-deferred "frontend has zero tests" item, plus a live production bug
+folded in rather than merged on its own.
+
+### The assumption that turned out to be wrong
+
+Every prior note on this — including CLAUDE.md's — said the frontend needed its
+own scoped phase because there was "no existing harness or pattern to build on."
+That was false. `angular.json` already had a `@angular/build:karma` target,
+`tsconfig.spec.json` was present and correct, `karma` + `jasmine-core` were in
+`devDependencies`, `ng test` was wired up, and Chrome was installed. **Nobody had
+written a single spec.** No tooling decision was needed and the phase was far
+cheaper than budgeted.
+
+### Coverage — 91 specs
+
+Chosen by "what breaks the most if it silently regresses", not by file count.
+
+- **`BrandConfigService` (9)** — every nav item, route guard and terminology
+  label reads its signals. Pins that features default ON, with the two
+  deliberate fail-CLOSED exceptions (`requireMembership`, and Phase 37's
+  `ratingsResidences`), the `(Stage)` title suffix, and that a 500 from
+  `/config/branding` *resolves* rather than throwing — a rejection there would
+  take down bootstrap.
+- **Route guards (12)** — all six. The substance is the redirect targets:
+  `validatedMemberGuard` sends a non-validated member to `/events`, not `/login`
+  (they *are* signed in); `adminGuard` must reject a moderator while
+  `moderatorGuard` must accept an admin.
+- **`AuthService` (9)** — notably that `isNonValidated()` is false for an
+  anonymous visitor, and that `updatePhoto()` does not resurrect a user object
+  out of `null`.
+- **`authInterceptor` (6)** — `withCredentials` is the entire auth mechanism
+  (the JWT is a cookie, not a bearer header); 401 clears + redirects, but
+  `/auth/me` is exempt or every anonymous visitor gets bounced on boot; 403/500
+  must not log anyone out.
+- **`SplashService` (11)** — de-duplication by `queueKey`, without which the 60s
+  poll re-shows the same achievement dialog forever; a failing achievements call
+  still lets what's-new through; logout empties the queue.
+- **HTTP services (37)** — `event-comments`, `announcements`, `events`,
+  `locations`. URL and verb per method, since components never touch HttpClient
+  directly. Phase 36's edits are PATCH (a stray POST would duplicate a comment);
+  announcement comment routes hang off `/announcements` rather than nesting
+  under `/announcements/:id`; `restore` is PATCH on its own sub-route, where a
+  DELETE would archive what an admin was recovering.
+- **`LocationDetailComponent` (5)** — the first component spec. Phase 37's
+  `showRatings` gate across the residence × toggle matrix. This was the one
+  thing only ever confirmed by looking at stage by hand.
+
+Two specs failed on first run and caught genuine wrong assumptions of mine,
+now pinned as documented behavior: `fromDate` and `upcoming` are mutually
+exclusive in `getAll` (an `else if` — an explicit date wins), and guest links
+POST to `/events/:id/rsvp/link`, not a `/guest-links` collection.
+
+`npm test` now runs headless single-shot so it works in CI with no `CHROME_BIN`
+and exits 0; `npm run test:watch` keeps the interactive form.
+
+**Deliberately not covered:** the other ~18 services are thin HTTP wrappers and
+the remaining 63 components are mostly template with little logic. More specs
+there would cost maintenance without buying signal.
+
+### The www mail-domain fix (folded in, was PR #36)
+
+A member's calendar RSVP reply bounced: *"temporary problem delivering your
+message to `calendar@www.dinnerbears.com`."* `baseDomain()` applied its `www.`
+strip only to the `APP_URL` fallback path, so an explicit `BASE_DOMAIN` carrying
+`www.` was inherited by every derived address. Confirmed by DNS:
+`dinnerbears.com` has Cloudflare MX records, `www.dinnerbears.com` has none — so
+Gmail retried for 24h and gave up, and **every inbound calendar RSVP reply was
+silently dropped**.
+
+The subtlety that took a wrong turn first: `www.dinnerbears.com` *is* the real
+web host (the apex publishes no A record at all), so `BASE_DOMAIN` was not simply
+misconfigured. It is used for two unrelated things and `www` is wrong for both —
+mail derivation, and the cookie/redirect zone. The fix strips `www` in the mail
+derivation only, leaving the auth cookie untouched: `auth.controller.ts` reads
+`BASE_DOMAIN` directly rather than through the helper, and changing a live cookie
+domain strands old cookies for up to 7 days.
+
+Scoped to `v1.5.0` only (tagged 2026-08-02) — the regression came in with the
+white-label refactor of 2026-07-24, which did not reach production until the
+`v1.5.0` restart, so the exposure was days rather than the two weeks first
+estimated. Covered by `instance-contact.spec.ts` (11 cases), the first unit spec
+in `api/src`. Prod was separately patched with `CALENDAR_ORGANIZER_EMAIL` +
+`SUPPORT_EMAIL` overrides; this makes those optional rather than load-bearing.
+
+### Test-DB readiness
+
+`scripts/test-db-up.sh` brings up the e2e MySQL and waits until it accepts an
+authenticated query. `mysqladmin ping` is not a sufficient check: on first-run
+init the MySQL image starts a temporary server that answers ping before root
+grants are final, so the next statement fails `Access denied` and it looks
+random. A fixed `sleep` would only move the race. Verified against a cold start
+with the volume destroyed.
