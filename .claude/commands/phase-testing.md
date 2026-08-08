@@ -27,7 +27,13 @@ job, and they only run once stage looks right.
    - API e2e: `cd api && npx jest --config ./test/jest-e2e.json --runInBand`
      (needs the test DB: `docker compose -f docker/docker-compose.test.yml up -d`,
      and tear it down again afterward)
-   - Frontend build: `cd frontend && npx ng build --configuration development`
+   - Frontend build: `cd frontend && npx ng build --configuration production`
+
+   Build **production**, not development — the Dockerfile runs
+   `npm run build -- --configuration production`, and production applies budgets
+   and optimizations that development does not. Checking `development` here
+   cannot catch a production-only failure, which defeats the point of running
+   the check before the image build.
 
    Report failures honestly rather than waving them through. Before attributing
    any failure to this phase, check it against clean `main` (`git stash`, run,
@@ -39,6 +45,17 @@ job, and they only run once stage looks right.
    the `stage` tag on Docker Hub only — never `rtippenhauer/community-events:latest`
    (prod), which is exclusively `/release`'s job. The image is stamped with the
    branch's HEAD commit, which is what the app footer displays.
+
+   If the build dies at the frontend step with a bare `exit code 1` and no
+   Angular error above it, suspect memory before suspecting the code — the Node
+   process was most likely OOM-killed. Confirm with `docker info | grep -i "total
+   memory"`; the Angular production build needs more headroom than a ~2GiB
+   allotment leaves once another container is running. Stop the test DB
+   (`docker compose -f docker/docker-compose.test.yml down`) and retry before
+   digging into the diff. Re-running with `BUILDKIT_PROGRESS=plain` also keeps
+   the real error visible, since BuildKit collapses it by default. A local
+   `ng build --configuration production` that succeeds is strong evidence the
+   failure is environmental rather than a code problem.
 
 4. Verify the pushed image is what you think it is, rather than assuming the build
    picked up your changes:
