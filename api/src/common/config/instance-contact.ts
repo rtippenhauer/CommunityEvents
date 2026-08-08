@@ -5,15 +5,30 @@ import { ConfigService } from '@nestjs/config';
 // APP_URL (or BASE_DOMAIN) and its calendar/support emails follow automatically
 // — each can still be overridden explicitly with its own env var.
 
+// "www" is a web hostname, never a mail domain — www.<domain> generally has no
+// MX records at all, so any address derived from it bounces. Stripping it is
+// always right for the things this file builds, whatever the source.
+function bareHost(host: string): string {
+  return host.trim().replace(/^www\./i, '');
+}
+
 // The instance's bare domain, e.g. "dinnerbears.com" or "sons.example.com".
-// Prefers an explicit BASE_DOMAIN (also used for the auth cookie scope), then
-// falls back to APP_URL's host with any leading "www." stripped.
+// Prefers an explicit BASE_DOMAIN, then falls back to APP_URL's host.
+//
+// The "www." strip used to be applied only to the APP_URL fallback, so an
+// explicit BASE_DOMAIN=www.<domain> flowed through verbatim and produced
+// calendar@www.<domain> — an address with no MX record behind it, which
+// silently bounced every inbound calendar RSVP reply. It now applies to both.
+//
+// Note this is NOT the auth cookie scope, despite the similar name:
+// auth.controller.ts reads BASE_DOMAIN directly into its own field, so cookie
+// and redirect behavior are unaffected by anything here.
 export function baseDomain(config: ConfigService): string {
   const explicit = config.get<string>('BASE_DOMAIN');
-  if (explicit) return explicit.trim();
+  if (explicit && explicit.trim()) return bareHost(explicit);
   const appUrl = config.get<string>('APP_URL', 'https://dinnerbears.com');
   try {
-    return new URL(appUrl).hostname.replace(/^www\./, '');
+    return bareHost(new URL(appUrl).hostname);
   } catch {
     return 'dinnerbears.com';
   }
