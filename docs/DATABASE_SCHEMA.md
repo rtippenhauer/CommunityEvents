@@ -1,6 +1,6 @@
 # DinnerBears — Database Schema
 
-_Last updated: 2026-08-07_
+_Last updated: 2026-08-08_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.
 No `synchronize: true`. No manual schema changes.
@@ -998,13 +998,18 @@ Seed rows:
   `Dinner(s)`, `Bear Points`); a fork's bootstrap **deletes** these rows so
   `getSiteSetting` falls back to the code defaults (delete, not blank — an empty
   value would leave the UI with no term)
-- `feature_ratings` / `feature_ratings_residences` / `feature_leaderboard` /
-  `feature_merch` / `feature_members` (Phase 33) = `true` — per-instance
-  feature toggles, all seeded on by migration `1785000000007` (an absent row
-  also resolves to enabled, so this seed is just visibility/documentation, not
-  a behavior change). `feature_ratings_residences` is a sub-rule of
-  `feature_ratings` — ratings can be on globally but suppressed specifically
-  for Residence locations. Enforced server-side via a global `FeatureGuard` +
+- `feature_ratings` / `feature_leaderboard` / `feature_merch` /
+  `feature_members` (Phase 33) = `true` — per-instance feature toggles, seeded
+  on by migration `1785000000007` (an absent row also resolves to enabled, so
+  that seed is just visibility/documentation, not a behavior change).
+- `feature_ratings_residences` (Phase 33, defaulted off in Phase 37) = `false`
+  — a sub-rule of `feature_ratings`: ratings can be on globally but suppressed
+  specifically for Residence locations. Migration `1785000000012` sets it to
+  `'false'` on existing instances and `FEATURE_DEFAULTS` resolves an absent row
+  to off, so this is the one toggle where absent means **disabled**. That same
+  migration deletes any `location_ratings` rows already recorded against
+  residences (irreversible; `member_points` rows earned from them are
+  deliberately left intact). Enforced server-side via a global `FeatureGuard` +
   `@RequireFeature('feature_x')` decorator (404 when off), surfaced as a
   `features` map on `/config/branding`. Editable via the "Features" card in
   `/admin/settings`.

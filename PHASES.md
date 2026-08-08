@@ -2213,3 +2213,69 @@ one-field `FormGroup` and switching to `(ngSubmit)`. A follow-up commit brought
 - Full e2e suite: 588 pass. The failures in `uploads`, `location-privacy` and the two
   `calendar.e2e-spec.ts` typecheck errors are the same pre-existing ones, re-confirmed
   this phase by `git stash`-ing the branch and running them against clean `main`.
+
+
+## Phase 37 — Residences Are Not Rateable ✅ Complete
+
+Scoped as a "mini phase" to stop residences being rateable — rating someone's
+private home doesn't make sense. Investigation changed the shape of it entirely:
+**the feature already existed.**
+
+Phase 33 had shipped `feature_ratings_residences` as a working admin toggle
+covering every path — `submitRating` 403s, `getRatings` clears the eligible-events
+list, `getRatingQueue` drops residence events, and the frontend already gated the
+rating form at `location-detail.component.ts:956`. It defaulted to `'true'` purely
+to preserve the behavior of the day. So this phase flips a default rather than
+building anything. Location *rating comments* were separately confirmed
+out of scope: `RatingsService` upserts on the existing row, so members could
+already edit those by re-submitting.
+
+**Decisions taken up front**, both of which changed the work:
+- **Flip the default**, rather than just switching the toggle off by hand — so a
+  fresh fork also starts non-rateable.
+- **Delete existing residence ratings**, rather than merely blocking new ones.
+  Rob confirmed this after it was flagged as destructive.
+
+**Changes.**
+- Migration `1785000000012-DisableResidenceRatings`: sets the toggle to `'false'`
+  on running instances, and `DELETE`s `location_ratings` rows joined to
+  `locations.is_residence = 1`. Logs the row count before deleting, since prod
+  runs it unattended and there is no way to recover afterward. `down()` restores
+  only the toggle — the ratings are gone by design.
+- `FEATURE_DEFAULTS` in `app-config.service.ts` → `'false'`, so an absent row and
+  a fresh fork both resolve to off. This is now the one feature toggle where
+  absent means disabled.
+- `brand-config.service.ts`'s client-side fallback → `false`. It previously
+  defaulted true on the reasoning that a failed config fetch shouldn't hide an
+  enabled feature; here that would render a rating form the API answers with a
+  403, so this one fails closed.
+
+**Deliberately not touched: points.** Ratings award a `member_points` row
+(`RATING`, 1pt, `referenceId` = location) and can unlock rating-count
+achievements. Deleting those would silently shrink real members' leaderboard
+totals over a policy change that has nothing to do with them. The ledger keeps
+RATING rows pointing at residences whose ratings are gone — internally untidy,
+invisible in practice, and the reversible choice.
+
+**Testing.**
+- New `residence-ratings.e2e-spec.ts` (5 cases) pins the *default*, since a
+  silently flipped-back default would restore exactly what this phase removed:
+  residence submit 403s, restaurant submit still 201s, residence offers no
+  eligible events, residence absent from the queue while the restaurant remains,
+  and an admin re-enabling the toggle makes residence ratings work again.
+- The destructive path was exercised against real data rather than trusted:
+  seeded 3 residence ratings + 1 restaurant rating + 4 rating points, reverted
+  and re-ran the migration, and confirmed residence 3 → 0, restaurant untouched,
+  all 4 points surviving, toggle `false`.
+- Full e2e suite: 593 pass. The `uploads` / `location-privacy` failures and the
+  two `calendar.e2e-spec.ts` typecheck errors are the same pre-existing ones.
+
+**Process note.** This was the first phase to go through `/phase-testing`, and it
+immediately earned its keep — the stage build failed. Not from this phase's code:
+Docker Desktop is allotted ~1.9GiB, which cannot run the Angular *production*
+build alongside another container, and the Node process is OOM-killed with a bare
+`exit code 1`. It succeeded once the test MySQL container was stopped. It also
+exposed a gap in `/phase-testing` itself, whose pre-flight check built with
+`--configuration development` while the Dockerfile uses `production` — so the one
+check meant to catch breakage before it reached a container could not see this
+class of failure.
