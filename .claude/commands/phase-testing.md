@@ -24,9 +24,17 @@ job, and they only run once stage looks right.
 
 2. Run the checks that are cheap and catch real breakage before it reaches a
    container:
-   - API e2e: `cd api && npx jest --config ./test/jest-e2e.json --runInBand`
-     (needs the test DB: `docker compose -f docker/docker-compose.test.yml up -d`,
-     and tear it down again afterward)
+   - API e2e: bring the test DB up with `bash scripts/test-db-up.sh --reset`,
+     then `cd api && npx jest --config ./test/jest-e2e.json --runInBand`, and
+     `docker compose -f docker/docker-compose.test.yml down` afterward (which
+     also frees the memory the image build needs — see step 3).
+
+     Use the script rather than `docker compose up -d` plus a `mysqladmin ping`
+     loop. Ping is not a sufficient readiness check: on first-run init the MySQL
+     image runs a temporary server that answers ping before root grants are
+     final, so the next statement fails with `Access denied` and it looks
+     random. The script probes the capability actually needed — authenticate and
+     execute — and a fixed `sleep` would only move the race.
    - Frontend build: `cd frontend && npx ng build --configuration production`
 
    Build **production**, not development — the Dockerfile runs
