@@ -4,6 +4,9 @@ import { provideRouter } from '@angular/router';
 import { authGuard } from './auth.guard';
 import { validatedMemberGuard } from './validated-member.guard';
 import { featureGuard } from './feature.guard';
+import { adminGuard } from './admin.guard';
+import { moderatorGuard } from './moderator.guard';
+import { unsavedChangesGuard, HasUnsavedChanges } from './unsaved-changes.guard';
 import { AuthService } from '../services/auth.service';
 import { BrandConfigService } from '../services/brand-config.service';
 
@@ -20,6 +23,7 @@ describe('route guards', () => {
 
   describe('authGuard', () => {
     function setup(isLoggedIn: boolean) {
+      TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
           provideRouter([]),
@@ -42,6 +46,7 @@ describe('route guards', () => {
 
   describe('validatedMemberGuard', () => {
     function setup(isLoggedIn: boolean, isNonValidated: boolean) {
+      TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
           provideRouter([]),
@@ -75,6 +80,7 @@ describe('route guards', () => {
 
   describe('featureGuard', () => {
     function setup(features: Record<string, boolean>) {
+      TestBed.resetTestingModule();
       TestBed.configureTestingModule({
         providers: [
           provideRouter([]),
@@ -98,6 +104,104 @@ describe('route guards', () => {
       setup({ ratings: true, leaderboard: false });
       expect(runGuard(featureGuard('ratings') as () => boolean | UrlTree)).toBe(true);
       expect(runGuard(featureGuard('leaderboard') as () => boolean | UrlTree)).not.toBe(true);
+    });
+  });
+  describe('adminGuard', () => {
+    function setup(role: string | null) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          {
+            provide: AuthService,
+            useValue: { currentUser: () => (role === null ? null : { role }) },
+          },
+        ],
+      });
+    }
+
+    it('allows an admin through', () => {
+      setup('admin');
+      expect(runGuard(adminGuard as () => boolean | UrlTree)).toBe(true);
+    });
+
+    // A moderator is privileged but NOT an admin — this guard is the narrower
+    // of the two and must not widen to accept them.
+    it('turns away a moderator, a member and an anonymous visitor', () => {
+      const home = () => TestBed.inject(Router).createUrlTree(['/']);
+
+      for (const role of ['moderator', 'member', null]) {
+        setup(role);
+        expect(runGuard(adminGuard as () => boolean | UrlTree))
+          .withContext(`role=${role}`)
+          .toEqual(home());
+      }
+    });
+  });
+
+  describe('moderatorGuard', () => {
+    function setup(role: string | null) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          {
+            provide: AuthService,
+            useValue: { currentUser: () => (role === null ? null : { role }) },
+          },
+        ],
+      });
+    }
+
+    // Deliberately wider than adminGuard: admin satisfies it too, so an admin
+    // is never locked out of moderator tooling.
+    it('allows both moderator and admin through', () => {
+      for (const role of ['moderator', 'admin']) {
+        setup(role);
+        expect(runGuard(moderatorGuard as () => boolean | UrlTree))
+          .withContext(`role=${role}`)
+          .toBe(true);
+      }
+    });
+
+    it('turns away a plain member and an anonymous visitor', () => {
+      const home = () => TestBed.inject(Router).createUrlTree(['/']);
+
+      for (const role of ['member', 'non_validated', null]) {
+        setup(role);
+        expect(runGuard(moderatorGuard as () => boolean | UrlTree))
+          .withContext(`role=${role}`)
+          .toEqual(home());
+      }
+    });
+  });
+
+  // CanDeactivateFn, so it takes the component rather than being called bare.
+  describe('unsavedChangesGuard', () => {
+    function run(dirty: boolean): boolean {
+      const component: HasUnsavedChanges = { hasUnsavedChanges: () => dirty };
+      return unsavedChangesGuard(
+        component,
+        null!,
+        null!,
+        null!,
+      ) as boolean;
+    }
+
+    it('leaves immediately when there is nothing unsaved, without prompting', () => {
+      const confirmSpy = spyOn(window, 'confirm');
+      expect(run(false)).toBe(true);
+      expect(confirmSpy).not.toHaveBeenCalled();
+    });
+
+    it('blocks navigation when the member cancels the prompt', () => {
+      spyOn(window, 'confirm').and.returnValue(false);
+      expect(run(true)).toBe(false);
+    });
+
+    it('allows navigation when the member confirms', () => {
+      spyOn(window, 'confirm').and.returnValue(true);
+      expect(run(true)).toBe(true);
     });
   });
 });
