@@ -1,11 +1,28 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
-import { EventCommentEntity } from '../../database/entities/event-comment.entity';
-import { EventCommentReplyEntity } from '../../database/entities/event-comment-reply.entity';
-import { EventEntity } from '../../database/entities/event.entity';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import type {
+  event_comment_replies as EventCommentReply,
+  event_comments as EventComment,
+  users as User,
+} from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { UserRole } from '../../database/enums';
 import { CreateCommentDto } from './dto/create-comment.dto';
+
+// The view mappers read member/replies off the loaded rows, so the include
+// shape is named once and reused by every query that feeds them.
+const COMMENT_INCLUDE = {
+  member: true,
+  replies: { include: { member: true } },
+} as const;
+
+const REPLY_INCLUDE = { member: true } as const;
+
+type CommentWithRelations = EventComment & {
+  member?: User | null;
+  replies?: (EventCommentReply & { member?: User | null })[];
+};
+
+type ReplyWithRelations = EventCommentReply & { member?: User | null };
 
 export interface CommentReplyView {
   id: number;
@@ -33,43 +50,37 @@ export interface CommentView {
 @Injectable()
 export class EventCommentsService {
   constructor(
-    @InjectRepository(EventCommentEntity)
-    private readonly commentRepo: Repository<EventCommentEntity>,
-    @InjectRepository(EventCommentReplyEntity)
-    private readonly replyRepo: Repository<EventCommentReplyEntity>,
-    @InjectRepository(EventEntity)
-    private readonly eventRepo: Repository<EventEntity>,
+    private readonly prisma: PrismaService,
   ) {}
 
   async getComments(eventId: number): Promise<CommentView[]> {
-    const comments = await this.commentRepo.find({
+    const comments = await this.prisma.event_comments.findMany({
       where: { eventId },
-      relations: ['member', 'replies', 'replies.member'],
-      order: { createdAt: 'ASC' },
+      include: COMMENT_INCLUDE,
+      orderBy: { createdAt: 'asc' },
     });
 
     return comments.map((c) => this.toCommentView(c));
   }
 
-  async addComment(eventId: number, user: UserEntity, dto: CreateCommentDto): Promise<CommentView> {
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+  async addComment(eventId: number, user: User, dto: CreateCommentDto): Promise<CommentView> {
+    const event = await this.prisma.events.findUnique({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
 
-    const comment = this.commentRepo.create({ eventId, memberId: user.id, body: dto.body });
-    const saved = await this.commentRepo.save(comment);
-
-    const full = await this.commentRepo.findOne({
-      where: { id: saved.id },
-      relations: ['member', 'replies', 'replies.member'],
+    // create returns the row with its relations included, so the separate
+    // re-read the entity version needed is no longer necessary.
+    const saved = await this.prisma.event_comments.create({
+      data: { eventId, memberId: user.id, body: dto.body },
+      include: COMMENT_INCLUDE,
     });
-    return this.toCommentView(full!);
+    return this.toCommentView(saved);
   }
 
   // Editing is strictly self-service: unlike delete, moderators cannot edit
   // someone else's comment — rewriting words that stay attributed to their
   // author is worse than removing the comment outright.
-  async editComment(commentId: number, user: UserEntity, dto: CreateCommentDto): Promise<CommentView> {
-    const comment = await this.commentRepo.findOne({ where: { id: commentId } });
+  async editComment(commentId: number, user: User, dto: CreateCommentDto): Promise<CommentView> {
+    const comment = await this.prisma.event_comments.findUnique({ where: { id: commentId } });
     if (!comment) throw new NotFoundException('Comment not found');
     if (comment.deletedAt !== null) throw new NotFoundException('Comment not found');
 
@@ -77,19 +88,16 @@ export class EventCommentsService {
       throw new ForbiddenException('Cannot edit another member\'s comment');
     }
 
-    comment.body = dto.body;
-    comment.editedAt = new Date();
-    await this.commentRepo.save(comment);
-
-    const full = await this.commentRepo.findOne({
+    const updated = await this.prisma.event_comments.update({
       where: { id: comment.id },
-      relations: ['member', 'replies', 'replies.member'],
+      data: { body: dto.body, editedAt: new Date() },
+      include: COMMENT_INCLUDE,
     });
-    return this.toCommentView(full!);
+    return this.toCommentView(updated);
   }
 
-  async deleteComment(commentId: number, user: UserEntity): Promise<void> {
-    const comment = await this.commentRepo.findOne({ where: { id: commentId } });
+  async deleteComment(commentId: number, user: User): Promise<void> {
+    const comment = await this.prisma.event_comments.findUnique({ where: { id: commentId } });
     if (!comment) throw new NotFoundException('Comment not found');
 
     const isMod = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
@@ -97,26 +105,30 @@ export class EventCommentsService {
       throw new ForbiddenException('Cannot delete another member\'s comment');
     }
 
-    comment.deletedAt = new Date();
-    await this.commentRepo.save(comment);
+    await this.prisma.event_comments.update({
+      where: { id: comment.id },
+      data: { deletedAt: new Date() },
+    });
   }
 
-  async addReply(commentId: number, user: UserEntity, dto: CreateCommentDto): Promise<CommentReplyView> {
-    const comment = await this.commentRepo.findOne({ where: { id: commentId, deletedAt: IsNull() } });
+  async addReply(commentId: number, user: User, dto: CreateCommentDto): Promise<CommentReplyView> {
+    // findFirst, not findUnique: the deletedAt IS NULL guard is part of the
+    // lookup, and findUnique accepts only the unique key. Losing it would let
+    // members reply to a deleted comment.
+    const comment = await this.prisma.event_comments.findFirst({
+      where: { id: commentId, deletedAt: null },
+    });
     if (!comment) throw new NotFoundException('Comment not found');
 
-    const reply = this.replyRepo.create({ commentId, memberId: user.id, body: dto.body });
-    const saved = await this.replyRepo.save(reply);
-
-    const full = await this.replyRepo.findOne({
-      where: { id: saved.id },
-      relations: ['member'],
+    const saved = await this.prisma.event_comment_replies.create({
+      data: { commentId, memberId: user.id, body: dto.body },
+      include: REPLY_INCLUDE,
     });
-    return this.toReplyView(full!);
+    return this.toReplyView(saved);
   }
 
-  async editReply(replyId: number, user: UserEntity, dto: CreateCommentDto): Promise<CommentReplyView> {
-    const reply = await this.replyRepo.findOne({ where: { id: replyId } });
+  async editReply(replyId: number, user: User, dto: CreateCommentDto): Promise<CommentReplyView> {
+    const reply = await this.prisma.event_comment_replies.findUnique({ where: { id: replyId } });
     if (!reply) throw new NotFoundException('Reply not found');
     if (reply.deletedAt !== null) throw new NotFoundException('Reply not found');
 
@@ -124,19 +136,16 @@ export class EventCommentsService {
       throw new ForbiddenException('Cannot edit another member\'s reply');
     }
 
-    reply.body = dto.body;
-    reply.editedAt = new Date();
-    await this.replyRepo.save(reply);
-
-    const full = await this.replyRepo.findOne({
+    const updated = await this.prisma.event_comment_replies.update({
       where: { id: reply.id },
-      relations: ['member'],
+      data: { body: dto.body, editedAt: new Date() },
+      include: REPLY_INCLUDE,
     });
-    return this.toReplyView(full!);
+    return this.toReplyView(updated);
   }
 
-  async deleteReply(replyId: number, user: UserEntity): Promise<void> {
-    const reply = await this.replyRepo.findOne({ where: { id: replyId } });
+  async deleteReply(replyId: number, user: User): Promise<void> {
+    const reply = await this.prisma.event_comment_replies.findUnique({ where: { id: replyId } });
     if (!reply) throw new NotFoundException('Reply not found');
 
     const isMod = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
@@ -144,11 +153,13 @@ export class EventCommentsService {
       throw new ForbiddenException('Cannot delete another member\'s reply');
     }
 
-    reply.deletedAt = new Date();
-    await this.replyRepo.save(reply);
+    await this.prisma.event_comment_replies.update({
+      where: { id: reply.id },
+      data: { deletedAt: new Date() },
+    });
   }
 
-  private toCommentView(c: EventCommentEntity): CommentView {
+  private toCommentView(c: CommentWithRelations): CommentView {
     const deleted = c.deletedAt !== null;
     return {
       id: c.id,
@@ -163,7 +174,7 @@ export class EventCommentsService {
     };
   }
 
-  private toReplyView(r: EventCommentReplyEntity): CommentReplyView {
+  private toReplyView(r: ReplyWithRelations): CommentReplyView {
     const deleted = r.deletedAt !== null;
     return {
       id: r.id,

@@ -1,36 +1,36 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuthFlowError } from '../../common/errors/auth-flow.error';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
-import { InviteEntity, InviteFlavor, InviteType } from '../../database/entities/invite.entity';
-import { UserEntity, UserStatus } from '../../database/entities/user.entity';
-import { EventEntity } from '../../database/entities/event.entity';
+import type { Prisma, invites as Invite, users as User } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { InviteFlavor, InviteType, UserStatus } from '../../database/enums';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
 import { AppConfigService } from '../app-config/app-config.service';
 import { ConfigService } from '@nestjs/config';
 import { computeRsvpCutoffAt } from '../../common/utils/rsvp-cutoff.util';
+import { toDateString, toTimeString } from '../../common/utils/prisma-date.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
 
 const EVENT_INVITE_MAX_USES = 10;
 
+// The event shape findByToken attaches, spelled out so callers keep the same
+// typed access to location/photos they had through the entity relation.
+type EventForInvite = Prisma.eventsGetPayload<{
+  include: { location: { include: { photos: true } } };
+}>;
+
 @Injectable()
 export class InvitesService {
   constructor(
-    @InjectRepository(InviteEntity)
-    private readonly inviteRepo: Repository<InviteEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
-    @InjectRepository(EventEntity)
-    private readonly eventRepo: Repository<EventEntity>,
+    private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
     private readonly appConfig: AppConfigService,
   ) {}
 
-  async create(dto: CreateInviteDto, creator: UserEntity): Promise<InviteEntity> {
+  async create(dto: CreateInviteDto, creator: User): Promise<Invite> {
     if (dto.type === InviteType.MEMBER && !dto.boundToEmail) {
       throw new BadRequestException('Member invites require boundToEmail');
     }
@@ -39,14 +39,18 @@ export class InvitesService {
     }
 
     if (dto.type === InviteType.MEMBER && dto.boundToEmail) {
-      const existingMember = await this.userRepo.findOne({
-        where: { email: dto.boundToEmail.toLowerCase(), status: Not(UserStatus.DELETED) },
+      const existingMember = await this.prisma.users.findFirst({
+        where: { email: dto.boundToEmail.toLowerCase(), status: { not: UserStatus.DELETED } },
       });
       if (existingMember) {
         throw new BadRequestException('already_a_member');
       }
 
-      const existing = await this.inviteRepo.findOne({
+      // redeemedAt: undefined is carried over verbatim -- in TypeORM that
+      // meant "do not filter on this column", not "is null", and Prisma reads
+      // undefined the same way. Changing it to null here would narrow the
+      // duplicate check and is a behaviour change, not a translation.
+      const existing = await this.prisma.invites.findFirst({
         where: {
           boundToEmail: dto.boundToEmail.toLowerCase(),
           type: InviteType.MEMBER,
@@ -68,19 +72,19 @@ export class InvitesService {
       expiresAt.setDate(expiresAt.getDate() + (dto.expiryDays ?? 30));
     }
 
-    const invite = this.inviteRepo.create({
-      token: randomBytes(32).toString('hex'),
-      type: dto.type,
-      createdBy: creator.id,
-      cityId: dto.cityId ?? null,
-      facebookGroupId: dto.facebookGroupId ?? null,
-      boundToEmail: dto.boundToEmail ? dto.boundToEmail.toLowerCase() : null,
-      boundToName: dto.boundToName ?? null,
-      expiresAt,
-      maxUses: dto.type === InviteType.MEMBER ? 1 : (dto.maxUses ?? null),
+    const saved = await this.prisma.invites.create({
+      data: {
+        token: randomBytes(32).toString('hex'),
+        type: dto.type,
+        createdBy: creator.id,
+        cityId: dto.cityId ?? null,
+        facebookGroupId: dto.facebookGroupId ?? null,
+        boundToEmail: dto.boundToEmail ? dto.boundToEmail.toLowerCase() : null,
+        boundToName: dto.boundToName ?? null,
+        expiresAt,
+        maxUses: dto.type === InviteType.MEMBER ? 1 : (dto.maxUses ?? null),
+      },
     });
-
-    const saved = await this.inviteRepo.save(invite);
 
     if (dto.type === InviteType.MEMBER && dto.boundToEmail) {
       const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
@@ -111,8 +115,8 @@ export class InvitesService {
     return saved;
   }
 
-  async validate(token: string, email?: string): Promise<InviteEntity> {
-    const invite = await this.inviteRepo.findOne({ where: { token } });
+  async validate(token: string, email?: string): Promise<Invite> {
+    const invite = await this.prisma.invites.findUnique({ where: { token } });
 
     if (!invite) throw new NotFoundException('Invalid invite link');
     if (invite.isRevoked) throw new BadRequestException('This invite has been revoked');
@@ -127,74 +131,103 @@ export class InvitesService {
     return invite;
   }
 
-  async redeem(invite: InviteEntity, user: UserEntity): Promise<void> {
-    invite.useCount += 1;
-    if (invite.maxUses !== null && invite.useCount >= invite.maxUses) {
-      invite.redeemedBy = user.id;
-      invite.redeemedAt = new Date();
-    }
-    await this.inviteRepo.save(invite);
+  async redeem(invite: Invite, user: User): Promise<void> {
+    // The new count is computed from the row that was read, matching the
+    // entity version exactly. Worth noting it carries the same read-modify-
+    // write race it always had: two redemptions loading the same invite can
+    // both write useCount + 1. An atomic { increment: 1 } would close that,
+    // but the redeemedAt branch below depends on the resulting value, so
+    // fixing it properly is a behaviour change and belongs with tests.
+    const useCount = invite.useCount + 1;
+    const exhausted = invite.maxUses !== null && useCount >= invite.maxUses;
+
+    await this.prisma.invites.update({
+      where: { id: invite.id },
+      data: {
+        useCount,
+        ...(exhausted ? { redeemedBy: user.id, redeemedAt: new Date() } : {}),
+      },
+    });
   }
 
   async revoke(id: number): Promise<void> {
-    await this.inviteRepo.update(id, { isRevoked: true });
+    await this.prisma.invites.update({ where: { id }, data: { isRevoked: true } });
   }
 
   async revokeOwn(id: number, userId: number): Promise<void> {
-    const invite = await this.inviteRepo.findOne({ where: { id } });
+    const invite = await this.prisma.invites.findUnique({ where: { id } });
     if (!invite) throw new NotFoundException('Invite not found');
     if (invite.createdBy !== userId) throw new ForbiddenException('Not your invite');
     if (invite.redeemedAt) throw new BadRequestException('Invite has already been accepted');
-    await this.inviteRepo.update(id, { isRevoked: true });
+    await this.prisma.invites.update({ where: { id }, data: { isRevoked: true } });
   }
 
-  findAll(): Promise<InviteEntity[]> {
-    return this.inviteRepo.find({ order: { createdAt: 'DESC' } });
+  findAll(): Promise<Invite[]> {
+    return this.prisma.invites.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
-  findByCreator(userId: number): Promise<InviteEntity[]> {
-    return this.inviteRepo.find({
+  findByCreator(userId: number): Promise<Invite[]> {
+    return this.prisma.invites.findMany({
       where: { createdBy: userId },
-      order: { createdAt: 'DESC' },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
   async createEventInvite(
     eventId: number,
     flavor: InviteFlavor,
-    creator: UserEntity,
-  ): Promise<InviteEntity> {
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    creator: User,
+  ): Promise<Invite> {
+    const event = await this.prisma.events.findUnique({ where: { id: eventId } });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
 
-    const invite = this.inviteRepo.create({
-      token: randomBytes(32).toString('hex'),
-      type: InviteType.EVENT_INVITE,
-      createdBy: creator.id,
-      eventId,
-      inviteFlavor: flavor,
-      expiresAt: computeRsvpCutoffAt(event.eventDate, event.eventTime),
-      maxUses: EVENT_INVITE_MAX_USES,
+    return this.prisma.invites.create({
+      data: {
+        token: randomBytes(32).toString('hex'),
+        type: InviteType.EVENT_INVITE,
+        createdBy: creator.id,
+        eventId,
+        inviteFlavor: flavor,
+        // event_date/event_time are DATE/TIME columns the entity typed as
+        // strings; Prisma returns Dates, so they are formatted back before
+        // reaching the cutoff helper, which parses them as wall-clock strings.
+        expiresAt: computeRsvpCutoffAt(
+          toDateString(event.eventDate),
+          toTimeString(event.eventTime),
+        ),
+        maxUses: EVENT_INVITE_MAX_USES,
+      },
     });
-
-    return this.inviteRepo.save(invite);
   }
 
-  async findByEvent(eventId: number): Promise<InviteEntity[]> {
-    const invites = await this.inviteRepo.find({
+  async findByEvent(eventId: number): Promise<Invite[]> {
+    const invites = await this.prisma.invites.findMany({
       where: { eventId, type: InviteType.EVENT_INVITE },
-      relations: ['creator'],
-      order: { createdAt: 'DESC' },
+      include: { creator: true },
+      orderBy: { createdAt: 'desc' },
     });
     return invites.map((i) => Object.assign(i, { creator: toPublicUser(i.creator) }));
   }
 
-  async findByToken(token: string): Promise<InviteEntity | null> {
-    return this.inviteRepo.findOne({
-      where: { token },
-      relations: ['event', 'event.location', 'event.location.photos'],
-      // Keep photos[0] ("the cover photo") consistent with events.service.ts's ordering.
-      order: { event: { location: { photos: { id: 'ASC' } } } },
+  async findByToken(token: string): Promise<(Invite & { event: EventForInvite | null }) | null> {
+    const invite = await this.prisma.invites.findUnique({ where: { token } });
+    if (!invite) return null;
+
+    // invites.event_id has no foreign key in the database, so introspection
+    // produced no relation to include -- the TypeORM entity declared a
+    // @ManyToOne that the schema never actually enforced. The event is
+    // therefore fetched separately and attached under the same key, so the
+    // response shape is unchanged.
+    if (invite.eventId === null) return Object.assign(invite, { event: null });
+
+    const event = await this.prisma.events.findUnique({
+      where: { id: invite.eventId },
+      include: {
+        // Keep photos[0] ("the cover photo") consistent with
+        // events.service.ts's ordering.
+        location: { include: { photos: { orderBy: { id: 'asc' } } } },
+      },
     });
+    return Object.assign(invite, { event });
   }
 }
