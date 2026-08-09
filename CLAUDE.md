@@ -38,6 +38,25 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 layer, REQ-TENANT-01.3's first half). Run `/v2-start 1` to begin. See
 `V2_PHASES.md` for the full backlog and each item's Definition of Done.
 
+**Infra readiness (as of 2026-08-09, ahead of `v2-1` actually starting):**
+- A dedicated `communityevents` database + `communityevents_user` exist on
+  the Unraid MySQL server (192.168.2.241) — separate from `dinnerbears`, not
+  yet populated with any schema (no migrations run against it yet).
+- `rtippenhauer/community-events:v2-stage` has been pushed once already, as
+  a pipeline smoke test — it's today's inherited v1 code (commit `6e72d0a`),
+  not anything v2-1 produced. Expect this tag to be overwritten by the first
+  real `/v2-testing` run.
+- The Unraid container (`CommunityEvents-v2-Stage`, from
+  `docker/communityevents-v2-stage-unraid.xml`) has been stood up and its
+  migrations ran automatically on boot, seeding the usual `automation` role
+  user. **The human admin login (`INSTANCE_ADMIN_EMAIL`/`INSTANCE_ADMIN_PASSWORD`)
+  has not been confirmed created** — it requires a one-time
+  `docker exec CommunityEvents-v2-Stage node /app/dist/bootstrap.js`, which
+  was given to Rob but not confirmed run. Check this before assuming the
+  instance is usable.
+- `APP_URL`/DNS/reverse-proxy for this stage instance were still undecided
+  as of this note — confirm with Rob before assuming a domain is live.
+
 V2 is being defined through a sequence of requirements docs. Only one exists
 so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft, not
 yet implemented). It is the foundational doc everything else depends on and
