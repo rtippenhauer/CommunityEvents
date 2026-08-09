@@ -1,11 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectRepository } from '@nestjs/typeorm';
-import { LessThanOrEqual, Repository } from 'typeorm';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
-import { UserEntity, UserStatus } from '../../database/entities/user.entity';
-import { FacebookDeletionRequestEntity, FacebookDeletionStatus } from '../../database/entities/facebook-deletion-request.entity';
+import type { users as User } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { FacebookDeletionStatus, UserStatus } from '../../database/enums';
 import { AuditService } from '../audit/audit.service';
 
 const LOCAL_PHOTO_PREFIX = '/api/v1/uploads/profiles/';
@@ -15,20 +14,17 @@ export class HardDeleteTask {
   private readonly logger = new Logger(HardDeleteTask.name);
 
   constructor(
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
-    @InjectRepository(FacebookDeletionRequestEntity)
-    private readonly fbDeletionRepo: Repository<FacebookDeletionRequestEntity>,
+    private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async runHardDelete(): Promise<void> {
     const now = new Date();
-    const due = await this.userRepo.find({
+    const due = await this.prisma.users.findMany({
       where: {
         status: UserStatus.DELETED,
-        hardDeleteAt: LessThanOrEqual(now),
+        hardDeleteAt: { lte: now },
       },
     });
 
@@ -44,7 +40,7 @@ export class HardDeleteTask {
     }
   }
 
-  private async processUser(user: UserEntity): Promise<void> {
+  private async processUser(user: User): Promise<void> {
     // Delete local photo from disk before nulling the path
     if (user.profilePhotoPath?.startsWith(LOCAL_PHOTO_PREFIX)) {
       const filename = user.profilePhotoPath.replace(LOCAL_PHOTO_PREFIX, '');
@@ -57,20 +53,23 @@ export class HardDeleteTask {
     }
 
     // Overwrite PII — users row stays as tombstone for FK integrity
-    await this.userRepo.update(user.id, {
-      fullName: 'Deleted Member',
-      email: `deleted-${user.id}@deleted.dinnerbears.com`,
-      passwordHash: null,
-      profilePhotoPath: null,
-      emailVerifiedAt: null,
-      hardDeleteAt: null,
+    await this.prisma.users.update({
+      where: { id: user.id },
+      data: {
+        fullName: 'Deleted Member',
+        email: `deleted-${user.id}@deleted.dinnerbears.com`,
+        passwordHash: null,
+        profilePhotoPath: null,
+        emailVerifiedAt: null,
+        hardDeleteAt: null,
+      },
     });
 
     // Mark any pending facebook deletion requests as completed
-    await this.fbDeletionRepo.update(
-      { dinnerbearsUserId: user.id, status: FacebookDeletionStatus.PENDING },
-      { status: FacebookDeletionStatus.COMPLETED, completedAt: new Date() },
-    );
+    await this.prisma.facebook_deletion_requests.updateMany({
+      where: { dinnerbearsUserId: user.id, status: FacebookDeletionStatus.PENDING },
+      data: { status: FacebookDeletionStatus.COMPLETED, completedAt: new Date() },
+    });
 
     await this.auditService.log({
       action: 'account_hard_deleted',
