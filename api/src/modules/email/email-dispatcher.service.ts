@@ -1,14 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, LessThanOrEqual, Repository } from 'typeorm';
-import {
-  EmailQueueEntity,
-  EmailQueueStatus,
-  EmailProvider,
-} from '../../database/entities/email-queue.entity';
-import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
-import { UserEntity } from '../../database/entities/user.entity';
+import type {
+  email_provider_config as EmailProviderConfig,
+  email_queue as EmailQueueRow,
+  Prisma,
+} from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { EmailProvider, EmailQueueStatus, UserStatus } from '../../database/enums';
 import { BrevoService } from './brevo.service';
 import { ResendService } from './resend.service';
 import { EmailTemplateName } from './email.constants';
@@ -21,12 +19,7 @@ export class EmailDispatcherService {
   private readonly logger = new Logger(EmailDispatcherService.name);
 
   constructor(
-    @InjectRepository(EmailQueueEntity)
-    private readonly queueRepo: Repository<EmailQueueEntity>,
-    @InjectRepository(EmailProviderConfigEntity)
-    private readonly configRepo: Repository<EmailProviderConfigEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
+    private readonly prisma: PrismaService,
     private readonly brevo: BrevoService,
     private readonly resend: ResendService,
   ) {}
@@ -37,12 +30,13 @@ export class EmailDispatcherService {
     this.resetDailyCountersIfNeeded(providerConfig);
 
     const now = new Date();
-    const batch = await this.queueRepo.find({
-      where: [
-        { status: EmailQueueStatus.PENDING, sendAfter: IsNull() },
-        { status: EmailQueueStatus.PENDING, sendAfter: LessThanOrEqual(now) },
-      ],
-      order: { priority: 'ASC', createdAt: 'ASC' },
+    // TypeORM took an array of where-objects as an OR; Prisma spells that out.
+    const batch = await this.prisma.email_queue.findMany({
+      where: {
+        status: EmailQueueStatus.PENDING,
+        OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
+      },
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
       take: BATCH_SIZE,
     });
 
@@ -50,7 +44,16 @@ export class EmailDispatcherService {
       await this.sendOne(email, providerConfig);
     }
 
-    await this.configRepo.save(providerConfig);
+    // providerConfig is still mutated in memory across the batch and written
+    // once at the end, exactly as before -- one write per run, not per email.
+    await this.prisma.email_provider_config.update({
+      where: { id: providerConfig.id },
+      data: {
+        brevoSentToday: providerConfig.brevoSentToday,
+        resendSentToday: providerConfig.resendSentToday,
+        lastResetDate: providerConfig.lastResetDate,
+      },
+    });
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
@@ -59,60 +62,71 @@ export class EmailDispatcherService {
 
     const days = (n: number) => new Date(now.getTime() - n * 86400000);
 
-    const users60 = await this.userRepo
-      .createQueryBuilder('u')
-      .where('u.status = :active', { active: 'active' })
-      .andWhere('u.last_login_at < :cutoff', { cutoff: days(60) })
-      .andWhere('u.last_login_at >= :cutoff2', { cutoff2: days(61) })
-      .getMany();
+    const users60 = await this.prisma.users.findMany({
+      where: {
+        status: UserStatus.ACTIVE,
+        lastLoginAt: { lt: days(60), gte: days(61) },
+      },
+    });
 
     for (const u of users60) {
       this.logger.log(`60-day inactivity: queuing re-engagement for ${u.email}`);
     }
 
-    const users90 = await this.userRepo
-      .createQueryBuilder('u')
-      .where('u.status = :active', { active: 'active' })
-      .andWhere('u.last_login_at < :cutoff', { cutoff: days(90) })
-      .andWhere('u.last_login_at >= :cutoff2', { cutoff2: days(91) })
-      .getMany();
+    const users90 = await this.prisma.users.findMany({
+      where: {
+        status: UserStatus.ACTIVE,
+        lastLoginAt: { lt: days(90), gte: days(91) },
+      },
+    });
 
     for (const u of users90) {
       this.logger.log(`90-day inactivity: queuing final warning for ${u.email}`);
     }
 
-    const users120 = await this.userRepo
-      .createQueryBuilder('u')
-      .where('u.status = :active', { active: 'active' })
-      .andWhere('u.last_login_at < :cutoff', { cutoff: days(120) })
-      .getMany();
+    const users120 = await this.prisma.users.findMany({
+      where: {
+        status: UserStatus.ACTIVE,
+        lastLoginAt: { lt: days(120) },
+      },
+    });
 
     for (const u of users120) {
       this.logger.log(`120-day inactivity: soft deleting ${u.email}`);
-      u.status = 'deleted' as never;
-      u.deletedAt = now;
-      u.hardDeleteAt = new Date(now.getTime() + 30 * 86400000);
-      await this.userRepo.save(u);
+      await this.prisma.users.update({
+        where: { id: u.id },
+        data: {
+          status: UserStatus.DELETED,
+          deletedAt: now,
+          hardDeleteAt: new Date(now.getTime() + 30 * 86400000),
+        },
+      });
     }
 
-    const users150 = await this.userRepo
-      .createQueryBuilder('u')
-      .where('u.hard_delete_at <= :now', { now })
-      .andWhere('u.deleted_at IS NOT NULL')
-      .getMany();
+    const users150 = await this.prisma.users.findMany({
+      where: {
+        hardDeleteAt: { lte: now },
+        deletedAt: { not: null },
+      },
+    });
 
     for (const u of users150) {
       this.logger.log(`Hard deleting ${u.email}`);
-      await this.userRepo.remove(u);
+      await this.prisma.users.delete({ where: { id: u.id } });
     }
   }
 
   private async sendOne(
-    email: EmailQueueEntity,
-    providerConfig: EmailProviderConfigEntity,
+    email: EmailQueueRow,
+    providerConfig: EmailProviderConfig,
   ): Promise<void> {
-    email.attempts += 1;
-    email.lastAttemptAt = new Date();
+    // Collected rather than mutated-and-saved: Prisma writes an explicit patch,
+    // so the fields that change are accumulated and written once at the end,
+    // matching the single save() the entity version performed.
+    const patch: Prisma.email_queueUpdateInput = {
+      attempts: email.attempts + 1,
+      lastAttemptAt: new Date(),
+    };
 
     const useBrevo =
       providerConfig.brevoEnabled &&
@@ -126,9 +140,9 @@ export class EmailDispatcherService {
       providerConfig.resendSentToday < providerConfig.resendDailyLimit;
 
     if (!useBrevo && !useResend) {
-      email.status = EmailQueueStatus.BLOCKED;
-      email.errorMessage = 'No provider available or daily limit reached';
-      await this.queueRepo.save(email);
+      patch.status = EmailQueueStatus.BLOCKED;
+      patch.errorMessage = 'No provider available or daily limit reached';
+      await this.prisma.email_queue.update({ where: { id: email.id }, data: patch });
       return;
     }
 
@@ -139,11 +153,11 @@ export class EmailDispatcherService {
           toName: email.toName,
           subject: email.subject,
           templateName: email.templateId as EmailTemplateName | undefined,
-          templateParams: email.templateParams ?? undefined,
+          templateParams: (email.templateParams as Record<string, unknown>) ?? undefined,
           htmlBody: email.htmlBody,
           textBody: email.textBody,
         });
-        email.provider = EmailProvider.BREVO;
+        patch.provider = EmailProvider.BREVO;
         providerConfig.brevoSentToday += 1;
       } else {
         await this.resend.send({
@@ -153,42 +167,53 @@ export class EmailDispatcherService {
           htmlBody: email.htmlBody,
           textBody: email.textBody,
         });
-        email.provider = EmailProvider.GMAIL;
+        patch.provider = EmailProvider.GMAIL;
         providerConfig.resendSentToday += 1;
       }
 
-      email.status = EmailQueueStatus.SENT;
-      email.sentAt = new Date();
+      patch.status = EmailQueueStatus.SENT;
+      patch.sentAt = new Date();
     } catch (err) {
       this.logger.error(`Failed to send email ${email.id}: ${(err as Error).message}`);
-      email.errorMessage = (err as Error).message;
-      email.status =
-        email.attempts >= MAX_ATTEMPTS ? EmailQueueStatus.FAILED : EmailQueueStatus.PENDING;
+      patch.errorMessage = (err as Error).message;
+      // attempts was incremented into the patch, not onto the row, so the
+      // retry ceiling is compared against the incremented value.
+      patch.status =
+        email.attempts + 1 >= MAX_ATTEMPTS ? EmailQueueStatus.FAILED : EmailQueueStatus.PENDING;
     }
 
-    await this.queueRepo.save(email);
+    await this.prisma.email_queue.update({ where: { id: email.id }, data: patch });
   }
 
-  private async getOrCreateConfig(): Promise<EmailProviderConfigEntity> {
-    let config = await this.configRepo.findOne({ where: { id: 1 } });
-    if (!config) {
-      config = this.configRepo.create({
+  private async getOrCreateConfig(): Promise<EmailProviderConfig> {
+    const existing = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
+    if (existing) return existing;
+    return this.prisma.email_provider_config.create({
+      data: {
         brevoEnabled: true,
         resendOverflowEnabled: false,
         brevoDailyLimit: 300,
         resendDailyLimit: 1000,
         brevoSentToday: 0,
         resendSentToday: 0,
-        lastResetDate: new Date().toISOString().split('T')[0],
-      });
-      await this.configRepo.save(config);
-    }
-    return config;
+        lastResetDate: new Date(),
+      },
+    });
   }
 
-  private resetDailyCountersIfNeeded(config: EmailProviderConfigEntity): void {
-    const today = new Date().toISOString().split('T')[0];
-    if (config.lastResetDate !== today) {
+  /**
+   * last_reset_date is a DATE column. The entity typed it as a 'YYYY-MM-DD'
+   * string so this was a string comparison; Prisma surfaces DATE as a Date at
+   * UTC midnight, so the day is compared explicitly rather than by identity —
+   * two Date objects for the same day are never ===.
+   */
+  private resetDailyCountersIfNeeded(config: EmailProviderConfig): void {
+    const today = new Date();
+    const sameDay =
+      config.lastResetDate.getUTCFullYear() === today.getUTCFullYear() &&
+      config.lastResetDate.getUTCMonth() === today.getUTCMonth() &&
+      config.lastResetDate.getUTCDate() === today.getUTCDate();
+    if (!sameDay) {
       config.brevoSentToday = 0;
       config.resendSentToday = 0;
       config.lastResetDate = today;

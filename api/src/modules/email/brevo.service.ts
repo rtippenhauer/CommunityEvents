@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
+import type { email_provider_config as EmailProviderConfig } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailTemplateName } from './email.constants';
 
 export interface EmailAttachment {
@@ -22,7 +21,7 @@ export interface BrevoSendPayload {
   attachments?: EmailAttachment[];
 }
 
-const TEMPLATE_DB_KEY: Record<EmailTemplateName, keyof EmailProviderConfigEntity> = {
+const TEMPLATE_DB_KEY: Record<EmailTemplateName, keyof EmailProviderConfig> = {
   invite: 'tmplInvite',
   security_alert: 'tmplSecurityAlert',
   event_published: 'tmplEventPublished',
@@ -60,12 +59,11 @@ export class BrevoService {
 
   constructor(
     private readonly config: ConfigService,
-    @InjectRepository(EmailProviderConfigEntity)
-    private readonly configRepo: Repository<EmailProviderConfigEntity>,
+    private readonly prisma: PrismaService,
   ) {}
 
   private async getEffectiveConfig(): Promise<{ apiKey: string; fromEmail: string; fromName: string }> {
-    const db = await this.configRepo.findOne({ where: { id: 1 } });
+    const db = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
     return {
       apiKey: db?.brevoApiKey || this.config.get<string>('BREVO_API_KEY', ''),
       fromEmail: db?.brevoFromEmail || this.config.get<string>('BREVO_FROM_EMAIL', 'rob@dinnerbears.com'),
@@ -74,7 +72,7 @@ export class BrevoService {
   }
 
   private async getTemplateId(templateName: EmailTemplateName): Promise<number> {
-    const db = await this.configRepo.findOne({ where: { id: 1 } });
+    const db = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
     const dbKey = TEMPLATE_DB_KEY[templateName];
     const dbValue = db ? (db[dbKey] as number | null) : null;
     if (dbValue && dbValue > 0) return dbValue;
