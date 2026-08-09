@@ -25,3 +25,20 @@ export function toDateString(value: Date): string {
 export function toTimeString(value: Date): string {
   return `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`;
 }
+
+/**
+ * Tolerant variants used where a value may arrive from either ORM.
+ *
+ * While the Prisma swap is partly done, some services are fed events by their
+ * own Prisma queries (Date) and by services still on TypeORM (string). These
+ * accept either and always produce the string form, so a caller does not have
+ * to know which side it came from. They can be dropped once the last TypeORM
+ * service is converted.
+ */
+export function asDateString(value: Date | string): string {
+  return typeof value === 'string' ? value : toDateString(value);
+}
+
+export function asTimeString(value: Date | string): string {
+  return typeof value === 'string' ? value : toTimeString(value);
+}
