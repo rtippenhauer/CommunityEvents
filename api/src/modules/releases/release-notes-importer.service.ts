@@ -1,13 +1,10 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Repository } from 'typeorm';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { marked } from 'marked';
 import * as sanitizeHtml from 'sanitize-html';
-import { ReleaseEntity } from '../../database/entities/release.entity';
-import { UserEntity } from '../../database/entities/user.entity';
+import { PrismaService } from '../../database/prisma/prisma.service';
 import { ALLOWED_HTML } from './releases.service';
 
 const DRAFT_FILE = '_draft.md';
@@ -36,10 +33,7 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ReleaseNotesImporterService.name);
 
   constructor(
-    @InjectRepository(ReleaseEntity)
-    private readonly releaseRepo: Repository<ReleaseEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
+    private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
 
@@ -84,7 +78,7 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
     // boot time, even though the account otherwise still exists. Name is
     // included alongside the (already-unique) email as a belt-and-suspenders
     // check that this is specifically the seeded Claude Automation account.
-    const user = await this.userRepo.findOne({
+    const user = await this.prisma.users.findFirst({
       where: { email: AUTOMATION_EMAIL, fullName: AUTOMATION_NAME },
     });
     return user?.id ?? null;
@@ -112,17 +106,23 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
       return;
     }
 
-    await this.releaseRepo.query(
+    // Left as raw SQL: ON DUPLICATE KEY UPDATE deliberately refreshes only
+    // title and body, leaving published_at at its original value. An upsert
+    // would have to name every column and would rewrite the publish date.
+    await this.prisma.$executeRawUnsafe(
       `INSERT INTO releases (version, title, body, published_at, created_by)
        VALUES (?, ?, ?, NOW(), ?)
        ON DUPLICATE KEY UPDATE title = VALUES(title), body = VALUES(body)`,
-      [version, title, body, authorId],
+      version,
+      title,
+      body,
+      authorId,
     );
   }
 
   private async importDraft(dir: string, isStage: boolean, authorId: number): Promise<void> {
     if (!isStage) {
-      await this.releaseRepo.delete({ version: DRAFT_VERSION });
+      await this.prisma.releases.deleteMany({ where: { version: DRAFT_VERSION } });
       return;
     }
 
@@ -130,18 +130,21 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
     const headingMatch = raw.match(/^##\s.*$/m);
     if (!headingMatch) {
       // The reset/empty template — no real draft content yet.
-      await this.releaseRepo.delete({ version: DRAFT_VERSION });
+      await this.prisma.releases.deleteMany({ where: { version: DRAFT_VERSION } });
       return;
     }
 
     const bodyMarkdown = raw.slice(raw.indexOf(headingMatch[0]));
     const body = sanitizeHtml(marked.parse(bodyMarkdown, { async: false }) as string, ALLOWED_HTML);
 
-    await this.releaseRepo.query(
+    await this.prisma.$executeRawUnsafe(
       `INSERT INTO releases (version, title, body, published_at, created_by)
        VALUES (?, ?, ?, NOW(), ?)
        ON DUPLICATE KEY UPDATE title = VALUES(title), body = VALUES(body)`,
-      [DRAFT_VERSION, DRAFT_TITLE, body, authorId],
+      DRAFT_VERSION,
+      DRAFT_TITLE,
+      body,
+      authorId,
     );
   }
 }
