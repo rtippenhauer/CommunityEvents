@@ -31,6 +31,24 @@ export class PrismaService
 
   constructor(configService: ConfigService) {
     super({
+      // Reproduces TypeORM's `select: false` on the four sensitive columns of
+      // `locations`. TypeORM excluded them from every query unless a caller
+      // explicitly addSelect'd them, and only the moderator-facing read did.
+      // Prisma has no per-column default, so without this every member-facing
+      // /locations response would start returning internal moderator notes and
+      // the venue's private contact name, phone and email.
+      //
+      // Global rather than per-query on purpose: this way a newly written
+      // query is safe by default, and the one place that needs the fields
+      // opts back in with `omit: { ...: false }`.
+      omit: {
+        locations: {
+          moderatorNotes: true,
+          contactName: true,
+          contactPhone: true,
+          contactEmail: true,
+        },
+      },
       adapter: new PrismaMariaDb({
         host: configService.get<string>('DB_HOST', 'localhost'),
         port: Number(configService.get<string | number>('DB_PORT', 3306)),
