@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
-import { MemberPointEntity, PointType } from '../../database/entities/member-point.entity';
-import { EventEntity } from '../../database/entities/event.entity';
-import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
-import { UserRole } from '../../database/entities/user.entity';
-import { AchievementEntity } from '../../database/entities/achievement.entity';
+import type { member_points as MemberPoint } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { PointType, UserRole, UserStatus } from '../../database/enums';
 import { AchievementsService } from './achievements.service';
 
 export type SecretDinnerResync = { enabled: true; awarded: number } | { enabled: false; removed: number };
@@ -52,40 +48,38 @@ export interface LeaderboardEntry {
 @Injectable()
 export class PointsService {
   constructor(
-    @InjectRepository(MemberPointEntity)
-    private readonly pointRepo: Repository<MemberPointEntity>,
-    @InjectRepository(EventEntity)
-    private readonly eventRepo: Repository<EventEntity>,
-    @InjectRepository(EventRsvpEntity)
-    private readonly rsvpRepo: Repository<EventRsvpEntity>,
+    private readonly prisma: PrismaService,
     private readonly achievementsService: AchievementsService,
-    private readonly dataSource: DataSource,
   ) {}
 
   async awardAttendance(userId: number, eventId: number): Promise<void> {
-    const exists = await this.pointRepo.findOne({
+    const exists = await this.prisma.member_points.findFirst({
       where: { userId, pointType: PointType.ATTENDANCE, referenceId: eventId },
     });
     if (exists) return;
 
-    await this.pointRepo.save(
-      this.pointRepo.create({ userId, pointType: PointType.ATTENDANCE, referenceId: eventId, points: 1 }),
-    );
+    await this.prisma.member_points.create({ data: { userId, pointType: PointType.ATTENDANCE, referenceId: eventId, points: 1 } });
 
     await this.achievementsService.checkAttendanceAchievements(userId);
     await this.checkInvitePointForInviter(userId);
   }
 
   async awardCoordinator(userId: number, eventId: number): Promise<void> {
-    const exists = await this.pointRepo.findOne({
-      where: [
-        { userId, pointType: PointType.COORDINATOR, referenceId: eventId },
-        { userId, pointType: PointType.NEW_LOCATION_COORDINATOR, referenceId: eventId },
-      ],
+    // Either coordinator flavour already counts as awarded, so the
+    // array-of-where OR becomes an `in` over the two point types.
+    const exists = await this.prisma.member_points.findFirst({
+      where: {
+        userId,
+        referenceId: eventId,
+        pointType: { in: [PointType.COORDINATOR, PointType.NEW_LOCATION_COORDINATOR] },
+      },
     });
     if (exists) return;
 
-    const event = await this.eventRepo.findOne({ where: { id: eventId }, relations: ['location'] });
+    const event = await this.prisma.events.findUnique({
+      where: { id: eventId },
+      include: { location: true },
+    });
     if (!event) return;
 
     // Scout credit: location was added to DinnerBears within the last week —
@@ -98,70 +92,61 @@ export class PointsService {
     const pointType = isNewLocation ? PointType.NEW_LOCATION_COORDINATOR : PointType.COORDINATOR;
     const points = isNewLocation ? 4 : 2;
 
-    await this.pointRepo.save(
-      this.pointRepo.create({ userId, pointType, referenceId: eventId, points }),
-    );
+    await this.prisma.member_points.create({ data: { userId, pointType, referenceId: eventId, points } });
 
     await this.achievementsService.checkCoordinatorAchievements(userId);
   }
 
   async awardRating(userId: number, locationId: number): Promise<void> {
-    const exists = await this.pointRepo.findOne({
+    const exists = await this.prisma.member_points.findFirst({
       where: { userId, pointType: PointType.RATING, referenceId: locationId },
     });
     if (exists) return;
 
-    await this.pointRepo.save(
-      this.pointRepo.create({ userId, pointType: PointType.RATING, referenceId: locationId, points: 1 }),
-    );
+    await this.prisma.member_points.create({ data: { userId, pointType: PointType.RATING, referenceId: locationId, points: 1 } });
 
     await this.achievementsService.checkRatingAchievements(userId);
   }
 
   private async checkInvitePointForInviter(attendeeId: number): Promise<void> {
     // Only fire on first attended dinner
-    const priorAttended = await this.pointRepo.count({
+    const priorAttended = await this.prisma.member_points.count({
       where: { userId: attendeeId, pointType: PointType.ATTENDANCE },
     });
     if (priorAttended !== 1) return; // not their first
 
     // Walk invite lineage to find inviter
-    const attendee = await this.dataSource
-      .getRepository('users')
-      .createQueryBuilder('u')
-      .select(['u.id AS id', 'u.invited_by AS invitedBy'])
-      .where('u.id = :id', { id: attendeeId })
-      .getRawOne<{ id: number; invitedBy: number | null }>();
+    const attendee = await this.prisma.users.findUnique({
+      where: { id: attendeeId },
+      select: { id: true, invitedBy: true },
+    });
 
     const inviterId = attendee?.invitedBy ?? null;
     if (!inviterId) return;
 
-    const alreadyAwarded = await this.pointRepo.findOne({
+    const alreadyAwarded = await this.prisma.member_points.findFirst({
       where: { userId: inviterId, pointType: PointType.INVITE, referenceId: attendeeId },
     });
     if (alreadyAwarded) return;
 
-    await this.pointRepo.save(
-      this.pointRepo.create({ userId: inviterId, pointType: PointType.INVITE, referenceId: attendeeId, points: 1 }),
-    );
+    await this.prisma.member_points.create({ data: { userId: inviterId, pointType: PointType.INVITE, referenceId: attendeeId, points: 1 } });
 
     await this.achievementsService.checkInviteAchievements(inviterId);
   }
 
   async getSummary(userId: number): Promise<PointSummary> {
-    const rows = await this.pointRepo
-      .createQueryBuilder('mp')
-      .select('mp.point_type', 'type')
-      .addSelect('SUM(mp.points)', 'total')
-      .where('mp.user_id = :uid', { uid: userId })
-      .groupBy('mp.point_type')
-      .getRawMany<{ type: PointType; total: string }>();
+    const rows = await this.prisma.member_points.groupBy({
+      by: ['pointType'],
+      where: { userId },
+      _sum: { points: true },
+    });
 
     const byType = {} as Record<PointType, number>;
     let grandTotal = 0;
     for (const r of rows) {
-      byType[r.type] = Number(r.total);
-      grandTotal += Number(r.total);
+      const total = r._sum.points ?? 0;
+      byType[r.pointType as PointType] = total;
+      grandTotal += total;
     }
     return { total: grandTotal, byType };
   }
@@ -169,58 +154,61 @@ export class PointsService {
   async getLeaderboard(cityId?: number): Promise<LeaderboardEntry[]> {
     const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
-    const qb = this.dataSource
-      .createQueryBuilder()
-      .select('u.id', 'userId')
-      .addSelect('u.full_name', 'fullName')
-      .addSelect('u.profile_photo_path', 'profilePhotoPath')
-      .addSelect('u.selected_title', 'selectedTitle')
-      .addSelect('u.city_id', 'cityId')
-      .addSelect('c.name', 'cityName')
-      .addSelect('COALESCE(SUM(mp.points), 0)', 'totalPoints')
-      .addSelect(`IF(u.created_at >= :twa, 1, 0)`, 'isNew')
-      .from('users', 'u')
-      .leftJoin('cities', 'c', 'c.id = u.city_id')
-      .leftJoin('member_points', 'mp', 'mp.user_id = u.id')
-      .where('u.status = :status', { status: 'active' })
-      .andWhere('u.role NOT IN (:...excludedRoles)', { excludedRoles: ['admin', UserRole.AUTOMATION] })
-      .setParameter('twa', twoWeeksAgo)
-      .groupBy('u.id')
-      .orderBy('totalPoints', 'DESC')
-      .addOrderBy('u.full_name', 'ASC');
+    // Grouped aggregate with a join and a computed isNew flag. Prisma's
+    // groupBy cannot join, so rebuilding this would mean fetching every active
+    // member and their point rows and summing in Node -- on the leaderboard,
+    // which is the one endpoint where that cost is most visible.
+    const cityFilter = cityId ? 'AND u.city_id = ?' : '';
+    const params: unknown[] = [twoWeeksAgo, UserStatus.ACTIVE, UserRole.ADMIN, UserRole.AUTOMATION];
+    if (cityId) params.push(cityId);
 
-    if (cityId) {
-      qb.andWhere('u.city_id = :cityId', { cityId });
-    }
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        userId: number;
+        fullName: string;
+        profilePhotoPath: string | null;
+        selectedTitle: string | null;
+        cityId: number;
+        cityName: string;
+        totalPoints: string | number;
+        isNew: number;
+      }[]
+    >(
+      `SELECT u.id AS userId,
+              u.full_name AS fullName,
+              u.profile_photo_path AS profilePhotoPath,
+              u.selected_title AS selectedTitle,
+              u.city_id AS cityId,
+              c.name AS cityName,
+              COALESCE(SUM(mp.points), 0) AS totalPoints,
+              IF(u.created_at >= ?, 1, 0) AS isNew
+       FROM users u
+       LEFT JOIN cities c ON c.id = u.city_id
+       LEFT JOIN member_points mp ON mp.user_id = u.id
+       WHERE u.status = ?
+         AND u.role NOT IN (?, ?)
+         ${cityFilter}
+       GROUP BY u.id
+       ORDER BY totalPoints DESC, u.full_name ASC`,
+      ...params,
+    );
 
-    const rows = await qb.getRawMany<{
-      userId: number;
-      fullName: string;
-      profilePhotoPath: string | null;
-      selectedTitle: string | null;
-      cityId: number;
-      cityName: string;
-      totalPoints: string;
-      isNew: number;
-    }>();
 
     // Determine top point type per user
     const userIds = rows.map((r) => r.userId);
     const topTypeMap: Record<number, PointType | null> = {};
     if (userIds.length > 0) {
-      const topRows = await this.dataSource
-        .createQueryBuilder()
-        .select('mp.user_id', 'userId')
-        .addSelect('mp.point_type', 'pointType')
-        .addSelect('SUM(mp.points)', 'pts')
-        .from('member_points', 'mp')
-        .where('mp.user_id IN (:...ids)', { ids: userIds })
-        .groupBy('mp.user_id, mp.point_type')
-        .orderBy('pts', 'DESC')
-        .getRawMany<{ userId: number; pointType: PointType; pts: string }>();
+      // groupBy over two columns, ordered by the summed total so the first
+      // row seen per user is their highest-scoring point type.
+      const topRows = await this.prisma.member_points.groupBy({
+        by: ['userId', 'pointType'],
+        where: { userId: { in: userIds } },
+        _sum: { points: true },
+        orderBy: { _sum: { points: 'desc' } },
+      });
 
       for (const tr of topRows) {
-        if (!topTypeMap[tr.userId]) topTypeMap[tr.userId] = tr.pointType;
+        if (!topTypeMap[tr.userId]) topTypeMap[tr.userId] = tr.pointType as PointType;
       }
     }
 
@@ -238,10 +226,10 @@ export class PointsService {
     }));
   }
 
-  async getLedger(userId: number): Promise<MemberPointEntity[]> {
-    return this.pointRepo.find({
+  async getLedger(userId: number): Promise<MemberPoint[]> {
+    return this.prisma.member_points.findMany({
       where: { userId },
-      order: { awardedAt: 'DESC' },
+      orderBy: { awardedAt: 'desc' },
     });
   }
 
@@ -253,9 +241,9 @@ export class PointsService {
     ];
     const achievementNames = new Map<number, string>();
     if (achievementIds.length > 0) {
-      const achievements = await this.dataSource
-        .getRepository(AchievementEntity)
-        .findBy({ id: In(achievementIds) });
+      const achievements = await this.prisma.achievements.findMany({
+        where: { id: { in: achievementIds } },
+      });
       for (const a of achievements) achievementNames.set(a.id, a.name);
     }
 
@@ -272,34 +260,28 @@ export class PointsService {
   }
 
   async adminAwardPoints(userId: number, pointType: PointType, points: number, referenceId: number): Promise<void> {
-    await this.pointRepo.save(
-      this.pointRepo.create({ userId, pointType, points, referenceId }),
-    );
+    await this.prisma.member_points.create({ data: { userId, pointType, points, referenceId } });
   }
 
   async adminRemovePoints(pointId: number): Promise<void> {
-    await this.pointRepo.delete(pointId);
+    await this.prisma.member_points.delete({ where: { id: pointId } });
   }
 
   async awardCityHopper(userId: number, eventId: number): Promise<void> {
-    const exists = await this.pointRepo.findOne({
+    const exists = await this.prisma.member_points.findFirst({
       where: { userId, pointType: PointType.CITY_HOPPER, referenceId: eventId },
     });
     if (exists) return;
-    await this.pointRepo.save(
-      this.pointRepo.create({ userId, pointType: PointType.CITY_HOPPER, referenceId: eventId, points: 1 }),
-    );
+    await this.prisma.member_points.create({ data: { userId, pointType: PointType.CITY_HOPPER, referenceId: eventId, points: 1 } });
     await this.achievementsService.checkCityHopperAchievements(userId);
   }
 
   async awardSecretDinner(userId: number, eventId: number): Promise<void> {
-    const exists = await this.pointRepo.findOne({
+    const exists = await this.prisma.member_points.findFirst({
       where: { userId, pointType: PointType.SECRET_DINNER, referenceId: eventId },
     });
     if (exists) return;
-    await this.pointRepo.save(
-      this.pointRepo.create({ userId, pointType: PointType.SECRET_DINNER, referenceId: eventId, points: 1 }),
-    );
+    await this.prisma.member_points.create({ data: { userId, pointType: PointType.SECRET_DINNER, referenceId: eventId, points: 1 } });
     await this.achievementsService.checkSecretDinnerAchievements(userId);
   }
 
@@ -310,9 +292,9 @@ export class PointsService {
   // many events exist overall.
   async resyncSecretDinnerForEvent(eventId: number, isSecret: boolean): Promise<SecretDinnerResync> {
     if (isSecret) {
-      const attendees = await this.rsvpRepo.find({
+      const attendees = await this.prisma.event_rsvps.findMany({
         where: { eventId, attended: true },
-        select: ['userId'],
+        select: { userId: true },
       });
       for (const { userId } of attendees) {
         await this.awardSecretDinner(userId, eventId);
@@ -320,11 +302,13 @@ export class PointsService {
       return { enabled: true, awarded: attendees.length };
     }
 
-    const rows = await this.pointRepo.find({
+    const rows = await this.prisma.member_points.findMany({
       where: { pointType: PointType.SECRET_DINNER, referenceId: eventId },
     });
     if (rows.length === 0) return { enabled: false, removed: 0 };
-    await this.pointRepo.delete({ pointType: PointType.SECRET_DINNER, referenceId: eventId });
+    await this.prisma.member_points.deleteMany({
+      where: { pointType: PointType.SECRET_DINNER, referenceId: eventId },
+    });
     for (const { userId } of rows) {
       await this.achievementsService.recheckSecretDinnerAchievements(userId);
     }
