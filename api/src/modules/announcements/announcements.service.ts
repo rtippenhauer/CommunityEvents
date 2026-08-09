@@ -3,19 +3,32 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
 import * as sanitizeHtml from 'sanitize-html';
-import { AnnouncementEntity, AnnouncementStatus } from '../../database/entities/announcement.entity';
-import { AnnouncementCommentEntity } from '../../database/entities/announcement-comment.entity';
-import { ContentFlagEntity, FlagStatus } from '../../database/entities/content-flag.entity';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import type { Prisma } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import {
+  AnnouncementStatus,
+  FlagStatus,
+  UserRole,
+} from '../../database/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PushService } from '../notifications/push.service';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FlagContentDto } from './dto/flag-content.dto';
 import { toPublicUser, toAnonSafeUser } from '../../common/utils/public-user.util';
+
+// Named once: findOne and findOneAdmin both feed sanitizeAnnouncement, which
+// reads author and the comment authors off the loaded row.
+const FULL_INCLUDE = {
+  city: true,
+  author: true,
+  comments: { include: { user: true } },
+} satisfies Prisma.announcementsInclude;
+
+type AnnouncementWithRelations = Prisma.announcementsGetPayload<{
+  include: typeof FULL_INCLUDE;
+}>;
 
 const ALLOWED_HTML = {
   allowedTags: sanitizeHtml.defaults.allowedTags.concat(['s', 'u']),
@@ -25,37 +38,30 @@ const ALLOWED_HTML = {
 @Injectable()
 export class AnnouncementsService {
   constructor(
-    @InjectRepository(AnnouncementEntity)
-    private readonly announcementRepo: Repository<AnnouncementEntity>,
-    @InjectRepository(AnnouncementCommentEntity)
-    private readonly commentRepo: Repository<AnnouncementCommentEntity>,
-    @InjectRepository(ContentFlagEntity)
-    private readonly flagRepo: Repository<ContentFlagEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
+    private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly pushService: PushService,
   ) {}
 
   async findPublished(cityId?: number, isAuthenticated = false) {
-    const qb = this.announcementRepo
-      .createQueryBuilder('a')
-      .leftJoinAndSelect('a.city', 'city')
-      .leftJoinAndSelect('a.author', 'author')
-      .where('a.status = :status', { status: AnnouncementStatus.PUBLISHED })
-      .orderBy('a.published_at', 'DESC');
-    if (cityId) {
-      qb.andWhere('(a.city_id = :cityId OR a.city_id IS NULL)', { cityId });
-    }
-    const results = await qb.getMany();
+    // The city filter keeps its OR against NULL: a null city_id means the
+    // announcement is global and must appear for every city.
+    const results = await this.prisma.announcements.findMany({
+      where: {
+        status: AnnouncementStatus.PUBLISHED,
+        ...(cityId ? { OR: [{ cityId }, { cityId: null }] } : {}),
+      },
+      include: { city: true, author: true },
+      orderBy: { publishedAt: 'desc' },
+    });
     const toUser = isAuthenticated ? toPublicUser : toAnonSafeUser;
     return results.map((a) => Object.assign(a, { author: toUser(a.author) }));
   }
 
   async findOne(id: number, isAuthenticated = false) {
-    const a = await this.announcementRepo.findOne({
+    const a = await this.prisma.announcements.findFirst({
       where: { id, status: AnnouncementStatus.PUBLISHED },
-      relations: ['city', 'author', 'comments', 'comments.user'],
+      include: FULL_INCLUDE,
     });
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
     a.comments = a.comments.filter((c) => !c.deletedAt);
@@ -63,17 +69,17 @@ export class AnnouncementsService {
   }
 
   async findAllAdmin() {
-    const results = await this.announcementRepo.find({
-      relations: ['city', 'author'],
-      order: { createdAt: 'DESC' },
+    const results = await this.prisma.announcements.findMany({
+      include: { city: true, author: true },
+      orderBy: { createdAt: 'desc' },
     });
     return results.map((a) => Object.assign(a, { author: toPublicUser(a.author) }));
   }
 
   async findOneAdmin(id: number) {
-    const a = await this.announcementRepo.findOne({
+    const a = await this.prisma.announcements.findUnique({
       where: { id },
-      relations: ['city', 'author', 'comments', 'comments.user'],
+      include: FULL_INCLUDE,
     });
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
     return this.sanitizeAnnouncement(a, true);
@@ -82,7 +88,7 @@ export class AnnouncementsService {
   // isAuthenticated: false means a fully anonymous caller — uploaded profile
   // photos require a login to view, so those get nulled out here rather than
   // 401ing in the visitor's browser. Preset avatars are unaffected either way.
-  private sanitizeAnnouncement(a: AnnouncementEntity, isAuthenticated: boolean) {
+  private sanitizeAnnouncement(a: AnnouncementWithRelations, isAuthenticated: boolean) {
     const toUser = isAuthenticated ? toPublicUser : toAnonSafeUser;
     for (const c of a.comments ?? []) {
       (c as any).user = toUser(c.user);
@@ -91,33 +97,40 @@ export class AnnouncementsService {
   }
 
   async create(dto: CreateAnnouncementDto, userId: number) {
-    const a = this.announcementRepo.create({
-      title: dto.title,
-      body: sanitizeHtml(dto.body, ALLOWED_HTML),
-      cityId: dto.cityId ?? null,
-      createdBy: userId,
+    return this.prisma.announcements.create({
+      data: {
+        title: dto.title,
+        body: sanitizeHtml(dto.body, ALLOWED_HTML),
+        cityId: dto.cityId ?? null,
+        createdBy: userId,
+      },
     });
-    return this.announcementRepo.save(a);
   }
 
   async update(id: number, dto: Partial<CreateAnnouncementDto>) {
-    const a = await this.announcementRepo.findOne({ where: { id } });
+    const a = await this.prisma.announcements.findUnique({ where: { id } });
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
-    Object.assign(a, {
-      ...(dto.title !== undefined && { title: dto.title }),
-      ...(dto.body !== undefined && { body: sanitizeHtml(dto.body, ALLOWED_HTML) }),
-      ...(dto.cityId !== undefined && { cityId: dto.cityId }),
+    return this.prisma.announcements.update({
+      where: { id },
+      data: {
+        ...(dto.title !== undefined && { title: dto.title }),
+        ...(dto.body !== undefined && { body: sanitizeHtml(dto.body, ALLOWED_HTML) }),
+        ...(dto.cityId !== undefined && { cityId: dto.cityId }),
+      },
     });
-    return this.announcementRepo.save(a);
   }
 
   async publish(id: number) {
-    const a = await this.announcementRepo.findOne({ where: { id }, relations: ['city'] });
+    const a = await this.prisma.announcements.findUnique({
+      where: { id },
+      include: { city: true },
+    });
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
     if (a.status === AnnouncementStatus.PUBLISHED) return a;
-    a.status = AnnouncementStatus.PUBLISHED;
-    a.publishedAt = new Date();
-    const saved = await this.announcementRepo.save(a);
+    const saved = await this.prisma.announcements.update({
+      where: { id },
+      data: { status: AnnouncementStatus.PUBLISHED, publishedAt: new Date() },
+    });
 
     const pushPayload = {
       title: a.title,
@@ -134,60 +147,69 @@ export class AnnouncementsService {
   }
 
   async delete(id: number) {
-    const a = await this.announcementRepo.findOne({ where: { id } });
+    const a = await this.prisma.announcements.findUnique({ where: { id } });
     if (!a) throw new NotFoundException(`Announcement ${id} not found`);
-    await this.announcementRepo.remove(a);
+    await this.prisma.announcements.delete({ where: { id } });
   }
 
   async addComment(announcementId: number, userId: number, dto: CreateCommentDto) {
-    const a = await this.announcementRepo.findOne({
+    const a = await this.prisma.announcements.findFirst({
       where: { id: announcementId, status: AnnouncementStatus.PUBLISHED },
     });
     if (!a) throw new NotFoundException(`Announcement ${announcementId} not found`);
-    const comment = this.commentRepo.create({ announcementId, userId, body: dto.body });
-    return this.commentRepo.save(comment);
+    return this.prisma.announcement_comments.create({
+      data: { announcementId, userId, body: dto.body },
+    });
   }
 
   // Author-only, deliberately unlike deleteComment (which moderators can do):
   // editing leaves the member's name on words they didn't write.
   async editComment(commentId: number, userId: number, dto: CreateCommentDto) {
-    const comment = await this.commentRepo.findOne({ where: { id: commentId } });
+    const comment = await this.prisma.announcement_comments.findUnique({
+      where: { id: commentId },
+    });
     if (!comment || comment.deletedAt) throw new NotFoundException('Comment not found');
     if (comment.userId !== userId) {
       throw new ForbiddenException('Cannot edit another member\'s comment');
     }
 
-    comment.body = dto.body;
-    comment.editedAt = new Date();
-    return this.commentRepo.save(comment);
+    return this.prisma.announcement_comments.update({
+      where: { id: commentId },
+      data: { body: dto.body, editedAt: new Date() },
+    });
   }
 
   async deleteComment(commentId: number, userId: number, userRole: UserRole) {
-    const comment = await this.commentRepo.findOne({ where: { id: commentId } });
+    const comment = await this.prisma.announcement_comments.findUnique({
+      where: { id: commentId },
+    });
     if (!comment) throw new NotFoundException('Comment not found');
     if (comment.userId !== userId && userRole === UserRole.MEMBER) {
       throw new ForbiddenException('Cannot delete another member\'s comment');
     }
-    comment.deletedAt = new Date();
-    await this.commentRepo.save(comment);
+    await this.prisma.announcement_comments.update({
+      where: { id: commentId },
+      data: { deletedAt: new Date() },
+    });
   }
 
   async flagContent(dto: FlagContentDto, reportedBy: number) {
-    const existing = await this.flagRepo.findOne({
+    const existing = await this.prisma.content_flags.findFirst({
       where: { contentType: dto.contentType, contentId: dto.contentId, reportedBy },
     });
     if (existing) return existing;
-    const flag = this.flagRepo.create({
-      contentType: dto.contentType,
-      contentId: dto.contentId,
-      reportedBy,
-      reason: dto.reason ?? null,
+    const saved = await this.prisma.content_flags.create({
+      data: {
+        contentType: dto.contentType,
+        contentId: dto.contentId,
+        reportedBy,
+        reason: dto.reason ?? null,
+      },
     });
-    const saved = await this.flagRepo.save(flag);
 
-    const mods = await this.userRepo.find({
-      where: { role: In([UserRole.ADMIN, UserRole.MODERATOR]) },
-      select: ['id'],
+    const mods = await this.prisma.users.findMany({
+      where: { role: { in: [UserRole.ADMIN, UserRole.MODERATOR] } },
+      select: { id: true },
     });
     await Promise.all(
       mods.map(async (mod) => {
@@ -210,32 +232,32 @@ export class AnnouncementsService {
   }
 
   async getPendingFlags() {
-    const flags = await this.flagRepo.find({
+    const flags = await this.prisma.content_flags.findMany({
       where: { status: FlagStatus.PENDING },
-      relations: ['reporter'],
-      order: { createdAt: 'ASC' },
+      include: { reporter: true },
+      orderBy: { createdAt: 'asc' },
     });
     return flags.map((f) => Object.assign(f, { reporter: toPublicUser(f.reporter) }));
   }
 
   async getAllFlags() {
-    const flags = await this.flagRepo.find({
-      relations: ['reporter', 'reviewer'],
-      order: { createdAt: 'DESC' },
+    const flags = await this.prisma.content_flags.findMany({
+      include: { reporter: true, reviewer: true },
+      orderBy: { createdAt: 'desc' },
     });
     return flags.map((f) => Object.assign(f, { reporter: toPublicUser(f.reporter), reviewer: toPublicUser(f.reviewer) }));
   }
 
   async resolveFlag(flagId: number, reviewerId: number, status: FlagStatus) {
-    const flag = await this.flagRepo.findOne({ where: { id: flagId } });
+    const flag = await this.prisma.content_flags.findUnique({ where: { id: flagId } });
     if (!flag) throw new NotFoundException('Flag not found');
-    flag.status = status;
-    flag.reviewedBy = reviewerId;
-    flag.reviewedAt = new Date();
-    return this.flagRepo.save(flag);
+    return this.prisma.content_flags.update({
+      where: { id: flagId },
+      data: { status, reviewedBy: reviewerId, reviewedAt: new Date() },
+    });
   }
 
   countPendingFlags(): Promise<number> {
-    return this.flagRepo.count({ where: { status: FlagStatus.PENDING } });
+    return this.prisma.content_flags.count({ where: { status: FlagStatus.PENDING } });
   }
 }

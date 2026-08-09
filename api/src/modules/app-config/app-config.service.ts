@@ -1,8 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Repository } from 'typeorm';
-import { AppConfigEntity } from '../../database/entities/app-config.entity';
+import type { app_config as AppConfig } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
 import { baseDomain } from '../../common/config/instance-contact';
 
 // Only these keys are servable/editable through the config endpoints — keeps
@@ -141,8 +140,7 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
 @Injectable()
 export class AppConfigService {
   constructor(
-    @InjectRepository(AppConfigEntity)
-    private readonly configRepo: Repository<AppConfigEntity>,
+    private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
 
@@ -150,14 +148,15 @@ export class AppConfigService {
     if (!isKnownConfigKey(key)) {
       throw new NotFoundException('Unknown config key');
     }
-    const row = await this.configRepo.findOne({ where: { configKey: key } });
+    const row = await this.prisma.app_config.findUnique({ where: { configKey: key } });
     if (row) return row.configValue;
     return isSiteSettingKey(key) ? SITE_SETTING_DEFAULTS[key] : '';
   }
 
-  async getLegalConfig(): Promise<Pick<AppConfigEntity, 'configKey' | 'configValue' | 'updatedAt'>[]> {
-    const rows = await this.configRepo.find({
-      where: LEGAL_CONFIG_KEYS.map((configKey) => ({ configKey })),
+  async getLegalConfig(): Promise<Pick<AppConfig, 'configKey' | 'configValue' | 'updatedAt'>[]> {
+    // TypeORM's array-of-where was an OR over the keys; `in` is the same set.
+    const rows = await this.prisma.app_config.findMany({
+      where: { configKey: { in: [...LEGAL_CONFIG_KEYS] } },
     });
     return LEGAL_CONFIG_KEYS.map(
       (configKey) =>
@@ -169,9 +168,9 @@ export class AppConfigService {
     );
   }
 
-  async getSiteSettings(): Promise<Pick<AppConfigEntity, 'configKey' | 'configValue' | 'updatedAt'>[]> {
-    const rows = await this.configRepo.find({
-      where: SITE_SETTING_KEYS.map((configKey) => ({ configKey })),
+  async getSiteSettings(): Promise<Pick<AppConfig, 'configKey' | 'configValue' | 'updatedAt'>[]> {
+    const rows = await this.prisma.app_config.findMany({
+      where: { configKey: { in: [...SITE_SETTING_KEYS] } },
     });
     return SITE_SETTING_KEYS.map(
       (configKey) =>
@@ -186,7 +185,7 @@ export class AppConfigService {
   // Server-side read for other services (e.g. LocationsService picking the
   // default privacy for a newly created location) — no HTTP round-trip.
   async getSiteSetting(key: SiteSettingKey): Promise<string> {
-    const row = await this.configRepo.findOne({ where: { configKey: key } });
+    const row = await this.prisma.app_config.findUnique({ where: { configKey: key } });
     return row?.configValue ?? SITE_SETTING_DEFAULTS[key];
   }
 
@@ -302,17 +301,16 @@ export class AppConfigService {
     };
   }
 
-  async updateConfigValue(key: string, value: string, userId: number): Promise<AppConfigEntity> {
+  async updateConfigValue(key: string, value: string, userId: number): Promise<AppConfig> {
     if (!isKnownConfigKey(key)) {
       throw new NotFoundException('Unknown config key');
     }
-    let row = await this.configRepo.findOne({ where: { configKey: key } });
-    if (!row) {
-      row = this.configRepo.create({ configKey: key, configValue: '' });
-    }
-    row.configValue = value;
-    row.updatedBy = userId;
-    return this.configRepo.save(row);
+    // find-or-create then assign becomes one upsert on the unique key.
+    return this.prisma.app_config.upsert({
+      where: { configKey: key },
+      update: { configValue: value, updatedBy: userId },
+      create: { configKey: key, configValue: value, updatedBy: userId },
+    });
   }
 
   // Saves many keys in one call — used by the /admin/settings form, which
@@ -328,14 +326,17 @@ export class AppConfigService {
         throw new NotFoundException(`Unknown config key: ${key}`);
       }
     }
-    for (const { key, value } of entries) {
-      let row = await this.configRepo.findOne({ where: { configKey: key } });
-      if (!row) {
-        row = this.configRepo.create({ configKey: key, configValue: '' });
-      }
-      row.configValue = value;
-      row.updatedBy = userId;
-      await this.configRepo.save(row);
-    }
+    // Wrapped in a transaction: the admin settings form submits every field
+    // at once, and a failure partway through previously left some keys saved
+    // and the rest not.
+    await this.prisma.$transaction(
+      entries.map(({ key, value }) =>
+        this.prisma.app_config.upsert({
+          where: { configKey: key },
+          update: { configValue: value, updatedBy: userId },
+          create: { configKey: key, configValue: value, updatedBy: userId },
+        }),
+      ),
+    );
   }
 }
