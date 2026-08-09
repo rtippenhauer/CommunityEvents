@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>CommunityEvents-v2-Stage</Name>
+  <Repository>rtippenhauer/community-events:v2-stage</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>https://github.com/rtippenhauer/CommunityEvents</Project>
+  <Overview>CommunityEvents v2 rewrite — stage container. Tracks the :v2-stage image tag, pushed by /v2-testing and /v2-done as v2 items land. Points at its own communityevents database, separate from v1 DinnerBears.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8082]/</WebUI>
+  <TemplateURL/>
+  <Icon/>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="Web Port" Target="8080" Default="8082" Mode="tcp" Description="Host port for the stage web interface. Default 8082, not 8080, so it doesn't collide with the v1 DinnerBears container if both run at once — confirm against whatever's already in use on this Unraid box." Type="Port" Display="always" Required="true" Mask="false">8082</Config>
+
+  <Config Name="DB Host" Target="DB_HOST" Default="192.168.2.241" Mode="" Description="MySQL host IP address (same server as v1's, different database)" Type="Variable" Display="always" Required="true" Mask="false">192.168.2.241</Config>
+  <Config Name="DB Port" Target="DB_PORT" Default="3306" Mode="" Description="MySQL port" Type="Variable" Display="always" Required="true" Mask="false">3306</Config>
+  <Config Name="DB Name" Target="DB_NAME" Default="communityevents" Mode="" Description="MySQL database name — the dedicated v2 database, never dinnerbears" Type="Variable" Display="always" Required="true" Mask="false">communityevents</Config>
+  <Config Name="DB User" Target="DB_USER" Default="communityevents_user" Mode="" Description="MySQL username" Type="Variable" Display="always" Required="true" Mask="false">communityevents_user</Config>
+  <Config Name="DB Password" Target="DB_PASSWORD" Default="" Mode="" Description="MySQL password for the communityevents_user account" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+  <Config Name="JWT Secret" Target="JWT_SECRET" Default="" Mode="" Description="Secret key for JWT tokens — generate a new one, don't reuse v1's. openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="JWT Expires In" Target="JWT_EXPIRES_IN" Default="7d" Mode="" Description="JWT token expiry" Type="Variable" Display="advanced" Required="false" Mask="false">7d</Config>
+  <Config Name="Session Secret" Target="SESSION_SECRET" Default="" Mode="" Description="Session cookie secret — required (main.ts reads this via getOrThrow, missing it crashes boot). Generate a new one: openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+  <Config Name="Google Client ID" Target="GOOGLE_CLIENT_ID" Default="" Mode="" Description="Google OAuth Client ID. Whatever APP_URL you set below needs its own authorized redirect URI (APP_URL + /api/v1/auth/google/callback) added to this client, or a separate client entirely" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Google Client Secret" Target="GOOGLE_CLIENT_SECRET" Default="" Mode="" Description="Google OAuth Client Secret" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+  <Config Name="Facebook App ID" Target="FACEBOOK_APP_ID" Default="" Mode="" Description="Facebook App ID — leave unset to hide the Facebook login button" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Facebook App Secret" Target="FACEBOOK_APP_SECRET" Default="" Mode="" Description="Facebook App Secret" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+  <Config Name="Brevo API Key" Target="BREVO_API_KEY" Default="" Mode="" Description="Brevo API key for primary email sending" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Brevo From Email" Target="BREVO_FROM_EMAIL" Default="" Mode="" Description="From address for outbound emails" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+
+  <Config Name="Resend API Key" Target="RESEND_API_KEY" Default="" Mode="" Description="Resend API key — optional overflow email provider" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Resend From Email" Target="RESEND_FROM_EMAIL" Default="" Mode="" Description="Resend overflow from-address" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Resend From Name" Target="RESEND_FROM_NAME" Default="" Mode="" Description="Resend overflow from-name" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Email Suppression Salt" Target="EMAIL_SUPPRESSION_SALT" Default="" Mode="" Description="Random salt for email hash suppression. Generate: openssl rand -hex 32" Type="Variable" Display="advanced" Required="true" Mask="true"></Config>
+
+  <Config Name="VAPID Public Key" Target="VAPID_PUBLIC_KEY" Default="" Mode="" Description="VAPID public key for Web Push. Generate: npx web-push generate-vapid-keys" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="VAPID Private Key" Target="VAPID_PRIVATE_KEY" Default="" Mode="" Description="VAPID private key for Web Push" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="VAPID Subject" Target="VAPID_SUBJECT" Default="" Mode="" Description="VAPID subject (mailto: or URL)" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Geocoding API Key" Target="GEOCODING_API_KEY" Default="" Mode="" Description="Google Geocoding API key" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Google Places API Key" Target="GOOGLE_PLACES_API_KEY" Default="" Mode="" Description="Google Places API key (location enrichment)" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Anthropic API Key" Target="ANTHROPIC_API_KEY" Default="" Mode="" Description="Optional — powers the admin 'enrich location' helper. Leave unset to disable it" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
+  <Config Name="Cloudflare Email Secret" Target="CLOUDFLARE_EMAIL_SECRET" Default="" Mode="" Description="Shared secret validating inbound Cloudflare Email Routing webhook calls (calendar RSVP replies)" Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
+  <Config Name="Admin Email" Target="ADMIN_EMAIL" Default="" Mode="" Description="Email address granted admin on first login" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="App URL" Target="APP_URL" Default="" Mode="" Description="Public URL for this stage instance, e.g. https://v2-stage.dinnerbears.com — needs its own DNS record and reverse-proxy entry; decide this before first boot" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Base Domain" Target="BASE_DOMAIN" Default="" Mode="" Description="Bare domain for cookie scope + derived contact emails. Optional — defaults to APP_URL's host with a leading www. stripped. Use the bare domain, never www., since www.<domain> normally has no MX record" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Calendar Organizer Email" Target="CALENDAR_ORGANIZER_EMAIL" Default="" Mode="" Description="Optional override — defaults to calendar@BASE_DOMAIN" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Event Organizer Email" Target="EVENT_ORGANIZER_EMAIL" Default="" Mode="" Description="Optional override — defaults to noreply@BASE_DOMAIN" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Support Email" Target="SUPPORT_EMAIL" Default="" Mode="" Description="Optional override — defaults to hello@BASE_DOMAIN" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="Must be 'production' even on stage — a value of 'staging' leaves cookies non-Secure and can leak stack traces. Stage-vs-prod is controlled entirely by IS_STAGE below" Type="Variable" Display="always" Required="true" Mask="false">production</Config>
+  <Config Name="Is Stage" Target="IS_STAGE" Default="true" Mode="" Description="true for this container — flags the UI as a stage build. Must be paired with NODE_ENV=production, not 'staging'" Type="Variable" Display="always" Required="true" Mask="false">true</Config>
+
+  <Config Name="App Data" Target="/app/uploads" Default="/mnt/user/appdata/communityevents-v2-stage/uploads" Mode="rw" Description="Persistent storage for uploaded photos and files — separate path from v1's dinnerbears/uploads" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/communityevents-v2-stage/uploads</Config>
+</Container>
