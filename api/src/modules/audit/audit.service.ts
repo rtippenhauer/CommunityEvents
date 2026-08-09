@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { AuditLogEntity } from '../../database/entities/audit-log.entity';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
 
 export interface AuditLogParams {
   userId?: number;
@@ -14,20 +13,20 @@ export interface AuditLogParams {
 
 @Injectable()
 export class AuditService {
-  constructor(
-    @InjectRepository(AuditLogEntity)
-    private readonly auditRepo: Repository<AuditLogEntity>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async log(params: AuditLogParams): Promise<void> {
-    const entry = this.auditRepo.create({
-      userId: params.userId ?? null,
-      action: params.action,
-      entityType: params.entityType ?? null,
-      entityId: params.entityId ?? null,
-      metadata: params.metadata ?? null,
-      ipAddress: params.ipAddress ?? null,
+    await this.prisma.audit_log.create({
+      data: {
+        userId: params.userId ?? null,
+        action: params.action,
+        entityType: params.entityType ?? null,
+        entityId: params.entityId ?? null,
+        // Prisma distinguishes a SQL NULL from a JSON null in a nullable Json
+        // column; TypeORM did not. DbNull reproduces what it wrote before.
+        metadata: (params.metadata as Prisma.InputJsonValue) ?? Prisma.DbNull,
+        ipAddress: params.ipAddress ?? null,
+      },
     });
-    await this.auditRepo.save(entry);
   }
 }

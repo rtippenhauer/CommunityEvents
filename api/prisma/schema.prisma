@@ -53,7 +53,7 @@ model achievements {
   isSecret           Boolean                     @default(false) @map("is_secret")
   createdAt          DateTime                    @default(now()) @db.DateTime(0) @map("created_at")
   events              events?                     @relation(fields: [eventId], references: [id], onUpdate: NoAction, map: "fk_achievements_event")
-  member_achievements member_achievements[]
+  memberAchievements member_achievements[]
 
   @@index([eventId], map: "fk_achievements_event")
 }
@@ -66,8 +66,8 @@ model announcement_comments {
   editedAt       DateTime?     @db.DateTime(0) @map("edited_at")
   createdAt      DateTime      @default(now()) @db.DateTime(0) @map("created_at")
   deletedAt      DateTime?     @db.DateTime(0) @map("deleted_at")
-  announcements   announcements @relation(fields: [announcementId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ann_comment_ann")
-  users           users         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ann_comment_user")
+  announcement   announcements @relation(fields: [announcementId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ann_comment_ann")
+  user           users         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ann_comment_user")
 
   @@index([announcementId], map: "fk_ann_comment_ann")
   @@index([userId], map: "fk_ann_comment_user")
@@ -83,9 +83,9 @@ model announcements {
   createdBy                                           Int                     @db.UnsignedInt @map("created_by")
   createdAt                                           DateTime                @default(now()) @db.DateTime(0) @map("created_at")
   updatedAt                                           DateTime                @default(now()) @db.DateTime(0) @map("updated_at")
-  announcement_comments                                announcement_comments[]
-  users_announcements_created_byTousers                users                   @relation("announcements_created_byTousers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ann_author")
-  cities                                               cities?                 @relation(fields: [cityId], references: [id], onUpdate: NoAction, map: "fk_ann_city")
+  comments                                announcement_comments[]
+  author                users                   @relation("announcements_created_byTousers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ann_author")
+  city                                               cities?                 @relation(fields: [cityId], references: [id], onUpdate: NoAction, map: "fk_ann_city")
   users_users_last_seen_announcement_idToannouncements users[]                 @relation("users_last_seen_announcement_idToannouncements")
 
   @@index([createdBy], map: "fk_ann_author")
@@ -148,8 +148,8 @@ model content_flags {
   reviewedBy                            Int?                       @db.UnsignedInt @map("reviewed_by")
   reviewedAt                            DateTime?                  @db.DateTime(0) @map("reviewed_at")
   createdAt                             DateTime                   @default(now()) @db.DateTime(0) @map("created_at")
-  users_content_flags_reported_byTousers users                      @relation("content_flags_reported_byTousers", fields: [reportedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_flag_reporter")
-  users_content_flags_reviewed_byTousers users?                     @relation("content_flags_reviewed_byTousers", fields: [reviewedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_flag_reviewer")
+  reporter users                      @relation("content_flags_reported_byTousers", fields: [reportedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_flag_reporter")
+  reviewer users?                     @relation("content_flags_reviewed_byTousers", fields: [reviewedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_flag_reviewer")
 
   @@unique([contentType, contentId, reportedBy], map: "uq_flag")
   @@index([reportedBy], map: "fk_flag_reporter")
@@ -166,8 +166,8 @@ model content_reports {
   reviewedBy                              Int?                         @db.UnsignedInt @map("reviewed_by")
   reviewedAt                              DateTime?                    @db.DateTime(0) @map("reviewed_at")
   createdAt                               DateTime                     @default(now()) @db.DateTime(0) @map("created_at")
-  users_content_reports_reporter_idTousers users                        @relation("content_reports_reporter_idTousers", fields: [reporterId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_report_reporter")
-  users_content_reports_reviewed_byTousers users?                       @relation("content_reports_reviewed_byTousers", fields: [reviewedBy], references: [id], onUpdate: NoAction, map: "FK_report_reviewer")
+  reporter users                        @relation("content_reports_reporter_idTousers", fields: [reporterId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_report_reporter")
+  reviewer users?                       @relation("content_reports_reviewed_byTousers", fields: [reviewedBy], references: [id], onUpdate: NoAction, map: "FK_report_reviewer")
 
   @@unique([reporterId, contentType, contentId], map: "UQ_report_per_member")
   @@index([reviewedBy], map: "FK_report_reviewer")
@@ -255,8 +255,8 @@ model event_comment_replies {
   editedAt      DateTime?      @db.DateTime(0) @map("edited_at")
   createdAt     DateTime       @default(now()) @db.DateTime(0) @map("created_at")
   deletedAt     DateTime?      @db.DateTime(0) @map("deleted_at")
-  event_comments event_comments @relation(fields: [commentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ecr_comment")
-  users          users          @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ecr_member")
+  comment event_comments @relation(fields: [commentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ecr_comment")
+  member          users          @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ecr_member")
 
   @@index([commentId], map: "idx_ecr_comment")
   @@index([memberId], map: "idx_ecr_member")
@@ -270,9 +270,9 @@ model event_comments {
   editedAt             DateTime?               @db.DateTime(0) @map("edited_at")
   createdAt            DateTime                @default(now()) @db.DateTime(0) @map("created_at")
   deletedAt            DateTime?               @db.DateTime(0) @map("deleted_at")
-  event_comment_replies event_comment_replies[]
-  events                events                  @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ec_event")
-  users                 users                   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ec_member")
+  replies event_comment_replies[]
+  event                events                  @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ec_event")
+  member                 users                   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ec_member")
 
   @@index([eventId], map: "idx_ec_event")
   @@index([memberId], map: "idx_ec_member")
@@ -293,9 +293,9 @@ model event_guest_links {
   cancelledAt    DateTime?                       @db.DateTime(0) @map("cancelled_at")
   attended        Boolean?
   createdAt      DateTime                        @default(now()) @db.DateTime(0) @map("created_at")
-  events          events                          @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_event")
-  event_rsvps     event_rsvps?                    @relation(fields: [memberRsvpId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_rsvp")
-  users           users?                          @relation(fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_user")
+  event          events                          @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_event")
+  memberRsvp     event_rsvps?                    @relation(fields: [memberRsvpId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_rsvp")
+  createdBy           users?                          @relation(fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_user")
 
   @@index([createdById], map: "idx_created_by")
   @@index([eventId], map: "idx_event")
@@ -315,9 +315,9 @@ model event_rsvps {
   attended          Boolean?
   isWalkin         Boolean             @default(false) @map("is_walkin")
   fromOtherCity   Boolean             @default(false) @map("from_other_city")
-  event_guest_links event_guest_links[]
-  events            events              @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_event")
-  users             users               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_user")
+  guestLinks event_guest_links[]
+  event            events              @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_event")
+  user             users               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_user")
 
   @@unique([eventId, userId], map: "uq_event_member")
   @@index([eventId], map: "idx_event")
@@ -358,11 +358,11 @@ model events {
   achievements                                achievements[]
   event_comments                              event_comments[]
   event_guest_links                           event_guest_links[]
-  event_rsvps                                 event_rsvps[]
-  cities                                      cities              @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
-  users_events_created_byTousers              users               @relation("events_created_byTousers", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_created_by")
-  locations                                   locations?          @relation(fields: [locationId], references: [id], onUpdate: NoAction, map: "fk_event_location")
-  users_events_reservation_assignee_idTousers users?              @relation("events_reservation_assignee_idTousers", fields: [reservationAssigneeId], references: [id], onUpdate: NoAction, map: "fk_events_reservation_assignee")
+  rsvps                                 event_rsvps[]
+  city                                      cities              @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
+  createdByUser              users               @relation("events_created_byTousers", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_created_by")
+  location                                   locations?          @relation(fields: [locationId], references: [id], onUpdate: NoAction, map: "fk_event_location")
+  reservationAssignee users?              @relation("events_reservation_assignee_idTousers", fields: [reservationAssigneeId], references: [id], onUpdate: NoAction, map: "fk_events_reservation_assignee")
   location_ratings                            location_ratings[]
 
   @@index([createdById], map: "fk_event_created_by")
@@ -394,7 +394,7 @@ model facebook_group_config {
   isActive  Boolean                          @default(true) @map("is_active")
   createdAt DateTime                         @default(now()) @db.DateTime(0) @map("created_at")
   updatedAt DateTime                         @default(now()) @db.DateTime(0) @map("updated_at")
-  cities     cities?                          @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_fbgroup_city")
+  city     cities?                          @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_fbgroup_city")
   invites    invites[]
 
   @@index([cityId], map: "fk_fbgroup_city")
@@ -415,9 +415,9 @@ model feedback {
   resolvedAt      DateTime?          @db.DateTime(0) @map("resolved_at")
   createdAt       DateTime           @default(now()) @db.DateTime(0) @map("created_at")
   updatedAt       DateTime           @default(now()) @db.DateTime(0) @map("updated_at")
-  users            users              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_feedback_user")
-  feedback_notes   feedback_notes[]
-  feedback_upvotes feedback_upvotes[]
+  user            users              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_feedback_user")
+  notes   feedback_notes[]
+  upvotes feedback_upvotes[]
   release_feedback release_feedback[]
 
   @@index([userId], map: "fk_feedback_user")
@@ -433,7 +433,7 @@ model feedback_notes {
   content       String   @db.Text
   isAdminOnly Boolean  @default(false) @map("is_admin_only")
   createdAt    DateTime @default(now()) @db.DateTime(0) @map("created_at")
-  users         users    @relation(fields: [authorId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fnote_author")
+  author         users    @relation(fields: [authorId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fnote_author")
   feedback      feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fnote_feedback")
 
   @@index([authorId], map: "fk_fnote_author")
@@ -446,7 +446,7 @@ model feedback_upvotes {
   memberId   Int      @db.UnsignedInt @map("member_id")
   createdAt  DateTime @default(now()) @db.DateTime(0) @map("created_at")
   feedback    feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fup_feedback")
-  users       users    @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fup_member")
+  member       users    @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fup_member")
 
   @@unique([feedbackId, memberId], map: "uq_feedback_member")
   @@index([memberId], map: "fk_fup_member")
@@ -471,9 +471,9 @@ model invites {
   useCount                        Int                    @default(0) @map("use_count")
   createdAt                       DateTime               @default(now()) @db.DateTime(0) @map("created_at")
   inviteFlavor                    invites_invite_flavor? @map("invite_flavor")
-  cities                           cities?                @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_city")
-  users_invites_created_byTousers  users                  @relation("invites_created_byTousers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_creator")
-  facebook_group_config            facebook_group_config? @relation(fields: [facebookGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_fbgroup")
+  city                           cities?                @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_city")
+  creator  users                  @relation("invites_created_byTousers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_creator")
+  facebookGroup            facebook_group_config? @relation(fields: [facebookGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_fbgroup")
   users_invites_redeemed_byTousers users?                 @relation("invites_redeemed_byTousers", fields: [redeemedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_redeemed_by")
   users_users_invite_idToinvites   users[]                @relation("users_invite_idToinvites")
 
@@ -494,8 +494,8 @@ model location_photos {
   sortOrder  Int       @default(0) @map("sort_order")
   uploadedBy Int       @db.UnsignedInt @map("uploaded_by")
   createdAt  DateTime  @default(now()) @db.DateTime(0) @map("created_at")
-  locations   locations @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_photo_location")
-  users       users     @relation(fields: [uploadedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_photo_uploader")
+  location   locations @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_photo_location")
+  uploader       users     @relation(fields: [uploadedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_photo_uploader")
 
   @@index([uploadedBy], map: "fk_photo_uploader")
   @@index([locationId], map: "idx_location")
@@ -513,9 +513,9 @@ model location_ratings {
   comment      String?   @db.Text
   createdAt   DateTime  @default(now()) @db.DateTime(0) @map("created_at")
   updatedAt   DateTime  @default(now()) @db.DateTime(0) @map("updated_at")
-  events       events    @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_event")
-  locations    locations @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_location")
-  users        users     @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_member")
+  event       events    @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_event")
+  location    locations @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_location")
+  member        users     @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_member")
 
   @@unique([memberId, eventId], map: "uq_member_event")
   @@index([eventId], map: "fk_rating_event")
@@ -546,11 +546,11 @@ model locations {
   contactPhone                     String?                 @db.VarChar(30) @map("contact_phone")
   contactEmail                     String?                 @db.VarChar(150) @map("contact_email")
   events                            events[]
-  location_photos                   location_photos[]
+  photos                   location_photos[]
   location_ratings                  location_ratings[]
-  cities                            cities                  @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_location_city")
-  users_locations_created_byTousers users?                  @relation("locations_created_byTousers", fields: [createdById], references: [id], onUpdate: NoAction, map: "fk_location_created_by")
-  users_locations_updated_byTousers users?                  @relation("locations_updated_byTousers", fields: [updatedById], references: [id], onUpdate: NoAction, map: "fk_location_updated_by")
+  city                            cities                  @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_location_city")
+  createdByUser users?                  @relation("locations_created_byTousers", fields: [createdById], references: [id], onUpdate: NoAction, map: "fk_location_created_by")
+  updatedByUser users?                  @relation("locations_updated_byTousers", fields: [updatedById], references: [id], onUpdate: NoAction, map: "fk_location_updated_by")
 
   @@index([createdById], map: "fk_location_created_by")
   @@index([updatedById], map: "fk_location_updated_by")
@@ -569,7 +569,7 @@ model login_sessions {
   isActive      Boolean  @default(true) @map("is_active")
   lastActiveAt DateTime @default(now()) @db.DateTime(0) @map("last_active_at")
   createdAt     DateTime @default(now()) @db.DateTime(0) @map("created_at")
-  users          users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_session_user")
+  user          users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_session_user")
 
   @@index([userId], map: "idx_user")
 }
@@ -580,8 +580,8 @@ model member_achievements {
   achievementId Int          @db.UnsignedInt @map("achievement_id")
   earnedAt      DateTime     @default(now()) @db.DateTime(0) @map("earned_at")
   seenAt        DateTime?    @db.DateTime(0) @map("seen_at")
-  achievements   achievements @relation(fields: [achievementId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ma_achievement")
-  users          users        @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ma_member")
+  achievement   achievements @relation(fields: [achievementId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ma_achievement")
+  member          users        @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ma_member")
 
   @@unique([memberId, achievementId], map: "uq_member_achievement")
   @@index([achievementId], map: "fk_ma_achievement")
@@ -594,7 +594,7 @@ model member_points {
   referenceId Int                      @db.UnsignedInt @map("reference_id")
   points       Int                      @default(1) @db.TinyInt
   awardedAt   DateTime                 @default(now()) @db.DateTime(0) @map("awarded_at")
-  users        users                    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_mp_user")
+  user        users                    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_mp_user")
 
   @@unique([userId, pointType, referenceId], map: "uq_member_points_user_type_ref")
   @@index([userId], map: "idx_mp_user")
@@ -625,7 +625,7 @@ model notification_preferences {
   pushEventReminder     Boolean  @default(true) @map("push_event_reminder")
   pushAnnouncement       Boolean  @default(true) @map("push_announcement")
   updatedAt              DateTime @default(now()) @db.DateTime(0) @map("updated_at")
-  users                   users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notif_pref_user")
+  user                   users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notif_pref_user")
 }
 
 model notifications {
@@ -638,7 +638,7 @@ model notifications {
   isRead    Boolean   @default(false) @map("is_read")
   createdAt DateTime  @default(now()) @db.DateTime(0) @map("created_at")
   readAt    DateTime? @db.DateTime(0) @map("read_at")
-  users      users     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_user")
+  user      users     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_user")
 
   @@index([createdAt], map: "idx_created")
   @@index([userId, isRead], map: "idx_user_read")
@@ -652,7 +652,7 @@ model oauth_accounts {
   email       String?                 @db.VarChar(255)
   profileUrl String?                 @db.VarChar(512) @map("profile_url")
   createdAt  DateTime                @default(now()) @db.DateTime(0) @map("created_at")
-  users       users                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_oauth_user")
+  user       users                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_oauth_user")
 
   @@unique([provider, providerId], map: "uq_provider_account")
   @@index([userId], map: "idx_user")
@@ -665,7 +665,7 @@ model push_subscriptions {
   p256dh     String   @db.VarChar(512)
   auth       String   @db.VarChar(255)
   createdAt DateTime @default(now()) @db.DateTime(0) @map("created_at")
-  users      users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_push_sub_user")
+  user      users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_push_sub_user")
 
   @@index([userId], map: "fk_push_sub_user")
 }
@@ -690,7 +690,7 @@ model releases {
   createdAt                                 DateTime           @default(now()) @db.DateTime(0) @map("created_at")
   updatedAt                                 DateTime           @default(now()) @db.DateTime(0) @map("updated_at")
   release_feedback                           release_feedback[]
-  users_releases_created_byTousers           users              @relation("releases_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction, map: "fk_release_author")
+  author           users              @relation("releases_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction, map: "fk_release_author")
   users_users_last_seen_release_idToreleases users[]            @relation("users_last_seen_release_idToreleases")
 
   @@index([createdBy], map: "fk_release_author")
@@ -767,7 +767,7 @@ model users {
   oauth_accounts                                               oauth_accounts[]
   push_subscriptions                                           push_subscriptions[]
   releases_releases_created_byTousers                          releases[]                 @relation("releases_created_byTousers")
-  cities                                                       cities                     @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_city")
+  city                                                       cities                     @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_city")
   invites_users_invite_idToinvites                             invites?                   @relation("users_invite_idToinvites", fields: [inviteId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invite")
   users                                                        users?                     @relation("usersTousers", fields: [invitedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invited_by")
   other_users                                                  users[]                    @relation("usersTousers")

@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import * as webpush from 'web-push';
-import { PushSubscriptionEntity } from '../../database/entities/push-subscription.entity';
+import type { push_subscriptions as PushSubscription } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { UserStatus } from '../../database/enums';
 
 export interface PushPayload {
   title: string;
@@ -17,8 +17,7 @@ export class PushService implements OnModuleInit {
   private enabled = false;
 
   constructor(
-    @InjectRepository(PushSubscriptionEntity)
-    private readonly subRepo: Repository<PushSubscriptionEntity>,
+    private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {}
 
@@ -35,44 +34,44 @@ export class PushService implements OnModuleInit {
   }
 
   async subscribe(userId: number, endpoint: string, p256dh: string, auth: string): Promise<void> {
-    await this.subRepo.upsert(
-      { userId, endpoint, p256dh, auth },
-      { conflictPaths: ['endpoint'] },
-    );
+    await this.prisma.push_subscriptions.upsert({
+      where: { endpoint },
+      update: { userId, p256dh, auth },
+      create: { userId, endpoint, p256dh, auth },
+    });
   }
 
   async unsubscribe(userId: number, endpoint: string): Promise<void> {
-    await this.subRepo.delete({ userId, endpoint });
+    // deleteMany rather than delete: endpoint alone is the unique key, but the
+    // userId has to stay in the criteria so one member cannot remove another's
+    // subscription by guessing an endpoint.
+    await this.prisma.push_subscriptions.deleteMany({ where: { userId, endpoint } });
   }
 
   async sendToUser(userId: number, payload: PushPayload): Promise<void> {
     if (!this.enabled) return;
-    const subs = await this.subRepo.find({ where: { userId } });
+    const subs = await this.prisma.push_subscriptions.findMany({ where: { userId } });
     await this.sendToSubscriptions(subs, payload);
   }
 
   async sendToCity(cityId: number, payload: PushPayload): Promise<void> {
     if (!this.enabled) return;
-    const subs = await this.subRepo
-      .createQueryBuilder('s')
-      .innerJoin('s.user', 'u')
-      .where('u.city_id = :cityId AND u.status = :status', { cityId, status: 'active' })
-      .getMany();
+    const subs = await this.prisma.push_subscriptions.findMany({
+      where: { user: { cityId, status: UserStatus.ACTIVE } },
+    });
     await this.sendToSubscriptions(subs, payload);
   }
 
   async sendToAll(payload: PushPayload): Promise<void> {
     if (!this.enabled) return;
-    const subs = await this.subRepo
-      .createQueryBuilder('s')
-      .innerJoin('s.user', 'u')
-      .where('u.status = :status', { status: 'active' })
-      .getMany();
+    const subs = await this.prisma.push_subscriptions.findMany({
+      where: { user: { status: UserStatus.ACTIVE } },
+    });
     await this.sendToSubscriptions(subs, payload);
   }
 
   private async sendToSubscriptions(
-    subs: PushSubscriptionEntity[],
+    subs: PushSubscription[],
     payload: PushPayload,
   ): Promise<void> {
     if (!subs.length) {
@@ -111,7 +110,7 @@ export class PushService implements OnModuleInit {
       }),
     );
     if (stale.length) {
-      await this.subRepo.delete(stale);
+      await this.prisma.push_subscriptions.deleteMany({ where: { id: { in: stale } } });
     }
   }
 }

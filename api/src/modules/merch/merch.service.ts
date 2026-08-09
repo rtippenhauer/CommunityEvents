@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { MerchConfigEntity } from '../../database/entities/merch-config.entity';
+import type { merch_config as MerchConfig } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
 import { AchievementsService } from '../community/achievements.service';
 import { UpdateMerchConfigDto } from './dto/update-merch-config.dto';
 
@@ -15,29 +14,30 @@ export interface MerchLinks {
 @Injectable()
 export class MerchService {
   constructor(
-    @InjectRepository(MerchConfigEntity)
-    private readonly merchConfigRepo: Repository<MerchConfigEntity>,
+    private readonly prisma: PrismaService,
     private readonly achievementsService: AchievementsService,
   ) {}
 
   async getLinksForUser(userId: number): Promise<MerchLinks> {
-    const config = await this.merchConfigRepo.findOne({ where: { id: 1 } });
+    const config = await this.getConfig();
     const storeUrl = config?.storeUrl ?? null;
     if (!config?.foundingBearProductUrl) {
       return { storeUrl, foundingBearProductUrl: null };
     }
     const hasFoundingBear = await this.achievementsService.hasEarned(userId, FOUNDING_BEAR_KEY);
-    return { storeUrl, foundingBearProductUrl: hasFoundingBear ? config.foundingBearProductUrl : null };
+    return {
+      storeUrl,
+      foundingBearProductUrl: hasFoundingBear ? config.foundingBearProductUrl : null,
+    };
   }
 
-  async getConfig(): Promise<MerchConfigEntity | null> {
-    return this.merchConfigRepo.findOne({ where: { id: 1 } });
+  async getConfig(): Promise<MerchConfig | null> {
+    return this.prisma.merch_config.findUnique({ where: { id: 1 } });
   }
 
-  async updateConfig(dto: UpdateMerchConfigDto): Promise<MerchConfigEntity | null> {
-    const config = await this.merchConfigRepo.findOne({ where: { id: 1 } });
+  async updateConfig(dto: UpdateMerchConfigDto): Promise<MerchConfig | null> {
+    const config = await this.getConfig();
     if (!config) return null;
-    Object.assign(config, dto);
-    return this.merchConfigRepo.save(config);
+    return this.prisma.merch_config.update({ where: { id: 1 }, data: dto });
   }
 }
