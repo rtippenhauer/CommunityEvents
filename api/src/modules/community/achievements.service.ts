@@ -1,8 +1,14 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { $Enums } from '@prisma/client';
 import type { Prisma, achievements as Achievement } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { PointType, ProgressType } from '../../database/enums';
+
+// Declaration order of the progress_type ENUM, which is the order MySQL sorts
+// it in. Read from the generated client rather than hand-listed so it tracks
+// the schema automatically.
+const PROGRESS_TYPE_ORDER: string[] = Object.values($Enums.achievements_progress_type);
 
 // Independence Day week — the qualifying window for the Patriotic Bear achievement.
 // Starts a day earlier on stage so it can be tested without waiting for July 4.
@@ -457,29 +463,33 @@ export class AchievementsService {
     // so the response keeps its `earnedCount` key.
     //
     // The ordering is applied here rather than in SQL: it sorts by
-    // ISNULL(progressType) then progressType then ISNULL(progressTarget) then
-    // progressTarget then id, and Prisma cannot express the ISNULL terms.
-    // This is a fixed catalogue of a few dozen rows, so sorting in memory is
-    // cheap and reproduces the order exactly rather than approximating it.
+    // ISNULL(progressType), progressType, ISNULL(progressTarget),
+    // progressTarget, id, and Prisma cannot express the ISNULL terms. This is
+    // a fixed catalogue of a few dozen rows, so sorting in memory is cheap.
+    //
+    // progress_type is a MySQL ENUM, and MySQL orders enums by their
+    // DECLARATION order, not alphabetically -- 'coordinator' (declared 2nd)
+    // sorts before 'city_hopper' (7th). Comparing the strings instead would
+    // reorder the admin list. PROGRESS_TYPE_ORDER below is taken from Prisma's
+    // generated enum, whose member order mirrors the column definition, so the
+    // two cannot drift apart.
     const rows = await this.prisma.achievements.findMany({
       include: { _count: { select: { memberAchievements: true } } },
     });
 
     const nullsLast = (v: unknown): number => (v === null || v === undefined ? 1 : 0);
-    const compare = (a: unknown, b: unknown): number => {
-      if (a === b) return 0;
-      if (a === null || a === undefined) return 0;
-      if (b === null || b === undefined) return 0;
-      return a < b ? -1 : 1;
-    };
+    const enumRank = (v: string | null): number =>
+      v === null ? -1 : PROGRESS_TYPE_ORDER.indexOf(v);
+    const numeric = (a: number | null, b: number | null): number =>
+      a === null || b === null ? 0 : a - b;
 
     return rows
       .sort(
         (a, b) =>
           nullsLast(a.progressType) - nullsLast(b.progressType) ||
-          compare(a.progressType, b.progressType) ||
+          enumRank(a.progressType) - enumRank(b.progressType) ||
           nullsLast(a.progressTarget) - nullsLast(b.progressTarget) ||
-          compare(a.progressTarget, b.progressTarget) ||
+          numeric(a.progressTarget, b.progressTarget) ||
           a.id - b.id,
       )
       .map(({ _count, ...rest }) => ({ ...rest, earnedCount: _count.memberAchievements }));
