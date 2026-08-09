@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One generic image serves every instance (DinnerBears, Sons, …) — stage vs
-# prod is a runtime distinction (the IS_STAGE env var), so the stage tag is the
-# same production build as :latest, just a separately-promotable tag.
-IMAGE="rtippenhauer/community-events:stage"
+# Separate stage tag for the v2 rewrite (multi-tenant/Prisma), so v2
+# development doesn't clobber :stage — v1 dinnerbears keeps deploying from
+# :stage/:latest, untouched, until an actual 2.0 cutover repoints them.
+IMAGE="rtippenhauer/community-events:v2-stage"
 EXTRA_FLAGS=""
 START=$(date +%s)
 if [[ "${1:-}" == "--no-cache" ]]; then
