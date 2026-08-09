@@ -22,11 +22,14 @@ broader is not yet decided beyond what REQ-TENANT-01 specifies.
 
 ## V2 Rewrite Status
 
+**Current v2 work item:** none started yet — next up is `v2-1` (Prisma data
+layer, REQ-TENANT-01.3's first half). Run `/v2-start 1` to begin. See
+`V2_PHASES.md` for the full backlog and each item's Definition of Done.
+
 V2 is being defined through a sequence of requirements docs. Only one exists
-so far: **REQ-TENANT-01 — Tenant Foundation** (status: Draft, not yet
-implemented, not yet committed into `docs/`). It is the foundational doc
-everything else depends on and defines the conventions the rest of v2
-follows. Key decisions it locks in:
+so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft, not
+yet implemented). It is the foundational doc everything else depends on and
+defines the conventions the rest of v2 follows. Key decisions it locks in:
 
 - **Prisma replaces TypeORM entirely** (not incrementally) — `schema.prisma`
   becomes the single source of truth, TypeORM removed once Prisma is
@@ -54,13 +57,27 @@ follows. Key decisions it locks in:
 Required build order (data layer has to exist before there's anything to
 scope): Prisma swap → tenants table → domain resolution middleware →
 tenant-scoping Client Extension → bootstrap/runtime config split + user
-tenant scoping, in that order. Full detail lives in REQ-TENANT-01 itself
-once it's added to the repo.
+tenant scoping, in that order — tracked as `v2-1` through `v2-5` in
+`V2_PHASES.md`. Full requirement-level detail lives in
+`docs/REQ-TENANT-01.md`.
 
-Not yet decided/known: whether v1's phase numbering continues or restarts
-for v2, whether frontend framework/testing choices beyond "not Karma" are
-changing, and what domain scheme v2 tenants use (v1's per-city subdomain
-plan was already shelved — see the cookie-domain note further down).
+**Trunk structure (confirmed with Rob 2026-08-09):** v2 work merges straight
+into `main`, the same trunk v1 dinnerbears work lives on — this repo was
+created specifically for 2.0, so there's no separate long-lived `v2`
+integration branch. Practical consequence: once `v2-1` removes TypeORM,
+`main` stops being buildable as v1 dinnerbears. Rob's plan is that v1 is
+effectively frozen as of the v2 rewrite starting — `:stage`/`:latest` keep
+serving whatever they're already running, no further v1 releases are
+planned before 2.0 ships (see Versioning Workflow), and new v2 work uses its
+own `v2-stage` Docker tag so it never collides with those. If an urgent v1
+fix is ever needed after `v2-1` lands, that's a real problem to flag, not
+something to solve quietly — ask Rob rather than assuming a fix branch off
+old history is fine.
+
+Not yet decided/known: whether frontend framework/testing choices beyond
+"not Karma" are changing, and what domain scheme v2 tenants use (v1's
+per-city subdomain plan was already shelved — see the cookie-domain note
+further down). Branch/tag numbering *is* decided — see "Branching Workflow".
 
 ## Full Stack (v1 — current `main`)
 - **Frontend:** Angular 22, standalone components (NO NgModules), Angular Material (MDC), SCSS
@@ -78,16 +95,18 @@ plan was already shelved — see the cookie-domain note further down).
 CommunityEvents/
 ├── CLAUDE.md                  ← Root context file (Claude reads this first)
 ├── PHASES.md                  ← v1 phase breakdown with definitions of done
+├── V2_PHASES.md                ← v2 item breakdown with definitions of done
 ├── README.md                  ← Full setup instructions
 ├── .env.example               ← All required env vars documented
 ├── .gitignore
-├── .claude/                   ← Claude Code settings
+├── .claude/                   ← Claude Code settings (incl. /phase-* and /v2-* commands)
 ├── .vscode/                   ← VS Code settings
-├── docs/                      ← Requirements, schema, setup guides
+├── docs/                      ← Requirements (incl. REQ-TENANT-01.md), schema, setup guides
 ├── frontend/                  ← Angular app (v1: TypeORM-era)
 │   └── public/                ← Static assets and legacy placeholder pages
 ├── api/                       ← NestJS API (v1: TypeORM-era)
-└── docker/                    ← Docker Compose and NGINX config
+├── docker/                    ← Docker Compose and NGINX config
+└── scripts/                   ← publish-stage.sh/publish-latest.sh (v1) + publish-v2-stage.sh (v2)
 ```
 
 ## v1 History (through Phase 38)
@@ -156,7 +175,10 @@ Phase 22's `BREVO_WEBHOOK_SECRET` follow-up is fully closed as of 2026-07-18:
 updated — webhook events are confirmed flowing.
 
 ## Completed Phases (v1)
-Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38 ✓ — see PHASES.md for details. No v2 phases exist yet.
+Phases 1, 2, 3, 3.5, 4.1, 4.2, 4.3, 4.4, 4.6, 5, 5.5, 6, 7, 7.5, 7.6, 8, 9, 10, 10.5, 10.6, 11, 12, 13, 14, 15, 16, 16c, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38 ✓ — see PHASES.md for details.
+
+## Completed v2 Items
+None yet — see `V2_PHASES.md` for the backlog and status of each item.
 
 ## Angular Conventions (STRICT)
 Unchanged by REQ-TENANT-01 (it doesn't touch the frontend); apply to v2
@@ -250,9 +272,7 @@ Pushing a stage image never deploys it — the Unraid container has to be
 restarted by hand, every time.
 
 Branch naming: `phase-<number>-<kebab-case-slug>`, e.g.
-`phase-25-angular-19-22-upgrade`. This workflow is unchanged by the v2
-rewrite; whether v2 requirements docs map 1:1 to phases or v2 gets its own
-numbering scheme hasn't been decided yet.
+`phase-25-angular-19-22-upgrade`.
 
 Bug fixes and other ad hoc work that aren't tied to a phase still need a
 branch, not a direct commit to `main` — reuse the current phase's branch if
@@ -261,7 +281,41 @@ Since phase branches no longer stay open until `/release`, a bugfix branch
 merges into `main` on its own (same PR + real-merge-commit approach) once
 the fix is ready, rather than waiting to ride along with a phase merge.
 
+### v2 branching (separate scheme, same trunk)
+
+v2 requirements items are **not** numbered phases — they use their own
+`/v2-start` / `/v2-testing` / `/v2-done` trio, mirroring the phase commands
+exactly except for numbering, target docs, and Docker tag:
+
+| Command | Does | Touches `main`? |
+| --- | --- | --- |
+| `/v2-start <N>` | Cuts a `v2-<N>-<slug>` branch off `main` | No |
+| `/v2-testing <N>` | Pushes the **unmerged** branch to the `v2-stage` image + gives Rob testing notes | No |
+| `/v2-done <N>` | Docs (`V2_PHASES.md`, `docs/NEXT_RELEASE_V2.md`), tag `v2-<N>`, merge to `main`, re-stamp `v2-stage` | Yes |
+
+Branch naming: `v2-<number>-<kebab-case-slug>`, e.g. `v2-1-prisma-swap`.
+Tags: `v2-<number>`, not `phase-<N>`. Docker: `rtippenhauer/community-events:v2-stage`,
+never `:stage`/`:latest` — those stay v1's until an actual 2.0 cutover
+repoints them (see "V2 Rewrite Status" for why merging v2 work into `main`
+doesn't touch v1's deployed images in the meantime).
+
+`main` is shared trunk for both schemes — `/phase-start` and `/v2-start`
+both branch off it and both merge back into it. There's no rule yet for
+what happens if a v1 phase branch and a v2 item are in flight at the same
+time (not expected to come up, since v1 is effectively frozen — see "V2
+Rewrite Status" — but flag it to Rob rather than guessing if it does).
+
 ## Versioning Workflow
+
+**No v1 releases are planned before 2.0** (confirmed with Rob 2026-08-09) —
+`docs/NEXT_RELEASE.md` and the process below are effectively frozen at
+whatever they held when v2 work started. v2 work accumulates its own draft
+in `docs/NEXT_RELEASE_V2.md` via `/v2-done` instead. There is no `/v2-release`
+command yet; Rob will hand-trim `docs/NEXT_RELEASE_V2.md` into the real 2.0
+release copy when that cutover happens, likely by extending `/release` at
+that point rather than inventing a separate flow now. If Rob ever does ask
+for a v1 patch release before then, that's a deliberate exception worth
+double-checking with him, not something to infer is back to normal.
 
 `package.json` version and the public release version (`/admin/releases/new`,
 stored in the `releases` table) are separate. Version numbers only change via
