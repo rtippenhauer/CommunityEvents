@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { PrismaModule } from './database/prisma/prisma.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerAuditGuard } from './common/guards/throttler-audit.guard';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -40,6 +41,10 @@ import { AvatarsModule } from './modules/avatars/avatars.module';
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 60 }]),
     ScheduleModule.forRoot(),
+    // Global — every feature module can inject PrismaService without importing
+    // anything. TypeOrmModule below is still here only until the last
+    // repository call site is converted (v2-1); it is not the target state.
+    PrismaModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
