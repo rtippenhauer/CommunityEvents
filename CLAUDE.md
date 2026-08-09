@@ -34,28 +34,26 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** none started yet — next up is `v2-1` (Prisma data
-layer, REQ-TENANT-01.3's first half). Run `/v2-start 1` to begin. See
+**Current v2 work item:** `v2-1` (Prisma data layer, REQ-TENANT-01.3's first
+half), in progress on branch `v2-1-prisma-swap` as of 2026-08-09. See
 `V2_PHASES.md` for the full backlog and each item's Definition of Done.
 
-**Infra readiness (as of 2026-08-09, ahead of `v2-1` actually starting):**
+**Infra readiness (confirmed by Rob 2026-08-09, at `v2-1` start):**
 - A dedicated `communityevents` database + `communityevents_user` exist on
-  the Unraid MySQL server (192.168.2.241) — separate from `dinnerbears`, not
-  yet populated with any schema (no migrations run against it yet).
-- `rtippenhauer/community-events:v2-stage` has been pushed once already, as
-  a pipeline smoke test — it's today's inherited v1 code (commit `6e72d0a`),
-  not anything v2-1 produced. Expect this tag to be overwritten by the first
-  real `/v2-testing` run.
+  the Unraid MySQL server (192.168.2.241), separate from `dinnerbears`. The
+  v1-era migrations **have** been run against it, so it holds the full
+  inherited schema — this is `v2-1`'s introspection target, not an empty DB.
 - The Unraid container (`CommunityEvents-v2-Stage`, from
-  `docker/communityevents-v2-stage-unraid.xml`) has been stood up and its
-  migrations ran automatically on boot, seeding the usual `automation` role
-  user. **The human admin login (`INSTANCE_ADMIN_EMAIL`/`INSTANCE_ADMIN_PASSWORD`)
-  has not been confirmed created** — it requires a one-time
-  `docker exec CommunityEvents-v2-Stage node /app/dist/bootstrap.js`, which
-  was given to Rob but not confirmed run. Check this before assuming the
-  instance is usable.
-- `APP_URL`/DNS/reverse-proxy for this stage instance were still undecided
-  as of this note — confirm with Rob before assuming a domain is live.
+  `docker/communityevents-v2-stage-unraid.xml`) is up, migrations ran on
+  boot, and the one-time
+  `docker exec CommunityEvents-v2-Stage node /app/dist/bootstrap.js` has
+  been run — the human admin login exists and the instance is usable.
+- The stage instance is live and serving at
+  **https://communityevents.rtippenhauer.com**.
+- `rtippenhauer/community-events:v2-stage` has been pushed once already, as
+  a pipeline smoke test — it's the inherited v1 code (commit `6e72d0a`), not
+  anything v2-1 produced. Expect this tag to be overwritten by the first
+  real `/v2-testing` run.
 
 V2 is being defined through a sequence of requirements docs. Only one exists
 so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft, not
@@ -81,16 +79,21 @@ defines the conventions the rest of v2 follows. Key decisions it locks in:
   `DB_MODE`, DB connection details, `ROOT_TENANT_URL`. Everything else,
   including the existing `app_config` branding pattern, becomes
   tenant-aware runtime config.
-- **Testing stack changes**: Vitest + Supertest for unit/integration,
-  Playwright for e2e — replacing the inherited codebase's Jest (`api/`) and
-  Karma/Jasmine (`frontend/`).
+- **Testing stack changes** (REQ-TENANT-01.6, landed by `v2-2`): Vitest +
+  Supertest for unit/integration, Playwright for e2e — replacing the
+  inherited codebase's Jest (`api/`) and Karma/Jasmine (`frontend/`).
+  A full replacement like the Prisma swap, not a side-by-side migration.
 
-Required build order (data layer has to exist before there's anything to
-scope): Prisma swap → tenants table → domain resolution middleware →
-tenant-scoping Client Extension → bootstrap/runtime config split + user
-tenant scoping, in that order — tracked as `v2-1` through `v2-5` in
-`V2_PHASES.md`. Full requirement-level detail lives in
-`docs/REQ-TENANT-01.md`.
+Required build order (foundational tooling first, then the data layer —
+which has to exist before there's anything to scope): Prisma swap → testing
+stack swap → tenants table → domain resolution middleware → tenant-scoping
+Client Extension → bootstrap/runtime config split + user tenant scoping, in
+that order — tracked as `v2-1` through `v2-6` in `V2_PHASES.md`. The testing
+stack swap sits at `v2-2`, deliberately ahead of all tenant feature work, so
+tenant code is written against Vitest from the start rather than ported off
+Jest later (decided with Rob 2026-08-09; this shifted the old `v2-2`–`v2-5`
+each up by one, and no `v2-*` tags existed yet). Full requirement-level
+detail lives in `docs/REQ-TENANT-01.md`.
 
 Not yet decided/known: whether frontend framework/testing choices beyond
 "not Karma" are changing, and what domain scheme v2 tenants use (see the
@@ -109,7 +112,8 @@ target architecture.
 - **Push:** Web Push API with VAPID keys (@angular/pwa service worker)
 - **Proxy:** NGINX Proxy Manager (Docker)
 - **Containers:** Docker Compose — api and mysql have NO public ports
-- **Testing:** Jest (`api/`), Karma/Jasmine (`frontend/`)
+- **Testing:** Jest (`api/`), Karma/Jasmine (`frontend/`) — replaced by
+  Vitest/Supertest/Playwright in `v2-2`
 
 ## Repository Structure
 ```
@@ -150,7 +154,7 @@ frontend work unless/until a future requirements doc says otherwise.
   into the Prisma swap instead.
 - **Global prefix** `/api/v1` set in main.ts
 - **Never expose stack traces** — GlobalExceptionFilter handles all errors
-- **Tenant scoping is automatic, not manual** (from `v2-4` onward) — rely on
+- **Tenant scoping is automatic, not manual** (from `v2-5` onward) — rely on
   the Prisma Client Extension rather than adding `tenant_id` filters by
   hand in services once it exists
 
@@ -167,7 +171,7 @@ root tenant on first run if none exists. Once `schema.prisma` exists,
 keeping `docs/DATABASE_SCHEMA.md` in sync is a nice-to-have for human
 readability, not a correctness requirement.
 
-## Multi-Tenancy (from `v2-2` onward, per `docs/REQ-TENANT-01.md`)
+## Multi-Tenancy (from `v2-3` onward, per `docs/REQ-TENANT-01.md`)
 - `tenants` table: `id`, `slug`, `domain` (unique), `is_root`, `status`
   (active/suspended), `db_mode` (shared/dedicated — reserved, defaults
   shared), `created_at`. Exactly one tenant has `is_root = true`, matching
@@ -180,7 +184,7 @@ readability, not a correctness requirement.
 - Tenant scoping enforcement point is the Prisma Client Extension, not
   individual services or controllers.
 
-**Design note carried over from v1 (this needs an actual fix in `v2-2`/`v2-3`,
+**Design note carried over from v1 (this needs an actual fix in `v2-3`/`v2-4`,
 not another workaround):** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
 because `www` is genuinely the only public web host — the apex publishes MX
 only, no A record. The same value doubles as the auth cookie domain, which

@@ -9,8 +9,10 @@
 
 Establish the tenant data model, domain-based tenant resolution, and the
 Prisma data-access layer (replacing TypeORM) with tenant scoping built in
-from the start. This is the first requirements doc for Community Events and
-defines conventions the rest of the project follows.
+from the start, plus the testing stack (Vitest/Supertest/Playwright
+replacing Jest and Karma/Jasmine) that the rest of v2 is written against.
+This is the first requirements doc for Community Events and defines
+conventions the rest of the project follows.
 
 ## Background
 
@@ -32,15 +34,21 @@ to exist before tenant scoping has anything to scope:
    `@nestjs/typeorm` dependency once everything compiles against Prisma.
    Confirm this works end-to-end (app boots, existing queries run) before
    moving on.
-2. **REQ-TENANT-01.1** (tenants table) — add the table and seed the root
+2. **REQ-TENANT-01.6** (testing stack swap) — replace Jest and
+   Karma/Jasmine with Vitest + Supertest + Playwright before any tenant
+   feature work starts. Same class of task as the Prisma swap: foundational
+   tooling replacement that everything after it is written against. Doing
+   it here means tenant code is written under the target stack from its
+   first line, rather than being written against Jest and ported later.
+3. **REQ-TENANT-01.1** (tenants table) — add the table and seed the root
    tenant, now that Prisma is the working data layer.
-3. **REQ-TENANT-01.2** (domain resolution middleware) — build against the
+4. **REQ-TENANT-01.2** (domain resolution middleware) — build against the
    now-existing tenants table.
-4. **Tenant-scoping Client Extension** (part of REQ-TENANT-01.3, built
+5. **Tenant-scoping Client Extension** (part of REQ-TENANT-01.3, built
    last within that requirement) — add once the base Prisma setup and
    tenants table are both confirmed working; easier to verify scoping
    against a known-good baseline than to build both at once.
-5. **REQ-TENANT-01.4** (bootstrap vs. runtime config) and
+6. **REQ-TENANT-01.4** (bootstrap vs. runtime config) and
    **REQ-TENANT-01.5** (user tenant scoping) — last, since both depend on
    tenants existing and domain resolution working.
 
@@ -111,9 +119,32 @@ to exist before tenant scoping has anything to scope:
   requesting tenant's context — a user record is unique per
   `(tenant_id, email)`, not globally unique by email alone.
 
+### REQ-TENANT-01.6 — Testing stack replacement
+
+- Replace Jest (`api/`) and Karma/Jasmine (`frontend/`) with **Vitest** as
+  the single test runner across both workspaces. Like the Prisma swap, this
+  is a full replacement, not a side-by-side migration — Jest and
+  Karma/Jasmine dependencies and config are removed once the existing suites
+  pass under Vitest.
+- **Supertest** for API integration tests against the running Nest
+  application, replacing Jest's `@nestjs/testing` + Supertest pairing only
+  insofar as the runner changes; the Nest testing module itself stays.
+- **Playwright** replaces Karma's browser harness for e2e. Scaffold and
+  wire it into the repo here; per the testing requirements below there is
+  no standalone tenant e2e spec to write yet, so a smoke spec proving the
+  harness runs is sufficient for this step.
+- Existing inherited tests are ported, not deleted. If a given inherited
+  suite is too tied to Jest/Karma internals to port cheaply, it may be
+  dropped — but that has to be called out explicitly rather than done
+  silently, so the coverage loss is a decision and not an accident.
+- Sequenced immediately after the Prisma swap and before the `tenants`
+  table so that all tenant code — and its tests — is written against the
+  target stack from the start.
+
 ## Testing requirements
 
-Per the project's testing conventions (Vitest + Supertest + Playwright):
+Per the project's testing conventions (Vitest + Supertest + Playwright),
+established by REQ-TENANT-01.6 above:
 
 - **Unit (Vitest):** domain resolution logic (Host header parsing, `www.`
   normalization, unrecognized-domain handling), Prisma tenant-scoping
@@ -139,6 +170,9 @@ Per the project's testing conventions (Vitest + Supertest + Playwright):
 - Domain resolution middleware correctly resolves tenant from `Host` header
   for root domain, `www.` variant, and returns 404 for unrecognized domains
 - TypeORM fully removed; Prisma is the only data-access layer
+- Jest and Karma/Jasmine fully removed; Vitest is the only test runner,
+  Playwright is wired up and running, and inherited suites either pass under
+  Vitest or have had their removal explicitly called out
 - Tenant-scoping Prisma extension verified via integration test (cross-tenant
   data leakage impossible even with colliding IDs)
 - `users.tenant_id` enforced; duplicate email allowed across tenants, blocked
