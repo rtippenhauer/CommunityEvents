@@ -1,10 +1,9 @@
 # CommunityEvents v2 — Work Item Breakdown
 
-Mirrors `PHASES.md`'s role for v1, scoped to the v2 rewrite (multi-tenant,
-Prisma). Items are `v2-<N>`, cut via `/v2-start <N>`, not renumbered
-phases — see CLAUDE.md's "V2 Rewrite Status" for why v1 phase numbering
-(1–38) doesn't continue here. v1 phase work still uses `/phase-start` etc.
-against `PHASES.md` unchanged.
+Plays the same role `PHASES.md` plays in the old (v1) repo, scoped to the v2
+rewrite (multi-tenant, Prisma) in this repo. Items are `v2-<N>`, cut via
+`/v2-start <N>` — this repo doesn't continue v1's phase numbering (1–38) or
+carry its phase tooling; see CLAUDE.md's intro for why.
 
 Backlog below is seeded from `docs/REQ-TENANT-01.md`'s required build
 order (data layer has to exist before there's anything to scope). Update

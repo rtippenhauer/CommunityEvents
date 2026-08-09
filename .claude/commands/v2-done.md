@@ -1,11 +1,12 @@
 v2 item $ARGUMENTS is complete.
 
-This is the v2-rewrite counterpart to `/phase-done` — same mechanics, but
-writes to v2's own tracking files (`V2_PHASES.md`, `docs/NEXT_RELEASE_V2.md`)
-instead of v1's (`PHASES.md`, `docs/NEXT_RELEASE.md`), and publishes to the
-`v2-stage` Docker tag instead of `stage`. `main` is still the shared trunk —
-merging here is the same real-merge-commit-into-`main` flow `/phase-done`
-uses, confirmed with Rob (v2 doesn't get its own long-lived branch).
+This is this repo's only "wrap up and merge" command — v1's `/phase-done`
+lives in the old repo and doesn't apply here (see CLAUDE.md's intro). It
+writes to this repo's own tracking files (`V2_PHASES.md`,
+`docs/NEXT_RELEASE_V2.md`) and publishes to the `v2-stage` Docker tag only.
+Merging is a real merge commit into `main` — confirmed with Rob that v2
+doesn't get its own long-lived integration branch, since this repo is
+already dedicated to v2.
 
 0. Confirm the current branch is this item's branch (`v2-$ARGUMENTS-*`), not
    `main`. If somehow on `main`, stop and ask Rob before committing anything.
@@ -24,14 +25,14 @@ uses, confirmed with Rob (v2 doesn't get its own long-lived branch).
    down by hand into the real 2.0 release notes at cutover.
 
 2. Update CLAUDE.md:
-   - Move the current item to a "Completed v2 Items" line (collapsed, same
-     style as v1's "Completed Phases" line) under "V2 Rewrite Status"
-   - Update "Current v2 Work Item" to the next item with a one-sentence
-     summary, or "none — see V2_PHASES.md for the backlog" if nothing's
-     queued
-   - Do not touch v1 sections (stack, conventions, DB rules, "Current
-     Development Phase", "Completed Phases") — those are `/phase-done`'s
-     territory, not this command's
+   - Move the current item into the "Completed v2 Items" section
+   - Update "Current v2 Work Item" (under "V2 Rewrite Status") to the next
+     item with a one-sentence summary, or "none — see V2_PHASES.md for the
+     backlog" if nothing's queued
+   - If this item changed the stack/conventions/DB rules (e.g. `v2-1`
+     landing Prisma), update the relevant sections ("Inherited Stack",
+     "NestJS Conventions", "Database") to reflect the new reality instead of
+     describing it as still-pending
 
 3. Update `V2_PHASES.md`:
    - Mark the finished item's status "Complete"
@@ -61,9 +62,9 @@ uses, confirmed with Rob (v2 doesn't get its own long-lived branch).
      branch if it wasn't already removed: `git branch -d <branch>`
 
 8. Build and push the v2 stage image: `bash scripts/publish-v2-stage.sh`.
-   This updates the `v2-stage` tag on Docker Hub only — never `:stage` or
-   `:latest`, which stay exactly as v1 dinnerbears left them until an actual
-   2.0 cutover.
+   This updates the `v2-stage` tag on Docker Hub only — this repo has no
+   script capable of touching `:stage`/`:latest`, and that's intentional
+   (those belong to the old repo's v1 pipeline).
 
    If `/v2-testing` already pushed this item to `v2-stage`, this is a
    re-stamp, not a second deploy: the merge commit is now `main`'s HEAD, and

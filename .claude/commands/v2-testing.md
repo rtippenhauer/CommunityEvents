@@ -1,10 +1,9 @@
 v2 item $ARGUMENTS is ready for testing on the v2 stage image.
 
-This is the v2-rewrite counterpart to `/phase-testing` — same mechanics, but
-targets a **separate Docker tag**: `rtippenhauer/community-events:v2-stage`,
-never `:stage` or `:latest`. Those two keep serving v1 dinnerbears exactly as
-they do today; nothing in this command touches them. There is no v2 prod tag
-yet — that only happens at the actual 2.0 cutover.
+This command targets a **separate Docker tag**: `rtippenhauer/community-events:v2-stage`,
+never `:stage` or `:latest` — those belong to the old repo's v1 deploy
+pipeline and this repo must never touch them (see CLAUDE.md's intro).
+There is no v2 prod tag yet — that only happens at the actual 2.0 cutover.
 
 This is the step *before* `/v2-done`: it puts the item's code on the v2 stage
 image so Rob can exercise it for real, while the branch is still unmerged and
@@ -47,10 +46,9 @@ are `/v2-done`'s job, and they only run once v2-stage looks right.
    This updates the `v2-stage` tag on Docker Hub only. The image is stamped
    with the branch's HEAD commit, which is what the app footer displays.
 
-   Same memory caveat as `/phase-testing`: if the build dies at the frontend
-   step with a bare `exit code 1` and no Angular error above it, suspect an
-   OOM kill before the code. Confirm with `docker info | grep -i "total
-   memory"`, stop the test DB, retry.
+   If the build dies at the frontend step with a bare `exit code 1` and no
+   Angular error above it, suspect an OOM kill before the code. Confirm with
+   `docker info | grep -i "total memory"`, stop the test DB, retry.
 
 4. Verify the pushed image is what you think it is:
    `docker run --rm --entrypoint sh rtippenhauer/community-events:v2-stage -c 'echo $GIT_COMMIT'`
@@ -70,5 +68,4 @@ are `/v2-done`'s job, and they only run once v2-stage looks right.
 
 Fixes for anything found during testing go on the same branch, then re-run
 `/v2-testing` to push an updated image. Run `/v2-done` only once Rob confirms
-v2-stage looks right — it merges into `main`, the same trunk v1 dinnerbears
-work still lives on.
+v2-stage looks right — it merges into `main`, the point of no return.
