@@ -1,12 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
-import { DataSource, Not, Repository } from 'typeorm';
-import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { UserEntity, UserRole, UserStatus, EmailStatus } from '../../database/entities/user.entity';
-import { OAuthAccountEntity } from '../../database/entities/oauth-account.entity';
-import { LoginSessionEntity } from '../../database/entities/login-session.entity';
-import { PushSubscriptionEntity } from '../../database/entities/push-subscription.entity';
+import type { users as User } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
@@ -14,40 +11,61 @@ import { EmailTemplate } from '../email/email.constants';
 import { AvatarsService } from '../avatars/avatars.service';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
 
+// Shape of the raw findMembers rows. MySQL returns the computed columns as
+// strings or numbers depending on the driver, so the mapper below coerces
+// rather than trusting them.
+interface MemberRow {
+  id: number;
+  fullName: string;
+  profilePhotoPath: string | null;
+  selectedTitle: string | null;
+  cityId: number | null;
+  cityName: string | null;
+  joinedAt: Date;
+  isNew: number;
+  invitedById: number | null;
+  invitedByName: string | null;
+  invitedByPhoto: string | null;
+  totalPoints: string | number | null;
+  role?: string;
+  status?: string;
+  facebookId?: string | null;
+  facebookProfileUrl?: string | null;
+  googleEmail?: string | null;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
-    @InjectRepository(OAuthAccountEntity)
-    private readonly oauthRepo: Repository<OAuthAccountEntity>,
-    @InjectRepository(LoginSessionEntity)
-    private readonly sessionRepo: Repository<LoginSessionEntity>,
-    @InjectRepository(PushSubscriptionEntity)
-    private readonly pushRepo: Repository<PushSubscriptionEntity>,
-    @InjectDataSource()
-    private readonly dataSource: DataSource,
+    private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
     private readonly avatarsService: AvatarsService,
   ) {}
 
   async findById(id: number) {
-    const user = await this.userRepo.findOne({ where: { id }, relations: ['city'] });
+    const user = await this.prisma.users.findUnique({
+      where: { id },
+      include: { city: true },
+    });
     if (!user) throw new NotFoundException('User not found');
     return stripUserSecrets(user);
   }
 
-  async updateProfile(user: UserEntity, dto: UpdateProfileDto) {
-    if (dto.fullName) user.fullName = dto.fullName;
-    if (dto.cityId) user.cityId = dto.cityId;
-    if (dto.profilePhotoPath === null) user.profilePhotoPath = null;
-    const saved = await this.userRepo.save(user);
+  async updateProfile(user: User, dto: UpdateProfileDto) {
+    const saved = await this.prisma.users.update({
+      where: { id: user.id },
+      data: {
+        ...(dto.fullName ? { fullName: dto.fullName } : {}),
+        ...(dto.cityId ? { cityId: dto.cityId } : {}),
+        ...(dto.profilePhotoPath === null ? { profilePhotoPath: null } : {}),
+      },
+    });
     return stripUserSecrets(saved);
   }
 
   async updatePhotoPath(userId: number, path: string): Promise<void> {
-    await this.userRepo.update(userId, { profilePhotoPath: path });
+    await this.prisma.users.update({ where: { id: userId }, data: { profilePhotoPath: path } });
   }
 
   async setAvatar(userId: number, avatarPath: string): Promise<{ url: string }> {
@@ -57,12 +75,15 @@ export class UsersService {
     if (!(await this.avatarsService.pathExists(avatarPath))) {
       throw new BadRequestException('Unknown avatar');
     }
-    await this.userRepo.update(userId, { profilePhotoPath: avatarPath });
+    await this.prisma.users.update({
+      where: { id: userId },
+      data: { profilePhotoPath: avatarPath },
+    });
     return { url: avatarPath };
   }
 
   async updateEmailStatus(userId: number, status: EmailStatus): Promise<void> {
-    await this.userRepo.update(userId, { emailStatus: status });
+    await this.prisma.users.update({ where: { id: userId }, data: { emailStatus: status } });
   }
 
   async findMembers(viewerRole: UserRole, sort: 'newest' | 'alpha' = 'newest'): Promise<object[]> {
@@ -70,49 +91,59 @@ export class UsersService {
     const isElevated = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
     const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
-    const qb = this.userRepo
-      .createQueryBuilder('u')
-      .leftJoin(UserEntity, 'inviter', 'inviter.id = u.invited_by')
-      .leftJoin('u.city', 'city')
-      .select([
-        'u.id AS id',
-        'u.full_name AS fullName',
-        'u.profile_photo_path AS profilePhotoPath',
-        'u.selected_title AS selectedTitle',
-        'u.city_id AS cityId',
-        'city.name AS cityName',
-        'u.created_at AS joinedAt',
-        `IF(u.created_at >= :twa, 1, 0) AS isNew`,
-        'u.invited_by AS invitedById',
-        'inviter.full_name AS invitedByName',
-        'inviter.profile_photo_path AS invitedByPhoto',
-        '(SELECT COALESCE(SUM(mp.points), 0) FROM member_points mp WHERE mp.user_id = u.id) AS totalPoints',
-        ...(isElevated ? ['u.role AS role', 'u.status AS status'] : []),
-      ])
-      .where(isElevated ? 'u.status != :deleted' : 'u.status = :active', {
-        deleted: UserStatus.DELETED,
-        active: UserStatus.ACTIVE,
-      })
-      .andWhere('u.role != :automationRole', { automationRole: UserRole.AUTOMATION })
-      .setParameter('twa', twoWeeksAgo);
+    // Kept as SQL rather than rebuilt with the query API. It carries a
+    // correlated subquery for the points total, a MySQL IF() for the isNew
+    // flag, and two conditional self-joins on oauth_accounts -- none of which
+    // Prisma expresses without either several extra round trips or computing
+    // in Node what the database already computes in one pass.
+    //
+    // The joins and select list are assembled the same way the query builder
+    // assembled them, and every value is still bound as a parameter.
+    const elevatedColumns = isElevated
+      ? `,
+        u.role AS role,
+        u.status AS status,
+        fb.provider_id AS facebookId,
+        fb.profile_url AS facebookProfileUrl,
+        gg.email AS googleEmail`
+      : '';
 
-    if (sort === 'alpha') {
-      qb.orderBy('u.full_name', 'ASC');
-    } else {
-      qb.orderBy('u.created_at', 'DESC').addOrderBy('u.full_name', 'ASC');
-    }
+    const elevatedJoins = isElevated
+      ? `
+      LEFT JOIN oauth_accounts fb ON fb.user_id = u.id AND fb.provider = 'facebook'
+      LEFT JOIN oauth_accounts gg ON gg.user_id = u.id AND gg.provider = 'google'`
+      : '';
 
-    if (isElevated) {
-      qb.leftJoin(OAuthAccountEntity, 'fb', "fb.userId = u.id AND fb.provider = 'facebook'")
-        .leftJoin(OAuthAccountEntity, 'gg', "gg.userId = u.id AND gg.provider = 'google'")
-        .addSelect([
-          'fb.providerId AS facebookId',
-          'fb.profileUrl AS facebookProfileUrl',
-          'gg.email AS googleEmail',
-        ]);
-    }
+    const orderBy =
+      sort === 'alpha' ? 'u.full_name ASC' : 'u.created_at DESC, u.full_name ASC';
 
-    const rows = await qb.getRawMany();
+    const statusClause = isElevated ? 'u.status != ?' : 'u.status = ?';
+    const statusValue = isElevated ? UserStatus.DELETED : UserStatus.ACTIVE;
+
+    const rows = await this.prisma.$queryRawUnsafe<MemberRow[]>(
+      `SELECT
+        u.id AS id,
+        u.full_name AS fullName,
+        u.profile_photo_path AS profilePhotoPath,
+        u.selected_title AS selectedTitle,
+        u.city_id AS cityId,
+        city.name AS cityName,
+        u.created_at AS joinedAt,
+        IF(u.created_at >= ?, 1, 0) AS isNew,
+        u.invited_by AS invitedById,
+        inviter.full_name AS invitedByName,
+        inviter.profile_photo_path AS invitedByPhoto,
+        (SELECT COALESCE(SUM(mp.points), 0) FROM member_points mp WHERE mp.user_id = u.id)
+          AS totalPoints${elevatedColumns}
+      FROM users u
+      LEFT JOIN users inviter ON inviter.id = u.invited_by
+      LEFT JOIN cities city ON city.id = u.city_id${elevatedJoins}
+      WHERE ${statusClause} AND u.role != ?
+      ORDER BY ${orderBy}`,
+      twoWeeksAgo,
+      statusValue,
+      UserRole.AUTOMATION,
+    );
 
     return rows.map((r) => ({
       id: r.id,
@@ -146,7 +177,10 @@ export class UsersService {
       throw new ForbiddenException('Member profiles are not available to non-validated accounts');
     }
 
-    const user = await this.userRepo.findOne({ where: { id }, relations: ['city'] });
+    const user = await this.prisma.users.findUnique({
+      where: { id },
+      include: { city: true },
+    });
     if (!user || user.status === UserStatus.DELETED) throw new NotFoundException('Member not found');
 
     const isElevated = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
@@ -154,7 +188,7 @@ export class UsersService {
 
     let invitedByInfo: { id: number; fullName: string; profilePhotoPath: string | null } | null = null;
     if (user.invitedBy) {
-      const inviter = await this.userRepo.findOne({ where: { id: user.invitedBy } });
+      const inviter = await this.prisma.users.findUnique({ where: { id: user.invitedBy } });
       if (inviter) {
         invitedByInfo = { id: inviter.id, fullName: inviter.fullName, profilePhotoPath: inviter.profilePhotoPath };
       }
@@ -162,10 +196,10 @@ export class UsersService {
 
     let invitedMembers: Array<{ id: number; fullName: string; profilePhotoPath: string | null }> = [];
     if (isSelf || isElevated) {
-      const members = await this.userRepo.find({
-        where: { invitedBy: id, status: Not(UserStatus.DELETED) },
-        select: ['id', 'fullName', 'profilePhotoPath'],
-        order: { createdAt: 'ASC' },
+      const members = await this.prisma.users.findMany({
+        where: { invitedBy: id, status: { not: UserStatus.DELETED } },
+        select: { id: true, fullName: true, profilePhotoPath: true },
+        orderBy: { createdAt: 'asc' },
       });
       invitedMembers = members.map((m) => ({
         id: m.id,
@@ -178,7 +212,7 @@ export class UsersService {
     let facebookProfileUrl: string | null = null;
     let googleEmail: string | null = null;
     if (isElevated) {
-      const oauthAccounts = await this.oauthRepo.find({ where: { userId: id } });
+      const oauthAccounts = await this.prisma.oauth_accounts.findMany({ where: { userId: id } });
       const fb = oauthAccounts.find((a) => a.provider === 'facebook');
       const gg = oauthAccounts.find((a) => a.provider === 'google');
       hasFacebook = !!fb;
@@ -214,22 +248,24 @@ export class UsersService {
   }
 
   async validateMember(targetId: number): Promise<{ message: string }> {
-    const user = await this.userRepo.findOne({ where: { id: targetId } });
+    const user = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.role !== UserRole.NON_VALIDATED) {
       return { message: 'User is already validated' };
     }
-    await this.userRepo.update(targetId, { role: UserRole.MEMBER });
+    await this.prisma.users.update({ where: { id: targetId }, data: { role: UserRole.MEMBER } });
     return { message: 'Member validated successfully' };
   }
 
   // REQ-DEL-04 — soft-delete the calling user's own account
-  async softDeleteSelf(user: UserEntity): Promise<void> {
+  async softDeleteSelf(user: User): Promise<void> {
     if (user.role === UserRole.ADMIN) {
       throw new ForbiddenException('Admin accounts cannot be self-deleted.');
     }
 
-    const linkedProviders = await this.oauthRepo.find({ where: { userId: user.id } });
+    const linkedProviders = await this.prisma.oauth_accounts.findMany({
+      where: { userId: user.id },
+    });
     const providerNames = linkedProviders.map((p) => p.provider);
 
     const hardDeleteAt = new Date();
@@ -247,28 +283,34 @@ export class UsersService {
       }
     }
 
-    await this.dataSource.transaction(async (em) => {
-      await em.update(UserEntity, user.id, {
-        status: UserStatus.DELETED,
-        deletedAt: new Date(),
-        hardDeleteAt,
-        fullName: 'Deleted Member',
-        email: `deleted-${user.id}@deleted.dinnerbears.com`,
-        passwordHash: null,
-        profilePhotoPath: null,
+    await this.prisma.$transaction(async (tx) => {
+      await tx.users.update({
+        where: { id: user.id },
+        data: {
+          status: UserStatus.DELETED,
+          deletedAt: new Date(),
+          hardDeleteAt,
+          fullName: 'Deleted Member',
+          email: `deleted-${user.id}@deleted.dinnerbears.com`,
+          passwordHash: null,
+          profilePhotoPath: null,
+        },
       });
-      await em.delete(OAuthAccountEntity, { userId: user.id });
-      await em.delete(LoginSessionEntity, { userId: user.id });
-      await em.delete(PushSubscriptionEntity, { userId: user.id });
-      // Cancel RSVPs on upcoming events
-      await em.query(
+      await tx.oauth_accounts.deleteMany({ where: { userId: user.id } });
+      await tx.login_sessions.deleteMany({ where: { userId: user.id } });
+      await tx.push_subscriptions.deleteMany({ where: { userId: user.id } });
+      // Cancel RSVPs on upcoming events. Kept as raw SQL: CURDATE() is
+      // evaluated by the database, and expressing this as a nested relation
+      // filter would need the cutoff computed in Node, which reintroduces the
+      // server-vs-database clock difference the original avoided.
+      await tx.$executeRawUnsafe(
         `DELETE FROM event_rsvps WHERE user_id = ? AND event_id IN (SELECT id FROM events WHERE event_date >= CURDATE())`,
-        [user.id],
+        user.id,
       );
       // Revoke event invite links they created for upcoming events
-      await em.query(
+      await tx.$executeRawUnsafe(
         `UPDATE invites SET is_revoked = 1 WHERE created_by = ? AND type = 'event_invite' AND event_id IN (SELECT id FROM events WHERE event_date >= CURDATE())`,
-        [user.id],
+        user.id,
       );
     });
 
