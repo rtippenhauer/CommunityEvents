@@ -71,4 +71,23 @@
   <Config Name="Is Stage" Target="IS_STAGE" Default="true" Mode="" Description="true for this container — flags the UI as a stage build. Must be paired with NODE_ENV=production, not 'staging'" Type="Variable" Display="always" Required="true" Mask="false">true</Config>
 
   <Config Name="App Data" Target="/app/uploads" Default="/mnt/user/appdata/communityevents-v2-stage/uploads" Mode="rw" Description="Persistent storage for uploaded photos and files — separate path from v1's dinnerbears/uploads" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/communityevents-v2-stage/uploads</Config>
+
+  <!-- One-time instance bootstrap (api/src/bootstrap.ts). Not read by the app
+       itself at boot — only by `docker exec <container> node /app/dist/bootstrap.js`,
+       run once by hand after the container is up and migrations have completed.
+       Baking these in as container env vars means that command needs no -e
+       flags: docker exec inherits the container's own environment. Re-running
+       is a safe no-op (idempotent upserts) unless real members already exist,
+       in which case it refuses unless INSTANCE_BOOTSTRAP_FORCE=true. -->
+  <Config Name="Instance City Name" Target="INSTANCE_CITY_NAME" Default="" Mode="" Description="Required for bootstrap. Your region/community name, e.g. 'Southwest Ohio' — bootstrap.ts exits with an error if this is unset when you run it" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Instance City Subdomain" Target="INSTANCE_CITY_SUBDOMAIN" Default="" Mode="" Description="Optional — defaults to a slug of Instance City Name" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Brand Name" Target="INSTANCE_BRAND_NAME" Default="" Mode="" Description="Optional — leave unset to keep editing later in Admin → Site Settings" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Brand Tagline" Target="INSTANCE_BRAND_TAGLINE" Default="" Mode="" Description="Optional" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Theme Primary" Target="INSTANCE_THEME_PRIMARY" Default="" Mode="" Description="Optional, #RRGGBB" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Theme Accent" Target="INSTANCE_THEME_ACCENT" Default="" Mode="" Description="Optional, #RRGGBB" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Theme Background" Target="INSTANCE_THEME_BACKGROUND" Default="" Mode="" Description="Optional, #RRGGBB" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Admin Email" Target="INSTANCE_ADMIN_EMAIL" Default="" Mode="" Description="Required for bootstrap. Your login for this instance's first admin account" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Instance Admin Name" Target="INSTANCE_ADMIN_NAME" Default="" Mode="" Description="Optional — defaults to 'Admin'" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Admin Password" Target="INSTANCE_ADMIN_PASSWORD" Default="" Mode="" Description="Required for bootstrap. Password for the first admin sign-in — pick your own, don't reuse a real credential for a stage instance" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Instance Bootstrap Force" Target="INSTANCE_BOOTSTRAP_FORCE" Default="false" Mode="" Description="Leave false. Only set true to re-run bootstrap against a database that already has real members — normally you want the safety refusal" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
 </Container>
