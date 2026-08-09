@@ -10,10 +10,11 @@
 // rewriting every call site in the same change would make the TypeORM removal
 // impossible to review. Renames, if wanted, are a separate follow-up via @@map.
 //
-// NOTE: the `migrations` model is TypeORM's own bookkeeping table, captured by
-// introspection because it exists in the database. It becomes vestigial once
-// TypeORM is gone (Prisma tracks its own state in `_prisma_migrations`) and
-// should be dropped in a migration, not queried.
+// TypeORM's own `migrations` bookkeeping table is deliberately absent. It came
+// back from introspection because it existed in the database that was pulled,
+// but v2 starts from a blank database with the schema owned by a single Prisma
+// migration, so there is no TypeORM history to record and Prisma tracks its
+// own state in `_prisma_migrations`.
 
 generator client {
   provider = "prisma-client-js"
@@ -592,11 +593,6 @@ model merch_config {
   updated_at                DateTime @default(now()) @db.DateTime(0)
 }
 
-model migrations {
-  id        Int    @id @default(autoincrement())
-  timestamp BigInt
-  name      String @db.VarChar(255)
-}
 
 model notification_preferences {
   id                      Int      @id @default(autoincrement()) @db.UnsignedInt

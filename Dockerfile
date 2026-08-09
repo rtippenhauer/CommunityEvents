@@ -14,6 +14,10 @@ COPY api/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --fetch-timeout=120000
 COPY api/ .
 COPY docs/NEXT_RELEASE.md ./release-notes/_draft.md
+# Generate the Prisma client. This cannot ride on npm install's postinstall
+# hook: node_modules is installed from package*.json alone, before prisma/
+# is copied in, so there is no schema to generate from at that point.
+RUN npx prisma generate
 RUN npm run build
 RUN npm prune --omit=dev
 
@@ -39,6 +43,12 @@ WORKDIR /app
 COPY --from=api-build /app/dist ./dist
 COPY --from=api-build /app/node_modules ./node_modules
 COPY --from=api-build /app/package.json ./package.json
+# Prisma needs its schema, migration history and config at RUNTIME, not only
+# at build time: the entrypoint runs `prisma migrate deploy` on every start.
+# prisma.config.ts is excluded from the TypeScript build (including it would
+# shift the dist/ layout), so it ships as source for the Prisma CLI to load.
+COPY --from=api-build /app/prisma ./prisma
+COPY --from=api-build /app/prisma.config.ts ./prisma.config.ts
 COPY --from=api-build /app/release-notes ./release-notes
 
 # Angular static files → nginx webroot

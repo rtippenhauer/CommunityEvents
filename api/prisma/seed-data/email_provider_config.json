@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "brevo_enabled": true,
+    "resend_overflow_enabled": false,
+    "brevo_daily_limit": 300,
+    "resend_daily_limit": 500,
+    "brevo_sent_today": 0,
+    "resend_sent_today": 0,
+    "brevo_api_key": null,
+    "brevo_from_email": null,
+    "brevo_from_name": null,
+    "resend_api_key": null,
+    "resend_from_email": null,
+    "resend_from_name": null,
+    "tmpl_invite": null,
+    "tmpl_security_alert": null,
+    "tmpl_event_published": null,
+    "tmpl_rsvp_confirmation": null,
+    "tmpl_event_reminder": null,
+    "tmpl_account_deletion": null,
+    "tmpl_reengagement_60": null,
+    "tmpl_reengagement_90": null,
+    "tmpl_guest_rsvp_confirmation": null,
+    "tmpl_email_verification": null,
+    "tmpl_password_reset": null,
+    "tmpl_provider_disconnected": null,
+    "tmpl_account_deleted": null,
+    "last_reset_date": "2026-08-09T00:00:00.000Z",
+    "updated_at": "2026-08-09T16:29:51.000Z"
+  }
+]

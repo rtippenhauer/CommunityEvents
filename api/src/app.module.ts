@@ -55,9 +55,11 @@ import { AvatarsModule } from './modules/avatars/avatars.module';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         entities: [__dirname + '/database/entities/*.entity{.ts,.js}'],
-        migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
+        // No migrations here any more: Prisma owns the schema. TypeORM is
+        // kept only as a query layer for the call sites still being converted,
+        // and must never touch DDL again -- pointing it at the old migration
+        // files would have it try to rebuild tables Prisma just created.
         synchronize: false,
-        migrationsRun: true,
         retryAttempts: 3,
         retryDelay: 3000,
         // Keep the connection pool alive so MySQL's wait_timeout doesn't

@@ -1,8 +1,9 @@
 /**
  * One-time instance bootstrap for a fresh white-label fork.
  *
- * Run AFTER migrations (`npm run migration:run`) on a brand-new database. It
- * turns the migration-seeded DinnerBears defaults into this operator's own
+ * Run AFTER migrations (`npm run prisma:deploy`) and the seed (`npm run seed`)
+ * on a brand-new database. It turns the seeded DinnerBears defaults into this
+ * operator's own
  * single-region instance: one active city, their branding, an email-provider
  * config row, and a first admin who can sign in with email + password.
  *
@@ -30,10 +31,24 @@
  * (compiled here rather than under src/scripts, which the build excludes, so
  * `node dist/bootstrap.js` is available in the devDep-pruned production image.)
  */
-import 'reflect-metadata';
+import * as path from 'node:path';
 import * as bcrypt from 'bcrypt';
-import dataSource from './database/data-source';
-import type { QueryRunner } from 'typeorm';
+import * as dotenv from 'dotenv';
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
+import { Prisma, PrismaClient } from '@prisma/client';
+
+// Previously inherited from data-source.ts, which loaded this on import. This
+// script runs standalone (not through Nest), so nothing else populates env.
+dotenv.config({ path: path.join(__dirname, '../../.env') });
+
+/**
+ * The statements below are deliberately left as raw SQL rather than rewritten
+ * as Prisma model calls. They lean on MySQL-specific behaviour Prisma has no
+ * direct equivalent for -- ON DUPLICATE KEY UPDATE, INSERT IGNORE, CURDATE(),
+ * conditional multi-row deletes -- and this is one-time provisioning code, not
+ * a hot path. Every one is parameterised; none interpolates user input.
+ */
+type SqlExecutor = Prisma.TransactionClient | PrismaClient;
 
 const BCRYPT_ROUNDS = 12;
 
@@ -55,17 +70,19 @@ function slugify(input: string): string {
 }
 
 async function upsertSiteSetting(
-  qr: QueryRunner,
+  tx: SqlExecutor,
   key: string,
   value: string | undefined,
   description: string,
 ): Promise<void> {
   if (value === undefined || value === '') return; // leave the migration default in place
-  await qr.query(
+  await tx.$executeRawUnsafe(
     `INSERT INTO app_config (config_key, config_value, description)
      VALUES (?, ?, ?)
      ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)`,
-    [key, value, description],
+    key,
+    value,
+    description,
   );
   console.log(`  • ${key} = ${value}`);
 }
@@ -78,15 +95,22 @@ async function main(): Promise<void> {
   const adminPassword = requireEnv('INSTANCE_ADMIN_PASSWORD');
   const force = process.env.INSTANCE_BOOTSTRAP_FORCE === 'true';
 
-  await dataSource.initialize();
-  const qr = dataSource.createQueryRunner();
-  await qr.connect();
+  const prisma = new PrismaClient({
+    adapter: new PrismaMariaDb({
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT ?? 3306),
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      timezone: 'Z',
+    }),
+  });
 
   try {
     // ── Guardrail ───────────────────────────────────────────────────────────
-    const [{ n }] = (await qr.query(
+    const [{ n }] = await prisma.$queryRawUnsafe<[{ n: number }]>(
       `SELECT COUNT(*) AS n FROM users WHERE role <> 'automation'`,
-    )) as [{ n: number }];
+    );
     if (Number(n) > 0 && !force) {
       console.error(
         `✗ This database already has ${n} non-automation user(s). Refusing to ` +
@@ -97,43 +121,50 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    await qr.startTransaction();
+    // One interactive transaction: everything below commits together or not
+    // at all, and throwing rolls back without an explicit rollback call.
+    await prisma.$transaction(async (tx) => {
 
     // ── City: one active city for this single-region instance ───────────────
     console.log(`\nCity:`);
-    await qr.query(
+    await tx.$executeRawUnsafe(
       `INSERT INTO cities (name, subdomain, is_active)
        VALUES (?, ?, 1)
        ON DUPLICATE KEY UPDATE name = VALUES(name), is_active = 1`,
-      [cityName, citySubdomain],
-    );
-    const [cityRow] = (await qr.query(`SELECT id FROM cities WHERE subdomain = ?`, [
+      cityName,
       citySubdomain,
-    ])) as [{ id: number }];
+    );
+    const [cityRow] = await tx.$queryRawUnsafe<[{ id: number }]>(
+      `SELECT id FROM cities WHERE subdomain = ?`,
+      citySubdomain,
+    );
     const cityId = cityRow.id;
     // Deactivate any other cities (e.g. the seeded Cincinnati/Dayton defaults)
     // so the single-city UX + root-domain fallback kick in. Deactivated, not
     // deleted, to keep any existing FK references (e.g. the automation user)
     // valid.
-    const deactivated = (await qr.query(`UPDATE cities SET is_active = 0 WHERE id <> ?`, [
+    // $executeRawUnsafe returns the affected-row count directly, where TypeORM
+    // handed back a ResultSetHeader to read .affectedRows from.
+    const deactivated = await tx.$executeRawUnsafe(
+      `UPDATE cities SET is_active = 0 WHERE id <> ?`,
       cityId,
-    ])) as { affectedRows?: number };
+    );
     console.log(`  • ${cityName} (${citySubdomain}) → active [id ${cityId}]`);
-    if (deactivated.affectedRows) {
-      console.log(`  • deactivated ${deactivated.affectedRows} other city row(s)`);
+    if (deactivated) {
+      console.log(`  • deactivated ${deactivated} other city row(s)`);
     }
 
     // ── Branding (only overrides values the operator provided) ──────────────
     console.log(`\nBranding:`);
-    await upsertSiteSetting(qr, 'brand_name', process.env.INSTANCE_BRAND_NAME?.trim(),
+    await upsertSiteSetting(tx, 'brand_name', process.env.INSTANCE_BRAND_NAME?.trim(),
       'App name shown in nav, footer, and page titles');
-    await upsertSiteSetting(qr, 'brand_tagline', process.env.INSTANCE_BRAND_TAGLINE?.trim(),
+    await upsertSiteSetting(tx, 'brand_tagline', process.env.INSTANCE_BRAND_TAGLINE?.trim(),
       'Short tagline shown on the login page and footer');
-    await upsertSiteSetting(qr, 'theme_color_primary', process.env.INSTANCE_THEME_PRIMARY?.trim(),
+    await upsertSiteSetting(tx, 'theme_color_primary', process.env.INSTANCE_THEME_PRIMARY?.trim(),
       'Primary brand color (buttons, links, accents)');
-    await upsertSiteSetting(qr, 'theme_color_accent', process.env.INSTANCE_THEME_ACCENT?.trim(),
+    await upsertSiteSetting(tx, 'theme_color_accent', process.env.INSTANCE_THEME_ACCENT?.trim(),
       'Secondary accent color');
-    await upsertSiteSetting(qr, 'theme_color_background', process.env.INSTANCE_THEME_BACKGROUND?.trim(),
+    await upsertSiteSetting(tx, 'theme_color_background', process.env.INSTANCE_THEME_BACKGROUND?.trim(),
       'Page background color');
 
     // ── Avatars: clear the seeded DinnerBears bear set ──────────────────────
@@ -141,17 +172,17 @@ async function main(): Promise<void> {
     // unchanged, but a fresh fork (esp. a non-bear group) shouldn't inherit
     // them — it uploads its own set in /admin/avatars. Only removes the static
     // bear defaults, never any avatars this instance already uploaded.
-    const clearedAvatars = (await qr.query(
+    const clearedAvatars = await tx.$executeRawUnsafe(
       `DELETE FROM avatar WHERE path LIKE '/avatars/bear-%'`,
-    )) as { affectedRows?: number };
-    if (clearedAvatars.affectedRows) {
-      console.log(`\nAvatars:\n  • cleared ${clearedAvatars.affectedRows} default bear avatar(s)`);
+    );
+    if (clearedAvatars) {
+      console.log(`\nAvatars:\n  • cleared ${clearedAvatars} default bear avatar(s)`);
     }
 
     // Clear DinnerBears' seeded home-page story image + hero copy so a fresh
     // fork shows its own (or the generic branded fallback) rather than
     // DinnerBears' map and "weekly dinners" wording.
-    await qr.query(
+    await tx.$executeRawUnsafe(
       `UPDATE app_config SET config_value = ''
        WHERE config_key IN ('brand_story_url', 'home_hero_html', 'home_howitworks_html')`,
     );
@@ -161,17 +192,17 @@ async function main(): Promise<void> {
     // DELETEd, not blanked — getSiteSetting only falls back to the default on a
     // missing row, so an empty value would leave the UI with no term at all.
     // The operator renames them afterwards in /admin/settings → Terminology.
-    const clearedTerms = (await qr.query(
+    const clearedTerms = await tx.$executeRawUnsafe(
       `DELETE FROM app_config
        WHERE config_key IN ('term_location_singular', 'term_location_plural',
          'term_dinner_singular', 'term_dinner_plural', 'term_points')`,
-    )) as { affectedRows?: number };
-    if (clearedTerms.affectedRows) {
-      console.log(`  • cleared ${clearedTerms.affectedRows} seeded terminology row(s)`);
+    );
+    if (clearedTerms) {
+      console.log(`  • cleared ${clearedTerms} seeded terminology row(s)`);
     }
 
     // ── Email provider config (leave an existing configured row untouched) ──
-    await qr.query(
+    await tx.$executeRawUnsafe(
       `INSERT IGNORE INTO email_provider_config
          (id, brevo_enabled, resend_overflow_enabled, brevo_daily_limit,
           resend_daily_limit, brevo_sent_today, resend_sent_today, last_reset_date)
@@ -180,34 +211,34 @@ async function main(): Promise<void> {
 
     // ── First admin (email + password) ──────────────────────────────────────
     console.log(`\nAdmin:`);
-    const [existing] = (await qr.query(`SELECT id FROM users WHERE email = ?`, [adminEmail])) as [
-      { id: number } | undefined,
-    ];
+    const [existing] = await tx.$queryRawUnsafe<({ id: number } | undefined)[]>(
+      `SELECT id FROM users WHERE email = ?`,
+      adminEmail,
+    );
     if (existing) {
-      await qr.query(
+      await tx.$executeRawUnsafe(
         `UPDATE users SET role = 'admin', status = 'active' WHERE id = ?`,
-        [existing.id],
+        existing.id,
       );
       console.log(`  • ${adminEmail} already existed → ensured admin role (password unchanged)`);
     } else {
       const hash = await bcrypt.hash(adminPassword, BCRYPT_ROUNDS);
-      await qr.query(
+      await tx.$executeRawUnsafe(
         `INSERT INTO users
            (full_name, email, email_status, email_verified_at, password_hash, city_id, role, status)
          VALUES (?, ?, 'active', NOW(), ?, ?, 'admin', 'active')`,
-        [adminName, adminEmail, hash, cityId],
+        adminName,
+        adminEmail,
+        hash,
+        cityId,
       );
       console.log(`  • created admin ${adminEmail}`);
     }
+    });
 
-    await qr.commitTransaction();
     console.log(`\n✓ Bootstrap complete. Sign in at your instance with ${adminEmail}.`);
-  } catch (err) {
-    if (qr.isTransactionActive) await qr.rollbackTransaction();
-    throw err;
   } finally {
-    await qr.release();
-    await dataSource.destroy();
+    await prisma.$disconnect();
   }
 }
 
