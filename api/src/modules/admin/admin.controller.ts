@@ -12,12 +12,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { AdminService, AuditLogFilter } from './admin.service';
 import { EmailService } from '../email/email.service';
 import { EmailDispatcherService } from '../email/email-dispatcher.service';
-import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
+import { PrismaService } from '../../database/prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -34,8 +32,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly emailService: EmailService,
     private readonly emailDispatcher: EmailDispatcherService,
-    @InjectRepository(EmailProviderConfigEntity)
-    private readonly providerConfigRepo: Repository<EmailProviderConfigEntity>,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('users')
@@ -159,16 +156,17 @@ export class AdminController {
   @Get('email/config')
   @Roles(UserRole.ADMIN)
   async getEmailConfig() {
-    return this.providerConfigRepo.findOne({ where: { id: 1 } });
+    return this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
   }
 
   @Patch('email/config')
   @Roles(UserRole.ADMIN)
   async updateEmailConfig(@Body() body: UpdateEmailConfigDto) {
-    const config = await this.providerConfigRepo.findOne({ where: { id: 1 } });
+    const config = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
     if (!config) return;
-    Object.assign(config, body);
-    return this.providerConfigRepo.save(config);
+    // Patch from the DTO rather than mutating the loaded row and saving it
+    // back, so only the fields the request actually sent are written.
+    return this.prisma.email_provider_config.update({ where: { id: 1 }, data: body });
   }
 
   @Post('email/flush')
