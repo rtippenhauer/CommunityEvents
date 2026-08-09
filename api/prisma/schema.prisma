@@ -5,10 +5,24 @@
 // exists today, not a redesign. Tenant scoping (tenant_id columns, the tenants
 // table) arrives in v2-3 and later; do not add it here ahead of those items.
 //
-// Model and field names are the raw database names (snake_case, plural) rather
-// than idiomatic Prisma ones. That is deliberate for v2-1: renaming models and
-// rewriting every call site in the same change would make the TypeORM removal
-// impossible to review. Renames, if wanted, are a separate follow-up via @@map.
+// Scalar fields are camelCase with @map to their snake_case columns. This is
+// not cosmetic: controllers return records straight to the client, so a field
+// name here IS the JSON key the Angular frontend consumes. Introspection named
+// them after the columns (is_active, created_at), which would have quietly
+// reshaped every API response the moment a service moved onto Prisma. The
+// names now match the TypeORM entity properties one for one, verified across
+// all 37 entities.
+//
+// That includes reproducing the entities' own inconsistencies -- announcements
+// exposes the created_by column as `createdBy` while events, locations and
+// event_guest_links expose it as `createdById`. Normalising those would be a
+// breaking API change disguised as a cleanup, so the schema matches what each
+// entity actually returns.
+//
+// Model names are left as the raw table names (snake_case, plural). Those are
+// only ever used in code (prisma.event_rsvps), never serialised, so renaming
+// them buys nothing here and would touch every call site in the same change
+// that removes TypeORM.
 //
 // TypeORM's own `migrations` bookkeeping table is deliberately absent. It came
 // back from introspection because it existed in the database that was pulled,
@@ -30,92 +44,92 @@ model achievements {
   name                String                      @db.VarChar(120)
   description         String                      @db.VarChar(500)
   icon                String                      @default("emoji_events") @db.VarChar(255)
-  image_path          String?                     @db.VarChar(500)
-  progress_type       achievements_progress_type?
-  progress_target     Int?                        @db.UnsignedInt
-  event_id            Int?                        @db.UnsignedInt
+  imagePath          String?                     @db.VarChar(500) @map("image_path")
+  progressType       achievements_progress_type? @map("progress_type")
+  progressTarget     Int?                        @db.UnsignedInt @map("progress_target")
+  eventId            Int?                        @db.UnsignedInt @map("event_id")
   points              Int                         @default(0) @db.TinyInt
   title               String?                     @db.VarChar(100)
-  is_secret           Boolean                     @default(false)
-  created_at          DateTime                    @default(now()) @db.DateTime(0)
-  events              events?                     @relation(fields: [event_id], references: [id], onUpdate: NoAction, map: "fk_achievements_event")
+  isSecret           Boolean                     @default(false) @map("is_secret")
+  createdAt          DateTime                    @default(now()) @db.DateTime(0) @map("created_at")
+  events              events?                     @relation(fields: [eventId], references: [id], onUpdate: NoAction, map: "fk_achievements_event")
   member_achievements member_achievements[]
 
-  @@index([event_id], map: "fk_achievements_event")
+  @@index([eventId], map: "fk_achievements_event")
 }
 
 model announcement_comments {
   id              Int           @id @default(autoincrement()) @db.UnsignedInt
-  announcement_id Int           @db.UnsignedInt
-  user_id         Int           @db.UnsignedInt
+  announcementId Int           @db.UnsignedInt @map("announcement_id")
+  userId         Int           @db.UnsignedInt @map("user_id")
   body            String        @db.Text
-  edited_at       DateTime?     @db.DateTime(0)
-  created_at      DateTime      @default(now()) @db.DateTime(0)
-  deleted_at      DateTime?     @db.DateTime(0)
-  announcements   announcements @relation(fields: [announcement_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ann_comment_ann")
-  users           users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ann_comment_user")
+  editedAt       DateTime?     @db.DateTime(0) @map("edited_at")
+  createdAt      DateTime      @default(now()) @db.DateTime(0) @map("created_at")
+  deletedAt      DateTime?     @db.DateTime(0) @map("deleted_at")
+  announcements   announcements @relation(fields: [announcementId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ann_comment_ann")
+  users           users         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ann_comment_user")
 
-  @@index([announcement_id], map: "fk_ann_comment_ann")
-  @@index([user_id], map: "fk_ann_comment_user")
+  @@index([announcementId], map: "fk_ann_comment_ann")
+  @@index([userId], map: "fk_ann_comment_user")
 }
 
 model announcements {
   id                                                   Int                     @id @default(autoincrement()) @db.UnsignedInt
   title                                                String                  @db.VarChar(200)
   body                                                 String                  @db.LongText
-  city_id                                              Int?                    @db.UnsignedInt
+  cityId                                              Int?                    @db.UnsignedInt @map("city_id")
   status                                               announcements_status    @default(draft)
-  published_at                                         DateTime?               @db.DateTime(0)
-  created_by                                           Int                     @db.UnsignedInt
-  created_at                                           DateTime                @default(now()) @db.DateTime(0)
-  updated_at                                           DateTime                @default(now()) @db.DateTime(0)
+  publishedAt                                         DateTime?               @db.DateTime(0) @map("published_at")
+  createdBy                                           Int                     @db.UnsignedInt @map("created_by")
+  createdAt                                           DateTime                @default(now()) @db.DateTime(0) @map("created_at")
+  updatedAt                                           DateTime                @default(now()) @db.DateTime(0) @map("updated_at")
   announcement_comments                                announcement_comments[]
-  users_announcements_created_byTousers                users                   @relation("announcements_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ann_author")
-  cities                                               cities?                 @relation(fields: [city_id], references: [id], onUpdate: NoAction, map: "fk_ann_city")
+  users_announcements_created_byTousers                users                   @relation("announcements_created_byTousers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ann_author")
+  cities                                               cities?                 @relation(fields: [cityId], references: [id], onUpdate: NoAction, map: "fk_ann_city")
   users_users_last_seen_announcement_idToannouncements users[]                 @relation("users_last_seen_announcement_idToannouncements")
 
-  @@index([created_by], map: "fk_ann_author")
-  @@index([city_id], map: "fk_ann_city")
+  @@index([createdBy], map: "fk_ann_author")
+  @@index([cityId], map: "fk_ann_city")
 }
 
 model app_config {
   id           Int      @id @default(autoincrement()) @db.UnsignedInt
-  config_key   String   @unique(map: "uq_config_key") @db.VarChar(100)
-  config_value String   @db.Text
+  configKey   String   @unique(map: "uq_config_key") @db.VarChar(100) @map("config_key")
+  configValue String   @db.Text @map("config_value")
   description  String?  @db.VarChar(500)
-  updated_by   Int?     @db.UnsignedInt
-  updated_at   DateTime @default(now()) @db.DateTime(0)
+  updatedBy   Int?     @db.UnsignedInt @map("updated_by")
+  updatedAt   DateTime @default(now()) @db.DateTime(0) @map("updated_at")
 }
 
 model audit_log {
   id          Int      @id @default(autoincrement()) @db.UnsignedInt
-  user_id     Int?     @db.UnsignedInt
+  userId     Int?     @db.UnsignedInt @map("user_id")
   action      String   @db.VarChar(100)
-  entity_type String?  @db.VarChar(100)
-  entity_id   Int?     @db.UnsignedInt
+  entityType String?  @db.VarChar(100) @map("entity_type")
+  entityId   Int?     @db.UnsignedInt @map("entity_id")
   metadata    Json?
-  ip_address  String?  @db.VarChar(45)
-  created_at  DateTime @default(now()) @db.DateTime(0)
+  ipAddress  String?  @db.VarChar(45) @map("ip_address")
+  createdAt  DateTime @default(now()) @db.DateTime(0) @map("created_at")
 
   @@index([action], map: "idx_action")
-  @@index([created_at], map: "idx_created")
-  @@index([user_id], map: "idx_user")
+  @@index([createdAt], map: "idx_created")
+  @@index([userId], map: "idx_user")
 }
 
 model avatar {
   id         Int      @id @default(autoincrement()) @db.UnsignedInt
   path       String   @unique(map: "uq_avatar_path") @db.VarChar(500)
   label      String   @db.VarChar(100)
-  sort_order Int      @default(0)
-  created_at DateTime @default(now()) @db.DateTime(6)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @db.DateTime(6) @map("created_at")
 }
 
 model cities {
   id                    Int                     @id @default(autoincrement()) @db.UnsignedInt
   name                  String                  @db.VarChar(100)
   subdomain             String                  @unique(map: "uq_subdomain") @db.VarChar(50)
-  is_active             Boolean                 @default(true)
-  created_at            DateTime                @default(now()) @db.DateTime(0)
+  isActive             Boolean                 @default(true) @map("is_active")
+  createdAt            DateTime                @default(now()) @db.DateTime(0) @map("created_at")
   announcements         announcements[]
   events                events[]
   facebook_group_config facebook_group_config[]
@@ -126,386 +140,386 @@ model cities {
 
 model content_flags {
   id                                     Int                        @id @default(autoincrement()) @db.UnsignedInt
-  content_type                           content_flags_content_type
-  content_id                             Int                        @db.UnsignedInt
-  reported_by                            Int                        @db.UnsignedInt
+  contentType                           content_flags_content_type @map("content_type")
+  contentId                             Int                        @db.UnsignedInt @map("content_id")
+  reportedBy                            Int                        @db.UnsignedInt @map("reported_by")
   reason                                 String?                    @db.VarChar(500)
   status                                 content_flags_status       @default(pending)
-  reviewed_by                            Int?                       @db.UnsignedInt
-  reviewed_at                            DateTime?                  @db.DateTime(0)
-  created_at                             DateTime                   @default(now()) @db.DateTime(0)
-  users_content_flags_reported_byTousers users                      @relation("content_flags_reported_byTousers", fields: [reported_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_flag_reporter")
-  users_content_flags_reviewed_byTousers users?                     @relation("content_flags_reviewed_byTousers", fields: [reviewed_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_flag_reviewer")
+  reviewedBy                            Int?                       @db.UnsignedInt @map("reviewed_by")
+  reviewedAt                            DateTime?                  @db.DateTime(0) @map("reviewed_at")
+  createdAt                             DateTime                   @default(now()) @db.DateTime(0) @map("created_at")
+  users_content_flags_reported_byTousers users                      @relation("content_flags_reported_byTousers", fields: [reportedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_flag_reporter")
+  users_content_flags_reviewed_byTousers users?                     @relation("content_flags_reviewed_byTousers", fields: [reviewedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_flag_reviewer")
 
-  @@unique([content_type, content_id, reported_by], map: "uq_flag")
-  @@index([reported_by], map: "fk_flag_reporter")
-  @@index([reviewed_by], map: "fk_flag_reviewer")
+  @@unique([contentType, contentId, reportedBy], map: "uq_flag")
+  @@index([reportedBy], map: "fk_flag_reporter")
+  @@index([reviewedBy], map: "fk_flag_reviewer")
 }
 
 model content_reports {
   id                                       Int                          @id @default(autoincrement()) @db.UnsignedInt
-  reporter_id                              Int                          @db.UnsignedInt
-  content_type                             content_reports_content_type
-  content_id                               Int                          @db.UnsignedInt
+  reporterId                              Int                          @db.UnsignedInt @map("reporter_id")
+  contentType                             content_reports_content_type @map("content_type")
+  contentId                               Int                          @db.UnsignedInt @map("content_id")
   reason                                   String?                      @db.VarChar(500)
   status                                   content_reports_status       @default(pending)
-  reviewed_by                              Int?                         @db.UnsignedInt
-  reviewed_at                              DateTime?                    @db.DateTime(0)
-  created_at                               DateTime                     @default(now()) @db.DateTime(0)
-  users_content_reports_reporter_idTousers users                        @relation("content_reports_reporter_idTousers", fields: [reporter_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_report_reporter")
-  users_content_reports_reviewed_byTousers users?                       @relation("content_reports_reviewed_byTousers", fields: [reviewed_by], references: [id], onUpdate: NoAction, map: "FK_report_reviewer")
+  reviewedBy                              Int?                         @db.UnsignedInt @map("reviewed_by")
+  reviewedAt                              DateTime?                    @db.DateTime(0) @map("reviewed_at")
+  createdAt                               DateTime                     @default(now()) @db.DateTime(0) @map("created_at")
+  users_content_reports_reporter_idTousers users                        @relation("content_reports_reporter_idTousers", fields: [reporterId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_report_reporter")
+  users_content_reports_reviewed_byTousers users?                       @relation("content_reports_reviewed_byTousers", fields: [reviewedBy], references: [id], onUpdate: NoAction, map: "FK_report_reviewer")
 
-  @@unique([reporter_id, content_type, content_id], map: "UQ_report_per_member")
-  @@index([reviewed_by], map: "FK_report_reviewer")
+  @@unique([reporterId, contentType, contentId], map: "UQ_report_per_member")
+  @@index([reviewedBy], map: "FK_report_reviewer")
   @@index([status], map: "IDX_report_status")
 }
 
 model custom_icons {
   id         Int      @id @default(autoincrement()) @db.UnsignedInt
   name       String   @db.VarChar(100)
-  image_path String   @db.VarChar(500)
-  created_by Int?     @db.UnsignedInt
-  created_at DateTime @default(now()) @db.DateTime(0)
-  users      users?   @relation(fields: [created_by], references: [id], onUpdate: NoAction, map: "fk_custom_icons_created_by")
+  imagePath String   @db.VarChar(500) @map("image_path")
+  createdBy Int?     @db.UnsignedInt @map("created_by")
+  createdAt DateTime @default(now()) @db.DateTime(0) @map("created_at")
+  users      users?   @relation(fields: [createdBy], references: [id], onUpdate: NoAction, map: "fk_custom_icons_created_by")
 
-  @@index([created_by], map: "fk_custom_icons_created_by")
+  @@index([createdBy], map: "fk_custom_icons_created_by")
 }
 
 model email_provider_config {
   id                           Int      @id @default(autoincrement()) @db.UnsignedInt
-  brevo_enabled                Boolean  @default(true)
-  resend_overflow_enabled      Boolean  @default(false)
-  brevo_daily_limit            Int      @default(300)
-  resend_daily_limit           Int      @default(1000)
-  brevo_sent_today             Int      @default(0)
-  resend_sent_today            Int      @default(0)
-  brevo_api_key                String?  @db.VarChar(500)
-  brevo_from_email             String?  @db.VarChar(255)
-  brevo_from_name              String?  @db.VarChar(200)
-  resend_api_key               String?  @db.VarChar(500)
-  resend_from_email            String?  @db.VarChar(255)
-  resend_from_name             String?  @db.VarChar(200)
-  tmpl_invite                  Int?     @db.UnsignedInt
-  tmpl_security_alert          Int?     @db.UnsignedInt
-  tmpl_event_published         Int?     @db.UnsignedInt
-  tmpl_rsvp_confirmation       Int?     @db.UnsignedInt
-  tmpl_event_reminder          Int?     @db.UnsignedInt
-  tmpl_account_deletion        Int?     @db.UnsignedInt
-  tmpl_reengagement_60         Int?     @db.UnsignedInt
-  tmpl_reengagement_90         Int?     @db.UnsignedInt
-  tmpl_guest_rsvp_confirmation Int?     @db.UnsignedInt
-  tmpl_email_verification      Int?     @db.UnsignedInt
-  tmpl_password_reset          Int?     @db.UnsignedInt
-  tmpl_provider_disconnected   Int?     @db.UnsignedInt
-  tmpl_account_deleted         Int?     @db.UnsignedInt
-  last_reset_date              DateTime @db.Date
-  updated_at                   DateTime @default(now()) @db.DateTime(0)
+  brevoEnabled                Boolean  @default(true) @map("brevo_enabled")
+  resendOverflowEnabled      Boolean  @default(false) @map("resend_overflow_enabled")
+  brevoDailyLimit            Int      @default(300) @map("brevo_daily_limit")
+  resendDailyLimit           Int      @default(1000) @map("resend_daily_limit")
+  brevoSentToday             Int      @default(0) @map("brevo_sent_today")
+  resendSentToday            Int      @default(0) @map("resend_sent_today")
+  brevoApiKey                String?  @db.VarChar(500) @map("brevo_api_key")
+  brevoFromEmail             String?  @db.VarChar(255) @map("brevo_from_email")
+  brevoFromName              String?  @db.VarChar(200) @map("brevo_from_name")
+  resendApiKey               String?  @db.VarChar(500) @map("resend_api_key")
+  resendFromEmail            String?  @db.VarChar(255) @map("resend_from_email")
+  resendFromName             String?  @db.VarChar(200) @map("resend_from_name")
+  tmplInvite                  Int?     @db.UnsignedInt @map("tmpl_invite")
+  tmplSecurityAlert          Int?     @db.UnsignedInt @map("tmpl_security_alert")
+  tmplEventPublished         Int?     @db.UnsignedInt @map("tmpl_event_published")
+  tmplRsvpConfirmation       Int?     @db.UnsignedInt @map("tmpl_rsvp_confirmation")
+  tmplEventReminder          Int?     @db.UnsignedInt @map("tmpl_event_reminder")
+  tmplAccountDeletion        Int?     @db.UnsignedInt @map("tmpl_account_deletion")
+  tmplReengagement60         Int?     @db.UnsignedInt @map("tmpl_reengagement_60")
+  tmplReengagement90         Int?     @db.UnsignedInt @map("tmpl_reengagement_90")
+  tmplGuestRsvpConfirmation Int?     @db.UnsignedInt @map("tmpl_guest_rsvp_confirmation")
+  tmplEmailVerification      Int?     @db.UnsignedInt @map("tmpl_email_verification")
+  tmplPasswordReset          Int?     @db.UnsignedInt @map("tmpl_password_reset")
+  tmplProviderDisconnected   Int?     @db.UnsignedInt @map("tmpl_provider_disconnected")
+  tmplAccountDeleted         Int?     @db.UnsignedInt @map("tmpl_account_deleted")
+  lastResetDate              DateTime @db.Date @map("last_reset_date")
+  updatedAt                   DateTime @default(now()) @db.DateTime(0) @map("updated_at")
 }
 
 model email_queue {
   id              Int                   @id @default(autoincrement()) @db.UnsignedInt
-  to_email        String                @db.VarChar(255)
-  to_name         String?               @db.VarChar(200)
+  toEmail        String                @db.VarChar(255) @map("to_email")
+  toName         String?               @db.VarChar(200) @map("to_name")
   subject         String                @db.VarChar(500)
-  template_id     String?               @db.VarChar(100)
-  template_params Json?
-  html_body       String?               @db.LongText
-  text_body       String?               @db.Text
+  templateId     String?               @db.VarChar(100) @map("template_id")
+  templateParams Json? @map("template_params")
+  htmlBody       String?               @db.LongText @map("html_body")
+  textBody       String?               @db.Text @map("text_body")
   priority        Int                   @default(5) @db.TinyInt
   status          email_queue_status    @default(pending)
   provider        email_queue_provider?
   attempts        Int                   @default(0)
-  last_attempt_at DateTime?             @db.DateTime(0)
-  error_message   String?               @db.Text
-  brevo_status    String?               @db.VarChar(100)
-  send_after      DateTime?             @db.DateTime(0)
-  created_at      DateTime              @default(now()) @db.DateTime(0)
-  sent_at         DateTime?             @db.DateTime(0)
+  lastAttemptAt DateTime?             @db.DateTime(0) @map("last_attempt_at")
+  errorMessage   String?               @db.Text @map("error_message")
+  brevoStatus    String?               @db.VarChar(100) @map("brevo_status")
+  sendAfter      DateTime?             @db.DateTime(0) @map("send_after")
+  createdAt      DateTime              @default(now()) @db.DateTime(0) @map("created_at")
+  sentAt         DateTime?             @db.DateTime(0) @map("sent_at")
 
-  @@index([send_after], map: "idx_send_after")
+  @@index([sendAfter], map: "idx_send_after")
   @@index([status, priority], map: "idx_status_priority")
 }
 
 model email_suppressions {
   id         Int                       @id @default(autoincrement()) @db.UnsignedInt
-  email_hash String                    @unique(map: "uq_email_hash") @db.VarChar(255)
+  emailHash String                    @unique(map: "uq_email_hash") @db.VarChar(255) @map("email_hash")
   reason     email_suppressions_reason
-  created_at DateTime                  @default(now()) @db.DateTime(0)
+  createdAt DateTime                  @default(now()) @db.DateTime(0) @map("created_at")
 }
 
 model event_comment_replies {
   id             Int            @id @default(autoincrement()) @db.UnsignedInt
-  comment_id     Int            @db.UnsignedInt
-  member_id      Int            @db.UnsignedInt
+  commentId     Int            @db.UnsignedInt @map("comment_id")
+  memberId      Int            @db.UnsignedInt @map("member_id")
   body           String         @db.Text
-  edited_at      DateTime?      @db.DateTime(0)
-  created_at     DateTime       @default(now()) @db.DateTime(0)
-  deleted_at     DateTime?      @db.DateTime(0)
-  event_comments event_comments @relation(fields: [comment_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ecr_comment")
-  users          users          @relation(fields: [member_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ecr_member")
+  editedAt      DateTime?      @db.DateTime(0) @map("edited_at")
+  createdAt     DateTime       @default(now()) @db.DateTime(0) @map("created_at")
+  deletedAt     DateTime?      @db.DateTime(0) @map("deleted_at")
+  event_comments event_comments @relation(fields: [commentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ecr_comment")
+  users          users          @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ecr_member")
 
-  @@index([comment_id], map: "idx_ecr_comment")
-  @@index([member_id], map: "idx_ecr_member")
+  @@index([commentId], map: "idx_ecr_comment")
+  @@index([memberId], map: "idx_ecr_member")
 }
 
 model event_comments {
   id                    Int                     @id @default(autoincrement()) @db.UnsignedInt
-  event_id              Int                     @db.UnsignedInt
-  member_id             Int                     @db.UnsignedInt
+  eventId              Int                     @db.UnsignedInt @map("event_id")
+  memberId             Int                     @db.UnsignedInt @map("member_id")
   body                  String                  @db.Text
-  edited_at             DateTime?               @db.DateTime(0)
-  created_at            DateTime                @default(now()) @db.DateTime(0)
-  deleted_at            DateTime?               @db.DateTime(0)
+  editedAt             DateTime?               @db.DateTime(0) @map("edited_at")
+  createdAt            DateTime                @default(now()) @db.DateTime(0) @map("created_at")
+  deletedAt            DateTime?               @db.DateTime(0) @map("deleted_at")
   event_comment_replies event_comment_replies[]
-  events                events                  @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ec_event")
-  users                 users                   @relation(fields: [member_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ec_member")
+  events                events                  @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ec_event")
+  users                 users                   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ec_member")
 
-  @@index([event_id], map: "idx_ec_event")
-  @@index([member_id], map: "idx_ec_member")
+  @@index([eventId], map: "idx_ec_event")
+  @@index([memberId], map: "idx_ec_member")
 }
 
 model event_guest_links {
   id              Int                             @id @default(autoincrement()) @db.UnsignedInt
-  event_id        Int                             @db.UnsignedInt
-  created_by      Int?                            @db.UnsignedInt
-  member_rsvp_id  Int?                            @db.UnsignedInt
-  delivery_type   event_guest_links_delivery_type @default(shareable)
+  eventId        Int                             @db.UnsignedInt @map("event_id")
+  createdById      Int?                            @db.UnsignedInt @map("created_by")
+  memberRsvpId  Int?                            @db.UnsignedInt @map("member_rsvp_id")
+  deliveryType   event_guest_links_delivery_type @default(shareable) @map("delivery_type")
   source          event_guest_links_source        @default(member)
-  recipient_name  String?                         @db.VarChar(200)
-  recipient_email String?                         @db.VarChar(255)
+  recipientName  String?                         @db.VarChar(200) @map("recipient_name")
+  recipientEmail String?                         @db.VarChar(255) @map("recipient_email")
   token           String                          @unique(map: "uq_token") @db.VarChar(100)
-  expires_at      DateTime                        @db.DateTime(0)
-  used_at         DateTime?                       @db.DateTime(0)
-  cancelled_at    DateTime?                       @db.DateTime(0)
+  expiresAt      DateTime                        @db.DateTime(0) @map("expires_at")
+  usedAt         DateTime?                       @db.DateTime(0) @map("used_at")
+  cancelledAt    DateTime?                       @db.DateTime(0) @map("cancelled_at")
   attended        Boolean?
-  created_at      DateTime                        @default(now()) @db.DateTime(0)
-  events          events                          @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_event")
-  event_rsvps     event_rsvps?                    @relation(fields: [member_rsvp_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_rsvp")
-  users           users?                          @relation(fields: [created_by], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_user")
+  createdAt      DateTime                        @default(now()) @db.DateTime(0) @map("created_at")
+  events          events                          @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_event")
+  event_rsvps     event_rsvps?                    @relation(fields: [memberRsvpId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_rsvp")
+  users           users?                          @relation(fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_guestlink_user")
 
-  @@index([created_by], map: "idx_created_by")
-  @@index([event_id], map: "idx_event")
-  @@index([member_rsvp_id], map: "idx_rsvp")
+  @@index([createdById], map: "idx_created_by")
+  @@index([eventId], map: "idx_event")
+  @@index([memberRsvpId], map: "idx_rsvp")
 }
 
 model event_rsvps {
   id                Int                 @id @default(autoincrement()) @db.UnsignedInt
-  event_id          Int                 @db.UnsignedInt
-  user_id           Int                 @db.UnsignedInt
-  additional_guests Int                 @default(0) @db.UnsignedTinyInt
-  guest_names       Json?
-  bringing_item     String?             @db.VarChar(200)
-  created_at        DateTime            @default(now()) @db.DateTime(0)
-  updated_at        DateTime            @default(now()) @db.DateTime(0)
+  eventId          Int                 @db.UnsignedInt @map("event_id")
+  userId           Int                 @db.UnsignedInt @map("user_id")
+  additionalGuests Int                 @default(0) @db.UnsignedTinyInt @map("additional_guests")
+  guestNames       Json? @map("guest_names")
+  bringingItem     String?             @db.VarChar(200) @map("bringing_item")
+  createdAt        DateTime            @default(now()) @db.DateTime(0) @map("created_at")
+  updatedAt        DateTime            @default(now()) @db.DateTime(0) @map("updated_at")
   status            event_rsvps_status  @default(going)
   attended          Boolean?
-  is_walkin         Boolean             @default(false)
-  from_other_city   Boolean             @default(false)
+  isWalkin         Boolean             @default(false) @map("is_walkin")
+  fromOtherCity   Boolean             @default(false) @map("from_other_city")
   event_guest_links event_guest_links[]
-  events            events              @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_event")
-  users             users               @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_user")
+  events            events              @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_event")
+  users             users               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_user")
 
-  @@unique([event_id, user_id], map: "uq_event_member")
-  @@index([event_id], map: "idx_event")
-  @@index([user_id], map: "idx_user")
+  @@unique([eventId, userId], map: "uq_event_member")
+  @@index([eventId], map: "idx_event")
+  @@index([userId], map: "idx_user")
 }
 
 model events {
   id                                          Int                 @id @default(autoincrement()) @db.UnsignedInt
-  city_id                                     Int                 @db.UnsignedInt
-  location_id                                 Int?                @db.UnsignedInt
-  location_name                               String              @db.VarChar(255)
-  location_address                            String              @db.VarChar(500)
-  location_lat                                Decimal?            @db.Decimal(10, 7)
-  location_lng                                Decimal?            @db.Decimal(10, 7)
+  cityId                                     Int                 @db.UnsignedInt @map("city_id")
+  locationId                                 Int?                @db.UnsignedInt @map("location_id")
+  locationName                               String              @db.VarChar(255) @map("location_name")
+  locationAddress                            String              @db.VarChar(500) @map("location_address")
+  locationLat                                Decimal?            @db.Decimal(10, 7) @map("location_lat")
+  locationLng                                Decimal?            @db.Decimal(10, 7) @map("location_lng")
   title                                       String              @db.VarChar(255)
   description                                 String?             @db.Text
-  additional_info                             String?             @db.Text
-  event_date                                  DateTime            @db.Date
-  event_time                                  DateTime            @db.Time(0)
+  additionalInfo                             String?             @db.Text @map("additional_info")
+  eventDate                                  DateTime            @db.Date @map("event_date")
+  eventTime                                  DateTime            @db.Time(0) @map("event_time")
   status                                      events_status       @default(draft)
-  published_at                                DateTime?           @db.DateTime(0)
-  cancelled_at                                DateTime?           @db.DateTime(0)
-  cancelled_reason                            String?             @db.Text
-  facebook_share_text                         String?             @db.Text
-  reservation_assignee_id                     Int?                @db.UnsignedInt
-  reservation_contact_name                    String?             @db.VarChar(150)
-  reservation_contact_email                   String?             @db.VarChar(255)
-  reservation_confirmed                       Boolean             @default(false)
-  reservation_confirmed_by                    String?             @db.VarChar(255)
-  reservation_confirmed_at                    DateTime?           @db.DateTime(0)
-  reservation_confirmed_note                  String?             @db.VarChar(500)
-  reservation_seats_email_sent                Boolean             @default(false)
-  reservation_confirm_token                   String?             @unique(map: "uq_events_reservation_token") @db.VarChar(64)
-  created_by                                  Int                 @db.UnsignedInt
-  created_at                                  DateTime            @default(now()) @db.DateTime(0)
-  updated_at                                  DateTime            @default(now()) @db.DateTime(0)
-  is_secret                                   Boolean             @default(false)
+  publishedAt                                DateTime?           @db.DateTime(0) @map("published_at")
+  cancelledAt                                DateTime?           @db.DateTime(0) @map("cancelled_at")
+  cancelledReason                            String?             @db.Text @map("cancelled_reason")
+  facebookShareText                         String?             @db.Text @map("facebook_share_text")
+  reservationAssigneeId                     Int?                @db.UnsignedInt @map("reservation_assignee_id")
+  reservationContactName                    String?             @db.VarChar(150) @map("reservation_contact_name")
+  reservationContactEmail                   String?             @db.VarChar(255) @map("reservation_contact_email")
+  reservationConfirmed                       Boolean             @default(false) @map("reservation_confirmed")
+  reservationConfirmedBy                    String?             @db.VarChar(255) @map("reservation_confirmed_by")
+  reservationConfirmedAt                    DateTime?           @db.DateTime(0) @map("reservation_confirmed_at")
+  reservationConfirmedNote                  String?             @db.VarChar(500) @map("reservation_confirmed_note")
+  reservationSeatsEmailSent                Boolean             @default(false) @map("reservation_seats_email_sent")
+  reservationConfirmToken                   String?             @unique(map: "uq_events_reservation_token") @db.VarChar(64) @map("reservation_confirm_token")
+  createdById                                  Int                 @db.UnsignedInt @map("created_by")
+  createdAt                                  DateTime            @default(now()) @db.DateTime(0) @map("created_at")
+  updatedAt                                  DateTime            @default(now()) @db.DateTime(0) @map("updated_at")
+  isSecret                                   Boolean             @default(false) @map("is_secret")
   achievements                                achievements[]
   event_comments                              event_comments[]
   event_guest_links                           event_guest_links[]
   event_rsvps                                 event_rsvps[]
-  cities                                      cities              @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
-  users_events_created_byTousers              users               @relation("events_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_created_by")
-  locations                                   locations?          @relation(fields: [location_id], references: [id], onUpdate: NoAction, map: "fk_event_location")
-  users_events_reservation_assignee_idTousers users?              @relation("events_reservation_assignee_idTousers", fields: [reservation_assignee_id], references: [id], onUpdate: NoAction, map: "fk_events_reservation_assignee")
+  cities                                      cities              @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
+  users_events_created_byTousers              users               @relation("events_created_byTousers", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_created_by")
+  locations                                   locations?          @relation(fields: [locationId], references: [id], onUpdate: NoAction, map: "fk_event_location")
+  users_events_reservation_assignee_idTousers users?              @relation("events_reservation_assignee_idTousers", fields: [reservationAssigneeId], references: [id], onUpdate: NoAction, map: "fk_events_reservation_assignee")
   location_ratings                            location_ratings[]
 
-  @@index([created_by], map: "fk_event_created_by")
-  @@index([location_id], map: "fk_event_location")
-  @@index([reservation_assignee_id], map: "fk_events_reservation_assignee")
-  @@index([city_id, event_date], map: "idx_city_date")
+  @@index([createdById], map: "fk_event_created_by")
+  @@index([locationId], map: "fk_event_location")
+  @@index([reservationAssigneeId], map: "fk_events_reservation_assignee")
+  @@index([cityId, eventDate], map: "idx_city_date")
   @@index([status], map: "idx_status")
 }
 
 model facebook_deletion_requests {
   id                  Int                               @id @default(autoincrement()) @db.UnsignedInt
-  facebook_user_id    String                            @db.VarChar(255)
-  confirmation_code   String                            @unique(map: "UQ_fb_deletion_code") @db.VarChar(100)
-  dinnerbears_user_id Int?                              @db.UnsignedInt
+  facebookUserId    String                            @db.VarChar(255) @map("facebook_user_id")
+  confirmationCode   String                            @unique(map: "UQ_fb_deletion_code") @db.VarChar(100) @map("confirmation_code")
+  dinnerbearsUserId Int?                              @db.UnsignedInt @map("dinnerbears_user_id")
   status              facebook_deletion_requests_status @default(pending)
-  requested_at        DateTime                          @default(now()) @db.DateTime(0)
-  completed_at        DateTime?                         @db.DateTime(0)
+  requestedAt        DateTime                          @default(now()) @db.DateTime(0) @map("requested_at")
+  completedAt        DateTime?                         @db.DateTime(0) @map("completed_at")
 
-  @@index([facebook_user_id], map: "IDX_fb_deletion_user_id")
+  @@index([facebookUserId], map: "IDX_fb_deletion_user_id")
 }
 
 model facebook_group_config {
   id         Int                              @id @default(autoincrement()) @db.UnsignedInt
   name       String                           @db.VarChar(255)
   url        String                           @db.VarChar(500)
-  group_id   String?                          @db.VarChar(50)
-  city_id    Int?                             @db.UnsignedInt
-  group_role facebook_group_config_group_role @default(primary)
-  is_active  Boolean                          @default(true)
-  created_at DateTime                         @default(now()) @db.DateTime(0)
-  updated_at DateTime                         @default(now()) @db.DateTime(0)
-  cities     cities?                          @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_fbgroup_city")
+  groupId   String?                          @db.VarChar(50) @map("group_id")
+  cityId    Int?                             @db.UnsignedInt @map("city_id")
+  groupRole facebook_group_config_group_role @default(primary) @map("group_role")
+  isActive  Boolean                          @default(true) @map("is_active")
+  createdAt DateTime                         @default(now()) @db.DateTime(0) @map("created_at")
+  updatedAt DateTime                         @default(now()) @db.DateTime(0) @map("updated_at")
+  cities     cities?                          @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_fbgroup_city")
   invites    invites[]
 
-  @@index([city_id], map: "fk_fbgroup_city")
+  @@index([cityId], map: "fk_fbgroup_city")
 }
 
 model feedback {
   id               Int                @id @default(autoincrement()) @db.UnsignedInt
-  user_id          Int                @db.UnsignedInt
+  userId          Int                @db.UnsignedInt @map("user_id")
   title            String?            @db.VarChar(200)
   category         feedback_category
   body             String             @db.Text
   status           feedback_status    @default(open)
-  admin_note       String?            @db.Text
-  release_note     String?            @db.VarChar(500)
-  is_private       Boolean            @default(false)
-  upvote_count     Int                @default(0) @db.UnsignedInt
-  seen_at          DateTime?          @db.DateTime(0)
-  resolved_at      DateTime?          @db.DateTime(0)
-  created_at       DateTime           @default(now()) @db.DateTime(0)
-  updated_at       DateTime           @default(now()) @db.DateTime(0)
-  users            users              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_feedback_user")
+  adminNote       String?            @db.Text @map("admin_note")
+  releaseNote     String?            @db.VarChar(500) @map("release_note")
+  isPrivate       Boolean            @default(false) @map("is_private")
+  upvoteCount     Int                @default(0) @db.UnsignedInt @map("upvote_count")
+  seenAt          DateTime?          @db.DateTime(0) @map("seen_at")
+  resolvedAt      DateTime?          @db.DateTime(0) @map("resolved_at")
+  createdAt       DateTime           @default(now()) @db.DateTime(0) @map("created_at")
+  updatedAt       DateTime           @default(now()) @db.DateTime(0) @map("updated_at")
+  users            users              @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_feedback_user")
   feedback_notes   feedback_notes[]
   feedback_upvotes feedback_upvotes[]
   release_feedback release_feedback[]
 
-  @@index([user_id], map: "fk_feedback_user")
+  @@index([userId], map: "fk_feedback_user")
   @@index([category], map: "idx_feedback_category")
-  @@index([created_at], map: "idx_feedback_created")
+  @@index([createdAt], map: "idx_feedback_created")
   @@index([status], map: "idx_feedback_status")
 }
 
 model feedback_notes {
   id            Int      @id @default(autoincrement()) @db.UnsignedInt
-  feedback_id   Int      @db.UnsignedInt
-  author_id     Int      @db.UnsignedInt
+  feedbackId   Int      @db.UnsignedInt @map("feedback_id")
+  authorId     Int      @db.UnsignedInt @map("author_id")
   content       String   @db.Text
-  is_admin_only Boolean  @default(false)
-  created_at    DateTime @default(now()) @db.DateTime(0)
-  users         users    @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fnote_author")
-  feedback      feedback @relation(fields: [feedback_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fnote_feedback")
+  isAdminOnly Boolean  @default(false) @map("is_admin_only")
+  createdAt    DateTime @default(now()) @db.DateTime(0) @map("created_at")
+  users         users    @relation(fields: [authorId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fnote_author")
+  feedback      feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fnote_feedback")
 
-  @@index([author_id], map: "fk_fnote_author")
-  @@index([feedback_id], map: "idx_fnote_feedback")
+  @@index([authorId], map: "fk_fnote_author")
+  @@index([feedbackId], map: "idx_fnote_feedback")
 }
 
 model feedback_upvotes {
   id          Int      @id @default(autoincrement()) @db.UnsignedInt
-  feedback_id Int      @db.UnsignedInt
-  member_id   Int      @db.UnsignedInt
-  created_at  DateTime @default(now()) @db.DateTime(0)
-  feedback    feedback @relation(fields: [feedback_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fup_feedback")
-  users       users    @relation(fields: [member_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fup_member")
+  feedbackId Int      @db.UnsignedInt @map("feedback_id")
+  memberId   Int      @db.UnsignedInt @map("member_id")
+  createdAt  DateTime @default(now()) @db.DateTime(0) @map("created_at")
+  feedback    feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fup_feedback")
+  users       users    @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fup_member")
 
-  @@unique([feedback_id, member_id], map: "uq_feedback_member")
-  @@index([member_id], map: "fk_fup_member")
+  @@unique([feedbackId, memberId], map: "uq_feedback_member")
+  @@index([memberId], map: "fk_fup_member")
 }
 
 model invites {
   id                               Int                    @id @default(autoincrement()) @db.UnsignedInt
   token                            String                 @unique(map: "uq_token") @db.VarChar(100)
   type                             invites_type
-  created_by                       Int                    @db.UnsignedInt
-  city_id                          Int?                   @db.UnsignedInt
-  event_id                         Int?                   @db.UnsignedInt
-  facebook_group_id                Int?                   @db.UnsignedInt
-  bound_to_email                   String?                @db.VarChar(255)
-  bound_to_name                    String?                @db.VarChar(200)
-  redeemed_by                      Int?                   @db.UnsignedInt
-  redeemed_at                      DateTime?              @db.DateTime(0)
-  guest_rsvp_id                    Int?                   @db.UnsignedInt
-  expires_at                       DateTime               @db.DateTime(0)
-  is_revoked                       Boolean                @default(false)
-  max_uses                         Int?                   @default(1)
-  use_count                        Int                    @default(0)
-  created_at                       DateTime               @default(now()) @db.DateTime(0)
-  invite_flavor                    invites_invite_flavor?
-  cities                           cities?                @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_city")
-  users_invites_created_byTousers  users                  @relation("invites_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_creator")
-  facebook_group_config            facebook_group_config? @relation(fields: [facebook_group_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_fbgroup")
-  users_invites_redeemed_byTousers users?                 @relation("invites_redeemed_byTousers", fields: [redeemed_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_redeemed_by")
+  createdBy                       Int                    @db.UnsignedInt @map("created_by")
+  cityId                          Int?                   @db.UnsignedInt @map("city_id")
+  eventId                         Int?                   @db.UnsignedInt @map("event_id")
+  facebookGroupId                Int?                   @db.UnsignedInt @map("facebook_group_id")
+  boundToEmail                   String?                @db.VarChar(255) @map("bound_to_email")
+  boundToName                    String?                @db.VarChar(200) @map("bound_to_name")
+  redeemedBy                      Int?                   @db.UnsignedInt @map("redeemed_by")
+  redeemedAt                      DateTime?              @db.DateTime(0) @map("redeemed_at")
+  guestRsvpId                    Int?                   @db.UnsignedInt @map("guest_rsvp_id")
+  expiresAt                       DateTime               @db.DateTime(0) @map("expires_at")
+  isRevoked                       Boolean                @default(false) @map("is_revoked")
+  maxUses                         Int?                   @default(1) @map("max_uses")
+  useCount                        Int                    @default(0) @map("use_count")
+  createdAt                       DateTime               @default(now()) @db.DateTime(0) @map("created_at")
+  inviteFlavor                    invites_invite_flavor? @map("invite_flavor")
+  cities                           cities?                @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_city")
+  users_invites_created_byTousers  users                  @relation("invites_created_byTousers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_creator")
+  facebook_group_config            facebook_group_config? @relation(fields: [facebookGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_fbgroup")
+  users_invites_redeemed_byTousers users?                 @relation("invites_redeemed_byTousers", fields: [redeemedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_redeemed_by")
   users_users_invite_idToinvites   users[]                @relation("users_invite_idToinvites")
 
-  @@index([city_id], map: "fk_invite_city")
-  @@index([redeemed_by], map: "fk_invite_redeemed_by")
-  @@index([created_by], map: "idx_created_by")
-  @@index([facebook_group_id], map: "idx_facebook_group")
+  @@index([cityId], map: "fk_invite_city")
+  @@index([redeemedBy], map: "fk_invite_redeemed_by")
+  @@index([createdBy], map: "idx_created_by")
+  @@index([facebookGroupId], map: "idx_facebook_group")
   @@index([token], map: "idx_token")
   @@index([type], map: "idx_type")
 }
 
 model location_photos {
   id          Int       @id @default(autoincrement()) @db.UnsignedInt
-  location_id Int       @db.UnsignedInt
-  file_path   String    @db.VarChar(500)
-  file_name   String    @db.VarChar(255)
-  mime_type   String    @db.VarChar(100)
-  sort_order  Int       @default(0)
-  uploaded_by Int       @db.UnsignedInt
-  created_at  DateTime  @default(now()) @db.DateTime(0)
-  locations   locations @relation(fields: [location_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_photo_location")
-  users       users     @relation(fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_photo_uploader")
+  locationId Int       @db.UnsignedInt @map("location_id")
+  filePath   String    @db.VarChar(500) @map("file_path")
+  fileName   String    @db.VarChar(255) @map("file_name")
+  mimeType   String    @db.VarChar(100) @map("mime_type")
+  sortOrder  Int       @default(0) @map("sort_order")
+  uploadedBy Int       @db.UnsignedInt @map("uploaded_by")
+  createdAt  DateTime  @default(now()) @db.DateTime(0) @map("created_at")
+  locations   locations @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_photo_location")
+  users       users     @relation(fields: [uploadedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_photo_uploader")
 
-  @@index([uploaded_by], map: "fk_photo_uploader")
-  @@index([location_id], map: "idx_location")
+  @@index([uploadedBy], map: "fk_photo_uploader")
+  @@index([locationId], map: "idx_location")
 }
 
 model location_ratings {
   id           Int       @id @default(autoincrement()) @db.UnsignedInt
-  member_id    Int       @db.UnsignedInt
-  event_id     Int       @db.UnsignedInt
-  location_id  Int       @db.UnsignedInt
+  memberId    Int       @db.UnsignedInt @map("member_id")
+  eventId     Int       @db.UnsignedInt @map("event_id")
+  locationId  Int       @db.UnsignedInt @map("location_id")
   food         Int       @db.UnsignedTinyInt
   service      Int       @db.UnsignedTinyInt
-  value_rating Int       @db.UnsignedTinyInt
+  valueRating Int       @db.UnsignedTinyInt @map("value_rating")
   noise        Int       @db.UnsignedTinyInt
   comment      String?   @db.Text
-  created_at   DateTime  @default(now()) @db.DateTime(0)
-  updated_at   DateTime  @default(now()) @db.DateTime(0)
-  events       events    @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_event")
-  locations    locations @relation(fields: [location_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_location")
-  users        users     @relation(fields: [member_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_member")
+  createdAt   DateTime  @default(now()) @db.DateTime(0) @map("created_at")
+  updatedAt   DateTime  @default(now()) @db.DateTime(0) @map("updated_at")
+  events       events    @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_event")
+  locations    locations @relation(fields: [locationId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_location")
+  users        users     @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rating_member")
 
-  @@unique([member_id, event_id], map: "uq_member_event")
-  @@index([event_id], map: "fk_rating_event")
-  @@index([location_id], map: "fk_rating_location")
+  @@unique([memberId, eventId], map: "uq_member_event")
+  @@index([eventId], map: "fk_rating_event")
+  @@index([locationId], map: "fk_rating_location")
 }
 
 model locations {
@@ -515,155 +529,155 @@ model locations {
   lat                               Decimal?                @db.Decimal(10, 7)
   lng                               Decimal?                @db.Decimal(10, 7)
   phone                             String?                 @db.VarChar(30)
-  website_url                       String?                 @db.VarChar(500)
+  websiteUrl                       String?                 @db.VarChar(500) @map("website_url")
   description                       String?                 @db.Text
-  city_id                           Int                     @db.UnsignedInt
-  is_active                         Boolean                 @default(true)
-  is_private                        Boolean                 @default(false)
-  is_residence                      Boolean                 @default(false)
-  imported_from                     locations_imported_from @default(manual)
-  created_at                        DateTime                @default(now()) @db.DateTime(0)
-  updated_at                        DateTime                @default(now()) @db.DateTime(0)
-  enriched_at                       DateTime?               @db.DateTime(0)
-  created_by                        Int?                    @db.UnsignedInt
-  updated_by                        Int?                    @db.UnsignedInt
-  moderator_notes                   String?                 @db.LongText
-  contact_name                      String?                 @db.VarChar(100)
-  contact_phone                     String?                 @db.VarChar(30)
-  contact_email                     String?                 @db.VarChar(150)
+  cityId                           Int                     @db.UnsignedInt @map("city_id")
+  isActive                         Boolean                 @default(true) @map("is_active")
+  isPrivate                        Boolean                 @default(false) @map("is_private")
+  isResidence                      Boolean                 @default(false) @map("is_residence")
+  importedFrom                     locations_imported_from @default(manual) @map("imported_from")
+  createdAt                        DateTime                @default(now()) @db.DateTime(0) @map("created_at")
+  updatedAt                        DateTime                @default(now()) @db.DateTime(0) @map("updated_at")
+  enrichedAt                       DateTime?               @db.DateTime(0) @map("enriched_at")
+  createdById                        Int?                    @db.UnsignedInt @map("created_by")
+  updatedById                        Int?                    @db.UnsignedInt @map("updated_by")
+  moderatorNotes                   String?                 @db.LongText @map("moderator_notes")
+  contactName                      String?                 @db.VarChar(100) @map("contact_name")
+  contactPhone                     String?                 @db.VarChar(30) @map("contact_phone")
+  contactEmail                     String?                 @db.VarChar(150) @map("contact_email")
   events                            events[]
   location_photos                   location_photos[]
   location_ratings                  location_ratings[]
-  cities                            cities                  @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_location_city")
-  users_locations_created_byTousers users?                  @relation("locations_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "fk_location_created_by")
-  users_locations_updated_byTousers users?                  @relation("locations_updated_byTousers", fields: [updated_by], references: [id], onUpdate: NoAction, map: "fk_location_updated_by")
+  cities                            cities                  @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_location_city")
+  users_locations_created_byTousers users?                  @relation("locations_created_byTousers", fields: [createdById], references: [id], onUpdate: NoAction, map: "fk_location_created_by")
+  users_locations_updated_byTousers users?                  @relation("locations_updated_byTousers", fields: [updatedById], references: [id], onUpdate: NoAction, map: "fk_location_updated_by")
 
-  @@index([created_by], map: "fk_location_created_by")
-  @@index([updated_by], map: "fk_location_updated_by")
-  @@index([city_id], map: "idx_city")
+  @@index([createdById], map: "fk_location_created_by")
+  @@index([updatedById], map: "fk_location_updated_by")
+  @@index([cityId], map: "idx_city")
   @@fulltext([name], map: "ft_name")
 }
 
 model login_sessions {
   id             Int      @id @default(autoincrement()) @db.UnsignedInt
-  user_id        Int      @db.UnsignedInt
-  jwt_jti        String   @unique(map: "uq_jti") @db.VarChar(100)
-  user_agent     String?  @db.VarChar(500)
-  ip_address     String?  @db.VarChar(45)
+  userId        Int      @db.UnsignedInt @map("user_id")
+  jwtJti        String   @unique(map: "uq_jti") @db.VarChar(100) @map("jwt_jti")
+  userAgent     String?  @db.VarChar(500) @map("user_agent")
+  ipAddress     String?  @db.VarChar(45) @map("ip_address")
   country        String?  @db.VarChar(100)
   city           String?  @db.VarChar(100)
-  is_active      Boolean  @default(true)
-  last_active_at DateTime @default(now()) @db.DateTime(0)
-  created_at     DateTime @default(now()) @db.DateTime(0)
-  users          users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_session_user")
+  isActive      Boolean  @default(true) @map("is_active")
+  lastActiveAt DateTime @default(now()) @db.DateTime(0) @map("last_active_at")
+  createdAt     DateTime @default(now()) @db.DateTime(0) @map("created_at")
+  users          users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_session_user")
 
-  @@index([user_id], map: "idx_user")
+  @@index([userId], map: "idx_user")
 }
 
 model member_achievements {
   id             Int          @id @default(autoincrement()) @db.UnsignedInt
-  member_id      Int          @db.UnsignedInt
-  achievement_id Int          @db.UnsignedInt
-  earned_at      DateTime     @default(now()) @db.DateTime(0)
-  seen_at        DateTime?    @db.DateTime(0)
-  achievements   achievements @relation(fields: [achievement_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ma_achievement")
-  users          users        @relation(fields: [member_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ma_member")
+  memberId      Int          @db.UnsignedInt @map("member_id")
+  achievementId Int          @db.UnsignedInt @map("achievement_id")
+  earnedAt      DateTime     @default(now()) @db.DateTime(0) @map("earned_at")
+  seenAt        DateTime?    @db.DateTime(0) @map("seen_at")
+  achievements   achievements @relation(fields: [achievementId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ma_achievement")
+  users          users        @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ma_member")
 
-  @@unique([member_id, achievement_id], map: "uq_member_achievement")
-  @@index([achievement_id], map: "fk_ma_achievement")
+  @@unique([memberId, achievementId], map: "uq_member_achievement")
+  @@index([achievementId], map: "fk_ma_achievement")
 }
 
 model member_points {
   id           Int                      @id @default(autoincrement()) @db.UnsignedInt
-  user_id      Int                      @db.UnsignedInt
-  point_type   member_points_point_type
-  reference_id Int                      @db.UnsignedInt
+  userId      Int                      @db.UnsignedInt @map("user_id")
+  pointType   member_points_point_type @map("point_type")
+  referenceId Int                      @db.UnsignedInt @map("reference_id")
   points       Int                      @default(1) @db.TinyInt
-  awarded_at   DateTime                 @default(now()) @db.DateTime(0)
-  users        users                    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_mp_user")
+  awardedAt   DateTime                 @default(now()) @db.DateTime(0) @map("awarded_at")
+  users        users                    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_mp_user")
 
-  @@unique([user_id, point_type, reference_id], map: "uq_member_points_user_type_ref")
-  @@index([user_id], map: "idx_mp_user")
+  @@unique([userId, pointType, referenceId], map: "uq_member_points_user_type_ref")
+  @@index([userId], map: "idx_mp_user")
 }
 
 model merch_config {
   id                        Int      @id @default(autoincrement()) @db.UnsignedInt
-  store_url                 String?  @db.VarChar(500)
-  founding_bear_product_url String?  @db.VarChar(500)
-  updated_at                DateTime @default(now()) @db.DateTime(0)
+  storeUrl                 String?  @db.VarChar(500) @map("store_url")
+  foundingBearProductUrl String?  @db.VarChar(500) @map("founding_bear_product_url")
+  updatedAt                DateTime @default(now()) @db.DateTime(0) @map("updated_at")
 }
 
 
 model notification_preferences {
   id                      Int      @id @default(autoincrement()) @db.UnsignedInt
-  user_id                 Int      @unique(map: "user_id") @db.UnsignedInt
-  email_invite            Boolean  @default(true)
-  email_verification      Boolean  @default(true)
-  email_password_reset    Boolean  @default(true)
-  email_password_changed  Boolean  @default(true)
-  email_security_alert    Boolean  @default(true)
-  email_event_published   Boolean  @default(true)
-  email_rsvp_confirmation Boolean  @default(true)
-  email_event_reminder    Boolean  @default(true)
-  email_account_deletion  Boolean  @default(true)
-  email_reengagement      Boolean  @default(true)
-  push_event_published    Boolean  @default(true)
-  push_event_reminder     Boolean  @default(true)
-  push_announcement       Boolean  @default(true)
-  updated_at              DateTime @default(now()) @db.DateTime(0)
-  users                   users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notif_pref_user")
+  userId                 Int      @unique(map: "user_id") @db.UnsignedInt @map("user_id")
+  emailInvite            Boolean  @default(true) @map("email_invite")
+  emailVerification      Boolean  @default(true) @map("email_verification")
+  emailPasswordReset    Boolean  @default(true) @map("email_password_reset")
+  emailPasswordChanged  Boolean  @default(true) @map("email_password_changed")
+  emailSecurityAlert    Boolean  @default(true) @map("email_security_alert")
+  emailEventPublished   Boolean  @default(true) @map("email_event_published")
+  emailRsvpConfirmation Boolean  @default(true) @map("email_rsvp_confirmation")
+  emailEventReminder    Boolean  @default(true) @map("email_event_reminder")
+  emailAccountDeletion  Boolean  @default(true) @map("email_account_deletion")
+  emailReengagement      Boolean  @default(true) @map("email_reengagement")
+  pushEventPublished    Boolean  @default(true) @map("push_event_published")
+  pushEventReminder     Boolean  @default(true) @map("push_event_reminder")
+  pushAnnouncement       Boolean  @default(true) @map("push_announcement")
+  updatedAt              DateTime @default(now()) @db.DateTime(0) @map("updated_at")
+  users                   users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notif_pref_user")
 }
 
 model notifications {
   id         Int       @id @default(autoincrement()) @db.UnsignedInt
-  user_id    Int       @db.UnsignedInt
+  userId    Int       @db.UnsignedInt @map("user_id")
   type       String    @db.VarChar(100)
   title      String    @db.VarChar(255)
   body       String?   @db.Text
-  action_url String?   @db.VarChar(500)
-  is_read    Boolean   @default(false)
-  created_at DateTime  @default(now()) @db.DateTime(0)
-  read_at    DateTime? @db.DateTime(0)
-  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_user")
+  actionUrl String?   @db.VarChar(500) @map("action_url")
+  isRead    Boolean   @default(false) @map("is_read")
+  createdAt DateTime  @default(now()) @db.DateTime(0) @map("created_at")
+  readAt    DateTime? @db.DateTime(0) @map("read_at")
+  users      users     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_user")
 
-  @@index([created_at], map: "idx_created")
-  @@index([user_id, is_read], map: "idx_user_read")
+  @@index([createdAt], map: "idx_created")
+  @@index([userId, isRead], map: "idx_user_read")
 }
 
 model oauth_accounts {
   id          Int                     @id @default(autoincrement()) @db.UnsignedInt
-  user_id     Int                     @db.UnsignedInt
+  userId     Int                     @db.UnsignedInt @map("user_id")
   provider    oauth_accounts_provider
-  provider_id String                  @db.VarChar(255)
+  providerId String                  @db.VarChar(255) @map("provider_id")
   email       String?                 @db.VarChar(255)
-  profile_url String?                 @db.VarChar(512)
-  created_at  DateTime                @default(now()) @db.DateTime(0)
-  users       users                   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_oauth_user")
+  profileUrl String?                 @db.VarChar(512) @map("profile_url")
+  createdAt  DateTime                @default(now()) @db.DateTime(0) @map("created_at")
+  users       users                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_oauth_user")
 
-  @@unique([provider, provider_id], map: "uq_provider_account")
-  @@index([user_id], map: "idx_user")
+  @@unique([provider, providerId], map: "uq_provider_account")
+  @@index([userId], map: "idx_user")
 }
 
 model push_subscriptions {
   id         Int      @id @default(autoincrement()) @db.UnsignedInt
-  user_id    Int      @db.UnsignedInt
+  userId    Int      @db.UnsignedInt @map("user_id")
   endpoint   String   @unique(map: "uq_endpoint", length: 500) @db.Text
   p256dh     String   @db.VarChar(512)
   auth       String   @db.VarChar(255)
-  created_at DateTime @default(now()) @db.DateTime(0)
-  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_push_sub_user")
+  createdAt DateTime @default(now()) @db.DateTime(0) @map("created_at")
+  users      users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_push_sub_user")
 
-  @@index([user_id], map: "fk_push_sub_user")
+  @@index([userId], map: "fk_push_sub_user")
 }
 
 model release_feedback {
-  release_id  Int      @db.UnsignedInt
-  feedback_id Int      @db.UnsignedInt
-  feedback    feedback @relation(fields: [feedback_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rf_feedback")
-  releases    releases @relation(fields: [release_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rf_release")
+  releaseId  Int      @db.UnsignedInt @map("release_id")
+  feedbackId Int      @db.UnsignedInt @map("feedback_id")
+  feedback    feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rf_feedback")
+  releases    releases @relation(fields: [releaseId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rf_release")
 
-  @@id([release_id, feedback_id])
-  @@index([feedback_id], map: "fk_rf_feedback")
+  @@id([releaseId, feedbackId])
+  @@index([feedbackId], map: "fk_rf_feedback")
 }
 
 model releases {
@@ -671,58 +685,58 @@ model releases {
   version                                    String             @unique(map: "uq_release_version") @db.VarChar(20)
   title                                      String             @db.VarChar(200)
   body                                       String             @db.Text
-  published_at                               DateTime?          @db.DateTime(0)
-  created_by                                 Int                @db.UnsignedInt
-  created_at                                 DateTime           @default(now()) @db.DateTime(0)
-  updated_at                                 DateTime           @default(now()) @db.DateTime(0)
+  publishedAt                               DateTime?          @db.DateTime(0) @map("published_at")
+  createdBy                                 Int                @db.UnsignedInt @map("created_by")
+  createdAt                                 DateTime           @default(now()) @db.DateTime(0) @map("created_at")
+  updatedAt                                 DateTime           @default(now()) @db.DateTime(0) @map("updated_at")
   release_feedback                           release_feedback[]
-  users_releases_created_byTousers           users              @relation("releases_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction, map: "fk_release_author")
+  users_releases_created_byTousers           users              @relation("releases_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction, map: "fk_release_author")
   users_users_last_seen_release_idToreleases users[]            @relation("users_last_seen_release_idToreleases")
 
-  @@index([created_by], map: "fk_release_author")
-  @@index([published_at], map: "idx_release_published")
+  @@index([createdBy], map: "fk_release_author")
+  @@index([publishedAt], map: "idx_release_published")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model users {
   id                                                           Int                        @id @default(autoincrement()) @db.UnsignedInt
-  full_name                                                    String                     @db.VarChar(200)
+  fullName                                                    String                     @db.VarChar(200) @map("full_name")
   email                                                        String                     @unique(map: "uq_email") @db.VarChar(255)
-  email_status                                                 users_email_status         @default(pending)
-  email_verified_at                                            DateTime?                  @db.DateTime(0)
-  password_hash                                                String?                    @db.VarChar(255)
-  email_verification_token                                     String?                    @db.VarChar(255)
-  email_verification_expires_at                                DateTime?                  @db.DateTime(0)
-  password_reset_token                                         String?                    @db.VarChar(255)
-  password_reset_expires_at                                    DateTime?                  @db.DateTime(0)
-  city_id                                                      Int                        @db.UnsignedInt
+  emailStatus                                                 users_email_status         @default(pending) @map("email_status")
+  emailVerifiedAt                                            DateTime?                  @db.DateTime(0) @map("email_verified_at")
+  passwordHash                                                String?                    @db.VarChar(255) @map("password_hash")
+  emailVerificationToken                                     String?                    @db.VarChar(255) @map("email_verification_token")
+  emailVerificationExpiresAt                                DateTime?                  @db.DateTime(0) @map("email_verification_expires_at")
+  passwordResetToken                                         String?                    @db.VarChar(255) @map("password_reset_token")
+  passwordResetExpiresAt                                    DateTime?                  @db.DateTime(0) @map("password_reset_expires_at")
+  cityId                                                      Int                        @db.UnsignedInt @map("city_id")
   role                                                         users_role                 @default(member)
-  has_membership                                               Boolean                    @default(false)
-  membership_expires_at                                        DateTime?                  @db.DateTime(0)
-  profile_photo_path                                           String?                    @db.VarChar(500)
+  hasMembership                                               Boolean                    @default(false) @map("has_membership")
+  membershipExpiresAt                                        DateTime?                  @db.DateTime(0) @map("membership_expires_at")
+  profilePhotoPath                                           String?                    @db.VarChar(500) @map("profile_photo_path")
   status                                                       users_status               @default(active)
-  invited_by                                                   Int?                       @db.UnsignedInt
-  invite_id                                                    Int?                       @db.UnsignedInt
-  invite_source                                                users_invite_source?
-  invite_source_name                                           String?                    @db.VarChar(255)
-  last_login_at                                                DateTime?                  @db.DateTime(0)
-  login_count                                                  Int                        @default(0) @db.UnsignedInt
-  failed_login_attempts                                        Int                        @default(0) @db.UnsignedTinyInt
-  login_locked_until                                           DateTime?                  @db.DateTime(0)
-  last_failed_login_at                                         DateTime?                  @db.DateTime(0)
-  deleted_at                                                   DateTime?                  @db.DateTime(0)
-  hard_delete_at                                               DateTime?                  @db.DateTime(0)
-  created_at                                                   DateTime                   @default(now()) @db.DateTime(0)
-  updated_at                                                   DateTime                   @default(now()) @db.DateTime(0)
-  calendar_token                                               String?                    @unique(map: "calendar_token") @db.VarChar(36)
-  calendar_city_filter                                         users_calendar_city_filter @default(all)
-  calendar_rsvp_only                                           Boolean                    @default(false)
-  calendar_auto_invite                                         users_calendar_auto_invite @default(none)
-  selected_title                                               String?                    @db.VarChar(100)
-  qualifying_login_count                                       Int                        @default(0) @db.UnsignedInt
-  last_qualifying_login_at                                     DateTime?                  @db.DateTime(0)
-  last_seen_release_id                                         Int?                       @db.UnsignedInt
-  last_seen_announcement_id                                    Int?                       @db.UnsignedInt
+  invitedBy                                                   Int?                       @db.UnsignedInt @map("invited_by")
+  inviteId                                                    Int?                       @db.UnsignedInt @map("invite_id")
+  inviteSource                                                users_invite_source? @map("invite_source")
+  inviteSourceName                                           String?                    @db.VarChar(255) @map("invite_source_name")
+  lastLoginAt                                                DateTime?                  @db.DateTime(0) @map("last_login_at")
+  loginCount                                                  Int                        @default(0) @db.UnsignedInt @map("login_count")
+  failedLoginAttempts                                        Int                        @default(0) @db.UnsignedTinyInt @map("failed_login_attempts")
+  loginLockedUntil                                           DateTime?                  @db.DateTime(0) @map("login_locked_until")
+  lastFailedLoginAt                                         DateTime?                  @db.DateTime(0) @map("last_failed_login_at")
+  deletedAt                                                   DateTime?                  @db.DateTime(0) @map("deleted_at")
+  hardDeleteAt                                               DateTime?                  @db.DateTime(0) @map("hard_delete_at")
+  createdAt                                                   DateTime                   @default(now()) @db.DateTime(0) @map("created_at")
+  updatedAt                                                   DateTime                   @default(now()) @db.DateTime(0) @map("updated_at")
+  calendarToken                                               String?                    @unique(map: "calendar_token") @db.VarChar(36) @map("calendar_token")
+  calendarCityFilter                                         users_calendar_city_filter @default(all) @map("calendar_city_filter")
+  calendarRsvpOnly                                           Boolean                    @default(false) @map("calendar_rsvp_only")
+  calendarAutoInvite                                         users_calendar_auto_invite @default(none) @map("calendar_auto_invite")
+  selectedTitle                                               String?                    @db.VarChar(100) @map("selected_title")
+  qualifyingLoginCount                                       Int                        @default(0) @db.UnsignedInt @map("qualifying_login_count")
+  lastQualifyingLoginAt                                     DateTime?                  @db.DateTime(0) @map("last_qualifying_login_at")
+  lastSeenReleaseId                                         Int?                       @db.UnsignedInt @map("last_seen_release_id")
+  lastSeenAnnouncementId                                    Int?                       @db.UnsignedInt @map("last_seen_announcement_id")
   announcement_comments                                        announcement_comments[]
   announcements_announcements_created_byTousers                announcements[]            @relation("announcements_created_byTousers")
   content_flags_content_flags_reported_byTousers               content_flags[]            @relation("content_flags_reported_byTousers")
@@ -753,20 +767,20 @@ model users {
   oauth_accounts                                               oauth_accounts[]
   push_subscriptions                                           push_subscriptions[]
   releases_releases_created_byTousers                          releases[]                 @relation("releases_created_byTousers")
-  cities                                                       cities                     @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_city")
-  invites_users_invite_idToinvites                             invites?                   @relation("users_invite_idToinvites", fields: [invite_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invite")
-  users                                                        users?                     @relation("usersTousers", fields: [invited_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invited_by")
+  cities                                                       cities                     @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_city")
+  invites_users_invite_idToinvites                             invites?                   @relation("users_invite_idToinvites", fields: [inviteId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invite")
+  users                                                        users?                     @relation("usersTousers", fields: [invitedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invited_by")
   other_users                                                  users[]                    @relation("usersTousers")
-  announcements_users_last_seen_announcement_idToannouncements announcements?             @relation("users_last_seen_announcement_idToannouncements", fields: [last_seen_announcement_id], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_announcement")
-  releases_users_last_seen_release_idToreleases                releases?                  @relation("users_last_seen_release_idToreleases", fields: [last_seen_release_id], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_release")
+  announcements_users_last_seen_announcement_idToannouncements announcements?             @relation("users_last_seen_announcement_idToannouncements", fields: [lastSeenAnnouncementId], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_announcement")
+  releases_users_last_seen_release_idToreleases                releases?                  @relation("users_last_seen_release_idToreleases", fields: [lastSeenReleaseId], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_release")
 
-  @@index([city_id], map: "fk_users_city")
-  @@index([invite_id], map: "fk_users_invite")
-  @@index([last_seen_announcement_id], map: "fk_users_last_seen_announcement")
-  @@index([last_seen_release_id], map: "fk_users_last_seen_release")
-  @@index([email_status], map: "idx_email_status")
-  @@index([invited_by], map: "idx_invited_by")
-  @@index([last_login_at], map: "idx_last_login")
+  @@index([cityId], map: "fk_users_city")
+  @@index([inviteId], map: "fk_users_invite")
+  @@index([lastSeenAnnouncementId], map: "fk_users_last_seen_announcement")
+  @@index([lastSeenReleaseId], map: "fk_users_last_seen_release")
+  @@index([emailStatus], map: "idx_email_status")
+  @@index([invitedBy], map: "idx_invited_by")
+  @@index([lastLoginAt], map: "idx_last_login")
   @@index([status], map: "idx_status")
 }
 

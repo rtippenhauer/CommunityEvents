@@ -3,224 +3,224 @@
     "id": 1,
     "path": "/avatars/bear-BBQ.png",
     "label": "BBQ",
-    "sort_order": 0,
-    "created_at": "2026-08-09T16:30:17.242Z"
+    "sortOrder": 0,
+    "createdAt": "2026-08-09T16:30:17.242Z"
   },
   {
     "id": 2,
     "path": "/avatars/bear-DJ.png",
     "label": "DJ",
-    "sort_order": 1,
-    "created_at": "2026-08-09T16:30:17.272Z"
+    "sortOrder": 1,
+    "createdAt": "2026-08-09T16:30:17.272Z"
   },
   {
     "id": 3,
     "path": "/avatars/bear-NASCAR.png",
     "label": "NASCAR",
-    "sort_order": 2,
-    "created_at": "2026-08-09T16:30:17.302Z"
+    "sortOrder": 2,
+    "createdAt": "2026-08-09T16:30:17.302Z"
   },
   {
     "id": 4,
     "path": "/avatars/bear-artist.jpg",
     "label": "Artist",
-    "sort_order": 3,
-    "created_at": "2026-08-09T16:30:17.334Z"
+    "sortOrder": 3,
+    "createdAt": "2026-08-09T16:30:17.334Z"
   },
   {
     "id": 5,
     "path": "/avatars/bear-astronaut.jpg",
     "label": "Astronaut",
-    "sort_order": 4,
-    "created_at": "2026-08-09T16:30:17.367Z"
+    "sortOrder": 4,
+    "createdAt": "2026-08-09T16:30:17.367Z"
   },
   {
     "id": 6,
     "path": "/avatars/bear-athlete.jpg",
     "label": "Athlete",
-    "sort_order": 5,
-    "created_at": "2026-08-09T16:30:17.408Z"
+    "sortOrder": 5,
+    "createdAt": "2026-08-09T16:30:17.408Z"
   },
   {
     "id": 7,
     "path": "/avatars/bear-bookworm.jpg",
     "label": "Bookworm",
-    "sort_order": 6,
-    "created_at": "2026-08-09T16:30:17.432Z"
+    "sortOrder": 6,
+    "createdAt": "2026-08-09T16:30:17.432Z"
   },
   {
     "id": 8,
     "path": "/avatars/bear-brewmaster.png",
     "label": "Brewmaster",
-    "sort_order": 7,
-    "created_at": "2026-08-09T16:30:17.463Z"
+    "sortOrder": 7,
+    "createdAt": "2026-08-09T16:30:17.463Z"
   },
   {
     "id": 9,
     "path": "/avatars/bear-camper.png",
     "label": "Camper",
-    "sort_order": 8,
-    "created_at": "2026-08-09T16:30:17.511Z"
+    "sortOrder": 8,
+    "createdAt": "2026-08-09T16:30:17.511Z"
   },
   {
     "id": 10,
     "path": "/avatars/bear-captain.png",
     "label": "Captain",
-    "sort_order": 9,
-    "created_at": "2026-08-09T16:30:17.531Z"
+    "sortOrder": 9,
+    "createdAt": "2026-08-09T16:30:17.531Z"
   },
   {
     "id": 11,
     "path": "/avatars/bear-chef.jpg",
     "label": "Chef",
-    "sort_order": 10,
-    "created_at": "2026-08-09T16:30:17.555Z"
+    "sortOrder": 10,
+    "createdAt": "2026-08-09T16:30:17.555Z"
   },
   {
     "id": 12,
     "path": "/avatars/bear-cool.jpg",
     "label": "Cool",
-    "sort_order": 11,
-    "created_at": "2026-08-09T16:30:17.579Z"
+    "sortOrder": 11,
+    "createdAt": "2026-08-09T16:30:17.579Z"
   },
   {
     "id": 13,
     "path": "/avatars/bear-dapper.jpg",
     "label": "Dapper",
-    "sort_order": 12,
-    "created_at": "2026-08-09T16:30:17.603Z"
+    "sortOrder": 12,
+    "createdAt": "2026-08-09T16:30:17.603Z"
   },
   {
     "id": 14,
     "path": "/avatars/bear-default.jpg",
     "label": "Default",
-    "sort_order": 13,
-    "created_at": "2026-08-09T16:30:17.631Z"
+    "sortOrder": 13,
+    "createdAt": "2026-08-09T16:30:17.631Z"
   },
   {
     "id": 15,
     "path": "/avatars/bear-disco.jpg",
     "label": "Disco",
-    "sort_order": 14,
-    "created_at": "2026-08-09T16:30:17.653Z"
+    "sortOrder": 14,
+    "createdAt": "2026-08-09T16:30:17.653Z"
   },
   {
     "id": 16,
     "path": "/avatars/bear-explorer.jpg",
     "label": "Explorer",
-    "sort_order": 15,
-    "created_at": "2026-08-09T16:30:17.675Z"
+    "sortOrder": 15,
+    "createdAt": "2026-08-09T16:30:17.675Z"
   },
   {
     "id": 17,
     "path": "/avatars/bear-flannel.jpg",
     "label": "Flannel",
-    "sort_order": 16,
-    "created_at": "2026-08-09T16:30:17.696Z"
+    "sortOrder": 16,
+    "createdAt": "2026-08-09T16:30:17.696Z"
   },
   {
     "id": 18,
     "path": "/avatars/bear-hawaiian.png",
     "label": "Hawaiian",
-    "sort_order": 17,
-    "created_at": "2026-08-09T16:30:17.723Z"
+    "sortOrder": 17,
+    "createdAt": "2026-08-09T16:30:17.723Z"
   },
   {
     "id": 19,
     "path": "/avatars/bear-hoodie.jpg",
     "label": "Hoodie",
-    "sort_order": 18,
-    "created_at": "2026-08-09T16:30:17.746Z"
+    "sortOrder": 18,
+    "createdAt": "2026-08-09T16:30:17.746Z"
   },
   {
     "id": 20,
     "path": "/avatars/bear-karaoke.jpg",
     "label": "Karaoke",
-    "sort_order": 19,
-    "created_at": "2026-08-09T16:30:17.773Z"
+    "sortOrder": 19,
+    "createdAt": "2026-08-09T16:30:17.773Z"
   },
   {
     "id": 21,
     "path": "/avatars/bear-mandalorian.png",
     "label": "Mandalorian",
-    "sort_order": 20,
-    "created_at": "2026-08-09T16:30:17.794Z"
+    "sortOrder": 20,
+    "createdAt": "2026-08-09T16:30:17.794Z"
   },
   {
     "id": 22,
     "path": "/avatars/bear-musician.jpg",
     "label": "Musician",
-    "sort_order": 21,
-    "created_at": "2026-08-09T16:30:17.820Z"
+    "sortOrder": 21,
+    "createdAt": "2026-08-09T16:30:17.820Z"
   },
   {
     "id": 23,
     "path": "/avatars/bear-nerdy.png",
     "label": "Nerdy",
-    "sort_order": 22,
-    "created_at": "2026-08-09T16:30:17.843Z"
+    "sortOrder": 22,
+    "createdAt": "2026-08-09T16:30:17.843Z"
   },
   {
     "id": 24,
     "path": "/avatars/bear-pirate.jpg",
     "label": "Pirate",
-    "sort_order": 23,
-    "created_at": "2026-08-09T16:30:17.867Z"
+    "sortOrder": 23,
+    "createdAt": "2026-08-09T16:30:17.867Z"
   },
   {
     "id": 25,
     "path": "/avatars/bear-rainbow.jpg",
     "label": "Rainbow",
-    "sort_order": 24,
-    "created_at": "2026-08-09T16:30:17.901Z"
+    "sortOrder": 24,
+    "createdAt": "2026-08-09T16:30:17.901Z"
   },
   {
     "id": 26,
     "path": "/avatars/bear-shopping.png",
     "label": "Shopping",
-    "sort_order": 25,
-    "created_at": "2026-08-09T16:30:17.928Z"
+    "sortOrder": 25,
+    "createdAt": "2026-08-09T16:30:17.928Z"
   },
   {
     "id": 27,
     "path": "/avatars/bear-steampunk.jpg",
     "label": "Steampunk",
-    "sort_order": 26,
-    "created_at": "2026-08-09T16:30:17.954Z"
+    "sortOrder": 26,
+    "createdAt": "2026-08-09T16:30:17.954Z"
   },
   {
     "id": 28,
     "path": "/avatars/bear-superhero.png",
     "label": "Superhero",
-    "sort_order": 27,
-    "created_at": "2026-08-09T16:30:17.976Z"
+    "sortOrder": 27,
+    "createdAt": "2026-08-09T16:30:17.976Z"
   },
   {
     "id": 29,
     "path": "/avatars/bear-trivia.png",
     "label": "Trivia",
-    "sort_order": 28,
-    "created_at": "2026-08-09T16:30:18.007Z"
+    "sortOrder": 28,
+    "createdAt": "2026-08-09T16:30:18.007Z"
   },
   {
     "id": 30,
     "path": "/avatars/bear-ultraman.png",
     "label": "Ultraman",
-    "sort_order": 29,
-    "created_at": "2026-08-09T16:30:18.044Z"
+    "sortOrder": 29,
+    "createdAt": "2026-08-09T16:30:18.044Z"
   },
   {
     "id": 31,
     "path": "/avatars/bear-viking.png",
     "label": "Viking",
-    "sort_order": 30,
-    "created_at": "2026-08-09T16:30:18.079Z"
+    "sortOrder": 30,
+    "createdAt": "2026-08-09T16:30:18.079Z"
   },
   {
     "id": 32,
     "path": "/avatars/bear-wizard.png",
     "label": "Wizard",
-    "sort_order": 31,
-    "created_at": "2026-08-09T16:30:18.114Z"
+    "sortOrder": 31,
+    "createdAt": "2026-08-09T16:30:18.114Z"
   }
 ]

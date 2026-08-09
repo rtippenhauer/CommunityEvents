@@ -51,7 +51,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 /**
  * Normalises a captured JSON row into something Prisma will accept.
  *
- * Two things need doing. created_at/updated_at are an artifact of when the
+ * Two things need doing. createdAt/updatedAt are an artifact of when the
  * data was captured, not meaningful values, so they are dropped and the
  * column defaults (CURRENT_TIMESTAMP) record when this install was actually
  * seeded. And JSON has no date type, so datetime columns arrive as ISO
@@ -65,7 +65,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 function normalize(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
-    if (key === 'created_at' || key === 'updated_at') continue;
+    if (key === 'createdAt' || key === 'updatedAt') continue;
     out[key] = typeof value === 'string' && ISO_DATE.test(value) ? new Date(value) : value;
   }
   return out;
@@ -97,7 +97,7 @@ async function main() {
   for (const row of appConfig) {
     const data = normalize(row);
     await prisma.app_config.upsert({
-      where: { config_key: row.config_key as string },
+      where: { configKey: row.configKey as string },
       update: data as never,
       create: data as never,
     });
@@ -147,7 +147,7 @@ async function main() {
   for (const row of users) {
     const data = {
       ...normalize(row),
-      email_verified_at: new Date(),
+      emailVerifiedAt: new Date(),
     };
     await prisma.users.upsert({
       where: { email: row.email as string },
