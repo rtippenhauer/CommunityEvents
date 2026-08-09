@@ -2,23 +2,27 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+
 import { randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import * as geoip from 'geoip-lite';
-import { UserEntity, EmailStatus, InviteSource, UserRole, UserStatus } from '../../database/entities/user.entity';
-import { OAuthAccountEntity, OAuthProvider } from '../../database/entities/oauth-account.entity';
-import { LoginSessionEntity } from '../../database/entities/login-session.entity';
-import { FacebookDeletionRequestEntity, FacebookDeletionStatus } from '../../database/entities/facebook-deletion-request.entity';
+import type { users as User } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import {
+  EmailStatus,
+  FacebookDeletionStatus,
+  InviteSource,
+  OAuthProvider,
+  UserRole,
+  UserStatus,
+} from '../../database/enums';
 import { InvitesService } from '../invites/invites.service';
 import { CitiesService } from '../cities/cities.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
-import { InviteFlavor, InviteType } from '../../database/entities/invite.entity';
-import { EventEntity } from '../../database/entities/event.entity';
+import { InviteFlavor, InviteType } from '../../database/enums';
 import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
 import { AchievementsService } from '../community/achievements.service';
@@ -54,18 +58,7 @@ export class AuthService {
   private readonly loginWindowMs: number;
 
   constructor(
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
-    @InjectRepository(OAuthAccountEntity)
-    private readonly oauthRepo: Repository<OAuthAccountEntity>,
-    @InjectRepository(LoginSessionEntity)
-    private readonly sessionRepo: Repository<LoginSessionEntity>,
-    @InjectRepository(FacebookDeletionRequestEntity)
-    private readonly fbDeletionRepo: Repository<FacebookDeletionRequestEntity>,
-    @InjectRepository(EventEntity)
-    private readonly eventRepo: Repository<EventEntity>,
-    @InjectRepository(EventRsvpEntity)
-    private readonly rsvpRepo: Repository<EventRsvpEntity>,
+    private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly invitesService: InvitesService,
@@ -80,13 +73,33 @@ export class AuthService {
       : PROD_LOGIN_WINDOW_MS;
   }
 
+  /**
+   * The city a new account is filed under: the subdomain's city when the
+   * signup came in on one, otherwise the first city this instance has.
+   *
+   * Previously written inline as `cities[0].id`, which throws an unhelpful
+   * TypeError on a fresh instance with no cities configured. Prisma also
+   * requires users.city_id, so the value has to be known to be present rather
+   * than possibly-undefined.
+   */
+  private async resolveCityId(subdomainCityId?: number): Promise<number> {
+    if (subdomainCityId) return subdomainCityId;
+    const cities = await this.citiesService.findAll();
+    const first = cities[0];
+    if (!first) {
+      throw new BadRequestException('This instance has no active city configured');
+    }
+    return first.id;
+  }
+
   private async releaseDeletedEmail(email: string): Promise<void> {
-    const deleted = await this.userRepo.findOne({
+    const deleted = await this.prisma.users.findFirst({
       where: { email, status: UserStatus.DELETED },
     });
     if (deleted) {
-      await this.userRepo.update(deleted.id, {
-        email: `deleted-${deleted.id}@deleted.dinnerbears.com`,
+      await this.prisma.users.update({
+        where: { id: deleted.id },
+        data: { email: `deleted-${deleted.id}@deleted.dinnerbears.com` },
       });
     }
   }
@@ -98,11 +111,11 @@ export class AuthService {
     inviteToken?: string,
     profilePhoto?: string | null,
     subdomainCityId?: number,
-  ): Promise<UserEntity> {
+  ): Promise<User> {
     // Primary lookup: existing OAuth account
-    const existing = await this.oauthRepo.findOne({
+    const existing = await this.prisma.oauth_accounts.findFirst({
       where: { provider: OAuthProvider.GOOGLE, providerId: googleId },
-      relations: ['user'],
+      include: { user: true },
     });
     if (existing) {
       if (existing.user.status === UserStatus.SUSPENDED || existing.user.status === UserStatus.DELETED) {
@@ -112,7 +125,7 @@ export class AuthService {
     }
 
     // Fallback: user row exists (orphaned from a previous partial attempt)
-    const existingByEmail = await this.userRepo.findOne({
+    const existingByEmail = await this.prisma.users.findUnique({
       where: { email: email.toLowerCase() },
     });
     if (existingByEmail) {
@@ -120,14 +133,14 @@ export class AuthService {
         throw new AuthFlowError('not_active');
       }
       if (existingByEmail.status !== UserStatus.DELETED) {
-        await this.oauthRepo.save(
-          this.oauthRepo.create({
+        await this.prisma.oauth_accounts.create({
+      data: {
             userId: existingByEmail.id,
             provider: OAuthProvider.GOOGLE,
             providerId: googleId,
             email: email.toLowerCase(),
-          }),
-        );
+      },
+    });
         return existingByEmail;
       }
       // DELETED: fall through — fresh registration; scramble old email before insert
@@ -155,7 +168,7 @@ export class AuthService {
       }
     }
 
-    const cityId = subdomainCityId ?? await this.citiesService.findAll().then((cities) => cities[0].id);
+    const cityId = await this.resolveCityId(subdomainCityId);
 
     // Free up the email address if a soft-deleted account is still holding it
     await this.releaseDeletedEmail(email.toLowerCase());
@@ -163,7 +176,7 @@ export class AuthService {
     const isEventInvite = invite?.type === InviteType.EVENT_INVITE;
     const isNonValidatedInvite = isEventInvite && invite?.inviteFlavor === InviteFlavor.NON_VALIDATED;
 
-    const user = this.userRepo.create({
+    const user = await this.prisma.users.create({ data: {
       fullName: displayName,
       email: email.toLowerCase(),
       emailStatus: EmailStatus.ACTIVE,
@@ -181,24 +194,27 @@ export class AuthService {
             ? InviteSource.NON_VALIDATED_LINK
             : InviteSource.GOOGLE_OAUTH
         : null,
-    });
-    await this.userRepo.save(user);
+    } });
 
-    await this.oauthRepo.save(
-      this.oauthRepo.create({
+    await this.prisma.oauth_accounts.create({
+      data: {
         userId: user.id,
         provider: OAuthProvider.GOOGLE,
         providerId: googleId,
         email: email.toLowerCase(),
-      }),
-    );
+      },
+    });
 
     if (invite) {
       await this.invitesService.redeem(invite, user);
       if (invite.type === InviteType.EVENT_INVITE && invite.eventId) {
-        const exists = await this.rsvpRepo.findOne({ where: { userId: user.id, eventId: invite.eventId } });
+        const exists = await this.prisma.event_rsvps.findFirst({
+          where: { userId: user.id, eventId: invite.eventId },
+        });
         if (!exists) {
-          await this.rsvpRepo.save(this.rsvpRepo.create({ userId: user.id, eventId: invite.eventId, status: RsvpStatus.GOING }));
+          await this.prisma.event_rsvps.create({
+            data: { userId: user.id, eventId: invite.eventId, status: RsvpStatus.GOING },
+          });
         }
         await this.backfillReservationIfMatch(user, invite.eventId);
       }
@@ -226,23 +242,26 @@ export class AuthService {
     profilePhoto?: string | null,
     profileUrl?: string | null,
     subdomainCityId?: number,
-  ): Promise<UserEntity> {
-    const existing = await this.oauthRepo.findOne({
+  ): Promise<User> {
+    const existing = await this.prisma.oauth_accounts.findFirst({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
-      relations: ['user'],
+      include: { user: true },
     });
     if (existing) {
       if (existing.user.status === UserStatus.SUSPENDED || existing.user.status === UserStatus.DELETED) {
         throw new AuthFlowError('not_active');
       }
       if (profileUrl && !existing.profileUrl) {
-        await this.oauthRepo.update(existing.id, { profileUrl });
+        await this.prisma.oauth_accounts.update({
+          where: { id: existing.id },
+          data: { profileUrl },
+        });
       }
       return existing.user;
     }
 
     if (email) {
-      const existingByEmail = await this.userRepo.findOne({
+      const existingByEmail = await this.prisma.users.findUnique({
         where: { email: email.toLowerCase() },
       });
       if (existingByEmail) {
@@ -272,7 +291,7 @@ export class AuthService {
       throw new AuthFlowError('invalid_invite');
     }
 
-    const cityId = subdomainCityId ?? await this.citiesService.findAll().then((cities) => cities[0].id);
+    const cityId = await this.resolveCityId(subdomainCityId);
 
     // Free up the email address if a soft-deleted account is still holding it
     if (email) await this.releaseDeletedEmail(email.toLowerCase());
@@ -280,7 +299,7 @@ export class AuthService {
     const isFbEventInvite = invite?.type === InviteType.EVENT_INVITE;
     const isFbNonValidated = isFbEventInvite && invite?.inviteFlavor === InviteFlavor.NON_VALIDATED;
 
-    const user = this.userRepo.create({
+    const user = await this.prisma.users.create({ data: {
       fullName: displayName,
       email: email ? email.toLowerCase() : `fb_${facebookId}@placeholder.invalid`,
       emailStatus: email ? EmailStatus.ACTIVE : EmailStatus.PENDING,
@@ -296,25 +315,28 @@ export class AuthService {
         : isFbNonValidated
           ? InviteSource.NON_VALIDATED_LINK
           : InviteSource.DIRECT,
-    });
-    await this.userRepo.save(user);
+    } });
 
-    await this.oauthRepo.save(
-      this.oauthRepo.create({
+    await this.prisma.oauth_accounts.create({
+      data: {
         userId: user.id,
         provider: OAuthProvider.FACEBOOK,
         providerId: facebookId,
         email: email ? email.toLowerCase() : null,
         profileUrl: profileUrl ?? null,
-      }),
-    );
+      },
+    });
 
     if (invite) {
       await this.invitesService.redeem(invite, user);
       if (invite.type === InviteType.EVENT_INVITE && invite.eventId) {
-        const exists = await this.rsvpRepo.findOne({ where: { userId: user.id, eventId: invite.eventId } });
+        const exists = await this.prisma.event_rsvps.findFirst({
+          where: { userId: user.id, eventId: invite.eventId },
+        });
         if (!exists) {
-          await this.rsvpRepo.save(this.rsvpRepo.create({ userId: user.id, eventId: invite.eventId, status: RsvpStatus.GOING }));
+          await this.prisma.event_rsvps.create({
+            data: { userId: user.id, eventId: invite.eventId, status: RsvpStatus.GOING },
+          });
         }
         await this.backfillReservationIfMatch(user, invite.eventId);
       }
@@ -337,7 +359,7 @@ export class AuthService {
     email: string | null,
     profileUrl?: string | null,
   ): Promise<void> {
-    const alreadyLinked = await this.oauthRepo.findOne({
+    const alreadyLinked = await this.prisma.oauth_accounts.findFirst({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
     });
     if (alreadyLinked) {
@@ -345,15 +367,15 @@ export class AuthService {
       throw new ConflictException('This Facebook account is already linked to another user');
     }
 
-    await this.oauthRepo.save(
-      this.oauthRepo.create({
+    await this.prisma.oauth_accounts.create({
+      data: {
         userId,
         provider: OAuthProvider.FACEBOOK,
         providerId: facebookId,
         email: email ? email.toLowerCase() : null,
         profileUrl: profileUrl ?? null,
-      }),
-    );
+      },
+    });
 
     await this.auditService.log({
       userId,
@@ -372,8 +394,8 @@ export class AuthService {
     hasMultipleMethods: boolean;
   }> {
     const [accounts, user] = await Promise.all([
-      this.oauthRepo.find({ where: { userId } }),
-      this.userRepo.findOneOrFail({ where: { id: userId } }),
+      this.prisma.oauth_accounts.findMany({ where: { userId } }),
+      this.prisma.users.findUniqueOrThrow({ where: { id: userId } }),
     ]);
     const google = accounts.find((a) => a.provider === OAuthProvider.GOOGLE) ?? null;
     const facebook = accounts.find((a) => a.provider === OAuthProvider.FACEBOOK) ?? null;
@@ -388,8 +410,8 @@ export class AuthService {
   }
 
   async disconnectProvider(userId: number, provider: OAuthProvider): Promise<void> {
-    const user = await this.userRepo.findOneOrFail({ where: { id: userId } });
-    const accounts = await this.oauthRepo.find({ where: { userId } });
+    const user = await this.prisma.users.findUniqueOrThrow({ where: { id: userId } });
+    const accounts = await this.prisma.oauth_accounts.findMany({ where: { userId } });
     const target = accounts.find((a) => a.provider === provider);
 
     if (!target) throw new NotFoundException(`${provider} is not linked to your account`);
@@ -402,12 +424,12 @@ export class AuthService {
 
     // Clear CDN photo if it belongs to this provider
     if (provider === OAuthProvider.FACEBOOK && isCdnPhoto(user.profilePhotoPath, FB_CDN_HOSTS)) {
-      await this.userRepo.update(userId, { profilePhotoPath: null });
+      await this.prisma.users.update({ where: { id: userId }, data: { profilePhotoPath: null } });
     } else if (provider === OAuthProvider.GOOGLE && isCdnPhoto(user.profilePhotoPath, GOOGLE_CDN_HOSTS)) {
-      await this.userRepo.update(userId, { profilePhotoPath: null });
+      await this.prisma.users.update({ where: { id: userId }, data: { profilePhotoPath: null } });
     }
 
-    await this.oauthRepo.remove(target);
+    await this.prisma.oauth_accounts.delete({ where: { id: target.id } });
 
     await this.auditService.log({
       userId,
@@ -433,7 +455,7 @@ export class AuthService {
   async handleFacebookDeletion(facebookUserId: string): Promise<string> {
     const confirmationCode = randomUUID().replace(/-/g, '').slice(0, 16).toUpperCase();
 
-    const account = await this.oauthRepo.findOne({
+    const account = await this.prisma.oauth_accounts.findFirst({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookUserId },
     });
 
@@ -441,11 +463,13 @@ export class AuthService {
 
     if (account) {
       dinnerbearsUserId = account.userId;
-      const allAccounts = await this.oauthRepo.find({ where: { userId: account.userId } });
+      const allAccounts = await this.prisma.oauth_accounts.findMany({
+        where: { userId: account.userId },
+      });
 
       if (allAccounts.length > 1) {
         // User has other auth methods — just delete the FB OAuth row
-        await this.oauthRepo.remove(account);
+        await this.prisma.oauth_accounts.delete({ where: { id: account.id } });
         await this.auditService.log({
           userId: account.userId,
           action: 'facebook_disconnected_by_meta_callback',
@@ -454,21 +478,28 @@ export class AuthService {
         });
       } else {
         // Facebook was the only auth method — full soft-delete
-        const user = await this.userRepo.findOne({ where: { id: account.userId } });
+        const user = await this.prisma.users.findUnique({ where: { id: account.userId } });
         if (user && user.status !== UserStatus.DELETED) {
           const hardDeleteAt = new Date();
           hardDeleteAt.setDate(hardDeleteAt.getDate() + 30);
 
-          await this.userRepo.update(user.id, {
-            status: UserStatus.DELETED,
-            deletedAt: new Date(),
-            hardDeleteAt,
-            fullName: 'Deleted Member',
-            email: `deleted-${user.id}@deleted.dinnerbears.com`,
-            passwordHash: null,
-            profilePhotoPath: null,
-          });
-          await this.oauthRepo.delete({ userId: user.id });
+          // Both writes in one transaction: the account must not be left
+          // anonymised while its Facebook link survives, or the other way round.
+          await this.prisma.$transaction([
+            this.prisma.users.update({
+              where: { id: user.id },
+              data: {
+                status: UserStatus.DELETED,
+                deletedAt: new Date(),
+                hardDeleteAt,
+                fullName: 'Deleted Member',
+                email: `deleted-${user.id}@deleted.dinnerbears.com`,
+                passwordHash: null,
+                profilePhotoPath: null,
+              },
+            }),
+            this.prisma.oauth_accounts.deleteMany({ where: { userId: user.id } }),
+          ]);
 
           await this.auditService.log({
             userId: user.id,
@@ -497,20 +528,22 @@ export class AuthService {
     }
 
     // Always persist a deletion request record
-    await this.fbDeletionRepo.save(
-      this.fbDeletionRepo.create({
+    await this.prisma.facebook_deletion_requests.create({
+      data: {
         facebookUserId,
         confirmationCode,
         dinnerbearsUserId,
         status: FacebookDeletionStatus.PENDING,
-      }),
-    );
+      },
+    });
 
     return confirmationCode;
   }
 
   async getFacebookDeletionStatus(code: string): Promise<{ status: 'pending' | 'completed' | 'not_found' }> {
-    const record = await this.fbDeletionRepo.findOne({ where: { confirmationCode: code } });
+    const record = await this.prisma.facebook_deletion_requests.findUnique({
+      where: { confirmationCode: code },
+    });
     if (!record) return { status: 'not_found' };
     return { status: record.status };
   }
@@ -518,7 +551,7 @@ export class AuthService {
   // --- Sessions ---
 
   async issueTokens(
-    user: UserEntity,
+    user: User,
     ctx: SessionContext,
   ): Promise<{ accessToken: string; jti: string }> {
     const jti = randomUUID();
@@ -526,17 +559,23 @@ export class AuthService {
 
     const geo = ctx.ipAddress ? geoip.lookup(ctx.ipAddress) : null;
 
-    const session = this.sessionRepo.create({
-      userId: user.id,
-      jwtJti: jti,
-      userAgent: ctx.userAgent ?? null,
-      ipAddress: ctx.ipAddress ?? null,
-      country: geo?.country ?? null,
-      city: geo?.city ?? null,
+    const session = await this.prisma.login_sessions.create({
+      data: {
+        userId: user.id,
+        jwtJti: jti,
+        userAgent: ctx.userAgent ?? null,
+        ipAddress: ctx.ipAddress ?? null,
+        country: geo?.country ?? null,
+        city: geo?.city ?? null,
+      },
     });
-    await this.sessionRepo.save(session);
 
-    const previousSession = await this.sessionRepo.findOne({
+    // `userAgent: undefined` is carried over deliberately: in TypeORM that
+    // meant "do not filter on this column" rather than "is null", and Prisma
+    // reads undefined the same way. Narrowing it here would change which
+    // sessions count as a known device, and so when the new-sign-in alert
+    // fires.
+    const previousSession = await this.prisma.login_sessions.findFirst({
       where: { userId: user.id, userAgent: ctx.userAgent ?? undefined, isActive: true },
     });
     const isNewDevice = !previousSession || previousSession.id === session.id;
@@ -551,9 +590,14 @@ export class AuthService {
       });
     }
 
-    await this.userRepo.update(user.id, {
-      lastLoginAt: new Date(),
-      loginCount: () => 'login_count + 1',
+    await this.prisma.users.update({
+      where: { id: user.id },
+      data: {
+        lastLoginAt: new Date(),
+        // The raw 'login_count + 1' expression becomes an atomic increment,
+        // which is the same statement without the string.
+        loginCount: { increment: 1 },
+      },
     });
 
     await this.auditService.log({
@@ -568,7 +612,10 @@ export class AuthService {
   }
 
   async logout(jti: string, userId: number): Promise<void> {
-    await this.sessionRepo.update({ jwtJti: jti }, { isActive: false });
+    await this.prisma.login_sessions.update({
+      where: { jwtJti: jti },
+      data: { isActive: false },
+    });
     await this.auditService.log({ userId, action: 'user.logout' });
   }
 
@@ -586,7 +633,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid automation secret');
     }
 
-    const user = await this.userRepo.findOne({ where: { email: 'automation@dinnerbears.internal' } });
+    const user = await this.prisma.users.findUnique({
+      where: { email: 'automation@dinnerbears.internal' },
+    });
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Automation account not found or inactive');
     }
@@ -595,22 +644,22 @@ export class AuthService {
     return { accessToken };
   }
 
-  async me(user: UserEntity) {
+  async me(user: User) {
     await this.trackQualifyingLogin(user);
     return stripUserSecrets(user);
   }
 
-  private async trackQualifyingLogin(user: UserEntity): Promise<void> {
+  private async trackQualifyingLogin(user: User): Promise<void> {
     const now = new Date();
     const last = user.lastQualifyingLoginAt;
     if (last && now.getTime() - last.getTime() < this.loginWindowMs) return;
 
     const newCount = user.qualifyingLoginCount + 1;
-    await this.userRepo.update(user.id, {
+    await this.prisma.users.update({ where: { id: user.id }, data: {
       qualifyingLoginCount: newCount,
       lastQualifyingLoginAt: now,
       lastLoginAt: now,
-    });
+    } });
     user.qualifyingLoginCount = newCount;
     user.lastQualifyingLoginAt = now;
     user.lastLoginAt = now;
@@ -627,10 +676,10 @@ export class AuthService {
     email: string,
     password: string,
     subdomainCityId?: number,
-  ): Promise<UserEntity> {
+  ): Promise<User> {
     const lowerEmail = email.toLowerCase();
 
-    const existing = await this.userRepo.findOne({
+    const existing = await this.prisma.users.findUnique({
       where: { email: lowerEmail },
     });
     if (existing && existing.status !== UserStatus.DELETED) {
@@ -653,7 +702,7 @@ export class AuthService {
       await this.releaseDeletedEmail(lowerEmail);
     }
 
-    const cityId = subdomainCityId ?? await this.citiesService.findAll().then((c) => c[0].id);
+    const cityId = await this.resolveCityId(subdomainCityId);
     const passwordHash = await bcrypt.hash(password, 12);
     const verificationToken = randomBytes(32).toString('hex');
     const verificationExpires = new Date();
@@ -664,7 +713,7 @@ export class AuthService {
     const isEventInvite = invite?.type === InviteType.EVENT_INVITE;
     const isNonValidatedInvite = isEventInvite && invite?.inviteFlavor === InviteFlavor.NON_VALIDATED;
 
-    const user = this.userRepo.create({
+    const user = await this.prisma.users.create({ data: {
       fullName,
       email: lowerEmail,
       passwordHash,
@@ -677,14 +726,18 @@ export class AuthService {
       inviteId: invite?.id ?? null,
       invitedBy: invite?.createdBy ?? null,
       inviteSource: isNonValidatedInvite ? InviteSource.NON_VALIDATED_LINK : InviteSource.DIRECT,
-    });
+    } });
 
-    const saved = await this.userRepo.save(user);
+    const saved = user;
     await this.invitesService.redeem(invite, saved);
     if (invite?.type === InviteType.EVENT_INVITE && invite.eventId) {
-      const exists = await this.rsvpRepo.findOne({ where: { userId: saved.id, eventId: invite.eventId } });
+      const exists = await this.prisma.event_rsvps.findFirst({
+        where: { userId: saved.id, eventId: invite.eventId },
+      });
       if (!exists) {
-        await this.rsvpRepo.save(this.rsvpRepo.create({ userId: saved.id, eventId: invite.eventId, status: RsvpStatus.GOING }));
+        await this.prisma.event_rsvps.create({
+          data: { userId: saved.id, eventId: invite.eventId, status: RsvpStatus.GOING },
+        });
       }
       await this.backfillReservationIfMatch(saved, invite.eventId);
     }
@@ -695,16 +748,19 @@ export class AuthService {
 
   // If the new user's email matches an event's outside-contact reservation, promote them
   // to the actual assignee so they get credit for making the reservation.
-  private async backfillReservationIfMatch(user: UserEntity, eventId: number): Promise<void> {
+  private async backfillReservationIfMatch(user: User, eventId: number): Promise<void> {
     if (!user.email) return;
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    const event = await this.prisma.events.findUnique({ where: { id: eventId } });
     if (!event?.reservationContactEmail) return;
     if (event.reservationContactEmail.toLowerCase() !== user.email.toLowerCase()) return;
-    await this.eventRepo.update(eventId, {
-      reservationAssigneeId: user.id,
-      reservationContactName: null,
-      reservationContactEmail: null,
-      reservationConfirmToken: null,
+    await this.prisma.events.update({
+      where: { id: eventId },
+      data: {
+        reservationAssigneeId: user.id,
+        reservationContactName: null,
+        reservationContactEmail: null,
+        reservationConfirmToken: null,
+      },
     });
   }
 
@@ -713,7 +769,7 @@ export class AuthService {
     password: string,
     ctx: SessionContext,
   ): Promise<{ accessToken: string; jti: string; failedAttemptsSinceLastLogin: number; previousLastLoginAt: Date | null }> {
-    const user = await this.userRepo.findOne({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.users.findUnique({ where: { email: email.toLowerCase() } });
 
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('invalid_credentials');
@@ -725,11 +781,11 @@ export class AuthService {
     // Reset stale failure counter — if last failure was more than 30 min ago, start fresh
     const STALE_MS = 30 * 60 * 1000;
     if (user.lastFailedLoginAt && Date.now() - user.lastFailedLoginAt.getTime() > STALE_MS) {
-      await this.userRepo.update(user.id, {
+      await this.prisma.users.update({ where: { id: user.id }, data: {
         failedLoginAttempts: 0,
         loginLockedUntil: null,
         lastFailedLoginAt: null,
-      });
+      } });
       user.failedLoginAttempts = 0;
       user.loginLockedUntil = null;
     }
@@ -748,11 +804,11 @@ export class AuthService {
         const lockSeconds = Math.min(60 * Math.pow(2, attempts - 4), 600);
         lockedUntil = new Date(Date.now() + lockSeconds * 1000);
       }
-      await this.userRepo.update(user.id, {
+      await this.prisma.users.update({ where: { id: user.id }, data: {
         failedLoginAttempts: attempts,
         loginLockedUntil: lockedUntil,
         lastFailedLoginAt: new Date(),
-      });
+      } });
       void this.auditService.log({
         userId: user.id,
         action: 'user.login_failed',
@@ -777,11 +833,11 @@ export class AuthService {
     const previousLastLoginAt = user.lastLoginAt;
 
     // Successful login — clear lockout state
-    await this.userRepo.update(user.id, {
+    await this.prisma.users.update({ where: { id: user.id }, data: {
       failedLoginAttempts: 0,
       loginLockedUntil: null,
       lastFailedLoginAt: null,
-    });
+    } });
 
     // Persist failed-attempt warning as a notification so it survives past the snackbar
     if (failedAttemptsSinceLastLogin > 0) {
@@ -801,7 +857,7 @@ export class AuthService {
     return { ...tokens, failedAttemptsSinceLastLogin, previousLastLoginAt };
   }
 
-  private async sendLockoutAlerts(user: UserEntity, attempts: number): Promise<void> {
+  private async sendLockoutAlerts(user: User, attempts: number): Promise<void> {
     // Email the affected user
     try {
       await this.emailService.sendNow({
@@ -822,9 +878,9 @@ export class AuthService {
 
     // In-app notification to all admins and moderators
     try {
-      const elevated = await this.userRepo.find({
-        where: [{ role: UserRole.ADMIN }, { role: UserRole.MODERATOR }],
-        select: ['id'],
+      const elevated = await this.prisma.users.findMany({
+        where: { role: { in: [UserRole.ADMIN, UserRole.MODERATOR] } },
+        select: { id: true },
       });
       await Promise.all(
         elevated.map((admin) =>
@@ -843,23 +899,28 @@ export class AuthService {
   }
 
   async verifyEmail(token: string): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { emailVerificationToken: token } });
+    // findFirst, not findUnique: email_verification_token has no unique index,
+    // so it is not a valid unique selector. TypeORM's findOne returned the
+    // first match here too.
+    const user = await this.prisma.users.findFirst({
+      where: { emailVerificationToken: token },
+    });
 
     if (!user) throw new BadRequestException('invalid_token');
     if (!user.emailVerificationExpiresAt || user.emailVerificationExpiresAt < new Date()) {
       throw new BadRequestException('token_expired');
     }
 
-    await this.userRepo.update(user.id, {
+    await this.prisma.users.update({ where: { id: user.id }, data: {
       emailStatus: EmailStatus.ACTIVE,
       emailVerifiedAt: new Date(),
       emailVerificationToken: null,
       emailVerificationExpiresAt: null,
-    });
+    } });
   }
 
   async resendVerification(email: string): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.users.findUnique({ where: { email: email.toLowerCase() } });
 
     // Always return success to prevent email enumeration
     if (!user || user.emailStatus !== EmailStatus.PENDING || !user.passwordHash) return;
@@ -868,16 +929,16 @@ export class AuthService {
     const expires = new Date();
     expires.setHours(expires.getHours() + 48);
 
-    await this.userRepo.update(user.id, {
+    await this.prisma.users.update({ where: { id: user.id }, data: {
       emailVerificationToken: token,
       emailVerificationExpiresAt: expires,
-    });
+    } });
 
     await this.sendVerificationEmail(user, token);
   }
 
   async forgotPassword(email: string): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.users.findUnique({ where: { email: email.toLowerCase() } });
 
     // Always return success to prevent email enumeration
     if (!user || !user.passwordHash || user.status !== UserStatus.ACTIVE) return;
@@ -886,10 +947,10 @@ export class AuthService {
     const expires = new Date();
     expires.setHours(expires.getHours() + 1);
 
-    await this.userRepo.update(user.id, {
+    await this.prisma.users.update({ where: { id: user.id }, data: {
       passwordResetToken: token,
       passwordResetExpiresAt: expires,
-    });
+    } });
 
     const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
     const resetUrl = `${appUrl}/auth/reset-password?token=${token}`;
@@ -909,7 +970,9 @@ export class AuthService {
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { passwordResetToken: token } });
+    // findFirst for the same reason as verifyEmail: password_reset_token
+    // carries no unique index.
+    const user = await this.prisma.users.findFirst({ where: { passwordResetToken: token } });
 
     if (!user) throw new BadRequestException('invalid_token');
     if (!user.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
@@ -918,23 +981,23 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
 
-    await this.userRepo.update(user.id, {
+    await this.prisma.users.update({ where: { id: user.id }, data: {
       passwordHash,
       passwordResetToken: null,
       passwordResetExpiresAt: null,
-    });
+    } });
   }
 
   async setPassword(userId: number, email: string, newPassword: string): Promise<{ needsVerification: boolean }> {
     const lowerEmail = email.toLowerCase();
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.passwordHash) throw new BadRequestException('password_already_set');
 
     const emailChanged = lowerEmail !== user.email.toLowerCase();
 
     if (emailChanged) {
-      const taken = await this.userRepo.findOne({ where: { email: lowerEmail } });
+      const taken = await this.prisma.users.findUnique({ where: { email: lowerEmail } });
       if (taken && taken.id !== userId) throw new ConflictException('email_taken');
     }
 
@@ -945,39 +1008,39 @@ export class AuthService {
       const verificationExpires = new Date();
       verificationExpires.setHours(verificationExpires.getHours() + 48);
 
-      await this.userRepo.update(userId, {
+      await this.prisma.users.update({ where: { id: userId }, data: {
         email: lowerEmail,
         passwordHash,
         emailStatus: EmailStatus.PENDING,
         emailVerifiedAt: null,
         emailVerificationToken: verificationToken,
         emailVerificationExpiresAt: verificationExpires,
-      });
+      } });
 
       await this.sendVerificationEmail({ ...user, email: lowerEmail, fullName: user.fullName }, verificationToken);
       return { needsVerification: true };
     }
 
-    await this.userRepo.update(userId, {
+    await this.prisma.users.update({ where: { id: userId }, data: {
       passwordHash,
       emailStatus: EmailStatus.ACTIVE,
       emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
-    });
+    } });
     return { needsVerification: false };
   }
 
   async changePassword(userId: number, currentPassword: string, newPassword: string): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user || !user.passwordHash) throw new BadRequestException('no_password');
 
     const match = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!match) throw new UnauthorizedException('invalid_credentials');
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await this.userRepo.update(userId, { passwordHash });
+    await this.prisma.users.update({ where: { id: userId }, data: { passwordHash } });
   }
 
-  private async sendVerificationEmail(user: UserEntity, token: string): Promise<void> {
+  private async sendVerificationEmail(user: User, token: string): Promise<void> {
     const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
     const verifyUrl = `${appUrl}/auth/verify-email?token=${token}`;
 

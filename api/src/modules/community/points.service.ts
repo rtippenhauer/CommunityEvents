@@ -22,7 +22,7 @@ export interface PointLedgerDetailed {
   total: number;
 }
 
-const POINT_TYPE_LABELS: Record<Exclude<PointType, PointType.ACHIEVEMENT>, string> = {
+const POINT_TYPE_LABELS: Record<Exclude<PointType, typeof PointType.ACHIEVEMENT>, string> = {
   [PointType.ATTENDANCE]: 'Attended a dinner',
   [PointType.COORDINATOR]: 'Coordinated a dinner',
   [PointType.NEW_LOCATION_COORDINATOR]: 'Coordinated a dinner at a new restaurant',

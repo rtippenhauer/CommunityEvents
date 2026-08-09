@@ -226,7 +226,7 @@ export class FeedbackService {
     const data: Prisma.feedbackUpdateInput = {};
     if (dto.status !== undefined) {
       data.status = dto.status;
-      const terminalStatuses = [FeedbackStatus.RESOLVED, FeedbackStatus.SHIPPED];
+      const terminalStatuses: FeedbackStatus[] = [FeedbackStatus.RESOLVED, FeedbackStatus.SHIPPED];
       if (terminalStatuses.includes(dto.status) && !item.resolvedAt) {
         data.resolvedAt = new Date();
       } else if (!terminalStatuses.includes(dto.status)) {

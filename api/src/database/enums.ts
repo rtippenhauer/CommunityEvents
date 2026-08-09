@@ -9,196 +9,224 @@
  * from the entities rather than retyped.
  */
 
+/**
+ * Declared as const objects rather than TypeScript `enum`s.
+ *
+ * A string enum is nominal: `UserRole.ADMIN` has type `UserRole.ADMIN`, which
+ * TypeScript will not assign to Prisma's generated `users_role` union even
+ * though both are the string 'admin'. That would mean a cast at every write
+ * touching an enum column. The const-object form gives each member a literal
+ * string type, so values flow both ways without casts, while `UserRole.ADMIN`
+ * and `role: UserRole` keep reading exactly as they did.
+ */
+
 // from achievement.entity.ts
-export enum ProgressType {
-  ATTENDANCE = 'attendance',
-  COORDINATOR = 'coordinator',
-  NEW_LOCATION_COORDINATOR = 'new_location_coordinator',
-  INVITE = 'invite',
-  RATING = 'rating',
-  FOUNDING = 'founding',
-  EVENT = 'event',
-  CITY_HOPPER = 'city_hopper',
-  SECRET_DINNER = 'secret_dinner',
-  LOGIN = 'login',
-}
+export const ProgressType = {
+  ATTENDANCE: 'attendance',
+  COORDINATOR: 'coordinator',
+  NEW_LOCATION_COORDINATOR: 'new_location_coordinator',
+  INVITE: 'invite',
+  RATING: 'rating',
+  FOUNDING: 'founding',
+  EVENT: 'event',
+  CITY_HOPPER: 'city_hopper',
+  SECRET_DINNER: 'secret_dinner',
+  LOGIN: 'login',
+} as const;
+export type ProgressType = (typeof ProgressType)[keyof typeof ProgressType];
 
 // from announcement.entity.ts
-export enum AnnouncementStatus {
-  DRAFT = 'draft',
-  PUBLISHED = 'published',
-}
+export const AnnouncementStatus = {
+  DRAFT: 'draft',
+  PUBLISHED: 'published',
+} as const;
+export type AnnouncementStatus = (typeof AnnouncementStatus)[keyof typeof AnnouncementStatus];
 
 // from content-flag.entity.ts
-export enum FlagContentType {
-  ANNOUNCEMENT = 'announcement',
-  ANNOUNCEMENT_COMMENT = 'announcement_comment',
-}
+export const FlagContentType = {
+  ANNOUNCEMENT: 'announcement',
+  ANNOUNCEMENT_COMMENT: 'announcement_comment',
+} as const;
+export type FlagContentType = (typeof FlagContentType)[keyof typeof FlagContentType];
 
 // from content-flag.entity.ts
-export enum FlagStatus {
-  PENDING = 'pending',
-  REVIEWED = 'reviewed',
-  DISMISSED = 'dismissed',
-}
+export const FlagStatus = {
+  PENDING: 'pending',
+  REVIEWED: 'reviewed',
+  DISMISSED: 'dismissed',
+} as const;
+export type FlagStatus = (typeof FlagStatus)[keyof typeof FlagStatus];
 
 // from content-report.entity.ts
-export enum ReportContentType {
-  EVENT_COMMENT = 'event_comment',
-  EVENT_COMMENT_REPLY = 'event_comment_reply',
-  ANNOUNCEMENT_COMMENT = 'announcement_comment',
-  LOCATION_RATING = 'location_rating',
-}
+export const ReportContentType = {
+  EVENT_COMMENT: 'event_comment',
+  EVENT_COMMENT_REPLY: 'event_comment_reply',
+  ANNOUNCEMENT_COMMENT: 'announcement_comment',
+  LOCATION_RATING: 'location_rating',
+} as const;
+export type ReportContentType = (typeof ReportContentType)[keyof typeof ReportContentType];
 
 // from content-report.entity.ts
-export enum ReportStatus {
-  PENDING = 'pending',
-  REVIEWED = 'reviewed',
-  DISMISSED = 'dismissed',
-}
+export const ReportStatus = {
+  PENDING: 'pending',
+  REVIEWED: 'reviewed',
+  DISMISSED: 'dismissed',
+} as const;
+export type ReportStatus = (typeof ReportStatus)[keyof typeof ReportStatus];
 
 // from email-queue.entity.ts
-export enum EmailQueueStatus {
-  PENDING = 'pending',
-  SENT = 'sent',
-  FAILED = 'failed',
-  CANCELLED = 'cancelled',
-  BLOCKED = 'blocked',
-}
+export const EmailQueueStatus = {
+  PENDING: 'pending',
+  SENT: 'sent',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
+  BLOCKED: 'blocked',
+} as const;
+export type EmailQueueStatus = (typeof EmailQueueStatus)[keyof typeof EmailQueueStatus];
 
 // from email-queue.entity.ts
-export enum EmailProvider {
-  BREVO = 'brevo',
-  GMAIL = 'gmail',
-}
+export const EmailProvider = {
+  BREVO: 'brevo',
+  GMAIL: 'gmail',
+} as const;
+export type EmailProvider = (typeof EmailProvider)[keyof typeof EmailProvider];
 
 // from email-suppression.entity.ts
-export enum SuppressionReason {
-  UNSUBSCRIBED = 'unsubscribed',
-  BOUNCED = 'bounced',
-  COMPLAINED = 'complained',
-}
+export const SuppressionReason = {
+  UNSUBSCRIBED: 'unsubscribed',
+  BOUNCED: 'bounced',
+  COMPLAINED: 'complained',
+} as const;
+export type SuppressionReason = (typeof SuppressionReason)[keyof typeof SuppressionReason];
 
 // from event-rsvp.entity.ts
-export enum RsvpStatus {
-  GOING = 'going',
-  MAYBE = 'maybe',
-  NOT_GOING = 'not_going',
-}
+export const RsvpStatus = {
+  GOING: 'going',
+  MAYBE: 'maybe',
+  NOT_GOING: 'not_going',
+} as const;
+export type RsvpStatus = (typeof RsvpStatus)[keyof typeof RsvpStatus];
 
 // from event.entity.ts
-export enum EventStatus {
-  DRAFT = 'draft',
-  PUBLISHED = 'published',
-  CANCELLED = 'cancelled',
-}
+export const EventStatus = {
+  DRAFT: 'draft',
+  PUBLISHED: 'published',
+  CANCELLED: 'cancelled',
+} as const;
+export type EventStatus = (typeof EventStatus)[keyof typeof EventStatus];
 
 // from facebook-deletion-request.entity.ts
-export enum FacebookDeletionStatus {
-  PENDING = 'pending',
-  COMPLETED = 'completed',
-}
+export const FacebookDeletionStatus = {
+  PENDING: 'pending',
+  COMPLETED: 'completed',
+} as const;
+export type FacebookDeletionStatus = (typeof FacebookDeletionStatus)[keyof typeof FacebookDeletionStatus];
 
 // from facebook-group-config.entity.ts
-export enum FacebookGroupRole {
-  PRIMARY = 'primary',
-  SECONDARY = 'secondary',
-}
+export const FacebookGroupRole = {
+  PRIMARY: 'primary',
+  SECONDARY: 'secondary',
+} as const;
+export type FacebookGroupRole = (typeof FacebookGroupRole)[keyof typeof FacebookGroupRole];
 
 // from feedback.entity.ts
-export enum FeedbackCategory {
-  BUG = 'bug',
-  FEATURE_REQUEST = 'feature_request',
-  COMMENT = 'comment',
-}
+export const FeedbackCategory = {
+  BUG: 'bug',
+  FEATURE_REQUEST: 'feature_request',
+  COMMENT: 'comment',
+} as const;
+export type FeedbackCategory = (typeof FeedbackCategory)[keyof typeof FeedbackCategory];
 
 // from feedback.entity.ts
-export enum FeedbackStatus {
-  OPEN = 'open',
-  IN_PROGRESS = 'in_progress',
-  RESOLVED = 'resolved',
-  SHIPPED = 'shipped',
-  CLOSED = 'closed',
-  WONT_FIX = 'wont_fix',
-}
+export const FeedbackStatus = {
+  OPEN: 'open',
+  IN_PROGRESS: 'in_progress',
+  RESOLVED: 'resolved',
+  SHIPPED: 'shipped',
+  CLOSED: 'closed',
+  WONT_FIX: 'wont_fix',
+} as const;
+export type FeedbackStatus = (typeof FeedbackStatus)[keyof typeof FeedbackStatus];
 
 // from invite.entity.ts
-export enum InviteType {
-  MEMBER = 'member',
-  ADMIN = 'admin',
-  CAMPAIGN_FACEBOOK = 'campaign_facebook',
-  GUEST_RSVP = 'guest_rsvp',
-  SHAREABLE_RSVP = 'shareable_rsvp',
-  EVENT_INVITE = 'event_invite',
-}
+export const InviteType = {
+  MEMBER: 'member',
+  ADMIN: 'admin',
+  CAMPAIGN_FACEBOOK: 'campaign_facebook',
+  GUEST_RSVP: 'guest_rsvp',
+  SHAREABLE_RSVP: 'shareable_rsvp',
+  EVENT_INVITE: 'event_invite',
+} as const;
+export type InviteType = (typeof InviteType)[keyof typeof InviteType];
 
 // from invite.entity.ts
-export enum InviteFlavor {
-  MEMBER = 'member',
-  NON_VALIDATED = 'non_validated',
-}
+export const InviteFlavor = {
+  MEMBER: 'member',
+  NON_VALIDATED: 'non_validated',
+} as const;
+export type InviteFlavor = (typeof InviteFlavor)[keyof typeof InviteFlavor];
 
 // from location.entity.ts
-export enum ImportSource {
-  MANUAL = 'manual',
-  FACEBOOK_IMPORT = 'facebook_import',
-}
+export const ImportSource = {
+  MANUAL: 'manual',
+  FACEBOOK_IMPORT: 'facebook_import',
+} as const;
+export type ImportSource = (typeof ImportSource)[keyof typeof ImportSource];
 
 // from member-point.entity.ts
-export enum PointType {
-  ATTENDANCE = 'attendance',
-  COORDINATOR = 'coordinator',
-  NEW_LOCATION_COORDINATOR = 'new_location_coordinator',
-  INVITE = 'invite',
-  RATING = 'rating',
-  CITY_HOPPER = 'city_hopper',
-  SECRET_DINNER = 'secret_dinner',
-  ACHIEVEMENT = 'achievement',
-}
+export const PointType = {
+  ATTENDANCE: 'attendance',
+  COORDINATOR: 'coordinator',
+  NEW_LOCATION_COORDINATOR: 'new_location_coordinator',
+  INVITE: 'invite',
+  RATING: 'rating',
+  CITY_HOPPER: 'city_hopper',
+  SECRET_DINNER: 'secret_dinner',
+  ACHIEVEMENT: 'achievement',
+} as const;
+export type PointType = (typeof PointType)[keyof typeof PointType];
 
 // from oauth-account.entity.ts
-export enum OAuthProvider {
-  GOOGLE = 'google',
-  FACEBOOK = 'facebook',
-}
+export const OAuthProvider = {
+  GOOGLE: 'google',
+  FACEBOOK: 'facebook',
+} as const;
+export type OAuthProvider = (typeof OAuthProvider)[keyof typeof OAuthProvider];
 
 // from user.entity.ts
-export enum UserRole {
-  NON_VALIDATED = 'non_validated',
-  MEMBER = 'member',
-  MODERATOR = 'moderator',
-  ADMIN = 'admin',
-  // Dedicated account for Claude Code automation (release drafting, feedback
-  // triage) — a real user row, never an impersonation of an admin. Rob can
-  // temporarily reassign it to member/moderator/admin via the normal admin
-  // users UI to let it browse role-gated pages for testing, then flip it
-  // back. While actually in this role, it's excluded from leaderboards and
-  // member lists (once reassigned to member/moderator/admin, it shows up
-  // like any other account of that role would).
-  AUTOMATION = 'automation',
-}
+export const UserRole = {
+  NON_VALIDATED: 'non_validated',
+  MEMBER: 'member',
+  MODERATOR: 'moderator',
+  ADMIN: 'admin',
+  AUTOMATION: 'automation',
+} as const;
+export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
 // from user.entity.ts
-export enum UserStatus {
-  ACTIVE = 'active',
-  SUSPENDED = 'suspended',
-  DELETED = 'deleted',
-}
+export const UserStatus = {
+  ACTIVE: 'active',
+  SUSPENDED: 'suspended',
+  DELETED: 'deleted',
+} as const;
+export type UserStatus = (typeof UserStatus)[keyof typeof UserStatus];
 
 // from user.entity.ts
-export enum EmailStatus {
-  PENDING = 'pending',
-  ACTIVE = 'active',
-  UNSUBSCRIBED = 'unsubscribed',
-  BOUNCED = 'bounced',
-  COMPLAINED = 'complained',
-}
+export const EmailStatus = {
+  PENDING: 'pending',
+  ACTIVE: 'active',
+  UNSUBSCRIBED: 'unsubscribed',
+  BOUNCED: 'bounced',
+  COMPLAINED: 'complained',
+} as const;
+export type EmailStatus = (typeof EmailStatus)[keyof typeof EmailStatus];
 
 // from user.entity.ts
-export enum InviteSource {
-  DIRECT = 'direct',
-  FACEBOOK_GROUP = 'facebook_group',
-  GOOGLE_OAUTH = 'google_oauth',
-  NON_VALIDATED_LINK = 'non_validated_link',
-}
+export const InviteSource = {
+  DIRECT: 'direct',
+  FACEBOOK_GROUP: 'facebook_group',
+  GOOGLE_OAUTH: 'google_oauth',
+  NON_VALIDATED_LINK: 'non_validated_link',
+} as const;
+export type InviteSource = (typeof InviteSource)[keyof typeof InviteSource];
 
