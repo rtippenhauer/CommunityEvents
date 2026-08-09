@@ -15,7 +15,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('admin/releases')
 export class ReleasesAdminController {
@@ -53,7 +54,7 @@ export class ReleasesAdminController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.AUTOMATION)
-  create(@Body() dto: CreateReleaseDto, @CurrentUser() user: UserEntity) {
+  create(@Body() dto: CreateReleaseDto, @CurrentUser() user: User) {
     return this.releasesService.create(dto, user.id);
   }
 

@@ -23,9 +23,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
 import { InviteFlavor, InviteType } from '../../database/enums';
-import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
 import { AchievementsService } from '../community/achievements.service';
+import { RsvpStatus } from '../../database/enums';
+import type { event_rsvps as EventRsvp } from '@prisma/client';
 
 export interface SessionContext {
   userAgent?: string;

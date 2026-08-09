@@ -5,8 +5,8 @@ import { IsEnum, IsBoolean, IsOptional, IsString } from 'class-validator';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity } from '../../database/entities/user.entity';
 import { CalendarService, CalendarSettingsResponse } from './calendar.service';
+import type { users as User } from '@prisma/client';
 
 class UpdateCalendarSettingsDto {
   @IsOptional()
@@ -50,14 +50,14 @@ export class CalendarController {
 
   @Get('settings')
   @UseGuards(JwtAuthGuard)
-  async getSettings(@CurrentUser() user: UserEntity): Promise<CalendarSettingsResponse> {
+  async getSettings(@CurrentUser() user: User): Promise<CalendarSettingsResponse> {
     return this.calendarService.getSettings(user.id);
   }
 
   @Patch('settings')
   @UseGuards(JwtAuthGuard)
   async updateSettings(
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
     @Body() dto: UpdateCalendarSettingsDto,
   ): Promise<CalendarSettingsResponse> {
     return this.calendarService.updateSettings(user.id, dto);
@@ -65,14 +65,14 @@ export class CalendarController {
 
   @Get('token')
   @UseGuards(JwtAuthGuard)
-  async getToken(@CurrentUser() user: UserEntity): Promise<{ url: string }> {
+  async getToken(@CurrentUser() user: User): Promise<{ url: string }> {
     const token = await this.calendarService.getOrCreateToken(user.id);
     return { url: this.calendarService.feedUrl(token) };
   }
 
   @Get('token/regenerate')
   @UseGuards(JwtAuthGuard)
-  async regenerateToken(@CurrentUser() user: UserEntity): Promise<{ url: string }> {
+  async regenerateToken(@CurrentUser() user: User): Promise<{ url: string }> {
     const token = await this.calendarService.regenerateToken(user.id);
     return { url: this.calendarService.feedUrl(token) };
   }

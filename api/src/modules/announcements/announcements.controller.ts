@@ -18,7 +18,8 @@ import { FlagContentDto } from './dto/flag-content.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('announcements')
 export class AnnouncementsController {
@@ -26,13 +27,13 @@ export class AnnouncementsController {
 
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
-  findAll(@Query('cityId') cityId?: string, @CurrentUser() user?: UserEntity) {
+  findAll(@Query('cityId') cityId?: string, @CurrentUser() user?: User) {
     return this.announcementsService.findPublished(cityId ? Number(cityId) : undefined, !!user);
   }
 
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
-  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: UserEntity) {
+  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: User) {
     return this.announcementsService.findOne(id, !!user);
   }
 
@@ -41,7 +42,7 @@ export class AnnouncementsController {
   addComment(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateCommentDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot post comments');
@@ -54,7 +55,7 @@ export class AnnouncementsController {
   editComment(
     @Param('commentId', ParseIntPipe) commentId: number,
     @Body() dto: CreateCommentDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot post comments');
@@ -67,7 +68,7 @@ export class AnnouncementsController {
   @HttpCode(204)
   deleteComment(
     @Param('commentId', ParseIntPipe) commentId: number,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.announcementsService.deleteComment(commentId, user.id, user.role);
   }
@@ -75,7 +76,7 @@ export class AnnouncementsController {
   @Post('flag')
   @UseGuards(JwtAuthGuard)
   @HttpCode(204)
-  flagContent(@Body() dto: FlagContentDto, @CurrentUser() user: UserEntity) {
+  flagContent(@Body() dto: FlagContentDto, @CurrentUser() user: User) {
     return this.announcementsService.flagContent(dto, user.id);
   }
 }

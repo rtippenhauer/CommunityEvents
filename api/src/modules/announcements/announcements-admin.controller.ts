@@ -17,7 +17,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('admin/announcements')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -47,7 +48,7 @@ export class AnnouncementsAdminController {
   }
 
   @Post()
-  create(@Body() dto: CreateAnnouncementDto, @CurrentUser() user: UserEntity) {
+  create(@Body() dto: CreateAnnouncementDto, @CurrentUser() user: User) {
     return this.announcementsService.create(dto, user.id);
   }
 
@@ -71,7 +72,7 @@ export class AnnouncementsAdminController {
   resolveFlag(
     @Param('flagId', ParseIntPipe) flagId: number,
     @Body() dto: UpdateFlagDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.announcementsService.resolveFlag(flagId, user.id, dto.status);
   }

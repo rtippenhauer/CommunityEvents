@@ -5,9 +5,9 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
-import { InviteType } from '../../database/entities/invite.entity';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
+import { InviteType, UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('invites')
 export class InvitesController {
@@ -18,18 +18,18 @@ export class InvitesController {
 
   @Post()
   @UseGuards(JwtAuthGuard)
-  create(@Body() dto: CreateInviteDto, @CurrentUser() user: UserEntity) {
+  create(@Body() dto: CreateInviteDto, @CurrentUser() user: User) {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot send invites');
     }
     const isElevated = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
-    const effectiveDto: CreateInviteDto = isElevated ? dto : { ...dto, type: InviteType.MEMBER as InviteType.MEMBER };
+    const effectiveDto: CreateInviteDto = isElevated ? dto : { ...dto, type: InviteType.MEMBER };
     return this.invitesService.create(effectiveDto, user);
   }
 
   @Get('mine')
   @UseGuards(JwtAuthGuard)
-  findMine(@CurrentUser() user: UserEntity) {
+  findMine(@CurrentUser() user: User) {
     return this.invitesService.findByCreator(user.id);
   }
 
@@ -49,7 +49,7 @@ export class InvitesController {
 
   @Patch(':id/revoke-own')
   @UseGuards(JwtAuthGuard)
-  revokeOwn(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+  revokeOwn(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
     return this.invitesService.revokeOwn(id, user.id);
   }
 

@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { PrismaService } from '../../database/prisma/prisma.service';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -21,12 +20,12 @@ const { version: appVersion } = JSON.parse(
 
 @Injectable()
 export class HealthService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async check(): Promise<HealthStatus> {
     let database: 'ok' | 'error' = 'error';
     try {
-      await this.dataSource.query('SELECT 1');
+      await this.prisma.$queryRaw`SELECT 1`;
       database = 'ok';
     } catch {
       // DB unreachable — status stays 'error'

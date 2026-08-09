@@ -42,3 +42,23 @@ export function asDateString(value: Date | string): string {
 export function asTimeString(value: Date | string): string {
   return typeof value === 'string' ? value : toTimeString(value);
 }
+
+/**
+ * The write direction: DTOs and query params carry 'YYYY-MM-DD' and 'HH:MM'
+ * or 'HH:MM:SS' strings, and Prisma wants Date objects for DATE and TIME
+ * columns.
+ *
+ * Both anchor to UTC so they round-trip through toDateString/toTimeString
+ * unchanged. A TIME is stored on 1970-01-01, which is how the driver hands it
+ * back. Parsing without the trailing Z would apply the host's offset and shift
+ * the stored value on any machine that is not on UTC.
+ */
+export function toDateColumn(value: string): Date {
+  return new Date(`${value}T00:00:00Z`);
+}
+
+export function toTimeColumn(value: string): Date {
+  // Accept 'HH:MM' as well as 'HH:MM:SS' -- the event form submits the former.
+  const withSeconds = value.length === 5 ? `${value}:00` : value;
+  return new Date(`1970-01-01T${withSeconds}Z`);
+}

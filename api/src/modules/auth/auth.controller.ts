@@ -26,14 +26,14 @@ import { CitiesService } from '../cities/cities.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GoogleCallbackGuard } from '../../common/guards/google-callback.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity } from '../../database/entities/user.entity';
-import { OAuthProvider } from '../../database/entities/oauth-account.entity';
 import { FacebookAuthDto } from './dto/facebook-auth.dto';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { OAuthProvider } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('auth')
 export class AuthController {
@@ -101,7 +101,7 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(GoogleCallbackGuard)
   async googleCallback(
-    @Req() req: Request & { user: UserEntity; authOriginHost?: string },
+    @Req() req: Request & { user: User; authOriginHost?: string },
     @Res() res: Response,
   ): Promise<void> {
     if (res.headersSent) return;
@@ -186,7 +186,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async facebookLink(
     @Body() dto: FacebookAuthDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ): Promise<{ message: string }> {
     const fbRes = await fetch(
       `https://graph.facebook.com/me?fields=id,name,email,link&access_token=${encodeURIComponent(dto.accessToken)}`,
@@ -241,7 +241,7 @@ export class AuthController {
 
   @Get('providers')
   @UseGuards(JwtAuthGuard)
-  async getProviders(@CurrentUser() user: UserEntity) {
+  async getProviders(@CurrentUser() user: User) {
     return this.authService.getConnectedProviders(user.id);
   }
 
@@ -250,7 +250,7 @@ export class AuthController {
   @HttpCode(204)
   async disconnectProvider(
     @Param('provider') provider: string,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     const normalized = provider.toLowerCase() as OAuthProvider;
@@ -382,7 +382,7 @@ export class AuthController {
   async setPassword(
     @Body('email') email: string,
     @Body('password') password: string,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ): Promise<{ message: string; needsVerification: boolean }> {
     if (!email) throw new BadRequestException('Email is required');
     if (!password || password.length < 8) throw new BadRequestException('Password must be at least 8 characters');
@@ -395,7 +395,7 @@ export class AuthController {
   @HttpCode(200)
   async changePassword(
     @Body() dto: ChangePasswordDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ): Promise<{ message: string }> {
     await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
     return { message: 'Password updated' };
@@ -405,14 +405,14 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  me(@CurrentUser() user: UserEntity) {
+  me(@CurrentUser() user: User) {
     return this.authService.me(user);
   }
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   async logout(
-    @Req() req: Request & { user: UserEntity; cookies: Record<string, string> },
+    @Req() req: Request & { user: User; cookies: Record<string, string> },
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
     const token = req.cookies['access_token'];

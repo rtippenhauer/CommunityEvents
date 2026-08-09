@@ -32,8 +32,8 @@ import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guar
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
-import { EventStatus } from '../../database/entities/event.entity';
+import { EventStatus, UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('events')
 export class EventsController {
@@ -50,7 +50,7 @@ export class EventsController {
     @Query('upcoming') upcoming?: string,
     @Query('fromDate') fromDate?: string,
     @Query('status') status?: EventStatus,
-    @CurrentUser() user?: UserEntity,
+    @CurrentUser() user?: User,
   ) {
     const isAdminOrMod =
       user?.role === UserRole.ADMIN || user?.role === UserRole.MODERATOR;
@@ -110,7 +110,7 @@ export class EventsController {
   removeGuestLink(
     @Param('id', ParseIntPipe) _id: number,
     @Param('linkId', ParseIntPipe) linkId: number,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.eventsService.removeGuestLink(linkId, user.id);
   }
@@ -118,14 +118,14 @@ export class EventsController {
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   @Header('Cache-Control', 'no-store')
-  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: UserEntity) {
+  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: User) {
     return this.eventsService.findOne(id, user?.role, user?.id);
   }
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
-  create(@Body() dto: CreateEventDto, @CurrentUser() user: UserEntity) {
+  create(@Body() dto: CreateEventDto, @CurrentUser() user: User) {
     return this.eventsService.create(dto, user.id);
   }
 
@@ -135,7 +135,7 @@ export class EventsController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateEventDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.eventsService.update(id, dto, user.role);
   }
@@ -162,14 +162,14 @@ export class EventsController {
   rsvp(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpsertRsvpDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.eventsService.upsertRsvp(id, user.id, dto.status, dto.additionalGuests, dto.guestNames, dto.bringingItem, user.role);
   }
 
   @Delete(':id/rsvp')
   @UseGuards(JwtAuthGuard)
-  unrsvp(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+  unrsvp(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
     return this.eventsService.removeRsvp(id, user.id);
   }
 
@@ -178,7 +178,7 @@ export class EventsController {
   generateGuestLink(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateGuestLinkDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot invite guests');
@@ -200,7 +200,7 @@ export class EventsController {
   createEventInviteLink(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateEventInviteDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.invitesService.createEventInvite(id, dto.flavor, user);
   }
@@ -269,7 +269,7 @@ export class EventsController {
   setReservation(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SetReservationDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.eventsService.setReservation(id, dto, user);
   }

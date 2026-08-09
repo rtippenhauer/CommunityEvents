@@ -56,6 +56,24 @@ export class PrismaService
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
         connectionLimit: 10,
+        // MySQL 8/9 authenticate with caching_sha2_password. On a connection
+        // that is not TLS-encrypted, the client has to fetch the server's RSA
+        // public key to complete the handshake the first time a given user
+        // authenticates; without this the driver fails with
+        // ER_CANNOT_RETRIEVE_RSA_KEY, which the pool then reports only as an
+        // unhelpful "pool timeout ... active=0 idle=0".
+        //
+        // This was masked for the whole of the swap: TypeORM's mysql2 driver
+        // was authenticating first and priming the server's credential cache,
+        // so the mariadb adapter kept hitting the fast path. Removing TypeORM
+        // removed the thing that made it work, and the failure would have
+        // appeared on the first container restart rather than at deploy.
+        //
+        // The trade-off is that the key is fetched over the unencrypted link,
+        // which is only acceptable because api and database talk over a
+        // private network. Prefer TLS, or a pinned cachingRsaPublicKey, if the
+        // database is ever reachable across an untrusted one.
+        allowPublicKeyRetrieval: true,
         // mariadb's driver keeps sockets alive itself; this is the equivalent
         // of TypeORM's enableKeepAlive/keepAliveInitialDelay pairing.
         keepAliveDelay: 10000,

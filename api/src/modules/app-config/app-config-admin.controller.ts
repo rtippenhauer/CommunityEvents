@@ -22,7 +22,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -95,7 +96,7 @@ export class AppConfigAdminController {
   async uploadBrandImage(
     @Param('slot') slot: string,
     @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     const key = BRAND_IMAGE_SLOTS[slot];
     if (!key) throw new BadRequestException('Unknown brand image slot');
@@ -108,7 +109,7 @@ export class AppConfigAdminController {
   // Clears a brand image override, reverting that slot to the compiled-in
   // default asset (stores an empty string rather than deleting the row).
   @Patch('branding/image/:slot/reset')
-  async resetBrandImage(@Param('slot') slot: string, @CurrentUser() user: UserEntity) {
+  async resetBrandImage(@Param('slot') slot: string, @CurrentUser() user: User) {
     const key = BRAND_IMAGE_SLOTS[slot];
     if (!key) throw new BadRequestException('Unknown brand image slot');
     await this.appConfigService.updateConfigValue(key, '', user.id);
@@ -120,7 +121,7 @@ export class AppConfigAdminController {
   // global write-rate-limit on a double-click or retry (see AppConfigService
   // .updateConfigValues for detail).
   @Patch('bulk')
-  bulkUpdate(@Body() dto: BulkUpdateAppConfigDto, @CurrentUser() user: UserEntity) {
+  bulkUpdate(@Body() dto: BulkUpdateAppConfigDto, @CurrentUser() user: User) {
     return this.appConfigService.updateConfigValues(dto.entries, user.id);
   }
 
@@ -128,7 +129,7 @@ export class AppConfigAdminController {
   update(
     @Param('key') key: string,
     @Body() dto: UpdateAppConfigDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.appConfigService.updateConfigValue(key, dto.value, user.id);
   }

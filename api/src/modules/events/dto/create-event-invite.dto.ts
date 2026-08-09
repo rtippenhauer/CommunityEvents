@@ -1,5 +1,5 @@
 import { IsEnum } from 'class-validator';
-import { InviteFlavor } from '../../../database/entities/invite.entity';
+import { InviteFlavor } from '../../../database/enums';
 
 export class CreateEventInviteDto {
   @IsEnum(InviteFlavor)

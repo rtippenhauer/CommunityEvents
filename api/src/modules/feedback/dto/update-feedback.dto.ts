@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
-import { FeedbackStatus } from '../../../database/entities/feedback.entity';
+import { FeedbackStatus } from '../../../database/enums';
 
 export class UpdateFeedbackDto {
   @IsEnum(FeedbackStatus)

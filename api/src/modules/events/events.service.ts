@@ -5,16 +5,30 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomBytes, randomUUID } from 'crypto';
-import { IsNull, Not, Repository } from 'typeorm';
-import { EventEntity, EventStatus } from '../../database/entities/event.entity';
-import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
-import { EventGuestLinkEntity } from '../../database/entities/event-guest-link.entity';
-import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
-import { InviteEntity, InviteFlavor, InviteType } from '../../database/entities/invite.entity';
-import { LocationEntity } from '../../database/entities/location.entity';
+import { Prisma } from '@prisma/client';
+import type {
+  events as EventRow,
+  event_guest_links as EventGuestLink,
+  event_rsvps as EventRsvp,
+  users as User,
+} from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import {
+  EventStatus,
+  InviteFlavor,
+  InviteType,
+  RsvpStatus,
+  UserRole,
+  UserStatus,
+} from '../../database/enums';
+import {
+  toDateColumn,
+  toDateString,
+  toTimeColumn,
+  toTimeString,
+} from '../../common/utils/prisma-date.util';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { SetReservationDto } from './dto/set-reservation.dto';
@@ -28,6 +42,32 @@ import { toPublicUser } from '../../common/utils/public-user.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { eventOrganizerEmail } from '../../common/config/instance-contact';
+
+/** An event with its location (and that location's photos) loaded. */
+type EventWithLocation = Prisma.eventsGetPayload<{
+  include: { location: { include: { photos: true } } };
+}>;
+
+/** The fully-loaded shape findOne returns. */
+type EventDetailRow = Prisma.eventsGetPayload<{
+  include: {
+    city: true;
+    location: { include: { photos: true } };
+    createdByUser: true;
+    rsvps: { include: { user: true; guestLinks: true } };
+    reservationAssignee: true;
+  };
+}>;
+
+/** The shape findAll returns, before the computed counts are attached. */
+type EventListRow = Prisma.eventsGetPayload<{
+  include: {
+    city: true;
+    location: { include: { photos: true } };
+    createdByUser: true;
+    reservationAssignee: true;
+  };
+}>;
 import { AppConfigService } from '../app-config/app-config.service';
 
 export interface EventFilters {
@@ -45,18 +85,7 @@ export class EventsService {
   private readonly logger = new Logger(EventsService.name);
 
   constructor(
-    @InjectRepository(EventEntity)
-    private readonly eventRepo: Repository<EventEntity>,
-    @InjectRepository(EventRsvpEntity)
-    private readonly rsvpRepo: Repository<EventRsvpEntity>,
-    @InjectRepository(EventGuestLinkEntity)
-    private readonly guestLinkRepo: Repository<EventGuestLinkEntity>,
-    @InjectRepository(LocationEntity)
-    private readonly locationRepo: Repository<LocationEntity>,
-    @InjectRepository(InviteEntity)
-    private readonly inviteRepo: Repository<InviteEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
+    private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly calendarService: CalendarService,
     private readonly pointsService: PointsService,
@@ -104,26 +133,22 @@ export class EventsService {
     };
   }
 
-  async findAll(filters: EventFilters): Promise<(EventEntity & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[]> {
-    const qb = this.eventRepo
-      .createQueryBuilder('e')
-      .leftJoinAndSelect('e.city', 'city')
-      .leftJoinAndSelect('e.location', 'location')
-      .leftJoinAndSelect('location.photos', 'photos')
-      .leftJoinAndSelect('e.createdByUser', 'createdByUser');
-
-    if (filters.cityId) {
-      qb.andWhere('e.cityId = :cityId', { cityId: filters.cityId });
-    }
-
+  async findAll(filters: EventFilters): Promise<(EventRow & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[]> {
+    const where: Prisma.eventsWhereInput = {};
+    if (filters.cityId) where.cityId = filters.cityId;
     if (filters.status) {
-      qb.andWhere('e.status = :status', { status: filters.status });
+      where.status = filters.status;
     } else if (!filters.isAdminOrMod) {
-      qb.andWhere('e.status != :draft', { draft: EventStatus.DRAFT });
+      where.status = { not: EventStatus.DRAFT };
     }
 
+    // Date bounds are 'YYYY-MM-DD' strings; the column is a DATE that Prisma
+    // compares against Dates, so they are parsed to midnight UTC to match how
+    // the value is read back.
+    let orderBy: Prisma.eventsOrderByWithRelationInput[];
     if (filters.fromDate) {
-      qb.andWhere('e.eventDate >= :fromDate', { fromDate: filters.fromDate }).orderBy('e.eventDate', 'ASC').addOrderBy('e.eventTime', 'ASC');
+      where.eventDate = { gte: toDateColumn(filters.fromDate) };
+      orderBy = [{ eventDate: 'asc' }, { eventTime: 'asc' }];
     } else {
       const todayParts = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -131,42 +156,55 @@ export class EventsService {
       const get = (t: string) => todayParts.find((p) => p.type === t)?.value ?? '0';
       const today = `${get('year')}-${get('month')}-${get('day')}`;
       if (filters.upcoming === true) {
-        qb.andWhere('e.eventDate >= :today', { today }).orderBy('e.eventDate', 'ASC').addOrderBy('e.eventTime', 'ASC');
+        where.eventDate = { gte: toDateColumn(today) };
+        orderBy = [{ eventDate: 'asc' }, { eventTime: 'asc' }];
       } else if (filters.upcoming === false) {
-        qb.andWhere('e.eventDate < :today', { today }).orderBy('e.eventDate', 'DESC').addOrderBy('e.eventTime', 'DESC');
+        where.eventDate = { lt: toDateColumn(today) };
+        orderBy = [{ eventDate: 'desc' }, { eventTime: 'desc' }];
       } else {
-        qb.orderBy('e.eventDate', 'DESC').addOrderBy('e.eventTime', 'DESC');
+        orderBy = [{ eventDate: 'desc' }, { eventTime: 'desc' }];
       }
     }
-    // Without an explicit order, MySQL can return the photos join in a
-    // different order than other queries (e.g. findOne), and every caller
-    // treats photos[0] as "the cover photo" — so an unordered join makes the
-    // same location show a different card image on different pages. Must be
-    // added after the .orderBy() calls above, since .orderBy() resets prior
-    // ordering (unlike .addOrderBy()).
-    qb.addOrderBy('photos.id', 'ASC');
 
-    const events = await qb.getMany();
+    const events = await this.prisma.events.findMany({
+      where,
+      orderBy,
+      include: {
+        city: true,
+        // Photos ordered explicitly: every caller treats photos[0] as "the
+        // cover photo", and an unordered join makes the same location show a
+        // different card image on different pages.
+        location: { include: { photos: { orderBy: { id: 'asc' } } } },
+        createdByUser: true,
+        reservationAssignee: true,
+      },
+    });
     if (events.length === 0) {
-      return events as (EventEntity & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[];
+      return events as (EventListRow & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[];
     }
 
     const ids = events.map((e) => e.id);
 
     // One query: all going+maybe RSVPs with user names for counts and avatar snippet
-    const rsvpRows = await this.rsvpRepo
-      .createQueryBuilder('r')
-      .leftJoin('r.user', 'u')
-      .select('r.eventId', 'eventId')
-      .addSelect('r.status', 'status')
-      .addSelect('r.additionalGuests', 'additionalGuests')
-      .addSelect('u.fullName', 'fullName')
-      .addSelect('u.profilePhotoPath', 'profilePhotoPath')
-      .where('r.eventId IN (:...ids)', { ids })
-      .andWhere('r.status IN (:...statuses)', { statuses: [RsvpStatus.GOING, RsvpStatus.MAYBE] })
-      .orderBy('r.status', 'ASC')   // 'going' < 'maybe' — going first
-      .addOrderBy('r.createdAt', 'ASC')
-      .getRawMany<{ eventId: string; status: string; additionalGuests: string; fullName: string; profilePhotoPath: string | null }>();
+    // status ascending puts 'going' before 'maybe' -- the enum's declaration
+    // order, which is what the attendee snippet relies on.
+    const rsvpRowsRaw = await this.prisma.event_rsvps.findMany({
+      where: { eventId: { in: ids }, status: { in: [RsvpStatus.GOING, RsvpStatus.MAYBE] } },
+      orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        eventId: true,
+        status: true,
+        additionalGuests: true,
+        user: { select: { fullName: true, profilePhotoPath: true } },
+      },
+    });
+    const rsvpRows = rsvpRowsRaw.map((r) => ({
+      eventId: r.eventId,
+      status: r.status,
+      additionalGuests: r.additionalGuests,
+      fullName: r.user?.fullName ?? '',
+      profilePhotoPath: r.user?.profilePhotoPath ?? null,
+    }));
 
     const goingCountMap = new Map<number, number>();
     const totalMap = new Map<number, number>();
@@ -192,13 +230,10 @@ export class EventsService {
     // Current user's RSVP status per event
     let myRsvpMap = new Map<number, string>();
     if (filters.userId) {
-      const myRows = await this.rsvpRepo
-        .createQueryBuilder('r')
-        .select('r.eventId', 'eventId')
-        .addSelect('r.status', 'status')
-        .where('r.eventId IN (:...ids)', { ids })
-        .andWhere('r.userId = :userId', { userId: filters.userId })
-        .getRawMany<{ eventId: string; status: string }>();
+      const myRows = await this.prisma.event_rsvps.findMany({
+        where: { eventId: { in: ids }, userId: filters.userId },
+        select: { eventId: true, status: true },
+      });
       myRsvpMap = new Map(myRows.map((r) => [Number(r.eventId), r.status]));
     }
 
@@ -243,21 +278,17 @@ export class EventsService {
     });
   }
 
-  async findOne(id: number, callerRole?: UserRole, callerId?: number): Promise<EventEntity & { publicRsvps: Pick<EventGuestLinkEntity, 'id' | 'recipientName' | 'cancelledAt'>[] }> {
-    const event = await this.eventRepo.findOne({
+  async findOne(id: number, callerRole?: UserRole, callerId?: number): Promise<EventDetailRow & { publicRsvps: Pick<EventGuestLink, 'id' | 'recipientName' | 'cancelledAt'>[] }> {
+    const event = await this.prisma.events.findFirst({
       where: { id },
-      relations: [
-        'city',
-        'location',
-        'location.photos',
-        'createdByUser',
-        'rsvps',
-        'rsvps.user',
-        'rsvps.guestLinks',
-        'reservationAssignee',
-      ],
-      // Keep photos[0] ("the cover photo") consistent with findAll's ordering.
-      order: { location: { photos: { id: 'ASC' } } },
+      include: {
+        city: true,
+        // Keep photos[0] ("the cover photo") consistent with findAll's ordering.
+        location: { include: { photos: { orderBy: { id: 'asc' } } } },
+        createdByUser: true,
+        rsvps: { include: { user: true, guestLinks: true } },
+        reservationAssignee: true,
+      },
     });
     if (!event) throw new NotFoundException(`Event ${id} not found`);
 
@@ -314,23 +345,25 @@ export class EventsService {
       (event as any).reservationContactEmail = null;
     }
 
-    const publicRsvps = await this.guestLinkRepo.find({
-      where: { eventId: id, source: 'public', cancelledAt: IsNull() },
-      select: ['id', 'recipientName', 'cancelledAt'],
-      order: { createdAt: 'ASC' },
+    const publicRsvps = await this.prisma.event_guest_links.findMany({
+      where: { eventId: id, source: 'public', cancelledAt: null },
+      select: { id: true, recipientName: true, cancelledAt: true },
+      orderBy: { createdAt: 'asc' },
     });
 
     return Object.assign(event, { publicRsvps });
   }
 
-  async create(dto: CreateEventDto, userId: number): Promise<EventEntity> {
-    const location = await this.locationRepo.findOne({
+  async create(dto: CreateEventDto, userId: number): Promise<EventRow> {
+    const location = await this.prisma.locations.findFirst({
       where: { id: dto.locationId },
-      relations: ['city'],
+      include: {
+        city: true,
+      },
     });
     if (!location) throw new NotFoundException(`Restaurant ${dto.locationId} not found`);
 
-    const event = this.eventRepo.create({
+    const data: Prisma.eventsUncheckedCreateInput = ({
       cityId: dto.cityId,
       locationId: location.id,
       locationName: location.name,
@@ -340,21 +373,23 @@ export class EventsService {
       title: dto.title,
       description: dto.description ?? null,
       additionalInfo: dto.additionalInfo ?? null,
-      eventDate: dto.eventDate,
-      eventTime: dto.eventTime,
+      // DATE/TIME columns: the DTO carries 'YYYY-MM-DD' and 'HH:MM' strings,
+      // Prisma wants Date objects anchored to UTC.
+      eventDate: toDateColumn(dto.eventDate),
+      eventTime: toTimeColumn(dto.eventTime),
       status: dto.status ?? EventStatus.DRAFT,
       isSecret: dto.isSecret ?? false,
       createdById: userId,
     });
 
-    if (event.status === EventStatus.PUBLISHED) {
-      event.publishedAt = new Date();
+    if (data.status === EventStatus.PUBLISHED) {
+      data.publishedAt = new Date();
     }
 
-    return this.eventRepo.save(event);
+    return this.prisma.events.create({ data });
   }
 
-  async update(id: number, dto: UpdateEventDto, callerRole?: UserRole): Promise<EventEntity & { secretDinnerResync?: SecretDinnerResync }> {
+  async update(id: number, dto: UpdateEventDto, callerRole?: UserRole): Promise<EventRow & { secretDinnerResync?: SecretDinnerResync }> {
     const event = await this.findOne(id, callerRole);
 
     const isRestoring = event.status === EventStatus.CANCELLED && dto.status === EventStatus.DRAFT;
@@ -366,20 +401,24 @@ export class EventsService {
     const wasSecret = event.isSecret;
 
     // Track meaningful changes for update-notification email
-    const changedDate = dto.eventDate !== undefined && dto.eventDate !== event.eventDate;
-    const changedTime = dto.eventTime !== undefined && dto.eventTime !== event.eventTime.substring(0, 5);
+    // Both sides compared as strings: the stored values are Dates under
+    // Prisma, and the DTO sends 'YYYY-MM-DD' / 'HH:MM'.
+    const changedDate =
+      dto.eventDate !== undefined && dto.eventDate !== toDateString(event.eventDate);
+    const changedTime =
+      dto.eventTime !== undefined && dto.eventTime !== toTimeString(event.eventTime).substring(0, 5);
     const changedLocation = dto.locationId !== undefined && dto.locationId !== event.locationId;
 
     if (dto.cityId !== undefined) event.cityId = dto.cityId;
 
     if (dto.locationId && dto.locationId !== event.locationId) {
-      const location = await this.locationRepo.findOne({
+      const location = await this.prisma.locations.findUnique({
         where: { id: dto.locationId },
       });
       if (!location) throw new NotFoundException(`Restaurant ${dto.locationId} not found`);
-      // Must set the relation object so TypeORM uses the new FK on save,
-      // not the old relation it loaded from findOne
-      event.location = location;
+      // No relation object to set: the patch below carries locationId, and
+      // Prisma writes the column directly rather than inferring it from a
+      // loaded relation the way TypeORM's save() did.
       event.locationId = location.id;
       event.locationName = location.name;
       event.locationAddress = location.address;
@@ -392,8 +431,8 @@ export class EventsService {
     if ('additionalInfo' in dto) event.additionalInfo = dto.additionalInfo ?? null;
     if ('facebookShareText' in dto) event.facebookShareText = dto.facebookShareText ?? null;
     if (dto.isSecret !== undefined) event.isSecret = dto.isSecret;
-    if (dto.eventDate !== undefined) event.eventDate = dto.eventDate;
-    if (dto.eventTime !== undefined) event.eventTime = dto.eventTime;
+    if (dto.eventDate !== undefined) event.eventDate = toDateColumn(dto.eventDate);
+    if (dto.eventTime !== undefined) event.eventTime = toTimeColumn(dto.eventTime);
 
     if (dto.status !== undefined && dto.status !== event.status) {
       if (dto.status === EventStatus.PUBLISHED && !wasPublished) {
@@ -407,7 +446,30 @@ export class EventsService {
       event.status = dto.status;
     }
 
-    await this.eventRepo.save(event);
+    // The in-memory row was mutated above exactly as before; only the write
+    // changes. Naming the columns keeps the loaded relations out of the patch.
+    await this.prisma.events.update({
+      where: { id: event.id },
+      data: {
+        cityId: event.cityId,
+        locationId: event.locationId,
+        locationName: event.locationName,
+        locationAddress: event.locationAddress,
+        locationLat: event.locationLat,
+        locationLng: event.locationLng,
+        title: event.title,
+        description: event.description,
+        additionalInfo: event.additionalInfo,
+        facebookShareText: event.facebookShareText,
+        isSecret: event.isSecret,
+        eventDate: event.eventDate,
+        eventTime: event.eventTime,
+        status: event.status,
+        publishedAt: event.publishedAt,
+        cancelledAt: event.cancelledAt,
+        cancelledReason: event.cancelledReason,
+      },
+    });
 
     // Reload with fresh relations so the response reflects any location/city change
     const saved = await this.findOne(event.id, callerRole);
@@ -430,10 +492,10 @@ export class EventsService {
     return { ...saved, secretDinnerResync };
   }
 
-  private async sendCancellationEmails(event: EventEntity): Promise<void> {
+  private async sendCancellationEmails(event: EventWithLocation): Promise<void> {
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
-    const [ey, em, ed] = event.eventDate.split('-').map(Number);
-    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
+    const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
@@ -480,9 +542,11 @@ export class EventsService {
 </html>`;
 
     // Members who RSVPd
-    const rsvps = await this.rsvpRepo.find({
+    const rsvps = await this.prisma.event_rsvps.findMany({
       where: { eventId: event.id },
-      relations: ['user'],
+      include: {
+        user: true,
+      },
     });
     for (const rsvp of rsvps) {
       if (!rsvp.user?.email) continue;
@@ -495,8 +559,8 @@ export class EventsService {
     }
 
     // Guest link holders (member-invited + public RSVPs) with an email who haven't already cancelled
-    const guestLinks = await this.guestLinkRepo.find({
-      where: { eventId: event.id, cancelledAt: IsNull() },
+    const guestLinks = await this.prisma.event_guest_links.findMany({
+      where: { eventId: event.id, cancelledAt: null },
     });
     for (const link of guestLinks) {
       if (!link.recipientEmail) continue;
@@ -510,11 +574,11 @@ export class EventsService {
     }
   }
 
-  private async sendUpdateEmails(event: EventEntity): Promise<void> {
+  private async sendUpdateEmails(event: EventWithLocation): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const { brandName, tagline, logoUrl } = await this.getEmailBrand();
-    const [ey, em, ed] = event.eventDate.split('-').map(Number);
-    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
+    const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
@@ -559,9 +623,11 @@ export class EventsService {
 </body>
 </html>`;
 
-    const rsvps = await this.rsvpRepo.find({
+    const rsvps = await this.prisma.event_rsvps.findMany({
       where: { eventId: event.id },
-      relations: ['user'],
+      include: {
+        user: true,
+      },
     });
     for (const rsvp of rsvps) {
       if (!rsvp.user?.email) continue;
@@ -578,9 +644,11 @@ export class EventsService {
       });
     }
 
-    const guestLinks = await this.guestLinkRepo.find({
-      where: { eventId: event.id, cancelledAt: IsNull() },
-      relations: ['memberRsvp'],
+    const guestLinks = await this.prisma.event_guest_links.findMany({
+      where: { eventId: event.id, cancelledAt: null },
+      include: {
+        memberRsvp: true,
+      },
     });
     for (const link of guestLinks) {
       if (!link.recipientEmail) continue;
@@ -608,7 +676,7 @@ export class EventsService {
     if (event.status === EventStatus.PUBLISHED) {
       throw new BadRequestException('Cannot delete a published event — cancel it first');
     }
-    await this.eventRepo.remove(event);
+    await this.prisma.events.delete({ where: { id: event.id } });
   }
 
   async upsertRsvp(
@@ -619,8 +687,8 @@ export class EventsService {
     guestNames?: string[],
     bringingItem?: string,
     userRole?: UserRole,
-  ): Promise<EventRsvpEntity> {
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+  ): Promise<EventRsvp> {
+    const event = await this.prisma.events.findFirst({ where: { id: eventId } });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
       throw new BadRequestException('Can only RSVP to published events');
@@ -633,13 +701,13 @@ export class EventsService {
     }).formatToParts(new Date());
     const getPart = (type: string) => nowParts.find((p) => p.type === type)?.value ?? '0';
     const todayEastern = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
-    if (event.eventDate < todayEastern) {
+    if (toDateString(event.eventDate) < todayEastern) {
       throw new BadRequestException('Cannot RSVP to a past event');
     }
 
-    const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
+    const existing = await this.prisma.event_rsvps.findFirst({ where: { eventId, userId } });
 
-    const isPastCutoff = isPastRsvpCutoff(event.eventDate, event.eventTime);
+    const isPastCutoff = isPastRsvpCutoff(toDateString(event.eventDate), toTimeString(event.eventTime));
     const isPrivileged = userRole === UserRole.ADMIN || userRole === UserRole.MODERATOR;
 
     // Block upgrading to GOING after cutoff — applies to new RSVPs and existing non-Going RSVPs
@@ -664,12 +732,12 @@ export class EventsService {
     if (status === RsvpStatus.GOING && !isPrivileged) {
       const requireMembership = await this.appConfig.isFeatureEnabled('feature_require_membership');
       if (requireMembership) {
-        const user = await this.userRepo.findOne({ where: { id: userId } });
+        const user = await this.prisma.users.findFirst({ where: { id: userId } });
         const hasActiveMembership = !!user?.hasMembership &&
           !!user.membershipExpiresAt &&
           user.membershipExpiresAt > new Date();
         if (!hasActiveMembership) {
-          const hasAttendedBefore = await this.rsvpRepo.exists({ where: { userId, attended: true } });
+          const hasAttendedBefore = (await this.prisma.event_rsvps.count({ where: { userId, attended: true } })) > 0;
           if (hasAttendedBefore) {
             throw new ForbiddenException(
               'An active membership is required to RSVP — your first meeting is free, but this one needs a membership. Contact an admin.',
@@ -679,28 +747,27 @@ export class EventsService {
       }
     }
 
-    let saved: EventRsvpEntity;
+    let saved: EventRsvp;
     if (existing) {
-      existing.status = status;
-      existing.additionalGuests = additionalGuests;
+      const patch: Prisma.event_rsvpsUncheckedUpdateInput = { status, additionalGuests };
       if (guestNames !== undefined) {
-        existing.guestNames = guestNames.length > 0 ? guestNames : null;
+        patch.guestNames = guestNames.length > 0 ? guestNames : Prisma.DbNull;
       }
       if (bringingItem !== undefined) {
-        existing.bringingItem = bringingItem.trim() || null;
+        patch.bringingItem = bringingItem.trim() || null;
       }
-      saved = await this.rsvpRepo.save(existing);
+      saved = await this.prisma.event_rsvps.update({ where: { id: existing.id }, data: patch });
     } else {
-      saved = await this.rsvpRepo.save(
-        this.rsvpRepo.create({
+      saved = await this.prisma.event_rsvps.create({
+        data: ({
           eventId,
           userId,
           status,
           additionalGuests,
-          guestNames: guestNames && guestNames.length > 0 ? guestNames : null,
+          guestNames: guestNames && guestNames.length > 0 ? guestNames : Prisma.DbNull,
           bringingItem: bringingItem?.trim() || null,
         }),
-      );
+      });
     }
 
     this.calendarService.invalidateForUser(userId);
@@ -714,7 +781,7 @@ export class EventsService {
     return saved;
   }
 
-  private async sendPublishInvites(event: EventEntity): Promise<void> {
+  private async sendPublishInvites(event: EventWithLocation): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
     // Every recipient here is, by construction, someone who hasn't RSVP'd yet
@@ -723,23 +790,33 @@ export class EventsService {
     const addressVisible = !event.location?.isPrivate;
     const locationAddress = addressVisible ? event.locationAddress : null;
 
-    const members = await this.userRepo
-      .createQueryBuilder('u')
-      .where('u.status IN (:...statuses)', { statuses: ['active', 'non_validated'] })
-      .andWhere('u.email IS NOT NULL')
-      .andWhere(
-        `(u.calendarAutoInvite = 'all' OR (u.calendarAutoInvite = 'city' AND u.cityId = :cityId))`,
-        { cityId: event.cityId },
-      )
-      .getMany();
+    // Auto-invite opt-in: 'all' takes every event, 'city' only this event's
+    // city. The grouping matters -- flattening it would send city-only members
+    // invitations for other cities.
+    const members = await this.prisma.users.findMany({
+      where: {
+        // The original filtered `status IN ('active','non_validated')`, but
+        // non_validated is a ROLE, not a status -- the status enum only has
+        // active/suspended/deleted, so that arm never matched anything and the
+        // effective filter was always status = 'active'. Preserved as-is: if
+        // non-validated members are meant to receive auto-invites, that is a
+        // deliberate change against users.role, not something to slip into a
+        // refactor.
+        status: UserStatus.ACTIVE,
+        OR: [
+          { calendarAutoInvite: 'all' },
+          { calendarAutoInvite: 'city', cityId: event.cityId },
+        ],
+      },
+    });
 
     if (members.length === 0) return;
 
-    const existingRsvps = await this.rsvpRepo.find({ where: { eventId: event.id }, select: ['userId'] });
+    const existingRsvps = await this.prisma.event_rsvps.findMany({ where: { eventId: event.id }, select: { userId: true } });
     const rsvpedIds = new Set(existingRsvps.map((r) => r.userId));
 
-    const [ey, em, ed] = event.eventDate.split('-').map(Number);
-    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
+    const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric',
     });
@@ -807,14 +884,14 @@ export class EventsService {
     }
   }
 
-  private async sendRsvpConfirmation(event: EventEntity, userId: number): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+  private async sendRsvpConfirmation(event: EventRow, userId: number): Promise<void> {
+    const user = await this.prisma.users.findFirst({ where: { id: userId } });
     if (!user?.email) return;
 
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
-    const [ey, em, ed] = event.eventDate.split('-').map(Number);
-    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
+    const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric',
     });
@@ -877,19 +954,24 @@ export class EventsService {
   }
 
   async removeRsvp(eventId: number, userId: number): Promise<void> {
-    const rsvp = await this.rsvpRepo.findOne({ where: { eventId, userId } });
+    const rsvp = await this.prisma.event_rsvps.findFirst({ where: { eventId, userId } });
     if (rsvp) {
-      await this.rsvpRepo.remove(rsvp);
+      await this.prisma.event_rsvps.delete({ where: { id: rsvp.id } });
       this.calendarService.invalidateForUser(userId);
     }
   }
 
   async getGuestLink(token: string) {
-    const link = await this.guestLinkRepo.findOne({
+    const link = await this.prisma.event_guest_links.findFirst({
       where: { token },
-      relations: ['event', 'event.location', 'event.location.photos', 'createdBy'],
-      // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
-      order: { event: { location: { photos: { id: 'ASC' } } } },
+      include: {
+        event: { include: {
+          location: { include: {
+            photos: true,
+          } },
+        } },
+        createdBy: true,
+      },
     });
     if (!link) throw new NotFoundException('Guest link not found');
 
@@ -905,13 +987,15 @@ export class EventsService {
 
     return {
       eventTitle: event.title,
-      eventDate: event.eventDate,
-      eventTime: event.eventTime,
+      // Kept as the 'YYYY-MM-DD' / 'HH:MM:SS' strings the API has always
+      // returned; the raw Dates would serialise as full ISO timestamps.
+      eventDate: toDateString(event.eventDate),
+      eventTime: toTimeString(event.eventTime),
       eventStatus: event.status,
       locationName: event.locationName,
       locationAddress: addressVisible ? event.locationAddress : null,
-      locationLat: addressVisible ? event.locationLat : null,
-      locationLng: addressVisible ? event.locationLng : null,
+      locationLat: addressVisible && event.locationLat !== null ? Number(event.locationLat) : null,
+      locationLng: addressVisible && event.locationLng !== null ? Number(event.locationLng) : null,
       locationPhotoUrl: photoUrl,
       invitedByName: link.createdBy?.fullName ?? (await this.appConfig.getSiteSetting('brand_name')),
       recipientName: link.recipientName,
@@ -922,9 +1006,13 @@ export class EventsService {
   }
 
   async removeGuestLink(linkId: number, userId: number): Promise<void> {
-    const link = await this.guestLinkRepo.findOne({
+    const link = await this.prisma.event_guest_links.findFirst({
       where: { id: linkId },
-      relations: ['memberRsvp', 'memberRsvp.guestLinks'],
+      include: {
+        memberRsvp: { include: {
+          guestLinks: true,
+        } },
+      },
     });
     if (!link) throw new NotFoundException('Link not found');
 
@@ -938,34 +1026,53 @@ export class EventsService {
     );
     const idx = sorted.findIndex((l) => l.id === linkId);
 
-    rsvp.additionalGuests = Math.max(0, rsvp.additionalGuests - 1);
-    if (rsvp.guestNames && idx >= 0 && idx < rsvp.guestNames.length) {
-      rsvp.guestNames.splice(idx, 1);
-      if (rsvp.guestNames.length === 0) rsvp.guestNames = null;
+    // guest_names is a Json column, so Prisma types it as JsonValue. It has
+    // only ever held an array of names.
+    const guestNames = (rsvp.guestNames as string[] | null) ?? null;
+    const remainingGuests = Math.max(0, rsvp.additionalGuests - 1);
+    if (guestNames && idx >= 0 && idx < guestNames.length) {
+      guestNames.splice(idx, 1);
     }
+    const nextGuestNames = guestNames && guestNames.length > 0 ? guestNames : null;
 
-    await this.guestLinkRepo.remove(link);
-    await this.rsvpRepo.save(rsvp);
+    // Removing the guest link and decrementing the member's guest count are
+    // one change: leaving either half applied would misstate the headcount.
+    await this.prisma.$transaction([
+      this.prisma.event_guest_links.delete({ where: { id: link.id } }),
+      this.prisma.event_rsvps.update({
+        where: { id: rsvp.id },
+        data: {
+          additionalGuests: remainingGuests,
+          guestNames: nextGuestNames === null ? Prisma.DbNull : nextGuestNames,
+        },
+      }),
+    ]);
   }
 
   async cancelGuestRsvp(token: string): Promise<void> {
-    const link = await this.guestLinkRepo.findOne({ where: { token } });
+    const link = await this.prisma.event_guest_links.findFirst({ where: { token } });
     if (!link) throw new NotFoundException('Guest link not found');
     if (new Date() > link.expiresAt) throw new BadRequestException('This link has expired');
-    link.cancelledAt = new Date();
-    await this.guestLinkRepo.save(link);
+    await this.prisma.event_guest_links.update({
+      where: { id: link.id },
+      data: { cancelledAt: new Date() },
+    });
   }
 
   async useGuestLink(token: string, guestName?: string): Promise<{ message: string }> {
-    const link = await this.guestLinkRepo.findOne({ where: { token } });
+    const link = await this.prisma.event_guest_links.findFirst({ where: { token } });
     if (!link) throw new NotFoundException('Guest link not found');
     if (link.usedAt && !link.cancelledAt) throw new BadRequestException('This link has already been used');
     if (new Date() > link.expiresAt) throw new BadRequestException('This link has expired');
 
-    link.usedAt = new Date();
-    link.cancelledAt = null;
-    if (guestName?.trim()) link.recipientName = guestName.trim();
-    await this.guestLinkRepo.save(link);
+    await this.prisma.event_guest_links.update({
+      where: { id: link.id },
+      data: {
+        usedAt: new Date(),
+        cancelledAt: null,
+        ...(guestName?.trim() ? { recipientName: guestName.trim() } : {}),
+      },
+    });
     return { message: 'RSVP confirmed' };
   }
 
@@ -977,9 +1084,9 @@ export class EventsService {
   // hasn't earned visibility into a private location's address — otherwise
   // this "Add to Calendar" link would leak it even when the email body itself
   // was correctly redacted.
-  private buildGoogleCalendarUrl(event: EventEntity, locationAddress = event.locationAddress): string {
-    const [y, m, d] = event.eventDate.split('-').map(Number);
-    const [h, min] = event.eventTime.split(':').map(Number);
+  private buildGoogleCalendarUrl(event: EventRow, locationAddress = event.locationAddress): string {
+    const [y, m, d] = toDateString(event.eventDate).split('-').map(Number);
+    const [h, min] = toTimeString(event.eventTime).split(':').map(Number);
     const pad = (n: number) => String(n).padStart(2, '0');
     const start = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
     const end = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
@@ -1125,14 +1232,14 @@ export class EventsService {
   }
 
   private buildIcs(
-    event: EventEntity,
+    event: EventRow,
     brand: { brandName: string; eventSingular: string },
     descriptionSuffix?: string,
   ): string {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const { brandName, eventSingular } = brand;
 
-    const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
+    const startUtc = eventTimeToUtc(toDateString(event.eventDate), toTimeString(event.eventTime));
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
 
     const lastMod = toIcsUtcString(new Date(event.updatedAt));
@@ -1181,9 +1288,11 @@ export class EventsService {
   }
 
   async generateGuestIcs(token: string): Promise<{ ics: string; eventId: number }> {
-    const link = await this.guestLinkRepo.findOne({
+    const link = await this.prisma.event_guest_links.findFirst({
       where: { token },
-      relations: ['event'],
+      include: {
+        event: true,
+      },
     });
     if (!link) throw new NotFoundException('Guest link not found');
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
@@ -1198,22 +1307,26 @@ export class EventsService {
     userId: number,
     recipientName?: string,
     recipientEmail?: string,
-  ): Promise<EventGuestLinkEntity> {
-    const event = await this.eventRepo.findOne({
+  ): Promise<EventGuestLink> {
+    const event = await this.prisma.events.findFirst({
       where: { id: eventId },
-      relations: ['location'],
-      // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
-      order: { location: { photos: { id: 'ASC' } } },
+      include: {
+        // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
+        location: { include: { photos: { orderBy: { id: 'asc' } } } },
+      },
     });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
       throw new BadRequestException('Event is not published');
     }
 
-    const rsvp = await this.rsvpRepo.findOne({ where: { eventId, userId }, relations: ['user'] });
+    const rsvp = await this.prisma.event_rsvps.findFirst({
+      where: { eventId, userId },
+      include: { user: true },
+    });
     if (!rsvp) throw new BadRequestException('You must RSVP before generating a guest link');
 
-    const existingLinks = await this.guestLinkRepo.count({ where: { memberRsvpId: rsvp.id } });
+    const existingLinks = await this.prisma.event_guest_links.count({ where: { memberRsvpId: rsvp.id } });
     if (existingLinks >= rsvp.additionalGuests) {
       throw new BadRequestException(
         `You already have ${existingLinks} guest link(s) — increase your additional guests count to generate more`,
@@ -1222,11 +1335,11 @@ export class EventsService {
 
     const token = randomBytes(20).toString('hex');
 
-    const [y, m, d] = event.eventDate.split('-').map(Number);
-    const [h, min] = event.eventTime.split(':').map(Number);
+    const [y, m, d] = toDateString(event.eventDate).split('-').map(Number);
+    const [h, min] = toTimeString(event.eventTime).split(':').map(Number);
     const expiresAt = new Date(y, m - 1, d, h, min);
 
-    const link = this.guestLinkRepo.create({
+    const linkData: Prisma.event_guest_linksUncheckedCreateInput = ({
       eventId,
       createdById: userId,
       memberRsvpId: rsvp.id,
@@ -1237,7 +1350,7 @@ export class EventsService {
       expiresAt,
     });
 
-    const saved = await this.guestLinkRepo.save(link);
+    const saved = await this.prisma.event_guest_links.create({ data: linkData });
 
     // Fire-and-forget — email delivery is best-effort and must not block returning the link
     if (recipientEmail) {
@@ -1246,8 +1359,8 @@ export class EventsService {
       const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
       const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
 
-      const [ey, em, ed] = event.eventDate.split('-').map(Number);
-      const [eh, emin] = event.eventTime.split(':').map(Number);
+      const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
+      const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
       const eventDateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
         weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
       });
@@ -1279,8 +1392,10 @@ export class EventsService {
           eventTimeDisplay,
           locationName: event.locationName ?? '',
           locationAddress: addressVisible ? (event.locationAddress ?? '') : '',
-          locationLat: addressVisible ? event.locationLat : null,
-          locationLng: addressVisible ? event.locationLng : null,
+          // lat/lng are DECIMAL columns, which Prisma returns as Decimal
+          // objects; the email template expects plain numbers.
+          locationLat: addressVisible && event.locationLat !== null ? Number(event.locationLat) : null,
+          locationLng: addressVisible && event.locationLng !== null ? Number(event.locationLng) : null,
           photoUrl,
           description: event.description ?? null,
           additionalInfo: event.additionalInfo ?? null,
@@ -1297,32 +1412,34 @@ export class EventsService {
   }
 
   async createPublicRsvp(eventId: number, name: string, email: string): Promise<void> {
-    const event = await this.eventRepo.findOne({
+    const event = await this.prisma.events.findFirst({
       where: { id: eventId },
-      relations: ['city', 'location'],
-      // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
-      order: { location: { photos: { id: 'ASC' } } },
+      include: {
+        city: true,
+        // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
+        location: { include: { photos: { orderBy: { id: 'asc' } } } },
+      },
     });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
     if (event.status !== EventStatus.PUBLISHED) {
       throw new BadRequestException('RSVPs are not open for this event');
     }
     const now = new Date();
-    const eventStart = new Date(`${event.eventDate}T${event.eventTime}`);
+    const eventStart = new Date(`${toDateString(event.eventDate)}T${toTimeString(event.eventTime)}`);
     if (now >= eventStart) throw new BadRequestException('This event has already started');
 
-    const existingMember = await this.userRepo.findOne({
-      where: { email: email.trim().toLowerCase(), status: Not(UserStatus.DELETED) },
+    const existingMember = await this.prisma.users.findFirst({
+      where: { email: email.trim().toLowerCase(), status: { not: UserStatus.DELETED } },
     });
     if (existingMember) throw new BadRequestException('already_a_member');
 
-    const existing = await this.guestLinkRepo.findOne({
-      where: { eventId, recipientEmail: email.toLowerCase(), source: 'public', cancelledAt: IsNull() },
+    const existing = await this.prisma.event_guest_links.findFirst({
+      where: { eventId, recipientEmail: email.toLowerCase(), source: 'public', cancelledAt: null },
     });
     if (existing) throw new BadRequestException('An RSVP for this email already exists for this event');
 
     const token = randomBytes(32).toString('hex');
-    const link = this.guestLinkRepo.create({
+    const linkData: Prisma.event_guest_linksUncheckedCreateInput = ({
       eventId,
       source: 'public',
       memberRsvpId: null,
@@ -1334,15 +1451,15 @@ export class EventsService {
       usedAt: now,
       deliveryType: 'email',
     });
-    const saved = await this.guestLinkRepo.save(link);
+    const saved = await this.prisma.event_guest_links.create({ data: linkData });
 
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
     const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
     const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
 
-    const [ey, em, ed] = event.eventDate.split('-').map(Number);
-    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
+    const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const eventDateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
@@ -1366,8 +1483,8 @@ export class EventsService {
         eventTimeDisplay,
         locationName: event.locationName ?? '',
         locationAddress: event.locationAddress ?? '',
-        locationLat: event.locationLat ?? null,
-        locationLng: event.locationLng ?? null,
+        locationLat: event.locationLat !== null ? Number(event.locationLat) : null,
+        locationLng: event.locationLng !== null ? Number(event.locationLng) : null,
         photoUrl,
         description: event.description ?? null,
         additionalInfo: event.additionalInfo ?? null,
@@ -1389,18 +1506,20 @@ export class EventsService {
     fromOtherCity: boolean;
     linkUsed: boolean;
   }[]> {
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    const event = await this.prisma.events.findFirst({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
 
     const [rsvps, guestLinks] = await Promise.all([
-      this.rsvpRepo.find({
+      this.prisma.event_rsvps.findMany({
         where: { eventId, status: RsvpStatus.GOING },
-        relations: ['user'],
-        order: { createdAt: 'ASC' },
+        include: {
+          user: true,
+        },
+        orderBy: { createdAt: 'asc' },
       }),
-      this.guestLinkRepo.find({
+      this.prisma.event_guest_links.findMany({
         where: { eventId },
-        order: { createdAt: 'ASC' },
+        orderBy: { createdAt: 'asc' },
       }),
     ]);
 
@@ -1435,17 +1554,19 @@ export class EventsService {
   }
 
   async markAttendance(eventId: number, attendances: { userId: number; attended: boolean; fromOtherCity?: boolean }[]): Promise<void> {
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    const event = await this.prisma.events.findFirst({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
 
     for (const entry of attendances) {
-      const update: Partial<EventRsvpEntity> = { attended: entry.attended };
+      const update: Prisma.event_rsvpsUncheckedUpdateInput = { attended: entry.attended };
       if (entry.fromOtherCity !== undefined) update.fromOtherCity = entry.fromOtherCity;
 
-      await this.rsvpRepo.update(
-        { eventId, userId: entry.userId, status: RsvpStatus.GOING },
-        update,
-      );
+      // updateMany: the criteria are a guard as much as a selector -- only a
+      // GOING rsvp for this event may be marked attended.
+      await this.prisma.event_rsvps.updateMany({
+        where: { eventId, userId: entry.userId, status: RsvpStatus.GOING },
+        data: update,
+      });
       if (entry.attended) {
         await this.pointsService.awardAttendance(entry.userId, eventId).catch(() => {});
         // Award coordinator if this member made the reservation
@@ -1468,17 +1589,24 @@ export class EventsService {
   }
 
   async markGuestAttendance(guestLinkId: number, attended: boolean): Promise<void> {
-    const link = await this.guestLinkRepo.findOne({ where: { id: guestLinkId } });
+    const link = await this.prisma.event_guest_links.findFirst({ where: { id: guestLinkId } });
     if (!link) throw new NotFoundException('Guest link not found');
-    await this.guestLinkRepo.update(guestLinkId, { attended });
+    await this.prisma.event_guest_links.update({ where: { id: guestLinkId }, data: { attended } });
   }
 
   async resendGuestInvite(guestLinkId: number): Promise<void> {
-    const link = await this.guestLinkRepo.findOne({
+    const link = await this.prisma.event_guest_links.findFirst({
       where: { id: guestLinkId },
-      relations: ['event', 'event.location', 'event.location.photos', 'memberRsvp', 'memberRsvp.user'],
-      // Keep photos[0] ("the cover photo") consistent with findAll/findOne's ordering.
-      order: { event: { location: { photos: { id: 'ASC' } } } },
+      include: {
+        event: { include: {
+          location: { include: {
+            photos: true,
+          } },
+        } },
+        memberRsvp: { include: {
+          user: true,
+        } },
+      },
     });
     if (!link) throw new NotFoundException('Guest link not found');
     if (!link.recipientEmail) throw new BadRequestException('This guest link has no email address to resend to');
@@ -1489,8 +1617,8 @@ export class EventsService {
     const manageUrl = `${appUrl}/rsvp-guest?token=${link.token}`;
     const icsUrl = `${appUrl}/api/v1/events/guest-ics/${link.token}`;
 
-    const [ey, em, ed] = event.eventDate.split('-').map(Number);
-    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
+    const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const eventDateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
@@ -1520,8 +1648,8 @@ export class EventsService {
         eventTimeDisplay,
         locationName: event.locationName ?? '',
         locationAddress: addressVisible ? (event.locationAddress ?? '') : '',
-        locationLat: addressVisible ? event.locationLat : null,
-        locationLng: addressVisible ? event.locationLng : null,
+        locationLat: addressVisible && event.locationLat !== null ? Number(event.locationLat) : null,
+        locationLng: addressVisible && event.locationLng !== null ? Number(event.locationLng) : null,
         photoUrl,
         description: event.description ?? null,
         additionalInfo: event.additionalInfo ?? null,
@@ -1533,44 +1661,44 @@ export class EventsService {
   }
 
   async searchMembersForWalkin(eventId: number, query: string, excludeGoing = true): Promise<{ id: number; fullName: string }[]> {
-    const qb = this.userRepo
-      .createQueryBuilder('u')
-      .select(['u.id', 'u.fullName'])
-      .where('u.status = :status', { status: 'active' })
-      .orderBy('u.full_name', 'ASC')
-      .limit(20);
+    const where: Prisma.usersWhereInput = { status: UserStatus.ACTIVE };
 
     if (excludeGoing) {
-      const existingRsvps = await this.rsvpRepo.find({
+      const existingRsvps = await this.prisma.event_rsvps.findMany({
         where: { eventId, status: RsvpStatus.GOING },
-        select: ['userId'],
+        select: { userId: true },
       });
       const excludeIds = existingRsvps.map((r) => r.userId);
       if (excludeIds.length > 0) {
-        qb.andWhere('u.id NOT IN (:...excludeIds)', { excludeIds });
+        where.id = { notIn: excludeIds };
       }
     }
 
     if (query.trim()) {
-      qb.andWhere('u.full_name LIKE :q', { q: `%${query.trim()}%` });
+      where.fullName = { contains: query.trim() };
     }
 
-    const users = await qb.getMany();
+    const users = await this.prisma.users.findMany({
+      where,
+      select: { id: true, fullName: true },
+      orderBy: { fullName: 'asc' },
+      take: 20,
+    });
     return users.map((u) => ({ id: u.id, fullName: u.fullName }));
   }
 
   async getReservationInfo(token: string): Promise<{ eventTitle: string; locationName: string; eventDate: string; eventTime: string; inviteToken?: string }> {
-    const event = await this.eventRepo.findOne({ where: { reservationConfirmToken: token } });
+    const event = await this.prisma.events.findFirst({ where: { reservationConfirmToken: token } });
     if (!event) throw new NotFoundException('Confirmation link not found');
     let inviteToken: string | undefined;
     if (event.reservationContactEmail) {
-      const invite = await this.inviteRepo.findOne({
+      const invite = await this.prisma.invites.findFirst({
         where: {
           type: InviteType.EVENT_INVITE,
           eventId: event.id,
           boundToEmail: event.reservationContactEmail.toLowerCase(),
           isRevoked: false,
-          redeemedAt: IsNull(),
+          redeemedAt: null,
         },
       });
       if (invite) inviteToken = invite.token;
@@ -1578,16 +1706,21 @@ export class EventsService {
     return {
       eventTitle: event.title,
       locationName: event.locationName,
-      eventDate: event.eventDate,
-      eventTime: event.eventTime,
+      // Kept as the 'YYYY-MM-DD' / 'HH:MM:SS' strings the API has always
+      // returned; the raw Dates would serialise as full ISO timestamps.
+      eventDate: toDateString(event.eventDate),
+      eventTime: toTimeString(event.eventTime),
       ...(inviteToken ? { inviteToken } : {}),
     };
   }
 
-  async setReservation(eventId: number, dto: SetReservationDto, callerUser?: UserEntity): Promise<EventEntity> {
-    const event = await this.eventRepo.findOne({
+  async setReservation(eventId: number, dto: SetReservationDto, callerUser?: User): Promise<EventRow> {
+    const event = await this.prisma.events.findFirst({
       where: { id: eventId },
-      relations: ['location', 'reservationAssignee'],
+      include: {
+        location: { include: { photos: { orderBy: { id: 'asc' } } } },
+        reservationAssignee: true,
+      },
     });
     if (!event) throw new NotFoundException(`Event ${eventId} not found`);
 
@@ -1626,7 +1759,7 @@ export class EventsService {
       event.reservationConfirmToken = null;
 
       if (dto.assigneeId) {
-        const assignee = await this.userRepo.findOne({ where: { id: dto.assigneeId } });
+        const assignee = await this.prisma.users.findFirst({ where: { id: dto.assigneeId } });
         if (!assignee) throw new NotFoundException(`Member ${dto.assigneeId} not found`);
         if (assignee.email) {
           await this.sendReservationRequestEmail(event, assignee.fullName, assignee.email, null);
@@ -1652,13 +1785,13 @@ export class EventsService {
 
         // Create (or reuse) an EVENT_INVITE so the outside contact can sign up
         const normalizedEmail = dto.contactEmail.toLowerCase();
-        const existingInvite = await this.inviteRepo.findOne({
+        const existingInvite = await this.prisma.invites.findFirst({
           where: {
             type: InviteType.EVENT_INVITE,
             eventId: event.id,
             boundToEmail: normalizedEmail,
             isRevoked: false,
-            redeemedAt: IsNull(),
+            redeemedAt: null,
           },
         });
         let inviteToken: string;
@@ -1667,7 +1800,7 @@ export class EventsService {
         } else {
           const inviteExpiry = new Date();
           inviteExpiry.setDate(inviteExpiry.getDate() + 30);
-          const newInvite = await this.inviteRepo.save(this.inviteRepo.create({
+          const newInvite = await this.prisma.invites.create({ data: ({
             token: randomBytes(50).toString('hex'),
             type: InviteType.EVENT_INVITE,
             eventId: event.id,
@@ -1678,7 +1811,7 @@ export class EventsService {
             expiresAt: inviteExpiry,
             createdBy: callerUser?.id ?? 1,
             cityId: event.cityId,
-          }));
+          }) });
           inviteToken = newInvite.token;
         }
         const signupUrl = `${appUrl}/login?token=${inviteToken}`;
@@ -1688,14 +1821,29 @@ export class EventsService {
       }
     }
 
-    await this.eventRepo.save(event);
+    // Same pattern as update(): the row was mutated above, and only the
+    // reservation columns this method touches are written back.
+    await this.prisma.events.update({
+      where: { id: event.id },
+      data: {
+        reservationAssigneeId: event.reservationAssigneeId,
+        reservationContactName: event.reservationContactName,
+        reservationContactEmail: event.reservationContactEmail,
+        reservationConfirmToken: event.reservationConfirmToken,
+        reservationConfirmed: event.reservationConfirmed,
+        reservationConfirmedBy: event.reservationConfirmedBy,
+        reservationConfirmedAt: event.reservationConfirmedAt,
+        reservationConfirmedNote: event.reservationConfirmedNote,
+        reservationSeatsEmailSent: event.reservationSeatsEmailSent,
+      },
+    });
 
     // awardCoordinator() otherwise only ever fires inline, once, inside
     // markAttendance() — someone assigned as coordinator *after* their
     // attendance was already marked (e.g. once they've finished registering)
     // would never get credit without this retroactive check.
     if (dto.assigneeId) {
-      const assigneeRsvp = await this.rsvpRepo.findOne({
+      const assigneeRsvp = await this.prisma.event_rsvps.findFirst({
         where: { eventId, userId: dto.assigneeId, attended: true },
       });
       if (assigneeRsvp) {
@@ -1707,7 +1855,7 @@ export class EventsService {
   }
 
   private async sendReservationRequestEmail(
-    event: EventEntity,
+    event: EventWithLocation,
     recipientName: string,
     recipientEmail: string,
     confirmUrl: string | null,
@@ -1715,8 +1863,8 @@ export class EventsService {
   ): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
-    const [ey, em, ed] = event.eventDate.split('-').map(Number);
-    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
+    const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
@@ -1811,21 +1959,30 @@ export class EventsService {
   }
 
   async confirmReservation(token: string): Promise<{ eventTitle: string; locationName: string; eventDate: string; eventTime: string; inviteToken?: string }> {
-    const event = await this.eventRepo.findOne({ where: { reservationConfirmToken: token } });
+    const event = await this.prisma.events.findFirst({
+      where: { reservationConfirmToken: token },
+    });
     if (!event) throw new NotFoundException('Confirmation link not found or already used');
     event.reservationConfirmed = true;
     event.reservationConfirmedBy = event.reservationContactName ?? 'Outside Contact';
     event.reservationConfirmedAt = new Date();
-    await this.eventRepo.save(event);
+    await this.prisma.events.update({
+      where: { id: event.id },
+      data: {
+        reservationConfirmed: true,
+        reservationConfirmedBy: event.reservationConfirmedBy,
+        reservationConfirmedAt: event.reservationConfirmedAt,
+      },
+    });
     let inviteToken: string | undefined;
     if (event.reservationContactEmail) {
-      const invite = await this.inviteRepo.findOne({
+      const invite = await this.prisma.invites.findFirst({
         where: {
           type: InviteType.EVENT_INVITE,
           eventId: event.id,
           boundToEmail: event.reservationContactEmail.toLowerCase(),
           isRevoked: false,
-          redeemedAt: IsNull(),
+          redeemedAt: null,
         },
       });
       if (invite) inviteToken = invite.token;
@@ -1833,8 +1990,10 @@ export class EventsService {
     return {
       eventTitle: event.title,
       locationName: event.locationName,
-      eventDate: event.eventDate,
-      eventTime: event.eventTime,
+      // Kept as the 'YYYY-MM-DD' / 'HH:MM:SS' strings the API has always
+      // returned; the raw Dates would serialise as full ISO timestamps.
+      eventDate: toDateString(event.eventDate),
+      eventTime: toTimeString(event.eventTime),
       ...(inviteToken ? { inviteToken } : {}),
     };
   }
@@ -1857,29 +2016,39 @@ export class EventsService {
     const g2 = (t: string) => parts2.find((p) => p.type === t)?.value ?? '0';
     const easternPlus2 = `${g2('year')}-${pad2(g2('month'))}-${pad2(g2('day'))} ${pad2(g2('hour'))}:${pad2(g2('minute'))}:00`;
 
-    const events = await this.eventRepo
-      .createQueryBuilder('e')
-      .leftJoinAndSelect('e.location', 'location')
-      .where('e.status = :status', { status: EventStatus.PUBLISHED })
-      .andWhere('e.reservationSeatsEmailSent = 0')
-      .andWhere('(e.reservationAssigneeId IS NOT NULL OR e.reservationContactEmail IS NOT NULL)')
-      .andWhere('TIMESTAMP(e.event_date, e.event_time) BETWEEN :start AND :end', {
-        start: easternNow,
-        end: easternPlus2,
-      })
-      .getMany();
+    // TIMESTAMP(event_date, event_time) combines two columns into one instant,
+    // which Prisma has no expression for, so the window filter stays SQL. Only
+    // the ids are fetched here; the rows themselves come back through the
+    // client so the location relation is loaded the usual way.
+    const dueRows = await this.prisma.$queryRaw<{ id: number }[]>`
+      SELECT e.id
+      FROM events e
+      WHERE e.status = ${EventStatus.PUBLISHED}
+        AND e.reservation_seats_email_sent = 0
+        AND (e.reservation_assignee_id IS NOT NULL OR e.reservation_contact_email IS NOT NULL)
+        AND TIMESTAMP(e.event_date, e.event_time) BETWEEN ${easternNow} AND ${easternPlus2}`;
+
+    const events = dueRows.length
+      ? await this.prisma.events.findMany({
+          where: { id: { in: dueRows.map((r) => r.id) } },
+          include: { location: { include: { photos: { orderBy: { id: 'asc' } } } } },
+        })
+      : [];
 
     for (const event of events) {
       try {
         await this.sendSeatsReminderEmail(event);
-        await this.eventRepo.update(event.id, { reservationSeatsEmailSent: true });
+        await this.prisma.events.update({
+          where: { id: event.id },
+          data: { reservationSeatsEmailSent: true },
+        });
       } catch (err) {
         this.logger.error(`Seats reminder failed for event ${event.id}`, err);
       }
     }
   }
 
-  private async sendSeatsReminderEmail(event: EventEntity): Promise<void> {
+  private async sendSeatsReminderEmail(event: EventWithLocation): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
 
@@ -1887,7 +2056,7 @@ export class EventsService {
     let recipientEmail: string | null = event.reservationContactEmail;
     let recipientName: string = event.reservationContactName ?? 'there';
     if (event.reservationAssigneeId) {
-      const assignee = await this.userRepo.findOne({ where: { id: event.reservationAssigneeId } });
+      const assignee = await this.prisma.users.findFirst({ where: { id: event.reservationAssigneeId } });
       if (!assignee?.email) return;
       recipientEmail = assignee.email;
       recipientName = assignee.fullName;
@@ -1895,18 +2064,18 @@ export class EventsService {
     if (!recipientEmail) return;
 
     // Current going count (member RSVPs + additional guests + public RSVPs)
-    const goingRsvps = await this.rsvpRepo.find({
+    const goingRsvps = await this.prisma.event_rsvps.findMany({
       where: { eventId: event.id, status: RsvpStatus.GOING },
     });
     let goingCount = goingRsvps.reduce((sum, r) => sum + 1 + r.additionalGuests, 0);
-    const publicCount = await this.guestLinkRepo.count({
-      where: { eventId: event.id, source: 'public', cancelledAt: IsNull() },
+    const publicCount = await this.prisma.event_guest_links.count({
+      where: { eventId: event.id, source: 'public', cancelledAt: null },
     });
     goingCount += publicCount;
     const suggestedCount = goingCount + 3;
 
-    const [ey, em, ed] = event.eventDate.split('-').map(Number);
-    const [eh, emin] = event.eventTime.split(':').map(Number);
+    const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
+    const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
@@ -1991,27 +2160,29 @@ export class EventsService {
   }
 
   async addWalkin(eventId: number, userId: number): Promise<{ type: 'member'; userId: number; memberName: string; attended: boolean | null; isWalkin: boolean; fromOtherCity: boolean; linkUsed: boolean }> {
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    const event = await this.prisma.events.findFirst({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
 
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const user = await this.prisma.users.findFirst({ where: { id: userId } });
     if (!user) throw new NotFoundException('Member not found');
 
-    const existing = await this.rsvpRepo.findOne({ where: { eventId, userId } });
+    const existing = await this.prisma.event_rsvps.findFirst({ where: { eventId, userId } });
     if (existing) {
-      existing.attended = true;
-      existing.isWalkin = true;
-      await this.rsvpRepo.save(existing);
-    } else {
-      const rsvp = this.rsvpRepo.create({
-        eventId,
-        userId,
-        status: RsvpStatus.GOING,
-        attended: true,
-        isWalkin: true,
-        additionalGuests: 0,
+      await this.prisma.event_rsvps.update({
+        where: { id: existing.id },
+        data: { attended: true, isWalkin: true },
       });
-      await this.rsvpRepo.save(rsvp);
+    } else {
+      await this.prisma.event_rsvps.create({
+        data: {
+          eventId,
+          userId,
+          status: RsvpStatus.GOING,
+          attended: true,
+          isWalkin: true,
+          additionalGuests: 0,
+        },
+      });
     }
 
     await this.pointsService.awardAttendance(userId, eventId).catch(() => {});

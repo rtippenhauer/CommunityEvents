@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { PrismaModule } from './database/prisma/prisma.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerAuditGuard } from './common/guards/throttler-audit.guard';
@@ -41,37 +40,9 @@ import { AvatarsModule } from './modules/avatars/avatars.module';
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 60 }]),
     ScheduleModule.forRoot(),
-    // Global — every feature module can inject PrismaService without importing
-    // anything. TypeOrmModule below is still here only until the last
-    // repository call site is converted (v2-1); it is not the target state.
+    // Prisma is the only data-access layer. TypeOrmModule.forRootAsync used
+    // to sit here; it is gone along with the entities and the packages.
     PrismaModule,
-    TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        type: 'mysql',
-        host: configService.get<string>('DB_HOST', 'localhost'),
-        port: configService.get<number>('DB_PORT', 3306),
-        username: configService.get<string>('DB_USER'),
-        password: configService.get<string>('DB_PASSWORD'),
-        database: configService.get<string>('DB_NAME'),
-        entities: [__dirname + '/database/entities/*.entity{.ts,.js}'],
-        // No migrations here any more: Prisma owns the schema. TypeORM is
-        // kept only as a query layer for the call sites still being converted,
-        // and must never touch DDL again -- pointing it at the old migration
-        // files would have it try to rebuild tables Prisma just created.
-        synchronize: false,
-        retryAttempts: 3,
-        retryDelay: 3000,
-        // Keep the connection pool alive so MySQL's wait_timeout doesn't
-        // silently close idle connections between requests.
-        extra: {
-          connectionLimit: 10,
-          enableKeepAlive: true,
-          keepAliveInitialDelay: 10000,
-        },
-      }),
-      inject: [ConfigService],
-    }),
     HealthModule,
     CitiesModule,
     InvitesModule,

@@ -1,5 +1,5 @@
 import { IsEnum } from 'class-validator';
-import { FlagStatus } from '../../../database/entities/content-flag.entity';
+import { FlagStatus } from '../../../database/enums';
 
 export class UpdateFlagDto {
   @IsEnum(FlagStatus)

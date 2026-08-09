@@ -1,5 +1,5 @@
 import { IsEnum, IsInt, IsOptional, IsPositive, IsString, MaxLength } from 'class-validator';
-import { ReportContentType } from '../../../database/entities/content-report.entity';
+import { ReportContentType } from '../../../database/enums';
 
 export class CreateReportDto {
   @IsEnum(ReportContentType)

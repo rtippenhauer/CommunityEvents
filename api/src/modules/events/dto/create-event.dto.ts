@@ -9,7 +9,7 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
-import { EventStatus } from '../../../database/entities/event.entity';
+import { EventStatus } from '../../../database/enums';
 
 export class CreateEventDto {
   @IsInt()

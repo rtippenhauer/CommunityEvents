@@ -16,7 +16,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller()
 export class ReportsController {
@@ -25,7 +26,7 @@ export class ReportsController {
   @Post('reports')
   @UseGuards(JwtAuthGuard)
   @HttpCode(201)
-  create(@Body() dto: CreateReportDto, @CurrentUser() user: UserEntity) {
+  create(@Body() dto: CreateReportDto, @CurrentUser() user: User) {
     return this.reportsService.create(user.id, dto);
   }
 
@@ -51,7 +52,7 @@ export class ReportsController {
   review(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ReviewReportDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.reportsService.review(id, user.id, dto);
   }

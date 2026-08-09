@@ -23,8 +23,8 @@ import { CreateFeedbackDto } from './dto/create-feedback.dto';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
-import { FeedbackCategory } from '../../database/entities/feedback.entity';
+import { FeedbackCategory, UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 const ALLOWED_IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -35,7 +35,7 @@ export class FeedbackController {
   constructor(private readonly feedbackService: FeedbackService) {}
 
   @Post()
-  create(@Body() dto: CreateFeedbackDto, @CurrentUser() user: UserEntity) {
+  create(@Body() dto: CreateFeedbackDto, @CurrentUser() user: User) {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot submit feedback');
     }
@@ -68,7 +68,7 @@ export class FeedbackController {
     }),
   )
   uploadImage(
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
     @UploadedFile() file: Express.Multer.File,
   ): { url: string } {
     if (user.role === UserRole.NON_VALIDATED) {
@@ -80,7 +80,7 @@ export class FeedbackController {
 
   @Get()
   findAll(
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
     @Query('category') category?: FeedbackCategory,
     @Query('sort') sort?: 'newest' | 'upvotes',
   ) {
@@ -88,28 +88,28 @@ export class FeedbackController {
   }
 
   @Get('mine')
-  findMine(@CurrentUser() user: UserEntity) {
+  findMine(@CurrentUser() user: User) {
     return this.feedbackService.findMine(user.id);
   }
 
   @Get('my-stats')
-  getMyStats(@CurrentUser() user: UserEntity) {
+  getMyStats(@CurrentUser() user: User) {
     return this.feedbackService.getMemberStats(user.id);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
     const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
     return this.feedbackService.findOne(id, user.id, isAdmin);
   }
 
   @Post(':id/upvote')
-  toggleUpvote(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+  toggleUpvote(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
     return this.feedbackService.toggleUpvote(id, user.id);
   }
 
   @Get(':id/notes')
-  getNotes(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: UserEntity) {
+  getNotes(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
     const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
     return this.feedbackService.getNotes(id, user.id, isAdmin);
   }
@@ -118,7 +118,7 @@ export class FeedbackController {
   addNote(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateNoteDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot add notes');

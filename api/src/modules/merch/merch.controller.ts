@@ -6,7 +6,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('merch')
 @UseGuards(JwtAuthGuard)
@@ -15,7 +16,7 @@ export class MerchController {
 
   @Get()
   @RequireFeature('feature_merch')
-  getLinks(@CurrentUser() user: UserEntity) {
+  getLinks(@CurrentUser() user: User) {
     return this.merchService.getLinksForUser(user.id);
   }
 

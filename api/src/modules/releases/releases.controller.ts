@@ -3,7 +3,7 @@ import { ReleasesService } from './releases.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
 
 // Validated members and above only — non_validated and anonymous visitors
 // don't see the changelog. Also closes the gap where an author's or credited

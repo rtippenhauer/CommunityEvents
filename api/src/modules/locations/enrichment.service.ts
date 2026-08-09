@@ -1,13 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { Repository } from 'typeorm';
 import { writeFile } from 'fs/promises';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
+import type { location_photos as LocationPhoto } from '@prisma/client';
 
 /**
  * Structural on purpose. Enrichment is handed locations by LocationsService
@@ -31,7 +31,6 @@ export interface EnrichableLocation {
   // "no photos yet" and re-download the lot.
   photos: { id: number }[];
 }
-import { LocationPhotoEntity } from '../../database/entities/location-photo.entity';
 
 export interface EnrichResult {
   name: string | null;
