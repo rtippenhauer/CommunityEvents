@@ -47,7 +47,7 @@ describe('authInterceptor', () => {
 
   describe('on 401', () => {
     it('clears the session and redirects to /login', () => {
-      const navigate = spyOn(router, 'navigate');
+      const navigate = vi.spyOn(router, 'navigate');
       auth.currentUser.set({
         id: 1,
         fullName: 'Test',
@@ -71,7 +71,7 @@ describe('authInterceptor', () => {
     // "not signed in" answer, not a session expiring. Redirecting on it would
     // bounce every anonymous visitor off whatever page they landed on.
     it('does NOT redirect when the 401 came from /auth/me', () => {
-      const navigate = spyOn(router, 'navigate');
+      const navigate = vi.spyOn(router, 'navigate');
 
       http.get('/api/v1/auth/me').subscribe({ error: () => {} });
       httpMock
@@ -96,7 +96,7 @@ describe('authInterceptor', () => {
     // Only 401 means "your session is gone". A 403 or 500 must not log the
     // member out — that would turn a permission error into a surprise logout.
     it('leaves the session alone on 403 and 500', () => {
-      const navigate = spyOn(router, 'navigate');
+      const navigate = vi.spyOn(router, 'navigate');
       const user = {
         id: 1,
         fullName: 'Test',
@@ -114,7 +114,7 @@ describe('authInterceptor', () => {
           .expectOne(`/api/v1/thing-${status}`)
           .flush(null, { status, statusText: 'Err' });
 
-        expect(auth.currentUser()).withContext(`status=${status}`).not.toBeNull();
+        expect(auth.currentUser(), `status=${status}`).not.toBeNull();
       }
       expect(navigate).not.toHaveBeenCalled();
     });

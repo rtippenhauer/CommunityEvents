@@ -8,7 +8,10 @@ import { CommunityService } from './community.service';
 // being shown the same achievement dialog over and over on a 60s poll.
 describe('SplashService', () => {
   let service: SplashService;
-  let community: jasmine.SpyObj<CommunityService>;
+  // Vitest has no createSpyObj; the stub is built explicitly instead, which
+  // also makes it obvious which CommunityService methods this suite exercises.
+  type CommunityStub = { [K in keyof CommunityService]: ReturnType<typeof vi.fn> };
+  let community: CommunityStub;
 
   const achievement = (memberAchievementId: number) =>
     ({ memberAchievementId, name: `A${memberAchievementId}` }) as never;
@@ -19,28 +22,28 @@ describe('SplashService', () => {
     announcement?: unknown;
     failAchievements?: boolean;
   } = {}) {
-    community = jasmine.createSpyObj<CommunityService>('CommunityService', [
-      'getUnseenAchievements',
-      'getWhatsNew',
-      'markAchievementSeen',
-      'markReleaseSeen',
-      'markAnnouncementSeen',
-    ]);
+    community = {
+      getUnseenAchievements: vi.fn(),
+      getWhatsNew: vi.fn(),
+      markAchievementSeen: vi.fn(),
+      markReleaseSeen: vi.fn(),
+      markAnnouncementSeen: vi.fn(),
+    } as unknown as CommunityStub;
 
-    community.getUnseenAchievements.and.returnValue(
+    community.getUnseenAchievements.mockReturnValue(
       (options.failAchievements
         ? throwError(() => new Error('boom'))
         : of(options.achievements ?? [])) as never,
     );
-    community.getWhatsNew.and.returnValue(
+    community.getWhatsNew.mockReturnValue(
       of({
         release: options.release ?? null,
         announcement: options.announcement ?? null,
       }) as never,
     );
-    community.markAchievementSeen.and.returnValue(of(undefined) as never);
-    community.markReleaseSeen.and.returnValue(of(undefined) as never);
-    community.markAnnouncementSeen.and.returnValue(of(undefined) as never);
+    community.markAchievementSeen.mockReturnValue(of(undefined) as never);
+    community.markReleaseSeen.mockReturnValue(of(undefined) as never);
+    community.markAnnouncementSeen.mockReturnValue(of(undefined) as never);
 
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({

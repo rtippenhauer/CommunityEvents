@@ -51,8 +51,7 @@ describe('AuthService', () => {
 
       for (const role of ['member', 'moderator', 'admin']) {
         service.currentUser.set(user({ role }));
-        expect(service.isNonValidated())
-          .withContext(`role=${role}`)
+        expect(service.isNonValidated(), `role=${role}`)
           .toBe(false);
       }
     });

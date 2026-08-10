@@ -151,7 +151,9 @@ describe('BrandConfigService', () => {
         .expectOne('/api/v1/config/branding')
         .flush('boom', { status: 500, statusText: 'Server Error' });
 
-      await expectAsync(pending).toBeResolved();
+      // Jasmine's expectAsync(...).toBeResolved(); the point is that init()
+      // settles rather than rejecting when the branding request fails.
+      await expect(pending).resolves.toBeUndefined();
 
       expect(service.ratingsEnabled()).toBe(true);
       expect(service.ratingsResidencesEnabled()).toBe(false);

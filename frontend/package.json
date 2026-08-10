@@ -8,10 +8,10 @@
     "prebuild": "node scripts/gen-bg-manifest.js",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test --watch=false --browsers=ChromeHeadless",
+    "test": "ng test",
     "lint": "eslint \"src/**/*.{ts,html}\"",
     "format": "prettier --write \"src/**/*.{ts,html,scss}\"",
-    "test:watch": "ng test"
+    "test:watch": "ng test --watch"
   },
   "private": true,
   "dependencies": {
@@ -37,19 +37,14 @@
     "@angular/cli": "^22.0.7",
     "@angular/compiler-cli": "^22.0.7",
     "@eslint/js": "^9.39.4",
-    "@types/jasmine": "~5.1.0",
     "angular-eslint": "^22.1.0",
     "eslint": "^9.28.0",
     "eslint-config-prettier": "^10.1.8",
     "istanbul-lib-instrument": "^6.0.3",
-    "jasmine-core": "~5.1.0",
-    "karma": "~6.4.0",
-    "karma-chrome-launcher": "~3.2.0",
-    "karma-coverage": "~2.2.0",
-    "karma-jasmine": "~5.1.0",
-    "karma-jasmine-html-reporter": "~2.1.0",
+    "jsdom": "^30.0.1",
     "prettier": "^3.8.3",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.33.1"
+    "typescript-eslint": "^8.33.1",
+    "vitest": "^4.1.10"
   }
 }
