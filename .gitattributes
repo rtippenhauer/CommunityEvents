@@ -1,0 +1,12 @@
+# Shell scripts must keep LF endings even when checked out on Windows.
+#
+# The Docker image is built from the working tree, not from git, so a CRLF
+# checkout of entrypoint.sh ships a "#!/bin/sh\r" shebang into the image. The
+# kernel then looks for an interpreter literally named "/bin/sh\r" and the
+# container dies with "/entrypoint.sh: not found" -- which reads as a missing
+# file rather than a line-ending problem, and restarts forever.
+*.sh text eol=lf
+
+# Same reasoning for anything else executed inside a container.
+Dockerfile text eol=lf
+docker/entrypoint.sh text eol=lf
