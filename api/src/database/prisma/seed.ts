@@ -44,6 +44,16 @@ dotenv.config({ path: path.join(__dirname, '../../../../.env') });
  * Idempotent by design. Every table is upserted on a natural key, so running
  * it against an already-seeded database is a no-op rather than a duplicate-key
  * failure, and it can be re-run after adding new reference rows.
+ *
+ * Order-independent too, which is why the captured rows carry no `id` for the
+ * tables found by a natural key. Pinning the surrogate ids made the seed fail
+ * with a PRIMARY key violation whenever anything had already inserted a row --
+ * running bootstrap.js first was enough, because its city took id 1 and the
+ * seed then tried to create Cincinnati as id 1 as well. The ids are left to
+ * auto-increment; nothing references these rows by id.
+ *
+ * email_provider_config and merch_config are the exception and keep id 1: they
+ * are true singletons that the application looks up by that id.
  */
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;

@@ -1,6 +1,5 @@
 [
   {
-    "id": 1,
     "key": "founding_bear",
     "name": "Founding Bear",
     "description": "Joined DinnerBears before the community points system launched.",
@@ -15,7 +14,6 @@
     "createdAt": "2026-08-09T16:30:04.000Z"
   },
   {
-    "id": 2,
     "key": "first_dinner",
     "name": "First Dinner",
     "description": "Attended your very first DinnerBears dinner.",
@@ -30,7 +28,6 @@
     "createdAt": "2026-08-09T16:30:04.000Z"
   },
   {
-    "id": 3,
     "key": "regular",
     "name": "Regular",
     "description": "Attended 5 DinnerBears dinners.",
@@ -45,7 +42,6 @@
     "createdAt": "2026-08-09T16:30:04.000Z"
   },
   {
-    "id": 4,
     "key": "veteran",
     "name": "Veteran",
     "description": "Attended 25 DinnerBears dinners.",
@@ -60,7 +56,6 @@
     "createdAt": "2026-08-09T16:30:04.000Z"
   },
   {
-    "id": 5,
     "key": "first_coordinator",
     "name": "Coordinator",
     "description": "Coordinated your first DinnerBears dinner reservation.",
@@ -75,7 +70,6 @@
     "createdAt": "2026-08-09T16:30:04.000Z"
   },
   {
-    "id": 6,
     "key": "scout",
     "name": "Scout",
     "description": "Coordinated dinners at 3 different restaurants that had never hosted a DinnerBears event before.",
@@ -90,7 +84,6 @@
     "createdAt": "2026-08-09T16:30:04.000Z"
   },
   {
-    "id": 7,
     "key": "connector",
     "name": "Connector",
     "description": "Successfully invited someone who attended their first dinner.",
@@ -105,7 +98,6 @@
     "createdAt": "2026-08-09T16:30:04.000Z"
   },
   {
-    "id": 8,
     "key": "critic",
     "name": "Critic",
     "description": "Submitted 5 restaurant ratings.",
@@ -120,7 +112,6 @@
     "createdAt": "2026-08-09T16:30:04.000Z"
   },
   {
-    "id": 9,
     "key": "table_familiar",
     "name": "Familiar Face",
     "description": "Attended 10 DinnerBears dinners. The hosts know your order.",
@@ -135,7 +126,6 @@
     "createdAt": "2026-08-09T16:30:05.000Z"
   },
   {
-    "id": 10,
     "key": "devoted_diner",
     "name": "Devoted Diner",
     "description": "Attended 50 DinnerBears dinners. Dinner is basically your religion at this point.",
@@ -150,7 +140,6 @@
     "createdAt": "2026-08-09T16:30:05.000Z"
   },
   {
-    "id": 11,
     "key": "legend_of_the_table",
     "name": "Legend of the Table",
     "description": "Attended 100 DinnerBears dinners. You are the dinner. The dinner is you.",
@@ -165,7 +154,6 @@
     "createdAt": "2026-08-09T16:30:05.000Z"
   },
   {
-    "id": 12,
     "key": "gracious_host",
     "name": "Gracious Host",
     "description": "Coordinated reservations for 5 events. You set a fine table.",
@@ -180,7 +168,6 @@
     "createdAt": "2026-08-09T16:30:05.000Z"
   },
   {
-    "id": 13,
     "key": "maitre_d",
     "name": "Ma\u00eetre D'",
     "description": "Coordinated reservations for 10 events. The restaurant expects your call.",
@@ -195,7 +182,6 @@
     "createdAt": "2026-08-09T16:30:05.000Z"
   },
   {
-    "id": 14,
     "key": "banquet_captain",
     "name": "Banquet Captain",
     "description": "Coordinated reservations for 25 events. You run the room.",
@@ -210,7 +196,6 @@
     "createdAt": "2026-08-09T16:30:05.000Z"
   },
   {
-    "id": 15,
     "key": "grand_maestro",
     "name": "Grand Maestro",
     "description": "Coordinated reservations for 50 events. The bears dine because of you.",
@@ -225,7 +210,6 @@
     "createdAt": "2026-08-09T16:30:05.000Z"
   },
   {
-    "id": 16,
     "key": "culinary_explorer",
     "name": "Culinary Explorer",
     "description": "Coordinated at 8 restaurants new to DinnerBears. The map keeps expanding.",
@@ -240,7 +224,6 @@
     "createdAt": "2026-08-09T16:30:05.000Z"
   },
   {
-    "id": 17,
     "key": "trailblazer",
     "name": "Trailblazer",
     "description": "Coordinated at 20 restaurants new to DinnerBears. You are the reason we have favorites.",
@@ -255,7 +238,6 @@
     "createdAt": "2026-08-09T16:30:05.000Z"
   },
   {
-    "id": 18,
     "key": "city_hopper_1",
     "name": "City Hopper",
     "description": "Attended a DinnerBears dinner in another city.",
@@ -270,7 +252,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 20,
     "key": "city_hopper_5",
     "name": "Frequent Flyer",
     "description": "Attended DinnerBears dinners in 5 cities.",
@@ -285,7 +266,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 21,
     "key": "city_hopper_10",
     "name": "Globe Trotter",
     "description": "Attended DinnerBears dinners in 10 cities.",
@@ -300,7 +280,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 22,
     "key": "secret_dinner_1",
     "name": "Mystery Diner",
     "description": "Attended a DinnerBears secret dinner.",
@@ -315,7 +294,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 23,
     "key": "secret_dinner_3",
     "name": "Secret Society",
     "description": "Attended 3 DinnerBears secret dinners.",
@@ -330,7 +308,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 24,
     "key": "secret_dinner_5",
     "name": "Shadow Bear",
     "description": "Attended 5 DinnerBears secret dinners.",
@@ -345,7 +322,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 25,
     "key": "legendary_maestro",
     "name": "Legendary Maestro",
     "description": "Coordinated reservations for 100 events. DinnerBears simply would not exist without you.",
@@ -360,7 +336,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 26,
     "key": "culinary_pioneer",
     "name": "Culinary Pioneer",
     "description": "Brought DinnerBears to 25 restaurants they had never visited. You literally made the map.",
@@ -375,7 +350,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 27,
     "key": "master_explorer",
     "name": "Master Explorer",
     "description": "Discovered 50 restaurants new to DinnerBears. The city is your menu.",
@@ -390,7 +364,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 28,
     "key": "legendary_scout",
     "name": "Legendary Scout",
     "description": "Opened DinnerBears to 100 new restaurants. A true legend of culinary discovery.",
@@ -405,7 +378,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 29,
     "key": "social_butterfly",
     "name": "Social Butterfly",
     "description": "Five of your invitees have attended their first dinner.",
@@ -420,7 +392,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 30,
     "key": "networker",
     "name": "Networker",
     "description": "Ten people attended DinnerBears because you invited them.",
@@ -435,7 +406,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 31,
     "key": "ambassador",
     "name": "Ambassador",
     "description": "25 members traced their first dinner back to you.",
@@ -450,7 +420,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 32,
     "key": "community_builder",
     "name": "Community Builder",
     "description": "You personally brought 50 people into the fold.",
@@ -465,7 +434,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 33,
     "key": "legendary_connector",
     "name": "Legendary Connector",
     "description": "100 members are here because of you. DinnerBears is your legacy.",
@@ -480,7 +448,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 34,
     "key": "first_review",
     "name": "First Review",
     "description": "Submitted your first restaurant rating.",
@@ -495,7 +462,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 35,
     "key": "food_connoisseur",
     "name": "Food Connoisseur",
     "description": "Submitted 10 restaurant ratings. Your palate is becoming legendary.",
@@ -510,7 +476,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 36,
     "key": "dining_authority",
     "name": "Dining Authority",
     "description": "Submitted 25 restaurant ratings. Restaurants should fear your pen.",
@@ -525,7 +490,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 37,
     "key": "master_critic",
     "name": "Master Critic",
     "description": "Submitted 50 restaurant ratings. You are the Michelin guide of DinnerBears.",
@@ -540,7 +504,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 38,
     "key": "legendary_critic",
     "name": "Legendary Critic",
     "description": "Submitted 100 restaurant ratings. No fork has escaped your judgement.",
@@ -555,7 +518,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 39,
     "key": "city_hopper_25",
     "name": "World Wanderer",
     "description": "Attended DinnerBears dinners in 25 cities.",
@@ -570,7 +532,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 40,
     "key": "city_hopper_50",
     "name": "Transcontinental Bear",
     "description": "Attended DinnerBears dinners in 50 cities.",
@@ -585,7 +546,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 41,
     "key": "city_hopper_100",
     "name": "Ultimate Globe Trotter",
     "description": "Attended DinnerBears dinners across 100 cities. There is nowhere left to eat.",
@@ -600,7 +560,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 42,
     "key": "secret_dinner_10",
     "name": "Shadow Veteran",
     "description": "Attended 10 secret DinnerBears dinners.",
@@ -615,7 +574,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 43,
     "key": "secret_dinner_25",
     "name": "Phantom Diner",
     "description": "Attended 25 secret DinnerBears dinners. You thrive in the mystery.",
@@ -630,7 +588,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 44,
     "key": "secret_dinner_50",
     "name": "Mystery Master",
     "description": "Attended 50 secret DinnerBears dinners. You wrote the book on secrecy.",
@@ -645,7 +602,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 45,
     "key": "secret_dinner_100",
     "name": "Ultimate Shadow Bear",
     "description": "Attended 100 secret DinnerBears dinners. The restaurants never saw you coming.",
@@ -660,7 +616,6 @@
     "createdAt": "2026-08-09T16:30:06.000Z"
   },
   {
-    "id": 46,
     "key": "login_25",
     "name": "Familiar Face",
     "description": "Visited DinnerBears 25 times.",
@@ -675,7 +630,6 @@
     "createdAt": "2026-08-09T16:30:08.000Z"
   },
   {
-    "id": 47,
     "key": "login_50",
     "name": "Regular Visitor",
     "description": "Visited DinnerBears 50 times.",
@@ -690,7 +644,6 @@
     "createdAt": "2026-08-09T16:30:08.000Z"
   },
   {
-    "id": 48,
     "key": "login_100",
     "name": "Dedicated Bear",
     "description": "Visited DinnerBears 100 times.",
@@ -705,7 +658,6 @@
     "createdAt": "2026-08-09T16:30:08.000Z"
   },
   {
-    "id": 49,
     "key": "login_250",
     "name": "Devoted Bear",
     "description": "Visited DinnerBears 250 times.",
@@ -720,7 +672,6 @@
     "createdAt": "2026-08-09T16:30:08.000Z"
   },
   {
-    "id": 50,
     "key": "login_500",
     "name": "DinnerBears Superfan",
     "description": "Visited DinnerBears 500 times. We should start paying rent.",
@@ -735,7 +686,6 @@
     "createdAt": "2026-08-09T16:30:08.000Z"
   },
   {
-    "id": 51,
     "key": "patriotic_bear",
     "name": "Patriotic Bear",
     "description": "Logged in during America's Semiquincentennial celebration \u2014 the 250th birthday of the United States (July 4-11, 2026).",
