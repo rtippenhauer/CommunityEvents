@@ -141,6 +141,30 @@ to exist before tenant scoping has anything to scope:
   table so that all tenant code — and its tests — is written against the
   target stack from the start.
 
+### REQ-TENANT-01.7 — Domain scheme (decided 2026-08-09)
+
+The doc previously left the v2 domain scheme open. It is now settled by the
+project having its own domain, `communityeventsproject.com`:
+
+- The root tenant is `www.communityeventsproject.com`. `www.` and the apex
+  resolve to that same tenant row, per REQ-TENANT-01.1 — never two rows.
+- An admin on the root tenant is the system admin.
+- Additional tenants are subdomains of the same apex
+  (`demo.communityeventsproject.com`, and later real communities).
+- `stage.` is a **separate deployment**, not a tenant of production: its own
+  container, database and root tenant. Being a subdomain of the same apex
+  makes it look like a tenant; it is not one.
+
+**Auth cookies must be scoped to the exact tenant host, never to a shared
+parent domain.** A cookie issued for `.communityeventsproject.com` is sent to
+every tenant subdomain, so a session created on one tenant would authenticate
+its holder on all of them -- defeating the isolation the Client Extension
+exists to enforce. This is the inverse of the v1 `BASE_DOMAIN` problem: v1
+scoped cookies too narrowly and lost sessions on subdomains; scoping them to
+the apex here would share sessions across tenants, which is far worse than
+losing them. Domain resolution (REQ-TENANT-01.2) and the tenant-scoping
+extension (REQ-TENANT-01.3) both depend on getting this right.
+
 ## Testing requirements
 
 Per the project's testing conventions (Vitest + Supertest + Playwright),

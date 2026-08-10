@@ -103,9 +103,17 @@ each up by one, and no `v2-*` tags existed yet). Full requirement-level
 detail lives in `docs/REQ-TENANT-01.md`.
 
 Not yet decided/known: whether frontend framework/testing choices beyond
-"not Karma" are changing, and what domain scheme v2 tenants use (see the
-`www.`/cookie-domain design note under "Multi-Tenancy" below — v2's domain
-resolution needs to actually solve this, not inherit v1's workaround).
+"not Karma" are changing.
+
+**Domain scheme — decided 2026-08-09** (REQ-TENANT-01.7): the project owns
+`communityeventsproject.com`. `www.` (and the apex, same tenant row) is the
+root/system-admin tenant and the public landing page; other tenants are
+subdomains; `stage.` is a separate deployment that is its own root tenant, not
+a tenant of prod. Auth cookies must be scoped to the exact tenant host —
+scoping them to the apex would share one session across every tenant. See
+V2_PHASES.md's "Deferred: CommunityEvents domain, branding and demo" for the
+backlog items (branding defaults, landing page, demo tenant), all deliberately
+held until the tenant work is stable.
 
 ## Stack (current `main`)
 Mostly the inherited v1 snapshot, with the data layer already replaced by
