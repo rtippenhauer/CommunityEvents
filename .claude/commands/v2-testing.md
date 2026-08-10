@@ -25,15 +25,25 @@ are `/v2-done`'s job, and they only run once v2-stage looks right.
    working tree, not from git** — building with uncommitted changes ships
    code that exists in no commit. Never build dirty.
 
-2. Run the project's current test suite before it reaches a container.
-   **Check `api/package.json` and `frontend/package.json` scripts rather
-   than assuming — the toolchain is mid-migration.** Through v2-1 (the
-   Prisma swap), `api/` still runs on Jest and `scripts/test-db-up.sh`
-   still applies; from v2-2 (the testing stack swap) onward, expect Vitest
-   + Supertest and Playwright per
-   `docs/REQ-TENANT-01.md`'s testing requirements, and the exact commands
-   here will need updating once that lands — don't trust this file blindly,
-   confirm against what's actually wired up.
+2. Run the full test suite before it reaches a container. As of `v2-2`
+   everything is Vitest; Jest, Karma and Jasmine are uninstalled:
+
+   | What | Command | From |
+   | --- | --- | --- |
+   | API unit | `npm test` | `api/` |
+   | API e2e (Supertest, real MySQL) | `bash scripts/run-e2e-tests.sh` | repo root |
+   | Frontend unit | `npm test` | `frontend/` |
+   | Frontend production build | `npm run build -- --configuration production` | `frontend/` |
+   | Browser e2e (Playwright) | `npx playwright test` | repo root |
+
+   `run-e2e-tests.sh` brings up the throwaway MySQL, applies the schema and
+   tears it down again — don't start the container by hand. Playwright starts
+   its own `ng serve`; it needs `npx playwright install chromium` once per
+   machine.
+
+   Still check `api/package.json` and `frontend/package.json` rather than
+   trusting this table blindly — the stack is being replaced piece by piece
+   and this file has been wrong before.
 
    Build **production**, not development, for the frontend build check —
    the Dockerfile builds production, and only production applies budgets
