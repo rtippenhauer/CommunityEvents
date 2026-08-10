@@ -163,3 +163,39 @@ admin of that tenant with generated members/locations/events/leaderboard
 present, sees a standing notice that the data is temporary, and the tenant
 returns to its seeded state on schedule. The same self-registration on any
 other tenant still yields an ordinary member.
+
+### v2-10 — Operator setup wizard / everything configurable from the site
+**Status:** Not started (deferred). Depends on v2-6.
+
+REQ-TENANT-01.4 splits config into bootstrap (env, set once) and runtime
+(DB-backed, editable in the UI) but stops short of building the UI. This is
+that UI: an operator finishing a fresh install should be able to configure the
+instance from the website rather than by hand-editing env vars, including
+being walked through the third-party setup each integration needs — Google
+OAuth, Facebook Login, DNS, and email (Brevo/Resend).
+
+The prompting matters as much as the fields. An operator who has never
+registered a Meta app does not know what a redirect URI is, and the failure
+mode is a half-configured instance where login silently does not work.
+
+**Definition of done:** a new instance can be taken from first boot to working
+Google login, Facebook login, email delivery and correct DNS without editing
+env vars by hand, with the wizard telling the operator what to do in each
+third-party console.
+
+### v2-11 — Operator handbook
+**Status:** Not started (deferred).
+
+The written counterpart to v2-10: what an operator needs before and during
+setup. Same content, different form — the wizard prompts in the moment, the
+handbook is what they read beforehand and what support points at afterwards.
+
+Existing material to fold in rather than rewrite: `docs/FACEBOOK_APP_SETUP.md`,
+`docs/FACEBOOK_REVIEW.md` and `docs/NEW_INSTANCE_SETUP.md` already cover most
+of the Meta path from v1, including the business-verification requirement for
+going Live.
+
+**Definition of done:** a single document covering domain/DNS, Google OAuth,
+Meta app creation plus review and business verification, and email provider
+setup, accurate enough that someone other than Rob can stand up an instance
+from it.

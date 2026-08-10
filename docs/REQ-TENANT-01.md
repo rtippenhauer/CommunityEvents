@@ -165,6 +165,46 @@ the apex here would share sessions across tenants, which is far worse than
 losing them. Domain resolution (REQ-TENANT-01.2) and the tenant-scoping
 extension (REQ-TENANT-01.3) both depend on getting this right.
 
+### REQ-TENANT-01.8 — OAuth callback host (design constraint, decided 2026-08-09)
+
+Google and Meta both require every OAuth redirect URI to be **registered in
+advance** in their developer consoles, and neither supports a subdomain
+wildcard. v1 lists them one per city:
+
+```
+https://dinnerbears.com/api/v1/auth/facebook/callback
+https://cincinnati.dinnerbears.com/api/v1/auth/facebook/callback
+https://dayton.dinnerbears.com/api/v1/auth/facebook/callback
+```
+
+That directly contradicts this project's premise that a new tenant is a
+database row rather than a deployment. Left as-is, onboarding a community
+means an operator hand-editing two third-party consoles before any of its
+members can log in, and a tenant created at 2am cannot use social login until
+someone wakes up.
+
+**All OAuth callbacks therefore terminate on a single fixed host** — the root
+tenant, `www.communityeventsproject.com` — regardless of which tenant the
+login started from. One redirect URI per provider, registered once, never
+touched again as tenants come and go.
+
+The complication this creates, and the reason it is written down rather than
+left to implementation: the callback lands on the root host, but the session
+belongs to the *originating* tenant, and REQ-TENANT-01.7 requires the session
+cookie to be scoped to that tenant's exact host. The callback cannot simply
+set a cookie — it is on the wrong domain to do so. The handoff needs:
+
+- the originating tenant carried through the provider round-trip (the OAuth
+  `state` parameter is the normal place, and it must be signed or otherwise
+  unforgeable, since it decides which tenant the resulting session belongs to);
+- a single-use, short-lived token issued by the callback and redirected to the
+  originating tenant's host, which exchanges it there for a session cookie
+  scoped to that host.
+
+Getting the `state` handling wrong here is a cross-tenant account takeover, not
+a login bug: an attacker who can choose the tenant in the callback chooses
+which tenant a freshly authenticated session is issued for.
+
 ## Testing requirements
 
 Per the project's testing conventions (Vitest + Supertest + Playwright),
