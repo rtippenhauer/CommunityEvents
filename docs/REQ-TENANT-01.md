@@ -59,6 +59,12 @@ to exist before tenant scoping has anything to scope:
 - `tenants` table: `id`, `slug`, `domain` (unique), `is_root` (boolean),
   `status` (enum: active/suspended), `db_mode` (enum: shared/dedicated —
   reserved for future use, defaults to `shared`), `created_at`
+- `google_client_id`, `google_client_secret`, `facebook_app_id`,
+  `facebook_app_secret` — all nullable, secrets encrypted at rest, reserved
+  for future use in the same sense as `db_mode` and read by no code in this
+  doc. Null is the default and the only value REQ-TENANT-01.8 contemplates:
+  it means the tenant uses the platform's own OAuth apps. See
+  REQ-TENANT-01.8 for why a tenant might eventually supply its own.
 - Exactly one tenant has `is_root = true`. This tenant's domain matches
   `ROOT_TENANT_URL` from bootstrap config (see REQ-TENANT-01.4). Its admin
   is the system admin.
@@ -205,6 +211,76 @@ Getting the `state` handling wrong here is a cross-tenant account takeover, not
 a login bug: an attacker who can choose the tenant in the callback chooses
 which tenant a freshly authenticated session is issued for.
 
+**Half of this already exists in the inherited codebase and should be read
+before it is redesigned.** v1 solves the routing problem exactly this way:
+`GoogleStrategy` captures the originating `Host` into the OAuth `state` on the
+outbound redirect and decodes it back out in `validate()`
+(`api/src/modules/auth/strategies/google.strategy.ts`), and the callback
+refuses any host outside the configured base domain before putting it in a
+`Location` header (`AuthController.isAllowedRedirectHost`). What v1 has no
+equivalent of is the handoff — it sets the session cookie on the callback host
+with `domain: this.baseDomain` (`AuthController.accessTokenCookieOptions`),
+and that option's own comment states the shared scope is required *because*
+the round-trip lands on a different host. That single line is the one
+REQ-TENANT-01.7 forbids. Replacing it, rather than rebuilding the `state`
+plumbing around it, is the substance of this requirement.
+
+Two things the v1 mechanism does need in v2: `state` becomes signed (v1's is
+plain base64url, safe only because the allowlist is one hardcoded domain), and
+the redirect target is resolved from a signed tenant id looked up in `tenants`
+rather than from a host string carried in the payload.
+
+**The callback executes in the wrong tenant's context.** Domain resolution
+(REQ-TENANT-01.2) resolves the callback request to the *root* tenant, because
+the root host is where it arrives, while the user record it must find or create
+belongs to the originating tenant. Under per-tenant email uniqueness
+(REQ-TENANT-01.5) that is a correctness problem rather than a tidiness one —
+the same address can legitimately exist in both tenants, and the wrong context
+resolves to the wrong person. The tenant-scoping Client Extension
+(REQ-TENANT-01.3) therefore needs an explicit, documented "run this block as
+tenant X" override, and the OAuth callback is its first legitimate consumer. It
+has to be an intentional and auditable escape hatch, not the callback quietly
+bypassing the extension, or it dissolves the single enforcement point the
+extension exists to be.
+
+**Cookie `SameSite` very likely has to relax from `strict` to `lax`.** The
+session cookie is set on the tenant host during a redirect chain that began
+cross-site on the root host, and browsers withhold `SameSite=Strict` cookies
+from requests arriving via a cross-site redirect. The first request after the
+handoff would then land unauthenticated, making a successful login look like it
+did not take. `lax` is the conventional setting for OAuth returns and is
+sufficient here. v1 currently ships `strict`; confirm the real behaviour in a
+browser rather than trusting a reading of the spec.
+
+**Consent-screen branding is accepted as platform-branded.** Google and Meta
+both render the app name and logo from the OAuth client's own project, not from
+the redirect URI, so a member signing in at any tenant sees "Community Events"
+on the consent screen rather than their own community's name. A tenant-branded
+page immediately before the redirect softens the transition, but the consent
+screen itself cannot be varied per tenant within a single client, and v2 does
+not try to.
+
+The constraint underneath it is the stronger argument for a fixed callback host,
+and the reason this is recorded as a decision rather than a cosmetic footnote:
+Google requires a redirect URI's domain to appear as a verified **Authorized
+domain** on the consent screen, verified by the owner of the project. For a
+tenant that brings its own domain instead of a subdomain of the apex,
+registering their callback URI is therefore not merely tedious but impossible.
+Terminating every callback on a domain this project owns is the only
+arrangement that works for such a tenant at all.
+
+**Reserved, not designed:** the nullable per-tenant OAuth credential columns on
+`tenants` (REQ-TENANT-01.1) exist for a tenant that eventually wants its own
+consent-screen identity. Null means the platform's apps and the handoff above.
+Populated would mean the tenant registered its own app — and because a tenant
+owning its domain can verify that domain, it could receive the callback on its
+own host and skip the handoff entirely. That second code path is deliberately
+left undesigned until someone asks for it. DinnerBears is the concrete case
+whenever it is designed: it already has registered Google and Facebook apps, so
+reusing them as that tenant's credentials would both preserve the identity its
+members already recognise and spare every existing user a fresh consent prompt
+caused by the app changing underneath them.
+
 ## Testing requirements
 
 Per the project's testing conventions (Vitest + Supertest + Playwright),
@@ -227,6 +303,8 @@ established by REQ-TENANT-01.6 above:
 - Setup wizard UI
 - Tenant/system-admin settings UI
 - Dedicated-container-per-tenant option (schema field reserved, not built)
+- Per-tenant OAuth app credentials and the direct-callback path they would
+  allow (columns reserved, not built — see REQ-TENANT-01.8)
 
 ## Definition of done
 
