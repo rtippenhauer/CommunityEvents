@@ -6,7 +6,7 @@
 # startup log: "MySQL Server 9.7.1").
 #
 # Usage: bash scripts/run-e2e-tests.sh (starts this, runs migrations, runs
-# jest, tears down). Not meant to be started standalone in normal workflows.
+# Vitest, tears down). Not meant to be started standalone in normal workflows.
 
 # Explicit project name for the same reason docker-compose.dev.yml carries one:
 # without it Compose derives the name from the invoking directory, and a

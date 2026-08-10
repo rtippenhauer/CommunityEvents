@@ -102,8 +102,9 @@ Jest later (decided with Rob 2026-08-09; this shifted the old `v2-2`–`v2-5`
 each up by one, and no `v2-*` tags existed yet). Full requirement-level
 detail lives in `docs/REQ-TENANT-01.md`.
 
-Not yet decided/known: whether frontend framework/testing choices beyond
-"not Karma" are changing.
+Not yet decided/known: whether the frontend framework itself is changing.
+(Its testing choice is settled — `v2-2` put it on Vitest via Angular's
+`unit-test` builder.)
 
 **Domain scheme — decided 2026-08-09** (REQ-TENANT-01.7): the project owns
 `communityeventsproject.com`. `www.` (and the apex, same tenant row) is the
@@ -127,8 +128,12 @@ assume everything here is the target architecture.
 - **Push:** Web Push API with VAPID keys (@angular/pwa service worker)
 - **Proxy:** NGINX Proxy Manager (Docker)
 - **Containers:** Docker Compose — api and mysql have NO public ports
-- **Testing:** Jest (`api/`), Karma/Jasmine (`frontend/`) — replaced by
-  Vitest/Supertest/Playwright in `v2-2`
+- **Testing:** Vitest everywhere (landed in `v2-2`). `api/` runs two configs —
+  `vitest.config.mts` for unit specs under `src/`, `vitest.config.e2e.mts` for
+  the 28 Supertest suites in `api/test/`. `frontend/` runs Angular's own
+  `@angular/build:unit-test` builder with `runner: "vitest"`. Browser-level
+  e2e is Playwright, at the repo root in `e2e/`. Jest, ts-jest, Karma and
+  Jasmine are uninstalled.
 
 ## Repository Structure
 ```
@@ -145,6 +150,7 @@ CommunityEvents/
 │   └── public/                ← Static assets and legacy placeholder pages
 ├── api/                       ← NestJS API (inherited v1 code, pre-v2)
 ├── docker/                    ← Docker Compose and NGINX config
+├── e2e/                       ← Playwright browser e2e (root-level: spans both workspaces)
 └── scripts/                   ← publish-v2-stage.sh (no v1 publish scripts here — see intro)
 ```
 
