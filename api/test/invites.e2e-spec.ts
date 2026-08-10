@@ -1,30 +1,26 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { InviteEntity, InviteFlavor, InviteType } from '../src/database/entities/invite.entity';
-import { FacebookGroupConfigEntity } from '../src/database/entities/facebook-group-config.entity';
-import { EventRsvpEntity, RsvpStatus } from '../src/database/entities/event-rsvp.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, event_rsvps as EventRsvp, facebook_group_config as FacebookGroupConfig, invites as Invite, locations as Location, users as User } from '@prisma/client';
+import { InviteFlavor, InviteType, RsvpStatus, UserRole } from '../src/database/enums';
 
 describe('Invites (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
-  let location: LocationEntity;
-  let admin: UserEntity;
+  let city: City;
+  let location: Location;
+  let admin: User;
   let adminCookie: string;
   let moderatorCookie: string;
   let memberCookie: string;
-  let member: UserEntity;
+  let member: User;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -33,14 +29,14 @@ describe('Invites (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     resetThrottler(app);
-    city = await seedCity(dataSource);
-    location = await seedLocation(dataSource, city.id);
+    city = await seedCity(prisma);
+    location = await seedLocation(prisma, city.id);
 
-    admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const moderator = await seedUser(prisma, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     moderatorCookie = await loginAs(app, moderator);
     memberCookie = await loginAs(app, member);
@@ -98,11 +94,11 @@ describe('Invites (e2e)', () => {
     });
 
     it('creates a CAMPAIGN_FACEBOOK invite tied to a Facebook group', async () => {
-      const group = await dataSource.getRepository(FacebookGroupConfigEntity).save({
+      const group = await prisma.facebook_group_config.create({ data: {
         name: 'Test Group',
         url: 'https://facebook.com/groups/test',
         cityId: city.id,
-      });
+      } });
 
       const res = await request(server)
         .post('/api/v1/invites')
@@ -126,7 +122,7 @@ describe('Invites (e2e)', () => {
     });
 
     it('rejects invite creation from a non-validated user', async () => {
-      const nonValidated = await seedUser(dataSource, city.id, { role: UserRole.NON_VALIDATED, email: 'nv@example.test' });
+      const nonValidated = await seedUser(prisma, city.id, { role: UserRole.NON_VALIDATED, email: 'nv@example.test' });
       const cookie = await loginAs(app, nonValidated);
 
       await request(server)
@@ -209,9 +205,7 @@ describe('Invites (e2e)', () => {
       // Simulates an invite row created before boundToEmail normalization existed —
       // the defensive lowercase compare in validate() must still accept it rather
       // than requiring a data migration to fix already-sent invites.
-      const inviteRepo = dataSource.getRepository(InviteEntity);
-      const invite = await inviteRepo.save(
-        inviteRepo.create({
+      const invite = await prisma.invites.create({ data: {
           token: `legacy-mixed-case-${Date.now()}`,
           type: InviteType.MEMBER,
           createdBy: admin.id,
@@ -220,8 +214,7 @@ describe('Invites (e2e)', () => {
           expiresAt: new Date(Date.now() + 60 * 60 * 1000),
           maxUses: 1,
           useCount: 0,
-        }),
-      );
+        }, });
 
       await request(server)
         .post('/api/v1/auth/register')
@@ -293,7 +286,7 @@ describe('Invites (e2e)', () => {
 
       await request(server).patch(`/api/v1/invites/${created.body.id}/revoke`).set('Cookie', adminCookie).expect(200);
 
-      const invite = await dataSource.getRepository(InviteEntity).findOne({ where: { id: created.body.id } });
+      const invite = await prisma.invites.findFirst({ where: { id: created.body.id } });
       expect(invite!.isRevoked).toBe(true);
     });
 
@@ -322,7 +315,7 @@ describe('Invites (e2e)', () => {
 
       await request(server).patch(`/api/v1/invites/${created.body.id}/revoke-own`).set('Cookie', memberCookie).expect(200);
 
-      const invite = await dataSource.getRepository(InviteEntity).findOne({ where: { id: created.body.id } });
+      const invite = await prisma.invites.findFirst({ where: { id: created.body.id } });
       expect(invite!.isRevoked).toBe(true);
     });
 
@@ -342,9 +335,8 @@ describe('Invites (e2e)', () => {
         .set('Cookie', memberCookie)
         .send({ type: 'member', boundToEmail: 'already-redeemed@example.test' })
         .expect(201);
-      await dataSource
-        .getRepository(InviteEntity)
-        .update(created.body.id, { redeemedAt: new Date(), redeemedBy: member.id, useCount: 1 });
+      await prisma.invites
+        .update({ where: { id: created.body.id }, data: { redeemedAt: new Date(), redeemedBy: member.id, useCount: 1 } });
 
       await request(server).patch(`/api/v1/invites/${created.body.id}/revoke-own`).set('Cookie', memberCookie).expect(400);
     });
@@ -377,7 +369,7 @@ describe('Invites (e2e)', () => {
         .send({ type: 'member', boundToEmail: 'preview-member@example.test' })
         .expect(201);
 
-      const invite = await dataSource.getRepository(InviteEntity).findOne({ where: { id: created.body.id } });
+      const invite = await prisma.invites.findFirst({ where: { id: created.body.id } });
       await request(server).get(`/api/v1/invites/preview/${invite!.token}`).expect(404);
     });
 
@@ -448,7 +440,7 @@ describe('Invites (e2e)', () => {
         .set('Cookie', adminCookie)
         .expect(200);
 
-      const invite = await dataSource.getRepository(InviteEntity).findOne({ where: { id: created.body.id } });
+      const invite = await prisma.invites.findFirst({ where: { id: created.body.id } });
       expect(invite!.isRevoked).toBe(true);
     });
   });
@@ -456,9 +448,7 @@ describe('Invites (e2e)', () => {
   describe('Redeeming an event invite via registration', () => {
     it('registers as NON_VALIDATED and auto-creates a Going RSVP for the event', async () => {
       const event = await createPublishedEvent();
-      const inviteRepo = dataSource.getRepository(InviteEntity);
-      const invite = await inviteRepo.save(
-        inviteRepo.create({
+      const invite = await prisma.invites.create({ data: {
           token: `evt-invite-${Date.now()}`,
           type: InviteType.EVENT_INVITE,
           createdBy: admin.id,
@@ -467,8 +457,7 @@ describe('Invites (e2e)', () => {
           expiresAt: new Date(Date.now() + 60 * 60 * 1000),
           maxUses: 10,
           useCount: 0,
-        }),
-      );
+        }, });
 
       await request(server)
         .post('/api/v1/auth/register')
@@ -480,21 +469,21 @@ describe('Invites (e2e)', () => {
         })
         .expect(201);
 
-      const newUser = await dataSource.getRepository(UserEntity).findOne({ where: { email: 'walkin@example.test' } });
+      const newUser = await prisma.users.findFirst({ where: { email: 'walkin@example.test' } });
       expect(newUser!.role).toBe(UserRole.NON_VALIDATED);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { userId: newUser!.id, eventId: event.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { userId: newUser!.id, eventId: event.id } });
       expect(rsvp).toBeTruthy();
       expect(rsvp!.status).toBe(RsvpStatus.GOING);
 
-      const updatedInvite = await inviteRepo.findOne({ where: { id: invite.id } });
+      const updatedInvite = await prisma.invites.findFirst({ where: { id: invite.id } });
       expect(updatedInvite!.useCount).toBe(1);
     });
   });
 
   describe('GET /admin/invites/lineage (admin only)', () => {
     it('builds a tree of members by who invited whom', async () => {
-      const invitee = await seedUser(dataSource, city.id, {
+      const invitee = await seedUser(prisma, city.id, {
         email: 'invitee-lineage@example.test',
         invitedBy: member.id,
       });

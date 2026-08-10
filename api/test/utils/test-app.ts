@@ -1,16 +1,16 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
-import { DataSource } from 'typeorm';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import cookieParser = require('cookie-parser');
 import session = require('express-session');
 import { AppModule } from '../../src/app.module';
+import { PrismaService } from '../../src/database/prisma/prisma.service';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
 
 export interface TestApp {
   app: INestApplication;
-  dataSource: DataSource;
+  prisma: PrismaService;
 }
 
 // Boots the real AppModule end to end (real guards, real DB, real HTTP
@@ -46,27 +46,32 @@ export async function createTestApp(): Promise<TestApp> {
 
   await app.init();
 
-  // Schema comes from the real migration history — AppModule already sets
-  // migrationsRun: true, so this runs automatically as part of app.init()
-  // (same as a real dev/stage/prod boot), no separate CLI step needed.
-  const dataSource = moduleRef.get(DataSource);
+  // Schema is applied once per run by test/global-setup.ts (prisma migrate
+  // deploy), not here. app.init() no longer creates it: TypeORM's
+  // migrationsRun did that as a side effect of booting, and Prisma has no
+  // equivalent — migrations are a deploy step, which is also how the real
+  // container does it.
+  const prisma = moduleRef.get(PrismaService);
 
-  return { app, dataSource };
+  return { app, prisma };
 }
 
 // Wipes every table between test files so each suite starts from a clean
 // slate — simpler and safer than trying to roll back a transaction across
 // real HTTP requests hitting a pooled connection.
-export async function truncateAllTables(dataSource: DataSource): Promise<void> {
-  const tables: Array<{ TABLE_NAME: string }> = await dataSource.query(
-    'SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE()',
-  );
-  await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
+export async function truncateAllTables(prisma: PrismaService): Promise<void> {
+  const tables = await prisma.$queryRaw<{ TABLE_NAME: string }[]>`
+    SELECT TABLE_NAME FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'`;
+
+  await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 0');
   for (const { TABLE_NAME } of tables) {
-    if (TABLE_NAME === 'migrations') continue;
-    await dataSource.query(`TRUNCATE TABLE \`${TABLE_NAME}\``);
+    // _prisma_migrations records which migrations have been applied. Wiping
+    // it would make the next run think the schema was never created.
+    if (TABLE_NAME === '_prisma_migrations') continue;
+    await prisma.$executeRawUnsafe(`TRUNCATE TABLE \`${TABLE_NAME}\``);
   }
-  await dataSource.query('SET FOREIGN_KEY_CHECKS = 1');
+  await prisma.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 1');
 }
 
 // Auth routes carry tight per-route @Throttle limits (e.g. 5/min on register,

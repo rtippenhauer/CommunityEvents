@@ -1,12 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DataSource } from 'typeorm';
 import { join } from 'path';
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { seedCity, seedUser } from './utils/seed';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { ReleaseEntity } from '../src/database/entities/release.entity';
 import { ReleaseNotesImporterService } from '../src/modules/releases/release-notes-importer.service';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import { UserRole } from '../src/database/enums';
 
 const FIXTURES_DIR = join(__dirname, 'fixtures', 'release-notes');
 const EMPTY_DRAFT_DIR = join(__dirname, 'fixtures', 'release-notes-empty-draft');
@@ -19,12 +18,12 @@ const MISSING_DIR = join(__dirname, 'fixtures', 'release-notes-does-not-exist');
 // and the empty/missing-content cases.
 describe('Release notes boot-time import (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let configService: ConfigService;
   let importer: ReleaseNotesImporterService;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     configService = app.get(ConfigService);
     importer = app.get(ReleaseNotesImporterService);
   });
@@ -34,26 +33,22 @@ describe('Release notes boot-time import (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     configService.set('RELEASE_NOTES_DIR', FIXTURES_DIR);
     configService.set('IS_STAGE', 'false');
 
-    const city = await seedCity(dataSource);
-    await seedUser(dataSource, city.id, {
+    const city = await seedCity(prisma);
+    await seedUser(prisma, city.id, {
       role: UserRole.AUTOMATION,
       email: 'automation@dinnerbears.internal',
       fullName: 'Claude Automation',
     });
   });
 
-  function releaseRepo() {
-    return dataSource.getRepository(ReleaseEntity);
-  }
-
   it('imports a finalized note as a published release', async () => {
     await importer.importAll();
 
-    const release = await releaseRepo().findOne({ where: { version: '9.9.9' } });
+    const release = await prisma.releases.findFirst({ where: { version: '9.9.9' } });
     expect(release).not.toBeNull();
     expect(release!.title).toBe('Test Release Title');
     expect(release!.publishedAt).not.toBeNull();
@@ -63,10 +58,10 @@ describe('Release notes boot-time import (e2e)', () => {
 
   it('is idempotent on re-import — no duplicate row, publishedAt unchanged', async () => {
     await importer.importAll();
-    const first = await releaseRepo().findOne({ where: { version: '9.9.9' } });
+    const first = await prisma.releases.findFirst({ where: { version: '9.9.9' } });
 
     await importer.importAll();
-    const all = await releaseRepo().find({ where: { version: '9.9.9' } });
+    const all = await prisma.releases.findMany({ where: { version: '9.9.9' } });
     const second = all[0];
 
     expect(all).toHaveLength(1);
@@ -77,7 +72,7 @@ describe('Release notes boot-time import (e2e)', () => {
     configService.set('IS_STAGE', 'false');
     await importer.importAll();
 
-    const draft = await releaseRepo().findOne({ where: { version: 'Upcoming' } });
+    const draft = await prisma.releases.findFirst({ where: { version: 'Upcoming' } });
     expect(draft).toBeNull();
   });
 
@@ -85,7 +80,7 @@ describe('Release notes boot-time import (e2e)', () => {
     configService.set('IS_STAGE', 'true');
     await importer.importAll();
 
-    const draft = await releaseRepo().findOne({ where: { version: 'Upcoming' } });
+    const draft = await prisma.releases.findFirst({ where: { version: 'Upcoming' } });
     expect(draft).not.toBeNull();
     expect(draft!.title).toBe("What's New (In Progress)");
     expect(draft!.publishedAt).not.toBeNull();
@@ -97,11 +92,11 @@ describe('Release notes boot-time import (e2e)', () => {
   it('removes a stale draft row once IS_STAGE flips back to false', async () => {
     configService.set('IS_STAGE', 'true');
     await importer.importAll();
-    expect(await releaseRepo().findOne({ where: { version: 'Upcoming' } })).not.toBeNull();
+    expect(await prisma.releases.findFirst({ where: { version: 'Upcoming' } })).not.toBeNull();
 
     configService.set('IS_STAGE', 'false');
     await importer.importAll();
-    expect(await releaseRepo().findOne({ where: { version: 'Upcoming' } })).toBeNull();
+    expect(await prisma.releases.findFirst({ where: { version: 'Upcoming' } })).toBeNull();
   });
 
   it('skips the draft when it has no content past the reset template', async () => {
@@ -109,7 +104,7 @@ describe('Release notes boot-time import (e2e)', () => {
     configService.set('IS_STAGE', 'true');
     await importer.importAll();
 
-    const draft = await releaseRepo().findOne({ where: { version: 'Upcoming' } });
+    const draft = await prisma.releases.findFirst({ where: { version: 'Upcoming' } });
     expect(draft).toBeNull();
   });
 
@@ -125,13 +120,14 @@ describe('Release notes boot-time import (e2e)', () => {
   // silently skip every import until the role was flipped back. Matching by
   // name + email instead (role can be any level) fixes this.
   it('still finds the automation account by name+email when its role has been temporarily elevated', async () => {
-    await releaseRepo().manager
-      .getRepository(UserEntity)
-      .update({ email: 'automation@dinnerbears.internal' }, { role: UserRole.ADMIN });
+    await prisma.users.updateMany({
+      where: { email: 'automation@dinnerbears.internal' },
+      data: { role: UserRole.ADMIN },
+    });
 
     await importer.importAll();
 
-    const release = await releaseRepo().findOne({ where: { version: '9.9.9' } });
+    const release = await prisma.releases.findFirst({ where: { version: '9.9.9' } });
     expect(release).not.toBeNull();
     expect(release!.publishedAt).not.toBeNull();
   });

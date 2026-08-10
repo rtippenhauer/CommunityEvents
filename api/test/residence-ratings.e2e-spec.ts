@@ -1,13 +1,10 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { EventEntity } from '../src/database/entities/event.entity';
-import { EventRsvpEntity, RsvpStatus } from '../src/database/entities/event-rsvp.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, event_rsvps as EventRsvp, events as Event, locations as Location, users as User } from '@prisma/client';
+import { RsvpStatus, UserRole } from '../src/database/enums';
 
 // Phase 37: residences are not rateable. The mechanism is Phase 33's
 // `feature_ratings_residences` toggle; what changed is that it now defaults
@@ -15,19 +12,19 @@ import { EventRsvpEntity, RsvpStatus } from '../src/database/entities/event-rsvp
 // would restore exactly the behavior this phase set out to remove.
 describe('Residence ratings (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
-  let admin: UserEntity;
-  let member: UserEntity;
+  let city: City;
+  let admin: User;
+  let member: User;
   let memberCookie: string;
   let adminCookie: string;
-  let residence: LocationEntity;
-  let restaurant: LocationEntity;
+  let residence: Location;
+  let restaurant: Location;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -36,26 +33,25 @@ describe('Residence ratings (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
-    city = await seedCity(dataSource);
-    admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    await truncateAllTables(prisma);
+    city = await seedCity(prisma);
+    admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     memberCookie = await loginAs(app, member);
 
-    residence = await seedLocation(dataSource, city.id, {
+    residence = await seedLocation(prisma, city.id, {
       name: "Someone's House",
       isResidence: true,
     });
-    restaurant = await seedLocation(dataSource, city.id, { name: 'A Real Restaurant' });
+    restaurant = await seedLocation(prisma, city.id, { name: 'A Real Restaurant' });
   });
 
   // A rateable visit: a past event at `location` that `member` attended.
   // Seeded directly rather than through the API, since the events endpoint
   // won't accept a date in the past.
-  async function seedAttendedPastEvent(location: LocationEntity): Promise<EventEntity> {
-    const event = await dataSource.getRepository(EventEntity).save(
-      dataSource.getRepository(EventEntity).create({
+  async function seedAttendedPastEvent(location: Location): Promise<Event> {
+    const event = await prisma.events.create({ data: {
         cityId: city.id,
         locationId: location.id,
         locationName: location.name,
@@ -64,16 +60,13 @@ describe('Residence ratings (e2e)', () => {
         title: `Dinner at ${location.name}`,
         eventDate: '2020-01-05',
         eventTime: '18:30',
-      }),
-    );
-    await dataSource.getRepository(EventRsvpEntity).save(
-      dataSource.getRepository(EventRsvpEntity).create({
+      }, });
+    await prisma.event_rsvps.create({ data: {
         eventId: event.id,
         userId: member.id,
         status: RsvpStatus.GOING,
         attended: true,
-      }),
-    );
+      }, });
     return event;
   }
 

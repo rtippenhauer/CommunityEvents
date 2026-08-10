@@ -1,9 +1,9 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
-import { UserRole } from '../src/database/entities/user.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import { UserRole } from '../src/database/enums';
 
 // 1x1 transparent PNG, valid enough to pass the mimetype/extension filter.
 const TINY_PNG = Buffer.from(
@@ -13,7 +13,7 @@ const TINY_PNG = Buffer.from(
 
 describe('Custom Icons CRUD (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
   let adminCookie: string;
@@ -21,7 +21,7 @@ describe('Custom Icons CRUD (e2e)', () => {
   let memberCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -30,12 +30,12 @@ describe('Custom Icons CRUD (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
-    const city = await seedCity(dataSource);
+    await truncateAllTables(prisma);
+    const city = await seedCity(prisma);
 
-    const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
-    const member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    const admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const moderator = await seedUser(prisma, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
+    const member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     moderatorCookie = await loginAs(app, moderator);
     memberCookie = await loginAs(app, member);

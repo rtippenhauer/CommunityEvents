@@ -1,26 +1,25 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, locations as Location, users as User } from '@prisma/client';
+import { UserRole } from '../src/database/enums';
 
 describe('Location privacy (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
-  let admin: UserEntity;
+  let city: City;
+  let admin: User;
   let adminCookie: string;
-  let member: UserEntity;
+  let member: User;
   let memberCookie: string;
   let member2Cookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -29,13 +28,13 @@ describe('Location privacy (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     resetThrottler(app);
-    city = await seedCity(dataSource);
+    city = await seedCity(prisma);
 
-    admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
-    const member2 = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member2@example.test' });
+    admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    const member2 = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member2@example.test' });
     adminCookie = await loginAs(app, admin);
     memberCookie = await loginAs(app, member);
     member2Cookie = await loginAs(app, member2);
@@ -67,10 +66,10 @@ describe('Location privacy (e2e)', () => {
 
   describe('GET /locations and /locations/:id', () => {
     it('hides the address of a private location from a member with no Going RSVP', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: true, name: "Bob's House" });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: true, name: "Bob's House" });
 
       const listRes = await request(server).get('/api/v1/locations').set('Cookie', memberCookie).expect(200);
-      const inList = listRes.body.find((l: LocationEntity) => l.id === loc.id);
+      const inList = listRes.body.find((l: Location) => l.id === loc.id);
       expect(inList.address).toBeNull();
 
       const oneRes = await request(server).get(`/api/v1/locations/${loc.id}`).set('Cookie', memberCookie).expect(200);
@@ -78,14 +77,14 @@ describe('Location privacy (e2e)', () => {
     });
 
     it('always shows the address to admin/mod regardless of RSVP', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: true, address: '42 Secret Ln' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: true, address: '42 Secret Ln' });
 
       const res = await request(server).get(`/api/v1/locations/${loc.id}`).set('Cookie', adminCookie).expect(200);
       expect(res.body.address).toBe('42 Secret Ln');
     });
 
     it('shows the address to a member once they RSVP Going to an event there', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: true, address: '42 Secret Ln' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: true, address: '42 Secret Ln' });
       const event = await createPublishedEvent(loc.id);
 
       const before = await request(server).get(`/api/v1/locations/${loc.id}`).set('Cookie', memberCookie).expect(200);
@@ -102,7 +101,7 @@ describe('Location privacy (e2e)', () => {
     });
 
     it('never hides a public location address', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: false, address: '1 Main St' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: false, address: '1 Main St' });
       const res = await request(server).get(`/api/v1/locations/${loc.id}`).set('Cookie', memberCookie).expect(200);
       expect(res.body.address).toBe('1 Main St');
     });
@@ -110,7 +109,7 @@ describe('Location privacy (e2e)', () => {
 
   describe('GET /events and /events/:id — location snapshot fields', () => {
     it('hides locationAddress from a member who has not RSVPd Going', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: true, address: '42 Secret Ln' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: true, address: '42 Secret Ln' });
       const event = await createPublishedEvent(loc.id);
 
       const detail = await request(server).get(`/api/v1/events/${event.id}`).set('Cookie', memberCookie).expect(200);
@@ -122,7 +121,7 @@ describe('Location privacy (e2e)', () => {
     });
 
     it('hides locationAddress from an unauthenticated viewer', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: true, address: '42 Secret Ln' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: true, address: '42 Secret Ln' });
       const event = await createPublishedEvent(loc.id);
 
       const res = await request(server).get(`/api/v1/events/${event.id}`).expect(200);
@@ -130,7 +129,7 @@ describe('Location privacy (e2e)', () => {
     });
 
     it('shows locationAddress once the viewer has RSVPd Going to that event', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: true, address: '42 Secret Ln' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: true, address: '42 Secret Ln' });
       const event = await createPublishedEvent(loc.id);
 
       await request(server)
@@ -148,7 +147,7 @@ describe('Location privacy (e2e)', () => {
     });
 
     it("does not leak a Going member's visibility to a different, non-RSVPd member", async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: true, address: '42 Secret Ln' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: true, address: '42 Secret Ln' });
       const event = await createPublishedEvent(loc.id);
 
       await request(server)
@@ -162,7 +161,7 @@ describe('Location privacy (e2e)', () => {
     });
 
     it('always shows locationAddress to admin/mod', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: true, address: '42 Secret Ln' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: true, address: '42 Secret Ln' });
       const event = await createPublishedEvent(loc.id);
 
       const res = await request(server).get(`/api/v1/events/${event.id}`).set('Cookie', adminCookie).expect(200);
@@ -172,7 +171,7 @@ describe('Location privacy (e2e)', () => {
 
   describe('GET /invites/preview/:token — public/unauthenticated', () => {
     it('hides the address of a private location', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: true, address: '42 Secret Ln' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: true, address: '42 Secret Ln' });
       const event = await createPublishedEvent(loc.id);
 
       const created = await request(server)
@@ -187,7 +186,7 @@ describe('Location privacy (e2e)', () => {
     });
 
     it('shows the address of a public location', async () => {
-      const loc = await seedLocation(dataSource, city.id, { isPrivate: false, address: '1 Main St' });
+      const loc = await seedLocation(prisma, city.id, { isPrivate: false, address: '1 Main St' });
       const event = await createPublishedEvent(loc.id);
 
       const created = await request(server)

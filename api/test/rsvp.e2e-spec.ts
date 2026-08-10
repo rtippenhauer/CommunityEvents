@@ -1,15 +1,10 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { EventRsvpEntity, RsvpStatus } from '../src/database/entities/event-rsvp.entity';
-import { EventGuestLinkEntity } from '../src/database/entities/event-guest-link.entity';
-import { MemberPointEntity, PointType } from '../src/database/entities/member-point.entity';
-import { EventEntity } from '../src/database/entities/event.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, event_guest_links as EventGuestLink, event_rsvps as EventRsvp, events as Event, locations as Location, member_points as MemberPoint, users as User } from '@prisma/client';
+import { PointType, RsvpStatus, UserRole } from '../src/database/enums';
 
 // Converts an offset from "now" into the Eastern calendar date + wall-clock time
 // events.service's cutoff logic reasons about, so cutoff tests aren't tied to a
@@ -33,21 +28,21 @@ function easternDateTimeFromNow(offsetMinutes: number): { eventDate: string; eve
 
 describe('RSVP Lifecycle (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
-  let location: LocationEntity;
-  let admin: UserEntity;
+  let city: City;
+  let location: Location;
+  let admin: User;
   let adminCookie: string;
   let moderatorCookie: string;
-  let member: UserEntity;
+  let member: User;
   let memberCookie: string;
-  let member2: UserEntity;
+  let member2: User;
   let member2Cookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -56,15 +51,15 @@ describe('RSVP Lifecycle (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     resetThrottler(app);
-    city = await seedCity(dataSource);
-    location = await seedLocation(dataSource, city.id);
+    city = await seedCity(prisma);
+    location = await seedLocation(prisma, city.id);
 
-    admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
-    member2 = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member2@example.test' });
+    admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const moderator = await seedUser(prisma, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    member2 = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member2@example.test' });
     adminCookie = await loginAs(app, admin);
     moderatorCookie = await loginAs(app, moderator);
     memberCookie = await loginAs(app, member);
@@ -123,7 +118,7 @@ describe('RSVP Lifecycle (e2e)', () => {
       expect(res.body.additionalGuests).toBe(3);
       expect(res.body.guestNames).toEqual(['Alice', 'Bob', 'Carol']);
 
-      const rows = await dataSource.getRepository(EventRsvpEntity).find({ where: { eventId: event.id, userId: member.id } });
+      const rows = await prisma.event_rsvps.findMany({ where: { eventId: event.id, userId: member.id } });
       expect(rows).toHaveLength(1);
     });
 
@@ -161,7 +156,7 @@ describe('RSVP Lifecycle (e2e)', () => {
 
       await request(server).delete(`/api/v1/events/${event.id}/rsvp`).set('Cookie', memberCookie).expect(200);
 
-      const row = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const row = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(row).toBeNull();
     });
 
@@ -208,12 +203,12 @@ describe('RSVP Lifecycle (e2e)', () => {
     it('blocks increasing the guest count on an existing Going RSVP past the cutoff, but allows decreasing it', async () => {
       const { eventDate, eventTime } = easternDateTimeFromNow(30);
       const event = await createPublishedEvent({ eventDate, eventTime });
-      await dataSource.getRepository(EventRsvpEntity).save({
+      await prisma.event_rsvps.create({ data: {
         eventId: event.id,
         userId: member.id,
         status: RsvpStatus.GOING,
         additionalGuests: 2,
-      });
+      } });
 
       await request(server)
         .post(`/api/v1/events/${event.id}/rsvp`)
@@ -231,12 +226,12 @@ describe('RSVP Lifecycle (e2e)', () => {
     it('always allows switching to maybe/not_going past the cutoff', async () => {
       const { eventDate, eventTime } = easternDateTimeFromNow(30);
       const event = await createPublishedEvent({ eventDate, eventTime });
-      await dataSource.getRepository(EventRsvpEntity).save({
+      await prisma.event_rsvps.create({ data: {
         eventId: event.id,
         userId: member.id,
         status: RsvpStatus.GOING,
         additionalGuests: 1,
-      });
+      } });
 
       await request(server)
         .post(`/api/v1/events/${event.id}/rsvp`)
@@ -300,7 +295,7 @@ describe('RSVP Lifecycle (e2e)', () => {
 
     it('rejects a non-validated member generating a guest link', async () => {
       const event = await createPublishedEvent();
-      const nonValidated = await seedUser(dataSource, city.id, { role: UserRole.NON_VALIDATED, email: 'nv@example.test' });
+      const nonValidated = await seedUser(prisma, city.id, { role: UserRole.NON_VALIDATED, email: 'nv@example.test' });
       const cookie = await loginAs(app, nonValidated);
 
       await request(server).post(`/api/v1/events/${event.id}/rsvp/link`).set('Cookie', cookie).send({}).expect(403);
@@ -324,9 +319,9 @@ describe('RSVP Lifecycle (e2e)', () => {
         .set('Cookie', memberCookie)
         .expect(200);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.additionalGuests).toBe(0);
-      const remainingLink = await dataSource.getRepository(EventGuestLinkEntity).findOne({ where: { id: link.body.id } });
+      const remainingLink = await prisma.event_guest_links.findFirst({ where: { id: link.body.id } });
       expect(remainingLink).toBeNull();
     });
 
@@ -347,7 +342,7 @@ describe('RSVP Lifecycle (e2e)', () => {
 
     it('rejects removing a public-sourced guest link through the member route', async () => {
       const event = await createPublishedEvent();
-      const publicLink = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const publicLink = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: null,
         memberRsvpId: null,
@@ -356,7 +351,7 @@ describe('RSVP Lifecycle (e2e)', () => {
         recipientEmail: 'public-guest@example.test',
         token: `public-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
+      } });
 
       await request(server)
         .delete(`/api/v1/events/${event.id}/rsvp/link/${publicLink.id}`)
@@ -368,14 +363,14 @@ describe('RSVP Lifecycle (e2e)', () => {
   describe('Public guest-link endpoints (no auth)', () => {
     it('previews an unused guest link', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
         source: 'member',
         token: `preview-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
+      } });
 
       const res = await request(server).get(`/api/v1/events/guest-link/${link.token}`).expect(200);
       expect(res.body.usedAt).toBeNull();
@@ -387,25 +382,25 @@ describe('RSVP Lifecycle (e2e)', () => {
 
     it('confirms an unused, unexpired guest link', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
         source: 'member',
         token: `use-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
+      } });
 
       await request(server).post(`/api/v1/events/guest-link/${link.token}`).send({ guestName: 'Walk Up' }).expect(201);
 
-      const updated = await dataSource.getRepository(EventGuestLinkEntity).findOne({ where: { id: link.id } });
+      const updated = await prisma.event_guest_links.findFirst({ where: { id: link.id } });
       expect(updated!.usedAt).toBeTruthy();
       expect(updated!.recipientName).toBe('Walk Up');
     });
 
     it('rejects using an already-used link', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
@@ -413,28 +408,28 @@ describe('RSVP Lifecycle (e2e)', () => {
         token: `already-used-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
         usedAt: new Date(),
-      });
+      } });
 
       await request(server).post(`/api/v1/events/guest-link/${link.token}`).send({}).expect(400);
     });
 
     it('rejects using an expired link', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
         source: 'member',
         token: `expired-${Date.now()}`,
         expiresAt: new Date(Date.now() - 60 * 60 * 1000),
-      });
+      } });
 
       await request(server).post(`/api/v1/events/guest-link/${link.token}`).send({}).expect(400);
     });
 
     it('cancels a guest link, and allows it to be reused after cancellation', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
@@ -442,13 +437,13 @@ describe('RSVP Lifecycle (e2e)', () => {
         token: `cancel-reuse-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
         usedAt: new Date(),
-      });
+      } });
 
       // Already used, not yet cancelled — a second use attempt is rejected
       await request(server).post(`/api/v1/events/guest-link/${link.token}`).send({}).expect(400);
 
       await request(server).delete(`/api/v1/events/guest-link/${link.token}`).expect(200);
-      const cancelled = await dataSource.getRepository(EventGuestLinkEntity).findOne({ where: { id: link.id } });
+      const cancelled = await prisma.event_guest_links.findFirst({ where: { id: link.id } });
       expect(cancelled!.cancelledAt).toBeTruthy();
 
       // Cancelling clears the "already used" block, so the link works again
@@ -457,28 +452,28 @@ describe('RSVP Lifecycle (e2e)', () => {
 
     it('rejects cancelling an expired link', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
         source: 'member',
         token: `expired-cancel-${Date.now()}`,
         expiresAt: new Date(Date.now() - 60 * 60 * 1000),
-      });
+      } });
 
       await request(server).delete(`/api/v1/events/guest-link/${link.token}`).expect(400);
     });
 
     it('allows cancelling the same link twice (idempotent)', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
         source: 'member',
         token: `double-cancel-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
+      } });
 
       await request(server).delete(`/api/v1/events/guest-link/${link.token}`).expect(200);
       await request(server).delete(`/api/v1/events/guest-link/${link.token}`).expect(200);
@@ -494,9 +489,8 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ name: 'Public Guest', email: 'public-rsvp@example.test' })
         .expect(201);
 
-      const link = await dataSource
-        .getRepository(EventGuestLinkEntity)
-        .findOne({ where: { eventId: event.id, recipientEmail: 'public-rsvp@example.test' } });
+      const link = await prisma.event_guest_links
+        .findFirst({ where: { eventId: event.id, recipientEmail: 'public-rsvp@example.test' } });
       expect(link).toBeTruthy();
       expect(link!.source).toBe('public');
       expect(link!.usedAt).toBeTruthy();
@@ -547,24 +541,23 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ userId: member.id })
         .expect(201);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.status).toBe(RsvpStatus.GOING);
       expect(rsvp!.attended).toBeTruthy();
       expect(rsvp!.isWalkin).toBeTruthy();
 
-      const points = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.ATTENDANCE, referenceId: event.id } });
+      const points = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.ATTENDANCE, referenceId: event.id } });
       expect(points).toBeTruthy();
     });
 
     it('marks an existing non-Going RSVP as attended without changing its status', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventRsvpEntity).save({
+      await prisma.event_rsvps.create({ data: {
         eventId: event.id,
         userId: member.id,
         status: RsvpStatus.NOT_GOING,
-      });
+      } });
 
       await request(server)
         .post(`/api/v1/events/${event.id}/attendance/walkin`)
@@ -572,7 +565,7 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ userId: member.id })
         .expect(201);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.status).toBe(RsvpStatus.NOT_GOING);
       expect(rsvp!.attended).toBeTruthy();
       expect(rsvp!.isWalkin).toBeTruthy();
@@ -605,7 +598,7 @@ describe('RSVP Lifecycle (e2e)', () => {
   describe('GET /events/:id/members/search', () => {
     it('excludes a member already RSVP\'d Going by default (walk-in search — they\'re already on the list)', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.GOING } });
 
       const res = await request(server)
         .get(`/api/v1/events/${event.id}/members/search`)
@@ -617,7 +610,7 @@ describe('RSVP Lifecycle (e2e)', () => {
 
     it('includes a member already RSVP\'d Going when excludeGoing=false (reservation-coordinator search — they often already are)', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.GOING } });
 
       const res = await request(server)
         .get(`/api/v1/events/${event.id}/members/search`)
@@ -648,16 +641,16 @@ describe('RSVP Lifecycle (e2e)', () => {
       // Back-date the location so awardCoordinator() gives the plain COORDINATOR
       // credit rather than the NEW_LOCATION_COORDINATOR bonus (see the similar
       // note on the "established location" test above).
-      await dataSource.query('UPDATE locations SET created_at = ? WHERE id = ?', [
-        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-        location.id,
-      ]);
-      await dataSource.getRepository(EventRsvpEntity).save({
+      await prisma.locations.update({
+        where: { id: location.id },
+        data: { createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      });
+      await prisma.event_rsvps.create({ data: {
         eventId: event.id,
         userId: member.id,
         status: RsvpStatus.GOING,
         attended: true,
-      });
+      } });
 
       await request(server)
         .patch(`/api/v1/events/${event.id}/reservation`)
@@ -665,19 +658,18 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ assigneeId: member.id })
         .expect(200);
 
-      const coordinatorPoints = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
+      const coordinatorPoints = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
       expect(coordinatorPoints).toBeTruthy();
     });
 
     it('does not award a coordinator point when the assignee has not attended yet', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventRsvpEntity).save({
+      await prisma.event_rsvps.create({ data: {
         eventId: event.id,
         userId: member.id,
         status: RsvpStatus.GOING,
-      });
+      } });
 
       await request(server)
         .patch(`/api/v1/events/${event.id}/reservation`)
@@ -685,9 +677,8 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ assigneeId: member.id })
         .expect(200);
 
-      const coordinatorPoints = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
+      const coordinatorPoints = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
       expect(coordinatorPoints).toBeFalsy();
     });
   });
@@ -695,8 +686,8 @@ describe('RSVP Lifecycle (e2e)', () => {
   describe('GET/PATCH /events/:id/attendance', () => {
     it('lists Going RSVPs and non-cancelled guest links', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
-      await dataSource.getRepository(EventGuestLinkEntity).save({
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.GOING } });
+      await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
@@ -704,7 +695,7 @@ describe('RSVP Lifecycle (e2e)', () => {
         recipientName: 'A Guest',
         token: `attendance-list-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
+      } });
 
       const res = await request(server).get(`/api/v1/events/${event.id}/attendance`).set('Cookie', adminCookie).expect(200);
       expect(res.body.some((r: { type: string }) => r.type === 'member')).toBe(true);
@@ -713,7 +704,7 @@ describe('RSVP Lifecycle (e2e)', () => {
 
     it('returns attended as a real boolean, not a raw tinyint 0/1 (the admin attendance dialog highlights by strict === true/false)', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.GOING } });
 
       await request(server)
         .patch(`/api/v1/events/${event.id}/attendance`)
@@ -728,7 +719,7 @@ describe('RSVP Lifecycle (e2e)', () => {
 
     it('marks a Going RSVP attended and awards an attendance point', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.GOING } });
 
       await request(server)
         .patch(`/api/v1/events/${event.id}/attendance`)
@@ -736,17 +727,16 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ attendances: [{ userId: member.id, attended: true }] })
         .expect(200);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.attended).toBeTruthy();
-      const points = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.ATTENDANCE, referenceId: event.id } });
+      const points = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.ATTENDANCE, referenceId: event.id } });
       expect(points).toBeTruthy();
     });
 
     it('silently no-ops marking attendance for a non-Going RSVP', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.MAYBE });
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.MAYBE } });
 
       await request(server)
         .patch(`/api/v1/events/${event.id}/attendance`)
@@ -754,7 +744,7 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ attendances: [{ userId: member.id, attended: true }] })
         .expect(200);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.attended).toBeNull();
     });
 
@@ -763,12 +753,12 @@ describe('RSVP Lifecycle (e2e)', () => {
       // awardCoordinator gives a bonus (NEW_LOCATION_COORDINATOR) instead of the base
       // COORDINATOR award when the location was added within the last week — back-date
       // it so this test exercises the plain "established location" coordinator credit.
-      await dataSource.query('UPDATE locations SET created_at = ? WHERE id = ?', [
-        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-        location.id,
-      ]);
-      await dataSource.getRepository(EventEntity).update(event.id, { reservationAssigneeId: member.id });
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+      await prisma.locations.update({
+        where: { id: location.id },
+        data: { createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      });
+      await prisma.events.update({ where: { id: event.id }, data: { reservationAssigneeId: member.id } });
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.GOING } });
 
       await request(server)
         .patch(`/api/v1/events/${event.id}/attendance`)
@@ -776,16 +766,15 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ attendances: [{ userId: member.id, attended: true }] })
         .expect(200);
 
-      const coordinatorPoints = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
+      const coordinatorPoints = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
       expect(coordinatorPoints).toBeTruthy();
     });
 
     it('awards the new-location coordinator bonus when the location was added within the last week', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventEntity).update(event.id, { reservationAssigneeId: member.id });
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+      await prisma.events.update({ where: { id: event.id }, data: { reservationAssigneeId: member.id } });
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.GOING } });
 
       await request(server)
         .patch(`/api/v1/events/${event.id}/attendance`)
@@ -793,16 +782,15 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ attendances: [{ userId: member.id, attended: true }] })
         .expect(200);
 
-      const newLocationPoints = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.NEW_LOCATION_COORDINATOR, referenceId: event.id } });
+      const newLocationPoints = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.NEW_LOCATION_COORDINATOR, referenceId: event.id } });
       expect(newLocationPoints).toBeTruthy();
       expect(newLocationPoints!.points).toBe(4);
     });
 
     it('awards a city-hopper point when fromOtherCity is set', async () => {
       const event = await createPublishedEvent();
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.GOING } });
 
       await request(server)
         .patch(`/api/v1/events/${event.id}/attendance`)
@@ -810,15 +798,14 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ attendances: [{ userId: member.id, attended: true, fromOtherCity: true }] })
         .expect(200);
 
-      const cityHopperPoints = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.CITY_HOPPER, referenceId: event.id } });
+      const cityHopperPoints = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.CITY_HOPPER, referenceId: event.id } });
       expect(cityHopperPoints).toBeTruthy();
     });
 
     it('awards a secret-dinner point when the event isSecret', async () => {
       const event = await createPublishedEvent({ isSecret: true });
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: event.id, userId: member.id, status: RsvpStatus.GOING });
+      await prisma.event_rsvps.create({ data: { eventId: event.id, userId: member.id, status: RsvpStatus.GOING } });
 
       await request(server)
         .patch(`/api/v1/events/${event.id}/attendance`)
@@ -826,9 +813,8 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ attendances: [{ userId: member.id, attended: true }] })
         .expect(200);
 
-      const secretDinnerPoints = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.SECRET_DINNER, referenceId: event.id } });
+      const secretDinnerPoints = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.SECRET_DINNER, referenceId: event.id } });
       expect(secretDinnerPoints).toBeTruthy();
     });
 
@@ -846,14 +832,14 @@ describe('RSVP Lifecycle (e2e)', () => {
   describe('Guest attendance + resend', () => {
     it('marks guest attendance', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
         source: 'member',
         token: `guest-attendance-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
+      } });
 
       await request(server)
         .patch(`/api/v1/events/guest-links/${link.id}/attendance`)
@@ -861,34 +847,34 @@ describe('RSVP Lifecycle (e2e)', () => {
         .send({ attended: true })
         .expect(200);
 
-      const updated = await dataSource.getRepository(EventGuestLinkEntity).findOne({ where: { id: link.id } });
+      const updated = await prisma.event_guest_links.findFirst({ where: { id: link.id } });
       expect(updated!.attended).toBeTruthy();
     });
 
     it('rejects resending an invite with no recipient email', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
         source: 'member',
         token: `no-email-resend-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
+      } });
 
       await request(server).post(`/api/v1/events/guest-links/${link.id}/resend`).set('Cookie', adminCookie).expect(400);
     });
 
     it('rejects a member marking guest attendance or resending (mod/admin only)', async () => {
       const event = await createPublishedEvent();
-      const link = await dataSource.getRepository(EventGuestLinkEntity).save({
+      const link = await prisma.event_guest_links.create({ data: {
         eventId: event.id,
         createdById: member.id,
         deliveryType: 'shareable',
         source: 'member',
         token: `guest-guard-${Date.now()}`,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-      });
+      } });
 
       await request(server)
         .patch(`/api/v1/events/guest-links/${link.id}/attendance`)

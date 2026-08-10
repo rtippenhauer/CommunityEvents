@@ -1,31 +1,29 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { EventRsvpEntity, RsvpStatus } from '../src/database/entities/event-rsvp.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, event_rsvps as EventRsvp, locations as Location, users as User } from '@prisma/client';
+import { RsvpStatus, UserRole } from '../src/database/enums';
 
 // Phase 35: membership fee toggle (RSVP enforcement) + Residence "what are
 // you bringing" field. Both live on EventsService.upsertRsvp.
 describe('Membership fee + bringing item (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
-  let location: LocationEntity;
-  let residence: LocationEntity;
-  let admin: UserEntity;
+  let city: City;
+  let location: Location;
+  let residence: Location;
+  let admin: User;
   let adminCookie: string;
   let moderatorCookie: string;
-  let member: UserEntity;
+  let member: User;
   let memberCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -34,15 +32,15 @@ describe('Membership fee + bringing item (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     resetThrottler(app);
-    city = await seedCity(dataSource);
-    location = await seedLocation(dataSource, city.id);
-    residence = await seedLocation(dataSource, city.id, { isResidence: true });
+    city = await seedCity(prisma);
+    location = await seedLocation(prisma, city.id);
+    residence = await seedLocation(prisma, city.id, { isResidence: true });
 
-    admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const moderator = await seedUser(prisma, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     moderatorCookie = await loginAs(app, moderator);
     memberCookie = await loginAs(app, member);
@@ -78,12 +76,12 @@ describe('Membership fee + bringing item (e2e)', () => {
   async function markAttendedOnPastEvent(userId: number): Promise<void> {
     // Direct DB write — simplest way to give a member attendance history
     // without needing a real past event + the full mark-attendance flow.
-    await dataSource.getRepository(EventRsvpEntity).save({
+    await prisma.event_rsvps.create({ data: {
       eventId: (await createEvent()).id,
       userId,
       status: RsvpStatus.GOING,
       attended: true,
-    });
+    } });
   }
 
   describe('membership enforcement', () => {
@@ -115,10 +113,10 @@ describe('Membership fee + bringing item (e2e)', () => {
       await markAttendedOnPastEvent(member.id);
       const future = new Date();
       future.setFullYear(future.getFullYear() + 1);
-      await dataSource.getRepository(UserEntity).update(member.id, {
+      await prisma.users.update({ where: { id: member.id }, data: {
         hasMembership: true,
         membershipExpiresAt: future,
-      });
+      } });
       const event = await createEvent();
 
       await request(server)
@@ -132,10 +130,10 @@ describe('Membership fee + bringing item (e2e)', () => {
       await enableMembershipFeature();
       await markAttendedOnPastEvent(member.id);
       const past = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      await dataSource.getRepository(UserEntity).update(member.id, {
+      await prisma.users.update({ where: { id: member.id }, data: {
         hasMembership: true,
         membershipExpiresAt: past,
-      });
+      } });
       const event = await createEvent();
 
       await request(server)
@@ -266,7 +264,7 @@ describe('Membership fee + bringing item (e2e)', () => {
         .send({ status: 'going', bringingItem: '   ' })
         .expect(201);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.bringingItem).toBeNull();
     });
 
@@ -278,7 +276,7 @@ describe('Membership fee + bringing item (e2e)', () => {
         .send({ status: 'going', bringingItem: 'Chips' })
         .expect(201);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.bringingItem).toBe('Chips');
     });
 

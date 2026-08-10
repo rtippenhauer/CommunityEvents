@@ -15,12 +15,11 @@ trap cleanup EXIT
 echo "==> Starting ephemeral test MySQL"
 $COMPOSE up -d --wait
 
-# Schema is created via dataSource.synchronize() in test/utils/test-app.ts,
-# not the migration CLI — this DB is ephemeral and rebuilt every run, and
-# the migration-CLI invocation (ts-node + typeorm/cli.js) hits a ts-node/
-# typeorm compatibility issue in some environments. synchronize() gives the
-# same up-to-date schema without that dependency. See test-app.ts for why
-# this doesn't conflict with the app's synchronize:false convention.
+# Schema is created by test/global-setup.ts, which runs `prisma migrate
+# deploy` once before the first spec. TypeORM used to build it implicitly via
+# synchronize()/migrationsRun on every app.init(); Prisma has no connection-time
+# equivalent, so it is an explicit step now — the same one docker/entrypoint.sh
+# runs in the real container.
 echo "==> Running e2e tests"
 (
   cd api

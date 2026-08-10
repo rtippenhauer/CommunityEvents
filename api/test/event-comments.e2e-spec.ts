@@ -1,13 +1,13 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 import request = require('supertest');
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { UserRole } from '../src/database/entities/user.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import { UserRole } from '../src/database/enums';
 
 describe('Event Comments CRUD (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
   let adminCookie: string;
@@ -17,7 +17,7 @@ describe('Event Comments CRUD (e2e)', () => {
   let eventId: number;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -26,14 +26,14 @@ describe('Event Comments CRUD (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
-    const city = await seedCity(dataSource);
-    const location = await seedLocation(dataSource, city.id);
+    await truncateAllTables(prisma);
+    const city = await seedCity(prisma);
+    const location = await seedLocation(prisma, city.id);
 
-    const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
-    const otherMember = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'other@example.test' });
-    const nonValidated = await seedUser(dataSource, city.id, {
+    const admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    const otherMember = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'other@example.test' });
+    const nonValidated = await seedUser(prisma, city.id, {
       role: UserRole.NON_VALIDATED,
       email: 'nonvalidated@example.test',
     });
