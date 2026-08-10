@@ -10,3 +10,10 @@
 # Same reasoning for anything else executed inside a container.
 Dockerfile text eol=lf
 docker/entrypoint.sh text eol=lf
+
+# Written by frontend/scripts/gen-bg-manifest.js on every prebuild/prestart.
+# The generator emits LF; without this the file shows as modified after every
+# build even though the content is byte-identical, which conflicts with
+# /v2-testing’s "never build dirty" rule.
+frontend/public/avatars/manifest.json text eol=lf
+frontend/public/backgrounds/manifest.json text eol=lf
