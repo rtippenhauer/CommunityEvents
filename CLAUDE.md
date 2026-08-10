@@ -45,22 +45,22 @@ full backlog and each item's Definition of Done.
   converted. `schema.prisma` is the single source of truth and one initial
   migration replaces the 84 inherited TypeORM migrations.
 
-**Infra readiness (confirmed by Rob 2026-08-09, at `v2-1` start):**
+**Infra readiness (confirmed by Rob 2026-08-09):**
 - A dedicated `communityevents` database + `communityevents_user` exist on
-  the Unraid MySQL server (192.168.2.241), separate from `dinnerbears`. The
-  v1-era migrations **have** been run against it, so it holds the full
-  inherited schema — this is `v2-1`'s introspection target, not an empty DB.
-- The Unraid container (`CommunityEvents-v2-Stage`, from
-  `docker/communityevents-v2-stage-unraid.xml`) is up, migrations ran on
-  boot, and the one-time
-  `docker exec CommunityEvents-v2-Stage node /app/dist/bootstrap.js` has
-  been run — the human admin login exists and the instance is usable.
-- The stage instance is live and serving at
-  **https://communityevents.rtippenhauer.com**.
-- `rtippenhauer/community-events:v2-stage` has been pushed once already, as
-  a pipeline smoke test — it's the inherited v1 code (commit `6e72d0a`), not
-  anything v2-1 produced. Expect this tag to be overwritten by the first
-  real `/v2-testing` run.
+  the Unraid MySQL server (192.168.2.241), separate from `dinnerbears`.
+- **Stage now lives at `https://stage.communityeventsproject.com`** — the
+  project's own domain, replacing the earlier
+  `communityevents.rtippenhauer.com`. Per REQ-TENANT-01.7 this deployment is
+  its own root tenant, not a tenant of production.
+- The full v2 fresh-install sequence has been run against it successfully:
+  `prisma migrate deploy` (on container start) -> `seed.js` -> `bootstrap.js`.
+  That is the supported install path from `v2-1` onward; the v1-era
+  `typeorm migration:run` no longer exists.
+- `rtippenhauer/community-events:v2-stage` carries the `v2-1` work. Note the
+  image is built from the **working tree**, not from git, so never build with
+  uncommitted changes and never with a CRLF checkout of `docker/entrypoint.sh`
+  (`.gitattributes` now pins `*.sh` to LF — a CRLF shebang makes the container
+  restart-loop with a misleading "not found").
 
 V2 is being defined through a sequence of requirements docs. Only one exists
 so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft, not
