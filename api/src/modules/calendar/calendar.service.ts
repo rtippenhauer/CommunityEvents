@@ -1,15 +1,37 @@
 import { Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Not, IsNull, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
-import { UserEntity } from '../../database/entities/user.entity';
-import { EventEntity, EventStatus } from '../../database/entities/event.entity';
-import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
+import type { Prisma, users as User } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { EventStatus, RsvpStatus } from '../../database/enums';
+import { asDateString, asTimeString } from '../../common/utils/prisma-date.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { calendarOrganizerEmail, supportEmail } from '../../common/config/instance-contact';
 import { AppConfigService } from '../app-config/app-config.service';
+
+/**
+ * The minimum an event needs to expose to be rendered into an .ics entry.
+ *
+ * Deliberately structural rather than a Prisma or TypeORM type: calendar is
+ * fed both by its own Prisma queries and by EventsService, which is still on
+ * TypeORM until v2-2. Those disagree on eventDate/eventTime -- Date versus
+ * string -- so the union is what lets one implementation serve both. It
+ * narrows to Date once the last caller is converted.
+ */
+export interface IcsEventLike {
+  id: number;
+  title: string;
+  eventDate: Date | string;
+  eventTime: Date | string;
+  updatedAt: Date;
+  status: string;
+  // Both are NOT NULL in the schema; an event always carries its location
+  // snapshot even when the linked location row is gone.
+  locationName: string;
+  locationAddress: string;
+  location?: { id: number; isPrivate: boolean } | null;
+}
 
 export interface CalendarSettingsResponse {
   url: string;
@@ -32,12 +54,7 @@ export class CalendarService {
   private readonly TTL_MS = 15 * 60 * 1000;
 
   constructor(
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
-    @InjectRepository(EventEntity)
-    private readonly eventRepo: Repository<EventEntity>,
-    @InjectRepository(EventRsvpEntity)
-    private readonly rsvpRepo: Repository<EventRsvpEntity>,
+    private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly locationVisibility: LocationVisibilityService,
     private readonly appConfig: AppConfigService,
@@ -58,18 +75,18 @@ export class CalendarService {
   // ── Token management ────────────────────────────────────────────────────────
 
   async getOrCreateToken(userId: number): Promise<string> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.calendarToken) return user.calendarToken;
 
     const token = randomUUID();
-    await this.userRepo.update(userId, { calendarToken: token });
+    await this.prisma.users.update({ where: { id: userId }, data: { calendarToken: token } });
     this.userTokenMap.set(userId, token);
     return token;
   }
 
   async regenerateToken(userId: number): Promise<string> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
     if (user.calendarToken) {
@@ -78,7 +95,7 @@ export class CalendarService {
     }
 
     const token = randomUUID();
-    await this.userRepo.update(userId, { calendarToken: token });
+    await this.prisma.users.update({ where: { id: userId }, data: { calendarToken: token } });
     this.userTokenMap.set(userId, token);
     return token;
   }
@@ -91,9 +108,9 @@ export class CalendarService {
   // ── Settings ─────────────────────────────────────────────────────────────────
 
   async getSettings(userId: number): Promise<CalendarSettingsResponse> {
-    const user = await this.userRepo.findOne({
+    const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      relations: ['city'],
+      include: { city: true },
     });
     if (!user) throw new NotFoundException('User not found');
 
@@ -111,13 +128,13 @@ export class CalendarService {
     userId: number,
     dto: { cityFilter?: 'all' | 'city'; rsvpOnly?: boolean; autoInvite?: 'none' | 'city' | 'all' },
   ): Promise<CalendarSettingsResponse> {
-    const updates: Partial<UserEntity> = {};
+    const updates: Prisma.usersUpdateInput = {};
     if (dto.cityFilter !== undefined) updates.calendarCityFilter = dto.cityFilter;
     if (dto.rsvpOnly !== undefined) updates.calendarRsvpOnly = dto.rsvpOnly;
     if (dto.autoInvite !== undefined) updates.calendarAutoInvite = dto.autoInvite;
 
     if (Object.keys(updates).length > 0) {
-      await this.userRepo.update(userId, updates);
+      await this.prisma.users.update({ where: { id: userId }, data: updates });
       this.invalidateForUser(userId);
     }
 
@@ -130,7 +147,7 @@ export class CalendarService {
     const cached = this.cache.get(token);
     if (cached && cached.expiresAt > Date.now()) return cached.ics;
 
-    const user = await this.userRepo.findOne({ where: { calendarToken: token } });
+    const user = await this.prisma.users.findUnique({ where: { calendarToken: token } });
     if (!user) throw new UnauthorizedException('Invalid calendar token');
 
     const ics = await this.buildFeed(user);
@@ -148,13 +165,13 @@ export class CalendarService {
     return calendarOrganizerEmail(this.config);
   }
 
-  private async buildFeed(user: UserEntity): Promise<string> {
+  private async buildFeed(user: User): Promise<string> {
     const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const brand = await this.getBrand();
 
-    const rsvps = await this.rsvpRepo.find({
+    const rsvps = await this.prisma.event_rsvps.findMany({
       where: { userId: user.id },
-      select: ['eventId', 'status'],
+      select: { eventId: true, status: true },
     });
     const rsvpMap = new Map(rsvps.map((r) => [r.eventId, r.status]));
 
@@ -167,21 +184,22 @@ export class CalendarService {
     const cityFilter = user.calendarCityFilter ?? 'all';
     const rsvpOnly = user.calendarRsvpOnly ?? false;
 
-    let qb = this.eventRepo
-      .createQueryBuilder('e')
-      .leftJoinAndSelect('e.location', 'location')
-      .where(
-        '((e.status = :published AND e.eventDate >= :today) OR (e.status = :cancelled AND e.eventDate >= :cutoff))',
-        { published: EventStatus.PUBLISHED, cancelled: EventStatus.CANCELLED, today, cutoff: cutoffDate },
-      )
-      .orderBy('e.eventDate', 'ASC')
-      .addOrderBy('e.eventTime', 'ASC');
-
-    if (cityFilter === 'city') {
-      qb = qb.andWhere('e.cityId = :cityId', { cityId: user.cityId });
-    }
-
-    let events = await qb.getMany();
+    // Published events from today on, plus cancelled ones for a week after --
+    // a cancelled event has to keep appearing briefly so subscribed calendars
+    // receive the cancellation rather than silently dropping the entry.
+    // The date bounds are strings; Prisma compares DATE columns against Dates,
+    // so they are parsed back to midnight UTC to match how the column is read.
+    let events = await this.prisma.events.findMany({
+      where: {
+        OR: [
+          { status: EventStatus.PUBLISHED, eventDate: { gte: new Date(`${today}T00:00:00Z`) } },
+          { status: EventStatus.CANCELLED, eventDate: { gte: new Date(`${cutoffDate}T00:00:00Z`) } },
+        ],
+        ...(cityFilter === 'city' ? { cityId: user.cityId } : {}),
+      },
+      include: { location: true },
+      orderBy: [{ eventDate: 'asc' }, { eventTime: 'asc' }],
+    });
 
     if (rsvpOnly) {
       events = events.filter((e) => rsvpMap.has(e.id));
@@ -210,14 +228,14 @@ export class CalendarService {
   }
 
   private buildVEvent(
-    event: EventEntity,
+    event: IcsEventLike,
     rsvpStatus: string | null,
     appUrl: string,
     brand: { brandName: string; eventSingular: string; eventPlural: string },
   ): string[] {
     const { brandName, eventSingular } = brand;
 
-    const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
+    const startUtc = eventTimeToUtc(asDateString(event.eventDate), asTimeString(event.eventTime));
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
     const dtStart = toIcsUtcString(startUtc);
     const dtEnd = toIcsUtcString(endUtc);
@@ -227,8 +245,11 @@ export class CalendarService {
 
     const isCancelled = event.status === EventStatus.CANCELLED;
 
-    const [y, m, d] = event.eventDate.split('-').map(Number);
-    const [h, min] = event.eventTime.split(':').map(Number);
+    // eventDate/eventTime are DATE/TIME columns. The entity typed them as
+    // strings; Prisma returns Dates. Calling .split on a Date throws, so both
+    // are normalised to their string form first.
+    const [y, m, d] = asDateString(event.eventDate).split('-').map(Number);
+    const [h, min] = asTimeString(event.eventTime).split(':').map(Number);
     const dayName = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long' });
     const monthName = new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long' });
     const hour12 = h % 12 || 12;
@@ -310,9 +331,9 @@ export class CalendarService {
   }
 
   async invalidateAll(): Promise<void> {
-    const users = await this.userRepo.find({
-      where: { calendarToken: Not(IsNull()) },
-      select: ['id'],
+    const users = await this.prisma.users.findMany({
+      where: { calendarToken: { not: null } },
+      select: { id: true },
     });
     for (const u of users) this.invalidateForUser(u.id);
   }
@@ -323,13 +344,13 @@ export class CalendarService {
 
   // locationAddress override — see buildGoogleCalendarUrl's note in events.service.ts.
   async buildInviteAttachment(
-    event: EventEntity,
+    event: IcsEventLike,
     recipient: { name: string; email: string },
     appUrl: string,
     locationAddress: string | null = event.locationAddress,
   ): Promise<string> {
     const { brandName, eventSingular } = await this.getBrand();
-    const startUtc = eventTimeToUtc(event.eventDate, event.eventTime);
+    const startUtc = eventTimeToUtc(asDateString(event.eventDate), asTimeString(event.eventTime));
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
     const dtStart = toIcsUtcString(startUtc);
     const dtEnd = toIcsUtcString(endUtc);
@@ -345,8 +366,11 @@ export class CalendarService {
     // pending invitation per message instead of updating the same one in place.
     const sequence = Math.floor(now.getTime() / 1000) % 999999;
 
-    const [y, m, d] = event.eventDate.split('-').map(Number);
-    const [h, min] = event.eventTime.split(':').map(Number);
+    // eventDate/eventTime are DATE/TIME columns. The entity typed them as
+    // strings; Prisma returns Dates. Calling .split on a Date throws, so both
+    // are normalised to their string form first.
+    const [y, m, d] = asDateString(event.eventDate).split('-').map(Number);
+    const [h, min] = asTimeString(event.eventTime).split(':').map(Number);
     const dayName = new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long' });
     const monthName = new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'long' });
     const hour12 = h % 12 || 12;
@@ -445,27 +469,31 @@ export class CalendarService {
       return;
     }
 
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    const event = await this.prisma.events.findUnique({ where: { id: eventId } });
     if (!event || event.status !== EventStatus.PUBLISHED) {
       this.logger.warn(`rsvp-reply: event ${eventId} not found or not published`);
       return;
     }
 
-    const user = await this.userRepo.findOne({ where: { email: attendeeEmail } });
+    const user = await this.prisma.users.findUnique({ where: { email: attendeeEmail } });
     if (!user) {
       this.logger.warn(`rsvp-reply: no user found for ${attendeeEmail}`);
       return;
     }
 
-    const existing = await this.rsvpRepo.findOne({ where: { eventId, userId: user.id } });
+    const existing = await this.prisma.event_rsvps.findFirst({
+      where: { eventId, userId: user.id },
+    });
     if (existing) {
       if (existing.status === rsvpStatus) return;
-      existing.status = rsvpStatus;
-      await this.rsvpRepo.save(existing);
+      await this.prisma.event_rsvps.update({
+        where: { id: existing.id },
+        data: { status: rsvpStatus },
+      });
     } else {
-      await this.rsvpRepo.save(
-        this.rsvpRepo.create({ eventId, userId: user.id, status: rsvpStatus, additionalGuests: 0 }),
-      );
+      await this.prisma.event_rsvps.create({
+        data: { eventId, userId: user.id, status: rsvpStatus, additionalGuests: 0 },
+      });
     }
 
     this.invalidateForUser(user.id);

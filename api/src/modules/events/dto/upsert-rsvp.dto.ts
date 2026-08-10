@@ -1,5 +1,5 @@
 import { IsArray, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min, ArrayMaxSize } from 'class-validator';
-import { RsvpStatus } from '../../../database/entities/event-rsvp.entity';
+import { RsvpStatus } from '../../../database/enums';
 
 export class UpsertRsvpDto {
   @IsEnum(RsvpStatus)

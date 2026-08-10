@@ -15,7 +15,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('events/:eventId/comments')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -33,7 +34,7 @@ export class EventCommentsController {
   addComment(
     @Param('eventId', ParseIntPipe) eventId: number,
     @Body() dto: CreateCommentDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.commentsService.addComment(eventId, user, dto);
   }
@@ -43,7 +44,7 @@ export class EventCommentsController {
   editComment(
     @Param('commentId', ParseIntPipe) commentId: number,
     @Body() dto: CreateCommentDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.commentsService.editComment(commentId, user, dto);
   }
@@ -52,7 +53,7 @@ export class EventCommentsController {
   @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN)
   deleteComment(
     @Param('commentId', ParseIntPipe) commentId: number,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.commentsService.deleteComment(commentId, user);
   }
@@ -62,7 +63,7 @@ export class EventCommentsController {
   addReply(
     @Param('commentId', ParseIntPipe) commentId: number,
     @Body() dto: CreateCommentDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.commentsService.addReply(commentId, user, dto);
   }
@@ -72,7 +73,7 @@ export class EventCommentsController {
   editReply(
     @Param('replyId', ParseIntPipe) replyId: number,
     @Body() dto: CreateCommentDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.commentsService.editReply(replyId, user, dto);
   }
@@ -81,7 +82,7 @@ export class EventCommentsController {
   @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN)
   deleteReply(
     @Param('replyId', ParseIntPipe) replyId: number,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.commentsService.deleteReply(replyId, user);
   }

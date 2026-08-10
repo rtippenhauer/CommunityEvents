@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, Repository } from 'typeorm';
-import { UserEntity } from '../../database/entities/user.entity';
-import { ReleaseEntity } from '../../database/entities/release.entity';
-import { AnnouncementEntity, AnnouncementStatus } from '../../database/entities/announcement.entity';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { AnnouncementStatus } from '../../database/enums';
 
 export interface WhatsNewRelease {
   id: number;
@@ -27,22 +24,17 @@ export interface WhatsNewAnnouncement {
 // the single latest unseen release and/or announcement, one of each at most.
 @Injectable()
 export class WhatsNewService {
-  constructor(
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
-    @InjectRepository(ReleaseEntity)
-    private readonly releaseRepo: Repository<ReleaseEntity>,
-    @InjectRepository(AnnouncementEntity)
-    private readonly announcementRepo: Repository<AnnouncementEntity>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async getUnseen(userId: number): Promise<{ release: WhatsNewRelease | null; announcement: WhatsNewAnnouncement | null }> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+  async getUnseen(
+    userId: number,
+  ): Promise<{ release: WhatsNewRelease | null; announcement: WhatsNewAnnouncement | null }> {
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user) return { release: null, announcement: null };
 
-    const latestRelease = await this.releaseRepo.findOne({
-      where: { publishedAt: Not(IsNull()) },
-      order: { publishedAt: 'DESC' },
+    const latestRelease = await this.prisma.releases.findFirst({
+      where: { publishedAt: { not: null } },
+      orderBy: { publishedAt: 'desc' },
     });
     const release =
       latestRelease && latestRelease.id !== user.lastSeenReleaseId
@@ -55,9 +47,9 @@ export class WhatsNewService {
           }
         : null;
 
-    const latestAnnouncement = await this.announcementRepo.findOne({
+    const latestAnnouncement = await this.prisma.announcements.findFirst({
       where: { status: AnnouncementStatus.PUBLISHED },
-      order: { publishedAt: 'DESC' },
+      orderBy: { publishedAt: 'desc' },
     });
     const announcement =
       latestAnnouncement && latestAnnouncement.id !== user.lastSeenAnnouncementId
@@ -73,10 +65,16 @@ export class WhatsNewService {
   }
 
   async markReleaseSeen(userId: number, releaseId: number): Promise<void> {
-    await this.userRepo.update(userId, { lastSeenReleaseId: releaseId });
+    await this.prisma.users.update({
+      where: { id: userId },
+      data: { lastSeenReleaseId: releaseId },
+    });
   }
 
   async markAnnouncementSeen(userId: number, announcementId: number): Promise<void> {
-    await this.userRepo.update(userId, { lastSeenAnnouncementId: announcementId });
+    await this.prisma.users.update({
+      where: { id: userId },
+      data: { lastSeenAnnouncementId: announcementId },
+    });
   }
 }

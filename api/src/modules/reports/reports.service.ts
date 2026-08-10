@@ -4,18 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { PrismaService } from '../../database/prisma/prisma.service';
 import {
-  ContentReportEntity,
   ReportContentType,
   ReportStatus,
-} from '../../database/entities/content-report.entity';
-import { EventCommentEntity } from '../../database/entities/event-comment.entity';
-import { EventCommentReplyEntity } from '../../database/entities/event-comment-reply.entity';
-import { AnnouncementCommentEntity } from '../../database/entities/announcement-comment.entity';
-import { LocationRatingEntity } from '../../database/entities/location-rating.entity';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+  UserRole,
+} from '../../database/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ReviewAction, ReviewReportDto } from './dto/review-report.dto';
@@ -29,18 +23,7 @@ interface ContentInfo {
 @Injectable()
 export class ReportsService {
   constructor(
-    @InjectRepository(ContentReportEntity)
-    private readonly reportRepo: Repository<ContentReportEntity>,
-    @InjectRepository(EventCommentEntity)
-    private readonly commentRepo: Repository<EventCommentEntity>,
-    @InjectRepository(EventCommentReplyEntity)
-    private readonly replyRepo: Repository<EventCommentReplyEntity>,
-    @InjectRepository(AnnouncementCommentEntity)
-    private readonly annoCommentRepo: Repository<AnnouncementCommentEntity>,
-    @InjectRepository(LocationRatingEntity)
-    private readonly ratingRepo: Repository<LocationRatingEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
+    private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -51,32 +34,32 @@ export class ReportsService {
       throw new ForbiddenException('You cannot report your own content');
     }
 
-    const existing = await this.reportRepo.findOne({
+    const existing = await this.prisma.content_reports.findFirst({
       where: { reporterId, contentType: dto.contentType, contentId: dto.contentId },
     });
     if (existing) throw new ConflictException('You have already reported this content');
 
-    await this.reportRepo.save(
-      this.reportRepo.create({
+    await this.prisma.content_reports.create({
+      data: {
         reporterId,
         contentType: dto.contentType,
         contentId: dto.contentId,
         reason: dto.reason ?? null,
-      }),
-    );
+      },
+    });
 
     void this.notifyMods(info.label, info.preview);
   }
 
   async getPendingCount(): Promise<number> {
-    return this.reportRepo.count({ where: { status: ReportStatus.PENDING } });
+    return this.prisma.content_reports.count({ where: { status: ReportStatus.PENDING } });
   }
 
   async getAdminReports(): Promise<object[]> {
-    const reports = await this.reportRepo.find({
+    const reports = await this.prisma.content_reports.findMany({
       where: { status: ReportStatus.PENDING },
-      relations: ['reporter'],
-      order: { createdAt: 'ASC' },
+      include: { reporter: true },
+      orderBy: { createdAt: 'asc' },
     });
 
     return Promise.all(
@@ -84,7 +67,13 @@ export class ReportsService {
         let preview = '';
         let label = '';
         try {
-          const info = await this.getContentInfo(r.contentType, r.contentId);
+          // Prisma types the column as a string union of the same values;
+          // TypeScript enums are nominal, so the cast is the bridge between
+          // the generated type and the domain enum. Values are identical.
+          const info = await this.getContentInfo(
+            r.contentType as ReportContentType,
+            r.contentId,
+          );
           preview = info.preview;
           label = info.label;
         } catch {
@@ -106,44 +95,48 @@ export class ReportsService {
   }
 
   async review(id: number, reviewerId: number, dto: ReviewReportDto): Promise<void> {
-    const report = await this.reportRepo.findOne({ where: { id } });
+    const report = await this.prisma.content_reports.findUnique({ where: { id } });
     if (!report) throw new NotFoundException('Report not found');
     if (report.status !== ReportStatus.PENDING) {
       throw new ConflictException('Report has already been reviewed');
     }
 
     if (dto.action === ReviewAction.DELETE_AND_DISMISS) {
-      await this.deleteContent(report.contentType, report.contentId);
+      await this.deleteContent(report.contentType as ReportContentType, report.contentId);
     }
 
-    await this.reportRepo.update(id, {
-      status: dto.action === ReviewAction.DELETE_AND_DISMISS
-        ? ReportStatus.REVIEWED
-        : ReportStatus.DISMISSED,
-      reviewedBy: reviewerId,
-      reviewedAt: new Date(),
+    await this.prisma.content_reports.update({
+      where: { id },
+      data: {
+        status:
+          dto.action === ReviewAction.DELETE_AND_DISMISS
+            ? ReportStatus.REVIEWED
+            : ReportStatus.DISMISSED,
+        reviewedBy: reviewerId,
+        reviewedAt: new Date(),
+      },
     });
   }
 
   private async getContentInfo(type: ReportContentType, id: number): Promise<ContentInfo> {
     switch (type) {
       case ReportContentType.EVENT_COMMENT: {
-        const c = await this.commentRepo.findOne({ where: { id } });
+        const c = await this.prisma.event_comments.findUnique({ where: { id } });
         if (!c || c.deletedAt) throw new NotFoundException('Content not found');
         return { authorId: c.memberId, preview: c.body.slice(0, 120), label: 'Event comment' };
       }
       case ReportContentType.EVENT_COMMENT_REPLY: {
-        const r = await this.replyRepo.findOne({ where: { id } });
+        const r = await this.prisma.event_comment_replies.findUnique({ where: { id } });
         if (!r || r.deletedAt) throw new NotFoundException('Content not found');
         return { authorId: r.memberId, preview: r.body.slice(0, 120), label: 'Event reply' };
       }
       case ReportContentType.ANNOUNCEMENT_COMMENT: {
-        const a = await this.annoCommentRepo.findOne({ where: { id } });
+        const a = await this.prisma.announcement_comments.findUnique({ where: { id } });
         if (!a || a.deletedAt) throw new NotFoundException('Content not found');
         return { authorId: a.userId, preview: a.body.slice(0, 120), label: 'Announcement comment' };
       }
       case ReportContentType.LOCATION_RATING: {
-        const r = await this.ratingRepo.findOne({ where: { id } });
+        const r = await this.prisma.location_ratings.findUnique({ where: { id } });
         if (!r) throw new NotFoundException('Content not found');
         const text = r.comment ?? `Food ${r.food}★ Service ${r.service}★ Value ${r.valueRating}★ Noise ${r.noise}★`;
         return { authorId: r.memberId, preview: text.slice(0, 120), label: 'Restaurant rating' };
@@ -154,24 +147,35 @@ export class ReportsService {
   private async deleteContent(type: ReportContentType, id: number): Promise<void> {
     switch (type) {
       case ReportContentType.EVENT_COMMENT:
-        await this.commentRepo.update(id, { deletedAt: new Date() });
+        await this.prisma.event_comments.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        });
         break;
       case ReportContentType.EVENT_COMMENT_REPLY:
-        await this.replyRepo.update(id, { deletedAt: new Date() });
+        await this.prisma.event_comment_replies.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        });
         break;
       case ReportContentType.ANNOUNCEMENT_COMMENT:
-        await this.annoCommentRepo.update(id, { deletedAt: new Date() });
+        await this.prisma.announcement_comments.update({
+          where: { id },
+          data: { deletedAt: new Date() },
+        });
         break;
       case ReportContentType.LOCATION_RATING:
-        await this.ratingRepo.delete(id);
+        await this.prisma.location_ratings.delete({ where: { id } });
         break;
     }
   }
 
   private async notifyMods(label: string, preview: string): Promise<void> {
-    const mods = await this.userRepo.find({
-      where: [{ role: UserRole.ADMIN }, { role: UserRole.MODERATOR }],
-      select: ['id'],
+    // TypeORM's array-of-where was an OR across roles; `in` says the same
+    // thing directly.
+    const mods = await this.prisma.users.findMany({
+      where: { role: { in: [UserRole.ADMIN, UserRole.MODERATOR] } },
+      select: { id: true },
     });
 
     const actionUrl = `/admin/reports`;

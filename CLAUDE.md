@@ -4,11 +4,11 @@
 created specifically for the **CommunityEvents v2.0** rewrite — a genuinely
 separate GitHub repository from the one where v1 DinnerBears is actively
 developed and deployed (confirmed with Rob 2026-08-09). This repo's `main`
-currently contains a snapshot of the v1 codebase (Angular/NestJS/TypeORM/
-MySQL, through v1 Phase 38, `package.json` v1.5.1) as the starting point to
-build v2 on top of — that snapshot is **not** actively maintained here and
-will be progressively replaced as v2 items land, starting with the Prisma
-swap. Full v1 history, phase docs, and ongoing v1 fixes live in the old
+started as a snapshot of the v1 codebase (Angular/NestJS/TypeORM/MySQL,
+through v1 Phase 38, `package.json` v1.5.1) and is being progressively
+replaced as v2 items land — `v2-1` has already swapped the data layer to
+Prisma, so `main` is no longer a pure v1 snapshot. That inherited code is
+**not** actively maintained here. Full v1 history, phase docs, and ongoing v1 fixes live in the old
 repo, not this one.
 
 **This matters operationally, not just organizationally:** `rtippenhauer/
@@ -34,28 +34,33 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** none started yet — next up is `v2-1` (Prisma data
-layer, REQ-TENANT-01.3's first half). Run `/v2-start 1` to begin. See
-`V2_PHASES.md` for the full backlog and each item's Definition of Done.
+**Current v2 work item:** `v2-2` — testing stack swap (REQ-TENANT-01.6):
+replace Jest and Karma/Jasmine with Vitest + Supertest, and scaffold
+Playwright, before any tenant feature work starts. See `V2_PHASES.md` for the
+full backlog and each item's Definition of Done.
 
-**Infra readiness (as of 2026-08-09, ahead of `v2-1` actually starting):**
+**Completed v2 items:**
+- **`v2-1` — Prisma data layer** (2026-08-09). TypeORM removed entirely:
+  entities deleted, `typeorm`/`@nestjs/typeorm` uninstalled, all 36 services
+  converted. `schema.prisma` is the single source of truth and one initial
+  migration replaces the 84 inherited TypeORM migrations.
+
+**Infra readiness (confirmed by Rob 2026-08-09, at `v2-1` start):**
 - A dedicated `communityevents` database + `communityevents_user` exist on
-  the Unraid MySQL server (192.168.2.241) — separate from `dinnerbears`, not
-  yet populated with any schema (no migrations run against it yet).
-- `rtippenhauer/community-events:v2-stage` has been pushed once already, as
-  a pipeline smoke test — it's today's inherited v1 code (commit `6e72d0a`),
-  not anything v2-1 produced. Expect this tag to be overwritten by the first
-  real `/v2-testing` run.
+  the Unraid MySQL server (192.168.2.241), separate from `dinnerbears`. The
+  v1-era migrations **have** been run against it, so it holds the full
+  inherited schema — this is `v2-1`'s introspection target, not an empty DB.
 - The Unraid container (`CommunityEvents-v2-Stage`, from
-  `docker/communityevents-v2-stage-unraid.xml`) has been stood up and its
-  migrations ran automatically on boot, seeding the usual `automation` role
-  user. **The human admin login (`INSTANCE_ADMIN_EMAIL`/`INSTANCE_ADMIN_PASSWORD`)
-  has not been confirmed created** — it requires a one-time
-  `docker exec CommunityEvents-v2-Stage node /app/dist/bootstrap.js`, which
-  was given to Rob but not confirmed run. Check this before assuming the
-  instance is usable.
-- `APP_URL`/DNS/reverse-proxy for this stage instance were still undecided
-  as of this note — confirm with Rob before assuming a domain is live.
+  `docker/communityevents-v2-stage-unraid.xml`) is up, migrations ran on
+  boot, and the one-time
+  `docker exec CommunityEvents-v2-Stage node /app/dist/bootstrap.js` has
+  been run — the human admin login exists and the instance is usable.
+- The stage instance is live and serving at
+  **https://communityevents.rtippenhauer.com**.
+- `rtippenhauer/community-events:v2-stage` has been pushed once already, as
+  a pipeline smoke test — it's the inherited v1 code (commit `6e72d0a`), not
+  anything v2-1 produced. Expect this tag to be overwritten by the first
+  real `/v2-testing` run.
 
 V2 is being defined through a sequence of requirements docs. Only one exists
 so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft, not
@@ -81,35 +86,41 @@ defines the conventions the rest of v2 follows. Key decisions it locks in:
   `DB_MODE`, DB connection details, `ROOT_TENANT_URL`. Everything else,
   including the existing `app_config` branding pattern, becomes
   tenant-aware runtime config.
-- **Testing stack changes**: Vitest + Supertest for unit/integration,
-  Playwright for e2e — replacing the inherited codebase's Jest (`api/`) and
-  Karma/Jasmine (`frontend/`).
+- **Testing stack changes** (REQ-TENANT-01.6, landed by `v2-2`): Vitest +
+  Supertest for unit/integration, Playwright for e2e — replacing the
+  inherited codebase's Jest (`api/`) and Karma/Jasmine (`frontend/`).
+  A full replacement like the Prisma swap, not a side-by-side migration.
 
-Required build order (data layer has to exist before there's anything to
-scope): Prisma swap → tenants table → domain resolution middleware →
-tenant-scoping Client Extension → bootstrap/runtime config split + user
-tenant scoping, in that order — tracked as `v2-1` through `v2-5` in
-`V2_PHASES.md`. Full requirement-level detail lives in
-`docs/REQ-TENANT-01.md`.
+Required build order (foundational tooling first, then the data layer —
+which has to exist before there's anything to scope): Prisma swap → testing
+stack swap → tenants table → domain resolution middleware → tenant-scoping
+Client Extension → bootstrap/runtime config split + user tenant scoping, in
+that order — tracked as `v2-1` through `v2-6` in `V2_PHASES.md`. The testing
+stack swap sits at `v2-2`, deliberately ahead of all tenant feature work, so
+tenant code is written against Vitest from the start rather than ported off
+Jest later (decided with Rob 2026-08-09; this shifted the old `v2-2`–`v2-5`
+each up by one, and no `v2-*` tags existed yet). Full requirement-level
+detail lives in `docs/REQ-TENANT-01.md`.
 
 Not yet decided/known: whether frontend framework/testing choices beyond
 "not Karma" are changing, and what domain scheme v2 tenants use (see the
 `www.`/cookie-domain design note under "Multi-Tenancy" below — v2's domain
 resolution needs to actually solve this, not inherit v1's workaround).
 
-## Inherited Stack (current `main`, pre-`v2-1`)
-This is what's in the repo *today*, carried over from the v1 snapshot. It
-will be replaced piece by piece as v2 items land — do not assume it's the
-target architecture.
+## Stack (current `main`)
+Mostly the inherited v1 snapshot, with the data layer already replaced by
+`v2-1`. The rest will be replaced piece by piece as v2 items land — do not
+assume everything here is the target architecture.
 - **Frontend:** Angular 22, standalone components (NO NgModules), Angular Material (MDC), SCSS
-- **Backend:** NestJS (Node.js, TypeScript), TypeORM, Passport.js
-- **Database:** MySQL 8.x
+- **Backend:** NestJS (Node.js, TypeScript), **Prisma 7**, Passport.js
+- **Database:** MySQL (stage runs 9.7 — the v1-era "8.x" note was wrong)
 - **Auth:** JWT sessions + Google OAuth + Facebook OAuth (Passport strategies)
 - **Email:** Brevo SDK (primary) + Resend (overflow fallback)
 - **Push:** Web Push API with VAPID keys (@angular/pwa service worker)
 - **Proxy:** NGINX Proxy Manager (Docker)
 - **Containers:** Docker Compose — api and mysql have NO public ports
-- **Testing:** Jest (`api/`), Karma/Jasmine (`frontend/`)
+- **Testing:** Jest (`api/`), Karma/Jasmine (`frontend/`) — replaced by
+  Vitest/Supertest/Playwright in `v2-2`
 
 ## Repository Structure
 ```
@@ -144,30 +155,55 @@ frontend work unless/until a future requirements doc says otherwise.
 - **One module per feature** — AuthModule, UsersModule, RestaurantsModule, etc.
 - **DTOs with class-validator** for all request bodies
 - **Guards for all protected routes** — never trust client role state
-- **Prisma for all data access** once `v2-1` lands — no raw SQL except in
-  migrations. Until then the inherited codebase still runs on TypeORM
-  repositories; don't add new TypeORM code, that work should go straight
-  into the Prisma swap instead.
+- **Prisma for all data access** (landed in `v2-1`). TypeORM is gone —
+  there are no entities and the packages are uninstalled. Raw SQL via
+  `$queryRaw`/`$executeRaw` is acceptable only where Prisma genuinely cannot
+  express the statement, and every such site in the codebase carries a comment
+  saying why (correlated subqueries, `ON DUPLICATE KEY UPDATE`,
+  `COALESCE(resolved_at, NOW())`, `TIMESTAMP(date, time)` window filters).
 - **Global prefix** `/api/v1` set in main.ts
 - **Never expose stack traces** — GlobalExceptionFilter handles all errors
-- **Tenant scoping is automatic, not manual** (from `v2-4` onward) — rely on
+- **Tenant scoping is automatic, not manual** (from `v2-5` onward) — rely on
   the Prisma Client Extension rather than adding `tenant_id` filters by
   hand in services once it exists
 
 ## Database
-**Today (inherited, pre-`v2-1`):** MySQL 8.x via TypeORM, `synchronize: false`
-always, migrations in `api/src/database/migrations/` with timestamp prefix.
-See `docs/DATABASE_SCHEMA.md` for full schema — this is also `v2-1`'s
-starting point for modeling `schema.prisma`.
+MySQL via **Prisma 7**. `api/prisma/schema.prisma` is the single source of
+truth; `docs/DATABASE_SCHEMA.md` is now human-readable reference only, not
+authoritative (per REQ-TENANT-01.3).
 
-**From `v2-1` onward:** MySQL 8.x via Prisma, `schema.prisma` as the single
-source of truth, `prisma migrate dev` locally and `prisma migrate deploy` in
-CI/deploy replacing TypeORM's migration files. `prisma/seed.ts` creates the
-root tenant on first run if none exists. Once `schema.prisma` exists,
-keeping `docs/DATABASE_SCHEMA.md` in sync is a nice-to-have for human
-readability, not a correctness requirement.
+- **Migrations:** `prisma migrate dev` locally, `prisma migrate deploy` in the
+  container entrypoint. The 84 inherited TypeORM migrations are gone, replaced
+  by a single init migration — v2 starts from a blank database and imports
+  production data separately.
+- **Fresh install is three steps:** `prisma migrate deploy` (automatic on
+  container start) -> `node dist/database/prisma/seed.js` (reference data:
+  achievements, app_config defaults, avatars, cities, automation account) ->
+  `node dist/bootstrap.js` (this operator's city, branding and first admin).
+  Seed before bootstrap: bootstrap edits seeded data, so running it first
+  leaves the DinnerBears bear avatars and terminology in place.
+- **Prisma 7 specifics:** no `url` in the schema's datasource block — the
+  connection string lives in `prisma.config.ts` (derived from the existing
+  `DB_*` vars) and the client takes a driver adapter,
+  `@prisma/adapter-mariadb`, which is the MySQL adapter despite the name.
+- **`allowPublicKeyRetrieval` is required**, not optional. MySQL 8/9 use
+  `caching_sha2_password`, and over a non-TLS connection the driver must fetch
+  the server's RSA public key to complete a first-time handshake. Without it
+  every query fails as a "pool timeout" that never mentions authentication.
+- **Field naming:** scalar fields are camelCase with `@map` to their
+  snake_case columns, and relation fields carry the old entity property names.
+  This is deliberate — controllers return rows straight to the client, so a
+  field name here IS the JSON key the frontend consumes.
+- **Four `locations` columns are hidden by a global `omit`** in
+  `PrismaService` (`moderatorNotes`, `contactName`, `contactPhone`,
+  `contactEmail`), standing in for TypeORM's `select: false`. Only
+  `findOneWithModFields` opts back in. Prisma returns every scalar by default,
+  so a new query is safe only because the omit is global.
+- **DATE/TIME columns come back as `Date`**, where the entities typed them as
+  strings. `api/src/common/utils/prisma-date.util.ts` converts both ways; use
+  it rather than string-slicing a Date.
 
-## Multi-Tenancy (from `v2-2` onward, per `docs/REQ-TENANT-01.md`)
+## Multi-Tenancy (from `v2-3` onward, per `docs/REQ-TENANT-01.md`)
 - `tenants` table: `id`, `slug`, `domain` (unique), `is_root`, `status`
   (active/suspended), `db_mode` (shared/dedicated — reserved, defaults
   shared), `created_at`. Exactly one tenant has `is_root = true`, matching
@@ -180,7 +216,7 @@ readability, not a correctness requirement.
 - Tenant scoping enforcement point is the Prisma Client Extension, not
   individual services or controllers.
 
-**Design note carried over from v1 (this needs an actual fix in `v2-2`/`v2-3`,
+**Design note carried over from v1 (this needs an actual fix in `v2-3`/`v2-4`,
 not another workaround):** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
 because `www` is genuinely the only public web host — the apex publishes MX
 only, no A record. The same value doubles as the auth cookie domain, which

@@ -1,13 +1,14 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
-import { UserEntity, UserRole, UserStatus } from '../../database/entities/user.entity';
-import { OAuthAccountEntity } from '../../database/entities/oauth-account.entity';
-import { AuditLogEntity } from '../../database/entities/audit-log.entity';
-import { InviteEntity, InviteType } from '../../database/entities/invite.entity';
+import type { Prisma } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import {
+  InviteType,
+  SuppressionReason,
+  UserRole,
+  UserStatus,
+} from '../../database/enums';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
-import { SuppressionReason } from '../../database/entities/email-suppression.entity';
 
 export interface AdminUserRow {
   id: number;
@@ -56,45 +57,46 @@ export interface AuditLogRow {
 @Injectable()
 export class AdminService {
   constructor(
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
-    @InjectRepository(OAuthAccountEntity)
-    private readonly oauthRepo: Repository<OAuthAccountEntity>,
-    @InjectRepository(AuditLogEntity)
-    private readonly auditRepo: Repository<AuditLogEntity>,
-    @InjectRepository(InviteEntity)
-    private readonly inviteRepo: Repository<InviteEntity>,
+    private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
   ) {}
 
   async getUsers(): Promise<AdminUserRow[]> {
-    const users = await this.userRepo
-      .createQueryBuilder('u')
-      .leftJoin(UserEntity, 'inviter', 'inviter.id = u.invited_by')
-      .select([
-        'u.id AS id',
-        'u.full_name AS fullName',
-        'u.email AS email',
-        'u.role AS role',
-        'u.status AS status',
-        'u.email_status AS emailStatus',
-        'u.city_id AS cityId',
-        'u.profile_photo_path AS profilePhotoPath',
-        'u.invited_by AS invitedById',
-        'inviter.full_name AS invitedByName',
-        'u.created_at AS createdAt',
-        'u.last_login_at AS lastLoginAt',
-        'u.login_count AS loginCount',
-        'u.has_membership AS hasMembership',
-        'u.membership_expires_at AS membershipExpiresAt',
-      ])
-      .where('u.deleted_at IS NULL')
-      .orderBy('u.created_at', 'DESC')
-      .getRawMany<Omit<AdminUserRow, 'oauthProviders' | 'isPendingInvite' | 'inviteExpiresAt'>>();
+    // The inviter's name comes from a self-join. Prisma exposes it as the
+    // users -> users relation on invited_by, named `users` because the entity
+    // never declared a property for it (only the scalar invitedBy), so
+    // introspection had no better name to take.
+    const rows = await this.prisma.users.findMany({
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        status: true,
+        emailStatus: true,
+        cityId: true,
+        profilePhotoPath: true,
+        invitedBy: true,
+        createdAt: true,
+        lastLoginAt: true,
+        loginCount: true,
+        hasMembership: true,
+        membershipExpiresAt: true,
+        users: { select: { fullName: true } },
+      },
+    });
 
-    const oauthAccounts = await this.oauthRepo.find({
-      select: ['userId', 'provider', 'providerId', 'email'],
+    const users = rows.map(({ users: inviter, invitedBy, ...rest }) => ({
+      ...rest,
+      invitedById: invitedBy,
+      invitedByName: inviter?.fullName ?? null,
+    })) as Omit<AdminUserRow, 'oauthProviders' | 'isPendingInvite' | 'inviteExpiresAt'>[];
+
+    const oauthAccounts = await this.prisma.oauth_accounts.findMany({
+      select: { userId: true, provider: true, providerId: true, email: true },
     });
 
     const oauthByUser = new Map<number, Array<{ provider: string; providerId: string; email: string | null }>>();
@@ -120,10 +122,10 @@ export class AdminService {
   // shown alongside real users so admins don't have to cross-reference the
   // separate Invites tab to see who's been invited but hasn't joined.
   private async getPendingInviteRows(): Promise<AdminUserRow[]> {
-    const invites = await this.inviteRepo.find({
-      where: { type: InviteType.MEMBER, redeemedAt: IsNull(), isRevoked: false },
-      relations: ['creator'],
-      order: { createdAt: 'DESC' },
+    const invites = await this.prisma.invites.findMany({
+      where: { type: InviteType.MEMBER, redeemedAt: null, isRevoked: false },
+      include: { creator: true },
+      orderBy: { createdAt: 'desc' },
     });
 
     return invites
@@ -154,53 +156,85 @@ export class AdminService {
     const limit = Math.min(200, Math.max(1, filter.limit ?? 50));
     const skip = (page - 1) * limit;
 
-    const buildBase = () => {
-      const qb = this.auditRepo
-        .createQueryBuilder('a')
-        .leftJoin(UserEntity, 'u', 'u.id = a.user_id');
-      if (filter.userId) qb.andWhere('a.user_id = :userId', { userId: filter.userId });
-      if (filter.userSearch) qb.andWhere('(u.full_name LIKE :search OR u.email LIKE :search)', { search: `%${filter.userSearch}%` });
-      if (filter.entityType) qb.andWhere('a.entity_type = :entityType', { entityType: filter.entityType });
-      if (filter.action) qb.andWhere('a.action = :action', { action: filter.action });
-      if (filter.dateFrom) qb.andWhere('a.created_at >= :dateFrom', { dateFrom: new Date(filter.dateFrom) });
-      if (filter.dateTo) qb.andWhere('a.created_at <= :dateTo', { dateTo: new Date(filter.dateTo) });
-      return qb;
+    // The filter builder becomes one reusable where object. The user search
+    // spans the joined user's name and email, which is a nested relation
+    // filter rather than a join written by hand.
+    const where: Prisma.audit_logWhereInput = {
+      ...(filter.userId ? { userId: filter.userId } : {}),
+      ...(filter.userSearch
+        ? {
+            user: {
+              OR: [
+                { fullName: { contains: filter.userSearch } },
+                { email: { contains: filter.userSearch } },
+              ],
+            },
+          }
+        : {}),
+      ...(filter.entityType ? { entityType: filter.entityType } : {}),
+      ...(filter.action ? { action: filter.action } : {}),
+      ...(filter.dateFrom || filter.dateTo
+        ? {
+            createdAt: {
+              ...(filter.dateFrom ? { gte: new Date(filter.dateFrom) } : {}),
+              ...(filter.dateTo ? { lte: new Date(filter.dateTo) } : {}),
+            },
+          }
+        : {}),
     };
 
-    const dataQb = buildBase()
-      .select([
-        'a.id AS id',
-        'a.user_id AS userId',
-        'u.full_name AS userName',
-        'a.action AS action',
-        'a.entity_type AS entityType',
-        'a.entity_id AS entityId',
-        'a.metadata AS metadata',
-        'a.ip_address AS ipAddress',
-        'a.created_at AS createdAt',
-      ])
-      .orderBy('a.created_at', 'DESC')
-      .offset(skip)
-      .limit(limit);
-
-    const countQb = buildBase().select('COUNT(*) AS cnt');
-
-    const [data, countResult] = await Promise.all([
-      dataQb.getRawMany<AuditLogRow>(),
-      countQb.getRawOne<{ cnt: string }>(),
+    const [rows, total] = await Promise.all([
+      this.prisma.audit_log.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.audit_log.count({ where }),
     ]);
 
-    return { data, total: parseInt(countResult?.cnt ?? '0', 10) };
+    // audit_log.user_id has no foreign key in the database, so there is no
+    // relation to include -- the query builder joined users on an explicit
+    // condition instead. The names are fetched in one extra query keyed by the
+    // ids on this page, rather than one lookup per row.
+    const userIds = [...new Set(rows.map((r) => r.userId).filter((id): id is number => id !== null))];
+    const names = userIds.length
+      ? await this.prisma.users.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, fullName: true },
+        })
+      : [];
+    const nameById = new Map(names.map((u) => [u.id, u.fullName]));
+
+    const data = rows.map((r) => ({
+      ...r,
+      userName: r.userId === null ? null : nameById.get(r.userId) ?? null,
+    })) as AuditLogRow[];
+
+    return { data, total };
+
   }
 
   async getInviteLineage(): Promise<object[]> {
-    const users = await this.userRepo
-      .createQueryBuilder('u')
-      .select(['u.id AS id', 'u.full_name AS fullName', 'u.invited_by AS invitedBy', 'u.created_at AS joinedAt', 'u.role AS role', 'u.status AS status'])
-      .where('u.deleted_at IS NULL')
-      .getRawMany<{ id: number; fullName: string; invitedBy: number | null; joinedAt: Date; role: string; status: string }>();
+    const users = await this.prisma.users.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        fullName: true,
+        invitedBy: true,
+        createdAt: true,
+        role: true,
+        status: true,
+      },
+    });
 
-    const byId = new Map(users.map((u) => [u.id, { ...u, invitedMembers: [] as object[] }]));
+    // createdAt is re-exposed as joinedAt, which is what the select alias did.
+    const byId = new Map(
+      users.map((u) => [
+        u.id,
+        { ...u, joinedAt: u.createdAt, invitedMembers: [] as object[] },
+      ]),
+    );
 
     const roots: object[] = [];
     for (const u of byId.values()) {
@@ -214,27 +248,30 @@ export class AdminService {
   }
 
   async isEmailSuppressed(userId: number): Promise<boolean> {
-    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['email'] });
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
     if (!user) return false;
     return this.emailService.isSuppressed(user.email);
   }
 
   async suppressUserEmail(userId: number, actorId: number): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     await this.emailService.suppress(user.email, SuppressionReason.UNSUBSCRIBED);
     await this.auditService.log({ userId: actorId, action: 'admin.suppress_email', entityType: 'user', entityId: userId });
   }
 
   async liftEmailSuppression(userId: number, actorId: number): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     await this.emailService.removeSuppression(user.email);
     await this.auditService.log({ userId: actorId, action: 'admin.lift_suppression', entityType: 'user', entityId: userId });
   }
 
   async banUser(targetId: number, actorId: number, actorRole: UserRole): Promise<void> {
-    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot ban yourself');
     if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot ban an admin');
@@ -242,48 +279,51 @@ export class AdminService {
       throw new ForbiddenException('Moderators can only ban regular members');
     }
     if (target.status === UserStatus.SUSPENDED) throw new BadRequestException('User is already banned');
-    await this.userRepo.update(targetId, { status: UserStatus.SUSPENDED });
+    await this.prisma.users.update({ where: { id: targetId }, data: { status: UserStatus.SUSPENDED } });
     await this.auditService.log({ userId: actorId, action: 'user.ban', entityType: 'user', entityId: targetId });
   }
 
   async forceBanUser(targetId: number, actorId: number): Promise<void> {
-    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot ban yourself');
     if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot ban an admin');
-    await this.userRepo.update(targetId, {
+    await this.prisma.users.update({ where: { id: targetId }, data: {
       status: UserStatus.DELETED,
       deletedAt: new Date(),
-    });
+    } });
     await this.auditService.log({ userId: actorId, action: 'user.force_ban', entityType: 'user', entityId: targetId });
   }
 
   async unbanUser(targetId: number, actorId: number): Promise<void> {
-    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.status === UserStatus.ACTIVE) throw new BadRequestException('User is not banned');
-    await this.userRepo.update(targetId, { status: UserStatus.ACTIVE, deletedAt: null });
+    await this.prisma.users.update({ where: { id: targetId }, data: { status: UserStatus.ACTIVE, deletedAt: null } });
     await this.auditService.log({ userId: actorId, action: 'user.unban', entityType: 'user', entityId: targetId });
   }
 
   async devDeleteUser(targetId: number, actorId: number): Promise<void> {
-    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot delete yourself');
     if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot delete an admin');
 
-    await this.oauthRepo.delete({ userId: targetId });
+    await this.prisma.oauth_accounts.deleteMany({ where: { userId: targetId } });
 
-    await this.userRepo.update(targetId, {
-      status: UserStatus.DELETED,
-      deletedAt: new Date(),
-      email: `deleted_${targetId}@deleted.invalid`,
+    await this.prisma.users.update({
+      where: { id: targetId },
+      data: {
+        status: UserStatus.DELETED,
+        deletedAt: new Date(),
+        email: `deleted_${targetId}@deleted.invalid`,
+      },
     });
     await this.auditService.log({ userId: actorId, action: 'user.admin_delete', entityType: 'user', entityId: targetId });
   }
 
   async setRole(targetId: number, actorId: number, role: UserRole): Promise<void> {
-    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot change your own role');
     // The dedicated automation account (see AddAutomationRole migration) is the
@@ -299,7 +339,7 @@ export class AdminService {
       throw new ForbiddenException('Cannot promote to admin — set directly in the database');
     }
     const previousRole = target.role;
-    await this.userRepo.update(targetId, { role });
+    await this.prisma.users.update({ where: { id: targetId }, data: { role } });
     await this.auditService.log({
       userId: actorId,
       action: 'user.role_change',
@@ -320,13 +360,13 @@ export class AdminService {
     hasMembership: boolean,
     expiresAt?: string,
   ): Promise<{ hasMembership: boolean; membershipExpiresAt: Date | null }> {
-    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
 
     const membershipExpiresAt = hasMembership
       ? (expiresAt ? new Date(expiresAt) : nextJanuaryFirstEastern())
       : null;
-    await this.userRepo.update(targetId, { hasMembership, membershipExpiresAt });
+    await this.prisma.users.update({ where: { id: targetId }, data: { hasMembership, membershipExpiresAt } });
     await this.auditService.log({
       userId: actorId,
       action: 'user.membership_change',

@@ -1,16 +1,36 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Like, Repository } from 'typeorm';
-import { LocationEntity, ImportSource } from '../../database/entities/location.entity';
-import { LocationPhotoEntity } from '../../database/entities/location-photo.entity';
-import { CityEntity } from '../../database/entities/city.entity';
-import { UserEntity } from '../../database/entities/user.entity';
+import type {
+  Prisma,
+  cities as City,
+  location_photos as LocationPhoto,
+  users as User,
+} from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { ImportSource } from '../../database/enums';
 import { GeocodingService } from './geocoding.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { toPublicUser } from '../../common/utils/public-user.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { AppConfigService } from '../app-config/app-config.service';
+
+// What these reads return: the row plus the relations the responses have
+// always carried. The moderator-only columns stay omitted by PrismaService
+// unless a caller opts back in.
+type LocationRow = Prisma.locationsGetPayload<{
+  include: {
+    city: true;
+    photos: true;
+    createdByUser: true;
+    updatedByUser: true;
+  };
+}>;
+
+// The list reads never loaded the audit-user relations, so they return the
+// narrower shape rather than pretending those fields are present.
+type LocationListRow = Prisma.locationsGetPayload<{
+  include: { city: true; photos: true };
+}>;
 
 export interface LocationQuery {
   cityId?: number;
@@ -59,28 +79,23 @@ export class LocationsService {
   private readonly logger = new Logger(LocationsService.name);
 
   constructor(
-    @InjectRepository(LocationEntity)
-    private readonly locationRepo: Repository<LocationEntity>,
-    @InjectRepository(LocationPhotoEntity)
-    private readonly photoRepo: Repository<LocationPhotoEntity>,
-    @InjectRepository(CityEntity)
-    private readonly cityRepo: Repository<CityEntity>,
+    private readonly prisma: PrismaService,
     private readonly geocodingService: GeocodingService,
     private readonly locationVisibility: LocationVisibilityService,
     private readonly appConfigService: AppConfigService,
   ) {}
 
-  async findAll(query: LocationQuery): Promise<LocationEntity[]> {
-    const where: Record<string, unknown> = { isActive: true };
-    if (query.cityId) where['cityId'] = query.cityId;
-    if (query.search) where['name'] = Like(`%${query.search}%`);
-
-    return this.locationRepo.find({
-      where,
-      relations: ['city', 'photos'],
-      // photos: { id: 'ASC' } keeps photos[0] ("the cover photo" in list
+  async findAll(query: LocationQuery): Promise<LocationListRow[]> {
+    return this.prisma.locations.findMany({
+      where: {
+        isActive: true,
+        ...(query.cityId ? { cityId: query.cityId } : {}),
+        ...(query.search ? { name: { contains: query.search } } : {}),
+      },
+      // photos ordered by id keeps photos[0] ("the cover photo" in list
       // thumbnails) consistent with findOne's ordering below.
-      order: { name: 'ASC', photos: { id: 'ASC' } },
+      include: { city: true, photos: { orderBy: { id: 'asc' } } },
+      orderBy: { name: 'asc' },
     });
   }
 
@@ -90,7 +105,7 @@ export class LocationsService {
   // the address is separately gated by redact()). For privileged viewers the
   // full set is returned; redact() then still nulls address/lat/lng for anyone
   // without earned visibility.
-  async findAllForUser(query: LocationQuery, user: UserEntity | null): Promise<LocationEntity[]> {
+  async findAllForUser(query: LocationQuery, user: User | null): Promise<LocationListRow[]> {
     const locations = await this.findAll(query);
     const visible = this.locationVisibility.isAdminOrMod(user)
       ? locations
@@ -98,130 +113,155 @@ export class LocationsService {
     return Promise.all(visible.map((l) => this.locationVisibility.redact(l, user)));
   }
 
-  async findOneForUser(id: number, user: UserEntity | null): Promise<LocationEntity> {
+  async findOneForUser(id: number, user: User | null): Promise<LocationRow> {
     const location = await this.findOne(id);
     return this.locationVisibility.redact(location, user);
   }
 
-  async findAllArchived(query: LocationQuery): Promise<LocationEntity[]> {
-    const where: Record<string, unknown> = { isActive: false };
-    if (query.cityId) where['cityId'] = query.cityId;
-    if (query.search) where['name'] = Like(`%${query.search}%`);
-
-    return this.locationRepo.find({
-      where,
-      relations: ['city', 'photos'],
-      order: { name: 'ASC', photos: { id: 'ASC' } },
+  async findAllArchived(query: LocationQuery): Promise<LocationListRow[]> {
+    return this.prisma.locations.findMany({
+      where: {
+        isActive: false,
+        ...(query.cityId ? { cityId: query.cityId } : {}),
+        ...(query.search ? { name: { contains: query.search } } : {}),
+      },
+      include: { city: true, photos: { orderBy: { id: 'asc' } } },
+      orderBy: { name: 'asc' },
     });
   }
 
-  async findOne(id: number): Promise<LocationEntity> {
-    const r = await this.locationRepo.findOne({
+  async findOne(id: number): Promise<LocationRow> {
+    const r = await this.prisma.locations.findFirst({
       where: { id, isActive: true },
-      relations: ['city', 'photos', 'createdByUser', 'updatedByUser'],
-      order: { photos: { id: 'ASC' } },
+      include: {
+        city: true,
+        photos: { orderBy: { id: 'asc' } },
+        createdByUser: true,
+        updatedByUser: true,
+      },
     });
     if (!r) throw new NotFoundException('Restaurant not found');
     return Object.assign(r, { createdByUser: toPublicUser(r.createdByUser), updatedByUser: toPublicUser(r.updatedByUser) });
   }
 
-  async findOneWithModFields(id: number): Promise<LocationEntity> {
-    const r = await this.locationRepo
-      .createQueryBuilder('r')
-      .addSelect(['r.moderatorNotes', 'r.contactName', 'r.contactPhone', 'r.contactEmail'])
-      .leftJoinAndSelect('r.city', 'city')
-      .leftJoinAndSelect('r.photos', 'photos')
-      .leftJoinAndSelect('r.createdByUser', 'createdByUser')
-      .leftJoinAndSelect('r.updatedByUser', 'updatedByUser')
-      .where('r.id = :id AND r.isActive = 1', { id })
-      .addOrderBy('photos.id', 'ASC')
-      .getOne();
+  async findOneWithModFields(id: number): Promise<LocationRow> {
+    // The only caller allowed to see the moderator-only columns. They are
+    // hidden by a global omit in PrismaService (standing in for TypeORM's
+    // `select: false`), so this is the one place that opts back in --
+    // the equivalent of the addSelect this replaces.
+    const r = await this.prisma.locations.findFirst({
+      where: { id, isActive: true },
+      omit: {
+        moderatorNotes: false,
+        contactName: false,
+        contactPhone: false,
+        contactEmail: false,
+      },
+      include: {
+        city: true,
+        photos: { orderBy: { id: 'asc' } },
+        createdByUser: true,
+        updatedByUser: true,
+      },
+    });
     if (!r) throw new NotFoundException('Restaurant not found');
     return Object.assign(r, { createdByUser: toPublicUser(r.createdByUser), updatedByUser: toPublicUser(r.updatedByUser) });
   }
 
-  async create(dto: CreateLocationDto, userId?: number): Promise<LocationEntity> {
+  async create(dto: CreateLocationDto, userId?: number): Promise<LocationRow> {
     const coords = await this.geocodingService.geocode(dto.address);
     const isPrivate =
       dto.isPrivate ?? (await this.appConfigService.getSiteSetting('location_privacy_default')) === 'private';
-    const location = this.locationRepo.create({
-      ...dto,
-      isPrivate,
-      lat: coords?.lat ?? null,
-      lng: coords?.lng ?? null,
-      createdById: userId ?? null,
-      updatedById: userId ?? null,
+    const saved = await this.prisma.locations.create({
+      data: {
+        ...dto,
+        isPrivate,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+        createdById: userId ?? null,
+        updatedById: userId ?? null,
+      },
     });
-    const saved = await this.locationRepo.save(location);
     return this.findOne(saved.id);
   }
 
-  async update(id: number, dto: UpdateLocationDto | Record<string, unknown>, userId?: number): Promise<LocationEntity> {
+  async update(id: number, dto: UpdateLocationDto | Record<string, unknown>, userId?: number): Promise<LocationRow> {
     const location = await this.findOne(id);
     const addressChanged = (dto as UpdateLocationDto).address && (dto as UpdateLocationDto).address !== location.address;
 
-    Object.assign(location, dto);
+    // A patch built from the DTO, rather than the loaded row mutated and saved
+    // back. findOne returns the row with its relations attached, and handing
+    // that whole object to Prisma would try to write the relations too.
+    // Unchecked variant: it accepts the scalar foreign keys (updatedById)
+    // directly, where the checked input expects nested relation connects.
+    const data: Prisma.locationsUncheckedUpdateInput = {
+      ...(dto as Prisma.locationsUncheckedUpdateInput),
+    };
 
-    if (userId) location.updatedById = userId;
+    if (userId) data.updatedById = userId;
 
     if (addressChanged) {
       const coords = await this.geocodingService.geocode((dto as UpdateLocationDto).address!);
-      location.lat = coords?.lat ?? null;
-      location.lng = coords?.lng ?? null;
+      data.lat = coords?.lat ?? null;
+      data.lng = coords?.lng ?? null;
     }
 
-    await this.locationRepo.save(location);
+    await this.prisma.locations.update({ where: { id }, data });
     return this.findOne(id);
   }
 
   async remove(id: number): Promise<void> {
-    await this.locationRepo.update(id, { isActive: false });
+    await this.prisma.locations.update({ where: { id }, data: { isActive: false } });
   }
 
-  async restore(id: number): Promise<LocationEntity> {
-    const location = await this.locationRepo.findOne({ where: { id, isActive: false } });
+  async restore(id: number): Promise<LocationRow> {
+    const location = await this.prisma.locations.findFirst({ where: { id, isActive: false } });
     if (!location) throw new NotFoundException('Archived restaurant not found');
-    location.isActive = true;
-    await this.locationRepo.save(location);
+    await this.prisma.locations.update({ where: { id }, data: { isActive: true } });
     return this.findOne(id);
   }
 
   async addPhoto(
     locationId: number,
     file: Express.Multer.File,
-    uploader: UserEntity,
-  ): Promise<LocationPhotoEntity> {
+    uploader: User,
+  ): Promise<LocationPhoto> {
     await this.findOne(locationId);
-    const maxOrder = await this.photoRepo
-      .createQueryBuilder('p')
-      .select('MAX(p.sort_order)', 'max')
-      .where('p.location_id = :locationId', { locationId })
-      .getRawOne<{ max: number | null }>();
+    const maxOrder = await this.prisma.location_photos.aggregate({
+      where: { locationId },
+      _max: { sortOrder: true },
+    });
 
     const url = `/api/uploads/locations/${file.filename}`;
-    const photo = this.photoRepo.create({
-      locationId,
-      filePath: url,
-      fileName: file.filename,
-      mimeType: file.mimetype,
-      sortOrder: (maxOrder?.max ?? -1) + 1,
-      uploadedBy: uploader.id,
+    return this.prisma.location_photos.create({
+      data: {
+        locationId,
+        filePath: url,
+        fileName: file.filename,
+        mimeType: file.mimetype,
+        sortOrder: (maxOrder._max.sortOrder ?? -1) + 1,
+        uploadedBy: uploader.id,
+      },
     });
-    return this.photoRepo.save(photo);
   }
 
   async removePhoto(locationId: number, photoId: number): Promise<void> {
-    const photo = await this.photoRepo.findOne({
+    const photo = await this.prisma.location_photos.findFirst({
       where: { id: photoId, locationId },
     });
     if (!photo) throw new NotFoundException('Photo not found');
-    await this.photoRepo.remove(photo);
+    await this.prisma.location_photos.delete({ where: { id: photo.id } });
   }
 
   async reorderPhotos(locationId: number, orderedIds: number[]): Promise<void> {
-    await Promise.all(
+    // updateMany, not update: locationId is an ownership check, so a photo id
+    // belonging to a different location must not be reordered.
+    await this.prisma.$transaction(
       orderedIds.map((id, index) =>
-        this.photoRepo.update({ id, locationId }, { sortOrder: index }),
+        this.prisma.location_photos.updateMany({
+          where: { id, locationId },
+          data: { sortOrder: index },
+        }),
       ),
     );
   }
@@ -243,9 +283,11 @@ export class LocationsService {
       );
     }
 
-    const cities = await this.cityRepo.find({ where: { isActive: true } });
+    const cities = await this.prisma.cities.findMany({ where: { isActive: true } });
 
-    const existing = await this.locationRepo.find({ select: ['name', 'address'] });
+    const existing = await this.prisma.locations.findMany({
+      select: { name: true, address: true },
+    });
     const existingNames = new Set(existing.map((r) => r.name.toLowerCase()));
     const existingAddresses = new Set(
       existing.filter((r) => r.address).map((r) => r.address.toLowerCase().trim()),
@@ -310,18 +352,19 @@ export class LocationsService {
       const description = event.description?.trim().slice(0, 2000) || null;
 
       try {
-        const location = this.locationRepo.create({
-          name,
-          address,
-          cityId: resolvedCityId,
-          description,
-          websiteUrl,
-          lat,
-          lng,
-          importedFrom: ImportSource.FACEBOOK_IMPORT,
-          isActive: true,
+        await this.prisma.locations.create({
+          data: {
+            name,
+            address,
+            cityId: resolvedCityId,
+            description,
+            websiteUrl,
+            lat,
+            lng,
+            importedFrom: ImportSource.FACEBOOK_IMPORT,
+            isActive: true,
+          },
         });
-        await this.locationRepo.save(location);
         existingNames.add(name.toLowerCase());
         existingAddresses.add(address.toLowerCase().trim());
         details.push({ name, status: 'inserted' });
@@ -376,7 +419,7 @@ export class LocationsService {
     return null;
   }
 
-  private detectCity(address: string, cities: CityEntity[], defaultCityId: number): number {
+  private detectCity(address: string, cities: City[], defaultCityId: number): number {
     const lower = address.toLowerCase();
     for (const city of cities) {
       if (lower.includes(city.name.toLowerCase())) return city.id;

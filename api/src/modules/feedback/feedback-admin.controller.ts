@@ -15,7 +15,8 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('admin/feedback')
 export class FeedbackAdminController {
@@ -81,7 +82,7 @@ export class FeedbackAdminController {
   addAdminNote(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateNoteDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.feedbackService.addNote(id, user.id, dto, true);
   }

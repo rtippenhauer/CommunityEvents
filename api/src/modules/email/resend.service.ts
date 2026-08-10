@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
+import { PrismaService } from '../../database/prisma/prisma.service';
 
 export interface ResendSendPayload {
   toEmail: string;
@@ -18,12 +16,11 @@ export class ResendService {
 
   constructor(
     private readonly config: ConfigService,
-    @InjectRepository(EmailProviderConfigEntity)
-    private readonly configRepo: Repository<EmailProviderConfigEntity>,
+    private readonly prisma: PrismaService,
   ) {}
 
   private async getEffectiveConfig(): Promise<{ apiKey: string; fromEmail: string; fromName: string }> {
-    const db = await this.configRepo.findOne({ where: { id: 1 } });
+    const db = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
     return {
       apiKey: db?.resendApiKey || this.config.get<string>('RESEND_API_KEY', ''),
       fromEmail: db?.resendFromEmail || this.config.get<string>('RESEND_FROM_EMAIL', 'rob@dinnerbears.com'),

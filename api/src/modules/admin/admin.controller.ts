@@ -12,20 +12,19 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { AdminService, AuditLogFilter } from './admin.service';
 import { EmailService } from '../email/email.service';
 import { EmailDispatcherService } from '../email/email-dispatcher.service';
-import { EmailProviderConfigEntity } from '../../database/entities/email-provider-config.entity';
+import { PrismaService } from '../../database/prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
 import { SetRoleDto } from './dto/set-role.dto';
 import { SetMembershipDto } from './dto/set-membership.dto';
 import { UpdateEmailConfigDto } from './dto/update-email-config.dto';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -34,8 +33,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly emailService: EmailService,
     private readonly emailDispatcher: EmailDispatcherService,
-    @InjectRepository(EmailProviderConfigEntity)
-    private readonly providerConfigRepo: Repository<EmailProviderConfigEntity>,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('users')
@@ -47,21 +45,21 @@ export class AdminController {
   @Post('users/:id/ban')
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   @HttpCode(200)
-  ban(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: UserEntity) {
+  ban(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: User) {
     return this.adminService.banUser(id, actor.id, actor.role);
   }
 
   @Post('users/:id/ban/force')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
-  forceBan(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: UserEntity) {
+  forceBan(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: User) {
     return this.adminService.forceBanUser(id, actor.id);
   }
 
   @Post('users/:id/unban')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
-  unban(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: UserEntity) {
+  unban(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: User) {
     return this.adminService.unbanUser(id, actor.id);
   }
 
@@ -70,7 +68,7 @@ export class AdminController {
   @HttpCode(204)
   devDelete(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() actor: UserEntity,
+    @CurrentUser() actor: User,
   ) {
     return this.adminService.devDeleteUser(id, actor.id);
   }
@@ -82,7 +80,7 @@ export class AdminController {
   setRole(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: SetRoleDto,
-    @CurrentUser() actor: UserEntity,
+    @CurrentUser() actor: User,
   ) {
     return this.adminService.setRole(id, actor.id, body.role);
   }
@@ -93,7 +91,7 @@ export class AdminController {
   setMembership(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: SetMembershipDto,
-    @CurrentUser() actor: UserEntity,
+    @CurrentUser() actor: User,
   ) {
     return this.adminService.setMembership(id, actor.id, body.hasMembership, body.membershipExpiresAt);
   }
@@ -108,14 +106,14 @@ export class AdminController {
   @Post('users/:id/suppress')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
-  suppressEmail(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: UserEntity) {
+  suppressEmail(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: User) {
     return this.adminService.suppressUserEmail(id, actor.id);
   }
 
   @Delete('users/:id/suppress')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
-  liftSuppression(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: UserEntity) {
+  liftSuppression(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: User) {
     return this.adminService.liftEmailSuppression(id, actor.id);
   }
 
@@ -159,16 +157,17 @@ export class AdminController {
   @Get('email/config')
   @Roles(UserRole.ADMIN)
   async getEmailConfig() {
-    return this.providerConfigRepo.findOne({ where: { id: 1 } });
+    return this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
   }
 
   @Patch('email/config')
   @Roles(UserRole.ADMIN)
   async updateEmailConfig(@Body() body: UpdateEmailConfigDto) {
-    const config = await this.providerConfigRepo.findOne({ where: { id: 1 } });
+    const config = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
     if (!config) return;
-    Object.assign(config, body);
-    return this.providerConfigRepo.save(config);
+    // Patch from the DTO rather than mutating the loaded row and saving it
+    // back, so only the fields the request actually sent are written.
+    return this.prisma.email_provider_config.update({ where: { id: 1 }, data: body });
   }
 
   @Post('email/flush')

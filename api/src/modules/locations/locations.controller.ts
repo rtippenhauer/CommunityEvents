@@ -31,7 +31,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import { UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -118,7 +119,7 @@ export class LocationsController {
   findAll(
     @Query('cityId') cityId?: string,
     @Query('search') search?: string,
-    @CurrentUser() user?: UserEntity,
+    @CurrentUser() user?: User,
   ) {
     return this.locationsService.findAllForUser(
       {
@@ -132,7 +133,7 @@ export class LocationsController {
   @Get('rating-queue')
   @UseGuards(JwtAuthGuard)
   @RequireFeature('feature_ratings')
-  getRatingQueue(@CurrentUser() user: UserEntity) {
+  getRatingQueue(@CurrentUser() user: User) {
     return this.ratingsService.getRatingQueue(user.id);
   }
 
@@ -150,7 +151,7 @@ export class LocationsController {
   @Get(':id')
   findOne(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     const isModOrAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
     return isModOrAdmin
@@ -161,7 +162,7 @@ export class LocationsController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
-  create(@Body() dto: CreateLocationDto, @CurrentUser() user: UserEntity) {
+  create(@Body() dto: CreateLocationDto, @CurrentUser() user: User) {
     return this.locationsService.create(dto, user.id);
   }
 
@@ -171,7 +172,7 @@ export class LocationsController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateLocationDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.locationsService.update(id, dto, user.id);
   }
@@ -203,7 +204,7 @@ export class LocationsController {
   addPhoto(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.locationsService.addPhoto(id, file, user);
   }
@@ -231,7 +232,7 @@ export class LocationsController {
   @Roles(UserRole.ADMIN)
   async enrich(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     const location = await this.locationsService.findOne(id);
     const enrichResult = await this.enrichmentService.enrich(location, user.id);
@@ -245,7 +246,7 @@ export class LocationsController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async enrichBulk(@CurrentUser() user: UserEntity) {
+  async enrichBulk(@CurrentUser() user: User) {
     const locations = await this.locationsService.findAll({});
     void this.enrichmentService.bulkEnrich(locations, user.id);
     return { started: true, total: locations.length };
@@ -257,7 +258,7 @@ export class LocationsController {
   @RequireFeature('feature_ratings')
   getRatings(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.ratingsService.getRatings(id, user);
   }
@@ -267,7 +268,7 @@ export class LocationsController {
   submitRating(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateRatingDto,
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
   ) {
     return this.ratingsService.submitRating(id, user, dto);
   }

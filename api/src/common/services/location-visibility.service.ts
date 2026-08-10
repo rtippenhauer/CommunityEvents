@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { EventRsvpEntity, RsvpStatus } from '../../database/entities/event-rsvp.entity';
-import { UserEntity, UserRole } from '../../database/entities/user.entity';
+import type { users as User } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { RsvpStatus, UserRole } from '../../database/enums';
 
 export interface PrivateLocationLike {
   id: number;
@@ -16,12 +15,9 @@ export interface PrivateLocationLike {
 // or not-yet-RSVP'd viewers, who simply never satisfy either condition.
 @Injectable()
 export class LocationVisibilityService {
-  constructor(
-    @InjectRepository(EventRsvpEntity)
-    private readonly rsvpRepo: Repository<EventRsvpEntity>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  isAdminOrMod(user: UserEntity | null | undefined): boolean {
+  isAdminOrMod(user: User | null | undefined): boolean {
     return user?.role === UserRole.ADMIN || user?.role === UserRole.MODERATOR;
   }
 
@@ -43,26 +39,23 @@ export class LocationVisibilityService {
   // Going to ANY event at this location" (the standalone Locations pages).
   async canViewAddress(
     location: PrivateLocationLike,
-    user: UserEntity | null | undefined,
+    user: User | null | undefined,
     eventId?: number,
   ): Promise<boolean> {
     if (!location.isPrivate) return true;
     if (this.isAdminOrMod(user)) return true;
     if (!user) return false;
 
-    const qb = this.rsvpRepo
-      .createQueryBuilder('rsvp')
-      .innerJoin('rsvp.event', 'e')
-      .where('rsvp.userId = :userId', { userId: user.id })
-      .andWhere('rsvp.status = :status', { status: RsvpStatus.GOING });
-
-    if (eventId) {
-      qb.andWhere('e.id = :eventId', { eventId });
-    } else {
-      qb.andWhere('e.locationId = :locationId', { locationId: location.id });
-    }
-
-    const row = await qb.select('rsvp.id').limit(1).getRawOne<{ rsvp_id: number }>();
+    // The inner join on events becomes a nested relation filter: either this
+    // specific event, or any event at this location.
+    const row = await this.prisma.event_rsvps.findFirst({
+      where: {
+        userId: user.id,
+        status: RsvpStatus.GOING,
+        event: eventId ? { id: eventId } : { locationId: location.id },
+      },
+      select: { id: true },
+    });
     return !!row;
   }
 
@@ -70,7 +63,7 @@ export class LocationVisibilityService {
   // never mutates the entity/object passed in.
   async redact<T extends { address: unknown; lat: unknown; lng: unknown }>(
     location: T & PrivateLocationLike,
-    user: UserEntity | null | undefined,
+    user: User | null | undefined,
     eventId?: number,
   ): Promise<T> {
     const visible = await this.canViewAddress(location, user, eventId);
@@ -88,7 +81,7 @@ export class LocationVisibilityService {
   >(
     event: T,
     location: PrivateLocationLike | null | undefined,
-    user: UserEntity | null | undefined,
+    user: User | null | undefined,
     eventId?: number,
   ): Promise<T> {
     if (!location) return event;

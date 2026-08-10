@@ -1,20 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { UserEntity, UserStatus } from '../../database/entities/user.entity';
-import { EventEntity, EventStatus } from '../../database/entities/event.entity';
-import { LocationEntity } from '../../database/entities/location.entity';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { EventStatus, UserStatus } from '../../database/enums';
 
 @Injectable()
 export class StatsService {
-  constructor(
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
-    @InjectRepository(EventEntity)
-    private readonly eventRepo: Repository<EventEntity>,
-    @InjectRepository(LocationEntity)
-    private readonly locationRepo: Repository<LocationEntity>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getPublicStats(): Promise<{
     memberCount: number;
@@ -22,9 +12,9 @@ export class StatsService {
     locationCount: number;
   }> {
     const [memberCount, dinnerCount, locationCount] = await Promise.all([
-      this.userRepo.count({ where: { status: UserStatus.ACTIVE } }),
-      this.eventRepo.count({ where: { status: EventStatus.PUBLISHED } }),
-      this.locationRepo.count({ where: { isActive: true } }),
+      this.prisma.users.count({ where: { status: UserStatus.ACTIVE } }),
+      this.prisma.events.count({ where: { status: EventStatus.PUBLISHED } }),
+      this.prisma.locations.count({ where: { isActive: true } }),
     ]);
     return { memberCount, dinnerCount, locationCount };
   }

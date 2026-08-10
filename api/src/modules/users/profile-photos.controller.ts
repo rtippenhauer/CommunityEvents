@@ -5,7 +5,7 @@ import { basename, join } from 'path';
 import type { Response } from 'express';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserEntity } from '../../database/entities/user.entity';
+import type { users as User } from '@prisma/client';
 
 // Unlike location photos, achievement icons, and custom icons (all served as
 // static assets — see main.ts), uploaded profile photos are streamed through
@@ -18,7 +18,7 @@ export class ProfilePhotosController {
   @UseGuards(OptionalJwtAuthGuard)
   getPhoto(
     @Param('filename') filename: string,
-    @CurrentUser() user: UserEntity | null,
+    @CurrentUser() user: User | null,
     @Res() res: Response,
   ): void {
     if (!user) throw new UnauthorizedException();

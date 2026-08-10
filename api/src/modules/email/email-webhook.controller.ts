@@ -1,12 +1,9 @@
 import { Body, Controller, Logger, Post, Query, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { EmailQueueEntity } from '../../database/entities/email-queue.entity';
-import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { EmailStatus, SuppressionReason } from '../../database/enums';
 import { EmailService } from './email.service';
-import { SuppressionReason } from '../../database/entities/email-suppression.entity';
 
 interface BrevoWebhookEvent {
   event: string;
@@ -23,10 +20,7 @@ export class EmailWebhookController {
   private readonly logger = new Logger(EmailWebhookController.name);
 
   constructor(
-    @InjectRepository(EmailQueueEntity)
-    private readonly queueRepo: Repository<EmailQueueEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
+    private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
   ) {}
@@ -54,36 +48,39 @@ export class EmailWebhookController {
   private async handleEvent(evt: BrevoWebhookEvent): Promise<void> {
     this.logger.debug(`Brevo webhook: ${evt.event} for ${evt.email}`);
 
-    const user = await this.userRepo.findOne({ where: { email: evt.email.toLowerCase() } });
+    const user = await this.prisma.users.findUnique({
+      where: { email: evt.email.toLowerCase() },
+    });
+
+    // The entity was mutated then saved; with Prisma each branch issues the
+    // update directly. Same single write per event as before.
+    const setEmailStatus = (emailStatus: EmailStatus) =>
+      this.prisma.users.update({ where: { id: user!.id }, data: { emailStatus } });
 
     switch (evt.event) {
       case 'delivered':
         if (user && user.emailStatus === EmailStatus.PENDING) {
-          user.emailStatus = EmailStatus.ACTIVE;
-          await this.userRepo.save(user);
+          await setEmailStatus(EmailStatus.ACTIVE);
         }
         break;
 
       case 'hard_bounce':
         if (user) {
-          user.emailStatus = EmailStatus.BOUNCED;
-          await this.userRepo.save(user);
+          await setEmailStatus(EmailStatus.BOUNCED);
         }
         await this.emailService.suppress(evt.email, SuppressionReason.BOUNCED);
         break;
 
       case 'unsubscribed':
         if (user) {
-          user.emailStatus = EmailStatus.UNSUBSCRIBED;
-          await this.userRepo.save(user);
+          await setEmailStatus(EmailStatus.UNSUBSCRIBED);
         }
         await this.emailService.suppress(evt.email, SuppressionReason.UNSUBSCRIBED);
         break;
 
       case 'spam':
         if (user) {
-          user.emailStatus = EmailStatus.COMPLAINED;
-          await this.userRepo.save(user);
+          await setEmailStatus(EmailStatus.COMPLAINED);
         }
         await this.emailService.suppress(evt.email, SuppressionReason.COMPLAINED);
         break;

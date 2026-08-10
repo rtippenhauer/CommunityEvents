@@ -31,9 +31,9 @@ import { UpdateNotificationPrefsDto } from './dto/update-notification-prefs.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
-import { UserEntity, EmailStatus, UserRole } from '../../database/entities/user.entity';
 import { EmailService } from '../email/email.service';
-import { SuppressionReason } from '../../database/entities/email-suppression.entity';
+import { EmailStatus, SuppressionReason, UserRole } from '../../database/enums';
+import type { users as User } from '@prisma/client';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -47,14 +47,14 @@ export class UsersController {
   ) {}
 
   @Get('me')
-  getProfile(@CurrentUser() user: UserEntity) {
+  getProfile(@CurrentUser() user: User) {
     return this.usersService.findById(user.id);
   }
 
   @Delete('me')
   @HttpCode(204)
   async deleteSelf(
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
     @Body() body: { confirm?: string },
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
@@ -67,7 +67,7 @@ export class UsersController {
 
   @Get('members')
   @RequireFeature('feature_members')
-  getMembers(@CurrentUser() user: UserEntity, @Query('sort') sort?: string) {
+  getMembers(@CurrentUser() user: User, @Query('sort') sort?: string) {
     const sortParam = sort === 'alpha' ? 'alpha' : 'newest';
     return this.usersService.findMembers(user.role, sortParam);
   }
@@ -75,13 +75,13 @@ export class UsersController {
   @Get(':id')
   getMemberProfile(
     @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() viewer: UserEntity,
+    @CurrentUser() viewer: User,
   ) {
     return this.usersService.findMemberProfile(id, viewer.id, viewer.role);
   }
 
   @Patch('me')
-  updateProfile(@CurrentUser() user: UserEntity, @Body() dto: UpdateProfileDto) {
+  updateProfile(@CurrentUser() user: User, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(user, dto);
   }
 
@@ -111,7 +111,7 @@ export class UsersController {
     }),
   )
   async uploadPhoto(
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ url: string }> {
     const url = `/api/v1/uploads/profiles/${file.filename}`;
@@ -121,31 +121,31 @@ export class UsersController {
 
   @Post('me/avatar')
   selectAvatar(
-    @CurrentUser() user: UserEntity,
+    @CurrentUser() user: User,
     @Body() dto: SetAvatarDto,
   ): Promise<{ url: string }> {
     return this.usersService.setAvatar(user.id, dto.avatarPath);
   }
 
   @Get('me/notification-prefs')
-  getNotificationPrefs(@CurrentUser() user: UserEntity) {
+  getNotificationPrefs(@CurrentUser() user: User) {
     return this.emailService.getNotificationPrefs(user.id);
   }
 
   @Patch('me/notification-prefs')
-  updateNotificationPrefs(@CurrentUser() user: UserEntity, @Body() dto: UpdateNotificationPrefsDto) {
+  updateNotificationPrefs(@CurrentUser() user: User, @Body() dto: UpdateNotificationPrefsDto) {
     return this.emailService.updateNotificationPrefs(user.id, dto);
   }
 
   @Post('me/unsubscribe')
-  async unsubscribe(@CurrentUser() user: UserEntity): Promise<{ message: string }> {
+  async unsubscribe(@CurrentUser() user: User): Promise<{ message: string }> {
     await this.usersService.updateEmailStatus(user.id, EmailStatus.UNSUBSCRIBED);
     await this.emailService.suppress(user.email, SuppressionReason.UNSUBSCRIBED);
     return { message: 'You have been unsubscribed from DinnerBears emails.' };
   }
 
   @Post('me/resubscribe')
-  async resubscribe(@CurrentUser() user: UserEntity): Promise<{ message: string }> {
+  async resubscribe(@CurrentUser() user: User): Promise<{ message: string }> {
     if (user.emailStatus === EmailStatus.COMPLAINED) {
       return { message: 'Spam complaints cannot be self-reversed. Please contact us.' };
     }

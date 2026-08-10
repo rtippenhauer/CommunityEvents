@@ -1,13 +1,36 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+
 import { writeFile } from 'fs/promises';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import Anthropic from '@anthropic-ai/sdk';
-import { LocationEntity } from '../../database/entities/location.entity';
-import { LocationPhotoEntity } from '../../database/entities/location-photo.entity';
+import type { Prisma } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import type { location_photos as LocationPhoto } from '@prisma/client';
+
+/**
+ * Structural on purpose. Enrichment is handed locations by LocationsService
+ * (Prisma rows, with city and photos attached) and only reads a handful of
+ * fields off them, so naming those keeps it independent of the row shape --
+ * including the moderator-only columns PrismaService omits by default, which
+ * enrichment never needs.
+ */
+export interface EnrichableLocation {
+  id: number;
+  name: string;
+  address: string;
+  phone: string | null;
+  websiteUrl: string | null;
+  description: string | null;
+  isResidence: boolean;
+  enrichedAt: Date | null;
+  city: { name: string } | null;
+  // Always loaded by the callers; enrichment counts existing photos before
+  // deciding how many to fetch, so an absent array would silently look like
+  // "no photos yet" and re-download the lot.
+  photos: { id: number }[];
+}
 
 export interface EnrichResult {
   name: string | null;
@@ -103,10 +126,7 @@ export class EnrichmentService {
 
   constructor(
     private readonly configService: ConfigService,
-    @InjectRepository(LocationEntity)
-    private readonly locationRepo: Repository<LocationEntity>,
-    @InjectRepository(LocationPhotoEntity)
-    private readonly photoRepo: Repository<LocationPhotoEntity>,
+    private readonly prisma: PrismaService,
   ) {
     this.googleKey = configService.get<string>('GOOGLE_PLACES_API_KEY');
     const anthropicKey = configService.get<string>('ANTHROPIC_API_KEY');
@@ -116,7 +136,7 @@ export class EnrichmentService {
   }
 
   async bulkEnrich(
-    locations: LocationEntity[],
+    locations: EnrichableLocation[],
     uploaderId: number,
     onProgress?: (done: number, total: number, name: string) => void,
   ): Promise<{ enriched: number; skipped: number; errors: number }> {
@@ -152,7 +172,7 @@ export class EnrichmentService {
     return { enriched, skipped, errors };
   }
 
-  async enrich(location: LocationEntity, uploaderId: number): Promise<EnrichResult> {
+  async enrich(location: EnrichableLocation, uploaderId: number): Promise<EnrichResult> {
     const result: EnrichResult = {
       name: null,
       description: null,
@@ -176,7 +196,10 @@ export class EnrichmentService {
           uploaderId,
         );
       }
-      await this.locationRepo.update(location.id, { enrichedAt: new Date() });
+      await this.prisma.locations.update({
+        where: { id: location.id },
+        data: { enrichedAt: new Date() },
+      });
       return result;
     }
 
@@ -248,7 +271,7 @@ export class EnrichmentService {
     }
 
     // Persist updates directly
-    const updates: Partial<LocationEntity> = { enrichedAt: new Date() };
+    const updates: Prisma.locationsUncheckedUpdateInput = { enrichedAt: new Date() };
     if (result.name) updates.name = result.name;
     if (result.description) updates.description = result.description;
     if (result.phone) updates.phone = result.phone;
@@ -260,12 +283,12 @@ export class EnrichmentService {
         updates.lng = placeData.geometry.location.lng;
       }
     }
-    await this.locationRepo.update(location.id, updates);
+    await this.prisma.locations.update({ where: { id: location.id }, data: updates });
 
     return result;
   }
 
-  async diagnose(location: LocationEntity): Promise<EnrichDiagnosis> {
+  async diagnose(location: EnrichableLocation): Promise<EnrichDiagnosis> {
     const diagnosis: EnrichDiagnosis = {
       keys: {
         googlePlaces: !!this.googleKey,
@@ -484,15 +507,16 @@ export class EnrichmentService {
         mkdirSync(this.uploadPath, { recursive: true });
         await writeFile(join(this.uploadPath, filename), buffer);
 
-        const photo = this.photoRepo.create({
-          locationId,
-          filePath: `/api/uploads/locations/${filename}`,
-          fileName: filename,
-          mimeType: 'image/jpeg',
-          sortOrder: startSortOrder + i,
-          uploadedBy: uploaderId,
+        await this.prisma.location_photos.create({
+          data: {
+            locationId,
+            filePath: `/api/uploads/locations/${filename}`,
+            fileName: filename,
+            mimeType: 'image/jpeg',
+            sortOrder: startSortOrder + i,
+            uploadedBy: uploaderId,
+          },
         });
-        await this.photoRepo.save(photo);
         added++;
       } catch (err) {
         this.logger.error(`[Enrich] Places photo ${i + 1} download failed`, err);
@@ -538,15 +562,16 @@ export class EnrichmentService {
       mkdirSync(this.uploadPath, { recursive: true });
       await writeFile(join(this.uploadPath, filename), buffer);
 
-      const photo = this.photoRepo.create({
-        locationId,
-        filePath: `/api/uploads/locations/${filename}`,
-        fileName: filename,
-        mimeType: 'image/jpeg',
-        sortOrder: 0,
-        uploadedBy: uploaderId,
+      await this.prisma.location_photos.create({
+        data: {
+          locationId,
+          filePath: `/api/uploads/locations/${filename}`,
+          fileName: filename,
+          mimeType: 'image/jpeg',
+          sortOrder: 0,
+          uploadedBy: uploaderId,
+        },
       });
-      await this.photoRepo.save(photo);
       return true;
     } catch (err) {
       this.logger.error('[Enrich] Street View photo failed', err);

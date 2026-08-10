@@ -10,12 +10,21 @@ if [ -f /app/appdata/.env ]; then
   set +a
 fi
 
-# Run database migrations before starting the app
+# Run database migrations before starting the app.
+#
+# Prisma owns the schema (v2-1). `migrate deploy` only applies migrations that
+# have not been applied yet and never generates or edits one, which is what
+# makes it safe to run unattended on every container start.
+#
+# Reference data for a brand-new database is NOT seeded here. Seeding is a
+# one-time step for a fresh install, run explicitly alongside bootstrap.js:
+#   docker exec <container> node /app/node_modules/prisma/build/index.js db seed
+# Running it on every boot would rewrite config rows an operator had since
+# edited through the admin UI, on every restart.
 echo "[entrypoint] Running database migrations..."
-node /app/node_modules/typeorm/cli.js migration:run \
-  -d /app/dist/database/data-source.js \
+node /app/node_modules/prisma/build/index.js migrate deploy \
   && echo "[entrypoint] Migrations complete." \
-  || echo "[entrypoint] WARNING: Migration failed — check logs."
+  || echo "[entrypoint] WARNING: Migration failed - check logs."
 
 # Migrations run as root and may create new upload subdirectories (e.g. category
 # folders) — reopen permissions afterward so the unprivileged nestjs user (which

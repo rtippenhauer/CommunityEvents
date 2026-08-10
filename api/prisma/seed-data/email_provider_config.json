@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "brevoEnabled": true,
+    "resendOverflowEnabled": false,
+    "brevoDailyLimit": 300,
+    "resendDailyLimit": 500,
+    "brevoSentToday": 0,
+    "resendSentToday": 0,
+    "brevoApiKey": null,
+    "brevoFromEmail": null,
+    "brevoFromName": null,
+    "resendApiKey": null,
+    "resendFromEmail": null,
+    "resendFromName": null,
+    "tmplInvite": null,
+    "tmplSecurityAlert": null,
+    "tmplEventPublished": null,
+    "tmplRsvpConfirmation": null,
+    "tmplEventReminder": null,
+    "tmplAccountDeletion": null,
+    "tmplReengagement60": null,
+    "tmplReengagement90": null,
+    "tmplGuestRsvpConfirmation": null,
+    "tmplEmailVerification": null,
+    "tmplPasswordReset": null,
+    "tmplProviderDisconnected": null,
+    "tmplAccountDeleted": null,
+    "lastResetDate": "2026-08-09T00:00:00.000Z",
+    "updatedAt": "2026-08-09T16:29:51.000Z"
+  }
+]

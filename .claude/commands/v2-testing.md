@@ -28,8 +28,9 @@ are `/v2-done`'s job, and they only run once v2-stage looks right.
 2. Run the project's current test suite before it reaches a container.
    **Check `api/package.json` and `frontend/package.json` scripts rather
    than assuming — the toolchain is mid-migration.** Through v2-1 (the
-   Prisma swap), `api/` still runs on Jest/TypeORM and `scripts/test-db-up.sh`
-   still applies; from v2-1 onward, expect Vitest + Supertest per
+   Prisma swap), `api/` still runs on Jest and `scripts/test-db-up.sh`
+   still applies; from v2-2 (the testing stack swap) onward, expect Vitest
+   + Supertest and Playwright per
    `docs/REQ-TENANT-01.md`'s testing requirements, and the exact commands
    here will need updating once that lands — don't trust this file blindly,
    confirm against what's actually wired up.

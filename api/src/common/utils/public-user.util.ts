@@ -1,4 +1,14 @@
-import { UserEntity } from '../../database/entities/user.entity';
+/**
+ * Structural, not tied to either ORM's user type. During the Prisma swap both
+ * a TypeORM UserEntity and a Prisma `users` row get passed through here, and
+ * they are not assignable to one another (their enum-typed columns differ), so
+ * naming the three fields actually read keeps both callers working.
+ */
+interface UserLike {
+  id: number;
+  fullName: string;
+  profilePhotoPath: string | null;
+}
 
 export interface PublicUser {
   id: number;
@@ -7,12 +17,12 @@ export interface PublicUser {
 }
 
 /**
- * Reduces a raw UserEntity (which has no @Exclude decorators and would
+ * Reduces a raw user row (which has no @Exclude decorators and would
  * otherwise serialize password_hash, calendar_token, verification/reset
  * tokens, email, etc. straight into the HTTP response) down to the fields
  * safe to show to any other caller.
  */
-export function toPublicUser(user: UserEntity | null | undefined): PublicUser | null {
+export function toPublicUser(user: UserLike | null | undefined): PublicUser | null {
   if (!user) return null;
   return { id: user.id, fullName: user.fullName, profilePhotoPath: user.profilePhotoPath };
 }
@@ -25,7 +35,7 @@ export function toPublicUser(user: UserEntity | null | undefined): PublicUser | 
  * show: the static bear set (/avatars/*) and admin-uploaded ones
  * (/api/uploads/avatars/*) are both served without an auth check.
  */
-export function toAnonSafeUser(user: UserEntity | null | undefined): PublicUser | null {
+export function toAnonSafeUser(user: UserLike | null | undefined): PublicUser | null {
   const pub = toPublicUser(user);
   if (!pub) return null;
   const path = pub.profilePhotoPath;
@@ -41,7 +51,7 @@ export function toAnonSafeUser(user: UserEntity | null | undefined): PublicUser 
  * or the calendar feed token (fetched separately by the calendar settings
  * endpoint when actually needed).
  */
-export function stripUserSecrets<T extends UserEntity>(user: T): Omit<T, 'passwordHash' | 'emailVerificationToken' | 'passwordResetToken' | 'calendarToken'> {
+export function stripUserSecrets<T extends object>(user: T): Omit<T, 'passwordHash' | 'emailVerificationToken' | 'passwordResetToken' | 'calendarToken'> {
   const clone = { ...user };
   delete (clone as any).passwordHash;
   delete (clone as any).emailVerificationToken;

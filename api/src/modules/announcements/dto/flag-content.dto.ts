@@ -1,5 +1,5 @@
 import { IsEnum, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
-import { FlagContentType } from '../../../database/entities/content-flag.entity';
+import { FlagContentType } from '../../../database/enums';
 
 export class FlagContentDto {
   @IsEnum(FlagContentType)

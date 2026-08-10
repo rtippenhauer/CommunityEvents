@@ -1,37 +1,33 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
-import { CustomIconEntity } from '../../database/entities/custom-icon.entity';
-import { AchievementEntity } from '../../database/entities/achievement.entity';
+import type { custom_icons as CustomIcon } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
 
-export interface CustomIconWithUsage extends CustomIconEntity {
+export interface CustomIconWithUsage extends CustomIcon {
   usageCount: number;
 }
 
 @Injectable()
 export class CustomIconsService {
-  constructor(
-    @InjectRepository(CustomIconEntity)
-    private readonly customIconRepo: Repository<CustomIconEntity>,
-    @InjectRepository(AchievementEntity)
-    private readonly achievementRepo: Repository<AchievementEntity>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private async usageCounts(): Promise<Map<string, number>> {
-    const counts = await this.achievementRepo
-      .createQueryBuilder('a')
-      .select('a.icon', 'icon')
-      .addSelect('COUNT(*)', 'count')
-      .where('a.icon LIKE :prefix', { prefix: 'img:%' })
-      .groupBy('a.icon')
-      .getRawMany<{ icon: string; count: string }>();
-    return new Map(counts.map((c) => [c.icon, Number(c.count)]));
+    const counts = await this.prisma.achievements.groupBy({
+      by: ['icon'],
+      where: { icon: { startsWith: 'img:' } },
+      _count: { icon: true },
+    });
+    return new Map(counts.map((c) => [c.icon, c._count.icon]));
   }
 
   async list(): Promise<CustomIconWithUsage[]> {
-    const icons = await this.customIconRepo.find({ order: { name: 'ASC' } });
+    const icons = await this.prisma.custom_icons.findMany({ orderBy: { name: 'asc' } });
     if (icons.length === 0) return [];
     const countByIcon = await this.usageCounts();
     return icons.map((icon) => ({
@@ -40,9 +36,8 @@ export class CustomIconsService {
     }));
   }
 
-  async create(name: string, imagePath: string, createdBy: number): Promise<CustomIconEntity> {
-    const icon = this.customIconRepo.create({ name, imagePath, createdBy });
-    return this.customIconRepo.save(icon);
+  async create(name: string, imagePath: string, createdBy: number): Promise<CustomIcon> {
+    return this.prisma.custom_icons.create({ data: { name, imagePath, createdBy } });
   }
 
   /**
@@ -55,8 +50,8 @@ export class CustomIconsService {
    * Achievements referencing the old path (via `icon: 'img:<path>'`) are
    * repointed to the new one in the same operation.
    */
-  async reprocessImage(id: number, newFilename: string): Promise<CustomIconEntity> {
-    const icon = await this.customIconRepo.findOne({ where: { id } });
+  async reprocessImage(id: number, newFilename: string): Promise<CustomIcon> {
+    const icon = await this.prisma.custom_icons.findUnique({ where: { id } });
     if (!icon) throw new NotFoundException('Icon not found');
     if (!icon.imagePath.startsWith('/api/uploads/')) {
       throw new BadRequestException('Icon image is not stored locally');
@@ -65,9 +60,14 @@ export class CustomIconsService {
     const oldImagePath = icon.imagePath;
     const newImagePath = `/api/uploads/custom-icons/${newFilename}`;
 
-    await this.achievementRepo.update({ icon: `img:${oldImagePath}` }, { icon: `img:${newImagePath}` });
-    icon.imagePath = newImagePath;
-    await this.customIconRepo.save(icon);
+    await this.prisma.achievements.updateMany({
+      where: { icon: `img:${oldImagePath}` },
+      data: { icon: `img:${newImagePath}` },
+    });
+    const updated = await this.prisma.custom_icons.update({
+      where: { id },
+      data: { imagePath: newImagePath },
+    });
 
     const uploadPath = process.env.UPLOAD_PATH ?? '/app/uploads';
     try {
@@ -76,11 +76,11 @@ export class CustomIconsService {
       // Non-fatal — old file may already be gone
     }
 
-    return icon;
+    return updated;
   }
 
   async delete(id: number): Promise<void> {
-    const icon = await this.customIconRepo.findOne({ where: { id } });
+    const icon = await this.prisma.custom_icons.findUnique({ where: { id } });
     if (!icon) throw new NotFoundException('Icon not found');
 
     const countByIcon = await this.usageCounts();
@@ -91,7 +91,7 @@ export class CustomIconsService {
       );
     }
 
-    await this.customIconRepo.delete(id);
+    await this.prisma.custom_icons.delete({ where: { id } });
 
     if (icon.imagePath.startsWith('/api/uploads/')) {
       const filename = icon.imagePath.replace('/api/uploads/', '');

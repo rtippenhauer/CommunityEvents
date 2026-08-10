@@ -1,5 +1,10 @@
 # DinnerBears — Database Schema
 
+> **Not authoritative as of `v2-1`.** `api/prisma/schema.prisma` is the single
+> source of truth for the data model (REQ-TENANT-01.3). This document is kept
+> as human-readable reference and may drift; check the Prisma schema before
+> relying on anything here.
+
 _Last updated: 2026-08-08_
 
 All tables use MySQL InnoDB, UTF8MB4 charset, managed via TypeORM migrations.

@@ -1,12 +1,13 @@
 import { createHash } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { EmailQueueEntity, EmailQueueStatus } from '../../database/entities/email-queue.entity';
-import { EmailSuppressionEntity, SuppressionReason } from '../../database/entities/email-suppression.entity';
-import { NotificationPreferencesEntity } from '../../database/entities/notification-preferences.entity';
-import { UserEntity, EmailStatus } from '../../database/entities/user.entity';
+import { Prisma } from '@prisma/client';
+import type {
+  email_queue as EmailQueueRow,
+  notification_preferences as NotificationPreferences,
+} from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
 import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
 
@@ -24,7 +25,7 @@ const NOTIFICATION_PREF_FIELDS = [
   'pushEventPublished',
   'pushEventReminder',
   'pushAnnouncement',
-] as const satisfies readonly (keyof NotificationPreferencesEntity)[];
+] as const satisfies readonly (keyof NotificationPreferences)[];
 
 export interface QueueEmailDto {
   toEmail: string;
@@ -47,14 +48,7 @@ export class EmailService {
   private readonly suppressionSalt: string;
 
   constructor(
-    @InjectRepository(EmailQueueEntity)
-    private readonly queueRepo: Repository<EmailQueueEntity>,
-    @InjectRepository(EmailSuppressionEntity)
-    private readonly suppressionRepo: Repository<EmailSuppressionEntity>,
-    @InjectRepository(NotificationPreferencesEntity)
-    private readonly prefsRepo: Repository<NotificationPreferencesEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
+    private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly brevo: BrevoService,
   ) {
@@ -69,28 +63,33 @@ export class EmailService {
 
   async isSuppressed(email: string): Promise<boolean> {
     const hash = this.hashEmail(email);
-    const record = await this.suppressionRepo.findOne({ where: { emailHash: hash } });
+    const record = await this.prisma.email_suppressions.findUnique({
+      where: { emailHash: hash },
+    });
     return record !== null;
   }
 
   async suppress(email: string, reason: SuppressionReason): Promise<void> {
     const hash = this.hashEmail(email);
-    const existing = await this.suppressionRepo.findOne({ where: { emailHash: hash } });
-    if (!existing) {
-      await this.suppressionRepo.save(this.suppressionRepo.create({ emailHash: hash, reason }));
-    }
+    // upsert rather than check-then-insert: emailHash is unique, and two
+    // webhook deliveries for the same address can race the read.
+    await this.prisma.email_suppressions.upsert({
+      where: { emailHash: hash },
+      update: {},
+      create: { emailHash: hash, reason },
+    });
   }
 
   async removeSuppression(email: string): Promise<void> {
     const hash = this.hashEmail(email);
-    await this.suppressionRepo.delete({ emailHash: hash });
+    await this.prisma.email_suppressions.deleteMany({ where: { emailHash: hash } });
   }
 
   private async checkNotificationPref(userId: number, template: EmailTemplateName): Promise<boolean> {
     const prefKey = NOTIFICATION_PREF_KEY[template];
     if (!prefKey) return true;
 
-    const prefs = await this.prefsRepo.findOne({ where: { userId } });
+    const prefs = await this.prisma.notification_preferences.findUnique({ where: { userId } });
     if (!prefs) return true;
 
     // These columns are generic `tinyint`, not TypeORM's special `boolean` type,
@@ -100,7 +99,7 @@ export class EmailService {
     return Number(value) !== 0;
   }
 
-  async queue(dto: QueueEmailDto): Promise<EmailQueueEntity | null> {
+  async queue(dto: QueueEmailDto): Promise<EmailQueueRow | null> {
     if (!dto.bypassSuppression) {
       const suppressed = await this.isSuppressed(dto.toEmail);
       if (suppressed) {
@@ -110,7 +109,7 @@ export class EmailService {
     }
 
     if (dto.userId && dto.templateId) {
-      const user = await this.userRepo.findOne({ where: { id: dto.userId } });
+      const user = await this.prisma.users.findUnique({ where: { id: dto.userId } });
       if (user) {
         if (
           user.emailStatus === EmailStatus.BOUNCED ||
@@ -127,20 +126,22 @@ export class EmailService {
       }
     }
 
-    const entry = this.queueRepo.create({
-      toEmail: dto.toEmail,
-      toName: dto.toName ?? null,
-      subject: dto.subject,
-      templateId: dto.templateId ?? null,
-      templateParams: dto.templateParams ?? null,
-      htmlBody: dto.htmlBody ?? null,
-      textBody: dto.textBody ?? null,
-      priority: dto.priority ?? 5,
-      sendAfter: dto.sendAfter ?? null,
-      status: EmailQueueStatus.PENDING,
+    return this.prisma.email_queue.create({
+      data: {
+        toEmail: dto.toEmail,
+        toName: dto.toName ?? null,
+        subject: dto.subject,
+        templateId: dto.templateId ?? null,
+        // Nullable Json column: Prisma separates a SQL NULL from a JSON null,
+        // and DbNull is what the entity wrote.
+        templateParams: (dto.templateParams as Prisma.InputJsonValue) ?? Prisma.DbNull,
+        htmlBody: dto.htmlBody ?? null,
+        textBody: dto.textBody ?? null,
+        priority: dto.priority ?? 5,
+        sendAfter: dto.sendAfter ?? null,
+        status: EmailQueueStatus.PENDING,
+      },
     });
-
-    return this.queueRepo.save(entry);
   }
 
   async sendNow(dto: QueueEmailDto): Promise<void> {
@@ -159,49 +160,53 @@ export class EmailService {
     }
   }
 
-  async getQueue(limit = 100): Promise<EmailQueueEntity[]> {
-    return this.queueRepo.find({
-      order: { createdAt: 'DESC' },
+  async getQueue(limit = 100): Promise<EmailQueueRow[]> {
+    return this.prisma.email_queue.findMany({
+      orderBy: { createdAt: 'desc' },
       take: limit,
     });
   }
 
   async cancelEmail(id: number): Promise<void> {
-    await this.queueRepo.update(id, { status: EmailQueueStatus.CANCELLED });
+    await this.prisma.email_queue.update({
+      where: { id },
+      data: { status: EmailQueueStatus.CANCELLED },
+    });
   }
 
   async retryFailed(): Promise<number> {
-    const result = await this.queueRepo
-      .createQueryBuilder()
-      .update(EmailQueueEntity)
-      .set({ status: EmailQueueStatus.PENDING, attempts: 0, errorMessage: null })
-      .where('status = :status', { status: EmailQueueStatus.FAILED })
-      .execute();
-    return result.affected ?? 0;
+    const result = await this.prisma.email_queue.updateMany({
+      where: { status: EmailQueueStatus.FAILED },
+      data: { status: EmailQueueStatus.PENDING, attempts: 0, errorMessage: null },
+    });
+    return result.count;
   }
 
-  async getNotificationPrefs(userId: number): Promise<NotificationPreferencesEntity> {
-    let prefs = await this.prefsRepo.findOne({ where: { userId } });
-    if (!prefs) {
-      prefs = this.prefsRepo.create({ userId });
-      prefs = await this.prefsRepo.save(prefs);
-    }
-    return prefs;
+  async getNotificationPrefs(userId: number): Promise<NotificationPreferences> {
+    // The create-if-missing pair collapses into one upsert; column defaults
+    // supply every preference, exactly as the empty entity did.
+    return this.prisma.notification_preferences.upsert({
+      where: { userId },
+      update: {},
+      create: { userId },
+    });
   }
 
   async updateNotificationPrefs(
     userId: number,
-    updates: Partial<Pick<NotificationPreferencesEntity, (typeof NOTIFICATION_PREF_FIELDS)[number]>>,
-  ): Promise<NotificationPreferencesEntity> {
-    let prefs = await this.prefsRepo.findOne({ where: { userId } });
-    if (!prefs) {
-      prefs = this.prefsRepo.create({ userId });
-    }
+    updates: Partial<Pick<NotificationPreferences, (typeof NOTIFICATION_PREF_FIELDS)[number]>>,
+  ): Promise<NotificationPreferences> {
+    const data: Record<string, boolean> = {};
     for (const key of NOTIFICATION_PREF_FIELDS) {
-      if (updates[key] !== undefined) {
-        prefs[key] = updates[key];
+      const value = updates[key];
+      if (value !== undefined) {
+        data[key] = value as boolean;
       }
     }
-    return this.prefsRepo.save(prefs);
+    return this.prisma.notification_preferences.upsert({
+      where: { userId },
+      update: data,
+      create: { userId, ...data },
+    });
   }
 }

@@ -2,8 +2,8 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "src/main.ts",
-    "src/database/data-source.ts",
-    "src/database/migrations/**/*.ts",
+    "src/bootstrap.ts",
+    "src/database/prisma/seed.ts",
     "test/**/*.e2e-spec.ts",
     "test/utils/**/*.ts"
   ],

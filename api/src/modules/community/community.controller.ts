@@ -18,13 +18,13 @@ import { PointsService } from './points.service';
 import { AchievementsService } from './achievements.service';
 import { CustomIconsService } from './custom-icons.service';
 import { WhatsNewService } from './whats-new.service';
-import { UserRole } from '../../database/entities/user.entity';
 import { SelectTitleDto } from './dto/select-title.dto';
 import { GrantAchievementDto } from './dto/grant-achievement.dto';
 import { CreateEventAchievementDto } from './dto/create-event-achievement.dto';
 import { CreateAchievementDto } from './dto/create-achievement.dto';
 import { UpdateAchievementDto } from './dto/update-achievement.dto';
 import { CreateCustomIconDto } from './dto/create-custom-icon.dto';
+import { UserRole } from '../../database/enums';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];

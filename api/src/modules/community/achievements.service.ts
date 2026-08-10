@@ -1,18 +1,26 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Repository, DataSource, IsNull } from 'typeorm';
-import { AchievementEntity, ProgressType } from '../../database/entities/achievement.entity';
-import { MemberAchievementEntity } from '../../database/entities/member-achievement.entity';
-import { MemberPointEntity, PointType } from '../../database/entities/member-point.entity';
-import { UserEntity } from '../../database/entities/user.entity';
-import { EventRsvpEntity } from '../../database/entities/event-rsvp.entity';
+import { $Enums } from '@prisma/client';
+import type { Prisma, achievements as Achievement } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
+import { PointType, ProgressType } from '../../database/enums';
+
+// Declaration order of the progress_type ENUM, which is the order MySQL sorts
+// it in. Read from the generated client rather than hand-listed so it tracks
+// the schema automatically.
+const PROGRESS_TYPE_ORDER: string[] = Object.values($Enums.achievements_progress_type);
 
 // Independence Day week — the qualifying window for the Patriotic Bear achievement.
 // Starts a day earlier on stage so it can be tested without waiting for July 4.
 const PATRIOTIC_BEAR_START_PROD = new Date('2026-07-04T00:00:00');
 const PATRIOTIC_BEAR_START_STAGE = new Date('2026-07-03T00:00:00');
 const PATRIOTIC_BEAR_END = new Date('2026-07-11T23:59:59.999');
+
+// member_achievements rows with their achievement attached -- the shape the
+// entity produced automatically via `eager: true`, now stated explicitly.
+export type MemberAchievementWithAchievement = Prisma.member_achievementsGetPayload<{
+  include: { achievement: true };
+}>;
 
 export interface AchievementWithProgress {
   id: number;
@@ -37,17 +45,7 @@ export class AchievementsService {
   private readonly patrioticBearStart: Date;
 
   constructor(
-    @InjectRepository(AchievementEntity)
-    private readonly achievementRepo: Repository<AchievementEntity>,
-    @InjectRepository(MemberAchievementEntity)
-    private readonly memberAchievementRepo: Repository<MemberAchievementEntity>,
-    @InjectRepository(MemberPointEntity)
-    private readonly pointRepo: Repository<MemberPointEntity>,
-    @InjectRepository(UserEntity)
-    private readonly userRepo: Repository<UserEntity>,
-    @InjectRepository(EventRsvpEntity)
-    private readonly rsvpRepo: Repository<EventRsvpEntity>,
-    private readonly dataSource: DataSource,
+    private readonly prisma: PrismaService,
     configService: ConfigService,
   ) {
     this.patrioticBearStart = configService.get<string>('IS_STAGE') === 'true'
@@ -56,38 +54,38 @@ export class AchievementsService {
   }
 
   async hasEarned(userId: number, key: string): Promise<boolean> {
-    const achievement = await this.achievementRepo.findOne({ where: { key } });
+    const achievement = await this.prisma.achievements.findUnique({ where: { key } });
     if (!achievement) return false;
-    const earned = await this.memberAchievementRepo.findOne({
+    const earned = await this.prisma.member_achievements.findFirst({
       where: { memberId: userId, achievementId: achievement.id },
     });
     return !!earned;
   }
 
   private async grant(userId: number, key: string): Promise<void> {
-    const achievement = await this.achievementRepo.findOne({ where: { key } });
+    const achievement = await this.prisma.achievements.findUnique({ where: { key } });
     if (!achievement) return;
-    const exists = await this.memberAchievementRepo.findOne({
+    const exists = await this.prisma.member_achievements.findFirst({
       where: { memberId: userId, achievementId: achievement.id },
     });
     if (exists) return;
-    await this.memberAchievementRepo.save(
-      this.memberAchievementRepo.create({ memberId: userId, achievementId: achievement.id }),
-    );
+    await this.prisma.member_achievements.create({
+      data: { memberId: userId, achievementId: achievement.id },
+    });
     if (achievement.points > 0) {
-      await this.pointRepo.save(
-        this.pointRepo.create({
+      await this.prisma.member_points.create({
+        data: {
           userId,
           pointType: PointType.ACHIEVEMENT,
           referenceId: achievement.id,
           points: achievement.points,
-        }),
-      );
+        },
+      });
     }
   }
 
   async checkAttendanceAchievements(userId: number): Promise<void> {
-    const count = await this.pointRepo.count({
+    const count = await this.prisma.member_points.count({
       where: { userId, pointType: PointType.ATTENDANCE },
     });
     if (count >= 1)   await this.grant(userId, 'first_dinner');
@@ -99,11 +97,13 @@ export class AchievementsService {
   }
 
   async checkCoordinatorAchievements(userId: number): Promise<void> {
-    const totalCoord = await this.pointRepo.count({
-      where: [
-        { userId, pointType: PointType.COORDINATOR },
-        { userId, pointType: PointType.NEW_LOCATION_COORDINATOR },
-      ],
+    // Both coordinator flavours count toward the same achievements, so the
+    // array-of-where OR becomes an `in` rather than two separate counts.
+    const totalCoord = await this.prisma.member_points.count({
+      where: {
+        userId,
+        pointType: { in: [PointType.COORDINATOR, PointType.NEW_LOCATION_COORDINATOR] },
+      },
     });
     if (totalCoord >= 1)   await this.grant(userId, 'first_coordinator');
     if (totalCoord >= 5)   await this.grant(userId, 'gracious_host');
@@ -112,7 +112,7 @@ export class AchievementsService {
     if (totalCoord >= 50)  await this.grant(userId, 'grand_maestro');
     if (totalCoord >= 100) await this.grant(userId, 'legendary_maestro');
 
-    const newLocationCount = await this.pointRepo.count({
+    const newLocationCount = await this.prisma.member_points.count({
       where: { userId, pointType: PointType.NEW_LOCATION_COORDINATOR },
     });
     if (newLocationCount >= 1)   await this.grant(userId, 'scout');
@@ -124,7 +124,7 @@ export class AchievementsService {
   }
 
   async checkRatingAchievements(userId: number): Promise<void> {
-    const count = await this.pointRepo.count({
+    const count = await this.prisma.member_points.count({
       where: { userId, pointType: PointType.RATING },
     });
     if (count >= 1)   await this.grant(userId, 'first_review');
@@ -136,7 +136,7 @@ export class AchievementsService {
   }
 
   async checkInviteAchievements(userId: number): Promise<void> {
-    const count = await this.pointRepo.count({
+    const count = await this.prisma.member_points.count({
       where: { userId, pointType: PointType.INVITE },
     });
     if (count >= 1)   await this.grant(userId, 'connector');
@@ -148,7 +148,7 @@ export class AchievementsService {
   }
 
   async checkCityHopperAchievements(userId: number): Promise<void> {
-    const count = await this.pointRepo.count({
+    const count = await this.prisma.member_points.count({
       where: { userId, pointType: PointType.CITY_HOPPER },
     });
     if (count >= 1)   await this.grant(userId, 'city_hopper_1');
@@ -161,7 +161,7 @@ export class AchievementsService {
   }
 
   async checkSecretDinnerAchievements(userId: number): Promise<void> {
-    const count = await this.pointRepo.count({
+    const count = await this.prisma.member_points.count({
       where: { userId, pointType: PointType.SECRET_DINNER },
     });
     if (count >= 1)   await this.grant(userId, 'secret_dinner_1');
@@ -184,10 +184,14 @@ export class AchievementsService {
   ];
 
   private async revoke(userId: number, key: string): Promise<void> {
-    const achievement = await this.achievementRepo.findOne({ where: { key } });
+    const achievement = await this.prisma.achievements.findUnique({ where: { key } });
     if (!achievement) return;
-    await this.memberAchievementRepo.delete({ memberId: userId, achievementId: achievement.id });
-    await this.pointRepo.delete({ userId, pointType: PointType.ACHIEVEMENT, referenceId: achievement.id });
+    await this.prisma.member_achievements.deleteMany({
+      where: { memberId: userId, achievementId: achievement.id },
+    });
+    await this.prisma.member_points.deleteMany({
+      where: { userId, pointType: PointType.ACHIEVEMENT, referenceId: achievement.id },
+    });
   }
 
   // Mirror image of checkSecretDinnerAchievements: called after an event's
@@ -195,7 +199,7 @@ export class AchievementsService {
   // secret), so a member's badge/points never outlive the count they were
   // earned from.
   async recheckSecretDinnerAchievements(userId: number): Promise<void> {
-    const count = await this.pointRepo.count({
+    const count = await this.prisma.member_points.count({
       where: { userId, pointType: PointType.SECRET_DINNER },
     });
     for (const tier of this.secretDinnerTiers) {
@@ -218,7 +222,7 @@ export class AchievementsService {
   }
 
   async checkEventAchievement(userId: number, eventId: number): Promise<void> {
-    const achievement = await this.achievementRepo.findOne({
+    const achievement = await this.prisma.achievements.findFirst({
       where: { eventId, progressType: ProgressType.EVENT },
     });
     if (!achievement) return;
@@ -227,19 +231,23 @@ export class AchievementsService {
 
   async getAchievementsWithProgress(userId: number): Promise<AchievementWithProgress[]> {
     const [all, earned, user] = await Promise.all([
-      this.achievementRepo.find({ order: { id: 'ASC' } }),
-      this.memberAchievementRepo.find({ where: { memberId: userId }, order: { earnedAt: 'ASC' } }),
-      this.userRepo.findOne({ where: { id: userId } }),
+      this.prisma.achievements.findMany({ orderBy: { id: 'asc' } }),
+      this.prisma.member_achievements.findMany({
+        where: { memberId: userId },
+        orderBy: { earnedAt: 'asc' },
+      }),
+      this.prisma.users.findUnique({ where: { id: userId } }),
     ]);
 
     // Count points by type for progress
-    const pointCounts = await this.dataSource.query<{ point_type: string; cnt: number }[]>(
-      `SELECT point_type, COUNT(*) AS cnt FROM member_points WHERE user_id = ? GROUP BY point_type`,
-      [userId],
-    );
+    const pointCounts = await this.prisma.member_points.groupBy({
+      by: ['pointType'],
+      where: { userId },
+      _count: { _all: true },
+    });
     const countMap: Record<string, number> = {};
     for (const r of pointCounts) {
-      countMap[r.point_type] = Number(r.cnt);
+      countMap[r.pointType] = r._count._all;
     }
     const attendanceCount = countMap['attendance'] ?? 0;
     const coordinatorCount = (countMap['coordinator'] ?? 0) + (countMap['new_location_coordinator'] ?? 0);
@@ -280,7 +288,7 @@ export class AchievementsService {
           imagePath: a.imagePath,
           title: a.title,
           points: a.points,
-          progressType: a.progressType,
+          progressType: a.progressType as ProgressType | null,
           progressTarget: a.progressTarget,
           progressCurrent,
           eventId: a.eventId,
@@ -291,33 +299,39 @@ export class AchievementsService {
       });
   }
 
-  async getUnseenAchievements(userId: number): Promise<MemberAchievementEntity[]> {
-    return this.memberAchievementRepo.find({
-      where: { memberId: userId, seenAt: IsNull() },
-      order: { earnedAt: 'ASC' },
+  async getUnseenAchievements(userId: number): Promise<MemberAchievementWithAchievement[]> {
+    // Same eager-relation caveat as getEarnedTitles: the controller renders
+    // ma.achievement.*, which TypeORM attached automatically.
+    return this.prisma.member_achievements.findMany({
+      where: { memberId: userId, seenAt: null },
+      include: { achievement: true },
+      orderBy: { earnedAt: 'asc' },
     });
   }
 
   async markAchievementSeen(userId: number, memberAchievementId: number): Promise<void> {
-    await this.memberAchievementRepo.update(
-      { id: memberAchievementId, memberId: userId },
-      { seenAt: new Date() },
-    );
-  }
-
-  async getMemberAchievements(userId: number): Promise<MemberAchievementEntity[]> {
-    return this.memberAchievementRepo.find({
-      where: { memberId: userId },
-      order: { earnedAt: 'ASC' },
+    // updateMany: memberId is an ownership check, so one member cannot mark
+    // another member's achievement as seen.
+    await this.prisma.member_achievements.updateMany({
+      where: { id: memberAchievementId, memberId: userId },
+      data: { seenAt: new Date() },
     });
   }
 
-  async getAllAchievements(): Promise<AchievementEntity[]> {
-    return this.achievementRepo.find({ order: { id: 'ASC' } });
+  async getMemberAchievements(userId: number): Promise<MemberAchievementWithAchievement[]> {
+    return this.prisma.member_achievements.findMany({
+      where: { memberId: userId },
+      include: { achievement: true },
+      orderBy: { earnedAt: 'asc' },
+    });
   }
 
-  async getEventAchievement(eventId: number): Promise<AchievementEntity | null> {
-    return this.achievementRepo.findOne({ where: { eventId } });
+  async getAllAchievements(): Promise<Achievement[]> {
+    return this.prisma.achievements.findMany({ orderBy: { id: 'asc' } });
+  }
+
+  async getEventAchievement(eventId: number): Promise<Achievement | null> {
+    return this.prisma.achievements.findFirst({ where: { eventId } });
   }
 
   async createEventAchievement(dto: {
@@ -329,22 +343,23 @@ export class AchievementsService {
     icon?: string;
     imagePath?: string;
     isSecret?: boolean;
-  }): Promise<AchievementEntity> {
+  }): Promise<Achievement> {
     const key = `event_${dto.eventId}_${Date.now()}`;
-    const achievement = this.achievementRepo.create({
-      key,
-      name: dto.name,
-      description: dto.description,
-      icon: dto.icon || 'local_activity',
-      imagePath: dto.imagePath ?? null,
-      progressType: ProgressType.EVENT,
-      progressTarget: 1,
-      eventId: dto.eventId,
-      points: dto.points,
-      title: dto.title ?? null,
-      isSecret: dto.isSecret ?? false,
+    return this.prisma.achievements.create({
+      data: {
+        key,
+        name: dto.name,
+        description: dto.description,
+        icon: dto.icon || 'local_activity',
+        imagePath: dto.imagePath ?? null,
+        progressType: ProgressType.EVENT,
+        progressTarget: 1,
+        eventId: dto.eventId,
+        points: dto.points,
+        title: dto.title ?? null,
+        isSecret: dto.isSecret ?? false,
+      },
     });
-    return this.achievementRepo.save(achievement);
   }
 
   // Called right after a "Special Dinner Achievement" is created (or an
@@ -352,9 +367,9 @@ export class AchievementsService {
   // already marked attended before the achievement existed still get it —
   // scoped to this one event's attendees, not a global sweep.
   async grantEventAchievementToAttendees(eventId: number): Promise<{ attendeesChecked: number }> {
-    const attendees = await this.rsvpRepo.find({
+    const attendees = await this.prisma.event_rsvps.findMany({
       where: { eventId, attended: true },
-      select: ['userId'],
+      select: { userId: true },
     });
     for (const { userId } of attendees) {
       await this.checkEventAchievement(userId, eventId);
@@ -367,21 +382,25 @@ export class AchievementsService {
   // there's no partial/soft-delete state for these, they're one-off and
   // event-scoped so a full removal is always what "delete" means here.
   async deleteEventAchievement(eventId: number): Promise<{ removedAchievements: number; removedPoints: number }> {
-    const achievement = await this.achievementRepo.findOne({
+    const achievement = await this.prisma.achievements.findFirst({
       where: { eventId, progressType: ProgressType.EVENT },
     });
     if (!achievement) throw new NotFoundException('This event has no achievement to remove');
 
-    const removedPoints = await this.pointRepo.delete({
-      pointType: PointType.ACHIEVEMENT,
-      referenceId: achievement.id,
-    });
-    const removedAchievements = await this.memberAchievementRepo.delete({ achievementId: achievement.id });
-    await this.achievementRepo.delete(achievement.id);
+    // One transaction: clawing back the badge, its points and the achievement
+    // itself has to be all-or-nothing, or a failure part-way leaves members
+    // holding points for an achievement that no longer exists.
+    const [removedPoints, removedAchievements] = await this.prisma.$transaction([
+      this.prisma.member_points.deleteMany({
+        where: { pointType: PointType.ACHIEVEMENT, referenceId: achievement.id },
+      }),
+      this.prisma.member_achievements.deleteMany({ where: { achievementId: achievement.id } }),
+      this.prisma.achievements.delete({ where: { id: achievement.id } }),
+    ]);
 
     return {
-      removedAchievements: removedAchievements.affected ?? 0,
-      removedPoints: removedPoints.affected ?? 0,
+      removedAchievements: removedAchievements.count,
+      removedPoints: removedPoints.count,
     };
   }
 
@@ -389,22 +408,30 @@ export class AchievementsService {
     id: number,
     dto: { name: string; description: string; title?: string | null; points: number; isSecret: boolean },
   ): Promise<void> {
-    await this.achievementRepo.update(id, {
-      name: dto.name,
-      description: dto.description,
-      title: dto.title ?? null,
-      points: dto.points,
-      isSecret: dto.isSecret,
+    await this.prisma.achievements.update({
+      where: { id },
+      data: {
+        name: dto.name,
+        description: dto.description,
+        title: dto.title ?? null,
+        points: dto.points,
+        isSecret: dto.isSecret,
+      },
     });
   }
 
   async updateAchievementImage(achievementId: number, imagePath: string): Promise<void> {
-    await this.achievementRepo.update(achievementId, { imagePath });
+    await this.prisma.achievements.update({ where: { id: achievementId }, data: { imagePath } });
   }
 
   async getEarnedTitles(userId: number): Promise<string[]> {
-    const earned = await this.memberAchievementRepo.find({
+    // The entity marked this relation `eager: true`, so TypeORM attached the
+    // achievement to every member_achievements row automatically. Prisma has
+    // no eager loading -- without this include, ma.achievement is undefined
+    // and every member silently ends up with no earned titles.
+    const earned = await this.prisma.member_achievements.findMany({
       where: { memberId: userId },
+      include: { achievement: true },
     });
     const titles: string[] = [];
     for (const ma of earned) {
@@ -420,9 +447,7 @@ export class AchievementsService {
         throw new Error('Title not earned');
       }
     }
-    await this.dataSource
-      .getRepository('users')
-      .update(userId, { selectedTitle: title });
+    await this.prisma.users.update({ where: { id: userId }, data: { selectedTitle: title } });
   }
 
   async adminGrantAchievement(userId: number, key: string): Promise<void> {
@@ -430,19 +455,44 @@ export class AchievementsService {
   }
 
   async adminRevokeAchievement(userId: number, achievementId: number): Promise<void> {
-    await this.memberAchievementRepo.delete({ memberId: userId, achievementId });
+    await this.prisma.member_achievements.deleteMany({ where: { memberId: userId, achievementId } });
   }
 
-  async adminListAchievements(): Promise<(AchievementEntity & { earnedCount: number })[]> {
-    return this.achievementRepo
-      .createQueryBuilder('a')
-      .loadRelationCountAndMap('a.earnedCount', 'a.memberAchievements')
-      .orderBy('ISNULL(a.progressType)', 'ASC')
-      .addOrderBy('a.progressType', 'ASC')
-      .addOrderBy('ISNULL(a.progressTarget)', 'ASC')
-      .addOrderBy('a.progressTarget', 'ASC')
-      .addOrderBy('a.id', 'ASC')
-      .getMany() as Promise<(AchievementEntity & { earnedCount: number })[]>;
+  async adminListAchievements(): Promise<(Achievement & { earnedCount: number })[]> {
+    // loadRelationCountAndMap becomes Prisma's _count, flattened onto the row
+    // so the response keeps its `earnedCount` key.
+    //
+    // The ordering is applied here rather than in SQL: it sorts by
+    // ISNULL(progressType), progressType, ISNULL(progressTarget),
+    // progressTarget, id, and Prisma cannot express the ISNULL terms. This is
+    // a fixed catalogue of a few dozen rows, so sorting in memory is cheap.
+    //
+    // progress_type is a MySQL ENUM, and MySQL orders enums by their
+    // DECLARATION order, not alphabetically -- 'coordinator' (declared 2nd)
+    // sorts before 'city_hopper' (7th). Comparing the strings instead would
+    // reorder the admin list. PROGRESS_TYPE_ORDER below is taken from Prisma's
+    // generated enum, whose member order mirrors the column definition, so the
+    // two cannot drift apart.
+    const rows = await this.prisma.achievements.findMany({
+      include: { _count: { select: { memberAchievements: true } } },
+    });
+
+    const nullsLast = (v: unknown): number => (v === null || v === undefined ? 1 : 0);
+    const enumRank = (v: string | null): number =>
+      v === null ? -1 : PROGRESS_TYPE_ORDER.indexOf(v);
+    const numeric = (a: number | null, b: number | null): number =>
+      a === null || b === null ? 0 : a - b;
+
+    return rows
+      .sort(
+        (a, b) =>
+          nullsLast(a.progressType) - nullsLast(b.progressType) ||
+          enumRank(a.progressType) - enumRank(b.progressType) ||
+          nullsLast(a.progressTarget) - nullsLast(b.progressTarget) ||
+          numeric(a.progressTarget, b.progressTarget) ||
+          a.id - b.id,
+      )
+      .map(({ _count, ...rest }) => ({ ...rest, earnedCount: _count.memberAchievements }));
   }
 
   async adminCreateAchievement(dto: {
@@ -455,10 +505,10 @@ export class AchievementsService {
     points: number;
     title?: string | null;
     isSecret: boolean;
-  }): Promise<AchievementEntity> {
-    const existing = await this.achievementRepo.findOne({ where: { key: dto.key } });
+  }): Promise<Achievement> {
+    const existing = await this.prisma.achievements.findUnique({ where: { key: dto.key } });
     if (existing) throw new ConflictException(`Key '${dto.key}' already exists`);
-    return this.achievementRepo.save(this.achievementRepo.create({
+    return this.prisma.achievements.create({ data: ({
       key: dto.key,
       name: dto.name,
       description: dto.description,
@@ -470,7 +520,7 @@ export class AchievementsService {
       title: dto.title ?? null,
       isSecret: dto.isSecret ?? false,
       imagePath: null,
-    }));
+    }) });
   }
 
   async adminFullUpdate(id: number, dto: {
@@ -482,7 +532,7 @@ export class AchievementsService {
     isSecret: boolean;
     progressTarget?: number | null;
   }): Promise<void> {
-    const update: Partial<AchievementEntity> = {
+    const update: Prisma.achievementsUncheckedUpdateInput = {
       name: dto.name,
       description: dto.description,
       icon: dto.icon,
@@ -491,7 +541,7 @@ export class AchievementsService {
       isSecret: dto.isSecret,
     };
     if (dto.progressTarget !== undefined) update.progressTarget = dto.progressTarget ?? null;
-    await this.achievementRepo.update(id, update);
+    await this.prisma.achievements.update({ where: { id }, data: update });
   }
 
   // member_points snapshots each achievement's point value at the moment it's
@@ -502,7 +552,7 @@ export class AchievementsService {
   // and backfills rows for earned achievements that had 0 points at grant
   // time but have since been given a point value.
   async adminRecalculatePoints(): Promise<{ updated: number; inserted: number }> {
-    const updateResult = await this.dataSource.query(`
+    const updateResult = await this.prisma.$executeRawUnsafe(`
       UPDATE member_points mp
       JOIN achievements a ON a.id = mp.reference_id
       SET mp.points = a.points
@@ -512,7 +562,7 @@ export class AchievementsService {
     // 1752100000000-AddUniqueConstraintMemberPoints) is now the real
     // backstop against duplicating a row here -- the NOT EXISTS below is
     // just the fast path that avoids hitting it on every normal run.
-    const insertResult = await this.dataSource.query(`
+    const insertResult = await this.prisma.$executeRawUnsafe(`
       INSERT IGNORE INTO member_points (user_id, point_type, reference_id, points, awarded_at)
       SELECT ma.member_id, 'achievement', ma.achievement_id, a.points, NOW()
       FROM member_achievements ma
@@ -525,14 +575,13 @@ export class AchievementsService {
             AND mp.reference_id = ma.achievement_id
         )
     `);
-    return {
-      updated: (updateResult as { affectedRows: number }).affectedRows,
-      inserted: (insertResult as { affectedRows: number }).affectedRows,
-    };
+    // $executeRawUnsafe returns the affected-row count directly, where the
+    // TypeORM driver handed back a ResultSetHeader.
+    return { updated: updateResult, inserted: insertResult };
   }
 
   async adminBackfillFounders(): Promise<{ granted: number }> {
-    const result = await this.dataSource.query(`
+    const result = await this.prisma.$executeRawUnsafe(`
       INSERT INTO member_achievements (member_id, achievement_id, earned_at)
       SELECT u.id, a.id, NOW()
       FROM users u
@@ -543,7 +592,7 @@ export class AchievementsService {
           WHERE ma.member_id = u.id AND ma.achievement_id = a.id
         )
     `);
-    return { granted: (result as { affectedRows: number }).affectedRows };
+    return { granted: result };
   }
 
   // One-time correction for a bug (fixed alongside this method, Phase 20) where
@@ -554,7 +603,7 @@ export class AchievementsService {
   // checks: an invitee who has attended at least once, whose inviter hasn't
   // already been credited for that specific invitee.
   async adminBackfillInvitePoints(): Promise<{ pointsGranted: number; achievementsGranted: number }> {
-    const candidates = await this.dataSource.query<{ inviterId: number }[]>(`
+    const candidates = await this.prisma.$queryRawUnsafe<{ inviterId: number }[]>(`
       SELECT DISTINCT invitee.invited_by AS inviterId
       FROM users invitee
       WHERE invitee.invited_by IS NOT NULL
@@ -570,7 +619,7 @@ export class AchievementsService {
         )
     `);
 
-    const insertResult = await this.dataSource.query(`
+    const insertResult = await this.prisma.$executeRawUnsafe(`
       INSERT INTO member_points (user_id, point_type, reference_id, points, awarded_at)
       SELECT invitee.invited_by, 'invite', invitee.id, 1, NOW()
       FROM users invitee
@@ -594,19 +643,26 @@ export class AchievementsService {
     let achievementsGranted = 0;
     for (const { inviterId } of candidates) {
       const before = new Set(
-        (await this.memberAchievementRepo.find({ where: { memberId: inviterId } })).map((ma) => ma.achievementId),
+        (
+          await this.prisma.member_achievements.findMany({ where: { memberId: inviterId } })
+        ).map((ma) => ma.achievementId),
       );
       await this.checkInviteAchievements(inviterId);
-      const after = await this.memberAchievementRepo.find({ where: { memberId: inviterId } });
+      const after = await this.prisma.member_achievements.findMany({
+        where: { memberId: inviterId },
+      });
       const newlyEarned = after.filter((ma) => !before.has(ma.achievementId));
       for (const ma of newlyEarned) {
-        await this.memberAchievementRepo.update(ma.id, { seenAt: new Date() });
+        await this.prisma.member_achievements.update({
+          where: { id: ma.id },
+          data: { seenAt: new Date() },
+        });
         achievementsGranted += 1;
       }
     }
 
     return {
-      pointsGranted: (insertResult as { affectedRows: number }).affectedRows,
+      pointsGranted: insertResult,
       achievementsGranted,
     };
   }

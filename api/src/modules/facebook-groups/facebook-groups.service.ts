@@ -1,16 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { FacebookGroupConfigEntity } from '../../database/entities/facebook-group-config.entity';
+import { PrismaService } from '../../database/prisma/prisma.service';
 
 @Injectable()
 export class FacebookGroupsService {
-  constructor(
-    @InjectRepository(FacebookGroupConfigEntity)
-    private readonly repo: Repository<FacebookGroupConfigEntity>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  findAll(): Promise<FacebookGroupConfigEntity[]> {
-    return this.repo.find({ where: { isActive: true }, relations: ['city'] });
+  findAll() {
+    return this.prisma.facebook_group_config.findMany({
+      where: { isActive: true },
+      include: { city: true },
+    });
   }
 }

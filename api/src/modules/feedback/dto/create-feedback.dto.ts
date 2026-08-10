@@ -1,5 +1,5 @@
 import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { FeedbackCategory } from '../../../database/entities/feedback.entity';
+import { FeedbackCategory } from '../../../database/enums';
 
 export class CreateFeedbackDto {
   @IsEnum(FeedbackCategory)

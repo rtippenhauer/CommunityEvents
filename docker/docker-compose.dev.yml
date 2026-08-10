@@ -1,0 +1,49 @@
+# Local development MySQL for CommunityEvents v2.
+#
+# Separate from every other database in play:
+#   - the real Unraid instance (192.168.2.241) used by stage — never touched
+#     from a dev machine
+#   - docker-compose.test.yml's throwaway e2e DB (port 3307, tmpfs, no volume)
+#   - whatever else happens to hold port 3306 on the dev box
+#
+# Port 3308 because 3306 and 3307 are both commonly taken locally. Data is
+# persistent (named volume) — unlike the test DB, this one is meant to survive
+# restarts so migration state and seed data stick around between sessions.
+#
+# Pinned to 9.7 to match the real Unraid instance, same as the test compose.
+# Introspecting a 9.7 schema with Prisma and then deploying against 9.7 avoids
+# version-skew surprises in generated migrations.
+#
+# Usage: docker compose -f docker/docker-compose.dev.yml up -d
+#
+# The explicit `name:` below matters. Compose otherwise derives the project
+# name from the parent directory — "docker" — which collides with any other
+# repo that also keeps its compose file in a docker/ folder. On this machine
+# PrintShop does exactly that, so without a distinct project name its MySQL
+# container shows up here as an "orphan" and a `down --remove-orphans` would
+# delete somebody else's database.
+
+name: communityevents-dev
+
+services:
+  mysql-dev:
+    image: mysql:9.7
+    container_name: communityevents-mysql-dev
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=devroot
+      - MYSQL_DATABASE=communityevents
+      - MYSQL_USER=communityevents_user
+      - MYSQL_PASSWORD=devpassword
+    ports:
+      - "3308:3306"
+    volumes:
+      - communityevents-mysql-dev-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pdevroot"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  communityevents-mysql-dev-data:

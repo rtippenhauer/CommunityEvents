@@ -1,7 +1,7 @@
 import {
   IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min,
 } from 'class-validator';
-import { ProgressType } from '../../../database/entities/achievement.entity';
+import { ProgressType } from '../../../database/enums';
 
 export class CreateAchievementDto {
   @IsString()

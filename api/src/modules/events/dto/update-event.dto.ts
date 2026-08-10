@@ -10,7 +10,7 @@ import {
   MaxLength,
   ValidateIf,
 } from 'class-validator';
-import { EventStatus } from '../../../database/entities/event.entity';
+import { EventStatus } from '../../../database/enums';
 
 export class UpdateEventDto {
   @IsInt()

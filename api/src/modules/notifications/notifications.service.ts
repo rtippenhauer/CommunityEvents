@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { NotificationEntity } from '../../database/entities/notification.entity';
+import type { notifications as Notification } from '@prisma/client';
+import { PrismaService } from '../../database/prisma/prisma.service';
 
 export interface CreateNotificationParams {
   userId: number;
@@ -13,42 +12,45 @@ export interface CreateNotificationParams {
 
 @Injectable()
 export class NotificationsService {
-  constructor(
-    @InjectRepository(NotificationEntity)
-    private readonly notificationRepo: Repository<NotificationEntity>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async create(params: CreateNotificationParams): Promise<NotificationEntity> {
-    const notification = this.notificationRepo.create({
-      userId: params.userId,
-      type: params.type,
-      title: params.title,
-      body: params.body ?? null,
-      actionUrl: params.actionUrl ?? null,
+  async create(params: CreateNotificationParams): Promise<Notification> {
+    return this.prisma.notifications.create({
+      data: {
+        userId: params.userId,
+        type: params.type,
+        title: params.title,
+        body: params.body ?? null,
+        actionUrl: params.actionUrl ?? null,
+      },
     });
-    return this.notificationRepo.save(notification);
   }
 
-  findForUser(userId: number): Promise<NotificationEntity[]> {
-    return this.notificationRepo.find({
+  findForUser(userId: number): Promise<Notification[]> {
+    return this.prisma.notifications.findMany({
       where: { userId },
-      order: { createdAt: 'DESC' },
+      orderBy: { createdAt: 'desc' },
       take: 50,
     });
   }
 
   async markRead(id: number, userId: number): Promise<void> {
-    await this.notificationRepo.update({ id, userId }, { isRead: true, readAt: new Date() });
+    // updateMany, not update: the userId in the criteria is an ownership check,
+    // and update() only accepts a unique selector so it could not carry it.
+    await this.prisma.notifications.updateMany({
+      where: { id, userId },
+      data: { isRead: true, readAt: new Date() },
+    });
   }
 
   async markAllRead(userId: number): Promise<void> {
-    await this.notificationRepo.update(
-      { userId, isRead: false },
-      { isRead: true, readAt: new Date() },
-    );
+    await this.prisma.notifications.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
   }
 
   countUnread(userId: number): Promise<number> {
-    return this.notificationRepo.count({ where: { userId, isRead: false } });
+    return this.prisma.notifications.count({ where: { userId, isRead: false } });
   }
 }
