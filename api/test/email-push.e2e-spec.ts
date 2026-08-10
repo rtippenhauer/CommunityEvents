@@ -142,7 +142,11 @@ describe('Email/Push Dispatch (e2e)', () => {
         .expect(200);
 
       const updated = await request(server).get('/api/v1/admin/email/config').set('Cookie', adminCookie).expect(200);
-      expect(updated.body.brevoEnabled).toBe(0);
+      // Wire-format change from the Prisma swap: TINYINT(1) came back from
+      // TypeORM as 0/1 and now comes back as a real boolean. The frontend
+      // already declared these fields `boolean` and binds them to [checked],
+      // so the JSON now matches the type it always claimed to have.
+      expect(updated.body.brevoEnabled).toBe(false);
     });
 
     it('rejects a moderator reading or updating email config (admin-only)', async () => {

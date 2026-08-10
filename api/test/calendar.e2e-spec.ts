@@ -6,6 +6,7 @@ import { CalendarService, IcsEventLike } from '../src/modules/calendar/calendar.
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { cities as City, event_rsvps as EventRsvp, events as Event, locations as Location, users as User } from '@prisma/client';
 import { EventStatus, RsvpStatus, UserRole } from '../src/database/enums';
+import { toDateColumn, toTimeColumn } from '../src/common/utils/prisma-date.util';
 
 const CLOUDFLARE_SECRET = 'test-cloudflare-email-secret-not-for-real-use';
 
@@ -56,10 +57,14 @@ describe('Calendar / ICS Feed (e2e)', () => {
         locationAddress: location.address,
         createdById: admin.id,
         title: 'Calendar Test Dinner',
-        eventDate: dateOffset(14),
-        eventTime: '18:30',
         status: EventStatus.PUBLISHED,
         ...overrides,
+        // DATE and TIME columns are Date objects under Prisma, where the entities
+        // typed them as strings. Specs still express them as 'YYYY-MM-DD' /
+        // 'HH:MM' (the same shape the API accepts), so convert on the way in and
+        // apply after the overrides spread so an override string converts too.
+        eventDate: toDateColumn((overrides.eventDate as string) ?? dateOffset(14)),
+        eventTime: toTimeColumn((overrides.eventTime as string) ?? '18:30'),
       }, });
   }
 
@@ -82,7 +87,9 @@ describe('Calendar / ICS Feed (e2e)', () => {
       expect(res.text).toContain(`UID:dinnerbears-event-${event.id}@dinnerbears.com`);
       expect(res.text).toMatch(/DTSTART:\d{8}T\d{6}Z/);
       expect(res.text).toContain('STATUS:CONFIRMED');
-      expect(res.text).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@dinnerbears.com');
+      // calendar@<BASE_DOMAIN>; setup-env.ts pins BASE_DOMAIN=localhost. The old
+      // literal named the production domain and could never match here.
+      expect(res.text).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@localhost');
       expect(res.text).toContain('METHOD:PUBLISH');
     });
 
@@ -146,8 +153,8 @@ describe('Calendar / ICS Feed (e2e)', () => {
           locationAddress: otherLocation.address,
           createdById: admin.id,
           title: 'Other City Dinner',
-          eventDate: dateOffset(14),
-          eventTime: '18:30',
+          eventDate: toDateColumn(dateOffset(14)),
+          eventTime: toTimeColumn('18:30'),
           status: EventStatus.PUBLISHED,
         }, });
       await seedEvent({ title: 'My City Dinner' });
@@ -343,7 +350,11 @@ describe('Calendar / ICS Feed (e2e)', () => {
       expect(ics).toContain('METHOD:REQUEST');
       expect(ics).toContain(`UID:dinnerbears-event-${event.id}@dinnerbears.com`);
       expect(ics).toContain('ATTENDEE;CN=Guest Name;RSVP=TRUE:mailto:guest@example.test');
-      expect(ics).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@dinnerbears.com');
+      // calendar@<BASE_DOMAIN>, and setup-env.ts pins BASE_DOMAIN=localhost.
+      // The old literal named the production domain; the assertion never ran,
+      // because this call was not awaited and the Promise silently passed the
+      // earlier toContain checks.
+      expect(ics).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@localhost');
       expect(ics).toMatch(/DTSTAMP:\d{8}T\d{6}Z/);
     });
 

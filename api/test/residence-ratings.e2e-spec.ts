@@ -5,6 +5,7 @@ import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { cities as City, event_rsvps as EventRsvp, events as Event, locations as Location, users as User } from '@prisma/client';
 import { RsvpStatus, UserRole } from '../src/database/enums';
+import { toDateColumn, toTimeColumn } from '../src/common/utils/prisma-date.util';
 
 // Phase 37: residences are not rateable. The mechanism is Phase 33's
 // `feature_ratings_residences` toggle; what changed is that it now defaults
@@ -58,8 +59,10 @@ describe('Residence ratings (e2e)', () => {
         locationAddress: location.address,
         createdById: admin.id,
         title: `Dinner at ${location.name}`,
-        eventDate: '2020-01-05',
-        eventTime: '18:30',
+        // DATE/TIME columns are Date objects under Prisma; the spec keeps
+        // speaking in the 'YYYY-MM-DD' / 'HH:MM' strings the API accepts.
+        eventDate: toDateColumn('2020-01-05'),
+        eventTime: toTimeColumn('18:30'),
       }, });
     await prisma.event_rsvps.create({ data: {
         eventId: event.id,

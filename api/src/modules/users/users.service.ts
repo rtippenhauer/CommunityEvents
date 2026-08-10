@@ -10,6 +10,7 @@ import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
 import { AvatarsService } from '../avatars/avatars.service';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
+import { coerceRawRows } from '../../common/utils/prisma-raw.util';
 
 // Shape of the raw findMembers rows. MySQL returns the computed columns as
 // strings or numbers depending on the driver, so the mapper below coerces
@@ -145,7 +146,7 @@ export class UsersService {
       UserRole.AUTOMATION,
     );
 
-    return rows.map((r) => ({
+    return coerceRawRows(rows).map((r) => ({
       id: r.id,
       fullName: isNonValidated ? 'Mystery Bear' : r.fullName,
       profilePhotoPath: isNonValidated ? null : r.profilePhotoPath,

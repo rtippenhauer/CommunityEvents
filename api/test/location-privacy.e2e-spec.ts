@@ -68,9 +68,14 @@ describe('Location privacy (e2e)', () => {
     it('hides the address of a private location from a member with no Going RSVP', async () => {
       const loc = await seedLocation(prisma, city.id, { isPrivate: true, name: "Bob's House" });
 
+      // A private location is dropped from the browsable list entirely for
+      // anyone who is not admin/mod — see findAllForUser in locations.service.ts.
+      // It is not merely address-redacted there; a member only ever meets one
+      // through an event they are attending, which is what /locations/:id below
+      // covers. The old assertion looked for a redacted row in the list and has
+      // never matched this behaviour, on Prisma or on TypeORM before it.
       const listRes = await request(server).get('/api/v1/locations').set('Cookie', memberCookie).expect(200);
-      const inList = listRes.body.find((l: Location) => l.id === loc.id);
-      expect(inList.address).toBeNull();
+      expect(listRes.body.find((l: Location) => l.id === loc.id)).toBeUndefined();
 
       const oneRes = await request(server).get(`/api/v1/locations/${loc.id}`).set('Cookie', memberCookie).expect(200);
       expect(oneRes.body.address).toBeNull();

@@ -46,6 +46,15 @@ describe('Uploads (e2e)', () => {
     adminCookie = await loginAs(app, admin);
     moderatorCookie = await loginAs(app, moderator);
     memberCookie = await loginAs(app, member);
+
+    // setAvatar checks the requested path against this instance's `avatar`
+    // catalog, which is reference data seeded once per install (prisma/seed.ts)
+    // and wiped by truncateAllTables like everything else. Seed just the row
+    // the preset-avatar test selects, the same way the gamification spec
+    // re-seeds the achievement keys it exercises.
+    await prisma.avatar.create({
+      data: { path: '/avatars/bear-grizzly.png', label: 'Grizzly', sortOrder: 0 },
+    });
   });
 
   describe('POST /users/me/photo + GET /uploads/profiles/:filename (auth-gated serving)', () => {

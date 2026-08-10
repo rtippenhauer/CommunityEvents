@@ -69,6 +69,7 @@ type EventListRow = Prisma.eventsGetPayload<{
   };
 }>;
 import { AppConfigService } from '../app-config/app-config.service';
+import { coerceRawRows } from '../../common/utils/prisma-raw.util';
 
 export interface EventFilters {
   cityId?: number;
@@ -2030,7 +2031,7 @@ export class EventsService {
 
     const events = dueRows.length
       ? await this.prisma.events.findMany({
-          where: { id: { in: dueRows.map((r) => r.id) } },
+          where: { id: { in: coerceRawRows(dueRows).map((r) => r.id) } },
           include: { location: { include: { photos: { orderBy: { id: 'asc' } } } } },
         })
       : [];

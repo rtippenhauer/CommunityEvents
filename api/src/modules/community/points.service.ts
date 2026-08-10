@@ -3,6 +3,7 @@ import type { member_points as MemberPoint } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { PointType, UserRole, UserStatus } from '../../database/enums';
 import { AchievementsService } from './achievements.service';
+import { coerceRawRows } from '../../common/utils/prisma-raw.util';
 
 export type SecretDinnerResync = { enabled: true; awarded: number } | { enabled: false; removed: number };
 
@@ -195,7 +196,7 @@ export class PointsService {
 
 
     // Determine top point type per user
-    const userIds = rows.map((r) => r.userId);
+    const userIds = coerceRawRows(rows).map((r) => r.userId);
     const topTypeMap: Record<number, PointType | null> = {};
     if (userIds.length > 0) {
       // groupBy over two columns, ordered by the summed total so the first
@@ -212,7 +213,7 @@ export class PointsService {
       }
     }
 
-    return rows.map((r, i) => ({
+    return coerceRawRows(rows).map((r, i) => ({
       rank: i + 1,
       userId: r.userId,
       fullName: r.fullName,
@@ -264,7 +265,11 @@ export class PointsService {
   }
 
   async adminRemovePoints(pointId: number): Promise<void> {
-    await this.prisma.member_points.delete({ where: { id: pointId } });
+    // deleteMany, not delete: the endpoint is documented as a no-op for an id
+    // that no longer exists (an admin clicking remove twice, or on a stale
+    // list). TypeORM's repository.delete() returned affected: 0; Prisma's
+    // delete() throws P2025 instead, which surfaced as a 500.
+    await this.prisma.member_points.deleteMany({ where: { id: pointId } });
   }
 
   async awardCityHopper(userId: number, eventId: number): Promise<void> {

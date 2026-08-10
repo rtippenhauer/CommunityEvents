@@ -12,6 +12,7 @@ import { LocationsService } from './locations.service';
 import { PointsService } from '../community/points.service';
 import { AppConfigService } from '../app-config/app-config.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
+import { coerceRawRows } from '../../common/utils/prisma-raw.util';
 
 interface RatingAggregate {
   count: number;
@@ -191,9 +192,13 @@ export class RatingsService {
         avgNoise: aggregate?.avgNoise != null ? parseFloat(aggregate.avgNoise) : null,
         avgOverall: aggregate?.avgOverall != null ? parseFloat(aggregate.avgOverall) : null,
       },
-      reviews: reviews.map((row) => ({
+      // id/food/service/valueRating/noise are integer columns, and a raw query
+      // hands those back as BigInt — which JSON.stringify refuses to serialise.
+      // The scattered Number() calls elsewhere in this file were covering the
+      // same hazard one column at a time.
+      reviews: coerceRawRows(reviews).map((row) => ({
         id: row.id,
-        memberId: Number(row.memberId),
+        memberId: row.memberId,
         memberName: row.memberName,
         memberPhoto: row.memberPhoto,
         eventDate: row.eventDate,

@@ -7,6 +7,7 @@ import { AchievementsService } from '../src/modules/community/achievements.servi
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { achievements as Achievement, cities as City, events as Event, locations as Location, member_achievements as MemberAchievement, member_points as MemberPoint, users as User } from '@prisma/client';
 import { PointType, UserRole } from '../src/database/enums';
+import { toDateColumn, toTimeColumn } from '../src/common/utils/prisma-date.util';
 
 describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
   let app: INestApplication;
@@ -81,9 +82,13 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
         locationAddress: location.address,
         createdById: admin.id,
         title: 'Gamification Test Dinner',
-        eventDate: '2027-01-05',
-        eventTime: '18:30',
         ...overrides,
+        // DATE and TIME columns are Date objects under Prisma, where the entities
+        // typed them as strings. Specs still express them as 'YYYY-MM-DD' /
+        // 'HH:MM' (the same shape the API accepts), so convert on the way in and
+        // apply after the overrides spread so an override string converts too.
+        eventDate: toDateColumn((overrides.eventDate as string) ?? '2027-01-05'),
+        eventTime: toTimeColumn((overrides.eventTime as string) ?? '18:30'),
       }, });
   }
 

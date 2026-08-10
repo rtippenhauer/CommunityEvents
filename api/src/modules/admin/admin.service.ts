@@ -156,21 +156,30 @@ export class AdminService {
     const limit = Math.min(200, Math.max(1, filter.limit ?? 50));
     const skip = (page - 1) * limit;
 
-    // The filter builder becomes one reusable where object. The user search
-    // spans the joined user's name and email, which is a nested relation
-    // filter rather than a join written by hand.
-    const where: Prisma.audit_logWhereInput = {
-      ...(filter.userId ? { userId: filter.userId } : {}),
-      ...(filter.userSearch
-        ? {
-            user: {
+    // audit_log.user_id carries no foreign key, so schema.prisma models no
+    // `user` relation and a nested relation filter is not available (this used
+    // to be a hand-written join on an explicit condition). The name/email
+    // search therefore resolves to a set of user ids first, and the audit query
+    // filters on those. An empty result set is meaningful: it matches nothing,
+    // which is what a search with no matching member should return.
+    const searchUserIds = filter.userSearch
+      ? (
+          await this.prisma.users.findMany({
+            where: {
               OR: [
                 { fullName: { contains: filter.userSearch } },
                 { email: { contains: filter.userSearch } },
               ],
             },
-          }
-        : {}),
+            select: { id: true },
+          })
+        ).map((u) => u.id)
+      : null;
+
+    // The filter builder becomes one reusable where object.
+    const where: Prisma.audit_logWhereInput = {
+      ...(filter.userId ? { userId: filter.userId } : {}),
+      ...(searchUserIds ? { userId: { in: searchUserIds } } : {}),
       ...(filter.entityType ? { entityType: filter.entityType } : {}),
       ...(filter.action ? { action: filter.action } : {}),
       ...(filter.dateFrom || filter.dateTo
