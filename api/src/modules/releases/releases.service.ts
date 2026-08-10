@@ -10,7 +10,12 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { FeedbackStatus } from '../../database/enums';
 import { CreateReleaseDto } from './dto/create-release.dto';
 import { UpdateReleaseDto } from './dto/update-release.dto';
-import * as sanitizeHtml from 'sanitize-html';
+// Default import, not `import * as`: sanitize-html is a CommonJS module whose
+// export IS the function. A namespace object is not callable under ESM, so
+// `import * as` only worked because tsc emitted CommonJS — it throws
+// "is not a function" the moment the file is loaded as a real ES module,
+// which is how Vitest loads it.
+import sanitizeHtml from 'sanitize-html';
 
 export const ALLOWED_HTML = {
   allowedTags: sanitizeHtml.defaults.allowedTags.concat(['s', 'u']),

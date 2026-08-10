@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';

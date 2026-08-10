@@ -1,6 +1,7 @@
+import { vi } from 'vitest';
 import { INestApplication } from '@nestjs/common';
 import { createHmac } from 'crypto';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedUser, loginAs, hashPassword } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
@@ -515,7 +516,7 @@ describe('Auth (e2e)', () => {
     });
 
     function mockFacebookGraphApi(fbUser: Record<string, unknown>): void {
-      global.fetch = jest.fn().mockResolvedValue({
+      global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => fbUser,
       }) as unknown as typeof fetch;
@@ -537,7 +538,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('rejects an invalid Facebook access token', async () => {
-      global.fetch = jest.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
+      global.fetch = vi.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
 
       await request(server).post('/api/v1/auth/facebook').send({ accessToken: 'bad-token' }).expect(401);
     });
