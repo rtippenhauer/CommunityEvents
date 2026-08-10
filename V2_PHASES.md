@@ -11,7 +11,7 @@ each item's status as `/v2-done` closes it; add new items here as later
 requirements docs (REQ-TENANT-02, …) land.
 
 ## v2-1 — Prisma data layer (REQ-TENANT-01.3, first half)
-**Status:** Not started
+**Status:** Complete (2026-08-09)
 
 Install Prisma, model `schema.prisma` against `docs/DATABASE_SCHEMA.md` as
 a starting point, wire up `PrismaService` in place of `TypeOrmModule`,
@@ -23,8 +23,20 @@ part of this item — see v2-5.
 **Definition of done:** TypeORM fully removed; Prisma is the only
 data-access layer; app boots and existing queries run against it.
 
+**Outcome:** met in full. All 36 services converted, the 37 entity files
+deleted and `typeorm`/`@nestjs/typeorm` uninstalled. `events` and `auth` were
+briefly deferred to `v2-2` on the grounds that they hold the most
+authorization logic and there were no tests to catch a regression; that call
+was reversed and both were converted here, so the item closes against its
+original definition.
+
+Verified on stage: `prisma migrate deploy` -> `seed.js` -> `bootstrap.js` on a
+blank database, app serving. **Not** verified: anything behind authentication,
+since the item ships with no test coverage — which is exactly what `v2-2`
+addresses next.
+
 ## v2-2 — Testing stack swap (REQ-TENANT-01.6)
-**Status:** Not started
+**Status:** In Progress
 
 Replace Jest (`api/`) and Karma/Jasmine (`frontend/`) with Vitest across
 both workspaces, keep Supertest for API integration tests, and scaffold
