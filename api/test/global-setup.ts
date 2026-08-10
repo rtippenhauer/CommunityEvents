@@ -16,9 +16,20 @@ export default function globalSetup(): void {
   // is slow and can go to the network on a cold cache.
   const prismaCli = require.resolve('prisma/build/index.js');
 
+  const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
+
+  // DATABASE_URL, not the DB_* vars, because the Prisma CLI injects the repo
+  // root .env over the environment it was invoked with — passing DB_PORT=3307
+  // here is silently replaced by the dev database's 3308 and the migration
+  // lands in the wrong database. The root .env defines no DATABASE_URL, so
+  // this one survives. prisma.config.ts prefers it over the DB_* vars.
+  const databaseUrl = `mysql://${encodeURIComponent(DB_USER!)}:${encodeURIComponent(
+    DB_PASSWORD ?? '',
+  )}@${DB_HOST}:${DB_PORT}/${DB_NAME}`;
+
   execFileSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {
     cwd: apiDir,
     stdio: 'inherit',
-    env: process.env,
+    env: { ...process.env, DATABASE_URL: databaseUrl },
   });
 }
