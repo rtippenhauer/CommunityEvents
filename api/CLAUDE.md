@@ -1,13 +1,15 @@
-# DinnerBears API — NestJS
+# CommunityEvents API — NestJS
 
 ## Conventions (STRICT)
 - One module per feature domain
 - DTOs with class-validator for all request bodies
 - Guards on all protected routes — never trust client role state
-- TypeORM repositories — no raw SQL except in migrations
+- Prisma for all data access (v2-1) — raw SQL only where Prisma cannot
+  express the statement, and say why in a comment at the site
 - Global prefix /api/v1 set in main.ts
 - Never expose stack traces — GlobalExceptionFilter handles all errors
-- synchronize: false always — migrations only
+- Migrations are Prisma's: `prisma migrate dev` locally, `prisma migrate deploy`
+  in the container entrypoint
 
 ## Module Structure
 src/modules/
@@ -24,13 +26,20 @@ src/modules/
 - [ ] JWT guard applied
 - [ ] Role guard applied where needed
 - [ ] DTO validation with class-validator
-- [ ] Parameterized queries only (TypeORM)
+- [ ] Parameterized queries only (Prisma; bind params in `$queryRaw` too)
 - [ ] File uploads: MIME + extension validation
 
 ## Database
-- Migrations in src/migrations/ with timestamp prefix
-- Never use synchronize: true
-- See docs/DATABASE_SCHEMA.md for full schema reference
+- `prisma/schema.prisma` is the single source of truth; migrations live in
+  `prisma/migrations/`. `docs/DATABASE_SCHEMA.md` is reference only and may drift.
+- Fresh install: `prisma migrate deploy` -> `dist/database/prisma/seed.js` ->
+  `dist/bootstrap.js`, in that order.
+- Scalar fields are camelCase with `@map` to snake_case columns — the field name
+  is the JSON key the frontend consumes, so do not rename casually.
+- DATE/TIME columns come back as `Date`; use
+  `src/common/utils/prisma-date.util.ts` rather than string-slicing them.
+- Four `locations` columns are hidden by a global `omit` in PrismaService
+  (moderator notes, contact name/phone/email). Only the moderator read opts in.
 
 ## Port
 NestJS runs on port 3000 (internal only — no public port)
