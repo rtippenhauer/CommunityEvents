@@ -47,6 +47,70 @@ describe('Events CRUD (e2e)', () => {
     };
   }
 
+  // Regression (v2-1 -> caught on stage during v2-2): event_date is a DATE
+  // column and event_time a TIME column, and the API has always published them
+  // as 'YYYY-MM-DD' and 'HH:MM:SS'. Prisma returns both as Date objects, and
+  // the list/detail endpoints were handing those straight back, so the wire
+  // format silently became "2026-08-11T00:00:00.000Z" / "1970-01-01T18:30:00.000Z".
+  //
+  // The client's eventTime.substring(0, 5) then produced "1970-", and a DATE
+  // read as UTC midnight rendered as the *previous day* anywhere west of
+  // Greenwich -- a Tuesday event displayed as Monday in Eastern.
+  //
+  // Nothing failed: the whole suite passed while the format was wrong, because
+  // no test asserted the shape of these two fields. These do.
+  describe('eventDate/eventTime wire format', () => {
+    const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+    const TIME_ONLY = /^\d{2}:\d{2}:\d{2}$/;
+
+    it('publishes date-only and time-only strings from the list endpoint', async () => {
+      await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload())
+        .expect(201);
+
+      const res = await request(server).get('/api/v1/events').set('Cookie', adminCookie).expect(200);
+      expect(res.body.length).toBeGreaterThan(0);
+      for (const event of res.body) {
+        expect(event.eventDate).toMatch(DATE_ONLY);
+        expect(event.eventTime).toMatch(TIME_ONLY);
+      }
+    });
+
+    it('publishes date-only and time-only strings from the detail endpoint', async () => {
+      const created = await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload())
+        .expect(201);
+
+      const res = await request(server)
+        .get(`/api/v1/events/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(res.body.eventDate).toMatch(DATE_ONLY);
+      expect(res.body.eventTime).toMatch(TIME_ONLY);
+    });
+
+    it('round-trips the exact date it was given, with no timezone drift', async () => {
+      const created = await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload({ eventDate: '2027-01-05', eventTime: '18:30' }))
+        .expect(201);
+
+      const res = await request(server)
+        .get(`/api/v1/events/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(res.body.eventDate).toBe('2027-01-05');
+      expect(res.body.eventTime).toBe('18:30:00');
+    });
+  });
+
   describe('POST /events (create)', () => {
     it('creates an event when authenticated as admin', async () => {
       const res = await request(server)

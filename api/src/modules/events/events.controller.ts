@@ -34,6 +34,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { EventStatus, UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
+import { toEventDateStrings } from '../../common/utils/prisma-date.util';
 
 @Controller('events')
 export class EventsController {
@@ -45,7 +46,7 @@ export class EventsController {
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
   @Header('Cache-Control', 'no-store')
-  findAll(
+  async findAll(
     @Query('cityId') cityId?: string,
     @Query('upcoming') upcoming?: string,
     @Query('fromDate') fromDate?: string,
@@ -55,7 +56,7 @@ export class EventsController {
     const isAdminOrMod =
       user?.role === UserRole.ADMIN || user?.role === UserRole.MODERATOR;
 
-    return this.eventsService.findAll({
+    const events = await this.eventsService.findAll({
       cityId: cityId ? parseInt(cityId, 10) : undefined,
       fromDate: fromDate || undefined,
       upcoming: fromDate ? undefined : (upcoming === 'true' ? true : upcoming === 'false' ? false : undefined),
@@ -64,6 +65,12 @@ export class EventsController {
       userId: user?.id,
       callerRole: user?.role,
     });
+    // event_date (DATE) and event_time (TIME) go on the wire as 'YYYY-MM-DD'
+    // and 'HH:MM:SS', which is what they have always been and what the client
+    // parses. Prisma hands them back as Date objects; returning those raw
+    // serialises full ISO timestamps and shifts every event to the previous
+    // day in any negative-offset timezone. See toEventDateStrings.
+    return events.map(toEventDateStrings);
   }
 
   @Get(':id/ics')
@@ -118,8 +125,8 @@ export class EventsController {
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   @Header('Cache-Control', 'no-store')
-  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: User) {
-    return this.eventsService.findOne(id, user?.role, user?.id);
+  async findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user?: User) {
+    return toEventDateStrings(await this.eventsService.findOne(id, user?.role, user?.id));
   }
 
   @Post()
