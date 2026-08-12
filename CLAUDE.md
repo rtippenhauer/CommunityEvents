@@ -34,16 +34,27 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-2` — testing stack swap (REQ-TENANT-01.6):
-replace Jest and Karma/Jasmine with Vitest + Supertest, and scaffold
-Playwright, before any tenant feature work starts. See `V2_PHASES.md` for the
-full backlog and each item's Definition of Done.
+**Current v2 work item:** `v2-3` — tenants table (REQ-TENANT-01.1): add the
+`tenants` table and seed the root tenant, now that Prisma is the working data
+layer and the test stack can cover it. See `V2_PHASES.md` for the full backlog
+and each item's Definition of Done.
 
 **Completed v2 items:**
 - **`v2-1` — Prisma data layer** (2026-08-09). TypeORM removed entirely:
   entities deleted, `typeorm`/`@nestjs/typeorm` uninstalled, all 36 services
   converted. `schema.prisma` is the single source of truth and one initial
   migration replaces the 84 inherited TypeORM migrations.
+- **`v2-2` — Testing stack swap** (2026-08-11). Jest, ts-jest, Karma and
+  Jasmine uninstalled; Vitest everywhere, Playwright scaffolded. API unit 76,
+  API integration 623 across 28 files, frontend 91, Playwright 2.
+
+  Worth knowing beyond the tooling: `v2-1` had left all 28 e2e specs
+  uncompilable, so nothing had ever exercised the Prisma conversion. Restoring
+  them found four defects live on `v2-stage` — BigInt from raw queries, a
+  `delete()` that threw where TypeORM no-opped, an audit-log filter on a
+  non-existent relation, and event DATE/TIME columns serialised as ISO
+  timestamps — plus `import * as sanitizeHtml` being called as a function,
+  which only worked because tsc emits CommonJS. Details in `V2_PHASES.md`.
 
 **Infra readiness (confirmed by Rob 2026-08-09):**
 - A dedicated `communityevents` database + `communityevents_user` exist on

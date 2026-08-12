@@ -36,7 +36,7 @@ since the item ships with no test coverage — which is exactly what `v2-2`
 addresses next.
 
 ## v2-2 — Testing stack swap (REQ-TENANT-01.6)
-**Status:** In Progress
+**Status:** Complete (2026-08-11)
 
 Replace Jest (`api/`) and Karma/Jasmine (`frontend/`) with Vitest across
 both workspaces, keep Supertest for API integration tests, and scaffold
@@ -51,8 +51,37 @@ is written under the target stack from its first line.
 only test runner; Playwright wired up with a passing smoke spec; inherited
 suites pass under Vitest or their removal is explicitly noted.
 
+**Outcome:** met in full, and no inherited suite was dropped. Final counts:
+API unit 76 (was 11), API integration 623 across 28 files, frontend 91,
+Playwright 2. The frontend runs on Angular 22's own `@angular/build:unit-test`
+builder with `runner: "vitest"` rather than a hand-rolled Vite config.
+
+The item turned out to be worth more than the tooling swap. `v2-1` had left
+all 28 e2e specs uncompilable, so nothing had exercised the Prisma conversion;
+restoring them became the retrospective verification that item never got, and
+surfaced four real defects already live on `v2-stage`:
+
+- raw `$queryRaw` results hand integer columns back as **BigInt**, which broke
+  the leaderboard, the member directory, the ratings list, the invite backfill
+  and the reservation sweep — either inside Prisma or inside `JSON.stringify`
+- `PATCH /admin/points/:id/remove` threw P2025 where TypeORM's `delete()`
+  had no-opped
+- the admin audit log's user search filtered on a relation that does not exist
+- `events.event_date`/`event_time` were serialised as ISO timestamps instead of
+  the date-only/time-only strings the client parses, so events displayed a day
+  early and the new-event form defaulted to a nonsense time
+
+A fifth, `import * as sanitizeHtml` being called as a function, only ever
+worked because tsc emits CommonJS; it threw the moment the code ran as real
+ESM under Vitest.
+
+Each fix carries a regression test, verified to fail against the unfixed code.
+The suite had passed 620/620 while the event date format was wrong, because
+nothing asserted the shape of those two fields — which is the argument for the
+unit leg this item also filled in.
+
 ## v2-3 — Tenants table (REQ-TENANT-01.1)
-**Status:** Not started
+**Status:** In Progress
 
 Add the `tenants` table and seed the root tenant, now that Prisma is the
 working data layer.
