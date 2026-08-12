@@ -62,3 +62,46 @@ export function toTimeColumn(value: string): Date {
   const withSeconds = value.length === 5 ? `${value}:00` : value;
   return new Date(`1970-01-01T${withSeconds}Z`);
 }
+
+/**
+ * The wire format for an event row.
+ *
+ * `events.event_date` (DATE) and `events.event_time` (TIME) are the only two
+ * columns in the schema that the API has always published as plain strings --
+ * 'YYYY-MM-DD' and 'HH:MM:SS' -- because that is what the TypeORM entities
+ * typed them as and what the frontend still parses. Prisma types both as
+ * DateTime and hands back Date objects, so returning a row untouched puts full
+ * ISO timestamps on the wire instead: "2026-08-11T00:00:00.000Z" and
+ * "1970-01-01T18:30:00.000Z".
+ *
+ * That breaks the client twice over. `eventTime.substring(0, 5)` yields
+ * "1970-", and a DATE read as UTC midnight renders as the *previous day* in
+ * any negative-offset timezone -- a Tuesday event shows up as Monday in
+ * Eastern.
+ *
+ * Applied at the controller boundary, not inside the service: findOne's result
+ * is consumed internally by update(), the reminder sweep and the .ics builders,
+ * all of which do real date arithmetic and need the Date objects. Converting in
+ * the service would hand them strings. The copy below is deliberate for the
+ * same reason -- mutating the row in place would change what those internal
+ * callers see.
+ *
+ * There is no serializer interceptor doing this globally, so a new endpoint
+ * that returns event rows without it ships the ISO form, and nothing fails
+ * until someone looks at a date in the UI. The wire-format assertions in
+ * events.e2e-spec.ts are the backstop.
+ */
+export type EventDateStrings<T> = Omit<T, 'eventDate' | 'eventTime'> & {
+  eventDate: string;
+  eventTime: string;
+};
+
+export function toEventDateStrings<T extends { eventDate: Date; eventTime: Date }>(
+  event: T,
+): EventDateStrings<T> {
+  return {
+    ...event,
+    eventDate: toDateString(event.eventDate),
+    eventTime: toTimeString(event.eventTime),
+  };
+}

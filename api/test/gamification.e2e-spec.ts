@@ -1,35 +1,31 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { EventEntity } from '../src/database/entities/event.entity';
-import { MemberAchievementEntity } from '../src/database/entities/member-achievement.entity';
-import { MemberPointEntity, PointType } from '../src/database/entities/member-point.entity';
-import { AchievementEntity } from '../src/database/entities/achievement.entity';
 import { PointsService } from '../src/modules/community/points.service';
 import { AchievementsService } from '../src/modules/community/achievements.service';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { achievements as Achievement, cities as City, events as Event, locations as Location, member_achievements as MemberAchievement, member_points as MemberPoint, users as User } from '@prisma/client';
+import { PointType, UserRole } from '../src/database/enums';
+import { toDateColumn, toTimeColumn } from '../src/common/utils/prisma-date.util';
 
 describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
   let pointsService: PointsService;
   let achievementsService: AchievementsService;
 
-  let city: CityEntity;
-  let location: LocationEntity;
-  let admin: UserEntity;
+  let city: City;
+  let location: Location;
+  let admin: User;
   let adminCookie: string;
   let moderatorCookie: string;
-  let member: UserEntity;
+  let member: User;
   let memberCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
     pointsService = app.get(PointsService);
     achievementsService = app.get(AchievementsService);
@@ -40,14 +36,14 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     resetThrottler(app);
-    city = await seedCity(dataSource);
-    location = await seedLocation(dataSource, city.id);
+    city = await seedCity(prisma);
+    location = await seedLocation(prisma, city.id);
 
-    admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const moderator = await seedUser(prisma, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     moderatorCookie = await loginAs(app, moderator);
     memberCookie = await loginAs(app, member);
@@ -57,8 +53,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
     // other spec file, several of which rely on a clean slate for their own
     // achievement CRUD tests) wipes it along with everything else. Re-seed just
     // the keys this spec exercises so grant() has something to find.
-    const achievementRepo = dataSource.getRepository(AchievementEntity);
-    await achievementRepo.save([
+    await prisma.achievements.createMany({ data: [
       { key: 'first_dinner', name: 'First Dinner', description: 'd', points: 3 },
       { key: 'regular', name: 'Regular', description: 'd', points: 1, title: 'Regular' },
       { key: 'veteran', name: 'Veteran', description: 'd', points: 1, title: 'Veteran' },
@@ -72,28 +67,29 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
       { key: 'login_25', name: 'Familiar Face', description: 'd', points: 10 },
       { key: 'patriotic_bear', name: 'Patriotic Bear', description: 'd', points: 10, isSecret: true },
       { key: 'founding_bear', name: 'Founding Bear', description: 'd', points: 0, title: 'Founding Bear' },
-    ]);
+    ] });
   });
 
   async function hasEarned(userId: number, key: string): Promise<boolean> {
     return achievementsService.hasEarned(userId, key);
   }
 
-  async function seedEvent(overrides: Record<string, unknown> = {}): Promise<EventEntity> {
-    const repo = dataSource.getRepository(EventEntity);
-    return repo.save(
-      repo.create({
+  async function seedEvent(overrides: Record<string, unknown> = {}): Promise<Event> {
+    return prisma.events.create({ data: {
         cityId: city.id,
         locationId: location.id,
         locationName: location.name,
         locationAddress: location.address,
         createdById: admin.id,
         title: 'Gamification Test Dinner',
-        eventDate: '2027-01-05',
-        eventTime: '18:30',
         ...overrides,
-      }),
-    );
+        // DATE and TIME columns are Date objects under Prisma, where the entities
+        // typed them as strings. Specs still express them as 'YYYY-MM-DD' /
+        // 'HH:MM' (the same shape the API accepts), so convert on the way in and
+        // apply after the overrides spread so an override string converts too.
+        eventDate: toDateColumn((overrides.eventDate as string) ?? '2027-01-05'),
+        eventTime: toTimeColumn((overrides.eventTime as string) ?? '18:30'),
+      }, });
   }
 
   describe('Attendance achievement tiers', () => {
@@ -113,8 +109,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
       await pointsService.awardAttendance(member.id, event.id);
       await pointsService.awardAttendance(member.id, event.id);
 
-      const count = await dataSource
-        .getRepository(MemberPointEntity)
+      const count = await prisma.member_points
         .count({ where: { userId: member.id, pointType: PointType.ATTENDANCE } });
       expect(count).toBe(1);
     });
@@ -125,25 +120,23 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
       const event = await seedEvent();
       await pointsService.awardCoordinator(member.id, event.id);
 
-      const points = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.NEW_LOCATION_COORDINATOR, referenceId: event.id } });
+      const points = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.NEW_LOCATION_COORDINATOR, referenceId: event.id } });
       expect(points!.points).toBe(4);
       expect(await hasEarned(member.id, 'first_coordinator')).toBe(true);
       expect(await hasEarned(member.id, 'scout')).toBe(true);
     });
 
     it('grants only the base coordinator credit at an established location', async () => {
-      await dataSource.query('UPDATE locations SET created_at = ? WHERE id = ?', [
-        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-        location.id,
-      ]);
+      await prisma.locations.update({
+        where: { id: location.id },
+        data: { createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      });
       const event = await seedEvent();
       await pointsService.awardCoordinator(member.id, event.id);
 
-      const points = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
+      const points = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.COORDINATOR, referenceId: event.id } });
       expect(points!.points).toBe(2);
       expect(await hasEarned(member.id, 'scout')).toBe(false);
     });
@@ -152,7 +145,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
   describe('Rating achievement tiers', () => {
     it('grants first_review and critic after 5 ratings', async () => {
       const locations = await Promise.all(
-        Array.from({ length: 5 }, (_, i) => seedLocation(dataSource, city.id, { name: `Rated Location ${i}` })),
+        Array.from({ length: 5 }, (_, i) => seedLocation(prisma, city.id, { name: `Rated Location ${i}` })),
       );
       for (const r of locations) {
         await pointsService.awardRating(member.id, r.id);
@@ -165,30 +158,28 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
 
   describe('Invite achievement (first successful invite)', () => {
     it("awards the inviter a point and 'connector' when their invitee's first attendance is recorded", async () => {
-      const inviter = await seedUser(dataSource, city.id, { email: 'inviter@example.test' });
-      const invitee = await seedUser(dataSource, city.id, { email: 'invitee@example.test', invitedBy: inviter.id });
+      const inviter = await seedUser(prisma, city.id, { email: 'inviter@example.test' });
+      const invitee = await seedUser(prisma, city.id, { email: 'invitee@example.test', invitedBy: inviter.id });
       const event = await seedEvent();
 
       await pointsService.awardAttendance(invitee.id, event.id);
 
-      const invitePoint = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: inviter.id, pointType: PointType.INVITE, referenceId: invitee.id } });
+      const invitePoint = await prisma.member_points
+        .findFirst({ where: { userId: inviter.id, pointType: PointType.INVITE, referenceId: invitee.id } });
       expect(invitePoint).toBeTruthy();
       expect(await hasEarned(inviter.id, 'connector')).toBe(true);
     });
 
     it("does not award an invite point for the invitee's second attended dinner", async () => {
-      const inviter = await seedUser(dataSource, city.id, { email: 'inviter2@example.test' });
-      const invitee = await seedUser(dataSource, city.id, { email: 'invitee2@example.test', invitedBy: inviter.id });
+      const inviter = await seedUser(prisma, city.id, { email: 'inviter2@example.test' });
+      const invitee = await seedUser(prisma, city.id, { email: 'invitee2@example.test', invitedBy: inviter.id });
       const event1 = await seedEvent({ title: 'First' });
       const event2 = await seedEvent({ title: 'Second' });
 
       await pointsService.awardAttendance(invitee.id, event1.id);
       await pointsService.awardAttendance(invitee.id, event2.id);
 
-      const inviteCount = await dataSource
-        .getRepository(MemberPointEntity)
+      const inviteCount = await prisma.member_points
         .count({ where: { userId: inviter.id, pointType: PointType.INVITE } });
       expect(inviteCount).toBe(1);
     });
@@ -239,9 +230,8 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
 
       await achievementsService.checkEventAchievement(member.id, event.id);
 
-      const earned = await dataSource
-        .getRepository(MemberAchievementEntity)
-        .findOne({ where: { memberId: member.id, achievementId: created.body.id } });
+      const earned = await prisma.member_achievements
+        .findFirst({ where: { memberId: member.id, achievementId: created.body.id } });
       expect(earned).toBeTruthy();
     });
   });
@@ -255,7 +245,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
 
       await request(server).patch('/api/v1/members/me/title').set('Cookie', memberCookie).send({ title: 'Regular' }).expect(200);
 
-      const user = await dataSource.getRepository(UserEntity).findOne({ where: { id: member.id } });
+      const user = await prisma.users.findFirst({ where: { id: member.id } });
       expect(user!.selectedTitle).toBe('Regular');
     });
 
@@ -272,7 +262,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
 
       await request(server).patch('/api/v1/members/me/title').set('Cookie', memberCookie).send({ title: null }).expect(200);
 
-      const user = await dataSource.getRepository(UserEntity).findOne({ where: { id: member.id } });
+      const user = await prisma.users.findFirst({ where: { id: member.id } });
       expect(user!.selectedTitle).toBeNull();
     });
   });
@@ -301,7 +291,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
       // which — since its seeded points value is > 0 above — also creates the
       // member_points ACHIEVEMENT row we're asserting survives the revoke.
       await pointsService.awardAttendance(member.id, (await seedEvent()).id);
-      const achievement = await dataSource.getRepository(AchievementEntity).findOne({ where: { key: 'first_dinner' } });
+      const achievement = await prisma.achievements.findFirst({ where: { key: 'first_dinner' } });
       expect(await hasEarned(member.id, 'first_dinner')).toBe(true);
 
       await request(server)
@@ -309,18 +299,16 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
         .set('Cookie', adminCookie)
         .expect(200);
 
-      const memberAchievement = await dataSource
-        .getRepository(MemberAchievementEntity)
-        .findOne({ where: { memberId: member.id, achievementId: achievement!.id } });
+      const memberAchievement = await prisma.member_achievements
+        .findFirst({ where: { memberId: member.id, achievementId: achievement!.id } });
       expect(memberAchievement).toBeNull();
-      const achievementPoints = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: member.id, pointType: PointType.ACHIEVEMENT, referenceId: achievement!.id } });
+      const achievementPoints = await prisma.member_points
+        .findFirst({ where: { userId: member.id, pointType: PointType.ACHIEVEMENT, referenceId: achievement!.id } });
       expect(achievementPoints).toBeTruthy();
     });
 
     it('rejects a moderator revoking an achievement (admin-only)', async () => {
-      const achievement = await dataSource.getRepository(AchievementEntity).findOne({ where: { key: 'first_dinner' } });
+      const achievement = await prisma.achievements.findFirst({ where: { key: 'first_dinner' } });
       await request(server)
         .patch(`/api/v1/admin/members/${member.id}/achievements/${achievement!.id}/revoke`)
         .set('Cookie', moderatorCookie)
@@ -347,11 +335,11 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
 
     it('removes a point entry as admin', async () => {
       await pointsService.awardAttendance(member.id, (await seedEvent()).id);
-      const point = await dataSource.getRepository(MemberPointEntity).findOne({ where: { userId: member.id } });
+      const point = await prisma.member_points.findFirst({ where: { userId: member.id } });
 
       await request(server).patch(`/api/v1/admin/points/${point!.id}/remove`).set('Cookie', adminCookie).expect(200);
 
-      const removed = await dataSource.getRepository(MemberPointEntity).findOne({ where: { id: point!.id } });
+      const removed = await prisma.member_points.findFirst({ where: { id: point!.id } });
       expect(removed).toBeNull();
     });
 
@@ -361,7 +349,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
 
     it('rejects a moderator removing a point entry (admin-only)', async () => {
       await pointsService.awardAttendance(member.id, (await seedEvent()).id);
-      const point = await dataSource.getRepository(MemberPointEntity).findOne({ where: { userId: member.id } });
+      const point = await prisma.member_points.findFirst({ where: { userId: member.id } });
       await request(server).patch(`/api/v1/admin/points/${point!.id}/remove`).set('Cookie', moderatorCookie).expect(403);
     });
   });
@@ -386,7 +374,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
 
     it('is idempotent — running recalculate-points twice does not duplicate an achievement point', async () => {
       await pointsService.awardAttendance(member.id, (await seedEvent()).id);
-      const achievement = await dataSource.getRepository(AchievementEntity).findOneOrFail({ where: { key: 'first_dinner' } });
+      const achievement = await prisma.achievements.findFirstOrThrow({ where: { key: 'first_dinner' } });
 
       await request(server).post('/api/v1/admin/achievements/recalculate-points').set('Cookie', adminCookie).expect(201);
       const second = await request(server)
@@ -395,21 +383,19 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
         .expect(201);
 
       expect(second.body.inserted).toBe(0);
-      const count = await dataSource
-        .getRepository(MemberPointEntity)
+      const count = await prisma.member_points
         .count({ where: { userId: member.id, pointType: PointType.ACHIEVEMENT, referenceId: achievement.id } });
       expect(count).toBe(1);
     });
 
     it('backfills missing invite points and achievements for an attendee whose inviter was never credited', async () => {
-      const inviter = await seedUser(dataSource, city.id, { email: 'backfill-inviter@example.test' });
-      const invitee = await seedUser(dataSource, city.id, { email: 'backfill-invitee@example.test', invitedBy: inviter.id });
+      const inviter = await seedUser(prisma, city.id, { email: 'backfill-inviter@example.test' });
+      const invitee = await seedUser(prisma, city.id, { email: 'backfill-invitee@example.test', invitedBy: inviter.id });
       // Simulate the pre-fix bug: the invitee attended (their first dinner), but no
       // invite point was ever recorded for the inviter, since checkInvitePointForInviter
       // silently failed before this phase's fix.
-      await dataSource
-        .getRepository(MemberPointEntity)
-        .save({ userId: invitee.id, pointType: PointType.ATTENDANCE, referenceId: (await seedEvent()).id, points: 1 });
+      await prisma.member_points
+        .create({ data: { userId: invitee.id, pointType: PointType.ATTENDANCE, referenceId: (await seedEvent()).id, points: 1 } });
 
       const res = await request(server)
         .post('/api/v1/admin/achievements/backfill-invites')
@@ -417,34 +403,30 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
         .expect(201);
       expect(res.body.pointsGranted).toBe(1);
 
-      const invitePoint = await dataSource
-        .getRepository(MemberPointEntity)
-        .findOne({ where: { userId: inviter.id, pointType: PointType.INVITE, referenceId: invitee.id } });
+      const invitePoint = await prisma.member_points
+        .findFirst({ where: { userId: inviter.id, pointType: PointType.INVITE, referenceId: invitee.id } });
       expect(invitePoint).toBeTruthy();
       expect(await hasEarned(inviter.id, 'connector')).toBe(true);
 
       // Backfilled achievements are marked already-seen so they don't trigger a
       // splash popup for activity that actually happened before this phase.
-      const achievement = await dataSource.getRepository(AchievementEntity).findOne({ where: { key: 'connector' } });
-      const memberAchievement = await dataSource
-        .getRepository(MemberAchievementEntity)
-        .findOne({ where: { memberId: inviter.id, achievementId: achievement!.id } });
+      const achievement = await prisma.achievements.findFirst({ where: { key: 'connector' } });
+      const memberAchievement = await prisma.member_achievements
+        .findFirst({ where: { memberId: inviter.id, achievementId: achievement!.id } });
       expect(memberAchievement!.seenAt).toBeTruthy();
     });
 
     it('is idempotent — running the invite-points backfill twice does not double-award', async () => {
-      const inviter = await seedUser(dataSource, city.id, { email: 'idempotent-inviter@example.test' });
-      const invitee = await seedUser(dataSource, city.id, { email: 'idempotent-invitee@example.test', invitedBy: inviter.id });
-      await dataSource
-        .getRepository(MemberPointEntity)
-        .save({ userId: invitee.id, pointType: PointType.ATTENDANCE, referenceId: (await seedEvent()).id, points: 1 });
+      const inviter = await seedUser(prisma, city.id, { email: 'idempotent-inviter@example.test' });
+      const invitee = await seedUser(prisma, city.id, { email: 'idempotent-invitee@example.test', invitedBy: inviter.id });
+      await prisma.member_points
+        .create({ data: { userId: invitee.id, pointType: PointType.ATTENDANCE, referenceId: (await seedEvent()).id, points: 1 } });
 
       await request(server).post('/api/v1/admin/achievements/backfill-invites').set('Cookie', adminCookie).expect(201);
       const second = await request(server).post('/api/v1/admin/achievements/backfill-invites').set('Cookie', adminCookie).expect(201);
 
       expect(second.body.pointsGranted).toBe(0);
-      const count = await dataSource
-        .getRepository(MemberPointEntity)
+      const count = await prisma.member_points
         .count({ where: { userId: inviter.id, pointType: PointType.INVITE, referenceId: invitee.id } });
       expect(count).toBe(1);
     });
@@ -460,7 +442,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
     });
 
     it('rejects a non-validated member (not in the allowed role list)', async () => {
-      const nonValidated = await seedUser(dataSource, city.id, { role: UserRole.NON_VALIDATED, email: 'nv@example.test' });
+      const nonValidated = await seedUser(prisma, city.id, { role: UserRole.NON_VALIDATED, email: 'nv@example.test' });
       const cookie = await loginAs(app, nonValidated);
       await request(server).get('/api/v1/leaderboard').set('Cookie', cookie).expect(403);
     });
@@ -468,9 +450,8 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
     it('ranks members by total points and excludes admins from the ranking', async () => {
       await pointsService.awardAttendance(member.id, (await seedEvent()).id);
       // Give the admin account points too, to confirm it's filtered out of the rankings
-      await dataSource
-        .getRepository(MemberPointEntity)
-        .save({ userId: admin.id, pointType: PointType.ATTENDANCE, referenceId: 999999, points: 10 });
+      await prisma.member_points
+        .create({ data: { userId: admin.id, pointType: PointType.ATTENDANCE, referenceId: 999999, points: 10 } });
 
       const res = await request(server).get('/api/v1/leaderboard').set('Cookie', memberCookie).expect(200);
       expect(res.body.some((e: { userId: number }) => e.userId === member.id)).toBe(true);
@@ -478,14 +459,14 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
     });
 
     it('includes moderators in the ranking', async () => {
-      const moderator = await dataSource.getRepository(UserEntity).findOne({ where: { role: UserRole.MODERATOR } });
+      const moderator = await prisma.users.findFirst({ where: { role: UserRole.MODERATOR } });
       const res = await request(server).get('/api/v1/leaderboard').set('Cookie', memberCookie).expect(200);
       expect(res.body.some((e: { userId: number }) => e.userId === moderator!.id)).toBe(true);
     });
 
     it('filters by cityId when provided', async () => {
-      const otherCity = await seedCity(dataSource);
-      const otherMember = await seedUser(dataSource, otherCity.id, { email: 'other-city@example.test' });
+      const otherCity = await seedCity(prisma);
+      const otherMember = await seedUser(prisma, otherCity.id, { email: 'other-city@example.test' });
 
       const res = await request(server)
         .get('/api/v1/leaderboard')
@@ -557,7 +538,7 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
     });
 
     it('rejects a member viewing another member\'s ledger', async () => {
-      const other = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'other@example.test' });
+      const other = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'other@example.test' });
       await request(server)
         .get(`/api/v1/members/${other.id}/points/ledger`)
         .set('Cookie', memberCookie)
@@ -571,9 +552,9 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
 
   describe('GET /users/members sort + New badge', () => {
     it('defaults to newest-first when no sort is given', async () => {
-      const older = await seedUser(dataSource, city.id, { fullName: 'AAA Older', email: 'older@example.test' });
-      await dataSource.getRepository(UserEntity).update(older.id, { createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) });
-      const newer = await seedUser(dataSource, city.id, { fullName: 'ZZZ Newer', email: 'newer@example.test' });
+      const older = await seedUser(prisma, city.id, { fullName: 'AAA Older', email: 'older@example.test' });
+      await prisma.users.update({ where: { id: older.id }, data: { createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) } });
+      const newer = await seedUser(prisma, city.id, { fullName: 'ZZZ Newer', email: 'newer@example.test' });
 
       const res = await request(server).get('/api/v1/users/members').set('Cookie', memberCookie).expect(200);
       const ids = res.body.map((m: { id: number }) => m.id);
@@ -581,8 +562,8 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
     });
 
     it('sorts alphabetically when sort=alpha', async () => {
-      await seedUser(dataSource, city.id, { fullName: 'Zeta Member', email: 'zeta@example.test' });
-      await seedUser(dataSource, city.id, { fullName: 'Alpha Member', email: 'alpha@example.test' });
+      await seedUser(prisma, city.id, { fullName: 'Zeta Member', email: 'zeta@example.test' });
+      await seedUser(prisma, city.id, { fullName: 'Alpha Member', email: 'alpha@example.test' });
 
       const res = await request(server).get('/api/v1/users/members').query({ sort: 'alpha' }).set('Cookie', memberCookie).expect(200);
       const names = res.body.map((m: { fullName: string }) => m.fullName);

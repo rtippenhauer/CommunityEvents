@@ -1,13 +1,10 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { LocationPhotoEntity } from '../src/database/entities/location-photo.entity';
-import { AchievementEntity } from '../src/database/entities/achievement.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { achievements as Achievement, cities as City, location_photos as LocationPhoto, locations as Location, users as User } from '@prisma/client';
+import { UserRole } from '../src/database/enums';
 
 // 1x1 transparent PNG, valid enough to pass the mimetype/extension filter —
 // no image-processing library exists anywhere in this codebase, so filters
@@ -19,18 +16,18 @@ const TINY_PNG = Buffer.from(
 
 describe('Uploads (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
-  let location: LocationEntity;
+  let city: City;
+  let location: Location;
   let adminCookie: string;
   let moderatorCookie: string;
-  let member: UserEntity;
+  let member: User;
   let memberCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -39,16 +36,25 @@ describe('Uploads (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
-    city = await seedCity(dataSource);
-    location = await seedLocation(dataSource, city.id);
+    await truncateAllTables(prisma);
+    city = await seedCity(prisma);
+    location = await seedLocation(prisma, city.id);
 
-    const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    const admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const moderator = await seedUser(prisma, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     moderatorCookie = await loginAs(app, moderator);
     memberCookie = await loginAs(app, member);
+
+    // setAvatar checks the requested path against this instance's `avatar`
+    // catalog, which is reference data seeded once per install (prisma/seed.ts)
+    // and wiped by truncateAllTables like everything else. Seed just the row
+    // the preset-avatar test selects, the same way the gamification spec
+    // re-seeds the achievement keys it exercises.
+    await prisma.avatar.create({
+      data: { path: '/avatars/bear-grizzly.png', label: 'Grizzly', sortOrder: 0 },
+    });
   });
 
   describe('POST /users/me/photo + GET /uploads/profiles/:filename (auth-gated serving)', () => {
@@ -61,7 +67,7 @@ describe('Uploads (e2e)', () => {
 
       expect(res.body.url).toMatch(/^\/api\/v1\/uploads\/profiles\/.+\.png$/);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: member.id } });
+      const updated = await prisma.users.findFirst({ where: { id: member.id } });
       expect(updated!.profilePhotoPath).toBe(res.body.url);
     });
 
@@ -113,7 +119,7 @@ describe('Uploads (e2e)', () => {
         .expect(201);
       expect(res.body.url).toBe('/avatars/bear-grizzly.png');
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: member.id } });
+      const updated = await prisma.users.findFirst({ where: { id: member.id } });
       expect(updated!.profilePhotoPath).toBe('/avatars/bear-grizzly.png');
     });
 
@@ -185,7 +191,7 @@ describe('Uploads (e2e)', () => {
         .set('Cookie', adminCookie)
         .expect(200);
 
-      const remaining = await dataSource.getRepository(LocationPhotoEntity).findOne({ where: { id: created.body.id } });
+      const remaining = await prisma.location_photos.findFirst({ where: { id: created.body.id } });
       expect(remaining).toBeNull();
     });
 
@@ -204,12 +210,12 @@ describe('Uploads (e2e)', () => {
   });
 
   describe('POST /admin/achievements/:id/image', () => {
-    async function seedAchievement(): Promise<AchievementEntity> {
-      return dataSource.getRepository(AchievementEntity).save({
+    async function seedAchievement(): Promise<Achievement> {
+      return prisma.achievements.create({ data: {
         key: `upload-test-${Date.now()}`,
         name: 'Upload Test Achievement',
         description: 'd',
-      });
+      } });
     }
 
     it('uploads an achievement image as admin', async () => {
@@ -222,7 +228,7 @@ describe('Uploads (e2e)', () => {
         .expect(201);
 
       expect(res.body.imagePath).toMatch(/^\/api\/uploads\/achievements\/.+\.png$/);
-      const updated = await dataSource.getRepository(AchievementEntity).findOne({ where: { id: achievement.id } });
+      const updated = await prisma.achievements.findFirst({ where: { id: achievement.id } });
       expect(updated!.imagePath).toBe(res.body.imagePath);
     });
 
@@ -250,12 +256,12 @@ describe('Uploads (e2e)', () => {
         .attach('image', TINY_PNG, 'original.png')
         .expect(201);
 
-      const achievement = await dataSource.getRepository(AchievementEntity).save({
+      const achievement = await prisma.achievements.create({ data: {
         key: `reprocess-linked-${Date.now()}`,
         name: 'Linked Achievement',
         description: 'd',
         icon: `img:${created.body.imagePath}`,
-      });
+      } });
 
       const reprocessed = await request(server)
         .post(`/api/v1/admin/custom-icons/${created.body.id}/reprocess`)
@@ -265,7 +271,7 @@ describe('Uploads (e2e)', () => {
 
       expect(reprocessed.body.imagePath).not.toBe(created.body.imagePath);
 
-      const updatedAchievement = await dataSource.getRepository(AchievementEntity).findOne({ where: { id: achievement.id } });
+      const updatedAchievement = await prisma.achievements.findFirst({ where: { id: achievement.id } });
       expect(updatedAchievement!.icon).toBe(`img:${reprocessed.body.imagePath}`);
     });
 

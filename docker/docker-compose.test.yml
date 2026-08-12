@@ -6,9 +6,12 @@
 # startup log: "MySQL Server 9.7.1").
 #
 # Usage: bash scripts/run-e2e-tests.sh (starts this, runs migrations, runs
-# jest, tears down). Not meant to be started standalone in normal workflows.
+# Vitest, tears down). Not meant to be started standalone in normal workflows.
 
-version: '3.9'
+# Explicit project name for the same reason docker-compose.dev.yml carries one:
+# without it Compose derives the name from the invoking directory, and a
+# `down --remove-orphans` can then reach into an unrelated project's containers.
+name: communityevents-test
 
 services:
   mysql-test:
@@ -21,8 +24,17 @@ services:
       - "3307:3306"
     tmpfs:
       - /var/lib/mysql
+    # --protocol=tcp is the whole point of this healthcheck, not a detail.
+    # The MySQL image runs a *temporary* server to initialise the data
+    # directory, and that server listens on the unix socket only. A ping over
+    # the socket (`-h localhost`) therefore reports healthy while the real
+    # server is still not up, `docker compose up --wait` returns too early, and
+    # the first thing the suite does — prisma migrate deploy — dies with
+    # "P1017: Server has closed the connection". Forcing TCP closes the race,
+    # because the init server never listens on the port.
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-ptest"]
+      test: ["CMD", "mysqladmin", "ping", "--protocol=tcp", "-h", "127.0.0.1", "-uroot", "-ptest"]
       interval: 3s
       timeout: 5s
-      retries: 20
+      retries: 30
+      start_period: 20s

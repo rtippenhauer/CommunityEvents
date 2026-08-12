@@ -4,6 +4,7 @@ import { $Enums } from '@prisma/client';
 import type { Prisma, achievements as Achievement } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { PointType, ProgressType } from '../../database/enums';
+import { coerceRawRows } from '../../common/utils/prisma-raw.util';
 
 // Declaration order of the progress_type ENUM, which is the order MySQL sorts
 // it in. Read from the generated client rather than hand-listed so it tracks
@@ -641,7 +642,7 @@ export class AchievementsService {
     // credits for invites that happened up to Phase 20, not new activity, so
     // they shouldn't trigger the achievement-splash popup on next login.
     let achievementsGranted = 0;
-    for (const { inviterId } of candidates) {
+    for (const { inviterId } of coerceRawRows(candidates)) {
       const before = new Set(
         (
           await this.prisma.member_achievements.findMany({ where: { memberId: inviterId } })

@@ -580,14 +580,29 @@ export class EnrichmentService {
   }
 
   async placeSearch(q: string): Promise<PlaceSearchResult[]> {
-    if (!this.googleKey) return [];
+    // Both early exits below used to return [] silently, which is
+    // indistinguishable in the UI from "no places matched that search". An
+    // instance with no key, or a key whose Places API is not enabled, looked
+    // exactly like a working instance with an unlucky query -- and left
+    // nothing in the log to say otherwise.
+    if (!this.googleKey) {
+      this.logger.warn('[PlaceSearch] GOOGLE_PLACES_API_KEY is not set — place search is disabled');
+      return [];
+    }
     try {
       const url =
         `https://maps.googleapis.com/maps/api/place/textsearch/json` +
         `?query=${encodeURIComponent(q)}&key=${this.googleKey}`;
       const res = await fetch(url);
       const data = (await res.json()) as TextSearchResponse;
-      if (data.status !== 'OK') return [];
+      // ZERO_RESULTS is a legitimate answer; anything else is a configuration
+      // problem worth surfacing (REQUEST_DENIED = key rejected or Places API
+      // not enabled, OVER_QUERY_LIMIT = billing/quota).
+      if (data.status === 'ZERO_RESULTS') return [];
+      if (data.status !== 'OK') {
+        this.logger.warn(`[PlaceSearch] Google Places returned ${data.status} for "${q}"`);
+        return [];
+      }
       return data.results.slice(0, 6).map((r) => ({
         placeId: r.place_id,
         name: r.name,

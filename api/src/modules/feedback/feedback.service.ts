@@ -9,7 +9,12 @@ import { FeedbackCategory, FeedbackStatus } from '../../database/enums';
 import { CreateFeedbackDto } from './dto/create-feedback.dto';
 import { UpdateFeedbackDto } from './dto/update-feedback.dto';
 import { CreateNoteDto } from './dto/create-note.dto';
-import * as sanitizeHtml from 'sanitize-html';
+// Default import, not `import * as`: sanitize-html is a CommonJS module whose
+// export IS the function. A namespace object is not callable under ESM, so
+// `import * as` only worked because tsc emitted CommonJS — it throws
+// "is not a function" the moment the file is loaded as a real ES module,
+// which is how Vitest loads it.
+import sanitizeHtml from 'sanitize-html';
 import { toPublicUser } from '../../common/utils/public-user.util';
 
 // feedback <-> releases is a many-to-many that TypeORM hid behind

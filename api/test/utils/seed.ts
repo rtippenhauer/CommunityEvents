@@ -1,10 +1,18 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { Prisma } from '@prisma/client';
+import type { cities as City, locations as Location, users as User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { CityEntity } from '../../src/database/entities/city.entity';
-import { UserEntity, UserRole, UserStatus } from '../../src/database/entities/user.entity';
-import { LocationEntity } from '../../src/database/entities/location.entity';
+import { PrismaService } from '../../src/database/prisma/prisma.service';
+import { UserRole, UserStatus } from '../../src/database/enums';
 import { AuthService } from '../../src/modules/auth/auth.service';
+
+// Overrides are typed against Prisma's *Unchecked* create inputs rather than
+// the checked ones so specs can keep passing plain FK scalars (cityId,
+// createdById) the way they passed them to the TypeORM repositories. The
+// checked inputs would demand nested `connect` objects instead.
+type CityOverrides = Partial<Prisma.citiesUncheckedCreateInput>;
+type LocationOverrides = Partial<Prisma.locationsUncheckedCreateInput>;
+type UserOverrides = Partial<Prisma.usersUncheckedCreateInput>;
 
 // Shared across specs that need a real bcrypt hash on a seeded user (login,
 // password reset/change, etc.) — same cost factor AuthService uses (12).
@@ -18,56 +26,53 @@ function unique(prefix: string): string {
   return `${prefix}-${Date.now()}-${counter}`;
 }
 
-export async function seedCity(dataSource: DataSource, overrides: Partial<CityEntity> = {}): Promise<CityEntity> {
-  const repo = dataSource.getRepository(CityEntity);
-  return repo.save(
-    repo.create({
+export async function seedCity(prisma: PrismaService, overrides: CityOverrides = {}): Promise<City> {
+  return prisma.cities.create({
+    data: {
       name: overrides.name ?? `Test City ${unique('city')}`,
       subdomain: overrides.subdomain ?? unique('city').toLowerCase().replace(/[^a-z0-9-]/g, ''),
       isActive: overrides.isActive ?? true,
-    }),
-  );
+    },
+  });
 }
 
 export async function seedLocation(
-  dataSource: DataSource,
+  prisma: PrismaService,
   cityId: number,
-  overrides: Partial<LocationEntity> = {},
-): Promise<LocationEntity> {
-  const repo = dataSource.getRepository(LocationEntity);
-  return repo.save(
-    repo.create({
+  overrides: LocationOverrides = {},
+): Promise<Location> {
+  return prisma.locations.create({
+    data: {
       name: overrides.name ?? `Test Location ${unique('location')}`,
       address: overrides.address ?? '123 Test St, Test City, OH 45202',
       cityId,
       ...overrides,
-    }),
-  );
+    },
+  });
 }
 
 export async function seedUser(
-  dataSource: DataSource,
+  prisma: PrismaService,
   cityId: number,
-  overrides: Partial<UserEntity> = {},
-): Promise<UserEntity> {
-  const repo = dataSource.getRepository(UserEntity);
-  return repo.save(
-    repo.create({
+  overrides: UserOverrides = {},
+): Promise<User> {
+  return prisma.users.create({
+    data: {
       fullName: overrides.fullName ?? 'Test User',
       email: overrides.email ?? `${unique('user')}@example.test`,
       cityId,
       role: overrides.role ?? UserRole.MEMBER,
       status: overrides.status ?? UserStatus.ACTIVE,
       ...overrides,
-    }),
-  );
+    },
+  });
 }
 
-// Issues a real session (JWT + persisted LoginSessionEntity row) the same
-// way a real login would — required because JwtStrategy checks the session
-// table by jti, not just the JWT signature. Returns the cookie header value
-// to attach to supertest requests via .set('Cookie', ...).
-export async function loginAs(app: INestApplication, user: UserEntity): Promise<string> {
+// Issues a real session (JWT + persisted login_sessions row) the same way a
+// real login would — required because JwtStrategy checks the session table by
+// jti, not just the JWT signature. Returns the cookie header value to attach
+// to supertest requests via .set('Cookie', ...).
+export async function loginAs(app: INestApplication, user: User): Promise<string> {
   const authService = app.get(AuthService);
   const { accessToken } = await authService.issueTokens(user, {
     userAgent: 'jest-e2e',

@@ -1,34 +1,29 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { UserEntity, UserRole, EmailStatus } from '../src/database/entities/user.entity';
-import { EmailQueueEntity, EmailQueueStatus } from '../src/database/entities/email-queue.entity';
-import { SuppressionReason } from '../src/database/entities/email-suppression.entity';
-import { NotificationPreferencesEntity } from '../src/database/entities/notification-preferences.entity';
-import { PushSubscriptionEntity } from '../src/database/entities/push-subscription.entity';
-import { NotificationEntity } from '../src/database/entities/notification.entity';
 import { EmailService } from '../src/modules/email/email.service';
 import { EmailTemplate } from '../src/modules/email/email.constants';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, email_queue as EmailQueue, notification_preferences as NotificationPreferences, notifications as Notification, push_subscriptions as PushSubscription, users as User } from '@prisma/client';
+import { EmailQueueStatus, EmailStatus, SuppressionReason, UserRole } from '../src/database/enums';
 
 describe('Email/Push Dispatch (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
   let emailService: EmailService;
   let notificationsService: NotificationsService;
 
-  let city: CityEntity;
+  let city: City;
   let adminCookie: string;
   let moderatorCookie: string;
-  let member: UserEntity;
+  let member: User;
   let memberCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
     emailService = app.get(EmailService);
     notificationsService = app.get(NotificationsService);
@@ -39,13 +34,13 @@ describe('Email/Push Dispatch (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     resetThrottler(app);
-    city = await seedCity(dataSource);
+    city = await seedCity(prisma);
 
-    const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    const admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const moderator = await seedUser(prisma, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     moderatorCookie = await loginAs(app, moderator);
     memberCookie = await loginAs(app, member);
@@ -63,12 +58,12 @@ describe('Email/Push Dispatch (e2e)', () => {
 
       const row = await emailService.queue({ toEmail: 'suppressed@example.test', subject: 'Hi', htmlBody: '<p>hi</p>' });
       expect(row).toBeNull();
-      const count = await dataSource.getRepository(EmailQueueEntity).count();
+      const count = await prisma.email_queue.count();
       expect(count).toBe(0);
     });
 
     it('does not queue a templated email for a bounced user', async () => {
-      const bounced = await seedUser(dataSource, city.id, { email: 'bounced@example.test', emailStatus: EmailStatus.BOUNCED });
+      const bounced = await seedUser(prisma, city.id, { email: 'bounced@example.test', emailStatus: EmailStatus.BOUNCED });
 
       const row = await emailService.queue({
         toEmail: bounced.email,
@@ -80,8 +75,8 @@ describe('Email/Push Dispatch (e2e)', () => {
     });
 
     it('does not queue a templated email when the user has opted out via notification preferences', async () => {
-      const optedOut = await seedUser(dataSource, city.id, { email: 'opted-out@example.test' });
-      await dataSource.getRepository(NotificationPreferencesEntity).save({ userId: optedOut.id, emailInvite: false });
+      const optedOut = await seedUser(prisma, city.id, { email: 'opted-out@example.test' });
+      await prisma.notification_preferences.create({ data: { userId: optedOut.id, emailInvite: false } });
 
       const row = await emailService.queue({
         toEmail: optedOut.email,
@@ -111,7 +106,7 @@ describe('Email/Push Dispatch (e2e)', () => {
 
       await request(server).post('/api/v1/admin/email/flush').set('Cookie', adminCookie).expect(200);
 
-      const updated = await dataSource.getRepository(EmailQueueEntity).findOne({ where: { id: row!.id } });
+      const updated = await prisma.email_queue.findFirst({ where: { id: row!.id } });
       expect(updated!.status).toBe(EmailQueueStatus.BLOCKED);
       expect(updated!.errorMessage).toBe('No provider available or daily limit reached');
     });
@@ -147,7 +142,11 @@ describe('Email/Push Dispatch (e2e)', () => {
         .expect(200);
 
       const updated = await request(server).get('/api/v1/admin/email/config').set('Cookie', adminCookie).expect(200);
-      expect(updated.body.brevoEnabled).toBe(0);
+      // Wire-format change from the Prisma swap: TINYINT(1) came back from
+      // TypeORM as 0/1 and now comes back as a real boolean. The frontend
+      // already declared these fields `boolean` and binds them to [checked],
+      // so the JSON now matches the type it always claimed to have.
+      expect(updated.body.brevoEnabled).toBe(false);
     });
 
     it('rejects a moderator reading or updating email config (admin-only)', async () => {
@@ -165,12 +164,12 @@ describe('Email/Push Dispatch (e2e)', () => {
 
     it('retries failed emails, resetting them to pending', async () => {
       const row = await emailService.queue({ toEmail: 'retry-me@example.test', subject: 'Hi', htmlBody: '<p>hi</p>' });
-      await dataSource.getRepository(EmailQueueEntity).update(row!.id, { status: EmailQueueStatus.FAILED });
+      await prisma.email_queue.update({ where: { id: row!.id }, data: { status: EmailQueueStatus.FAILED } });
 
       const res = await request(server).post('/api/v1/admin/email/retry-failed').set('Cookie', adminCookie).expect(200);
       expect(res.body.retried).toBe(1);
 
-      const updated = await dataSource.getRepository(EmailQueueEntity).findOne({ where: { id: row!.id } });
+      const updated = await prisma.email_queue.findFirst({ where: { id: row!.id } });
       expect(updated!.status).toBe(EmailQueueStatus.PENDING);
     });
 
@@ -179,7 +178,7 @@ describe('Email/Push Dispatch (e2e)', () => {
 
       await request(server).delete(`/api/v1/admin/email/${row!.id}`).set('Cookie', adminCookie).expect(200);
 
-      const updated = await dataSource.getRepository(EmailQueueEntity).findOne({ where: { id: row!.id } });
+      const updated = await prisma.email_queue.findFirst({ where: { id: row!.id } });
       expect(updated!.status).toBe(EmailQueueStatus.CANCELLED);
     });
 
@@ -190,7 +189,7 @@ describe('Email/Push Dispatch (e2e)', () => {
 
   describe('POST /email/webhook/brevo (public — Brevo delivery events)', () => {
     it('activates a pending user on a delivered event', async () => {
-      const pending = await seedUser(dataSource, city.id, { email: 'webhook-delivered@example.test', emailStatus: EmailStatus.PENDING });
+      const pending = await seedUser(prisma, city.id, { email: 'webhook-delivered@example.test', emailStatus: EmailStatus.PENDING });
 
       await request(server)
         .post('/api/v1/email/webhook/brevo')
@@ -198,12 +197,12 @@ describe('Email/Push Dispatch (e2e)', () => {
         .send({ event: 'delivered', email: pending.email })
         .expect(201);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: pending.id } });
+      const updated = await prisma.users.findFirst({ where: { id: pending.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.ACTIVE);
     });
 
     it('marks a user bounced and suppresses their address on a hard_bounce event', async () => {
-      const user = await seedUser(dataSource, city.id, { email: 'webhook-bounce@example.test' });
+      const user = await seedUser(prisma, city.id, { email: 'webhook-bounce@example.test' });
 
       await request(server)
         .post('/api/v1/email/webhook/brevo')
@@ -211,13 +210,13 @@ describe('Email/Push Dispatch (e2e)', () => {
         .send({ event: 'hard_bounce', email: user.email })
         .expect(201);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const updated = await prisma.users.findFirst({ where: { id: user.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.BOUNCED);
       expect(await emailService.isSuppressed(user.email)).toBe(true);
     });
 
     it('marks a user unsubscribed on an unsubscribed event', async () => {
-      const user = await seedUser(dataSource, city.id, { email: 'webhook-unsub@example.test' });
+      const user = await seedUser(prisma, city.id, { email: 'webhook-unsub@example.test' });
 
       await request(server)
         .post('/api/v1/email/webhook/brevo')
@@ -225,12 +224,12 @@ describe('Email/Push Dispatch (e2e)', () => {
         .send({ event: 'unsubscribed', email: user.email })
         .expect(201);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const updated = await prisma.users.findFirst({ where: { id: user.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.UNSUBSCRIBED);
     });
 
     it('marks a user complained and suppresses on a spam event', async () => {
-      const user = await seedUser(dataSource, city.id, { email: 'webhook-spam@example.test' });
+      const user = await seedUser(prisma, city.id, { email: 'webhook-spam@example.test' });
 
       await request(server)
         .post('/api/v1/email/webhook/brevo')
@@ -238,14 +237,14 @@ describe('Email/Push Dispatch (e2e)', () => {
         .send({ event: 'spam', email: user.email })
         .expect(201);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const updated = await prisma.users.findFirst({ where: { id: user.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.COMPLAINED);
       expect(await emailService.isSuppressed(user.email)).toBe(true);
     });
 
     it('accepts a batch array of events and processes each one', async () => {
-      const userA = await seedUser(dataSource, city.id, { email: 'batch-a@example.test', emailStatus: EmailStatus.PENDING });
-      const userB = await seedUser(dataSource, city.id, { email: 'batch-b@example.test', emailStatus: EmailStatus.PENDING });
+      const userA = await seedUser(prisma, city.id, { email: 'batch-a@example.test', emailStatus: EmailStatus.PENDING });
+      const userB = await seedUser(prisma, city.id, { email: 'batch-b@example.test', emailStatus: EmailStatus.PENDING });
 
       await request(server)
         .post('/api/v1/email/webhook/brevo')
@@ -257,8 +256,8 @@ describe('Email/Push Dispatch (e2e)', () => {
         .expect(201);
 
       const [a, b] = await Promise.all([
-        dataSource.getRepository(UserEntity).findOne({ where: { id: userA.id } }),
-        dataSource.getRepository(UserEntity).findOne({ where: { id: userB.id } }),
+        prisma.users.findFirst({ where: { id: userA.id } }),
+        prisma.users.findFirst({ where: { id: userB.id } }),
       ]);
       expect(a!.emailStatus).toBe(EmailStatus.ACTIVE);
       expect(b!.emailStatus).toBe(EmailStatus.ACTIVE);
@@ -281,9 +280,8 @@ describe('Email/Push Dispatch (e2e)', () => {
         .send({ endpoint: 'https://push.example.test/abc', keys: { p256dh: 'p256dh-key', auth: 'auth-secret' } })
         .expect(204);
 
-      const sub = await dataSource
-        .getRepository(PushSubscriptionEntity)
-        .findOne({ where: { userId: member.id, endpoint: 'https://push.example.test/abc' } });
+      const sub = await prisma.push_subscriptions
+        .findFirst({ where: { userId: member.id, endpoint: 'https://push.example.test/abc' } });
       expect(sub).toBeTruthy();
     });
 
@@ -300,7 +298,7 @@ describe('Email/Push Dispatch (e2e)', () => {
         .send({ endpoint, keys: { p256dh: 'new-key', auth: 'new-secret' } })
         .expect(204);
 
-      const subs = await dataSource.getRepository(PushSubscriptionEntity).find({ where: { endpoint } });
+      const subs = await prisma.push_subscriptions.findMany({ where: { endpoint } });
       expect(subs).toHaveLength(1);
       expect(subs[0].p256dh).toBe('new-key');
     });
@@ -323,7 +321,7 @@ describe('Email/Push Dispatch (e2e)', () => {
 
       await request(server).delete('/api/v1/notifications/push/subscribe').set('Cookie', memberCookie).send({ endpoint }).expect(204);
 
-      const sub = await dataSource.getRepository(PushSubscriptionEntity).findOne({ where: { endpoint } });
+      const sub = await prisma.push_subscriptions.findFirst({ where: { endpoint } });
       expect(sub).toBeNull();
     });
 
@@ -362,18 +360,18 @@ describe('Email/Push Dispatch (e2e)', () => {
 
       await request(server).patch(`/api/v1/notifications/${target.id}/read`).set('Cookie', memberCookie).expect(200);
 
-      const updated = await dataSource.getRepository(NotificationEntity).findOne({ where: { id: target.id } });
+      const updated = await prisma.notifications.findFirst({ where: { id: target.id } });
       expect(updated!.isRead).toBe(true);
     });
 
     it("does not let a member mark another user's notification as read", async () => {
-      const other = await seedUser(dataSource, city.id, { email: 'other-notif@example.test' });
+      const other = await seedUser(prisma, city.id, { email: 'other-notif@example.test' });
       await notificationsService.create({ userId: other.id, type: 'security_alert', title: "Not yours" });
-      const theirs = await dataSource.getRepository(NotificationEntity).findOne({ where: { userId: other.id } });
+      const theirs = await prisma.notifications.findFirst({ where: { userId: other.id } });
 
       await request(server).patch(`/api/v1/notifications/${theirs!.id}/read`).set('Cookie', memberCookie).expect(200);
 
-      const stillUnread = await dataSource.getRepository(NotificationEntity).findOne({ where: { id: theirs!.id } });
+      const stillUnread = await prisma.notifications.findFirst({ where: { id: theirs!.id } });
       expect(stillUnread!.isRead).toBe(false);
     });
 

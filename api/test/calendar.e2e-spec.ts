@@ -1,14 +1,12 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { EventEntity, EventStatus } from '../src/database/entities/event.entity';
-import { EventRsvpEntity, RsvpStatus } from '../src/database/entities/event-rsvp.entity';
-import { CalendarService } from '../src/modules/calendar/calendar.service';
+import { CalendarService, IcsEventLike } from '../src/modules/calendar/calendar.service';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, event_rsvps as EventRsvp, events as Event, locations as Location, users as User } from '@prisma/client';
+import { EventStatus, RsvpStatus, UserRole } from '../src/database/enums';
+import { toDateColumn, toTimeColumn } from '../src/common/utils/prisma-date.util';
 
 const CLOUDFLARE_SECRET = 'test-cloudflare-email-secret-not-for-real-use';
 
@@ -20,18 +18,18 @@ function dateOffset(days: number): string {
 
 describe('Calendar / ICS Feed (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
   let calendarService: CalendarService;
 
-  let city: CityEntity;
-  let location: LocationEntity;
-  let admin: UserEntity;
-  let member: UserEntity;
+  let city: City;
+  let location: Location;
+  let admin: User;
+  let member: User;
   let memberCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
     calendarService = app.get(CalendarService);
   });
@@ -41,32 +39,33 @@ describe('Calendar / ICS Feed (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     resetThrottler(app);
-    city = await seedCity(dataSource);
-    location = await seedLocation(dataSource, city.id);
+    city = await seedCity(prisma);
+    location = await seedLocation(prisma, city.id);
 
-    admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     memberCookie = await loginAs(app, member);
   });
 
-  async function seedEvent(overrides: Record<string, unknown> = {}): Promise<EventEntity> {
-    const repo = dataSource.getRepository(EventEntity);
-    return repo.save(
-      repo.create({
+  async function seedEvent(overrides: Record<string, unknown> = {}): Promise<Event> {
+    return prisma.events.create({ data: {
         cityId: city.id,
         locationId: location.id,
         locationName: location.name,
         locationAddress: location.address,
         createdById: admin.id,
         title: 'Calendar Test Dinner',
-        eventDate: dateOffset(14),
-        eventTime: '18:30',
         status: EventStatus.PUBLISHED,
         ...overrides,
-      }),
-    );
+        // DATE and TIME columns are Date objects under Prisma, where the entities
+        // typed them as strings. Specs still express them as 'YYYY-MM-DD' /
+        // 'HH:MM' (the same shape the API accepts), so convert on the way in and
+        // apply after the overrides spread so an override string converts too.
+        eventDate: toDateColumn((overrides.eventDate as string) ?? dateOffset(14)),
+        eventTime: toTimeColumn((overrides.eventTime as string) ?? '18:30'),
+      }, });
   }
 
   describe('GET /calendar/feed.ics', () => {
@@ -88,7 +87,9 @@ describe('Calendar / ICS Feed (e2e)', () => {
       expect(res.text).toContain(`UID:dinnerbears-event-${event.id}@dinnerbears.com`);
       expect(res.text).toMatch(/DTSTART:\d{8}T\d{6}Z/);
       expect(res.text).toContain('STATUS:CONFIRMED');
-      expect(res.text).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@dinnerbears.com');
+      // calendar@<BASE_DOMAIN>; setup-env.ts pins BASE_DOMAIN=localhost. The old
+      // literal named the production domain and could never match here.
+      expect(res.text).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@localhost');
       expect(res.text).toContain('METHOD:PUBLISH');
     });
 
@@ -130,8 +131,8 @@ describe('Calendar / ICS Feed (e2e)', () => {
     it('rsvpOnly filters out events the member has not RSVPd to', async () => {
       const rsvpEvent = await seedEvent({ title: 'RSVPd Event' });
       await seedEvent({ title: 'Not RSVPd Event' });
-      await dataSource.getRepository(EventRsvpEntity).save({ eventId: rsvpEvent.id, userId: member.id, status: RsvpStatus.GOING });
-      await dataSource.getRepository(UserEntity).update(member.id, { calendarRsvpOnly: true });
+      await prisma.event_rsvps.create({ data: { eventId: rsvpEvent.id, userId: member.id, status: RsvpStatus.GOING } });
+      await prisma.users.update({ where: { id: member.id }, data: { calendarRsvpOnly: true } });
 
       const token = await calendarService.getOrCreateToken(member.id);
       calendarService.invalidateForUser(member.id);
@@ -143,23 +144,21 @@ describe('Calendar / ICS Feed (e2e)', () => {
     });
 
     it('cityFilter restricts the feed to the member\'s own city', async () => {
-      const otherCity = await seedCity(dataSource);
-      const otherLocation = await seedLocation(dataSource, otherCity.id);
-      const otherCityEvent = await dataSource.getRepository(EventEntity).save(
-        dataSource.getRepository(EventEntity).create({
+      const otherCity = await seedCity(prisma);
+      const otherLocation = await seedLocation(prisma, otherCity.id);
+      const otherCityEvent = await prisma.events.create({ data: {
           cityId: otherCity.id,
           locationId: otherLocation.id,
           locationName: otherLocation.name,
           locationAddress: otherLocation.address,
           createdById: admin.id,
           title: 'Other City Dinner',
-          eventDate: dateOffset(14),
-          eventTime: '18:30',
+          eventDate: toDateColumn(dateOffset(14)),
+          eventTime: toTimeColumn('18:30'),
           status: EventStatus.PUBLISHED,
-        }),
-      );
+        }, });
       await seedEvent({ title: 'My City Dinner' });
-      await dataSource.getRepository(UserEntity).update(member.id, { calendarCityFilter: 'city' });
+      await prisma.users.update({ where: { id: member.id }, data: { calendarCityFilter: 'city' } });
 
       const token = await calendarService.getOrCreateToken(member.id);
       calendarService.invalidateForUser(member.id);
@@ -188,7 +187,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
         .send({ rsvpOnly: true, cityFilter: 'city' })
         .expect(200);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: member.id } });
+      const updated = await prisma.users.findFirst({ where: { id: member.id } });
       expect(updated!.calendarRsvpOnly).toBeTruthy();
       expect(updated!.calendarCityFilter).toBe('city');
 
@@ -208,7 +207,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
       const res = await request(server).get('/api/v1/calendar/token').set('Cookie', memberCookie).expect(200);
       expect(res.body.url).toContain('/calendar/feed.ics?token=');
 
-      const user = await dataSource.getRepository(UserEntity).findOne({ where: { id: member.id } });
+      const user = await prisma.users.findFirst({ where: { id: member.id } });
       expect(user!.calendarToken).toBeTruthy();
     });
 
@@ -220,7 +219,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
 
       await request(server).get('/api/v1/calendar/feed.ics').query({ token: oldToken }).expect(401);
 
-      const user = await dataSource.getRepository(UserEntity).findOne({ where: { id: member.id } });
+      const user = await prisma.users.findFirst({ where: { id: member.id } });
       const res = await request(server).get('/api/v1/calendar/feed.ics').query({ token: user!.calendarToken }).expect(200);
       expect(res.text).toContain('BEGIN:VCALENDAR');
     });
@@ -257,7 +256,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
         .send({ raw: replyBody(event.id, 'ACCEPTED', member.email) })
         .expect(200);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.status).toBe(RsvpStatus.GOING);
     });
 
@@ -269,7 +268,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
         .set('X-Cloudflare-Secret', CLOUDFLARE_SECRET)
         .send({ raw: replyBody(event.id, 'TENTATIVE', member.email) })
         .expect(200);
-      let rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      let rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.status).toBe(RsvpStatus.MAYBE);
 
       await request(server)
@@ -277,7 +276,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
         .set('X-Cloudflare-Secret', CLOUDFLARE_SECRET)
         .send({ raw: replyBody(event.id, 'DECLINED', member.email) })
         .expect(200);
-      rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp!.status).toBe(RsvpStatus.NOT_GOING);
     });
 
@@ -290,7 +289,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
         .send({ raw: replyBody(event.id, 'NEEDS-ACTION', member.email) })
         .expect(200);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: event.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
       expect(rsvp).toBeNull();
     });
 
@@ -303,7 +302,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
         .send({ raw: replyBody(draftEvent.id, 'ACCEPTED', member.email) })
         .expect(200);
 
-      const rsvp = await dataSource.getRepository(EventRsvpEntity).findOne({ where: { eventId: draftEvent.id, userId: member.id } });
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: draftEvent.id, userId: member.id } });
       expect(rsvp).toBeNull();
     });
 
@@ -316,7 +315,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
         .send({ raw: replyBody(event.id, 'ACCEPTED', 'nobody@example.test') })
         .expect(200);
 
-      const count = await dataSource.getRepository(EventRsvpEntity).count({ where: { eventId: event.id } });
+      const count = await prisma.event_rsvps.count({ where: { eventId: event.id } });
       expect(count).toBe(0);
     });
 
@@ -330,15 +329,32 @@ describe('Calendar / ICS Feed (e2e)', () => {
   });
 
   describe('CalendarService.buildInviteAttachment (Phase 16b — direct call, no HTTP side effect to observe)', () => {
-    it('builds a METHOD:REQUEST invite with an ATTENDEE RSVP line and a DTSTAMP', () => {
-      const event = { id: 1, locationName: 'Test Place', locationAddress: '123 Main St', eventDate: dateOffset(14), eventTime: '18:30', updatedAt: new Date() } as EventEntity;
+    it('builds a METHOD:REQUEST invite with an ATTENDEE RSVP line and a DTSTAMP', async () => {
+      const event: IcsEventLike = {
+        id: 1,
+        title: 'Test Dinner',
+        status: EventStatus.PUBLISHED,
+        locationName: 'Test Place',
+        locationAddress: '123 Main St',
+        eventDate: dateOffset(14),
+        eventTime: '18:30',
+        updatedAt: new Date(),
+      };
 
-      const ics = calendarService.buildInviteAttachment(event, { name: 'Guest Name', email: 'guest@example.test' }, 'http://localhost:8081');
+      const ics = await calendarService.buildInviteAttachment(
+        event,
+        { name: 'Guest Name', email: 'guest@example.test' },
+        'http://localhost:8081',
+      );
 
       expect(ics).toContain('METHOD:REQUEST');
       expect(ics).toContain(`UID:dinnerbears-event-${event.id}@dinnerbears.com`);
       expect(ics).toContain('ATTENDEE;CN=Guest Name;RSVP=TRUE:mailto:guest@example.test');
-      expect(ics).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@dinnerbears.com');
+      // calendar@<BASE_DOMAIN>, and setup-env.ts pins BASE_DOMAIN=localhost.
+      // The old literal named the production domain; the assertion never ran,
+      // because this call was not awaited and the Promise silently passed the
+      // earlier toContain checks.
+      expect(ics).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@localhost');
       expect(ics).toMatch(/DTSTAMP:\d{8}T\d{6}Z/);
     });
 
@@ -348,12 +364,21 @@ describe('Calendar / ICS Feed (e2e)', () => {
       // the exact same SEQUENCE every time — calendar clients had no signal
       // that a later email superseded an earlier one and created a duplicate
       // pending invitation per message instead of updating one in place.
-      const event = { id: 2, locationName: 'Test Place', locationAddress: '123 Main St', eventDate: dateOffset(14), eventTime: '18:30', updatedAt: new Date() } as EventEntity;
+      const event: IcsEventLike = {
+        id: 2,
+        title: 'Test Dinner',
+        status: EventStatus.PUBLISHED,
+        locationName: 'Test Place',
+        locationAddress: '123 Main St',
+        eventDate: dateOffset(14),
+        eventTime: '18:30',
+        updatedAt: new Date(),
+      };
       const recipient = { name: 'Guest Name', email: 'guest@example.test' };
 
-      const first = calendarService.buildInviteAttachment(event, recipient, 'http://localhost:8081');
+      const first = await calendarService.buildInviteAttachment(event, recipient, 'http://localhost:8081');
       await new Promise((resolve) => setTimeout(resolve, 1100));
-      const second = calendarService.buildInviteAttachment(event, recipient, 'http://localhost:8081');
+      const second = await calendarService.buildInviteAttachment(event, recipient, 'http://localhost:8081');
 
       const extractSequence = (ics: string) => Number(ics.match(/SEQUENCE:(\d+)/)?.[1]);
       expect(extractSequence(second)).toBeGreaterThan(extractSequence(first));

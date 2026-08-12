@@ -132,8 +132,7 @@ describe('route guards', () => {
 
       for (const role of ['moderator', 'member', null]) {
         setup(role);
-        expect(runGuard(adminGuard as () => boolean | UrlTree))
-          .withContext(`role=${role}`)
+        expect(runGuard(adminGuard as () => boolean | UrlTree), `role=${role}`)
           .toEqual(home());
       }
     });
@@ -158,8 +157,7 @@ describe('route guards', () => {
     it('allows both moderator and admin through', () => {
       for (const role of ['moderator', 'admin']) {
         setup(role);
-        expect(runGuard(moderatorGuard as () => boolean | UrlTree))
-          .withContext(`role=${role}`)
+        expect(runGuard(moderatorGuard as () => boolean | UrlTree), `role=${role}`)
           .toBe(true);
       }
     });
@@ -169,8 +167,7 @@ describe('route guards', () => {
 
       for (const role of ['member', 'non_validated', null]) {
         setup(role);
-        expect(runGuard(moderatorGuard as () => boolean | UrlTree))
-          .withContext(`role=${role}`)
+        expect(runGuard(moderatorGuard as () => boolean | UrlTree), `role=${role}`)
           .toEqual(home());
       }
     });
@@ -189,18 +186,18 @@ describe('route guards', () => {
     }
 
     it('leaves immediately when there is nothing unsaved, without prompting', () => {
-      const confirmSpy = spyOn(window, 'confirm');
+      const confirmSpy = vi.spyOn(window, 'confirm');
       expect(run(false)).toBe(true);
       expect(confirmSpy).not.toHaveBeenCalled();
     });
 
     it('blocks navigation when the member cancels the prompt', () => {
-      spyOn(window, 'confirm').and.returnValue(false);
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
       expect(run(true)).toBe(false);
     });
 
     it('allows navigation when the member confirms', () => {
-      spyOn(window, 'confirm').and.returnValue(true);
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
       expect(run(true)).toBe(true);
     });
   });

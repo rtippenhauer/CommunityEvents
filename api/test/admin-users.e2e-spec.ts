@@ -1,23 +1,23 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { UserRole } from '../src/database/entities/user.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City } from '@prisma/client';
+import { UserRole } from '../src/database/enums';
 
 describe('Admin User Management (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
+  let city: City;
   let adminCookie: string;
   let moderatorCookie: string;
   let memberCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -26,12 +26,12 @@ describe('Admin User Management (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
-    city = await seedCity(dataSource);
+    await truncateAllTables(prisma);
+    city = await seedCity(prisma);
 
-    const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const moderator = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
-    const member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    const admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const moderator = await seedUser(prisma, city.id, { role: UserRole.MODERATOR, email: 'mod@example.test' });
+    const member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     moderatorCookie = await loginAs(app, moderator);
     memberCookie = await loginAs(app, member);
@@ -58,7 +58,7 @@ describe('Admin User Management (e2e)', () => {
 
   describe('POST /admin/users/:id/ban and /unban (update status)', () => {
     it('bans a member when authenticated as admin', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
 
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).set('Cookie', adminCookie).expect(200);
 
@@ -68,19 +68,19 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('bans a member when authenticated as moderator', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
 
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).set('Cookie', moderatorCookie).expect(200);
     });
 
     it('rejects a moderator banning another moderator', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MODERATOR, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MODERATOR, email: 'target@example.test' });
 
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).set('Cookie', moderatorCookie).expect(403);
     });
 
     it('rejects banning an admin', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'target@example.test' });
 
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).set('Cookie', adminCookie).expect(403);
     });
@@ -93,7 +93,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('rejects banning an already-banned user', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).set('Cookie', adminCookie).expect(200);
 
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).set('Cookie', adminCookie).expect(400);
@@ -104,17 +104,17 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('rejects unauthenticated ban requests', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).expect(401);
     });
 
     it('rejects ban requests from a member (insufficient role)', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).set('Cookie', memberCookie).expect(403);
     });
 
     it('unbans a suspended user when authenticated as admin', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).set('Cookie', adminCookie).expect(200);
 
       await request(server).post(`/api/v1/admin/users/${target.id}/unban`).set('Cookie', adminCookie).expect(200);
@@ -125,12 +125,12 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('rejects unbanning a user who is not banned', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server).post(`/api/v1/admin/users/${target.id}/unban`).set('Cookie', adminCookie).expect(400);
     });
 
     it('rejects unban requests from a moderator (admin-only)', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server).post(`/api/v1/admin/users/${target.id}/ban`).set('Cookie', adminCookie).expect(200);
 
       await request(server).post(`/api/v1/admin/users/${target.id}/unban`).set('Cookie', moderatorCookie).expect(403);
@@ -139,7 +139,7 @@ describe('Admin User Management (e2e)', () => {
 
   describe('POST /admin/users/:id/role (update role)', () => {
     it('changes a member\'s role when authenticated as admin', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
 
       await request(server)
         .post(`/api/v1/admin/users/${target.id}/role`)
@@ -153,7 +153,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('rejects promoting a user directly to admin', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
 
       await request(server)
         .post(`/api/v1/admin/users/${target.id}/role`)
@@ -163,7 +163,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('rejects changing an admin\'s role', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'target@example.test' });
 
       await request(server)
         .post(`/api/v1/admin/users/${target.id}/role`)
@@ -173,7 +173,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('allows promoting the automation account to admin', async () => {
-      const automation = await seedUser(dataSource, city.id, {
+      const automation = await seedUser(prisma, city.id, {
         role: UserRole.AUTOMATION,
         email: 'automation@dinnerbears.internal',
       });
@@ -186,7 +186,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('allows flipping the automation account back down from admin', async () => {
-      const automation = await seedUser(dataSource, city.id, {
+      const automation = await seedUser(prisma, city.id, {
         role: UserRole.ADMIN,
         email: 'automation@dinnerbears.internal',
       });
@@ -222,7 +222,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('rejects unauthenticated requests', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server)
         .post(`/api/v1/admin/users/${target.id}/role`)
         .send({ role: 'moderator' })
@@ -230,7 +230,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('rejects requests from a moderator (admin-only)', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server)
         .post(`/api/v1/admin/users/${target.id}/role`)
         .set('Cookie', moderatorCookie)
@@ -241,7 +241,7 @@ describe('Admin User Management (e2e)', () => {
 
   describe('DELETE /admin/users/:id', () => {
     it('deletes a member when authenticated as admin', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
 
       await request(server).delete(`/api/v1/admin/users/${target.id}`).set('Cookie', adminCookie).expect(204);
 
@@ -250,7 +250,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('rejects deleting an admin', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'target@example.test' });
       await request(server).delete(`/api/v1/admin/users/${target.id}`).set('Cookie', adminCookie).expect(403);
     });
 
@@ -266,12 +266,12 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('rejects unauthenticated requests', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server).delete(`/api/v1/admin/users/${target.id}`).expect(401);
     });
 
     it('rejects requests from a moderator (admin-only)', async () => {
-      const target = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
+      const target = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'target@example.test' });
       await request(server).delete(`/api/v1/admin/users/${target.id}`).set('Cookie', moderatorCookie).expect(403);
     });
   });

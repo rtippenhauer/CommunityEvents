@@ -45,3 +45,9 @@ uploads/
 docs/FACEBOOK_VERIFICATION_TODO.md
 prod.env
 Stage.env
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

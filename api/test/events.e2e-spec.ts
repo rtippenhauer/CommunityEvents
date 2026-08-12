@@ -1,24 +1,23 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserRole } from '../src/database/entities/user.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, locations as Location } from '@prisma/client';
+import { UserRole } from '../src/database/enums';
 
 describe('Events CRUD (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
-  let location: LocationEntity;
+  let city: City;
+  let location: Location;
   let adminCookie: string;
   let memberCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -27,12 +26,12 @@ describe('Events CRUD (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
-    city = await seedCity(dataSource);
-    location = await seedLocation(dataSource, city.id);
+    await truncateAllTables(prisma);
+    city = await seedCity(prisma);
+    location = await seedLocation(prisma, city.id);
 
-    const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    const member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    const admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    const member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     memberCookie = await loginAs(app, member);
   });
@@ -47,6 +46,70 @@ describe('Events CRUD (e2e)', () => {
       ...overrides,
     };
   }
+
+  // Regression (v2-1 -> caught on stage during v2-2): event_date is a DATE
+  // column and event_time a TIME column, and the API has always published them
+  // as 'YYYY-MM-DD' and 'HH:MM:SS'. Prisma returns both as Date objects, and
+  // the list/detail endpoints were handing those straight back, so the wire
+  // format silently became "2026-08-11T00:00:00.000Z" / "1970-01-01T18:30:00.000Z".
+  //
+  // The client's eventTime.substring(0, 5) then produced "1970-", and a DATE
+  // read as UTC midnight rendered as the *previous day* anywhere west of
+  // Greenwich -- a Tuesday event displayed as Monday in Eastern.
+  //
+  // Nothing failed: the whole suite passed while the format was wrong, because
+  // no test asserted the shape of these two fields. These do.
+  describe('eventDate/eventTime wire format', () => {
+    const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+    const TIME_ONLY = /^\d{2}:\d{2}:\d{2}$/;
+
+    it('publishes date-only and time-only strings from the list endpoint', async () => {
+      await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload())
+        .expect(201);
+
+      const res = await request(server).get('/api/v1/events').set('Cookie', adminCookie).expect(200);
+      expect(res.body.length).toBeGreaterThan(0);
+      for (const event of res.body) {
+        expect(event.eventDate).toMatch(DATE_ONLY);
+        expect(event.eventTime).toMatch(TIME_ONLY);
+      }
+    });
+
+    it('publishes date-only and time-only strings from the detail endpoint', async () => {
+      const created = await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload())
+        .expect(201);
+
+      const res = await request(server)
+        .get(`/api/v1/events/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(res.body.eventDate).toMatch(DATE_ONLY);
+      expect(res.body.eventTime).toMatch(TIME_ONLY);
+    });
+
+    it('round-trips the exact date it was given, with no timezone drift', async () => {
+      const created = await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload({ eventDate: '2027-01-05', eventTime: '18:30' }))
+        .expect(201);
+
+      const res = await request(server)
+        .get(`/api/v1/events/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(res.body.eventDate).toBe('2027-01-05');
+      expect(res.body.eventTime).toBe('18:30:00');
+    });
+  });
 
   describe('POST /events (create)', () => {
     it('creates an event when authenticated as admin', async () => {

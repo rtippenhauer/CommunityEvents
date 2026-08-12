@@ -36,6 +36,7 @@ import * as bcrypt from 'bcrypt';
 import * as dotenv from 'dotenv';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { coerceRawRow } from './common/utils/prisma-raw.util';
 
 // Previously inherited from data-source.ts, which loaded this on import. This
 // script runs standalone (not through Nest), so nothing else populates env.
@@ -108,10 +109,14 @@ async function main(): Promise<void> {
 
   try {
     // ── Guardrail ───────────────────────────────────────────────────────────
-    const [{ n }] = await prisma.$queryRawUnsafe<[{ n: number }]>(
-      `SELECT COUNT(*) AS n FROM users WHERE role <> 'automation'`,
-    );
-    if (Number(n) > 0 && !force) {
+    // Raw queries hand integer columns back as BigInt under the Prisma
+    // adapter; coerceRawRow normalises them to the numbers this code declares.
+    const [{ n }] = (
+      await prisma.$queryRawUnsafe<[{ n: number }]>(
+        `SELECT COUNT(*) AS n FROM users WHERE role <> 'automation'`,
+      )
+    ).map(coerceRawRow) as [{ n: number }];
+    if (n > 0 && !force) {
       console.error(
         `✗ This database already has ${n} non-automation user(s). Refusing to ` +
           `bootstrap so a live instance is never clobbered.\n` +
@@ -134,10 +139,12 @@ async function main(): Promise<void> {
       cityName,
       citySubdomain,
     );
-    const [cityRow] = await tx.$queryRawUnsafe<[{ id: number }]>(
-      `SELECT id FROM cities WHERE subdomain = ?`,
-      citySubdomain,
-    );
+    const [cityRow] = (
+      await tx.$queryRawUnsafe<[{ id: number }]>(
+        `SELECT id FROM cities WHERE subdomain = ?`,
+        citySubdomain,
+      )
+    ).map(coerceRawRow) as [{ id: number }];
     const cityId = cityRow.id;
     // Deactivate any other cities (e.g. the seeded Cincinnati/Dayton defaults)
     // so the single-city UX + root-domain fallback kick in. Deactivated, not
@@ -211,10 +218,12 @@ async function main(): Promise<void> {
 
     // ── First admin (email + password) ──────────────────────────────────────
     console.log(`\nAdmin:`);
-    const [existing] = await tx.$queryRawUnsafe<({ id: number } | undefined)[]>(
-      `SELECT id FROM users WHERE email = ?`,
-      adminEmail,
-    );
+    const [existing] = (
+      await tx.$queryRawUnsafe<{ id: number }[]>(
+        `SELECT id FROM users WHERE email = ?`,
+        adminEmail,
+      )
+    ).map(coerceRawRow) as ({ id: number } | undefined)[];
     if (existing) {
       await tx.$executeRawUnsafe(
         `UPDATE users SET role = 'admin', status = 'active' WHERE id = ?`,

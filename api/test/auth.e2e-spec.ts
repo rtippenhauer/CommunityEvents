@@ -1,14 +1,12 @@
+import { vi } from 'vitest';
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 import { createHmac } from 'crypto';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedUser, loginAs, hashPassword } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { UserEntity, UserRole, UserStatus, EmailStatus } from '../src/database/entities/user.entity';
-import { InviteEntity, InviteType } from '../src/database/entities/invite.entity';
-import { OAuthAccountEntity, OAuthProvider } from '../src/database/entities/oauth-account.entity';
-import { FacebookDeletionRequestEntity, FacebookDeletionStatus } from '../src/database/entities/facebook-deletion-request.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, facebook_deletion_requests as FacebookDeletionRequest, invites as Invite, oauth_accounts as OAuthAccount, users as User } from '@prisma/client';
+import { EmailStatus, FacebookDeletionStatus, InviteType, OAuthProvider, UserRole, UserStatus } from '../src/database/enums';
 
 // Matches the base64url signed_request format AuthController.facebookDeletionCallback
 // verifies: `${sigB64url}.${payloadB64url}`, HMAC-SHA256 computed over the raw
@@ -22,14 +20,14 @@ function buildSignedRequest(secret: string, payload: Record<string, unknown>): s
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
+  let city: City;
   const PASSWORD = 'CorrectHorse123!';
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -38,18 +36,16 @@ describe('Auth (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     resetThrottler(app);
-    city = await seedCity(dataSource);
+    city = await seedCity(prisma);
   });
 
-  async function seedMemberInvite(overrides: Partial<InviteEntity> = {}): Promise<InviteEntity> {
-    const inviteRepo = dataSource.getRepository(InviteEntity);
-    const admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: `admin-${Date.now()}@example.test` });
+  async function seedMemberInvite(overrides: Partial<Invite> = {}): Promise<Invite> {
+    const admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: `admin-${Date.now()}@example.test` });
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 48);
-    return inviteRepo.save(
-      inviteRepo.create({
+    return prisma.invites.create({ data: {
         token: `member-invite-${Date.now()}-${Math.random()}`,
         type: InviteType.MEMBER,
         createdBy: admin.id,
@@ -58,8 +54,7 @@ describe('Auth (e2e)', () => {
         maxUses: 1,
         useCount: 0,
         ...overrides,
-      }),
-    );
+      }, });
   }
 
   describe('POST /auth/register', () => {
@@ -76,15 +71,13 @@ describe('Auth (e2e)', () => {
         })
         .expect(201);
       expect(res.body.message).toContain('Registration successful');
-
-      const userRepo = dataSource.getRepository(UserEntity);
-      const created = await userRepo.findOne({ where: { email: invite.boundToEmail! } });
+      const created = await prisma.users.findFirst({ where: { email: invite.boundToEmail! } });
       expect(created).toBeTruthy();
       expect(created!.emailStatus).toBe(EmailStatus.PENDING);
       expect(created!.role).toBe(UserRole.MEMBER);
       expect(created!.invitedBy).toBe(invite.createdBy);
 
-      const updatedInvite = await dataSource.getRepository(InviteEntity).findOne({ where: { id: invite.id } });
+      const updatedInvite = await prisma.invites.findFirst({ where: { id: invite.id } });
       expect(updatedInvite!.useCount).toBe(1);
       expect(updatedInvite!.redeemedAt).toBeTruthy();
     });
@@ -96,7 +89,7 @@ describe('Auth (e2e)', () => {
 
     it('rejects registration when the email already belongs to an active member', async () => {
       const invite = await seedMemberInvite({ boundToEmail: 'taken@example.test' });
-      await seedUser(dataSource, city.id, { email: 'taken@example.test', role: UserRole.MEMBER });
+      await seedUser(prisma, city.id, { email: 'taken@example.test', role: UserRole.MEMBER });
 
       await request(server)
         .post('/api/v1/auth/register')
@@ -156,8 +149,8 @@ describe('Auth (e2e)', () => {
   });
 
   describe('POST /auth/login', () => {
-    async function seedActiveMember(email: string, password = PASSWORD): Promise<UserEntity> {
-      return seedUser(dataSource, city.id, {
+    async function seedActiveMember(email: string, password = PASSWORD): Promise<User> {
+      return seedUser(prisma, city.id, {
         email,
         role: UserRole.MEMBER,
         status: UserStatus.ACTIVE,
@@ -196,7 +189,7 @@ describe('Auth (e2e)', () => {
 
     it('rejects login for a suspended user', async () => {
       await seedActiveMember('login-suspended@example.test');
-      await dataSource.getRepository(UserEntity).update({ email: 'login-suspended@example.test' }, { status: UserStatus.SUSPENDED });
+      await prisma.users.update({ where: { email: 'login-suspended@example.test' }, data: { status: UserStatus.SUSPENDED } });
 
       await request(server)
         .post('/api/v1/auth/login')
@@ -206,7 +199,7 @@ describe('Auth (e2e)', () => {
 
     it('rejects login while email verification is pending', async () => {
       await seedActiveMember('login-pending@example.test');
-      await dataSource.getRepository(UserEntity).update({ email: 'login-pending@example.test' }, { emailStatus: EmailStatus.PENDING });
+      await prisma.users.update({ where: { email: 'login-pending@example.test' }, data: { emailStatus: EmailStatus.PENDING } });
 
       await request(server)
         .post('/api/v1/auth/login')
@@ -231,14 +224,14 @@ describe('Auth (e2e)', () => {
         .expect(401);
       expect(res.body.message).toBe('account_locked');
 
-      const user = await dataSource.getRepository(UserEntity).findOne({ where: { email: 'login-lockout@example.test' } });
+      const user = await prisma.users.findFirst({ where: { email: 'login-lockout@example.test' } });
       expect(user!.loginLockedUntil).toBeTruthy();
     });
   });
 
   describe('GET /auth/verify-email', () => {
     it('activates a pending account with a valid token', async () => {
-      const user = await seedUser(dataSource, city.id, {
+      const user = await seedUser(prisma, city.id, {
         emailStatus: EmailStatus.PENDING,
         emailVerificationToken: 'valid-token',
         emailVerificationExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
@@ -246,7 +239,7 @@ describe('Auth (e2e)', () => {
 
       await request(server).get('/api/v1/auth/verify-email').query({ token: 'valid-token' }).expect(200);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const updated = await prisma.users.findFirst({ where: { id: user.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.ACTIVE);
       expect(updated!.emailVerificationToken).toBeNull();
     });
@@ -260,7 +253,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('rejects an expired token', async () => {
-      await seedUser(dataSource, city.id, {
+      await seedUser(prisma, city.id, {
         emailStatus: EmailStatus.PENDING,
         emailVerificationToken: 'expired-token',
         emailVerificationExpiresAt: new Date(Date.now() - 60 * 60 * 1000),
@@ -276,7 +269,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('issues a fresh token for a pending account', async () => {
-      const user = await seedUser(dataSource, city.id, {
+      const user = await seedUser(prisma, city.id, {
         emailStatus: EmailStatus.PENDING,
         passwordHash: await hashPassword(PASSWORD),
         emailVerificationToken: 'old-token',
@@ -284,7 +277,7 @@ describe('Auth (e2e)', () => {
 
       await request(server).post('/api/v1/auth/resend-verification').send({ email: user.email }).expect(200);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const updated = await prisma.users.findFirst({ where: { id: user.id } });
       expect(updated!.emailVerificationToken).not.toBe('old-token');
     });
   });
@@ -295,16 +288,16 @@ describe('Auth (e2e)', () => {
     });
 
     it('sets a reset token for an active member with a password', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
 
       await request(server).post('/api/v1/auth/forgot-password').send({ email: user.email }).expect(200);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const updated = await prisma.users.findFirst({ where: { id: user.id } });
       expect(updated!.passwordResetToken).toBeTruthy();
     });
 
     it('resets the password with a valid token and allows login with the new password', async () => {
-      const user = await seedUser(dataSource, city.id, {
+      const user = await seedUser(prisma, city.id, {
         passwordHash: await hashPassword(PASSWORD),
         emailStatus: EmailStatus.ACTIVE,
         passwordResetToken: 'reset-token',
@@ -327,7 +320,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('rejects an expired reset token', async () => {
-      await seedUser(dataSource, city.id, {
+      await seedUser(prisma, city.id, {
         passwordHash: await hashPassword(PASSWORD),
         passwordResetToken: 'expired-reset',
         passwordResetExpiresAt: new Date(Date.now() - 60 * 60 * 1000),
@@ -342,7 +335,7 @@ describe('Auth (e2e)', () => {
 
   describe('POST /auth/set-password', () => {
     it('sets a password for an OAuth-only account with no email change', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: null, emailStatus: EmailStatus.ACTIVE });
+      const user = await seedUser(prisma, city.id, { passwordHash: null, emailStatus: EmailStatus.ACTIVE });
       const cookie = await loginAs(app, user);
 
       const res = await request(server)
@@ -356,7 +349,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('requires re-verification when changing the email at the same time', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: null });
+      const user = await seedUser(prisma, city.id, { passwordHash: null });
       const cookie = await loginAs(app, user);
 
       const res = await request(server)
@@ -366,12 +359,12 @@ describe('Auth (e2e)', () => {
         .expect(200);
       expect(res.body.needsVerification).toBe(true);
 
-      const updated = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const updated = await prisma.users.findFirst({ where: { id: user.id } });
       expect(updated!.emailStatus).toBe(EmailStatus.PENDING);
     });
 
     it('rejects setting a password when one already exists', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
       const cookie = await loginAs(app, user);
 
       await request(server)
@@ -388,7 +381,7 @@ describe('Auth (e2e)', () => {
 
   describe('PATCH /auth/password', () => {
     it('changes the password given the correct current password', async () => {
-      const user = await seedUser(dataSource, city.id, {
+      const user = await seedUser(prisma, city.id, {
         passwordHash: await hashPassword(PASSWORD),
         emailStatus: EmailStatus.ACTIVE,
       });
@@ -404,7 +397,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('rejects an incorrect current password', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
       const cookie = await loginAs(app, user);
 
       await request(server)
@@ -415,7 +408,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('rejects changing password on an account with no password set', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: null });
+      const user = await seedUser(prisma, city.id, { passwordHash: null });
       const cookie = await loginAs(app, user);
 
       await request(server)
@@ -428,7 +421,7 @@ describe('Auth (e2e)', () => {
 
   describe('GET /auth/me + POST /auth/logout', () => {
     it('returns the current user without password fields', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
       const cookie = await loginAs(app, user);
 
       const res = await request(server).get('/api/v1/auth/me').set('Cookie', cookie).expect(200);
@@ -441,7 +434,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('invalidates the session on logout', async () => {
-      const user = await seedUser(dataSource, city.id);
+      const user = await seedUser(prisma, city.id);
       const cookie = await loginAs(app, user);
 
       await request(server).post('/api/v1/auth/logout').set('Cookie', cookie).expect(201);
@@ -451,13 +444,13 @@ describe('Auth (e2e)', () => {
 
   describe('GET /auth/providers + DELETE /auth/providers/:provider', () => {
     it('lists linked providers and password status', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
-      await dataSource.getRepository(OAuthAccountEntity).save({
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      await prisma.oauth_accounts.create({ data: {
         userId: user.id,
         provider: OAuthProvider.GOOGLE,
         providerId: 'google-123',
         email: user.email,
-      });
+      } });
       const cookie = await loginAs(app, user);
 
       const res = await request(server).get('/api/v1/auth/providers').set('Cookie', cookie).expect(200);
@@ -467,29 +460,29 @@ describe('Auth (e2e)', () => {
     });
 
     it('disconnects a provider when another auth method exists', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
-      await dataSource.getRepository(OAuthAccountEntity).save({
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      await prisma.oauth_accounts.create({ data: {
         userId: user.id,
         provider: OAuthProvider.GOOGLE,
         providerId: 'google-123',
         email: user.email,
-      });
+      } });
       const cookie = await loginAs(app, user);
 
       await request(server).delete('/api/v1/auth/providers/google').set('Cookie', cookie).expect(204);
 
-      const remaining = await dataSource.getRepository(OAuthAccountEntity).find({ where: { userId: user.id } });
+      const remaining = await prisma.oauth_accounts.findMany({ where: { userId: user.id } });
       expect(remaining).toHaveLength(0);
     });
 
     it('rejects disconnecting the only login method with a 409', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: null });
-      await dataSource.getRepository(OAuthAccountEntity).save({
+      const user = await seedUser(prisma, city.id, { passwordHash: null });
+      await prisma.oauth_accounts.create({ data: {
         userId: user.id,
         provider: OAuthProvider.GOOGLE,
         providerId: 'google-only',
         email: user.email,
-      });
+      } });
       const cookie = await loginAs(app, user);
 
       const res = await request(server).delete('/api/v1/auth/providers/google').set('Cookie', cookie).expect(409);
@@ -497,14 +490,14 @@ describe('Auth (e2e)', () => {
     });
 
     it('returns 404 when the provider is not linked', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
       const cookie = await loginAs(app, user);
 
       await request(server).delete('/api/v1/auth/providers/google').set('Cookie', cookie).expect(404);
     });
 
     it('rejects an invalid provider name', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
       const cookie = await loginAs(app, user);
 
       await request(server).delete('/api/v1/auth/providers/twitter').set('Cookie', cookie).expect(401);
@@ -523,7 +516,7 @@ describe('Auth (e2e)', () => {
     });
 
     function mockFacebookGraphApi(fbUser: Record<string, unknown>): void {
-      global.fetch = jest.fn().mockResolvedValue({
+      global.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => fbUser,
       }) as unknown as typeof fetch;
@@ -540,12 +533,12 @@ describe('Auth (e2e)', () => {
       expect(res.body.message).toBe('ok');
       expect((res.headers['set-cookie'] as unknown as string[]).some((c) => c.startsWith('access_token='))).toBe(true);
 
-      const user = await dataSource.getRepository(UserEntity).findOne({ where: { email: 'fbuser@example.test' } });
+      const user = await prisma.users.findFirst({ where: { email: 'fbuser@example.test' } });
       expect(user).toBeTruthy();
     });
 
     it('rejects an invalid Facebook access token', async () => {
-      global.fetch = jest.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
+      global.fetch = vi.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
 
       await request(server).post('/api/v1/auth/facebook').send({ accessToken: 'bad-token' }).expect(401);
     });
@@ -557,7 +550,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('links a Facebook account to the current user', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
       const cookie = await loginAs(app, user);
       mockFacebookGraphApi({ id: 'fb-link-1', name: user.fullName, email: user.email });
 
@@ -567,22 +560,21 @@ describe('Auth (e2e)', () => {
         .send({ accessToken: 'fake-fb-token' })
         .expect(201);
 
-      const linked = await dataSource
-        .getRepository(OAuthAccountEntity)
-        .findOne({ where: { userId: user.id, provider: OAuthProvider.FACEBOOK } });
+      const linked = await prisma.oauth_accounts
+        .findFirst({ where: { userId: user.id, provider: OAuthProvider.FACEBOOK } });
       expect(linked).toBeTruthy();
     });
 
     it('rejects linking a Facebook account already linked to someone else', async () => {
-      const other = await seedUser(dataSource, city.id, { email: 'other@example.test' });
-      await dataSource.getRepository(OAuthAccountEntity).save({
+      const other = await seedUser(prisma, city.id, { email: 'other@example.test' });
+      await prisma.oauth_accounts.create({ data: {
         userId: other.id,
         provider: OAuthProvider.FACEBOOK,
         providerId: 'fb-taken',
         email: other.email,
-      });
+      } });
 
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
       const cookie = await loginAs(app, user);
       mockFacebookGraphApi({ id: 'fb-taken', name: user.fullName, email: user.email });
 
@@ -608,19 +600,19 @@ describe('Auth (e2e)', () => {
       // handleFacebookDeletion's "other auth method" check only counts rows in
       // oauth_accounts — unlike disconnectProvider, it does not consider whether
       // the user also has a password set (see auth.service.ts handleFacebookDeletion).
-      const user = await seedUser(dataSource, city.id, { passwordHash: null });
-      await dataSource.getRepository(OAuthAccountEntity).save({
+      const user = await seedUser(prisma, city.id, { passwordHash: null });
+      await prisma.oauth_accounts.create({ data: {
         userId: user.id,
         provider: OAuthProvider.GOOGLE,
         providerId: 'google-del-multi',
         email: user.email,
-      });
-      await dataSource.getRepository(OAuthAccountEntity).save({
+      } });
+      await prisma.oauth_accounts.create({ data: {
         userId: user.id,
         provider: OAuthProvider.FACEBOOK,
         providerId: 'fb-del-multi',
         email: user.email,
-      });
+      } });
 
       const res = await request(server)
         .post('/api/v1/auth/facebook/deletion-callback')
@@ -628,9 +620,9 @@ describe('Auth (e2e)', () => {
         .expect(200);
       expect(res.body.confirmation_code).toBeTruthy();
 
-      const stillActive = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const stillActive = await prisma.users.findFirst({ where: { id: user.id } });
       expect(stillActive!.status).toBe(UserStatus.ACTIVE);
-      const oauthRows = await dataSource.getRepository(OAuthAccountEntity).find({ where: { userId: user.id } });
+      const oauthRows = await prisma.oauth_accounts.findMany({ where: { userId: user.id } });
       expect(oauthRows).toHaveLength(1);
       expect(oauthRows[0].provider).toBe(OAuthProvider.GOOGLE);
 
@@ -642,20 +634,20 @@ describe('Auth (e2e)', () => {
     });
 
     it('fully soft-deletes the account when Facebook was the only linked OAuth provider', async () => {
-      const user = await seedUser(dataSource, city.id, { passwordHash: null });
-      await dataSource.getRepository(OAuthAccountEntity).save({
+      const user = await seedUser(prisma, city.id, { passwordHash: null });
+      await prisma.oauth_accounts.create({ data: {
         userId: user.id,
         provider: OAuthProvider.FACEBOOK,
         providerId: 'fb-del-only',
         email: user.email,
-      });
+      } });
 
       await request(server)
         .post('/api/v1/auth/facebook/deletion-callback')
         .send({ signed_request: buildSignedRequest(FB_SECRET, { user_id: 'fb-del-only' }) })
         .expect(200);
 
-      const deleted = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const deleted = await prisma.users.findFirst({ where: { id: user.id } });
       expect(deleted!.status).toBe(UserStatus.DELETED);
       expect(deleted!.fullName).toBe('Deleted Member');
     });
@@ -664,20 +656,20 @@ describe('Auth (e2e)', () => {
       // Documents the current (narrower) behavior noted above: a user who signed up via
       // Facebook and later also set a password can still be fully soft-deleted by Meta's
       // callback, because handleFacebookDeletion never checks passwordHash.
-      const user = await seedUser(dataSource, city.id, { passwordHash: await hashPassword(PASSWORD) });
-      await dataSource.getRepository(OAuthAccountEntity).save({
+      const user = await seedUser(prisma, city.id, { passwordHash: await hashPassword(PASSWORD) });
+      await prisma.oauth_accounts.create({ data: {
         userId: user.id,
         provider: OAuthProvider.FACEBOOK,
         providerId: 'fb-del-with-password',
         email: user.email,
-      });
+      } });
 
       await request(server)
         .post('/api/v1/auth/facebook/deletion-callback')
         .send({ signed_request: buildSignedRequest(FB_SECRET, { user_id: 'fb-del-with-password' }) })
         .expect(200);
 
-      const deleted = await dataSource.getRepository(UserEntity).findOne({ where: { id: user.id } });
+      const deleted = await prisma.users.findFirst({ where: { id: user.id } });
       expect(deleted!.status).toBe(UserStatus.DELETED);
     });
 
@@ -692,9 +684,8 @@ describe('Auth (e2e)', () => {
         .send({ signed_request: buildSignedRequest(FB_SECRET, { user_id: 'fb-unknown-999' }) })
         .expect(200);
 
-      const record = await dataSource
-        .getRepository(FacebookDeletionRequestEntity)
-        .findOne({ where: { confirmationCode: res.body.confirmation_code } });
+      const record = await prisma.facebook_deletion_requests
+        .findFirst({ where: { confirmationCode: res.body.confirmation_code } });
       expect(record).toBeTruthy();
       expect(record!.dinnerbearsUserId).toBeNull();
       expect(record!.status).toBe(FacebookDeletionStatus.PENDING);

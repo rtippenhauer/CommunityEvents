@@ -1,11 +1,10 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { cities as City, locations as Location, users as User } from '@prisma/client';
+import { UserRole } from '../src/database/enums';
 
 // Builds a structurally valid (per validator.js's isEmail) but oversized email —
 // each domain label stays under the 63-char DNS label limit so the value still
@@ -25,18 +24,18 @@ const SQLI_DROP = "'; DROP TABLE users; --";
 
 describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
-  let location: LocationEntity;
-  let admin: UserEntity;
+  let city: City;
+  let location: Location;
+  let admin: User;
   let adminCookie: string;
-  let member: UserEntity;
+  let member: User;
   let memberCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -45,13 +44,13 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
+    await truncateAllTables(prisma);
     resetThrottler(app);
-    city = await seedCity(dataSource);
-    location = await seedLocation(dataSource, city.id);
+    city = await seedCity(prisma);
+    location = await seedLocation(prisma, city.id);
 
-    admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    member = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
+    admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    member = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member@example.test' });
     adminCookie = await loginAs(app, admin);
     memberCookie = await loginAs(app, member);
   });

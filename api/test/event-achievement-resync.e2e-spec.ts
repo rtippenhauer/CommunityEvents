@@ -1,27 +1,25 @@
 import { INestApplication } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import request = require('supertest');
+import request from 'supertest';
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
-import { CityEntity } from '../src/database/entities/city.entity';
-import { LocationEntity } from '../src/database/entities/location.entity';
-import { UserEntity, UserRole } from '../src/database/entities/user.entity';
-import { AchievementEntity } from '../src/database/entities/achievement.entity';
+import { PrismaService } from '../src/database/prisma/prisma.service';
+import type { achievements as Achievement, cities as City, locations as Location, users as User } from '@prisma/client';
+import { UserRole } from '../src/database/enums';
 
 describe('Event-scoped achievement retroactive sync (e2e)', () => {
   let app: INestApplication;
-  let dataSource: DataSource;
+  let prisma: PrismaService;
   let server: Parameters<typeof request>[0];
 
-  let city: CityEntity;
-  let location: LocationEntity;
-  let admin: UserEntity;
-  let memberA: UserEntity;
-  let memberB: UserEntity;
+  let city: City;
+  let location: Location;
+  let admin: User;
+  let memberA: User;
+  let memberB: User;
   let adminCookie: string;
 
   beforeAll(async () => {
-    ({ app, dataSource } = await createTestApp());
+    ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
@@ -30,13 +28,13 @@ describe('Event-scoped achievement retroactive sync (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await truncateAllTables(dataSource);
-    city = await seedCity(dataSource);
-    location = await seedLocation(dataSource, city.id);
+    await truncateAllTables(prisma);
+    city = await seedCity(prisma);
+    location = await seedLocation(prisma, city.id);
 
-    admin = await seedUser(dataSource, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
-    memberA = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member-a@example.test' });
-    memberB = await seedUser(dataSource, city.id, { role: UserRole.MEMBER, email: 'member-b@example.test' });
+    admin = await seedUser(prisma, city.id, { role: UserRole.ADMIN, email: 'admin@example.test' });
+    memberA = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member-a@example.test' });
+    memberB = await seedUser(prisma, city.id, { role: UserRole.MEMBER, email: 'member-b@example.test' });
     adminCookie = await loginAs(app, admin);
 
     // The real secret-dinner achievement tiers are seed data inserted once by
@@ -44,9 +42,9 @@ describe('Event-scoped achievement retroactive sync (e2e)', () => {
     // (shared with every other spec file) wipes it along with everything else.
     // Re-seed just the tier this spec exercises so checkSecretDinnerAchievements
     // has something to find/grant/revoke.
-    await dataSource.getRepository(AchievementEntity).save([
+    await prisma.achievements.createMany({ data: [
       { key: 'secret_dinner_1', name: 'Mystery Diner', description: 'd', points: 5 },
-    ]);
+    ] });
   });
 
   async function createAttendedEvent(overrides: Record<string, unknown> = {}): Promise<number> {
