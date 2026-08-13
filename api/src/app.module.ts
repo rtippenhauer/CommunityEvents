@@ -1,7 +1,9 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaModule } from './database/prisma/prisma.module';
+import { TenantModule } from './common/tenant/tenant.module';
+import { TenantMiddleware } from './common/tenant/tenant.middleware';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerAuditGuard } from './common/guards/throttler-audit.guard';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -43,6 +45,7 @@ import { AvatarsModule } from './modules/avatars/avatars.module';
     // Prisma is the only data-access layer. TypeOrmModule.forRootAsync used
     // to sit here; it is gone along with the entities and the packages.
     PrismaModule,
+    TenantModule,
     HealthModule,
     CitiesModule,
     InvitesModule,
@@ -74,4 +77,15 @@ import { AvatarsModule } from './modules/avatars/avatars.module';
     { provide: APP_GUARD, useClass: ThrottlerAuditGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    // Every route, including the ones that do not exist: an unrecognized host
+    // must not be able to tell a real path from a fake one, and REQ-TENANT-01.2
+    // puts resolution ahead of route handling rather than beside it. The health
+    // endpoint is exempted inside the middleware, not here — see UNSCOPED_PATHS.
+    //
+    // '{*splat}' is Express 5 / path-to-regexp v8 syntax; the older '*' throws
+    // at boot on this Nest version rather than matching everything.
+    consumer.apply(TenantMiddleware).forRoutes('{*splat}');
+  }
+}

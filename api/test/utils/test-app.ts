@@ -7,6 +7,7 @@ import session from 'express-session';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/database/prisma/prisma.service';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
+import { normalizeTenantDomain } from '../../src/common/utils/tenant-domain.util';
 
 export interface TestApp {
   app: INestApplication;
@@ -97,6 +98,41 @@ export async function truncateAllTables(prisma: PrismaService): Promise<void> {
     },
     { timeout: 30000 },
   );
+
+  await seedRequestTenant(prisma);
+}
+
+// The host Supertest sends when it is given a bare path. Requests go to an
+// ephemeral port on the loopback address, and normalizeTenantDomain drops the
+// port — so this is the domain every spec's requests actually resolve against.
+export const TEST_TENANT_DOMAIN = normalizeTenantDomain('127.0.0.1');
+
+/**
+ * Re-creates the tenant that ordinary requests resolve to, since
+ * truncateAllTables has just deleted it.
+ *
+ * From v2-4 onward TenantMiddleware runs ahead of every route, so a spec that
+ * wipes the database and then makes a request is a spec against a deployment
+ * with no tenants — every call would answer 503 TENANT_NOT_CONFIGURED and no
+ * suite would pass. Seeding it here rather than in each spec keeps the 28
+ * inherited suites unchanged.
+ *
+ * The id is pinned rather than left to AUTO_INCREMENT because
+ * TenantResolutionService caches resolutions for a few seconds and the app
+ * instance outlives the truncation: a cached entry from the previous test must
+ * still describe the row that exists now. TRUNCATE resets AUTO_INCREMENT to 1
+ * anyway, so this documents the guarantee rather than changing it.
+ */
+export async function seedRequestTenant(prisma: PrismaService): Promise<void> {
+  await prisma.tenants.create({
+    data: {
+      id: 1,
+      slug: 'test-root',
+      domain: TEST_TENANT_DOMAIN,
+      isRoot: true,
+      rootMarker: true,
+    },
+  });
 }
 
 // Auth routes carry tight per-route @Throttle limits (e.g. 5/min on register,

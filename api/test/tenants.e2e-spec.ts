@@ -25,6 +25,11 @@ describe('Tenants table (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAllTables(prisma);
+    // truncateAllTables re-seeds the root tenant that TenantMiddleware resolves
+    // ordinary requests against (v2-4). This suite is about the table's own
+    // constraints — above all "at most one root" — so it needs to own the
+    // contents of the table, and makes no HTTP requests that would need one.
+    await prisma.tenants.deleteMany({});
   });
 
   const rootTenant = () => ({
