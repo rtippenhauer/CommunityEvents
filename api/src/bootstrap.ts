@@ -20,7 +20,9 @@
  * when non-automation users already exist unless INSTANCE_BOOTSTRAP_FORCE=true.
  *
  * Configuration comes from env vars (see docs/NEW_INSTANCE_SETUP.md):
- *   ROOT_TENANT_URL               (required) e.g. "https://www.communityeventsproject.com"
+ *   ROOT_TENANT_URL               (optional) defaults to APP_URL; only set it
+ *                                 when the root tenant's host differs from the
+ *                                 app's own URL, which so far it never has
  *   ROOT_TENANT_SLUG              (optional) defaults to "root"
  *   INSTANCE_CITY_NAME            (required) e.g. "Southwest Ohio"
  *   INSTANCE_CITY_SUBDOMAIN       (optional) defaults to a slug of the name
@@ -47,7 +49,7 @@ import * as dotenv from 'dotenv';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { coerceRawRow } from './common/utils/prisma-raw.util';
-import { normalizeTenantDomain } from './common/utils/tenant-domain.util';
+import { resolveRootTenantDomain } from './common/utils/tenant-domain.util';
 
 // Previously inherited from data-source.ts, which loaded this on import. This
 // script runs standalone (not through Nest), so nothing else populates env.
@@ -100,11 +102,17 @@ async function upsertSiteSetting(
 }
 
 async function main(): Promise<void> {
-  // The root tenant's domain. Stored bare and lower-cased so the www. and apex
-  // forms can never become two rows (REQ-TENANT-01.1).
-  const rootTenantDomain = normalizeTenantDomain(requireEnv('ROOT_TENANT_URL'));
+  // The root tenant's domain, from ROOT_TENANT_URL or -- normally -- APP_URL.
+  // Stored bare and lower-cased so the www. and apex forms can never become two
+  // rows (REQ-TENANT-01.1). See resolveRootTenantDomain for why BASE_DOMAIN is
+  // not part of that chain.
+  const rootTenantDomain = resolveRootTenantDomain(process.env);
   if (!rootTenantDomain) {
-    console.error('- ROOT_TENANT_URL did not yield a usable hostname');
+    console.error(
+      'X Could not determine the root tenant domain. Set APP_URL (e.g.\n' +
+        '  https://stage.communityeventsproject.com), or ROOT_TENANT_URL if the\n' +
+        '  root tenant is served from a different host than the app itself.',
+    );
     process.exit(1);
   }
   const rootTenantSlug = (process.env.ROOT_TENANT_SLUG?.trim() || 'root').toLowerCase();

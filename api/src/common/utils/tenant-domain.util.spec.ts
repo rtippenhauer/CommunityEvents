@@ -1,4 +1,4 @@
-import { normalizeTenantDomain } from './tenant-domain.util';
+import { normalizeTenantDomain, resolveRootTenantDomain } from './tenant-domain.util';
 
 /**
  * The whole point of this function is that `www.<domain>` and `<domain>` can
@@ -100,5 +100,45 @@ describe('normalizeTenantDomain', () => {
       expect(normalizeTenantDomain('')).toBe('');
       expect(normalizeTenantDomain('   ')).toBe('');
     });
+  });
+});
+
+describe('resolveRootTenantDomain', () => {
+  it('uses ROOT_TENANT_URL when it is set', () => {
+    expect(
+      resolveRootTenantDomain({
+        ROOT_TENANT_URL: 'https://www.communityeventsproject.com',
+        APP_URL: 'https://ignored.example.test',
+      }),
+    ).toBe('communityeventsproject.com');
+  });
+
+  it('falls back to APP_URL, so nothing extra needs setting', () => {
+    // The common case: a deployment sets APP_URL and gets a correct root
+    // tenant for free.
+    expect(resolveRootTenantDomain({ APP_URL: 'https://stage.communityeventsproject.com' })).toBe(
+      'stage.communityeventsproject.com',
+    );
+  });
+
+  it('makes stage and production differ by APP_URL alone', () => {
+    const stage = resolveRootTenantDomain({ APP_URL: 'https://stage.communityeventsproject.com' });
+    const prod = resolveRootTenantDomain({ APP_URL: 'https://www.communityeventsproject.com' });
+
+    expect(stage).toBe('stage.communityeventsproject.com');
+    expect(prod).toBe('communityeventsproject.com');
+    expect(stage).not.toBe(prod);
+  });
+
+  it('ignores an empty or whitespace-only ROOT_TENANT_URL rather than preferring it', () => {
+    // An env var present but blank is the shape a half-filled .env produces;
+    // treating it as "set" would resolve to an empty domain.
+    expect(
+      resolveRootTenantDomain({ ROOT_TENANT_URL: '   ', APP_URL: 'https://example.test' }),
+    ).toBe('example.test');
+  });
+
+  it('returns empty when neither is set, for the caller to reject', () => {
+    expect(resolveRootTenantDomain({})).toBe('');
   });
 });

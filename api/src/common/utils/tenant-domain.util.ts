@@ -50,3 +50,29 @@ export function normalizeTenantDomain(input: string): string {
 
   return host;
 }
+
+/**
+ * Where the root tenant's domain comes from at bootstrap.
+ *
+ * REQ-TENANT-01.4 names ROOT_TENANT_URL as bootstrap config, so it stays
+ * settable — but it is redundant with APP_URL on every deployment where they
+ * agree, which is all of them so far. Defaulting to APP_URL means a stage and a
+ * production instance differ by APP_URL alone, which they already had to, and
+ * nobody has to remember a second hostname setting that silently points the
+ * root tenant at the wrong host if it is left at a copied default.
+ *
+ * BASE_DOMAIN is deliberately NOT in this chain despite looking similar. It is
+ * the *mail* domain — instance-contact.ts derives calendar@, hello@ and
+ * noreply@ from it, and v1 sets it to the apex precisely because `www.` has no
+ * MX record. A tenant's domain is a web host, and REQ-TENANT-01.7 requires auth
+ * cookies be scoped to the exact tenant host rather than a shared parent, so
+ * conflating the two is the kind of thing that ends in one tenant's session
+ * working on another's domain.
+ */
+export function resolveRootTenantDomain(env: {
+  ROOT_TENANT_URL?: string;
+  APP_URL?: string;
+}): string {
+  const source = env.ROOT_TENANT_URL?.trim() || env.APP_URL?.trim() || '';
+  return normalizeTenantDomain(source);
+}
