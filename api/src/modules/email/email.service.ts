@@ -168,7 +168,11 @@ export class EmailService {
   }
 
   async cancelEmail(id: number): Promise<void> {
-    await this.prisma.email_queue.update({
+    // Cancelling an email that is already gone is a no-op, not an error --
+    // the admin queue view can easily be a few seconds stale. TypeORM's
+    // update() reported affected: 0 here; Prisma's update() throws P2025,
+    // which would surface as a 500 on a second click.
+    await this.prisma.email_queue.updateMany({
       where: { id },
       data: { status: EmailQueueStatus.CANCELLED },
     });
