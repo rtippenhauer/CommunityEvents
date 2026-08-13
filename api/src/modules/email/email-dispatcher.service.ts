@@ -46,7 +46,10 @@ export class EmailDispatcherService {
 
     // providerConfig is still mutated in memory across the batch and written
     // once at the end, exactly as before -- one write per run, not per email.
-    await this.prisma.email_provider_config.update({
+    // updateMany for the same reason as the queue writes below: nothing in this
+    // scheduled sweep is wrapped in a try/catch, so a P2025 here becomes an
+    // unhandled rejection rather than a logged failure.
+    await this.prisma.email_provider_config.updateMany({
       where: { id: providerConfig.id },
       data: {
         brevoSentToday: providerConfig.brevoSentToday,
@@ -93,7 +96,9 @@ export class EmailDispatcherService {
 
     for (const u of users120) {
       this.logger.log(`120-day inactivity: soft deleting ${u.email}`);
-      await this.prisma.users.update({
+      // This loop is not guarded, and the user may have deleted their own
+      // account between the findMany above and this write.
+      await this.prisma.users.updateMany({
         where: { id: u.id },
         data: {
           status: UserStatus.DELETED,
@@ -142,7 +147,12 @@ export class EmailDispatcherService {
     if (!useBrevo && !useResend) {
       patch.status = EmailQueueStatus.BLOCKED;
       patch.errorMessage = 'No provider available or daily limit reached';
-      await this.prisma.email_queue.update({ where: { id: email.id }, data: patch });
+      // updateMany, not update: this row was read at the top of the sweep and
+      // may be gone by now -- cancelled by an admin, or removed by a retention
+      // pass. TypeORM's update() reported affected: 0; Prisma's update() throws
+      // P2025, and because this runs on a scheduler there is no request to
+      // surface that on, so it becomes an unhandled rejection inside a cron.
+      await this.prisma.email_queue.updateMany({ where: { id: email.id }, data: patch });
       return;
     }
 
@@ -182,7 +192,9 @@ export class EmailDispatcherService {
         email.attempts + 1 >= MAX_ATTEMPTS ? EmailQueueStatus.FAILED : EmailQueueStatus.PENDING;
     }
 
-    await this.prisma.email_queue.update({ where: { id: email.id }, data: patch });
+    // Same reasoning as the blocked branch above: the row may have been removed
+    // while the provider call was in flight.
+    await this.prisma.email_queue.updateMany({ where: { id: email.id }, data: patch });
   }
 
   private async getOrCreateConfig(): Promise<EmailProviderConfig> {

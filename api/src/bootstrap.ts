@@ -4,14 +4,26 @@
  * Run AFTER migrations (`npm run prisma:deploy`) and the seed (`npm run seed`)
  * on a brand-new database. It turns the seeded DinnerBears defaults into this
  * operator's own
- * single-region instance: one active city, their branding, an email-provider
- * config row, and a first admin who can sign in with email + password.
+ * single-region instance: the root tenant, one active city, their branding, an
+ * email-provider config row, and a first admin who can sign in with email +
+ * password.
+ *
+ * The root tenant is created here rather than in prisma/seed.ts because its
+ * domain is specific to this deployment -- seed.ts carries the reference data
+ * every install shares, and there is no sensible instance-agnostic default for
+ * a hostname. A consequence worth knowing: a database that has been migrated
+ * and seeded but not bootstrapped has no tenant at all, and domain resolution
+ * (REQ-TENANT-01.2) will refuse every request until this has run.
  *
  * Everything is idempotent (upserts), so re-running is safe. As a guardrail
  * against pointing it at a populated database by mistake, it refuses to run
  * when non-automation users already exist unless INSTANCE_BOOTSTRAP_FORCE=true.
  *
  * Configuration comes from env vars (see docs/NEW_INSTANCE_SETUP.md):
+ *   ROOT_TENANT_URL               (optional) defaults to APP_URL; only set it
+ *                                 when the root tenant's host differs from the
+ *                                 app's own URL, which so far it never has
+ *   ROOT_TENANT_SLUG              (optional) defaults to "root"
  *   INSTANCE_CITY_NAME            (required) e.g. "Southwest Ohio"
  *   INSTANCE_CITY_SUBDOMAIN       (optional) defaults to a slug of the name
  *   INSTANCE_BRAND_NAME           (optional) e.g. "Sons"
@@ -37,6 +49,7 @@ import * as dotenv from 'dotenv';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { coerceRawRow } from './common/utils/prisma-raw.util';
+import { resolveRootTenantDomain } from './common/utils/tenant-domain.util';
 
 // Previously inherited from data-source.ts, which loaded this on import. This
 // script runs standalone (not through Nest), so nothing else populates env.
@@ -89,6 +102,21 @@ async function upsertSiteSetting(
 }
 
 async function main(): Promise<void> {
+  // The root tenant's domain, from ROOT_TENANT_URL or -- normally -- APP_URL.
+  // Stored bare and lower-cased so the www. and apex forms can never become two
+  // rows (REQ-TENANT-01.1). See resolveRootTenantDomain for why BASE_DOMAIN is
+  // not part of that chain.
+  const rootTenantDomain = resolveRootTenantDomain(process.env);
+  if (!rootTenantDomain) {
+    console.error(
+      'X Could not determine the root tenant domain. Set APP_URL (e.g.\n' +
+        '  https://stage.communityeventsproject.com), or ROOT_TENANT_URL if the\n' +
+        '  root tenant is served from a different host than the app itself.',
+    );
+    process.exit(1);
+  }
+  const rootTenantSlug = (process.env.ROOT_TENANT_SLUG?.trim() || 'root').toLowerCase();
+
   const cityName = requireEnv('INSTANCE_CITY_NAME');
   const citySubdomain = (process.env.INSTANCE_CITY_SUBDOMAIN || slugify(cityName)).toLowerCase();
   const adminEmail = requireEnv('INSTANCE_ADMIN_EMAIL').toLowerCase();
@@ -129,6 +157,27 @@ async function main(): Promise<void> {
     // One interactive transaction: everything below commits together or not
     // at all, and throwing rolls back without an explicit rollback call.
     await prisma.$transaction(async (tx) => {
+
+    // ── Root tenant ─────────────────────────────────────────────────────────
+    // is_root and root_marker are always written together. root_marker is
+    // `true` here and NULL on every other tenant, and its unique index is what
+    // makes "exactly one root" a database guarantee rather than a convention --
+    // a second root tenant would mean a second system admin.
+    console.log(`\nRoot tenant:`);
+    await tx.$executeRawUnsafe(
+      `INSERT INTO tenants (slug, domain, is_root, root_marker, status, db_mode)
+       VALUES (?, ?, 1, 1, 'active', 'shared')
+       ON DUPLICATE KEY UPDATE domain = VALUES(domain), status = 'active'`,
+      rootTenantSlug,
+      rootTenantDomain,
+    );
+    const [tenantRow] = (
+      await tx.$queryRawUnsafe<[{ id: number }]>(
+        `SELECT id FROM tenants WHERE slug = ?`,
+        rootTenantSlug,
+      )
+    ).map(coerceRawRow) as [{ id: number }];
+    console.log(`  - ${rootTenantDomain} (slug "${rootTenantSlug}", id ${tenantRow.id})`);
 
     // ── City: one active city for this single-region instance ───────────────
     console.log(`\nCity:`);

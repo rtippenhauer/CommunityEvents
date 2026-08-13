@@ -81,7 +81,7 @@ nothing asserted the shape of those two fields — which is the argument for the
 unit leg this item also filled in.
 
 ## v2-3 — Tenants table (REQ-TENANT-01.1)
-**Status:** In Progress
+**Status:** Complete (2026-08-12)
 
 Add the `tenants` table and seed the root tenant, now that Prisma is the
 working data layer.
@@ -89,8 +89,39 @@ working data layer.
 **Definition of done:** `tenants` table exists with root tenant seeded on
 first run.
 
+**Outcome:** met. The table carries the columns REQ-TENANT-01.1 lists plus the
+four reserved OAuth credential columns; the root tenant is created by
+`bootstrap.ts`, not `seed.ts`, because its domain is deployment-specific.
+
+Three decisions worth carrying forward:
+
+- **"Exactly one root" is a database constraint, not a convention.** MySQL has
+  no partial unique index, but it permits repeated NULLs in a unique one, so
+  `root_marker` is `true` on the root tenant and NULL elsewhere. Verified
+  against MySQL directly before relying on it. A second root tenant would mean
+  a second system admin.
+- **`domain` cannot physically hold a `www.` prefix.** `normalizeTenantDomain`
+  strips it on the way in, and v2-4's Host-header middleware calls the same
+  function, so seeding and resolution cannot drift.
+- **The root domain defaults to `APP_URL`** rather than requiring
+  `ROOT_TENANT_URL`, so stage and prod still differ by one value. `IS_STAGE`
+  was considered and rejected: it is a behavioural flag, and deriving a
+  hostname from it would hardcode a `stage.` prefix convention while coupling
+  stage's identity to production's apex — the exact thing REQ-TENANT-01.7 says
+  stage is not.
+
+Known gap for v2-4: a database that has been migrated and seeded but not
+bootstrapped has no tenant at all. Domain resolution should fail loudly on
+that rather than 404 every request.
+
+Also fixed here, found by the e2e suite hanging rather than failing: five
+unguarded `prisma.update()` calls in scheduled tasks, a fourth instance of the
+v2-1 P2025 family (TypeORM's `update()` no-opped on a missing row; Prisma's
+throws). In a cron there is no request to surface that on, so it became an
+unhandled rejection.
+
 ## v2-4 — Domain resolution middleware (REQ-TENANT-01.2)
-**Status:** Not started
+**Status:** In Progress
 
 NestJS middleware resolving `tenant_id` from `Host` header, built against
 the now-existing tenants table.

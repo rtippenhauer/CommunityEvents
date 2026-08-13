@@ -34,10 +34,10 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-3` — tenants table (REQ-TENANT-01.1): add the
-`tenants` table and seed the root tenant, now that Prisma is the working data
-layer and the test stack can cover it. See `V2_PHASES.md` for the full backlog
-and each item's Definition of Done.
+**Current v2 work item:** `v2-4` — domain resolution middleware
+(REQ-TENANT-01.2): resolve `tenant_id` from the `Host` header before route
+handlers run, now that the tenants table exists to resolve against. See
+`V2_PHASES.md` for the full backlog and each item's Definition of Done.
 
 **Completed v2 items:**
 - **`v2-1` — Prisma data layer** (2026-08-09). TypeORM removed entirely:
@@ -55,6 +55,17 @@ and each item's Definition of Done.
   non-existent relation, and event DATE/TIME columns serialised as ISO
   timestamps — plus `import * as sanitizeHtml` being called as a function,
   which only worked because tsc emits CommonJS. Details in `V2_PHASES.md`.
+- **`v2-3` — Tenants table** (2026-08-12). `tenants` table added; the root
+  tenant is created by `bootstrap.ts` (not `seed.ts` — its domain is
+  deployment-specific), and its domain defaults to `APP_URL` so stage and prod
+  still differ by one value.
+
+  Two invariants are enforced by the database rather than by convention, since
+  both are security-shaped: exactly one `is_root` tenant (via a unique index on
+  a nullable `root_marker`, because MySQL has no partial unique index), and a
+  `domain` column that cannot physically hold a `www.` prefix. Also fixed a
+  fourth P2025 regression here — five unguarded `update()` calls in scheduled
+  tasks.
 
 **Infra readiness (confirmed by Rob 2026-08-09):**
 - A dedicated `communityevents` database + `communityevents_user` exist on
@@ -228,13 +239,26 @@ authoritative (per REQ-TENANT-01.3).
   strings. `api/src/common/utils/prisma-date.util.ts` converts both ways; use
   it rather than string-slicing a Date.
 
-## Multi-Tenancy (from `v2-3` onward, per `docs/REQ-TENANT-01.md`)
-- `tenants` table: `id`, `slug`, `domain` (unique), `is_root`, `status`
-  (active/suspended), `db_mode` (shared/dedicated — reserved, defaults
-  shared), `created_at`. Exactly one tenant has `is_root = true`, matching
-  `ROOT_TENANT_URL`; its admin is the system admin.
-- `www.<domain>` and `<domain>` always resolve to the same tenant row —
-  never create separate tenants for the two.
+## Multi-Tenancy (per `docs/REQ-TENANT-01.md`)
+- **`tenants` table exists as of `v2-3`**: `id`, `slug`, `domain` (unique),
+  `is_root`, `root_marker`, `status` (active/suspended), `db_mode`
+  (shared/dedicated — reserved, defaults shared), `created_at`, plus four
+  reserved OAuth credential columns (nullable; the two `*_secret` ones must be
+  encrypted at rest before anything writes them).
+- Exactly one tenant has `is_root = true`; its admin is the system admin. This
+  is a **database constraint**, not a convention: `root_marker` is `true` on the
+  root and NULL elsewhere, and its unique index rejects a second root (MySQL has
+  no partial unique index, but permits repeated NULLs in a unique one). Write
+  `is_root` and `root_marker` together, always.
+- `domain` is stored bare and lower-cased and **cannot hold a `www.` prefix** —
+  `normalizeTenantDomain` strips it on the way in, so `www.<domain>` and
+  `<domain>` cannot become two rows. Use that same function for any Host-header
+  lookup; seeding and resolution must not drift.
+- The root tenant's domain comes from `ROOT_TENANT_URL` if set, else `APP_URL`
+  (`resolveRootTenantDomain`). **Not** `BASE_DOMAIN` — that is the mail domain.
+- The root tenant is created by `bootstrap.ts`, so a database that is migrated
+  and seeded but not bootstrapped has **no tenant at all**. Domain resolution
+  should fail loudly on that rather than 404 every request.
 - Sub-communities (`sub1.baseurl`) are explicitly out of scope for
   REQ-TENANT-01 — unrecognized subdomains 404 like any other unrecognized
   domain, no special-casing.

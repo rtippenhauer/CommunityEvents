@@ -59,6 +59,11 @@ src/modules/
 - Raw `$queryRaw` results give integer columns back as **BigInt**. Pass them
   through `coerceRawRows` (`src/common/utils/prisma-raw.util.ts`) or they blow
   up later, either inside Prisma or inside JSON.stringify.
+- `update()`/`delete()` by id **throw P2025 when the row is gone**, where
+  TypeORM's reported `affected: 0`. Use `updateMany`/`deleteMany` unless
+  something guarantees the row still exists. Four separate regressions have come
+  from this; in a scheduled task it is worse than a 500, because it becomes an
+  unhandled rejection that fails invisibly.
 
 ## Port
 NestJS runs on port 3000 (internal only — no public port)
