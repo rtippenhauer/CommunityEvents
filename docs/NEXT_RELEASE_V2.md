@@ -55,3 +55,37 @@ unconfigured, it says so in the logs instead of silently returning no results �
 previously an instance missing its Google Places key looked exactly like a
 search that simply found nothing. Two required settings that the setup guide
 never mentioned are now documented.
+
+---
+
+## Multi-community groundwork
+
+**Communities are now a thing the system knows about.** A new `tenants` table
+records each community — its web address, its status, and which one is the
+root. Nothing visible changes yet: the current site is simply registered as its
+own root community, and every page behaves exactly as before. This is the
+record everything else in the multi-community work hangs off, and it had to
+exist before a single page could be scoped to a community.
+
+Two properties are enforced by the database rather than by convention, because
+getting either wrong would be a security problem rather than a bug:
+
+- **There can only ever be one root community.** An admin of the root community
+  is the system administrator, so a second one would silently mean a second
+  system administrator.
+- **`www.example.com` and `example.com` are the same community, always.** The
+  address is stored in one canonical form, so the two can never drift into
+  separate records with separate data.
+
+**Setting up an instance got simpler, not harder.** The root community's
+address is taken from the instance's own URL, so there is no new setting to
+configure — a staging and a production instance still differ by exactly one
+value, as they always have.
+
+## Reliability
+
+**Scheduled background work no longer stops on a vanished record.** The email
+dispatcher processes a batch of queued messages, and a message cancelled or
+cleaned up mid-batch would cause the run to fail rather than skip it. The same
+applied to the inactivity sweep, and to cancelling an already-cancelled email
+from the admin queue.
