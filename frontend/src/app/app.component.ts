@@ -21,9 +21,11 @@ import { FeedbackService } from './core/services/feedback.service';
 import { HealthService } from './core/services/health.service';
 import { MerchService } from './core/services/merch.service';
 import { SplashService } from './core/services/splash.service';
+import { TenantStatusService } from './core/services/tenant-status.service';
 import { NotificationBellComponent } from './shared/components/notification-bell/notification-bell.component';
 import { IosInstallBannerComponent } from './shared/components/ios-install-banner/ios-install-banner.component';
 import { SplashComponent, SplashDialogData } from './shared/components/splash/splash.component';
+import { TenantUnavailableComponent } from './features/tenant-unavailable/tenant-unavailable.component';
 
 @Component({
   selector: 'app-root',
@@ -41,6 +43,7 @@ import { SplashComponent, SplashDialogData } from './shared/components/splash/sp
     MatDividerModule,
     NotificationBellComponent,
     IosInstallBannerComponent,
+    TenantUnavailableComponent,
   ],
   templateUrl: './app.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
@@ -55,6 +58,9 @@ export class AppComponent {
   private readonly merchService = inject(MerchService);
   private readonly splashService = inject(SplashService);
   readonly healthService = inject(HealthService);
+  // Read by the template to swap the entire shell for the holding page when
+  // this host has no usable tenant (REQ-TENANT-01.2).
+  readonly tenantStatus = inject(TenantStatusService);
   private readonly dialog = inject(MatDialog);
   private splashDialogOpen = false;
 

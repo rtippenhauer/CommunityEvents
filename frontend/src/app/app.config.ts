@@ -13,6 +13,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 
 import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { tenantInterceptor } from './core/interceptors/tenant.interceptor';
 import { AuthService } from './core/services/auth.service';
 import { BrandConfigService } from './core/services/brand-config.service';
 
@@ -20,7 +21,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes, withComponentInputBinding()),
-    provideHttpClient(withXhr(), withInterceptors([authInterceptor])),
+    provideHttpClient(withXhr(), withInterceptors([tenantInterceptor, authInterceptor])),
     provideAnimationsAsync(),
     provideNativeDateAdapter(),
     provideAppInitializer(() => inject(AuthService).init()),

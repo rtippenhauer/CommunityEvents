@@ -34,10 +34,11 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-4` — domain resolution middleware
-(REQ-TENANT-01.2): resolve `tenant_id` from the `Host` header before route
-handlers run, now that the tenants table exists to resolve against. See
-`V2_PHASES.md` for the full backlog and each item's Definition of Done.
+**Current v2 work item:** `v2-5` — tenant-scoping Prisma Client Extension
+(REQ-TENANT-01.3, second half): auto-inject `tenant_id` into `where` clauses
+and set it on create, now that middleware resolves a tenant per request for it
+to scope against. See `V2_PHASES.md` for the full backlog and each item's
+Definition of Done.
 
 **Completed v2 items:**
 - **`v2-1` — Prisma data layer** (2026-08-09). TypeORM removed entirely:
@@ -66,6 +67,27 @@ handlers run, now that the tenants table exists to resolve against. See
   `domain` column that cannot physically hold a `www.` prefix. Also fixed a
   fourth P2025 regression here — five unguarded `update()` calls in scheduled
   tasks.
+- **`v2-4` — Domain resolution middleware** (2026-08-14). `TenantMiddleware`
+  runs ahead of every route and attaches the resolved tenant to the request;
+  `TenantResolutionService` looks it up behind a short-TTL, size-bounded
+  in-memory cache that also caches misses (the key is an attacker-controlled
+  `Host` header).
+
+  Three outcomes are kept distinct rather than collapsed into one 404, because
+  they look identical to a visitor and mean opposite things to whoever fixes
+  them: unrecognized host -> 404 `TENANT_NOT_FOUND`; no tenants at all -> 503
+  `TENANT_NOT_CONFIGURED` plus a loud log (closing the gap `v2-3` left);
+  suspended tenant -> 503 `TENANT_SUSPENDED`. Health is exempt, always answers,
+  and reports which of those happened in a new `tenant` field — which paid off
+  on the first stage deploy, where one curl found a root-tenant row still
+  holding the pre-move `communityevents.rtippenhauer.com` domain.
+
+  Two traps worth not re-discovering: **Nest mounts module middleware at a
+  path and Express strips it**, so `req.path` is `/` for every request and only
+  `req.originalUrl` survives intact; and **middleware cannot rely on
+  `GlobalExceptionFilter`**, which wraps route handlers only — a thrown
+  exception unwinds to Express's stock HTML error page, so the middleware
+  writes its JSON body directly.
 
 **Infra readiness (confirmed by Rob 2026-08-09):**
 - A dedicated `communityevents` database + `communityevents_user` exist on
@@ -85,9 +107,10 @@ handlers run, now that the tenants table exists to resolve against. See
   restart-loop with a misleading "not found").
 
 V2 is being defined through a sequence of requirements docs. Only one exists
-so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft, not
-yet implemented). It is the foundational doc everything else depends on and
-defines the conventions the rest of v2 follows. Key decisions it locks in:
+so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft;
+`v2-1` through `v2-4` are implemented, `v2-5`/`v2-6` are outstanding). It is
+the foundational doc everything else depends on and defines the conventions the
+rest of v2 follows. Key decisions it locks in:
 
 - **Prisma replaces TypeORM entirely** (not incrementally) — `schema.prisma`
   becomes the single source of truth, TypeORM removed once Prisma is
@@ -96,8 +119,8 @@ defines the conventions the rest of v2 follows. Key decisions it locks in:
   auto-injects `tenant_id` into `where` clauses and auto-sets it on create
   for tenant-scoped models — not left to individual services to remember.
   Global (non-tenant-scoped) models are excluded by explicit convention.
-- **Domain-based tenant resolution**: NestJS middleware resolves
-  `tenant_id` from the `Host` header before route handlers run, with
+- **Domain-based tenant resolution** (landed by `v2-4`): NestJS middleware
+  resolves `tenant_id` from the `Host` header before route handlers run, with
   `www.<domain>` normalized to the same tenant as `<domain>`. Unrecognized
   domains get a clear 404. Result is cached briefly (in-memory, short TTL).
 - **`users.tenant_id`** is a single FK (a user belongs to exactly one
@@ -257,16 +280,43 @@ authoritative (per REQ-TENANT-01.3).
 - The root tenant's domain comes from `ROOT_TENANT_URL` if set, else `APP_URL`
   (`resolveRootTenantDomain`). **Not** `BASE_DOMAIN` — that is the mail domain.
 - The root tenant is created by `bootstrap.ts`, so a database that is migrated
-  and seeded but not bootstrapped has **no tenant at all**. Domain resolution
-  should fail loudly on that rather than 404 every request.
+  and seeded but not bootstrapped has **no tenant at all**. As of `v2-4` domain
+  resolution fails loudly on that (503 `TENANT_NOT_CONFIGURED` + an error log)
+  rather than 404ing every request.
+- `bootstrap.ts` writes the root tenant with `ON DUPLICATE KEY UPDATE domain =
+  VALUES(domain)`, so **re-running it overwrites the domain from `APP_URL`**.
+  That self-heals a wrong domain, but a stale `APP_URL` silently reverts a
+  manual fix — which is exactly how stage came up unresolvable on the `v2-4`
+  deploy.
 - Sub-communities (`sub1.baseurl`) are explicitly out of scope for
   REQ-TENANT-01 — unrecognized subdomains 404 like any other unrecognized
   domain, no special-casing.
+- **Host-header resolution landed in `v2-4`** (`api/src/common/tenant/`).
+  `TenantMiddleware` runs ahead of every route and sets `req.tenant`
+  (`TenantContext`: id, slug, domain, isRoot, status); read it rather than
+  re-resolving. `TenantResolutionService.resolve()` never throws — an unknown
+  host is an outcome, not an error — and caches results, misses included, on a
+  short TTL with a 500-entry ceiling.
+- **Adding a route that must answer without a tenant means editing
+  `UNSCOPED_PATHS`** in `tenant.middleware.ts`. Only `/api/v1/health` is in it.
+  The exemption is a string compare against `req.originalUrl`, not
+  `MiddlewareConsumer.exclude()`, because a wrong exclude pattern fails open —
+  every route unscoped, silently.
+- **Middleware cannot use `GlobalExceptionFilter`**: it wraps route handlers, so
+  an exception thrown in middleware unwinds to Express's stock HTML error page
+  instead. `TenantMiddleware` writes its JSON body directly, matching the
+  filter's shape. Its `reason` values (`TENANT_NOT_FOUND`,
+  `TENANT_NOT_CONFIGURED`, `TENANT_SUSPENDED`) are a contract the frontend reads
+  to decide whether to show the holding page — don't rename them on one side.
+- **Nest mounts module middleware at a path and Express strips it**, so
+  `req.path`/`req.url` are `/` inside any middleware registered via
+  `forRoutes()`. Use `req.originalUrl`.
 - Tenant scoping enforcement point is the Prisma Client Extension, not
   individual services or controllers.
 
-**Design note carried over from v1 (this needs an actual fix in `v2-3`/`v2-4`,
-not another workaround):** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
+**Design note carried over from v1 (still unfixed after `v2-3`/`v2-4` — those
+built tenant identity and resolution, not cookie scoping, so this now belongs
+to `v2-6`'s auth work):** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
 because `www` is genuinely the only public web host — the apex publishes MX
 only, no A record. The same value doubles as the auth cookie domain, which
 means a subdomain like `cincinnati.dinnerbears.com` is a *sibling* of the
