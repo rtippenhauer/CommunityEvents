@@ -128,3 +128,61 @@ check now also says whether the address it was reached on matched a community.
 For anyone running an instance, a single check now distinguishes "the server is
 fine, that address is wrong" from "this instance was never finished" — the two
 setup problems that otherwise look identical from outside.
+
+---
+
+## Community data separation
+
+**Each community's data is now genuinely its own.** Events, restaurants,
+RSVPs, comments, announcements, invites, photos, ratings, points, badges,
+notifications and feedback all belong to a specific community, and one
+community can never see or change another's — even when someone asks for a
+record by a number that really exists somewhere else. Requesting another
+community's event returns "not found" rather than the event.
+
+This is what makes a single installation able to host more than one community
+safely. Previously that took a separate copy of the whole application and its
+own database per city.
+
+**It's enforced in one place rather than remembered everywhere.** Rather than
+asking every part of the application to filter by community and hoping none of
+them forgets, the separation is applied automatically at the data layer, which
+every part of the application goes through. Code that forgets to filter is the
+kind of mistake that quietly returns *more* than it should, so it can't be left
+to individual pages to get right.
+
+**It fails safe.** If anything ever asks for community-owned data without
+knowing which community it's for, the request is refused rather than answered
+with everything. Scheduled background jobs that legitimately work across all
+communities — sending queued email, reminders, account cleanup — say so
+explicitly.
+
+**Two long-standing correctness bugs fixed along the way.** Earning a badge or
+a point in one community used to be able to silently block the identical award
+in another, because those records were keyed in a way that didn't account for
+communities existing. The same person can now earn the same badge in each
+community they belong to.
+
+**A fix for administrator activity records.** Nightly account-cleanup was
+failing to write its entry to the administrator activity log. The work itself
+completed, but the record of it was being dropped.
+
+## Setting up and populating an instance
+
+**New communities can be added from the command line.** An operator can add a
+community to a running installation, with its web address handled the same way
+the application resolves visitors' addresses — so a community added this way
+resolves exactly as expected rather than by a slightly different rule.
+
+**Optional automatic setup on first start.** A brand-new installation can now
+seed its reference data and create its first community and administrator by
+itself, rather than requiring two manual steps. It's off by default and only
+ever acts on a genuinely empty installation, so restarting an existing
+instance never re-runs setup or overwrites settings an administrator has since
+changed.
+
+**Sample data for evaluating an instance.** A new command fills a community
+with realistic members, restaurants, past events, attendance and reviews, so
+the member directory, leaderboard and ratings pages can be judged with
+something in them. Intended for demonstration and test installations, and it
+refuses to run unless the operator names the database it is being pointed at.

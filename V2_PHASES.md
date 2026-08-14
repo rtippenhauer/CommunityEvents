@@ -195,7 +195,7 @@ overwrites the domain from `APP_URL` on every run. That self-heals a wrong
 domain, but it also means a stale `APP_URL` silently reverts a manual fix.
 
 ## v2-5 — Tenant-scoping Prisma Client Extension (REQ-TENANT-01.3, second half)
-**Status:** In Progress
+**Status:** Complete (2026-08-14)
 
 Add once v2-1 and v2-3 are both confirmed working — easier to verify
 scoping against a known-good baseline than to build both at once.
@@ -204,10 +204,132 @@ scoping against a known-good baseline than to build both at once.
 integration test (cross-tenant data leakage impossible even with colliding
 IDs).
 
+**Outcome:** met. `tenant_id` on 27 transactional models, 12 left global, with
+the split declared once in `tenant-scoped-models.ts` and made exhaustive over
+`Prisma.ModelName` at the type level — adding a model without classifying it
+does not compile. The extension injects the filter on reads, creates and
+destructive writes, and walks nested writes, nested `include`/`select`,
+relation counts and `connect` off the DMMF, because a query can reach tenant
+data without naming a scoped model at the top level. Tenant travels by
+AsyncLocalStorage from `TenantMiddleware`; the extended client is bound to the
+`PrismaService` token, so all 40 injection sites were untouched and the
+unscoped client is not reachable.
+
+Verified by `test/tenant-isolation.e2e-spec.ts` — two tenants on one client,
+asserted at the Prisma level and over HTTP on two hosts, with fixtures
+interleaved so neither tenant owns a contiguous id range (a missing filter
+would return the wrong tenant's row rather than nothing, so the negative
+assertions cannot pass vacuously). Suite totals: unit 146, e2e 670 across 31
+files.
+
+Five things worth carrying forward:
+
+- **Fails closed in three independent ways.** No context throws; `tenant_id`
+  carries a sentinel `DEFAULT 0` the foreign key rejects, so anything escaping
+  the extension dies at the database rather than writing an orphan; and the
+  four `@Cron` sweeps carry explicit `runUnscoped('<reason>')` waivers.
+- **The extension cannot see raw SQL**, which Prisma does not route through
+  extensions. All raw statements in service code were audited: 14 gained a
+  predicate, 4 are documented as not needing one.
+- **Prisma promises are lazy**, so `runWithTenant(id, () => prisma.x.find())`
+  builds the query inside the context and runs it outside. Production call
+  shapes are safe; it bit the test helpers. Documented on `runWithTenant`.
+- **Prisma rejects `where` on a to-one `include`** outright, so only to-many
+  relations can be filtered; to-one hops rely on the foreign key instead.
+- **Vitest runs every hook and test body in a sibling async context**, so
+  neither `run()` nor `enterWith()` from a setup file reaches an `it()`. Hence
+  the NODE_ENV-gated test fallback rather than editing 28 spec files.
+
+Also fixed here: `member_achievements` and `member_points` keyed their unique
+indexes on globally-unique ids, so one community granting a member an
+achievement permanently blocked another from doing the same. And a regression
+this item introduced — `HardDeleteTask`'s audit write began failing the new
+foreign key, silently, because the task catches its own errors; system audit
+entries are now attributed to the root tenant.
+
+Beyond the Definition of Done, this item also carries operator tooling added
+for testing it: `provision-tenant.ts`, `seed-test-data.ts` and a conditional
+`deploy-provision.ts` that makes seeding and bootstrapping safe to run
+unattended on every container start.
+
+**Not verified on stage.** `/v2-testing` was deliberately skipped: the item's
+central property needs two tenants to observe, and tenant-scoped login (v2-6)
+has to land before a second tenant on stage is testable. Its *regression*
+surface — the 14 hand-edited raw SQL statements behind the member directory,
+leaderboard, ratings and account deletion — is therefore unexercised outside
+CI, and should be part of whatever stage pass v2-6 gets.
+
+**Known gap this item deliberately leaves open — `users` is still global.**
+Agreed with Rob 2026-08-13 when the item was scoped. 27 transactional models
+gained `tenant_id`; `users` did not, because REQ-TENANT-01.5 (per-tenant email
+uniqueness, auth resolving within the requesting tenant) is v2-6's stated
+Definition of Done, and because `seed.ts` writes the automation account before
+`bootstrap.ts` has created any tenant to attach it to. Until v2-6 lands:
+
+- **Any account can authenticate against any tenant.** `AuthService` finds the
+  user by email against the global `users` table, so a member of one community
+  can log in at another's host and be issued a valid session there. That is the
+  hole, and REQ-TENANT-01.5 is what closes it.
+
+  A *session* does not carry across tenants, though — which is worth knowing
+  before anyone designs around the gap being wider than it is. `JwtStrategy`
+  validates by looking the `jti` up in `login_sessions`, and that table is
+  tenant-scoped as of v2-5, so a cookie issued by one tenant produces a 401 on
+  another rather than an authenticated request. Scoping that table bought this
+  incidentally; it was not designed as an auth control and should not be relied
+  on as one.
+- Member-facing lists that anchor on `users` (the directory, the leaderboard)
+  span tenants, even though each row's *scoped* data — points, achievements,
+  linked providers — is filtered correctly.
+- `notification_preferences.user_id` and `oauth_accounts (provider,
+  provider_id)` are still globally unique, so a member can hold either in only
+  one tenant. `member_achievements` and `member_points` had the same problem and
+  were fixed here (their unique keys now include `tenant_id`), because both key
+  off globally-unique ids and a write in one tenant would otherwise block
+  another's; the two above were left alone as they are auth-shaped and belong
+  with the rest of v2-6.
+
+Anything seeded before bootstrap runs is global for the same ordering reason:
+`cities`, `app_config`, `avatar`, `achievements`, `email_provider_config`,
+`merch_config`. Reordering the install is v2-6's bootstrap/runtime-config split.
+
 ## v2-6 — Bootstrap/runtime config split + user tenant scoping (REQ-TENANT-01.4, REQ-TENANT-01.5)
-**Status:** Not started
+**Status:** In Progress
 
 Last, since both depend on tenants existing and domain resolution working.
+
+Confirmed with Rob 2026-08-14, after v2-5 landed with `users` still global:
+**users cannot stay global — login must resolve against the tenant that owns
+the URL it was submitted to.** That was already REQ-TENANT-01.5's intent; it is
+recorded here because it is now also what blocks testing. A second tenant on
+stage is not meaningfully testable until it lands.
+
+Surveyed before starting, so the size is known rather than discovered:
+
+- **109** `prisma.users.*` call sites; **14** lookups keyed on email across 9
+  files. Making email unique per tenant breaks every
+  `findUnique({ where: { email } })` at compile time, which turns the audit
+  into a checklist rather than a hunt.
+- **`ReleaseNotesImporterService` queries `users` from
+  `onApplicationBootstrap`** — at startup, with no request and so no tenant
+  context. The moment `users` is scoped this throws on every boot. Fail-closed
+  working as designed, but it needs a waiver or root-tenant attribution the way
+  `AuditService` got one. Left unhandled it is a restart loop on stage.
+- **Install ordering has to change.** `seed.ts` writes the automation account
+  from `users.json` before any tenant exists. Moving it into `bootstrap.ts` is
+  the cleanest fix — bootstrap already creates the tenant *before* the admin, so
+  the ordering is right there.
+- **`oauth_accounts`** needs `(tenant_id, provider, provider_id)`, or one Google
+  account can only ever link in a single community.
+- `notification_preferences.user_id` becomes correct for free once a user
+  belongs to exactly one tenant.
+- The v1 cookie-scoping design note (see the end of this file's CLAUDE.md
+  counterpart) belongs to this item's auth work.
+
+Per-tenant OAuth *credentials* are explicitly **not** here — that is v2-13,
+gated behind v2-12's encryption. Until then OAuth keeps using the platform env
+credentials while resolving the user within the tenant, so stage does not
+regress.
 
 **Definition of done:** `users.tenant_id` enforced; duplicate email allowed
 across tenants, blocked within a tenant; bootstrap config trimmed to
@@ -323,3 +445,69 @@ going Live.
 Meta app creation plus review and business verification, and email provider
 setup, accurate enough that someone other than Rob can stand up an instance
 from it.
+
+---
+
+## Deferred: secrets and per-tenant OAuth
+
+Added 2026-08-14 with Rob, when per-tenant OAuth configuration was specified
+(REQ-TENANT-01.9). Listed separately from the branding/demo block above because
+these are not cosmetic — the first is a security prerequisite with nothing else
+depending on it yet, and the second cannot start until it exists.
+
+Numbered after the existing deferred items rather than renumbering them, so
+`v2-<N>` tags already referenced elsewhere keep meaning what they meant. The
+dependency, not the number, is what orders them: **v2-12 before v2-13**, and
+v2-13 wants REQ-TENANT-01.8's callback handoff done in the same item.
+
+### v2-12 — Encrypted secrets at rest
+**Status:** Not started (deferred). Blocks v2-13.
+
+`schema.prisma` has said since v2-3 that `tenants.google_client_secret` and
+`tenants.facebook_app_secret` must be encrypted before anything writes them,
+and that whoever first populates them owns building the layer. Nothing has
+populated them, so nothing has been built. REQ-TENANT-01.9 is what populates
+them, so this comes first.
+
+Worth deciding once, here, rather than per-column later: where the key comes
+from (bootstrap env is the only thing available today), what happens on key
+rotation, and whether the same mechanism covers the other secrets currently
+sitting in plaintext columns — `email_provider_config.brevo_api_key` and
+`resend_api_key` are already in that category and would benefit from the same
+treatment.
+
+**Definition of done:** a documented encrypt/decrypt path used by at least one
+real column, secrets unreadable in a database dump, and a stated answer for key
+rotation that does not require re-entering every secret by hand.
+
+### v2-13 — Per-tenant OAuth apps (REQ-TENANT-01.9, REQ-TENANT-01.8)
+**Status:** Not started (deferred). Depends on v2-12 and on v2-6.
+
+Each tenant supplies its own Google and/or Meta credentials; a provider is
+offered only where that tenant has them, and email/password is always
+available. See REQ-TENANT-01.9 for the rule and its four consequences.
+
+The two requirements are one item because they are one subsystem: 01.8's
+callback handoff has to choose which tenant's client secret to exchange the
+code with, and the signed `state` is the only thing that knows. Splitting them
+would mean building the callback twice.
+
+Known work beyond the columns themselves:
+
+- `GoogleStrategy` stops being a singleton — credentials are selected per
+  request from the resolved tenant, so the strategy's registration changes, not
+  just its config.
+- Facebook needs far less: it is not a Passport strategy, and the server-side
+  half is a Graph API call. The per-tenant part is largely which app id the
+  frontend uses.
+- A new **unauthenticated, tenant-resolved** endpoint telling the login page
+  which methods this tenant offers. `GET /auth/providers` cannot do it — it is
+  `JwtAuthGuard`ed and reports the signed-in user's linked accounts.
+- The tenant-scoping extension needs the explicit "run as tenant X" override
+  REQ-TENANT-01.8 already calls for, since the callback lands on the root host
+  but resolves a user belonging to the originating tenant.
+
+**Definition of done:** a tenant with no credentials offers email/password
+only; a tenant with Google credentials offers Google and email/password; the
+same address can hold a different set of linked providers on two tenants; and
+no secret is readable in a database dump.

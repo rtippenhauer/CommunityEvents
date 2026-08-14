@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { unlink } from 'fs/promises';
 import { join } from 'path';
 import type { users as User } from '@prisma/client';
+import { requireTenantId } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -109,10 +110,21 @@ export class UsersService {
         gg.email AS googleEmail`
       : '';
 
+    // Raw SQL is not routed through the tenant-scoping extension, so the two
+    // scoped tables referenced here — member_points and oauth_accounts — carry
+    // their own predicate. Both are LEFT JOIN / correlated-subquery reads, so
+    // the filter goes in the ON or subquery clause rather than the WHERE, which
+    // would drop members who have no points or no linked provider.
+    //
+    // `users` itself stays unfiltered because it is still global until v2-6
+    // (REQ-TENANT-01.5), so this list spans tenants; what each row *reports*
+    // is nonetheless scoped to the requesting one.
+    const tenantId = requireTenantId('member directory');
+
     const elevatedJoins = isElevated
       ? `
-      LEFT JOIN oauth_accounts fb ON fb.user_id = u.id AND fb.provider = 'facebook'
-      LEFT JOIN oauth_accounts gg ON gg.user_id = u.id AND gg.provider = 'google'`
+      LEFT JOIN oauth_accounts fb ON fb.user_id = u.id AND fb.provider = 'facebook' AND fb.tenant_id = ?
+      LEFT JOIN oauth_accounts gg ON gg.user_id = u.id AND gg.provider = 'google' AND gg.tenant_id = ?`
       : '';
 
     const orderBy =
@@ -134,14 +146,20 @@ export class UsersService {
         u.invited_by AS invitedById,
         inviter.full_name AS invitedByName,
         inviter.profile_photo_path AS invitedByPhoto,
-        (SELECT COALESCE(SUM(mp.points), 0) FROM member_points mp WHERE mp.user_id = u.id)
+        (SELECT COALESCE(SUM(mp.points), 0) FROM member_points mp
+          WHERE mp.user_id = u.id AND mp.tenant_id = ?)
           AS totalPoints${elevatedColumns}
       FROM users u
       LEFT JOIN users inviter ON inviter.id = u.invited_by
       LEFT JOIN cities city ON city.id = u.city_id${elevatedJoins}
       WHERE ${statusClause} AND u.role != ?
       ORDER BY ${orderBy}`,
+      // Positional and assembled in the order the placeholders appear: the
+      // isNew cutoff, the points subquery's tenant, then the two oauth joins'
+      // tenants (only present when the elevated joins are), then the filters.
       twoWeeksAgo,
+      tenantId,
+      ...(isElevated ? [tenantId, tenantId] : []),
       statusValue,
       UserRole.AUTOMATION,
     );
@@ -284,6 +302,8 @@ export class UsersService {
       }
     }
 
+    const tenantId = requireTenantId('account deletion');
+
     await this.prisma.$transaction(async (tx) => {
       await tx.users.update({
         where: { id: user.id },
@@ -304,14 +324,21 @@ export class UsersService {
       // evaluated by the database, and expressing this as a nested relation
       // filter would need the cutoff computed in Node, which reintroduces the
       // server-vs-database clock difference the original avoided.
+      // The tx.* calls above are scoped by the extension; these two are raw and
+      // are not, so event_rsvps, invites and the events subquery each take an
+      // explicit tenant_id.
       await tx.$executeRawUnsafe(
-        `DELETE FROM event_rsvps WHERE user_id = ? AND event_id IN (SELECT id FROM events WHERE event_date >= CURDATE())`,
+        `DELETE FROM event_rsvps WHERE user_id = ? AND tenant_id = ? AND event_id IN (SELECT id FROM events WHERE event_date >= CURDATE() AND tenant_id = ?)`,
         user.id,
+        tenantId,
+        tenantId,
       );
       // Revoke event invite links they created for upcoming events
       await tx.$executeRawUnsafe(
-        `UPDATE invites SET is_revoked = 1 WHERE created_by = ? AND type = 'event_invite' AND event_id IN (SELECT id FROM events WHERE event_date >= CURDATE())`,
+        `UPDATE invites SET is_revoked = 1 WHERE created_by = ? AND tenant_id = ? AND type = 'event_invite' AND event_id IN (SELECT id FROM events WHERE event_date >= CURDATE() AND tenant_id = ?)`,
         user.id,
+        tenantId,
+        tenantId,
       );
     });
 

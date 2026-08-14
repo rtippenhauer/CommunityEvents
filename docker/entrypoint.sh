@@ -16,15 +16,26 @@ fi
 # have not been applied yet and never generates or edits one, which is what
 # makes it safe to run unattended on every container start.
 #
-# Reference data for a brand-new database is NOT seeded here. Seeding is a
-# one-time step for a fresh install, run explicitly alongside bootstrap.js:
-#   docker exec <container> node /app/node_modules/prisma/build/index.js db seed
-# Running it on every boot would rewrite config rows an operator had since
-# edited through the admin UI, on every restart.
 echo "[entrypoint] Running database migrations..."
 node /app/node_modules/prisma/build/index.js migrate deploy \
   && echo "[entrypoint] Migrations complete." \
   || echo "[entrypoint] WARNING: Migration failed - check logs."
+
+# Reference data and the root tenant, for a brand-new database only.
+#
+# Seeding and bootstrapping are NOT safe to run unconditionally: seed.js would
+# rewrite app_config rows an operator has since edited through the admin UI, and
+# bootstrap.js resets the root tenant's domain from APP_URL every time it runs
+# (which is how stage came up unresolvable on the v2-4 deploy). deploy-provision
+# gates each on a first-install check -- no cities, no tenants -- so a
+# deployment that is already set up performs no writes at all.
+#
+# Opt-in, and off unless AUTO_PROVISION=true is set in the environment. It never
+# exits non-zero: the app starts either way, and an unbootstrapped database
+# already answers 503 TENANT_NOT_CONFIGURED with a specific reason, which is a
+# far better failure than a restart loop.
+echo "[entrypoint] Checking provisioning..."
+node /app/dist/deploy-provision.js || true
 
 # Migrations run as root and may create new upload subdirectories (e.g. category
 # folders) — reopen permissions afterward so the unprivileged nestjs user (which

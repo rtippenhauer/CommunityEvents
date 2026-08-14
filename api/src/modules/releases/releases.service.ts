@@ -6,6 +6,7 @@ import type {
   release_feedback as ReleaseFeedback,
   users as User,
 } from '@prisma/client';
+import { requireTenantId } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { FeedbackStatus } from '../../database/enums';
 import { CreateReleaseDto } from './dto/create-release.dto';
@@ -195,11 +196,16 @@ export class ReleasesService {
       // COALESCE(resolved_at, NOW()) has no equivalent in updateMany, which can
       // only set a column to a fixed value. Overwriting it would rewrite the
       // resolution date of every ticket each time a release is published.
+      // `releases` is a global model but `feedback` is tenant-scoped, and raw
+      // SQL does not pass through the scoping extension — so this carries its
+      // own predicate. Publishing a release must not flip another community's
+      // tickets to shipped, even though the release itself is deployment-wide.
       await this.prisma.$executeRaw`
         UPDATE feedback
         SET status = ${FeedbackStatus.SHIPPED},
             resolved_at = COALESCE(resolved_at, NOW())
-        WHERE id IN (${Prisma.join(ids)})`;
+        WHERE id IN (${Prisma.join(ids)})
+          AND tenant_id = ${requireTenantId('release publish')}`;
     }
 
     return saved;

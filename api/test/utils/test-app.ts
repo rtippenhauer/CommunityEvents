@@ -8,6 +8,7 @@ import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/database/prisma/prisma.service';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
 import { normalizeTenantDomain } from '../../src/common/utils/tenant-domain.util';
+import { TEST_TENANT_ID } from '../setup-env';
 
 export interface TestApp {
   app: INestApplication;
@@ -126,7 +127,7 @@ export const TEST_TENANT_DOMAIN = normalizeTenantDomain('127.0.0.1');
 export async function seedRequestTenant(prisma: PrismaService): Promise<void> {
   await prisma.tenants.create({
     data: {
-      id: 1,
+      id: TEST_TENANT_ID,
       slug: 'test-root',
       domain: TEST_TENANT_DOMAIN,
       isRoot: true,
