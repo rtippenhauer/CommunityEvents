@@ -211,8 +211,18 @@ uniqueness, auth resolving within the requesting tenant) is v2-6's stated
 Definition of Done, and because `seed.ts` writes the automation account before
 `bootstrap.ts` has created any tenant to attach it to. Until v2-6 lands:
 
-- **A JWT issued by one tenant is accepted by another.** This is the one that
-  matters. Data reads are scoped, but authentication is not.
+- **Any account can authenticate against any tenant.** `AuthService` finds the
+  user by email against the global `users` table, so a member of one community
+  can log in at another's host and be issued a valid session there. That is the
+  hole, and REQ-TENANT-01.5 is what closes it.
+
+  A *session* does not carry across tenants, though — which is worth knowing
+  before anyone designs around the gap being wider than it is. `JwtStrategy`
+  validates by looking the `jti` up in `login_sessions`, and that table is
+  tenant-scoped as of v2-5, so a cookie issued by one tenant produces a 401 on
+  another rather than an authenticated request. Scoping that table bought this
+  incidentally; it was not designed as an auth control and should not be relied
+  on as one.
 - Member-facing lists that anchor on `users` (the directory, the leaderboard)
   span tenants, even though each row's *scoped* data — points, achievements,
   linked providers — is filtered correctly.
