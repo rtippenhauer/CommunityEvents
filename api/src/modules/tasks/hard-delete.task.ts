@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { unlink } from 'fs/promises';
 import { join } from 'path';
 import type { users as User } from '@prisma/client';
+import { runUnscoped } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { FacebookDeletionStatus, UserStatus } from '../../database/enums';
 import { AuditService } from '../audit/audit.service';
@@ -18,8 +19,20 @@ export class HardDeleteTask {
     private readonly auditService: AuditService,
   ) {}
 
+  /**
+   * The waiver wraps this method rather than a private delegate because the
+   * account-lifecycle e2e suite calls runHardDelete() directly, outside any
+   * request — and purging an account has to reach every tenant's rows anyway,
+   * since `users` is not yet tenant-scoped (that is v2-6, REQ-TENANT-01.5).
+   */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
-  async runHardDelete(): Promise<void> {
+  runHardDelete(): Promise<void> {
+    return runUnscoped('hard-delete purges accounts across every tenant', () =>
+      this.purgeDueAccounts(),
+    );
+  }
+
+  private async purgeDueAccounts(): Promise<void> {
     const now = new Date();
     const due = await this.prisma.users.findMany({
       where: {

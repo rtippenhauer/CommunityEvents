@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { member_points as MemberPoint } from '@prisma/client';
+import { requireTenantId } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { PointType, UserRole, UserStatus } from '../../database/enums';
 import { AchievementsService } from './achievements.service';
@@ -159,8 +160,25 @@ export class PointsService {
     // groupBy cannot join, so rebuilding this would mean fetching every active
     // member and their point rows and summing in Node -- on the leaderboard,
     // which is the one endpoint where that cost is most visible.
+    // Raw SQL does not pass through the tenant-scoping extension, so the join to
+    // member_points carries its own predicate. It belongs in the ON clause, not
+    // the WHERE: member_points is LEFT JOINed so that members with no points
+    // still appear, and a tenant filter in the WHERE would silently turn that
+    // into an inner join and drop every zero-point member from the leaderboard.
+    //
+    // The `users` side stays unfiltered because `users` is still a global model
+    // — REQ-TENANT-01.5 (v2-6) is what gives it a tenant_id. Until then the
+    // leaderboard's *rows* span tenants even though each member's *points* are
+    // correctly scoped to the requesting one.
+    const tenantId = requireTenantId('leaderboard');
     const cityFilter = cityId ? 'AND u.city_id = ?' : '';
-    const params: unknown[] = [twoWeeksAgo, UserStatus.ACTIVE, UserRole.ADMIN, UserRole.AUTOMATION];
+    const params: unknown[] = [
+      twoWeeksAgo,
+      tenantId,
+      UserStatus.ACTIVE,
+      UserRole.ADMIN,
+      UserRole.AUTOMATION,
+    ];
     if (cityId) params.push(cityId);
 
     const rows = await this.prisma.$queryRawUnsafe<
@@ -185,7 +203,7 @@ export class PointsService {
               IF(u.created_at >= ?, 1, 0) AS isNew
        FROM users u
        LEFT JOIN cities c ON c.id = u.city_id
-       LEFT JOIN member_points mp ON mp.user_id = u.id
+       LEFT JOIN member_points mp ON mp.user_id = u.id AND mp.tenant_id = ?
        WHERE u.status = ?
          AND u.role NOT IN (?, ?)
          ${cityFilter}

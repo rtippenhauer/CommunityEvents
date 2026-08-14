@@ -204,6 +204,30 @@ scoping against a known-good baseline than to build both at once.
 integration test (cross-tenant data leakage impossible even with colliding
 IDs).
 
+**Known gap this item deliberately leaves open — `users` is still global.**
+Agreed with Rob 2026-08-13 when the item was scoped. 27 transactional models
+gained `tenant_id`; `users` did not, because REQ-TENANT-01.5 (per-tenant email
+uniqueness, auth resolving within the requesting tenant) is v2-6's stated
+Definition of Done, and because `seed.ts` writes the automation account before
+`bootstrap.ts` has created any tenant to attach it to. Until v2-6 lands:
+
+- **A JWT issued by one tenant is accepted by another.** This is the one that
+  matters. Data reads are scoped, but authentication is not.
+- Member-facing lists that anchor on `users` (the directory, the leaderboard)
+  span tenants, even though each row's *scoped* data — points, achievements,
+  linked providers — is filtered correctly.
+- `notification_preferences.user_id` and `oauth_accounts (provider,
+  provider_id)` are still globally unique, so a member can hold either in only
+  one tenant. `member_achievements` and `member_points` had the same problem and
+  were fixed here (their unique keys now include `tenant_id`), because both key
+  off globally-unique ids and a write in one tenant would otherwise block
+  another's; the two above were left alone as they are auth-shaped and belong
+  with the rest of v2-6.
+
+Anything seeded before bootstrap runs is global for the same ordering reason:
+`cities`, `app_config`, `avatar`, `achievements`, `email_provider_config`,
+`merch_config`. Reordering the install is v2-6's bootstrap/runtime-config split.
+
 ## v2-6 — Bootstrap/runtime config split + user tenant scoping (REQ-TENANT-01.4, REQ-TENANT-01.5)
 **Status:** Not started
 

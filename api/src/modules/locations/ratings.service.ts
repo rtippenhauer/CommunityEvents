@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { location_ratings as LocationRating, users as User } from '@prisma/client';
+import { requireTenantId } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { RsvpStatus, UserRole } from '../../database/enums';
 import { toDateString, toTimeString } from '../../common/utils/prisma-date.util';
@@ -76,6 +77,13 @@ export class RatingsService {
   }
 
   async getRatings(locationId: number, currentUser?: User): Promise<RatingsResponse> {
+    // Raw SQL is not routed through the tenant-scoping Prisma extension, so the
+    // statements below carry their own tenant_id predicate. Only the anchor and
+    // independently-filtered tables need one: anything reached by foreign key
+    // from an already-scoped row (a location from an event, a photo from a
+    // location) is in the same tenant by construction, because the extension
+    // refuses to connect rows across tenants in the first place.
+    const tenantId = requireTenantId('location ratings');
     const location = await this.locationsService.findOne(locationId); // 404 if not found
     // When residence ratings are suppressed, a residence keeps any existing
     // reviews visible but offers no new ones — clear the eligible-events list.
@@ -102,7 +110,8 @@ export class RatingsService {
              AVG(r.noise) AS avgNoise,
              AVG((r.food + r.service + r.value_rating + r.noise) / 4) AS avgOverall
       FROM location_ratings r
-      WHERE r.location_id = ${locationId}`;
+      WHERE r.location_id = ${locationId}
+        AND r.tenant_id = ${tenantId}`;
 
     // DATE_FORMAT keeps eventDate a 'YYYY-MM-DD' string in the response, which
     // is what it has always been on the wire. Letting Prisma return the DATE
@@ -137,6 +146,7 @@ export class RatingsService {
       INNER JOIN users m ON m.id = r.member_id
       INNER JOIN events e ON e.id = r.event_id
       WHERE r.location_id = ${locationId}
+        AND r.tenant_id = ${tenantId}
       ORDER BY r.created_at DESC
       LIMIT 20`;
 
@@ -155,6 +165,8 @@ export class RatingsService {
         FROM event_rsvps rsvp
         INNER JOIN events e ON e.id = rsvp.event_id
         WHERE rsvp.user_id = ${currentUser.id}
+          AND rsvp.tenant_id = ${tenantId}
+          AND e.tenant_id = ${tenantId}
           AND rsvp.status = ${RsvpStatus.GOING}
           AND e.location_id = ${locationId}
           AND (e.event_date < ${todayStr}
@@ -280,6 +292,9 @@ export class RatingsService {
   }
 
   async getRatingQueue(userId: number): Promise<RatingQueueItem[]> {
+    // Raw SQL bypasses the tenant-scoping extension; see getRatings above for
+    // why only the anchor tables carry an explicit predicate.
+    const tenantId = requireTenantId('rating queue');
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
@@ -317,6 +332,8 @@ export class RatingsService {
        LEFT JOIN location_ratings rating
          ON rating.member_id = ? AND rating.event_id = e.id
        WHERE rsvp.user_id = ?
+         AND rsvp.tenant_id = ?
+         AND e.tenant_id = ?
          AND rsvp.status = ?
          AND (rsvp.attended = 1 OR rsvp.attended IS NULL)
          AND (e.event_date < ? OR (e.event_date = ? AND e.event_time <= ?))
@@ -325,6 +342,10 @@ export class RatingsService {
        ORDER BY e.event_date DESC`,
       userId,
       userId,
+      // Positional, so these two sit exactly where the tenant predicates were
+      // added to the WHERE clause — between the user id and the RSVP status.
+      tenantId,
+      tenantId,
       RsvpStatus.GOING,
       todayStr,
       todayStr,

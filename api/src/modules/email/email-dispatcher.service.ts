@@ -5,6 +5,7 @@ import type {
   email_queue as EmailQueueRow,
   Prisma,
 } from '@prisma/client';
+import { runUnscoped } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailProvider, EmailQueueStatus, UserStatus } from '../../database/enums';
 import { BrevoService } from './brevo.service';
@@ -24,7 +25,23 @@ export class EmailDispatcherService {
     private readonly resend: ResendService,
   ) {}
 
+  /**
+   * The scheduled entry point, which drains every tenant's queue in one pass.
+   *
+   * The waiver lives here rather than on dispatchPending itself, and the
+   * difference matters: the admin "flush" button calls dispatchPending from
+   * inside a request, where a tenant context is already established, so that
+   * path stays scoped and flushes only the caller's own queue. Wrapping the
+   * shared body instead would quietly turn one community's admin action into a
+   * deployment-wide one.
+   */
   @Cron(CronExpression.EVERY_5_MINUTES)
+  dispatchPendingScheduled(): Promise<void> {
+    return runUnscoped('email dispatcher drains every tenant queue', () =>
+      this.dispatchPending(),
+    );
+  }
+
   async dispatchPending(): Promise<void> {
     const providerConfig = await this.getOrCreateConfig();
     this.resetDailyCountersIfNeeded(providerConfig);
@@ -59,8 +76,15 @@ export class EmailDispatcherService {
     });
   }
 
+  /** Re-engagement mail for members who have gone quiet, across every tenant. */
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async inactivityCheck(): Promise<void> {
+  inactivityCheck(): Promise<void> {
+    return runUnscoped('inactivity sweep covers every tenant', () =>
+      this.runInactivityCheck(),
+    );
+  }
+
+  private async runInactivityCheck(): Promise<void> {
     const now = new Date();
 
     const days = (n: number) => new Date(now.getTime() - n * 86400000);

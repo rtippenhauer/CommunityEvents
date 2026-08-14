@@ -42,6 +42,9 @@ export class HealthService {
   async check(host?: string): Promise<HealthStatus> {
     let database: 'ok' | 'error' = 'error';
     try {
+      // No tenant predicate to add: this touches no table. It also has to keep
+      // working without a tenant context at all, since /health is the one path
+      // TenantMiddleware skips.
       await this.prisma.$queryRaw`SELECT 1`;
       database = 'ok';
     } catch {

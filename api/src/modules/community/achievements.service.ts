@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 import { $Enums } from '@prisma/client';
 import type { Prisma, achievements as Achievement } from '@prisma/client';
+import { requireTenantId } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { PointType, ProgressType } from '../../database/enums';
 import { coerceRawRows } from '../../common/utils/prisma-raw.util';
@@ -553,46 +554,83 @@ export class AchievementsService {
   // and backfills rows for earned achievements that had 0 points at grant
   // time but have since been given a point value.
   async adminRecalculatePoints(): Promise<{ updated: number; inserted: number }> {
-    const updateResult = await this.prisma.$executeRawUnsafe(`
+    // These bulk statements bypass the tenant-scoping extension entirely, so
+    // every reference to a scoped table (member_points, member_achievements)
+    // carries its own tenant_id — on the read side as a predicate, and on the
+    // insert side as a written column. `achievements` needs neither: it is a
+    // global model, seeded before any tenant exists.
+    const tenantId = requireTenantId('achievement points recalculation');
+
+    const updateResult = await this.prisma.$executeRawUnsafe(
+      `
       UPDATE member_points mp
       JOIN achievements a ON a.id = mp.reference_id
       SET mp.points = a.points
       WHERE mp.point_type = 'achievement' AND mp.points <> a.points
-    `);
+        AND mp.tenant_id = ?
+    `,
+      tenantId,
+    );
     // INSERT IGNORE: uq_member_points_user_type_ref (see
     // 1752100000000-AddUniqueConstraintMemberPoints) is now the real
     // backstop against duplicating a row here -- the NOT EXISTS below is
     // just the fast path that avoids hitting it on every normal run.
-    const insertResult = await this.prisma.$executeRawUnsafe(`
-      INSERT IGNORE INTO member_points (user_id, point_type, reference_id, points, awarded_at)
-      SELECT ma.member_id, 'achievement', ma.achievement_id, a.points, NOW()
+    const insertResult = await this.prisma.$executeRawUnsafe(
+      `
+      INSERT IGNORE INTO member_points (user_id, point_type, reference_id, points, awarded_at, tenant_id)
+      SELECT ma.member_id, 'achievement', ma.achievement_id, a.points, NOW(), ?
       FROM member_achievements ma
       JOIN achievements a ON a.id = ma.achievement_id
       WHERE a.points > 0
+        AND ma.tenant_id = ?
         AND NOT EXISTS (
           SELECT 1 FROM member_points mp
           WHERE mp.user_id = ma.member_id
             AND mp.point_type = 'achievement'
             AND mp.reference_id = ma.achievement_id
+            AND mp.tenant_id = ?
         )
-    `);
+    `,
+      tenantId,
+      tenantId,
+      // The NOT EXISTS probe needs the predicate too. Without it a member who
+      // already holds the points in another tenant would be skipped here, and
+      // this tenant's row would never be created.
+      tenantId,
+    );
     // $executeRawUnsafe returns the affected-row count directly, where the
     // TypeORM driver handed back a ResultSetHeader.
     return { updated: updateResult, inserted: insertResult };
   }
 
   async adminBackfillFounders(): Promise<{ granted: number }> {
-    const result = await this.prisma.$executeRawUnsafe(`
-      INSERT INTO member_achievements (member_id, achievement_id, earned_at)
-      SELECT u.id, a.id, NOW()
+    // The rows written belong to the calling tenant, and the "already granted"
+    // probe is scoped to it as well — holding the achievement in one community
+    // must not suppress the grant in another.
+    //
+    // The `users` scan is deliberately left unfiltered, because it cannot be
+    // filtered yet: `users` is still global until REQ-TENANT-01.5 lands in v2-6.
+    // On a multi-tenant deployment this therefore grants the founding
+    // achievement to every active member of the deployment, stamped with the
+    // calling tenant. Revisit when users gain a tenant_id.
+    const tenantId = requireTenantId('founder achievement backfill');
+
+    const result = await this.prisma.$executeRawUnsafe(
+      `
+      INSERT INTO member_achievements (member_id, achievement_id, earned_at, tenant_id)
+      SELECT u.id, a.id, NOW(), ?
       FROM users u
       JOIN achievements a ON a.\`key\` = 'founding_bear'
       WHERE u.status = 'active'
         AND NOT EXISTS (
           SELECT 1 FROM member_achievements ma
           WHERE ma.member_id = u.id AND ma.achievement_id = a.id
+            AND ma.tenant_id = ?
         )
-    `);
+    `,
+      tenantId,
+      tenantId,
+    );
     return { granted: result };
   }
 
@@ -604,38 +642,58 @@ export class AchievementsService {
   // checks: an invitee who has attended at least once, whose inviter hasn't
   // already been credited for that specific invitee.
   async adminBackfillInvitePoints(): Promise<{ pointsGranted: number; achievementsGranted: number }> {
-    const candidates = await this.prisma.$queryRawUnsafe<{ inviterId: number }[]>(`
+    // Both statements probe member_points, which is tenant-scoped and not
+    // reachable by the extension from raw SQL. "Has attended" and "has already
+    // been credited" are both per-tenant questions: attendance earned in one
+    // community should not credit an inviter in another, and a credit already
+    // granted elsewhere must not suppress this tenant's.
+    const tenantId = requireTenantId('invite points backfill');
+
+    const candidates = await this.prisma.$queryRawUnsafe<{ inviterId: number }[]>(
+      `
       SELECT DISTINCT invitee.invited_by AS inviterId
       FROM users invitee
       WHERE invitee.invited_by IS NOT NULL
         AND EXISTS (
           SELECT 1 FROM member_points ap
           WHERE ap.user_id = invitee.id AND ap.point_type = 'attendance'
+            AND ap.tenant_id = ?
         )
         AND NOT EXISTS (
           SELECT 1 FROM member_points ip
           WHERE ip.user_id = invitee.invited_by
             AND ip.point_type = 'invite'
             AND ip.reference_id = invitee.id
+            AND ip.tenant_id = ?
         )
-    `);
+    `,
+      tenantId,
+      tenantId,
+    );
 
-    const insertResult = await this.prisma.$executeRawUnsafe(`
-      INSERT INTO member_points (user_id, point_type, reference_id, points, awarded_at)
-      SELECT invitee.invited_by, 'invite', invitee.id, 1, NOW()
+    const insertResult = await this.prisma.$executeRawUnsafe(
+      `
+      INSERT INTO member_points (user_id, point_type, reference_id, points, awarded_at, tenant_id)
+      SELECT invitee.invited_by, 'invite', invitee.id, 1, NOW(), ?
       FROM users invitee
       WHERE invitee.invited_by IS NOT NULL
         AND EXISTS (
           SELECT 1 FROM member_points ap
           WHERE ap.user_id = invitee.id AND ap.point_type = 'attendance'
+            AND ap.tenant_id = ?
         )
         AND NOT EXISTS (
           SELECT 1 FROM member_points ip
           WHERE ip.user_id = invitee.invited_by
             AND ip.point_type = 'invite'
             AND ip.reference_id = invitee.id
+            AND ip.tenant_id = ?
         )
-    `);
+    `,
+      tenantId,
+      tenantId,
+      tenantId,
+    );
 
     // Re-run the invite-achievement tier check for every affected inviter, then
     // mark anything newly earned as already-seen — these are retroactive

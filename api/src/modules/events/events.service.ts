@@ -14,6 +14,7 @@ import type {
   event_rsvps as EventRsvp,
   users as User,
 } from '@prisma/client';
+import { runUnscoped } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import {
   EventStatus,
@@ -1999,8 +2000,19 @@ export class EventsService {
     };
   }
 
+  /**
+   * Seats-reminder mail for reservations coming up in the next two hours, for
+   * every tenant. Runs on a schedule, so there is no Host header and no tenant
+   * to resolve — the sweep is deliberately deployment-wide.
+   */
   @Cron(CronExpression.EVERY_30_MINUTES)
-  async checkReservationSeatsReminders(): Promise<void> {
+  checkReservationSeatsReminders(): Promise<void> {
+    return runUnscoped('reservation seats reminders sweep every tenant', () =>
+      this.runReservationSeatsReminders(),
+    );
+  }
+
+  private async runReservationSeatsReminders(): Promise<void> {
     // Get current Eastern time
     const fmt = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
@@ -2021,6 +2033,10 @@ export class EventsService {
     // which Prisma has no expression for, so the window filter stays SQL. Only
     // the ids are fetched here; the rows themselves come back through the
     // client so the location relation is loaded the usual way.
+    //
+    // Deliberately carries no tenant_id predicate. This runs inside the
+    // runUnscoped wrapper above, so it is meant to see every tenant's events —
+    // the reminder has to go out for all of them from one scheduled pass.
     const dueRows = await this.prisma.$queryRaw<{ id: number }[]>`
       SELECT e.id
       FROM events e
