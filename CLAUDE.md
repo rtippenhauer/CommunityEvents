@@ -34,11 +34,14 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-5` — tenant-scoping Prisma Client Extension
-(REQ-TENANT-01.3, second half): auto-inject `tenant_id` into `where` clauses
-and set it on create, now that middleware resolves a tenant per request for it
-to scope against. See `V2_PHASES.md` for the full backlog and each item's
-Definition of Done.
+**Current v2 work item:** `v2-6` — bootstrap/runtime config split + user tenant
+scoping (REQ-TENANT-01.4, REQ-TENANT-01.5): `users.tenant_id`, per-tenant email
+uniqueness, and login resolving against the tenant that owns the URL it was
+submitted to. Confirmed with Rob 2026-08-14 that users cannot stay global; this
+is also what blocks meaningful two-tenant testing on stage. See `V2_PHASES.md`
+for the full backlog, each item's Definition of Done, and the survey of this
+one's blast radius (109 `users` call sites, and a startup query that will throw
+the moment `users` is scoped).
 
 **Completed v2 items:**
 - **`v2-1` — Prisma data layer** (2026-08-09). TypeORM removed entirely:
@@ -88,6 +91,35 @@ Definition of Done.
   `GlobalExceptionFilter`**, which wraps route handlers only — a thrown
   exception unwinds to Express's stock HTML error page, so the middleware
   writes its JSON body directly.
+- **`v2-5` — Tenant-scoping Prisma Client Extension** (2026-08-14). `tenant_id`
+  on 27 transactional models, 12 left global. The split is declared once in
+  `api/src/common/tenant/tenant-scoped-models.ts` and is exhaustive over
+  `Prisma.ModelName` at the type level, so a new model that nobody classified
+  does not compile. Verified by `test/tenant-isolation.e2e-spec.ts`: two tenants
+  on one client, at the Prisma level and over HTTP. Unit 146, e2e 670/31 files.
+
+  It fails closed three independent ways — no tenant context throws, the
+  sentinel `DEFAULT 0` on `tenant_id` is rejected by the foreign key so an
+  escaped create dies at the database, and the four `@Cron` sweeps carry
+  explicit `runUnscoped('<reason>')` waivers.
+
+  Four traps, all of which cost real time: **Prisma promises are lazy**, so
+  `runWithTenant(id, () => prisma.x.find())` builds the query in the context and
+  runs it outside (production shapes are safe; it bit the test helpers);
+  **Prisma rejects `where` on a to-one `include`**, so only to-many relations
+  can be filtered and to-one hops rely on the foreign key; **Vitest runs every
+  hook and test body in a sibling async context**, so no ALS store set in a
+  setup file or `beforeEach` reaches the `it()`; and **raw SQL is not routed
+  through extensions at all**.
+
+  Also fixed: `member_achievements`/`member_points` unique keys were built on
+  globally-unique ids, so one community's award blocked another's. And a
+  regression this item introduced — `HardDeleteTask`'s audit write failed the
+  new foreign key *silently*, since the task catches its own errors.
+
+  **Not verified on stage** — `/v2-testing` was skipped deliberately, because
+  the property needs two tenants and that needs v2-6. Its regression surface
+  (14 hand-edited raw SQL statements) should ride along with v2-6's stage pass.
 
 **Infra readiness (confirmed by Rob 2026-08-09):**
 - A dedicated `communityevents` database + `communityevents_user` exist on
@@ -108,7 +140,8 @@ Definition of Done.
 
 V2 is being defined through a sequence of requirements docs. Only one exists
 so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft;
-`v2-1` through `v2-4` are implemented, `v2-5`/`v2-6` are outstanding). It is
+`v2-1` through `v2-5` are implemented, `v2-6` is outstanding; REQ-TENANT-01.9
+was added 2026-08-14 and is deferred to `v2-13`). It is
 the foundational doc everything else depends on and defines the conventions the
 rest of v2 follows. Key decisions it locks in:
 
@@ -222,9 +255,16 @@ frontend work unless/until a future requirements doc says otherwise.
   `COALESCE(resolved_at, NOW())`, `TIMESTAMP(date, time)` window filters).
 - **Global prefix** `/api/v1` set in main.ts
 - **Never expose stack traces** — GlobalExceptionFilter handles all errors
-- **Tenant scoping is automatic, not manual** (from `v2-5` onward) — rely on
-  the Prisma Client Extension rather than adding `tenant_id` filters by
-  hand in services once it exists
+- **Tenant scoping is automatic, not manual** (landed in `v2-5`) — never add a
+  `tenant_id` filter by hand in a service. The Prisma Client Extension injects
+  it, including into nested writes, nested `include`/`select`, relation counts
+  and `connect`. The exception is **raw SQL**, which Prisma does not route
+  through extensions: `$queryRaw`/`$executeRaw` against a scoped table must
+  carry their own predicate, taking the id from `requireTenantId('<usage>')`.
+- **System work that legitimately crosses tenants says so out loud** — wrap it
+  in `runUnscoped('<reason>', ...)`. Without a tenant in context the extension
+  throws rather than returning everything, so a forgotten context is a failure
+  and not a leak.
 
 ## Database
 MySQL via **Prisma 7**. `api/prisma/schema.prisma` is the single source of
@@ -267,7 +307,14 @@ authoritative (per REQ-TENANT-01.3).
   `is_root`, `root_marker`, `status` (active/suspended), `db_mode`
   (shared/dedicated — reserved, defaults shared), `created_at`, plus four
   reserved OAuth credential columns (nullable; the two `*_secret` ones must be
-  encrypted at rest before anything writes them).
+  encrypted at rest before anything writes them — that encryption layer does not
+  exist yet and is `v2-12`).
+- **NULL OAuth credentials mean that provider is OFF for the tenant**, which
+  then offers email/password only — there is no platform-wide fallback app
+  (REQ-TENANT-01.9, decided 2026-08-14; this *reversed* the original reading in
+  REQ-TENANT-01.1, so ignore any older phrasing that says NULL means "uses the
+  platform's own OAuth apps"). Per-tenant credentials are `v2-13`, gated behind
+  `v2-12`; until then OAuth uses the platform env credentials.
 - Exactly one tenant has `is_root = true`; its admin is the system admin. This
   is a **database constraint**, not a convention: `root_marker` is `true` on the
   root and NULL elsewhere, and its unique index rejects a second root (MySQL has
@@ -311,8 +358,22 @@ authoritative (per REQ-TENANT-01.3).
 - **Nest mounts module middleware at a path and Express strips it**, so
   `req.path`/`req.url` are `/` inside any middleware registered via
   `forRoutes()`. Use `req.originalUrl`.
-- Tenant scoping enforcement point is the Prisma Client Extension, not
-  individual services or controllers.
+- **Tenant scoping enforcement point is the Prisma Client Extension**
+  (`api/src/database/prisma/tenant-scope.extension.ts`), not individual services
+  or controllers. Which models it scopes is declared in
+  `api/src/common/tenant/tenant-scoped-models.ts`, which is exhaustive over
+  `Prisma.ModelName` at the type level — **a new model must be classified as
+  scoped or global or the build fails**, and adding `tenant_id` in
+  `schema.prisma` means adding it to that list in the same change.
+- The tenant reaches the extension through **AsyncLocalStorage**
+  (`tenant-store.ts`), established by `TenantMiddleware` around `next()`. Three
+  states, deliberately distinct: a tenant, `null` (explicitly waived by
+  `runUnscoped`), and no context at all — which throws. Note **Prisma promises
+  are lazy**, so `runWithTenant(id, () => prisma.x.find())` runs the query
+  *outside* the context; await inside the callback.
+- `users` is **still global** until `v2-6`, so any account can authenticate
+  against any tenant. Sessions do not carry across tenants, though —
+  `JwtStrategy` looks the `jti` up in `login_sessions`, which is scoped.
 
 **Design note carried over from v1 (still unfixed after `v2-3`/`v2-4` — those
 built tenant identity and resolution, not cookie scoping, so this now belongs
