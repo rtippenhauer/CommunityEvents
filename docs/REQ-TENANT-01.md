@@ -60,11 +60,11 @@ to exist before tenant scoping has anything to scope:
   `status` (enum: active/suspended), `db_mode` (enum: shared/dedicated —
   reserved for future use, defaults to `shared`), `created_at`
 - `google_client_id`, `google_client_secret`, `facebook_app_id`,
-  `facebook_app_secret` — all nullable, secrets encrypted at rest, reserved
-  for future use in the same sense as `db_mode` and read by no code in this
-  doc. Null is the default and the only value REQ-TENANT-01.8 contemplates:
-  it means the tenant uses the platform's own OAuth apps. See
-  REQ-TENANT-01.8 for why a tenant might eventually supply its own.
+  `facebook_app_secret` — all nullable, secrets encrypted at rest, and read by
+  no code as of v2-5. **Null means that provider is switched off for the
+  tenant**, not that it falls back to a platform-wide OAuth app — see
+  REQ-TENANT-01.9, which reversed an earlier reading of this column and is the
+  requirement that gives these columns their meaning.
 - Exactly one tenant has `is_root = true`. This tenant's domain matches
   `ROOT_TENANT_URL` from bootstrap config (see REQ-TENANT-01.4). Its admin
   is the system admin.
@@ -280,6 +280,75 @@ whenever it is designed: it already has registered Google and Facebook apps, so
 reusing them as that tenant's credentials would both preserve the identity its
 members already recognise and spare every existing user a fresh consent prompt
 caused by the app changing underneath them.
+
+### REQ-TENANT-01.9 — Per-tenant OAuth configuration (decided 2026-08-14)
+
+**This reverses the earlier reading of the OAuth columns in REQ-TENANT-01.1.**
+Those columns were originally described as "null means the tenant uses the
+platform's own OAuth apps". They do not. Null means **that provider is switched
+off for that tenant**, and there is no platform-wide fallback app.
+
+The rule:
+
+- **Email/password is always available**, on every tenant, with no
+  configuration.
+- **A provider is offered only where that tenant has credentials for it.** A
+  tenant with `google_client_id`/`google_client_secret` set offers Google; one
+  with the Meta pair set offers Facebook; a tenant with neither is
+  email/password only.
+- **A member can link any provider their tenant offers**, and only those. The
+  same person on two tenants may therefore have different options in each —
+  Google, Facebook and password on one; Google and password on the other.
+
+This follows from the tenant model rather than being a preference: a community
+that has not registered its own OAuth app has no relationship with Google or
+Meta, and signing its members in through the platform's app would make the
+platform, not the community, the party those users granted consent to.
+
+Four consequences, none of them small, and the reason this is a separate
+requirement rather than a line in REQ-TENANT-01.5:
+
+1. **Encryption at rest is a hard prerequisite.** `schema.prisma` already
+   states that `google_client_secret` and `facebook_app_secret` must be
+   encrypted before anything writes them, and that whoever first populates them
+   owns building that layer. This requirement is what populates them. No
+   encryption exists in the codebase today, so it is a separate piece of work
+   standing in front of this one, not a detail inside it.
+
+2. **`GoogleStrategy` cannot stay a singleton.** It is constructed once at
+   module init from `configService.getOrThrow('GOOGLE_CLIENT_ID')`. Per-tenant
+   credentials mean the client id and secret are chosen per request from the
+   resolved tenant, which is a change to how the strategy is registered rather
+   than a change to its configuration.
+
+3. **Facebook is materially easier**, and it is worth not assuming otherwise:
+   it is not a Passport strategy at all. `AuthController` takes an access token
+   from the client and verifies it against `graph.facebook.com` directly, so
+   the per-tenant part is mostly *which app id the frontend uses to obtain the
+   token*.
+
+4. **The login page has no way to ask what a tenant offers.** `GET
+   /auth/providers` is behind `JwtAuthGuard` and reports the signed-in user's
+   linked accounts. A login form needs this before anyone is authenticated, so
+   it needs an unauthenticated, tenant-resolved endpoint — or an addition to
+   the branding config the frontend already fetches on load.
+
+**Interaction with REQ-TENANT-01.8.** The fixed callback host still holds: each
+tenant's own OAuth app registers the same single root-host redirect URI, so the
+"register once" property survives. What changes is that the callback must now
+choose *which tenant's client secret* to exchange the code with, and the only
+thing telling it which tenant that is, is the signed `state`. Credential
+selection therefore inherits `state`'s security properties exactly — a forged
+`state` becomes credential confusion on top of the cross-tenant session issue
+01.8 already describes.
+
+**Accepted tension.** REQ-TENANT-01.8 exists partly so that onboarding a tenant
+does not require editing a third-party console. Per-tenant apps reintroduce
+that cost. The difference is whose cost it is: it is now the tenant's own
+operator registering their own app, for their own community's identity, and a
+tenant that does not want that gets email/password with no setup at all. A
+tenant created at 2am still works immediately — just without social login until
+its operator configures it.
 
 ## Testing requirements
 

@@ -833,9 +833,16 @@ model tenants {
   /// column exists so a future dedicated-database option does not need a
   /// migration on a live table.
   dbMode                   tenants_db_mode            @default(shared) @map("db_mode")
-  /// Reserved for REQ-TENANT-01.8, read by no code yet. NULL -- the default and
-  /// currently the only supported value -- means the tenant uses the platform's
-  /// own OAuth apps.
+  /// Reserved for REQ-TENANT-01.9, read by no code as of v2-5. NULL -- the
+  /// default -- means **that provider is switched off for this tenant**, which
+  /// then offers email/password only. There is no platform-wide fallback app:
+  /// a community that has not registered its own OAuth app has no relationship
+  /// with Google or Meta, and signing its members in through the platform's app
+  /// would make the platform the party those users granted consent to.
+  ///
+  /// (An earlier draft of REQ-TENANT-01.1 described NULL as "uses the
+  /// platform's own OAuth apps". That was reversed on 2026-08-14; the columns
+  /// are unchanged, their meaning is not.)
   ///
   /// The two *Secret columns MUST be encrypted at rest before anything writes
   /// them. There is no encryption layer in this codebase yet, and adding one

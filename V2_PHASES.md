@@ -357,3 +357,69 @@ going Live.
 Meta app creation plus review and business verification, and email provider
 setup, accurate enough that someone other than Rob can stand up an instance
 from it.
+
+---
+
+## Deferred: secrets and per-tenant OAuth
+
+Added 2026-08-14 with Rob, when per-tenant OAuth configuration was specified
+(REQ-TENANT-01.9). Listed separately from the branding/demo block above because
+these are not cosmetic — the first is a security prerequisite with nothing else
+depending on it yet, and the second cannot start until it exists.
+
+Numbered after the existing deferred items rather than renumbering them, so
+`v2-<N>` tags already referenced elsewhere keep meaning what they meant. The
+dependency, not the number, is what orders them: **v2-12 before v2-13**, and
+v2-13 wants REQ-TENANT-01.8's callback handoff done in the same item.
+
+### v2-12 — Encrypted secrets at rest
+**Status:** Not started (deferred). Blocks v2-13.
+
+`schema.prisma` has said since v2-3 that `tenants.google_client_secret` and
+`tenants.facebook_app_secret` must be encrypted before anything writes them,
+and that whoever first populates them owns building the layer. Nothing has
+populated them, so nothing has been built. REQ-TENANT-01.9 is what populates
+them, so this comes first.
+
+Worth deciding once, here, rather than per-column later: where the key comes
+from (bootstrap env is the only thing available today), what happens on key
+rotation, and whether the same mechanism covers the other secrets currently
+sitting in plaintext columns — `email_provider_config.brevo_api_key` and
+`resend_api_key` are already in that category and would benefit from the same
+treatment.
+
+**Definition of done:** a documented encrypt/decrypt path used by at least one
+real column, secrets unreadable in a database dump, and a stated answer for key
+rotation that does not require re-entering every secret by hand.
+
+### v2-13 — Per-tenant OAuth apps (REQ-TENANT-01.9, REQ-TENANT-01.8)
+**Status:** Not started (deferred). Depends on v2-12 and on v2-6.
+
+Each tenant supplies its own Google and/or Meta credentials; a provider is
+offered only where that tenant has them, and email/password is always
+available. See REQ-TENANT-01.9 for the rule and its four consequences.
+
+The two requirements are one item because they are one subsystem: 01.8's
+callback handoff has to choose which tenant's client secret to exchange the
+code with, and the signed `state` is the only thing that knows. Splitting them
+would mean building the callback twice.
+
+Known work beyond the columns themselves:
+
+- `GoogleStrategy` stops being a singleton — credentials are selected per
+  request from the resolved tenant, so the strategy's registration changes, not
+  just its config.
+- Facebook needs far less: it is not a Passport strategy, and the server-side
+  half is a Graph API call. The per-tenant part is largely which app id the
+  frontend uses.
+- A new **unauthenticated, tenant-resolved** endpoint telling the login page
+  which methods this tenant offers. `GET /auth/providers` cannot do it — it is
+  `JwtAuthGuard`ed and reports the signed-in user's linked accounts.
+- The tenant-scoping extension needs the explicit "run as tenant X" override
+  REQ-TENANT-01.8 already calls for, since the callback lands on the root host
+  but resolves a user belonging to the originating tenant.
+
+**Definition of done:** a tenant with no credentials offers email/password
+only; a tenant with Google credentials offers Google and email/password; the
+same address can hold a different set of linked providers on two tenants; and
+no secret is readable in a database dump.
