@@ -89,3 +89,42 @@ dispatcher processes a batch of queued messages, and a message cancelled or
 cleaned up mid-batch would cause the run to fail rather than skip it. The same
 applied to the inactivity sweep, and to cancelling an already-cancelled email
 from the admin queue.
+
+---
+
+## Community web addresses
+
+**The site now works out which community you're asking for from the web
+address you used.** Every page request is matched to a community before
+anything loads. Nothing changes for an existing visitor — the current site is
+its own community and behaves exactly as it always has — but this is the piece
+that makes one installation able to serve several communities instead of
+running a separate copy of everything for each one.
+
+**`www.example.com` and `example.com` are always the same community.** They
+share one address record, so there is no way for the two forms to end up as
+separate communities with separate members and events.
+
+**A web address with no community on it now gets a real page.** Previously an
+unrecognised address would have loaded a half-working site with no name, no
+branding and nothing on it. It now shows a short "Welcome to Community Events"
+page explaining that there's no community at that address and suggesting the
+visitor check the address they used. Mistyped addresses and old links are the
+normal way people arrive at one of these, so it reads as an explanation rather
+than an error.
+
+**A community can be taken offline temporarily.** Suspending one shows visitors
+a "temporarily unavailable" message instead of the site, and it comes back
+exactly as it was when un-suspended.
+
+**A half-finished installation now says so.** If an instance's database is
+created but the final setup step was never run, every page used to look like a
+wrong web address. It now reports that setup is unfinished, and says so in the
+server logs too, so the person installing it is pointed at the actual problem
+instead of hunting for a DNS mistake.
+
+**The status check reports which community answered.** The existing health
+check now also says whether the address it was reached on matched a community.
+For anyone running an instance, a single check now distinguishes "the server is
+fine, that address is wrong" from "this instance was never finished" — the two
+setup problems that otherwise look identical from outside.

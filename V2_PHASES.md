@@ -121,7 +121,7 @@ throws). In a cron there is no request to surface that on, so it became an
 unhandled rejection.
 
 ## v2-4 — Domain resolution middleware (REQ-TENANT-01.2)
-**Status:** In Progress
+**Status:** Complete (2026-08-14)
 
 NestJS middleware resolving `tenant_id` from `Host` header, built against
 the now-existing tenants table.
@@ -130,8 +130,72 @@ the now-existing tenants table.
 tenant from `Host` header for root domain, `www.` variant, and returns 404
 for unrecognized domains.
 
+**Outcome:** met. `TenantMiddleware` runs ahead of every route and attaches the
+resolved tenant to the request; `TenantResolutionService` does the lookup
+behind a short-TTL in-memory cache. Lookups go through `normalizeTenantDomain`,
+the same function bootstrap uses to write the root tenant's domain, so the
+`www.`/bare equivalence holds by construction rather than by both sides
+remembering to strip the prefix.
+
+Three outcomes are deliberately distinguished rather than collapsed into one
+404 — the distinction is the whole value, since all three look identical to a
+visitor and mean completely different things to whoever has to fix them:
+
+- unrecognized host -> 404 `TENANT_NOT_FOUND`
+- no tenants at all -> 503 `TENANT_NOT_CONFIGURED` plus a loud log. This closes
+  the gap v2-3 flagged: a database migrated and seeded but never bootstrapped
+  would otherwise 404 every request and look like a DNS mistake rather than an
+  unfinished install.
+- suspended tenant -> 503 `TENANT_SUSPENDED`. Not in the Definition of Done,
+  but `status` existed with nothing reading it and serving a suspended tenant
+  normally was the only worse option.
+
+Health is exempt and always answers, reporting the outcome in a new `tenant`
+field. An unrecognized host leaves `status: ok` — the app is fine, the address
+is wrong — while an unbootstrapped deployment is `degraded`, since nothing else
+reports it. This earned itself immediately: stage came up `tenant:
+"unrecognized"` on first deploy, and one curl identified a root-tenant row
+still holding the pre-move `communityevents.rtippenhauer.com` domain.
+
+Two things only a real HTTP stack revealed, both worth remembering:
+
+- **Nest mounts module middleware at a path, and Express strips the mount path
+  from `req.url`/`req.path`.** Under `forRoutes('{*splat}')` every request
+  reports its path as `/`, so the health exemption silently matched nothing.
+  `req.originalUrl` is the only field that survives mounting intact. The unit
+  spec now builds fake requests the way Express really presents them, so it
+  cannot pass while reality fails.
+- **Middleware cannot rely on `GlobalExceptionFilter`.** A filter registered
+  with `useGlobalFilters()` wraps route handlers; an exception thrown in
+  middleware unwinds to Express's own handler, which keeps the status but
+  replaces the body with stock HTML. The `reason` is what the frontend reads to
+  choose the holding page, so the middleware writes its body directly.
+
+The cache keys on an attacker-controlled `Host` header, so it caches negative
+results (or unknown hosts are a database query each) and is bounded at 500
+entries (or it grows without limit).
+
+Frontend half: nginx serves the Angular app and knows nothing about tenants —
+it only proxies `/api` — so an unrecognized host still gets the SPA shell and
+simply cannot load any data. A `tenantInterceptor` watches every failed
+response for those `reason` values and records them, and `AppComponent` swaps
+the entire shell for a self-contained holding page. Deliberately unbranded:
+branding is per-tenant runtime config, and on a host with no tenant there is
+nothing to read it from. This is the holding page, not the marketing one — v2-8
+replaces what it says, not how it is triggered.
+
+`truncateAllTables` now re-seeds the tenant ordinary requests resolve against,
+with a pinned id so a cached resolution still describes the row that exists
+after a truncate. Without it all 28 inherited suites would have been running
+against a deployment with no tenants.
+
+**Follow-up for whoever next touches deployment:** `bootstrap.ts` writes the
+root tenant with `ON DUPLICATE KEY UPDATE domain = VALUES(domain)`, so it
+overwrites the domain from `APP_URL` on every run. That self-heals a wrong
+domain, but it also means a stale `APP_URL` silently reverts a manual fix.
+
 ## v2-5 — Tenant-scoping Prisma Client Extension (REQ-TENANT-01.3, second half)
-**Status:** Not started
+**Status:** In Progress
 
 Add once v2-1 and v2-3 are both confirmed working — easier to verify
 scoping against a known-good baseline than to build both at once.
