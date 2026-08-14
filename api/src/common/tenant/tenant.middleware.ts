@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { runWithTenant } from './tenant-store';
 import { TenantResolutionService } from './tenant-resolution.service';
 
 /**
@@ -33,7 +34,13 @@ export class TenantMiddleware implements NestMiddleware {
     switch (resolution.outcome) {
       case 'resolved':
         req.tenant = resolution.tenant;
-        return next();
+        // Establishing the AsyncLocalStorage context here, around next(), is
+        // what makes the Prisma tenant-scoping extension work (REQ-TENANT-01.3):
+        // everything downstream — guards, interceptors, controllers, services —
+        // runs inside it, and async continuations inherit it. req.tenant stays
+        // for code that wants the tenant explicitly; the store is for the data
+        // layer, which has no access to the request.
+        return runWithTenant(resolution.tenant.id, () => next());
 
       case 'suspended':
         // The tenant exists and the deployment is fine — this is an
