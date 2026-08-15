@@ -1,4 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import { ADMIN_ROLES } from './roles.util';
 
 /**
  * Service accounts: the one non-human account each tenant owns.
@@ -47,3 +49,31 @@ export const EXCLUDE_SERVICE_ACCOUNTS = { isServiceAccount: false } as const;
 
 /** The same exclusion for the raw SQL the tenant extension cannot reach. */
 export const EXCLUDE_SERVICE_ACCOUNTS_SQL = 'u.is_service_account = 0';
+
+/**
+ * Prisma `where` fragment restricting a sweep to accounts it may remove.
+ *
+ * Every *interactive* delete path already refuses admins and service accounts:
+ * ban, force-ban, admin delete and self-delete each check. The scheduled sweeps
+ * did not, which meant the one actor that could remove an admin was the one
+ * nobody was watching -- `inactivityCheck` soft-deletes any ACTIVE account whose
+ * `lastLoginAt` is over 120 days old and hard-deletes it 30 days later, with no
+ * confirmation and no reviewer.
+ *
+ * That is a plausible way to lose the only admin of a quiet community: an
+ * operator who runs their community by email for four months and never signs in
+ * comes back to a deleted account. Agreed with Rob 2026-08-15 that automated
+ * deletion should never reach an admin, a system admin or a service account --
+ * only a human choosing to, and those paths refuse them too.
+ *
+ * Deliberately scoped to the *deletion* stages. The 60- and 90-day
+ * re-engagement stages still include admins, because nudging an idle admin is
+ * the point; it is only removing them that must not happen on a timer. Service
+ * accounts are excluded from those as well, since they are not people to email.
+ */
+export const AUTO_DELETE_ELIGIBLE: Prisma.usersWhereInput = {
+  isServiceAccount: false,
+  // Copied out of the readonly ADMIN_ROLES: Prisma's generated filter types want
+  // a mutable array, and a shared `as const` tuple will not assign to one.
+  role: { notIn: [...ADMIN_ROLES] },
+};

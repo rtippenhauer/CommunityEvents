@@ -6,7 +6,10 @@ import type {
   Prisma,
 } from '@prisma/client';
 import { runUnscoped } from '../../common/tenant/tenant-store';
-import { EXCLUDE_SERVICE_ACCOUNTS } from '../../common/utils/service-account.util';
+import {
+  AUTO_DELETE_ELIGIBLE,
+  EXCLUDE_SERVICE_ACCOUNTS,
+} from '../../common/utils/service-account.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailProvider, EmailQueueStatus, UserStatus } from '../../database/enums';
 import { BrevoService } from './brevo.service';
@@ -90,12 +93,19 @@ export class EmailDispatcherService {
 
     const days = (n: number) => new Date(now.getTime() - n * 86400000);
 
-    // Every stage of this sweep skips service accounts. They are not people to
-    // re-engage, and the 120-day stage would eventually soft-delete them and the
-    // 150-day stage hard-delete them outright: a service account either never
-    // logs in at all or logs in rarely, so it drifts into the inactivity window
-    // by design rather than by neglect. Deleting it would orphan the audit and
-    // release-notes rows that reference it.
+    // Two different exclusions here, and the difference is deliberate.
+    //
+    // Every stage skips service accounts: they are not people to re-engage, and
+    // they drift into the inactivity window by design rather than by neglect
+    // (they either never sign in or do so rarely), so the deletion stages would
+    // eventually remove them and orphan the audit and release-notes rows
+    // pointing at them.
+    //
+    // The two *deletion* stages additionally skip admins and system admins
+    // (AUTO_DELETE_ELIGIBLE). Every interactive delete path already refuses
+    // them; this sweep was the one actor that could remove an admin with no
+    // confirmation and no reviewer. Admins still get the 60- and 90-day nudges
+    // -- being reminded is the point, being deleted on a timer is not.
 
     const users60 = await this.prisma.users.findMany({
       where: {
@@ -123,7 +133,7 @@ export class EmailDispatcherService {
 
     const users120 = await this.prisma.users.findMany({
       where: {
-        ...EXCLUDE_SERVICE_ACCOUNTS,
+        ...AUTO_DELETE_ELIGIBLE,
         status: UserStatus.ACTIVE,
         lastLoginAt: { lt: days(120) },
       },
@@ -145,7 +155,7 @@ export class EmailDispatcherService {
 
     const users150 = await this.prisma.users.findMany({
       where: {
-        ...EXCLUDE_SERVICE_ACCOUNTS,
+        ...AUTO_DELETE_ELIGIBLE,
         hardDeleteAt: { lte: now },
         deletedAt: { not: null },
       },

@@ -208,30 +208,89 @@ describe('Service accounts (e2e)', () => {
     });
   });
 
-  describe('inactivity sweep', () => {
-    // The sweep that would actually have deleted one. A service account either
-    // never logs in or logs in rarely, so it drifts past the 120-day threshold
-    // on its own; losing the row orphans every audit and release-notes FK
-    // pointing at it.
-    it('leaves a long-idle service account alone but sweeps an idle member', async () => {
-      const longAgo = new Date(Date.now() - 200 * 86400000);
+  /**
+   * The scheduled sweeps were the one actor that could remove a protected
+   * account: every interactive path (ban, force-ban, admin delete, self-delete)
+   * already refuses admins and service accounts, but `inactivityCheck`
+   * soft-deletes anything idle past 120 days and hard-deletes it 30 days later
+   * with no confirmation and nobody watching.
+   *
+   * The realistic loss is an admin, not a service account -- someone who runs a
+   * quiet community by email for four months and never signs in.
+   */
+  describe('automated deletion', () => {
+    const longAgo = new Date(Date.now() - 200 * 86400000);
 
-      const svc = await seedServiceAccount(prisma, cityId, { lastLoginAt: longAgo });
+    async function runInactivitySweep(): Promise<void> {
+      const { EmailDispatcherService } = await import(
+        '../src/modules/email/email-dispatcher.service'
+      );
+      await app.get(EmailDispatcherService).inactivityCheck();
+    }
+
+    it('sweeps a long-idle ordinary member', async () => {
       const member = await seedUser(prisma, cityId, {
         email: 'idle@example.test',
         lastLoginAt: longAgo,
       });
 
-      const { EmailDispatcherService } = await import(
-        '../src/modules/email/email-dispatcher.service'
-      );
-      await app.get(EmailDispatcherService).inactivityCheck();
+      await runInactivitySweep();
 
-      const svcAfter = await prisma.users.findUnique({ where: { id: svc.id } });
-      const memberAfter = await prisma.users.findUnique({ where: { id: member.id } });
+      const after = await prisma.users.findUnique({ where: { id: member.id } });
+      expect(after!.status).toBe(UserStatus.DELETED);
+    });
 
-      expect(svcAfter!.status).toBe(UserStatus.ACTIVE);
-      expect(memberAfter!.status).toBe(UserStatus.DELETED);
+    it.each([
+      ['a service account', () => seedServiceAccount(prisma, cityId, { lastLoginAt: longAgo })],
+      [
+        'a tenant admin',
+        () =>
+          seedUser(prisma, cityId, {
+            role: UserRole.ADMIN,
+            email: 'idle-admin@example.test',
+            lastLoginAt: longAgo,
+          }),
+      ],
+      [
+        'a system admin',
+        () =>
+          seedUser(prisma, cityId, {
+            role: UserRole.SYSTEM_ADMIN,
+            email: 'idle-sysadmin@example.test',
+            lastLoginAt: longAgo,
+          }),
+      ],
+    ])('never soft-deletes %s, however idle', async (_label, seed) => {
+      const protectedUser = await seed();
+
+      await runInactivitySweep();
+
+      const after = await prisma.users.findUnique({ where: { id: protectedUser.id } });
+      expect(after!.status).toBe(UserStatus.ACTIVE);
+      expect(after!.deletedAt).toBeNull();
+    });
+
+    // Belt and braces at the far end: even a protected account that somehow
+    // reached status DELETED (hand-edited row, a future path that forgets) is
+    // not purged, because the purge is irreversible.
+    it.each([
+      ['a tenant admin', UserRole.ADMIN],
+      ['a system admin', UserRole.SYSTEM_ADMIN],
+    ])('never hard-deletes %s already marked deleted', async (_label, role) => {
+      const marked = await seedUser(prisma, cityId, {
+        role,
+        email: `marked-${role}@example.test`,
+        status: UserStatus.DELETED,
+        deletedAt: longAgo,
+        hardDeleteAt: longAgo,
+      });
+
+      const { HardDeleteTask } = await import('../src/modules/tasks/hard-delete.task');
+      await app.get(HardDeleteTask).runHardDelete();
+
+      const after = await prisma.users.findUnique({ where: { id: marked.id } });
+      expect(after).not.toBeNull();
+      expect(after!.fullName).not.toBe('Deleted Member');
     });
   });
 });

@@ -394,13 +394,32 @@ Two things worth not re-deriving:
   Matching on the index names pinned by `@unique(map:)` is what makes
   "that domain is taken" distinguishable from "that slug is taken".
 
-**Still outstanding, and blocked on the schema change:** creating the per-tenant
-service account in `bootstrap.ts` (root, role `automation`) and
-`provision-tenant.ts`/the new create endpoint (non-root, role `disabled`), and
-making `bootstrap.ts` create its first admin as a `system_admin`. Both need
-per-tenant email uniqueness first -- today `users.email` is globally unique, so
-a second `automation@dinnerbears.internal` cannot exist. They land with the
-schema change, along with removing the account from `seed.ts`.
+**Automated deletion cannot reach a protected account** (agreed with Rob
+2026-08-15). Every interactive delete path already refused admins and service
+accounts; the scheduled sweeps did not, which made them the one actor that could
+remove an admin with no confirmation and nobody watching. `inactivityCheck`
+soft-deletes anything idle past 120 days and hard-deletes it 30 days later, so
+the realistic loss was never the service account -- it was an operator who runs
+a quiet community by email for four months and never signs in. `admin`,
+`system_admin` and service accounts are now excluded from both deletion stages
+(`AUTO_DELETE_ELIGIBLE`), while admins still receive the 60- and 90-day nudges:
+being reminded is the point, being deleted on a timer is not.
+
+**Deferred into the schema change, by decision rather than by discovery** (Rob,
+2026-08-15 -- nothing uses the system-admin surface until v2-6 is finished, so
+there is no reason to build a bridge for it):
+
+- `bootstrap.ts` creating its first admin as a `system_admin`. Until then no
+  account holds the role, so `/admin/tenants` is unreachable on stage -- which is
+  fine, because nobody is meant to use it yet. Stage's existing admin needs a
+  one-row promotion when the schema change lands.
+- The per-tenant service account itself: `bootstrap.ts` for the root (role
+  `automation`), `provision-tenant.ts` and the new create endpoint for every
+  other (role `disabled`), and removing it from `seed.ts`.
+
+Both genuinely require per-tenant email uniqueness first -- `users.email` is
+globally unique today, so a second `automation@dinnerbears.internal` cannot
+exist at all.
 
 ---
 
