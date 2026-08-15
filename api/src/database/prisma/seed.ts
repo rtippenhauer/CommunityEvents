@@ -19,12 +19,10 @@ function load(table: string): Record<string, unknown>[] {
 }
 
 const achievements = load('achievements');
-const appConfig = load('app_config');
 const avatar = load('avatar');
 const cities = load('cities');
 const emailProviderConfig = load('email_provider_config');
 const merchConfig = load('merch_config');
-const users = load('users');
 
 dotenv.config({ path: path.join(__dirname, '../../../../.env') });
 
@@ -33,8 +31,16 @@ dotenv.config({ path: path.join(__dirname, '../../../../.env') });
  *
  * v2 starts from a blank database and imports real records from production
  * separately, so this file covers only the rows the application itself
- * assumes exist -- the achievements catalogue, app_config defaults, the avatar
- * set, the automation service account -- not user-generated data.
+ * assumes exist -- the achievements catalogue, the avatar set, the city list --
+ * not user-generated data.
+ *
+ * **Everything here is tenant-independent, and that is now a hard rule rather
+ * than an observation.** This runs before bootstrap.js, so no tenant exists
+ * yet; any row it wrote to a tenant-scoped table would take the `tenant_id`
+ * sentinel 0 and be rejected by that table's foreign key. The `app_config`
+ * defaults and the automation service account used to live here and moved to
+ * bootstrap.ts in v2-6 for exactly that reason -- both belong to a specific
+ * community, and bootstrap is where the community first exists.
  *
  * These rows previously arrived as INSERTs scattered across 20 of the 84
  * TypeORM migrations. Collecting them here is what makes those migrations
@@ -104,15 +110,6 @@ async function main() {
     });
   }
 
-  for (const row of appConfig) {
-    const data = normalize(row);
-    await prisma.app_config.upsert({
-      where: { configKey: row.configKey as string },
-      update: data as never,
-      create: data as never,
-    });
-  }
-
   for (const row of avatar) {
     const data = normalize(row);
     await prisma.avatar.upsert({
@@ -150,30 +147,12 @@ async function main() {
     });
   }
 
-  // The automation service account. Password hash is null by design: it is a
-  // role-bearing account for internal jobs, never logged into directly, so
-  // there is no credential here to leak. Human admins are created separately
-  // by the bootstrap step, not seeded.
-  for (const row of users) {
-    const data = {
-      ...normalize(row),
-      emailVerifiedAt: new Date(),
-    };
-    await prisma.users.upsert({
-      where: { email: row.email as string },
-      update: data as never,
-      create: data as never,
-    });
-  }
-
   const counts = {
     cities: await prisma.cities.count(),
-    app_config: await prisma.app_config.count(),
     avatar: await prisma.avatar.count(),
     achievements: await prisma.achievements.count(),
     email_provider_config: await prisma.email_provider_config.count(),
     merch_config: await prisma.merch_config.count(),
-    users: await prisma.users.count(),
   };
   console.log('Seeded:', counts);
 

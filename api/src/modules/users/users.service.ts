@@ -121,9 +121,9 @@ export class UsersService {
     // the filter goes in the ON or subquery clause rather than the WHERE, which
     // would drop members who have no points or no linked provider.
     //
-    // `users` itself stays unfiltered because it is still global until v2-6
-    // (REQ-TENANT-01.5), so this list spans tenants; what each row *reports*
-    // is nonetheless scoped to the requesting one.
+    // `users` itself is filtered too, as of v2-6. Before REQ-TENANT-01.5 gave it
+    // a tenant_id this list spanned every tenant, and only what each row
+    // *reported* was scoped to the requesting one.
     const tenantId = requireTenantId('member directory');
 
     const elevatedJoins = isElevated
@@ -155,16 +155,24 @@ export class UsersService {
           WHERE mp.user_id = u.id AND mp.tenant_id = ?)
           AS totalPoints${elevatedColumns}
       FROM users u
+      -- No predicate on the inviter join: an inviter belongs to the same tenant
+      -- as the member they invited, and the driving table is filtered below. It
+      -- is a LEFT JOIN besides, so a filter here would only be able to blank the
+      -- inviter name, never to widen the result.
       LEFT JOIN users inviter ON inviter.id = u.invited_by
       LEFT JOIN cities city ON city.id = u.city_id${elevatedJoins}
-      WHERE ${statusClause} AND ${EXCLUDE_SERVICE_ACCOUNTS_SQL}
+      WHERE u.tenant_id = ?
+        AND ${statusClause}
+        AND ${EXCLUDE_SERVICE_ACCOUNTS_SQL}
       ORDER BY ${orderBy}`,
       // Positional and assembled in the order the placeholders appear: the
       // isNew cutoff, the points subquery's tenant, then the two oauth joins'
-      // tenants (only present when the elevated joins are), then the filters.
+      // tenants (only present when the elevated joins are), then the directory's
+      // own tenant filter and the status.
       twoWeeksAgo,
       tenantId,
       ...(isElevated ? [tenantId, tenantId] : []),
+      tenantId,
       statusValue,
     );
 

@@ -117,11 +117,20 @@ model announcements {
 
 model app_config {
   id          Int      @id @default(autoincrement()) @db.UnsignedInt
-  configKey   String   @unique(map: "uq_config_key") @map("config_key") @db.VarChar(100)
+  /// Unique per tenant, not globally (REQ-TENANT-01.4). Runtime config is the
+  /// half of the old env-var surface that becomes per-community -- branding,
+  /// feature flags, terminology -- so two communities must be able to hold the
+  /// same key with different values.
+  configKey   String   @map("config_key") @db.VarChar(100)
   configValue String   @map("config_value") @db.Text
   description String?  @db.VarChar(500)
   updatedBy   Int?     @map("updated_by") @db.UnsignedInt
   updatedAt   DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+  tenantId    Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant      tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_app_config_tenant")
+
+  @@unique([tenantId, configKey], map: "uq_config_key")
+  @@index([tenantId], map: "idx_app_config_tenant")
 }
 
 model audit_log {
@@ -763,7 +772,11 @@ model oauth_accounts {
   tenantId   Int                     @default(0) @map("tenant_id") @db.UnsignedInt
   tenant     tenants                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_oauth_accounts_tenant")
 
-  @@unique([provider, providerId], map: "uq_provider_account")
+  /// Keyed per tenant (REQ-TENANT-01.5): one Google or Facebook account may be
+  /// linked in more than one community. Globally unique would have meant the
+  /// first community to claim a provider account owned it everywhere, which is
+  /// the same person being told their own Google login is taken.
+  @@unique([tenantId, provider, providerId], map: "uq_provider_account")
   @@index([userId], map: "idx_user")
   @@index([tenantId], map: "idx_oauth_accounts_tenant")
 }
@@ -881,6 +894,8 @@ model tenants {
   notifications            notifications[]
   oauth_accounts           oauth_accounts[]
   push_subscriptions       push_subscriptions[]
+  app_config               app_config[]
+  users                    users[]
 
   @@index([status], map: "idx_tenant_status")
 }
@@ -888,7 +903,7 @@ model tenants {
 model users {
   id                                                           Int                        @id @default(autoincrement()) @db.UnsignedInt
   fullName                                                     String                     @map("full_name") @db.VarChar(200)
-  email                                                        String                     @unique(map: "uq_email") @db.VarChar(255)
+  email                                                        String                     @db.VarChar(255)
   emailStatus                                                  users_email_status         @default(pending) @map("email_status")
   emailVerifiedAt                                              DateTime?                  @map("email_verified_at") @db.DateTime(0)
   passwordHash                                                 String?                    @map("password_hash") @db.VarChar(255)
@@ -971,7 +986,17 @@ model users {
   other_users                                                  users[]                    @relation("usersTousers")
   announcements_users_last_seen_announcement_idToannouncements announcements?             @relation("users_last_seen_announcement_idToannouncements", fields: [lastSeenAnnouncementId], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_announcement")
   releases_users_last_seen_release_idToreleases                releases?                  @relation("users_last_seen_release_idToreleases", fields: [lastSeenReleaseId], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_release")
+  tenantId                                                     Int                        @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant                                                       tenants                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_users_tenant")
 
+  /// Email is unique **within** a tenant, not globally (REQ-TENANT-01.5). The
+  /// same person may hold an account in two communities under one address, and
+  /// each is a separate account with its own role, points and history.
+  ///
+  /// This replaced a global `uq_email`, which is why ~20 `findUnique({ where: {
+  /// email } })` call sites had to change: an address on its own no longer
+  /// identifies a row.
+  @@unique([tenantId, email], map: "uq_email")
   @@index([cityId], map: "fk_users_city")
   @@index([inviteId], map: "fk_users_invite")
   @@index([lastSeenAnnouncementId], map: "fk_users_last_seen_announcement")
@@ -980,6 +1005,7 @@ model users {
   @@index([invitedBy], map: "idx_invited_by")
   @@index([lastLoginAt], map: "idx_last_login")
   @@index([status], map: "idx_status")
+  @@index([tenantId], map: "idx_users_tenant")
 }
 
 enum content_flags_content_type {

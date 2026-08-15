@@ -167,10 +167,11 @@ export class PointsService {
     // still appear, and a tenant filter in the WHERE would silently turn that
     // into an inner join and drop every zero-point member from the leaderboard.
     //
-    // The `users` side stays unfiltered because `users` is still a global model
-    // — REQ-TENANT-01.5 (v2-6) is what gives it a tenant_id. Until then the
-    // leaderboard's *rows* span tenants even though each member's *points* are
-    // correctly scoped to the requesting one.
+    // The `users` side carries its own predicate too, as of v2-6. That one goes
+    // in the WHERE rather than an ON clause: `users` is the driving table, so
+    // restricting it is the point, and before REQ-TENANT-01.5 gave it a
+    // tenant_id the leaderboard's *rows* spanned every tenant even though each
+    // member's *points* were correctly scoped to the requesting one.
     const tenantId = requireTenantId('leaderboard');
     const cityFilter = cityId ? 'AND u.city_id = ?' : '';
     // Admins (both kinds) and service accounts are off the board. Admins by the
@@ -180,6 +181,7 @@ export class PointsService {
     // tenant's account is temporarily flipped to another role for testing.
     const params: unknown[] = [
       twoWeeksAgo,
+      tenantId,
       tenantId,
       UserStatus.ACTIVE,
       ...ADMIN_ROLES,
@@ -209,7 +211,8 @@ export class PointsService {
        FROM users u
        LEFT JOIN cities c ON c.id = u.city_id
        LEFT JOIN member_points mp ON mp.user_id = u.id AND mp.tenant_id = ?
-       WHERE u.status = ?
+       WHERE u.tenant_id = ?
+         AND u.status = ?
          AND u.role NOT IN (?, ?)
          AND u.is_service_account = 0
          ${cityFilter}

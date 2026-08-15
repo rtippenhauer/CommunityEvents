@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { app_config as AppConfig } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { baseDomain } from '../../common/config/instance-contact';
+import { requireTenantId } from '../../common/tenant/tenant-store';
 
 // Only these keys are servable/editable through the config endpoints — keeps
 // this generic key/value table from becoming an accidental back door into
@@ -148,7 +149,7 @@ export class AppConfigService {
     if (!isKnownConfigKey(key)) {
       throw new NotFoundException('Unknown config key');
     }
-    const row = await this.prisma.app_config.findUnique({ where: { configKey: key } });
+    const row = await this.prisma.app_config.findFirst({ where: { configKey: key } });
     if (row) return row.configValue;
     return isSiteSettingKey(key) ? SITE_SETTING_DEFAULTS[key] : '';
   }
@@ -185,7 +186,7 @@ export class AppConfigService {
   // Server-side read for other services (e.g. LocationsService picking the
   // default privacy for a newly created location) — no HTTP round-trip.
   async getSiteSetting(key: SiteSettingKey): Promise<string> {
-    const row = await this.prisma.app_config.findUnique({ where: { configKey: key } });
+    const row = await this.prisma.app_config.findFirst({ where: { configKey: key } });
     return row?.configValue ?? SITE_SETTING_DEFAULTS[key];
   }
 
@@ -306,8 +307,15 @@ export class AppConfigService {
       throw new NotFoundException('Unknown config key');
     }
     // find-or-create then assign becomes one upsert on the unique key.
+    //
+    // The one place in this file that names the tenant by hand, and the reason
+    // is Prisma's, not ours: `upsert.where` must identify a row uniquely, the
+    // unique key is now the compound (tenant_id, config_key), and Prisma spells
+    // a compound key as a single nested object it cannot merge a separate
+    // `tenantId` into. `requireTenantId` is the same escape hatch raw SQL uses,
+    // and it throws rather than guessing when there is no tenant in context.
     return this.prisma.app_config.upsert({
-      where: { configKey: key },
+      where: { tenantId_configKey: { tenantId: requireTenantId('app config update'), configKey: key } },
       update: { configValue: value, updatedBy: userId },
       create: { configKey: key, configValue: value, updatedBy: userId },
     });
@@ -329,10 +337,13 @@ export class AppConfigService {
     // Wrapped in a transaction: the admin settings form submits every field
     // at once, and a failure partway through previously left some keys saved
     // and the rest not.
+    // Read once outside the map: it is the same tenant for every entry, and
+    // calling it per row would only repeat the same throw-or-return.
+    const tenantId = requireTenantId('app config bulk update');
     await this.prisma.$transaction(
       entries.map(({ key, value }) =>
         this.prisma.app_config.upsert({
-          where: { configKey: key },
+          where: { tenantId_configKey: { tenantId, configKey: key } },
           update: { configValue: value, updatedBy: userId },
           create: { configKey: key, configValue: value, updatedBy: userId },
         }),

@@ -75,9 +75,17 @@ describe('tenant model classification', () => {
       expect(isTenantScopedModel('event_rsvps')).toBe(true);
     });
 
+    // Both moved out of GLOBAL_MODELS in v2-6 (REQ-TENANT-01.4 / 01.5) and are
+    // named here rather than left to the exhaustiveness check, because they are
+    // the two the rest of the application most often assumed were global.
+    it('recognises users and app_config as scoped', () => {
+      expect(isTenantScopedModel('users')).toBe(true);
+      expect(isTenantScopedModel('app_config')).toBe(true);
+    });
+
     it('rejects global models and unknown names', () => {
       expect(isTenantScopedModel('tenants')).toBe(false);
-      expect(isTenantScopedModel('users')).toBe(false);
+      expect(isTenantScopedModel('releases')).toBe(false);
       expect(isTenantScopedModel('not_a_model')).toBe(false);
       expect(isTenantScopedModel(undefined)).toBe(false);
     });

@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailStatus, SuppressionReason } from '../../database/enums';
 import { EmailService } from './email.service';
+import { runUnscoped } from '../../common/tenant/tenant-store';
 
 interface BrevoWebhookEvent {
   event: string;
@@ -48,40 +49,45 @@ export class EmailWebhookController {
   private async handleEvent(evt: BrevoWebhookEvent): Promise<void> {
     this.logger.debug(`Brevo webhook: ${evt.event} for ${evt.email}`);
 
-    const user = await this.prisma.users.findUnique({
-      where: { email: evt.email.toLowerCase() },
-    });
+    const email = evt.email.toLowerCase();
 
-    // The entity was mutated then saved; with Prisma each branch issues the
-    // update directly. Same single write per event as before.
-    const setEmailStatus = (emailStatus: EmailStatus) =>
-      this.prisma.users.update({ where: { id: user!.id }, data: { emailStatus } });
+    // Deliberately cross-tenant, for the same reason `email_suppressions` is a
+    // global model: what this webhook reports is a property of the *address* --
+    // it bounced, its owner unsubscribed, its owner marked mail as spam -- not
+    // of whichever community happened to send the message. Once one address can
+    // hold an account in several communities (REQ-TENANT-01.5), scoping this to
+    // the tenant Brevo happened to POST to would leave every other community
+    // still mailing a dead or unwilling address, which is exactly what gets a
+    // sending domain blocked.
+    //
+    // `updateMany` rather than a find-then-update: it covers every matching row
+    // in one statement, and the 'delivered' case's pending-only condition
+    // becomes part of the filter instead of a read-modify-write race.
+    const setEmailStatus = (emailStatus: EmailStatus, onlyWhen?: EmailStatus) =>
+      runUnscoped('email deliverability applies to an address in every tenant', async () =>
+        await this.prisma.users.updateMany({
+          where: { email, ...(onlyWhen ? { emailStatus: onlyWhen } : {}) },
+          data: { emailStatus },
+        }),
+      );
 
     switch (evt.event) {
       case 'delivered':
-        if (user && user.emailStatus === EmailStatus.PENDING) {
-          await setEmailStatus(EmailStatus.ACTIVE);
-        }
+        await setEmailStatus(EmailStatus.ACTIVE, EmailStatus.PENDING);
         break;
 
       case 'hard_bounce':
-        if (user) {
-          await setEmailStatus(EmailStatus.BOUNCED);
-        }
+        await setEmailStatus(EmailStatus.BOUNCED);
         await this.emailService.suppress(evt.email, SuppressionReason.BOUNCED);
         break;
 
       case 'unsubscribed':
-        if (user) {
-          await setEmailStatus(EmailStatus.UNSUBSCRIBED);
-        }
+        await setEmailStatus(EmailStatus.UNSUBSCRIBED);
         await this.emailService.suppress(evt.email, SuppressionReason.UNSUBSCRIBED);
         break;
 
       case 'spam':
-        if (user) {
-          await setEmailStatus(EmailStatus.COMPLAINED);
-        }
+        await setEmailStatus(EmailStatus.COMPLAINED);
         await this.emailService.suppress(evt.email, SuppressionReason.COMPLAINED);
         break;
 

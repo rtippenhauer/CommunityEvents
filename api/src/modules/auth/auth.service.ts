@@ -28,6 +28,7 @@ import { AchievementsService } from '../community/achievements.service';
 import { RsvpStatus } from '../../database/enums';
 import type { event_rsvps as EventRsvp } from '@prisma/client';
 import { ELEVATED_ROLES } from '../../common/utils/roles.util';
+import { AUTOMATION_ACCOUNT_EMAIL } from '../../common/utils/service-account.util';
 
 export interface SessionContext {
   userAgent?: string;
@@ -127,7 +128,7 @@ export class AuthService {
     }
 
     // Fallback: user row exists (orphaned from a previous partial attempt)
-    const existingByEmail = await this.prisma.users.findUnique({
+    const existingByEmail = await this.prisma.users.findFirst({
       where: { email: email.toLowerCase() },
     });
     if (existingByEmail) {
@@ -263,7 +264,7 @@ export class AuthService {
     }
 
     if (email) {
-      const existingByEmail = await this.prisma.users.findUnique({
+      const existingByEmail = await this.prisma.users.findFirst({
         where: { email: email.toLowerCase() },
       });
       if (existingByEmail) {
@@ -635,11 +636,26 @@ export class AuthService {
       throw new UnauthorizedException('Invalid automation secret');
     }
 
-    const user = await this.prisma.users.findUnique({
-      where: { email: 'automation@dinnerbears.internal' },
+    // findFirst, not findUnique: the address is only unique within a tenant now,
+    // and the extension injects the tenant this request resolved to. That is the
+    // security-relevant half -- CLAUDE_AUTOMATION_SECRET is a single
+    // platform-wide value, so without the tenant in the lookup a valid secret
+    // presented to any community's host would mint a session there.
+    const user = await this.prisma.users.findFirst({
+      where: { email: AUTOMATION_ACCOUNT_EMAIL },
     });
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Automation account not found or inactive');
+    }
+
+    // Every tenant has a service account, but only the root tenant's is meant to
+    // act: elsewhere it holds `disabled` purely so the deployment has a row to
+    // attribute its own writes to. Refusing here rather than relying on the
+    // account's lack of privileges keeps the platform secret from minting
+    // sessions on communities the operator does not run -- a token that grants
+    // nothing is still a token, and the role is mutable.
+    if (user.role !== UserRole.AUTOMATION) {
+      throw new UnauthorizedException('Automation login is not enabled here');
     }
 
     const { accessToken } = await this.issueTokens(user, ctx);
@@ -681,7 +697,7 @@ export class AuthService {
   ): Promise<User> {
     const lowerEmail = email.toLowerCase();
 
-    const existing = await this.prisma.users.findUnique({
+    const existing = await this.prisma.users.findFirst({
       where: { email: lowerEmail },
     });
     if (existing && existing.status !== UserStatus.DELETED) {
@@ -771,7 +787,7 @@ export class AuthService {
     password: string,
     ctx: SessionContext,
   ): Promise<{ accessToken: string; jti: string; failedAttemptsSinceLastLogin: number; previousLastLoginAt: Date | null }> {
-    const user = await this.prisma.users.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.users.findFirst({ where: { email: email.toLowerCase() } });
 
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('invalid_credentials');
@@ -922,7 +938,7 @@ export class AuthService {
   }
 
   async resendVerification(email: string): Promise<void> {
-    const user = await this.prisma.users.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.users.findFirst({ where: { email: email.toLowerCase() } });
 
     // Always return success to prevent email enumeration
     if (!user || user.emailStatus !== EmailStatus.PENDING || !user.passwordHash) return;
@@ -940,7 +956,7 @@ export class AuthService {
   }
 
   async forgotPassword(email: string): Promise<void> {
-    const user = await this.prisma.users.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.users.findFirst({ where: { email: email.toLowerCase() } });
 
     // Always return success to prevent email enumeration
     if (!user || !user.passwordHash || user.status !== UserStatus.ACTIVE) return;
@@ -999,7 +1015,7 @@ export class AuthService {
     const emailChanged = lowerEmail !== user.email.toLowerCase();
 
     if (emailChanged) {
-      const taken = await this.prisma.users.findUnique({ where: { email: lowerEmail } });
+      const taken = await this.prisma.users.findFirst({ where: { email: lowerEmail } });
       if (taken && taken.id !== userId) throw new ConflictException('email_taken');
     }
 

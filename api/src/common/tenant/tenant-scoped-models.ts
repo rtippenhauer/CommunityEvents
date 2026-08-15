@@ -29,6 +29,7 @@ import { Prisma } from '@prisma/client';
  */
 export const TENANT_SCOPED_MODELS = [
   'announcement_comments',
+  'app_config',
   'announcements',
   'audit_log',
   'content_flags',
@@ -55,13 +56,14 @@ export const TENANT_SCOPED_MODELS = [
   'notifications',
   'oauth_accounts',
   'push_subscriptions',
+  'users',
 ] as const;
 
 /**
  * Not tenant data — the extension leaves these alone entirely.
  *
- * Three different reasons are mixed together here, and they are worth keeping
- * straight because only one of them is permanent:
+ * Two reasons are mixed together here, and they are worth keeping straight
+ * because only one of them is permanent:
  *
  *  1. **Genuinely global.** `tenants` is the registry the scoping reads from,
  *     so scoping it would be circular. `releases`/`release_feedback` are the
@@ -72,24 +74,23 @@ export const TENANT_SCOPED_MODELS = [
  *     domain blocked. `facebook_deletion_requests` arrives as an unauthenticated
  *     callback from Facebook carrying no host we could resolve a tenant from.
  *
- *  2. **Written by `seed.ts`, which runs before any tenant exists.** The install
- *     order is `migrate deploy` -> `seed.js` -> `bootstrap.js`, and it is
- *     bootstrap that creates the root tenant. `cities`, `app_config`, `avatar`,
- *     `achievements`, `email_provider_config` and `merch_config` are all seeded
- *     into a database with zero tenant rows, so they cannot carry a NOT NULL
- *     `tenant_id` without reordering the install. Reordering it is v2-6's
- *     bootstrap/runtime-config split (REQ-TENANT-01.4), not this item.
+ *  2. **Reference data written by `seed.ts`, which runs before any tenant
+ *     exists.** The install order is `migrate deploy` -> `seed.js` ->
+ *     `bootstrap.js`, and it is bootstrap that creates the root tenant.
+ *     `cities`, `avatar`, `achievements`, `email_provider_config` and
+ *     `merch_config` are all seeded into a database with zero tenant rows, so
+ *     they cannot carry a NOT NULL `tenant_id` without reordering the install.
  *
- *  3. **`users`, deferred to v2-6 on purpose.** REQ-TENANT-01.5 owns
- *     `users.tenant_id`, per-tenant email uniqueness and auth resolving within
- *     the requesting tenant, and the seeded automation account has the same
- *     ordering problem as (2). Until that lands, a JWT issued by one tenant is
- *     still accepted by another — see the note in V2_PHASES.md. This is the one
- *     entry here that is an open hole rather than a decision.
+ *     `app_config` and `users` used to be in this group and are not any more:
+ *     v2-6 moved the rows that genuinely belong to a community (branding and
+ *     feature flags; every account) into the scoped list, and moved the two
+ *     things `seed.ts` wrote that had no tenant — the `app_config` defaults and
+ *     the automation account — into `bootstrap.ts`, which creates the tenant
+ *     first. Anything left here in category (2) is reference data that is the
+ *     same for every community, not configuration of one.
  */
 export const GLOBAL_MODELS = [
   'achievements',
-  'app_config',
   'avatar',
   'cities',
   'email_provider_config',
@@ -99,7 +100,6 @@ export const GLOBAL_MODELS = [
   'release_feedback',
   'releases',
   'tenants',
-  'users',
 ] as const;
 
 export type TenantScopedModel = (typeof TENANT_SCOPED_MODELS)[number];

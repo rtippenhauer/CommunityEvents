@@ -475,7 +475,10 @@ export class CalendarService {
       return;
     }
 
-    const user = await this.prisma.users.findUnique({ where: { email: attendeeEmail } });
+    // findFirst: the address is only unique within a tenant now. No tenant is
+    // named here because the extension supplies it -- and it is the right one,
+    // since the events lookup just above resolved in the same context.
+    const user = await this.prisma.users.findFirst({ where: { email: attendeeEmail } });
     if (!user) {
       this.logger.warn(`rsvp-reply: no user found for ${attendeeEmail}`);
       return;

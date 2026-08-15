@@ -29,6 +29,21 @@ import { ADMIN_ROLES } from './roles.util';
  * account gets flipped to admin and back for testing) and the email is branding
  * that v2-9 rewrites; the column is set once at creation and nothing changes it.
  */
+/**
+ * The service account's fixed identity.
+ *
+ * Still a constant rather than a lookup because bootstrap has to create the row
+ * with *some* address, and it must be reproducible across re-runs. Nothing
+ * *identifies* a service account by it any more, though -- that is
+ * `is_service_account` -- so this is only used where a row is created or where
+ * one specific well-known account is meant. The `.internal` TLD is reserved and
+ * unroutable, so the address can never receive mail.
+ *
+ * v2-9 rebrands this. Grep for the constant, not the string.
+ */
+export const AUTOMATION_ACCOUNT_EMAIL = 'automation@dinnerbears.internal';
+export const AUTOMATION_ACCOUNT_NAME = 'Claude Automation';
+
 export function assertNotServiceAccount(
   target: { isServiceAccount: boolean },
   action: string,

@@ -28,11 +28,10 @@
  * it automatically. Get that wrong and the row lands on the sentinel default,
  * where the foreign key rejects it.
  *
- * Members are keyed per tenant (`+<slug>-<name>@`) even though `users` is still
- * a global model. Until REQ-TENANT-01.5 lands in v2-6 every member is visible
- * in every tenant's directory regardless — but their events, points and ratings
- * are not, so per-tenant addresses keep it obvious who was seeded for what, and
- * mean this script needs no rewrite once users do carry a tenant.
+ * Members are keyed per tenant (`+<slug>-<name>@`). That predates `users`
+ * carrying a `tenant_id` and is kept because it makes a seeded account
+ * recognisable at a glance; as of v2-6 the rows are genuinely scoped too, so a
+ * member seeded for one community no longer shows up in another's directory.
  */
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
@@ -234,12 +233,16 @@ async function seedMembers(
     // `update` deliberately leaves role and city alone: a member promoted by
     // hand for testing should not be silently demoted by the next run.
     const member = await prisma.users.upsert({
-      where: { email },
+      // Compound key: email is unique per tenant now, and this script runs
+      // outside the extension (see the file comment), so it names the tenant
+      // like every other scoped write here.
+      where: { tenantId_email: { tenantId: tenant.id, email } },
       create: {
         fullName,
         email,
         passwordHash,
         cityId,
+        tenantId: tenant.id,
         role: 'member',
         status: 'active',
         // What "validated" means here: emailStatus `active` plus a verification

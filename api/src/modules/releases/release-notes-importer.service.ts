@@ -11,13 +11,15 @@ import { marked } from 'marked';
 import sanitizeHtml from 'sanitize-html';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-store';
+import {
+  AUTOMATION_ACCOUNT_EMAIL,
+  AUTOMATION_ACCOUNT_NAME,
+} from '../../common/utils/service-account.util';
 import { ALLOWED_HTML } from './releases.service';
 
 const DRAFT_FILE = '_draft.md';
 const DRAFT_VERSION = 'Upcoming';
 const DRAFT_TITLE = "What's New (In Progress)";
-const AUTOMATION_EMAIL = 'automation@dinnerbears.internal';
-const AUTOMATION_NAME = 'Claude Automation';
 
 // Shared release notes (see docs/RELEASE_NOTE_PIPELINE_SPEC.md) ship inside the
 // Docker image — one markdown file per finalized version under release-notes/,
@@ -114,7 +116,7 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
     // it outside (see runWithTenant's docs).
     const user = await runWithTenant(rootTenant.id, async () =>
       await this.prisma.users.findFirst({
-        where: { email: AUTOMATION_EMAIL, fullName: AUTOMATION_NAME },
+        where: { email: AUTOMATION_ACCOUNT_EMAIL, fullName: AUTOMATION_ACCOUNT_NAME },
       }),
     );
     return user?.id ?? null;

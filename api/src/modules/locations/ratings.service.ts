@@ -143,6 +143,11 @@ export class RatingsService {
              m.profile_photo_path AS memberPhoto,
              DATE_FORMAT(e.event_date, '%Y-%m-%d') AS eventDate
       FROM location_ratings r
+      -- The rating is already restricted to this tenant below, and a rating's
+      -- member belongs to the same tenant it does, so this join needs no
+      -- predicate of its own -- the same reasoning the extension applies to a
+      -- to-one relation hop, which it filters by foreign key because Prisma
+      -- rejects a where clause there.
       INNER JOIN users m ON m.id = r.member_id
       INNER JOIN events e ON e.id = r.event_id
       WHERE r.location_id = ${locationId}

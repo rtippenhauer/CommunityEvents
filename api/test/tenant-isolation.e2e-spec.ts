@@ -91,8 +91,14 @@ describe('Tenant isolation (e2e)', () => {
     const locA = await inA(() => seedLocation(prisma, cityId, { name: 'A location' }));
     const locB = await inB(() => seedLocation(prisma, cityId, { name: 'B location' }));
 
-    const memberA = await seedUser(prisma, cityId, { role: UserRole.ADMIN });
-    const memberB = await seedUser(prisma, cityId, { role: UserRole.ADMIN });
+    // Each member is seeded *inside* its own tenant. Before v2-6 `users` was
+    // global, so a bare seedUser was fine and both members were reachable from
+    // either host; now the row carries a tenant and seeding B's member outside
+    // inB() would silently put it on tenant A -- which showed up as loginAs
+    // failing with P2025, because issueTokens updates the row it just read and
+    // the update was scoped to the other tenant.
+    const memberA = await inA(() => seedUser(prisma, cityId, { role: UserRole.ADMIN }));
+    const memberB = await inB(() => seedUser(prisma, cityId, { role: UserRole.ADMIN }));
 
     const evA = await inA(() =>
       prisma.events.create({

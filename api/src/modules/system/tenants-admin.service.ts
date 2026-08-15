@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -9,6 +10,11 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { runUnscoped } from '../../common/tenant/tenant-store';
 import { normalizeTenantDomain } from '../../common/utils/tenant-domain.util';
+import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
+import {
+  AUTOMATION_ACCOUNT_EMAIL,
+  AUTOMATION_ACCOUNT_NAME,
+} from '../../common/utils/service-account.util';
 import { AuditService } from '../audit/audit.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -45,6 +51,8 @@ export interface TenantRow {
  */
 @Injectable()
 export class TenantsAdminService {
+  private readonly logger = new Logger(TenantsAdminService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantResolution: TenantResolutionService,
@@ -110,6 +118,39 @@ export class TenantsAdminService {
       });
     } catch (err) {
       throw this.translateUniqueViolation(err, domain, slug);
+    }
+
+    // Same service account provision-tenant.ts makes, so a community created
+    // from the UI is not subtly different from one created by the script. Role
+    // `disabled`: it exists to own the rows the deployment writes on that
+    // tenant's behalf, not to be signed in as.
+    //
+    // runUnscoped because the write belongs to the *new* tenant while the
+    // request is scoped to the root one -- without the waiver the extension
+    // would stamp the root tenant's id onto it.
+    const city = await this.prisma.cities.findFirst({ orderBy: { id: 'asc' } });
+    if (city) {
+      await runUnscoped("creating the new tenant's own service account", async () => {
+        await this.prisma.users.create({
+          data: {
+            tenantId: created.id,
+            cityId: city.id,
+            fullName: AUTOMATION_ACCOUNT_NAME,
+            email: AUTOMATION_ACCOUNT_EMAIL,
+            role: UserRole.DISABLED,
+            status: UserStatus.ACTIVE,
+            emailStatus: EmailStatus.ACTIVE,
+            emailVerifiedAt: new Date(),
+            isServiceAccount: true,
+          },
+        });
+      });
+    } else {
+      // Only reachable on a database that was never seeded; the tenant itself is
+      // fine, so this is a warning rather than a failed create.
+      this.logger.warn(
+        `Tenant ${created.slug} created without a service account: no city exists to attach it to.`,
+      );
     }
 
     this.tenantResolution.clearCache();
