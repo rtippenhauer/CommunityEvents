@@ -21,6 +21,7 @@ import { CityService } from '../../../core/services/city.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { LocationFormDialogComponent } from '../form/location-form-dialog.component';
 import { FacebookImportDialogComponent } from '../import/facebook-import-dialog.component';
+import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
 
 interface City {
   id: number;
@@ -338,11 +339,11 @@ export class LocationsListComponent implements OnInit {
 
   isAdminOrMod(): boolean {
     const role = this.authService.currentUser()?.role;
-    return role === 'admin' || role === 'moderator';
+    return isElevatedRole(role);
   }
 
   isAdmin(): boolean {
-    return this.authService.currentUser()?.role === 'admin';
+    return hasAdminRights(this.authService.currentUser()?.role);
   }
 
   toggleArchived(): void {

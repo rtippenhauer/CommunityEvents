@@ -26,6 +26,7 @@ import { NotificationBellComponent } from './shared/components/notification-bell
 import { IosInstallBannerComponent } from './shared/components/ios-install-banner/ios-install-banner.component';
 import { SplashComponent, SplashDialogData } from './shared/components/splash/splash.component';
 import { TenantUnavailableComponent } from './features/tenant-unavailable/tenant-unavailable.component';
+import { hasAdminRights, isSystemAdmin as isSystemAdminRole } from './core/utils/roles.util';
 
 @Component({
   selector: 'app-root',
@@ -123,7 +124,8 @@ export class AppComponent {
       url.startsWith('/admin/email') ||
       url.startsWith('/admin/cities') ||
       url.startsWith('/admin/merch') ||
-      url.startsWith('/admin/legal')
+      url.startsWith('/admin/legal') ||
+      url.startsWith('/admin/tenants')
     );
   });
 
@@ -165,7 +167,14 @@ export class AppComponent {
     () => this.authService.currentUser()?.profilePhotoPath ?? null,
   );
 
-  readonly isAdmin = computed<boolean>(() => this.authService.currentUser()?.role === 'admin');
+  readonly isAdmin = computed<boolean>(() => hasAdminRights(this.authService.currentUser()?.role));
+
+  // Deployment operator rather than community admin. Gates the tenant registry
+  // link only; the API enforces it again and additionally requires the root
+  // host, which the browser cannot check.
+  readonly isSystemAdmin = computed<boolean>(() =>
+    isSystemAdminRole(this.authService.currentUser()?.role),
+  );
 
   readonly isModerator = computed<boolean>(
     () => this.authService.currentUser()?.role === 'moderator',

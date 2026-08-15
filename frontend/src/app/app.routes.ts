@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { adminGuard } from './core/guards/admin.guard';
+import { systemAdminGuard } from './core/guards/system-admin.guard';
 import { moderatorGuard } from './core/guards/moderator.guard';
 import { validatedMemberGuard } from './core/guards/validated-member.guard';
 import { unsavedChangesGuard } from './core/guards/unsaved-changes.guard';
@@ -256,6 +257,17 @@ export const routes: Routes = [
         (m) => m.AdminInvitesComponent,
       ),
     canActivate: [authGuard, adminGuard],
+  },
+  {
+    // The one admin route gated by systemAdminGuard: it manages the registry of
+    // communities rather than acting inside one. The API checks the role again
+    // and additionally requires the request to have reached the root host.
+    path: 'admin/tenants',
+    loadComponent: () =>
+      import('./features/admin/tenants/admin-tenants.component').then(
+        (m) => m.AdminTenantsComponent,
+      ),
+    canActivate: [authGuard, systemAdminGuard],
   },
   {
     path: 'admin/users',

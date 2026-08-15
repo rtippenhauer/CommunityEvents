@@ -114,6 +114,16 @@
             </a>
           }
 
+          <!-- Deployment-level, not community-level: only the system admin sees
+               this, and only the root host serves it. -->
+          @if (isSystemAdmin()) {
+            <mat-divider />
+            <div class="sidenav-section-label">System</div>
+            <a mat-list-item routerLink="/admin/tenants" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>domain</mat-icon> Communities
+            </a>
+          }
+
           <mat-divider />
           <div class="sidenav-section-label">Members</div>
           @if (isAdmin()) {
@@ -326,6 +336,12 @@
               <a mat-menu-item routerLink="/admin/settings">
                 <mat-icon>tune</mat-icon> Site Settings
               </a>
+              @if (isSystemAdmin()) {
+                <mat-divider />
+                <a mat-menu-item routerLink="/admin/tenants">
+                  <mat-icon>domain</mat-icon> Communities
+                </a>
+              }
             </mat-menu>
 
             <mat-menu #adminMembersMenu="matMenu" panelClass="nav-menu">

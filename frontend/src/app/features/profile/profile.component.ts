@@ -22,6 +22,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { BrandConfigService } from '../../core/services/brand-config.service';
 import { FeedbackService, MemberFeedbackStats } from '../../core/services/feedback.service';
 import { CommunityService, PointSummary, Achievement } from '../../core/services/community.service';
+import { hasAdminRights } from '../../core/utils/roles.util';
 
 interface MiniMember {
   id: number;
@@ -110,7 +111,7 @@ interface AchievementGroup {
     <div class="profile-container">
       <!-- Profile header card -->
       <mat-card class="profile-card">
-        @if ((points()?.total ?? 0) > 0 && authService.currentUser()?.role !== 'admin') {
+        @if ((points()?.total ?? 0) > 0 && !hasAdminRights(authService.currentUser()?.role)) {
           <div class="paw-badge">
             <svg viewBox="0 0 56 54" xmlns="http://www.w3.org/2000/svg" class="paw-svg">
               <circle cx="10" cy="20" r="7" fill="#8B5E3C" />
@@ -649,6 +650,9 @@ interface AchievementGroup {
   ],
 })
 export class ProfileComponent implements OnInit {
+  // Exposed for the template: Angular templates resolve names against the
+  // component instance, so an imported function is not callable from one.
+  protected readonly hasAdminRights = hasAdminRights;
   readonly authService = inject(AuthService);
   private readonly http = inject(HttpClient);
   private readonly feedbackService = inject(FeedbackService);

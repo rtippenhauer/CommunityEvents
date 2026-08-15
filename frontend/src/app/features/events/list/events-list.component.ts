@@ -26,6 +26,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
 import { EventCardComponent } from '../../../shared/components/event-card/event-card.component';
 import { EventFormDialogComponent } from '../form/event-form-dialog.component';
 import { CalendarSubscribeComponent } from '../../../shared/components/calendar-subscribe/calendar-subscribe.component';
+import { isElevatedRole } from '../../../core/utils/roles.util';
 
 interface City {
   id: number;
@@ -244,7 +245,7 @@ export class EventsListComponent implements OnInit {
 
   isAdminOrMod(): boolean {
     const role = this.authService.currentUser()?.role;
-    return role === 'admin' || role === 'moderator';
+    return isElevatedRole(role);
   }
 
   openCreate(): void {

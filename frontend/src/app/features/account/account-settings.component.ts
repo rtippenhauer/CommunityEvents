@@ -21,6 +21,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { AccountService, ConnectedProviders } from '../../core/services/account.service';
 import { AuthService } from '../../core/services/auth.service';
 import { BrandConfigService } from '../../core/services/brand-config.service';
+import { hasAdminRights } from '../../core/utils/roles.util';
 
 @Component({
   selector: 'app-account-settings',
@@ -184,7 +185,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
       </mat-card>
 
       <!-- Danger Zone -->
-      @if (currentUser()?.role !== 'admin') {
+      @if (!hasAdminRights(currentUser()?.role)) {
         <mat-card class="settings-card danger-zone-card">
           <mat-card-header>
             <mat-card-title class="danger-title">Danger Zone</mat-card-title>
@@ -648,6 +649,9 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
   ],
 })
 export class AccountSettingsComponent implements OnInit {
+  // Exposed for the template: Angular templates resolve names against the
+  // component instance, so an imported function is not callable from one.
+  protected readonly hasAdminRights = hasAdminRights;
   private readonly accountService = inject(AccountService);
   private readonly authService = inject(AuthService);
   private readonly snackBar = inject(MatSnackBar);

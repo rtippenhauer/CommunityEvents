@@ -24,6 +24,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
 import { CommunityService, Achievement, PointSummary } from '../../core/services/community.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PointsHistoryDialogComponent } from './points-history-dialog.component';
+import { hasAdminRights, isElevatedRole } from '../../core/utils/roles.util';
 
 interface MiniMember {
   id: number;
@@ -294,7 +295,7 @@ interface AchievementGroup {
 
               <!-- Role selector (admin only, not own profile, not other admins —
                    except the automation account, which can be flipped back down) -->
-              @if (isAdmin() && !isSelf() && (profile()!.role !== 'admin' || profile()!.isAutomationAccount)) {
+              @if (isAdmin() && !isSelf() && (!hasAdminRights(profile()!.role) || profile()!.isAutomationAccount)) {
                 <div class="role-section">
                   <span class="role-section-label">Role</span>
                   <mat-select
@@ -858,6 +859,9 @@ interface AchievementGroup {
   ],
 })
 export class MemberProfileComponent implements OnInit {
+  // Exposed for the template: Angular templates resolve names against the
+  // component instance, so an imported function is not callable from one.
+  protected readonly hasAdminRights = hasAdminRights;
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
@@ -968,12 +972,12 @@ export class MemberProfileComponent implements OnInit {
   }
 
   isAdmin(): boolean {
-    return this.authService.currentUser()?.role === 'admin';
+    return hasAdminRights(this.authService.currentUser()?.role);
   }
 
   showElevated(): boolean {
     const role = this.authService.currentUser()?.role;
-    return role === 'admin' || role === 'moderator';
+    return isElevatedRole(role);
   }
 
   openPointsHistory(): void {
@@ -986,7 +990,7 @@ export class MemberProfileComponent implements OnInit {
     if (this.isSelf()) return false;
     if (!this.showElevated()) return false;
     const targetRole = this.profile()?.role;
-    if (targetRole === 'admin') return false;
+    if (hasAdminRights(targetRole)) return false;
     if (!this.isAdmin() && targetRole !== 'member') return false;
     return true;
   }
