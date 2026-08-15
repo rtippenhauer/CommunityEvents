@@ -141,7 +141,8 @@ the moment `users` is scoped).
 V2 is being defined through a sequence of requirements docs. Only one exists
 so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft;
 `v2-1` through `v2-5` are implemented, `v2-6` is outstanding; REQ-TENANT-01.9
-was added 2026-08-14 and is deferred to `v2-13`). It is
+was added 2026-08-14 and lands in `v2-8`, which as of 2026-08-15 is the second
+item after `v2-6` rather than last). It is
 the foundational doc everything else depends on and defines the conventions the
 rest of v2 follows. Key decisions it locks in:
 
@@ -179,6 +180,15 @@ tenant code is written against Vitest from the start rather than ported off
 Jest later (decided with Rob 2026-08-09; this shifted the old `v2-2`–`v2-5`
 each up by one, and no `v2-*` tags existed yet). Full requirement-level
 detail lives in `docs/REQ-TENANT-01.md`.
+
+**After `v2-6` come secrets and per-tenant OAuth** — `v2-7` (encrypted secrets
+at rest) then `v2-8` (per-tenant OAuth apps), moved ahead of the branding,
+demo and wizard work with Rob 2026-08-15 and renumbered from the old
+`v2-12`/`v2-13`.
+The branding, landing page, demo, setup wizard and handbook items each shifted
+down two, to `v2-9`–`v2-13`. Same reasoning as the `v2-2` move above: the
+number is meant to read as the running order, and it was still free to change
+because no `v2-*` tag above `v2-5` has been cut.
 
 Not yet decided/known: whether the frontend framework itself is changing.
 (Its testing choice is settled — `v2-2` put it on Vitest via Angular's
@@ -308,13 +318,13 @@ authoritative (per REQ-TENANT-01.3).
   (shared/dedicated — reserved, defaults shared), `created_at`, plus four
   reserved OAuth credential columns (nullable; the two `*_secret` ones must be
   encrypted at rest before anything writes them — that encryption layer does not
-  exist yet and is `v2-12`).
+  exist yet and is `v2-7`).
 - **NULL OAuth credentials mean that provider is OFF for the tenant**, which
   then offers email/password only — there is no platform-wide fallback app
   (REQ-TENANT-01.9, decided 2026-08-14; this *reversed* the original reading in
   REQ-TENANT-01.1, so ignore any older phrasing that says NULL means "uses the
-  platform's own OAuth apps"). Per-tenant credentials are `v2-13`, gated behind
-  `v2-12`; until then OAuth uses the platform env credentials.
+  platform's own OAuth apps"). Per-tenant credentials are `v2-8`, gated behind
+  `v2-7`; until then OAuth uses the platform env credentials.
 - Exactly one tenant has `is_root = true`; its admin is the system admin. This
   is a **database constraint**, not a convention: `root_marker` is `true` on the
   root and NULL elsewhere, and its unique index rejects a second root (MySQL has
