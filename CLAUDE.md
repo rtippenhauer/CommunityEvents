@@ -275,6 +275,12 @@ frontend work unless/until a future requirements doc says otherwise.
   in `runUnscoped('<reason>', ...)`. Without a tenant in context the extension
   throws rather than returning everything, so a forgotten context is a failure
   and not a leak.
+- **Never compare a role with `===` when asking "is this an admin"** — use
+  `hasAdminRights`/`isElevatedRole` from `api/src/common/utils/roles.util.ts`
+  (and the mirrored `frontend/src/app/core/utils/roles.util.ts`). `RolesGuard`
+  knows `system_admin` implies `admin`, but it only guards *route access*; every
+  in-handler comparison has to be told separately, and getting it wrong hides
+  admin controls from the account with the most rights rather than erroring.
 
 ## Database
 MySQL via **Prisma 7**. `api/prisma/schema.prisma` is the single source of
@@ -381,9 +387,28 @@ authoritative (per REQ-TENANT-01.3).
   `runUnscoped`), and no context at all — which throws. Note **Prisma promises
   are lazy**, so `runWithTenant(id, () => prisma.x.find())` runs the query
   *outside* the context; await inside the callback.
-- `users` is **still global** until `v2-6`, so any account can authenticate
-  against any tenant. Sessions do not carry across tenants, though —
+- `users` is **still global** until `v2-6` completes, so any account can
+  authenticate against any tenant. Sessions do not carry across tenants, though —
   `JwtStrategy` looks the `jti` up in `login_sessions`, which is scoped.
+- **Roles as of `v2-6`:** `non_validated`, `member`, `moderator`, `admin`,
+  `system_admin`, `automation`, `disabled`. `system_admin` is the deployment
+  operator (tenant management); `SystemAdminGuard` requires the role **and**
+  `req.tenant.isRoot`, and `admin.service.setRole` refuses to assign or remove
+  it — bootstrap creates the first one, further ones are a database edit.
+  `disabled` grants nothing at all, since `RolesGuard` is an allowlist.
+- **`users.is_service_account` marks the one non-human account per tenant.**
+  Guards key on that column, never on the role (deliberately mutable — the root
+  account gets flipped to admin and back for testing) and never on the
+  `automation@dinnerbears.internal` address (branding `v2-9` rewrites). Service
+  accounts cannot be deleted by any path — including the inactivity sweep, which
+  would otherwise purge them for being idle — and are hidden from the member
+  directory and the leaderboard.
+- **Tenant management lives at `/api/v1/system/tenants`**, under `system/` and
+  not `admin/` because it acts on the registry of communities rather than inside
+  one. No delete route exists: suspending is the reversible way to take a
+  community offline. The root tenant cannot be suspended and its domain cannot be
+  changed there — both would lock the system admin out of the only host the API
+  answers on.
 
 **Design note carried over from v1 (still unfixed after `v2-3`/`v2-4` — those
 built tenant identity and resolution, not cookie scoping, so this now belongs

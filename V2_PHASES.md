@@ -335,6 +335,73 @@ regress.
 across tenants, blocked within a tenant; bootstrap config trimmed to
 `DB_MODE`/DB connection/`ROOT_TENANT_URL`; `app_config` made tenant-aware.
 
+### Landed so far in v2-6
+
+**Boot-time landmine defused.** `ReleaseNotesImporterService` now resolves the
+root tenant and looks the automation account up inside `runWithTenant`, so the
+lookup keeps working the moment `users` becomes scoped. Root-tenant attribution
+rather than a `runUnscoped` waiver: with email uniqueness becoming per-tenant,
+an unscoped `findFirst` on the automation address would return whichever
+tenant's account the engine reached first. A database that is migrated and
+seeded but never bootstrapped logs and skips instead of failing the boot.
+
+**Service accounts** (`users.is_service_account`, added 2026-08-15 with Rob).
+Every tenant gets exactly one non-human account. Decided together: a column
+rather than a check on the role or the fixed automation email, because both of
+those move -- the role is deliberately mutable and the email is branding v2-9
+rewrites.
+
+They cannot be removed (ban, force-ban, admin delete, self-delete and the
+hard-delete cron all refuse them) and are hidden from the member directory and
+the leaderboard. The protection that mattered was the **inactivity sweep**,
+which soft-deletes any ACTIVE account idle over 120 days and hard-deletes it 30
+days later: a service account drifts into that window by design, and losing the
+row would orphan every audit and release-notes FK pointing at it.
+
+**`disabled` role.** No privileges at all -- RolesGuard is an allowlist, so it
+matches no `@Roles()`. This is what non-root tenants' service accounts hold.
+Rob's call, and it closes an escalation path: `setRole` deliberately permits
+promoting an `automation` account to admin, so an `automation`-role account on
+every tenant would have handed each tenant admin a route to admin.
+
+**`system_admin` role + tenant management** (asked for 2026-08-15). Operator of
+the deployment rather than of one community. `SystemAdminGuard` requires the
+role **and** `req.tenant.isRoot`, so a `system_admin` row appearing on an
+ordinary tenant grants nothing -- the host is not something a tenant admin can
+change. `setRole` refuses to assign or remove the role at all.
+
+`GET/POST/PATCH /api/v1/system/tenants` plus `/admin/tenants` in the UI. Four
+rules the service enforces, all lockout- or escalation-shaped: no route can
+create a root tenant; the root tenant cannot be suspended (middleware would 503
+the request that would undo it); its domain cannot be changed here (bootstrap
+rewrites it from `ROOT_TENANT_URL` each run, and the admin is browsing on it);
+and there is no delete at all, since removing a tenant means removing every row
+of the 27 scoped models referencing it.
+
+Two things worth not re-deriving:
+
+- **A role that implies another role leaks past the guard.** `RolesGuard` gained
+  a one-level hierarchy (`system_admin` -> `admin`) to avoid editing ~50
+  `@Roles(ADMIN)` sites whose failure mode would have been silent. But the guard
+  only decides whether a request reaches a handler: ~25 in-code
+  `role === UserRole.ADMIN` comparisons and ~20 more in the frontend ask the
+  question again, and none of them knew about the hierarchy. Both sides now go
+  through `hasAdminRights`/`isElevatedRole` helpers. The frontend copy is
+  deliberately parallel rather than shared -- it types `role` as a plain string
+  off the wire, so a mismatch is behaviour, not a compile error.
+- **`err.meta.target` does not exist on a P2002 under `@prisma/adapter-mariadb`.**
+  The constraint arrives at `meta.driverAdapterError.cause.constraint.index`.
+  Matching on the index names pinned by `@unique(map:)` is what makes
+  "that domain is taken" distinguishable from "that slug is taken".
+
+**Still outstanding, and blocked on the schema change:** creating the per-tenant
+service account in `bootstrap.ts` (root, role `automation`) and
+`provision-tenant.ts`/the new create endpoint (non-root, role `disabled`), and
+making `bootstrap.ts` create its first admin as a `system_admin`. Both need
+per-tenant email uniqueness first -- today `users.email` is globally unique, so
+a second `automation@dinnerbears.internal` cannot exist. They land with the
+schema change, along with removing the account from `seed.ts`.
+
 ---
 
 All six items together close out `docs/REQ-TENANT-01.md`. All new v2 code
