@@ -263,6 +263,10 @@ frontend work unless/until a future requirements doc says otherwise.
   express the statement, and every such site in the codebase carries a comment
   saying why (correlated subqueries, `ON DUPLICATE KEY UPDATE`,
   `COALESCE(resolved_at, NOW())`, `TIMESTAMP(date, time)` window filters).
+  **Raw SQL is where scoping bugs hide** — it produces no compile error when a
+  model becomes scoped, so a statement against a scoped table must carry its own
+  predicate. A join hanging off an already-scoped row (a rating's member) does
+  not need one, but should say so.
 - **Global prefix** `/api/v1` set in main.ts
 - **Never expose stack traces** — GlobalExceptionFilter handles all errors
 - **Tenant scoping is automatic, not manual** (landed in `v2-5`) — never add a
@@ -387,9 +391,20 @@ authoritative (per REQ-TENANT-01.3).
   `runUnscoped`), and no context at all — which throws. Note **Prisma promises
   are lazy**, so `runWithTenant(id, () => prisma.x.find())` runs the query
   *outside* the context; await inside the callback.
-- `users` is **still global** until `v2-6` completes, so any account can
-  authenticate against any tenant. Sessions do not carry across tenants, though —
-  `JwtStrategy` looks the `jti` up in `login_sessions`, which is scoped.
+- **`users` and `app_config` are tenant-scoped as of `v2-6`.** Email is unique
+  per tenant (`@@unique([tenantId, email])`), not globally, so one address can
+  hold a separate account in each community and login resolves against the
+  tenant that owns the URL. `oauth_accounts` is keyed
+  `(tenant_id, provider, provider_id)` for the same reason.
+- **`seed.ts` may only write tenant-independent reference data.** It runs before
+  `bootstrap.ts` creates the root tenant, so a row it writes to a scoped table
+  takes the `tenant_id` sentinel and is rejected by the foreign key. The
+  `app_config` defaults and the automation account live in `bootstrap.ts` for
+  exactly this reason; the install is still `migrate` -> `seed` -> `bootstrap`.
+- **Email lookups are `findFirst`, not `findUnique`.** An address no longer
+  identifies a row on its own. The exception is a compound unique key
+  (`app_config`'s upserts), which Prisma will not let the extension merge a
+  tenant into — those call `requireTenantId`, like raw SQL.
 - **Roles as of `v2-6`:** `non_validated`, `member`, `moderator`, `admin`,
   `system_admin`, `automation`, `disabled`. `system_admin` is the deployment
   operator (tenant management); `SystemAdminGuard` requires the role **and**

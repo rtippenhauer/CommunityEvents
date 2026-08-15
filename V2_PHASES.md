@@ -405,21 +405,65 @@ a quiet community by email for four months and never signs in. `admin`,
 (`AUTO_DELETE_ELIGIBLE`), while admins still receive the 60- and 90-day nudges:
 being reminded is the point, being deleted on a timer is not.
 
-**Deferred into the schema change, by decision rather than by discovery** (Rob,
-2026-08-15 -- nothing uses the system-admin surface until v2-6 is finished, so
-there is no reason to build a bridge for it):
+**The schema change landed 2026-08-15.** `users` and `app_config` are scoped,
+email is unique per tenant, `oauth_accounts` is re-keyed on
+`(tenant_id, provider, provider_id)`. The two deferred items came with it:
+bootstrap creates its first admin as `system_admin`, and every tenant gets its
+service account (root `automation`, others `disabled`) from bootstrap,
+provision-tenant or the create endpoint.
 
-- `bootstrap.ts` creating its first admin as a `system_admin`. Until then no
-  account holds the role, so `/admin/tenants` is unreachable on stage -- which is
-  fine, because nobody is meant to use it yet. Stage's existing admin needs a
-  one-row promotion when the schema change lands.
-- The per-tenant service account itself: `bootstrap.ts` for the root (role
-  `automation`), `provision-tenant.ts` and the new create endpoint for every
-  other (role `disabled`), and removing it from `seed.ts`.
+**Install ordering changed, because it had to.** `seed.ts` runs before any
+tenant exists, so anything it writes to a scoped table takes the `tenant_id`
+sentinel and is rejected by the foreign key. The `app_config` defaults and the
+automation account moved to `bootstrap.ts`, which creates the tenant first.
+Verified end to end against a fresh database: `migrate` -> `seed` ->
+`bootstrap` yields a root tenant, a system admin, a service account and 31
+scoped config rows; `provision-tenant` then adds a second tenant whose service
+account holds the *same address* with role `disabled`.
 
-Both genuinely require per-tenant email uniqueness first -- `users.email` is
-globally unique today, so a second `automation@dinnerbears.internal` cannot
-exist at all.
+Three things worth not re-deriving:
+
+- **The compiler audited half the work and none of the risky half.** The 17
+  compile errors were all "email no longer identifies a row", mostly
+  `findUnique` -> `findFirst` so the extension injects the tenant instead of the
+  caller naming it. The 11 raw SQL statements touching `users` produced no error
+  at all, because Prisma does not route raw SQL through extensions -- those were
+  the actual leak surface, and four of them (leaderboard, member directory, two
+  achievement backfills) carried comments from earlier items saying they could
+  not be filtered until `users` had a `tenant_id`.
+- **Compound unique keys are the one place a service names the tenant.**
+  `app_config`'s upserts cannot use the extension: Prisma spells a compound key
+  as a single nested object it will not merge a separate `tenantId` into. Those
+  use `requireTenantId`, the same escape hatch raw SQL uses.
+- **Importing anything from a script runs the script.** `provision-tenant.ts`
+  imported `createServiceAccount` from `bootstrap.ts`, and both call `main()` at
+  the bottom of the file -- provisioning a tenant died on a missing
+  `INSTANCE_CITY_NAME` it has no business needing. Anything shared between two
+  entry points has to live outside both.
+
+Two behaviour decisions taken here rather than discovered later: the Brevo
+webhook updates **every** tenant's row for an address under an explicit
+`runUnscoped` waiver (deliverability is a property of the address, the same
+reason `email_suppressions` is global), and `automationLogin` requires both the
+requesting tenant's account *and* role `automation`, so the single platform-wide
+`CLAUDE_AUTOMATION_SECRET` cannot mint a session on a community the operator
+does not run.
+
+### Still outstanding in v2-6
+
+- **Cookie scoping.** `auth.controller` reads `BASE_DOMAIN` into the cookie
+  domain; cookies must be scoped to the exact tenant host or one session spans
+  every tenant. The v1 apex/www sibling-domain note at the end of CLAUDE.md is
+  this work. Visible already: a login response carries three `access_token=`
+  entries, clearing the cookie on two domain scopes before setting the real one.
+- **Bootstrap/runtime config split (REQ-TENANT-01.4).** `app_config` being
+  tenant-scoped is the first half; the second is shrinking bootstrap config to
+  `DB_MODE`/DB connection/`ROOT_TENANT_URL` and moving the rest of the 45
+  `.env.example` vars into tenant-aware runtime config. Large enough to be worth
+  splitting out rather than absorbing here.
+- **Stage verification**, carrying v2-5's unverified regression surface with it.
+  Rob confirmed 2026-08-15 that stage holds no real data, so it can be reset
+  rather than migrated -- the backfill path does not have to be exercised there.
 
 ---
 
