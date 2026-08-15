@@ -27,6 +27,7 @@ import { stripUserSecrets } from '../../common/utils/public-user.util';
 import { AchievementsService } from '../community/achievements.service';
 import { RsvpStatus } from '../../database/enums';
 import type { event_rsvps as EventRsvp } from '@prisma/client';
+import { ELEVATED_ROLES } from '../../common/utils/roles.util';
 
 export interface SessionContext {
   userAgent?: string;
@@ -880,7 +881,7 @@ export class AuthService {
     // In-app notification to all admins and moderators
     try {
       const elevated = await this.prisma.users.findMany({
-        where: { role: { in: [UserRole.ADMIN, UserRole.MODERATOR] } },
+        where: { role: { in: [...ELEVATED_ROLES] } },
         select: { id: true },
       });
       await Promise.all(

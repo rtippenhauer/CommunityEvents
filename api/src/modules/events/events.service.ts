@@ -71,6 +71,7 @@ type EventListRow = Prisma.eventsGetPayload<{
 }>;
 import { AppConfigService } from '../app-config/app-config.service';
 import { coerceRawRows } from '../../common/utils/prisma-raw.util';
+import { isElevatedRole } from '../../common/utils/roles.util';
 
 export interface EventFilters {
   cityId?: number;
@@ -242,7 +243,7 @@ export class EventsService {
     const isValidatedMember =
       filters.callerRole != null &&
       filters.callerRole !== UserRole.NON_VALIDATED;
-    const isPrivileged = filters.callerRole === UserRole.ADMIN || filters.callerRole === UserRole.MODERATOR;
+    const isPrivileged = isElevatedRole(filters.callerRole);
 
     return events.map((e) => {
       (e as any).createdByUser = toPublicUser(e.createdByUser);
@@ -295,7 +296,7 @@ export class EventsService {
     if (!event) throw new NotFoundException(`Event ${id} not found`);
 
     const isValidatedMember = callerRole != null && callerRole !== UserRole.NON_VALIDATED;
-    const isPrivileged = callerRole === UserRole.ADMIN || callerRole === UserRole.MODERATOR;
+    const isPrivileged = isElevatedRole(callerRole);
 
     const hasGoingRsvp =
       callerId != null &&
@@ -710,7 +711,7 @@ export class EventsService {
     const existing = await this.prisma.event_rsvps.findFirst({ where: { eventId, userId } });
 
     const isPastCutoff = isPastRsvpCutoff(toDateString(event.eventDate), toTimeString(event.eventTime));
-    const isPrivileged = userRole === UserRole.ADMIN || userRole === UserRole.MODERATOR;
+    const isPrivileged = isElevatedRole(userRole);
 
     // Block upgrading to GOING after cutoff — applies to new RSVPs and existing non-Going RSVPs
     if (status === RsvpStatus.GOING &&

@@ -35,6 +35,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { EventStatus, UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
 import { toEventDateStrings } from '../../common/utils/prisma-date.util';
+import { isElevatedRole } from '../../common/utils/roles.util';
 
 @Controller('events')
 export class EventsController {
@@ -54,7 +55,7 @@ export class EventsController {
     @CurrentUser() user?: User,
   ) {
     const isAdminOrMod =
-      user?.role === UserRole.ADMIN || user?.role === UserRole.MODERATOR;
+      isElevatedRole(user?.role);
 
     const events = await this.eventsService.findAll({
       cityId: cityId ? parseInt(cityId, 10) : undefined,

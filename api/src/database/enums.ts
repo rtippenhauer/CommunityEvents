@@ -199,7 +199,26 @@ export const UserRole = {
   MEMBER: 'member',
   MODERATOR: 'moderator',
   ADMIN: 'admin',
+  /**
+   * Operator of the deployment rather than of one community: the role that
+   * manages tenants. Only meaningful on the root tenant -- SystemAdminGuard
+   * requires both this role and `req.tenant.isRoot`, so the role alone grants
+   * nothing on a tenant that is not the root.
+   *
+   * Satisfies @Roles(ADMIN) through the hierarchy in RolesGuard, so a system
+   * admin does not need a second account to do ordinary admin work.
+   */
+  SYSTEM_ADMIN: 'system_admin',
   AUTOMATION: 'automation',
+  /**
+   * No privileges whatsoever. RolesGuard is an allowlist, so this matches no
+   * @Roles() and reaches nothing role-gated.
+   *
+   * Held by the service account on every non-root tenant, which exists only to
+   * own the rows the deployment creates for itself. Also usable to park a human
+   * account without deleting it.
+   */
+  DISABLED: 'disabled',
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 

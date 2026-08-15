@@ -6,6 +6,7 @@ import type {
   Prisma,
 } from '@prisma/client';
 import { runUnscoped } from '../../common/tenant/tenant-store';
+import { EXCLUDE_SERVICE_ACCOUNTS } from '../../common/utils/service-account.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailProvider, EmailQueueStatus, UserStatus } from '../../database/enums';
 import { BrevoService } from './brevo.service';
@@ -89,8 +90,16 @@ export class EmailDispatcherService {
 
     const days = (n: number) => new Date(now.getTime() - n * 86400000);
 
+    // Every stage of this sweep skips service accounts. They are not people to
+    // re-engage, and the 120-day stage would eventually soft-delete them and the
+    // 150-day stage hard-delete them outright: a service account either never
+    // logs in at all or logs in rarely, so it drifts into the inactivity window
+    // by design rather than by neglect. Deleting it would orphan the audit and
+    // release-notes rows that reference it.
+
     const users60 = await this.prisma.users.findMany({
       where: {
+        ...EXCLUDE_SERVICE_ACCOUNTS,
         status: UserStatus.ACTIVE,
         lastLoginAt: { lt: days(60), gte: days(61) },
       },
@@ -102,6 +111,7 @@ export class EmailDispatcherService {
 
     const users90 = await this.prisma.users.findMany({
       where: {
+        ...EXCLUDE_SERVICE_ACCOUNTS,
         status: UserStatus.ACTIVE,
         lastLoginAt: { lt: days(90), gte: days(91) },
       },
@@ -113,6 +123,7 @@ export class EmailDispatcherService {
 
     const users120 = await this.prisma.users.findMany({
       where: {
+        ...EXCLUDE_SERVICE_ACCOUNTS,
         status: UserStatus.ACTIVE,
         lastLoginAt: { lt: days(120) },
       },
@@ -134,6 +145,7 @@ export class EmailDispatcherService {
 
     const users150 = await this.prisma.users.findMany({
       where: {
+        ...EXCLUDE_SERVICE_ACCOUNTS,
         hardDeleteAt: { lte: now },
         deletedAt: { not: null },
       },

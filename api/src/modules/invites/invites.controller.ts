@@ -8,6 +8,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { InviteType, UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
+import { isElevatedRole } from '../../common/utils/roles.util';
 
 @Controller('invites')
 export class InvitesController {
@@ -22,7 +23,7 @@ export class InvitesController {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot send invites');
     }
-    const isElevated = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    const isElevated = isElevatedRole(user.role);
     const effectiveDto: CreateInviteDto = isElevated ? dto : { ...dto, type: InviteType.MEMBER };
     return this.invitesService.create(effectiveDto, user);
   }

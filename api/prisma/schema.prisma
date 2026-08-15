@@ -898,6 +898,17 @@ model users {
   passwordResetExpiresAt                                       DateTime?                  @map("password_reset_expires_at") @db.DateTime(0)
   cityId                                                       Int                        @map("city_id") @db.UnsignedInt
   role                                                         users_role                 @default(member)
+  /// Marks a non-human account the deployment created for itself, never a
+  /// member who signed up. Every tenant gets exactly one (see bootstrap.ts and
+  /// provision-tenant.ts); it cannot be deleted, and it is excluded from the
+  /// member directory and the leaderboard the same way admins are.
+  ///
+  /// A column rather than a check on `role` or on the fixed automation email,
+  /// because both of those are things that change: `role` is deliberately
+  /// mutable (the root account gets flipped to admin and back for testing), and
+  /// the email is branding that v2-9 will rewrite. This is set once at creation
+  /// and nothing offers a way to change it.
+  isServiceAccount                                             Boolean                    @default(false) @map("is_service_account")
   hasMembership                                                Boolean                    @default(false) @map("has_membership")
   membershipExpiresAt                                          DateTime?                  @map("membership_expires_at") @db.DateTime(0)
   profilePhotoPath                                             String?                    @map("profile_photo_path") @db.VarChar(500)
@@ -1111,7 +1122,24 @@ enum users_role {
   member
   moderator
   admin
+  /// The operator of the whole deployment, not of one community. Only ever
+  /// held on the root tenant (SystemAdminGuard checks both the role and
+  /// `req.tenant.isRoot`), and it is the role that manages tenants.
+  ///
+  /// RolesGuard treats it as satisfying @Roles(ADMIN), so the system admin
+  /// keeps every ordinary admin capability on the root tenant rather than
+  /// needing a second account. See the hierarchy note in roles.guard.ts.
+  system_admin
   automation
+  /// Holds no privileges at all. RolesGuard is an allowlist, so a `disabled`
+  /// account matches no @Roles() and can reach nothing role-gated.
+  ///
+  /// Carried by the service account every non-root tenant gets: those tenants
+  /// have no automation to run, and giving them a real `automation` role would
+  /// hand every tenant admin an escalation path -- admin.service.setRole lets
+  /// an `automation` account be promoted to admin on purpose (see the note
+  /// there), and that exception is only safe on the tenant the operator owns.
+  disabled
 }
 
 enum events_status {

@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import type { member_points as MemberPoint } from '@prisma/client';
 import { requireTenantId } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { PointType, UserRole, UserStatus } from '../../database/enums';
+import { PointType, UserStatus } from '../../database/enums';
 import { AchievementsService } from './achievements.service';
 import { coerceRawRows } from '../../common/utils/prisma-raw.util';
+import { ADMIN_ROLES } from '../../common/utils/roles.util';
 
 export type SecretDinnerResync = { enabled: true; awarded: number } | { enabled: false; removed: number };
 
@@ -172,12 +173,16 @@ export class PointsService {
     // correctly scoped to the requesting one.
     const tenantId = requireTenantId('leaderboard');
     const cityFilter = cityId ? 'AND u.city_id = ?' : '';
+    // Admins (both kinds) and service accounts are off the board. Admins by the
+    // existing rule; service accounts because they are not members of the
+    // community and would sit in it permanently on zero points. The service
+    // account test is the column, not the role, so it still holds while the root
+    // tenant's account is temporarily flipped to another role for testing.
     const params: unknown[] = [
       twoWeeksAgo,
       tenantId,
       UserStatus.ACTIVE,
-      UserRole.ADMIN,
-      UserRole.AUTOMATION,
+      ...ADMIN_ROLES,
     ];
     if (cityId) params.push(cityId);
 
@@ -206,6 +211,7 @@ export class PointsService {
        LEFT JOIN member_points mp ON mp.user_id = u.id AND mp.tenant_id = ?
        WHERE u.status = ?
          AND u.role NOT IN (?, ?)
+         AND u.is_service_account = 0
          ${cityFilter}
        GROUP BY u.id
        ORDER BY totalPoints DESC, u.full_name ASC`,

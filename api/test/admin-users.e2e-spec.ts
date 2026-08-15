@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp, truncateAllTables } from './utils/test-app';
-import { seedCity, seedUser, loginAs } from './utils/seed';
+import { loginAs, seedCity, seedServiceAccount, seedUser } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { cities as City } from '@prisma/client';
 import { UserRole } from '../src/database/enums';
@@ -173,10 +173,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('allows promoting the automation account to admin', async () => {
-      const automation = await seedUser(prisma, city.id, {
-        role: UserRole.AUTOMATION,
-        email: 'automation@dinnerbears.internal',
-      });
+      const automation = await seedServiceAccount(prisma, city.id);
 
       await request(server)
         .post(`/api/v1/admin/users/${automation.id}/role`)
@@ -186,10 +183,7 @@ describe('Admin User Management (e2e)', () => {
     });
 
     it('allows flipping the automation account back down from admin', async () => {
-      const automation = await seedUser(prisma, city.id, {
-        role: UserRole.ADMIN,
-        email: 'automation@dinnerbears.internal',
-      });
+      const automation = await seedServiceAccount(prisma, city.id, { role: UserRole.ADMIN });
 
       await request(server)
         .post(`/api/v1/admin/users/${automation.id}/role`)

@@ -22,6 +22,7 @@ import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FlagContentDto } from './dto/flag-content.dto';
 import { toPublicUser, toAnonSafeUser } from '../../common/utils/public-user.util';
+import { ELEVATED_ROLES } from '../../common/utils/roles.util';
 
 // Named once: findOne and findOneAdmin both feed sanitizeAnnouncement, which
 // reads author and the comment authors off the loaded row.
@@ -213,7 +214,7 @@ export class AnnouncementsService {
     });
 
     const mods = await this.prisma.users.findMany({
-      where: { role: { in: [UserRole.ADMIN, UserRole.MODERATOR] } },
+      where: { role: { in: [...ELEVATED_ROLES] } },
       select: { id: true },
     });
     await Promise.all(

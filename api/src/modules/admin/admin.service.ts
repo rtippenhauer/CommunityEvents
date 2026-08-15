@@ -7,8 +7,10 @@ import {
   UserRole,
   UserStatus,
 } from '../../database/enums';
+import { assertNotServiceAccount } from '../../common/utils/service-account.util';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
+import { hasAdminRights } from '../../common/utils/roles.util';
 
 export interface AdminUserRow {
   id: number;
@@ -283,7 +285,8 @@ export class AdminService {
     const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot ban yourself');
-    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot ban an admin');
+    if (hasAdminRights(target.role)) throw new ForbiddenException('Cannot ban an admin');
+    assertNotServiceAccount(target, 'ban');
     if (actorRole === UserRole.MODERATOR && target.role !== UserRole.MEMBER) {
       throw new ForbiddenException('Moderators can only ban regular members');
     }
@@ -296,7 +299,8 @@ export class AdminService {
     const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot ban yourself');
-    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot ban an admin');
+    if (hasAdminRights(target.role)) throw new ForbiddenException('Cannot ban an admin');
+    assertNotServiceAccount(target, 'ban');
     await this.prisma.users.update({ where: { id: targetId }, data: {
       status: UserStatus.DELETED,
       deletedAt: new Date(),
@@ -316,7 +320,8 @@ export class AdminService {
     const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot delete yourself');
-    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot delete an admin');
+    if (hasAdminRights(target.role)) throw new ForbiddenException('Cannot delete an admin');
+    assertNotServiceAccount(target, 'delete');
 
     await this.prisma.oauth_accounts.deleteMany({ where: { userId: targetId } });
 
@@ -335,14 +340,34 @@ export class AdminService {
     const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot change your own role');
-    // The dedicated automation account (see AddAutomationRole migration) is the
-    // one exception — Rob can flip it up to admin via the UI to let it browse
-    // role-gated pages for testing, then flip it back down. Regular members
-    // still require a direct DB edit to be promoted to admin, and other
-    // admins' roles can't be changed via this endpoint at all.
-    const isAutomationAccount = target.email === 'automation@dinnerbears.internal';
-    if (target.role === UserRole.ADMIN && !isAutomationAccount) {
-      throw new ForbiddenException('Cannot change another admin\'s role');
+    // system_admin is never handed out or taken away here. It is the role that
+    // manages every tenant on the deployment, so granting it from a per-tenant
+    // admin screen would make "admin of one community" one click away from
+    // "operator of all of them". bootstrap.ts creates the first one; any
+    // further one is a deliberate database edit, exactly as admin already is.
+    if (role === UserRole.SYSTEM_ADMIN || target.role === UserRole.SYSTEM_ADMIN) {
+      throw new ForbiddenException('The system administrator role is not assignable here');
+    }
+
+    // Service accounts on ordinary tenants hold `disabled` and stay there.
+    // There is nothing for them to do on those tenants, and a role change is the
+    // only way an account that cannot be deleted could be turned into one that
+    // can act -- so the two protections are worth exactly as much as each other.
+    // The root tenant's account is the deliberate exception below.
+    if (target.isServiceAccount && target.role === UserRole.DISABLED) {
+      throw new ForbiddenException('Cannot change the role of a disabled service account');
+    }
+
+    // That exception: the root tenant's automation account. Rob can flip it up
+    // to admin via the UI to let it browse role-gated pages for testing, then
+    // flip it back down. Regular members still require a direct DB edit to be
+    // promoted to admin, and other admins' roles can't be changed here at all.
+    //
+    // Keyed on is_service_account rather than the fixed automation email it used
+    // to compare against: the role is by definition in flux here (that is the
+    // point of the exception) and the email is branding v2-9 rewrites.
+    if (hasAdminRights(target.role) && !target.isServiceAccount) {
+      throw new ForbiddenException("Cannot change another admin's role");
     }
     if (role === UserRole.ADMIN && target.role !== UserRole.AUTOMATION) {
       throw new ForbiddenException('Cannot promote to admin — set directly in the database');

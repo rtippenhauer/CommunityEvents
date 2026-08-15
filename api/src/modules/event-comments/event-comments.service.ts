@@ -5,8 +5,8 @@ import type {
   users as User,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { UserRole } from '../../database/enums';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { isElevatedRole } from '../../common/utils/roles.util';
 
 // The view mappers read member/replies off the loaded rows, so the include
 // shape is named once and reused by every query that feeds them.
@@ -100,7 +100,7 @@ export class EventCommentsService {
     const comment = await this.prisma.event_comments.findUnique({ where: { id: commentId } });
     if (!comment) throw new NotFoundException('Comment not found');
 
-    const isMod = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    const isMod = isElevatedRole(user.role);
     if (comment.memberId !== user.id && !isMod) {
       throw new ForbiddenException('Cannot delete another member\'s comment');
     }
@@ -148,7 +148,7 @@ export class EventCommentsService {
     const reply = await this.prisma.event_comment_replies.findUnique({ where: { id: replyId } });
     if (!reply) throw new NotFoundException('Reply not found');
 
-    const isMod = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    const isMod = isElevatedRole(user.role);
     if (reply.memberId !== user.id && !isMod) {
       throw new ForbiddenException('Cannot delete another member\'s reply');
     }
