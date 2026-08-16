@@ -430,9 +430,20 @@ authoritative (per REQ-TENANT-01.3).
   changed there — both would lock the system admin out of the only host the API
   answers on.
 
-**Design note carried over from v1 (still unfixed after `v2-3`/`v2-4` — those
-built tenant identity and resolution, not cookie scoping, so this now belongs
-to `v2-6`'s auth work):** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
+**Cookie scoping — fixed in `v2-6`.** The session cookie is **host-only**: no
+`Domain` attribute, so it belongs to the exact tenant host that issued it. It
+previously carried `domain: BASE_DOMAIN`, which under v2 meant one login valid
+across every tenant, since `.example.com` covers all of them. `BASE_DOMAIN` is
+now only the mail domain, plus clearing pre-`v2-6` cookies. Options live in
+`api/src/common/utils/auth-cookie.util.ts` — never set a `domain` there.
+
+One consequence: Google's callback lands on a single fixed host, so a host-only
+cookie set there does not reach a different tenant's host. OAuth works on the
+tenant owning the callback URL and nowhere else until REQ-TENANT-01.8's signed
+`state` handoff lands in `v2-8`. Email/password works on every tenant.
+
+**The v1 design note this replaced, kept because the reasoning still explains
+the shape of the problem:** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
 because `www` is genuinely the only public web host — the apex publishes MX
 only, no A record. The same value doubles as the auth cookie domain, which
 means a subdomain like `cincinnati.dinnerbears.com` is a *sibling* of the

@@ -451,11 +451,14 @@ does not run.
 
 ### Still outstanding in v2-6
 
-- **Cookie scoping.** `auth.controller` reads `BASE_DOMAIN` into the cookie
-  domain; cookies must be scoped to the exact tenant host or one session spans
-  every tenant. The v1 apex/www sibling-domain note at the end of CLAUDE.md is
-  this work. Visible already: a login response carries three `access_token=`
-  entries, clearing the cookie on two domain scopes before setting the real one.
+- ~~Cookie scoping~~ **done 2026-08-15.** The session cookie is host-only, so a
+  login belongs to the tenant host that issued it. Also fixed on the way: login
+  clears the pre-v2-6 domain-scoped cookie (a Set-Cookie on one scope does not
+  overwrite another, so it would have outlived the change by a week still shared
+  across tenants), self-delete cleared options that never matched what login
+  set, and the OAuth redirect host is checked against the tenant registry rather
+  than "under BASE_DOMAIN". Google OAuth is now single-host until v2-8's
+  REQ-TENANT-01.8 handoff; email/password is unaffected.
 - **Bootstrap/runtime config split (REQ-TENANT-01.4).** `app_config` being
   tenant-scoped is the first half; the second is shrinking bootstrap config to
   `DB_MODE`/DB connection/`ROOT_TENANT_URL` and moving the rest of the 45
