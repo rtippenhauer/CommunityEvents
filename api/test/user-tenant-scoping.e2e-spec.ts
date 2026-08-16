@@ -3,7 +3,12 @@ import request from 'supertest';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { runWithTenant } from '../src/common/tenant/tenant-store';
 import { EmailStatus, UserRole, UserStatus } from '../src/database/enums';
-import { createTestApp, truncateAllTables, TEST_TENANT_DOMAIN } from './utils/test-app';
+import {
+  createTestApp,
+  resetThrottler,
+  truncateAllTables,
+  TEST_TENANT_DOMAIN,
+} from './utils/test-app';
 import { hashPassword, seedCity, seedUser } from './utils/seed';
 import { TEST_TENANT_ID } from './setup-env';
 
@@ -63,6 +68,10 @@ describe('User tenant scoping (e2e)', () => {
   });
 
   beforeEach(async () => {
+    // /auth/login carries a tight per-route @Throttle and this spec logs in
+    // several times per test; without a reset the later cases 429 on limits
+    // that have nothing to do with what they assert.
+    resetThrottler(app);
     await truncateAllTables(prisma);
     await prisma.tenants.create({
       data: { id: TENANT_B_ID, slug: 'second', domain: TENANT_B_DOMAIN },
@@ -179,6 +188,65 @@ describe('User tenant scoping (e2e)', () => {
         .set('Host', TEST_TENANT_DOMAIN)
         .send({ email: 'only-in-a@example.test', password: PASSWORD })
         .expect(200);
+    });
+  });
+
+  describe('the session cookie is host-only', () => {
+    beforeEach(async () => {
+      await seedMemberIn(TEST_TENANT_ID, SHARED_EMAIL, 'Ada in A');
+      await seedMemberIn(TENANT_B_ID, SHARED_EMAIL, 'Ada in B');
+    });
+
+    // The security property, asserted on the wire rather than in the options
+    // object: a Domain attribute here would make one login valid on every
+    // community, since a tenant *is* a domain under v2.
+    it('sets no Domain attribute on the session cookie', async () => {
+      const res = await request(server)
+        .post('/api/v1/auth/login')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .send({ email: SHARED_EMAIL, password: PASSWORD })
+        .expect(200);
+
+      const raw = res.headers['set-cookie'] as unknown as string[];
+      const issued = raw.find(
+        (c) => c.startsWith('access_token=') && !c.startsWith('access_token=;'),
+      );
+
+      expect(issued).toBeDefined();
+      expect(issued!.toLowerCase()).not.toContain('domain=');
+    });
+
+    // Belt and braces on top of the cookie scope: even if a cookie did travel,
+    // JwtStrategy resolves the session through `login_sessions`, which is
+    // tenant-scoped, so tenant A's token names a session tenant B cannot see.
+    it('refuses a session issued by another community', async () => {
+      const resA = await request(server)
+        .post('/api/v1/auth/login')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .send({ email: SHARED_EMAIL, password: PASSWORD })
+        .expect(200);
+
+      await request(server)
+        .get('/api/v1/auth/me')
+        .set('Host', TENANT_B_DOMAIN)
+        .set('Cookie', accessTokenCookie(resA))
+        .expect(401);
+    });
+
+    // The migration path. Sessions issued before v2-6 hold a domain-scoped
+    // cookie that a host-only Set-Cookie cannot overwrite, so login has to
+    // explicitly clear it or it outlives the change by up to seven days.
+    it('clears the legacy domain-scoped cookie on login', async () => {
+      const res = await request(server)
+        .post('/api/v1/auth/login')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .send({ email: SHARED_EMAIL, password: PASSWORD })
+        .expect(200);
+
+      const raw = res.headers['set-cookie'] as unknown as string[];
+      const clears = raw.filter((c) => c.startsWith('access_token=;'));
+
+      expect(clears.some((c) => c.toLowerCase().includes('domain='))).toBe(true);
     });
   });
 

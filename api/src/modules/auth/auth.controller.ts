@@ -6,6 +6,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  Logger,
   Param,
   Patch,
   Post,
@@ -34,16 +35,24 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { OAuthProvider } from '../../database/enums';
 import type { users as User } from '@prisma/client';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import {
+  ACCESS_TOKEN_COOKIE,
+  accessTokenCookieOptions,
+  staleAccessTokenCookieVariants,
+} from '../../common/utils/auth-cookie.util';
 
 @Controller('auth')
 export class AuthController {
   private readonly frontendUrl: string;
   private readonly fbAppSecret: string;
   private readonly baseDomain: string;
+  private readonly logger = new Logger(AuthController.name);
 
   constructor(
     private readonly authService: AuthService,
     private readonly citiesService: CitiesService,
+    private readonly tenantResolution: TenantResolutionService,
     configService: ConfigService,
   ) {
     this.frontendUrl = configService.get<string>('APP_URL', 'http://localhost:8081');
@@ -56,38 +65,36 @@ export class AuthController {
     this.baseDomain = configService.get<string>('BASE_DOMAIN', defaultBaseDomain);
   }
 
-  // Only ever used to build a redirect Location header — never trust a bare host
-  // string from request-controlled data (like OAuth `state`) without this check,
-  // or it becomes an open-redirect vector.
-  private isAllowedRedirectHost(host: string): boolean {
-    return host === this.baseDomain || host.endsWith(`.${this.baseDomain}`);
+  // Only ever used to build a redirect Location header. The host arrives inside
+  // OAuth `state`, which is base64 JSON and unsigned -- anyone can craft one --
+  // so it is an open-redirect vector unless it is checked against something the
+  // caller does not control.
+  //
+  // That check used to be "under the configured base domain", which was right
+  // when every subdomain was the same community. Under v2 it would accept any
+  // subdomain of the zone, including hosts that are not tenants at all. The
+  // registry is the authority now: a redirect target must be a domain this
+  // deployment actually serves. TenantResolutionService caches, misses included,
+  // so this costs nothing on the hot path.
+  private async isAllowedRedirectHost(host: string): Promise<boolean> {
+    const resolution = await this.tenantResolution.resolve(host);
+    return resolution.outcome === 'resolved' || resolution.outcome === 'suspended';
   }
 
-  // Scoped to the shared base domain (not host-only) so a session started on one
-  // chapter subdomain is valid on every other subdomain under the same zone —
-  // required for Google's OAuth round-trip, which lands on a different host
-  // (the fixed callback domain) before redirecting back to the originating one.
+  // Host-only. See accessTokenCookieOptions -- the scope is the whole point:
+  // under v2 a tenant is a domain, so a cookie on the shared base domain is one
+  // session across every community.
   private accessTokenCookieOptions() {
-    return {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict' as const,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/',
-      domain: this.baseDomain,
-    };
+    return accessTokenCookieOptions();
   }
 
-  // A cookie's Secure flag is part of the browser's storage key, so a NODE_ENV
-  // flip between deploys (secure: true one day, false the next) leaves the old
-  // cookie sitting alongside the new one instead of being overwritten — and
-  // whichever the browser happens to send can carry a dead session, making a
-  // fresh login look like it "didn't stick." Clear both variants before every
-  // login so at most one access_token cookie can ever exist, regardless of past
-  // NODE_ENV misconfiguration.
+  // Clears every variant a browser might still hold -- both Secure flags, and
+  // the pre-v2-6 domain-scoped pair -- so at most one access_token can exist
+  // after a login. See staleAccessTokenCookieVariants for why each is listed.
   private clearStaleAccessTokenCookies(res: Response): void {
-    res.clearCookie('access_token', { path: '/', domain: this.baseDomain, secure: true });
-    res.clearCookie('access_token', { path: '/', domain: this.baseDomain, secure: false });
+    for (const options of staleAccessTokenCookieVariants(this.baseDomain)) {
+      res.clearCookie(ACCESS_TOKEN_COOKIE, options);
+    }
   }
 
   // --- Google OAuth ---
@@ -115,7 +122,23 @@ export class AuthController {
     res.cookie('access_token', accessToken, this.accessTokenCookieOptions());
 
     const originHost = req.authOriginHost;
-    const redirectUrl = originHost && this.isAllowedRedirectHost(originHost)
+    const allowed = originHost ? await this.isAllowedRedirectHost(originHost) : false;
+
+    // The session cookie is host-only, so it exists on the host that just set it
+    // and nowhere else. If the flow started on a different tenant, redirecting
+    // there lands the user on a page where they are still signed out, with
+    // nothing to explain why. That cannot be fixed here -- it needs
+    // REQ-TENANT-01.8's signed handoff (v2-8) -- so log it rather than let it be
+    // an invisible "OAuth just doesn't work on that community".
+    if (allowed && originHost !== req.headers.host) {
+      this.logger.warn(
+        `Google OAuth started on ${originHost} but returned via ${req.headers.host}. ` +
+          `The session cookie is host-only, so it will not be present on ${originHost}. ` +
+          `Cross-host OAuth needs REQ-TENANT-01.8's state handoff (v2-8).`,
+      );
+    }
+
+    const redirectUrl = originHost && allowed
       ? `${new URL(this.frontendUrl).protocol}//${originHost}/auth/callback`
       : `${this.frontendUrl}/auth/callback`;
     res.redirect(redirectUrl);
