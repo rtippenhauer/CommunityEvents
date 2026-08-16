@@ -483,6 +483,69 @@ Two things that were not find-and-replace:
   `TENANT_NOT_FOUND` and the holding page rather than a silent redirect into
   another community.
 
+**Found by the first real two-tenant test on stage** (2026-08-16). Rob created a
+second community at `stage.rtippenhauer.com`; it resolved and served correctly,
+and then turned out to be a dead end.
+
+- **A new community had no way in.** Creating a tenant made the tenant row and
+  its `disabled` service account and nothing else. Registration requires an
+  invite, invites must be issued by an existing member of that tenant, and the
+  only "first user becomes admin" path is `ADMIN_EMAIL` + Google OAuth, which is
+  single-host until v2-8. Tenant creation now takes the first admin's name,
+  email and password and creates an active admin on the new community, the same
+  way `bootstrap.ts` does for the root tenant. The fields are create-only:
+  editing a community must not mint a second admin.
+- **Not being able to sign in to tenant 2 with the root tenant's account is
+  correct** and is the property v2-6 exists to produce. Recorded because it
+  looks like a bug from the outside.
+- **`automationLogin` had a regression of this item's own making.** It required
+  the account to hold role `automation`, which broke the documented workflow of
+  flipping that account up to `admin` to browse role-gated pages — the flip made
+  automation login start refusing. It now keys on `is_service_account` plus the
+  account's tenant being root, which is the rule the rest of v2-6 follows: never
+  key on the role, because the role is the one property guaranteed to move.
+- **`system_admin` is assignable from the UI for the root tenant's service
+  account only** (agreed with Rob for live testing). A human still cannot be
+  promoted; bootstrap creates the first system admin and any further one is a
+  database edit. **Expected to revert to database-only before production** —
+  when that happens, delete the block in `admin.service.setRole` and the
+  role-picker entry in `member-profile.component.ts`; nothing else depends on it.
+- **express-session is gone.** It printed a MemoryStore production warning on
+  every boot while doing nothing: `GoogleStrategy` never sets `state: true`, so
+  `passport-oauth2` selects its `NullStore` (empty `store`/`verify`) and never
+  touches `req.session`, and nothing else in the application read it. Worth
+  knowing that `NullStore.verify()` returns true unconditionally, so the OAuth
+  `state` was *already* unverified — the open-redirect guard stands in for it
+  until REQ-TENANT-01.8's signed state lands in v2-8.
+  The package is uninstalled and `SESSION_SECRET` is gone from
+  `test/setup-env.ts`, `docs/NEW_INSTANCE_SETUP.md` and the Unraid template;
+  nothing reads it, so an existing `.env` can keep or drop it freely.
+  `test/utils/test-app.ts` mounted its own copy and no longer does, so the test
+  app still matches `main.ts` middleware for middleware.
+
+## Deferred: self-service tenants and trial mode
+
+Rob, 2026-08-16, while testing the first second community. Two follow-ons to the
+tenant work, both deliberately out of v2-6:
+
+**The first admin should eventually arrive by invitation, not by password.**
+Tenant creation currently asks the operator for a password and hands it over,
+which is what unblocked testing. The better shape is a one-time setup link the
+new operator uses to set their own credentials — no password handling in
+between. It depends on the tenant-aware link work (landed) and on email being
+configured, and it overlaps heavily with the setup wizard, so it belongs with
+**v2-12** rather than as its own item.
+
+**Self-service tenant creation with a trial tier.** Anyone can create a
+community and try it, bounded by caps — on the order of 2-5 users and a small
+number of locations and events — with the system admin able to move a tenant off
+trial onto whatever tier exists if a paid version happens. Needs a tier concept
+on `tenants` (the reserved `db_mode` column is a precedent for how that gets
+added), enforcement at the point of creating users/locations/events, and a
+public signup flow that is not the existing invite-gated one. Sizeable and
+product-shaped rather than infrastructure-shaped; number it once the tenant
+foundation is finished and the branding/demo block has settled.
+
 ### Still outstanding in v2-6
 
 - ~~Cookie scoping~~ **done 2026-08-15.** The session cookie is host-only, so a

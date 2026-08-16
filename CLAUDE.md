@@ -436,6 +436,18 @@ authoritative (per REQ-TENANT-01.3).
   soft-deletes anything idle past 120 days and hard-deletes it 30 days later
   with no confirmation. Admins still get the 60/90-day re-engagement nudges —
   only the deletion stages exclude them.
+- **Creating a tenant creates its first admin.** Without one a community is a
+  dead end: registration needs an invite, invites need an existing member of that
+  tenant, and its only other account is the `disabled` service account. The
+  fields are create-only. A one-time setup link replaces the password hand-off in
+  `v2-12`.
+- **`system_admin` is assignable from the UI to the root tenant's service account
+  only**, so automation can drive tenant management during live testing. Humans
+  still cannot be promoted. Temporary — expected to revert to database-only
+  before production.
+- **`automationLogin` keys on `is_service_account` + the root tenant, never the
+  role.** The account is deliberately flipped between roles for testing, so a
+  role check locks automation out exactly when it is being used.
 - **Tenant management lives at `/api/v1/system/tenants`**, under `system/` and
   not `admin/` because it acts on the registry of communities rather than inside
   one. No delete route exists: suspending is the reversible way to take a
@@ -454,6 +466,17 @@ One consequence: Google's callback lands on a single fixed host, so a host-only
 cookie set there does not reach a different tenant's host. OAuth works on the
 tenant owning the callback URL and nowhere else until REQ-TENANT-01.8's signed
 `state` handoff lands in `v2-8`. Email/password works on every tenant.
+
+**`express-session` is gone, and `SESSION_SECRET` with it** (`v2-6`). The
+comment claiming a session was "required by passport-google-oauth20" was wrong
+for this configuration: `GoogleStrategy` does not pass `state: true`, so
+passport-oauth2 picks its `NullStore`, whose `store()`/`verify()` never touch
+`req.session` and whose `verify()` returns true unconditionally. Nothing else
+read `req.session`. So the middleware only minted a `connect.sid` cookie per
+visitor and leaked a MemoryStore entry per request. Removing it changes no
+behaviour — `state` was already unverified, and REQ-TENANT-01.8's signed state
+(`v2-8`) is the real fix, which needs no store either. `SESSION_SECRET` can be
+dropped from any `.env`; nothing reads it.
 
 **The v1 design note this replaced, kept because the reasoning still explains
 the shape of the problem:** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
