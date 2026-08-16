@@ -650,13 +650,26 @@ export class AuthService {
       throw new UnauthorizedException('Automation account not found or inactive');
     }
 
-    // Every tenant has a service account, but only the root tenant's is meant to
-    // act: elsewhere it holds `disabled` purely so the deployment has a row to
-    // attribute its own writes to. Refusing here rather than relying on the
-    // account's lack of privileges keeps the platform secret from minting
-    // sessions on communities the operator does not run -- a token that grants
-    // nothing is still a token, and the role is mutable.
-    if (user.role !== UserRole.AUTOMATION) {
+    // Only the root tenant's service account may sign in this way. Every tenant
+    // has one, but elsewhere it exists purely to own the rows the deployment
+    // writes on that community's behalf -- and CLAUDE_AUTOMATION_SECRET is a
+    // single platform-wide value, so without this a valid secret presented to
+    // any community's host would mint a session there.
+    //
+    // Keyed on `is_service_account` plus the tenant being root, never on the
+    // role. An earlier version of this check required role `automation`, which
+    // broke the whole point of the account: it is deliberately flipped up to
+    // admin (and back) so it can browse role-gated pages, and that flip made
+    // automation login start refusing. The role is the one property here
+    // guaranteed to change; the column and the tenant are not.
+    if (!user.isServiceAccount) {
+      throw new UnauthorizedException('Automation login is not enabled here');
+    }
+    const rootTenant = await this.prisma.tenants.findFirst({
+      where: { rootMarker: true },
+      select: { id: true },
+    });
+    if (!rootTenant || rootTenant.id !== user.tenantId) {
       throw new UnauthorizedException('Automation login is not enabled here');
     }
 

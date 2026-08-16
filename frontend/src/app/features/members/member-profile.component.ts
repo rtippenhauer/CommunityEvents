@@ -305,9 +305,15 @@ interface AchievementGroup {
                   >
                     <mat-option value="member">Member</mat-option>
                     <mat-option value="moderator">Moderator</mat-option>
+                    <!-- Only ever offered for the service account. Admin and
+                         automation are its documented testing flip; system_admin
+                         is additionally restricted server-side to the ROOT
+                         tenant's service account, so it appears here but is
+                         refused on any other community. -->
                     @if (profile()!.isAutomationAccount) {
                       <mat-option value="admin">Admin</mat-option>
                       <mat-option value="automation">Automation</mat-option>
+                      <mat-option value="system_admin">System Admin</mat-option>
                     }
                   </mat-select>
                 </div>

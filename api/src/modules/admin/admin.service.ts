@@ -340,13 +340,33 @@ export class AdminService {
     const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot change your own role');
-    // system_admin is never handed out or taken away here. It is the role that
-    // manages every tenant on the deployment, so granting it from a per-tenant
-    // admin screen would make "admin of one community" one click away from
-    // "operator of all of them". bootstrap.ts creates the first one; any
-    // further one is a deliberate database edit, exactly as admin already is.
+    // system_admin manages every tenant on the deployment, so handing it out from
+    // a per-tenant admin screen would put "admin of one community" one click from
+    // "operator of all of them". It is therefore assignable in exactly one case:
+    // the root tenant's own service account, which is the account the operator
+    // drives automated testing with.
+    //
+    // Narrow on purpose. A *human* still cannot be promoted here -- bootstrap
+    // creates the first system admin and any further one is a deliberate
+    // database edit -- and the exception cannot reach an ordinary tenant,
+    // because a non-root service account fails the isRoot test below and is
+    // additionally frozen by the `disabled` rule after it.
+    //
+    // Agreed with Rob 2026-08-16 for live testing, with the expectation that it
+    // reverts to database-only before production. If that happens, delete this
+    // block and the two role-picker entries in the frontend; nothing else
+    // depends on it.
     if (role === UserRole.SYSTEM_ADMIN || target.role === UserRole.SYSTEM_ADMIN) {
-      throw new ForbiddenException('The system administrator role is not assignable here');
+      const rootTenant = await this.prisma.tenants.findFirst({
+        where: { rootMarker: true },
+        select: { id: true },
+      });
+      const isRootServiceAccount =
+        target.isServiceAccount && !!rootTenant && rootTenant.id === target.tenantId;
+
+      if (!isRootServiceAccount) {
+        throw new ForbiddenException('The system administrator role is not assignable here');
+      }
     }
 
     // Service accounts on ordinary tenants hold `disabled` and stay there.
@@ -369,7 +389,14 @@ export class AdminService {
     if (hasAdminRights(target.role) && !target.isServiceAccount) {
       throw new ForbiddenException("Cannot change another admin's role");
     }
-    if (role === UserRole.ADMIN && target.role !== UserRole.AUTOMATION) {
+    // Coming back down from system_admin to admin is allowed for the same
+    // account the block above just admitted; anything else still needs a
+    // database edit.
+    if (
+      role === UserRole.ADMIN &&
+      target.role !== UserRole.AUTOMATION &&
+      !(target.isServiceAccount && target.role === UserRole.SYSTEM_ADMIN)
+    ) {
       throw new ForbiddenException('Cannot promote to admin — set directly in the database');
     }
     const previousRole = target.role;

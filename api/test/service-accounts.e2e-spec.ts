@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { UserRole, UserStatus } from '../src/database/enums';
-import { createTestApp, truncateAllTables } from './utils/test-app';
+import { createTestApp, resetThrottler, truncateAllTables } from './utils/test-app';
 import { loginAs, seedCity, seedServiceAccount, seedUser } from './utils/seed';
 
 /**
@@ -31,6 +31,10 @@ describe('Service accounts (e2e)', () => {
   });
 
   beforeEach(async () => {
+    // automation-login carries a tight per-route @Throttle and this spec hits it
+    // several times per test; without a reset the later cases 429 on limits that
+    // have nothing to do with what they assert.
+    resetThrottler(app);
     await truncateAllTables(prisma);
     const city = await seedCity(prisma);
     cityId = city.id;
@@ -132,6 +136,33 @@ describe('Service accounts (e2e)', () => {
         .expect(403);
     });
 
+    // Rob's live-testing affordance (2026-08-16): the root tenant's service
+    // account is the one account that may be given system_admin from the UI, so
+    // automation can exercise the tenant registry. Expected to revert to
+    // database-only before production.
+    it('allows system_admin on the root tenant service account', async () => {
+      const svc = await seedServiceAccount(prisma, cityId);
+
+      await request(server)
+        .post(`/api/v1/admin/users/${svc.id}/role`)
+        .set('Cookie', adminCookie)
+        .send({ role: 'system_admin' })
+        .expect(200);
+
+      const after = await prisma.users.findUnique({ where: { id: svc.id } });
+      expect(after!.role).toBe(UserRole.SYSTEM_ADMIN);
+    });
+
+    it('allows flipping it back down again', async () => {
+      const svc = await seedServiceAccount(prisma, cityId, { role: UserRole.SYSTEM_ADMIN });
+
+      await request(server)
+        .post(`/api/v1/admin/users/${svc.id}/role`)
+        .set('Cookie', adminCookie)
+        .send({ role: 'automation' })
+        .expect(200);
+    });
+
     it('refuses to hand out system_admin', async () => {
       const member = await seedUser(prisma, cityId, { email: 'climber@example.test' });
 
@@ -142,6 +173,8 @@ describe('Service accounts (e2e)', () => {
         .expect(403);
     });
 
+    // The carve-out is only for a *service* account. A human system admin is
+    // still untouchable here, which is what keeps the exception narrow.
     it('refuses to demote an existing system admin', async () => {
       const sysAdmin = await seedUser(prisma, cityId, {
         role: UserRole.SYSTEM_ADMIN,
@@ -153,6 +186,64 @@ describe('Service accounts (e2e)', () => {
         .set('Cookie', adminCookie)
         .send({ role: 'member' })
         .expect(403);
+    });
+  });
+
+  /**
+   * Automation login, which had no coverage at all before this.
+   *
+   * The account is deliberately flipped between roles for testing, so the check
+   * behind this endpoint must key on `is_service_account` and the tenant being
+   * root -- never on the role. An earlier version required role `automation`,
+   * which meant flipping the account to admin (the entire point of the flip)
+   * silently locked automation out.
+   */
+  describe('automation login', () => {
+    const SECRET = 'test-automation-secret-not-for-real-use';
+
+    it('signs in the root tenant service account', async () => {
+      await seedServiceAccount(prisma, cityId);
+
+      const res = await request(server)
+        .post('/api/v1/auth/automation-login')
+        .send({ secret: SECRET })
+        .expect(200);
+
+      expect(res.body.accessToken).toBeTruthy();
+    });
+
+    it.each([UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.MEMBER])(
+      'still signs in while flipped to %s',
+      async (role) => {
+        await seedServiceAccount(prisma, cityId, { role });
+
+        await request(server)
+          .post('/api/v1/auth/automation-login')
+          .send({ secret: SECRET })
+          .expect(200);
+      },
+    );
+
+    it('rejects a wrong secret', async () => {
+      await seedServiceAccount(prisma, cityId);
+
+      await request(server)
+        .post('/api/v1/auth/automation-login')
+        .send({ secret: 'not-the-secret-at-all-padding-padding' })
+        .expect(401);
+    });
+
+    // Not a service account, however it is named or roled.
+    it('rejects an ordinary account holding the automation role', async () => {
+      await seedUser(prisma, cityId, {
+        role: UserRole.AUTOMATION,
+        email: 'pretender@example.test',
+      });
+
+      await request(server)
+        .post('/api/v1/auth/automation-login')
+        .send({ secret: SECRET })
+        .expect(401);
     });
   });
 
