@@ -60,6 +60,37 @@ export interface TenantFormDialogData {
           <mat-error>Lowercase letters, numbers and hyphens only</mat-error>
         </mat-form-field>
 
+        <!-- Create only. Editing a community must not silently mint another
+             admin, and changing an existing admin's password belongs on that
+             community's own user screen. -->
+        @if (!data.tenant) {
+          <div class="admin-section">
+            <h3>First administrator</h3>
+            <p class="admin-note">
+              A new community has no way in without one: registration needs an invite, and
+              invites have to come from someone who is already a member.
+            </p>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Admin name</mat-label>
+              <input matInput formControlName="adminName" />
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Admin email</mat-label>
+              <input matInput formControlName="adminEmail" type="email" />
+              <mat-error>A valid email address is required</mat-error>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Admin password</mat-label>
+              <input matInput formControlName="adminPassword" type="password" />
+              <mat-hint>At least 8 characters. They can change it once signed in.</mat-hint>
+              <mat-error>At least 8 characters</mat-error>
+            </mat-form-field>
+          </div>
+        }
+
         <mat-slide-toggle formControlName="active" [disabled]="isRoot">Active</mat-slide-toggle>
         @if (!form.getRawValue().active) {
           <p class="suspend-note">
@@ -94,6 +125,23 @@ export interface TenantFormDialogData {
       }
       mat-form-field {
         width: 100%;
+      }
+      .admin-section {
+        margin-top: 8px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(0, 0, 0, 0.12);
+        display: flex;
+        flex-direction: column;
+      }
+      .admin-section h3 {
+        margin: 0 0 4px;
+        font-size: 14px;
+      }
+      .admin-note {
+        margin: 0 0 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: rgba(0, 0, 0, 0.6);
       }
       .root-note,
       .suspend-note {
@@ -132,6 +180,14 @@ export class TenantFormDialogComponent {
       [Validators.maxLength(50), Validators.pattern(/^[a-z0-9-]*$/)],
     ],
     active: [{ value: (this.data.tenant?.status ?? 'active') === 'active', disabled: this.isRoot }],
+    // Required together or not at all: a name without credentials creates
+    // nothing, and credentials without a name are fine (the API defaults it).
+    adminName: [''],
+    adminEmail: ['', this.data.tenant ? [] : [Validators.required, Validators.email]],
+    adminPassword: [
+      '',
+      this.data.tenant ? [] : [Validators.required, Validators.minLength(8)],
+    ],
   });
 
   save(): void {
@@ -147,9 +203,17 @@ export class TenantFormDialogComponent {
       ...(this.isRoot ? {} : { domain: raw.domain, status: raw.active ? ('active' as const) : ('suspended' as const) }),
     };
 
+    // The admin fields exist on create only, and are never sent on an update --
+    // editing a community must not mint a second admin.
     const req$ = this.data.tenant
       ? this.tenantsAdminService.update(this.data.tenant.id, payload)
-      : this.tenantsAdminService.create({ domain: raw.domain, ...payload });
+      : this.tenantsAdminService.create({
+          domain: raw.domain,
+          ...payload,
+          adminName: raw.adminName || undefined,
+          adminEmail: raw.adminEmail,
+          adminPassword: raw.adminPassword,
+        });
 
     req$.subscribe({
       next: (tenant) => {

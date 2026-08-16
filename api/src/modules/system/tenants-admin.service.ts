@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { runUnscoped } from '../../common/tenant/tenant-store';
@@ -18,6 +19,9 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+
+/** Matches AuthService.register, so this hash verifies like any other. */
+const BCRYPT_ROUNDS = 12;
 
 export interface TenantRow {
   id: number;
@@ -150,6 +154,48 @@ export class TenantsAdminService {
       // fine, so this is a warning rather than a failed create.
       this.logger.warn(
         `Tenant ${created.slug} created without a service account: no city exists to attach it to.`,
+      );
+    }
+
+    // The community's first admin.
+    //
+    // Without one a new community is a dead end: registration needs an invite,
+    // invites must come from an existing member of that tenant, and the only
+    // other account is the `disabled` service account just created. This is the
+    // same thing bootstrap.ts does for the root tenant.
+    //
+    // runUnscoped for the same reason as the service account above -- the row
+    // belongs to the new tenant while the request is scoped to the root one.
+    if (dto.adminEmail && dto.adminPassword && city) {
+      if (dto.adminEmail.toLowerCase() === AUTOMATION_ACCOUNT_EMAIL) {
+        throw new BadRequestException(
+          'That address is reserved for the community service account.',
+        );
+      }
+      const passwordHash = await bcrypt.hash(dto.adminPassword, BCRYPT_ROUNDS);
+      await runUnscoped("creating the new tenant's first admin", async () => {
+        await this.prisma.users.create({
+          data: {
+            tenantId: created.id,
+            cityId: city.id,
+            fullName: dto.adminName?.trim() || 'Admin',
+            email: dto.adminEmail!.toLowerCase(),
+            passwordHash,
+            role: UserRole.ADMIN,
+            status: UserStatus.ACTIVE,
+            // Verified on creation: the operator is vouching for the address by
+            // typing it, and an unverified first admin could not complete
+            // verification anyway without an admin to ask.
+            emailStatus: EmailStatus.ACTIVE,
+            emailVerifiedAt: new Date(),
+          },
+        });
+      });
+      this.logger.log(`Tenant ${created.slug} created with admin ${dto.adminEmail}`);
+    } else {
+      this.logger.warn(
+        `Tenant ${created.slug} created with no admin. Nobody can sign in to it ` +
+          `until one exists — registration requires an invite, and invites require a member.`,
       );
     }
 

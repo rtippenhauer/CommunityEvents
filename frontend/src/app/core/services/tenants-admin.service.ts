@@ -18,6 +18,14 @@ export interface CreateTenantPayload {
   domain: string;
   slug?: string;
   status?: 'active' | 'suspended';
+  /**
+   * The new community's first admin. Optional to the API, but a community
+   * created without one cannot be signed in to at all: registration needs an
+   * invite, and invites need an existing member of that tenant.
+   */
+  adminName?: string;
+  adminEmail?: string;
+  adminPassword?: string;
 }
 
 export type UpdateTenantPayload = Partial<CreateTenantPayload>;

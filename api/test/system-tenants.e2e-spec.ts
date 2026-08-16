@@ -5,6 +5,19 @@ import { UserRole } from '../src/database/enums';
 import { createTestApp, truncateAllTables } from './utils/test-app';
 import { loginAs, seedCity, seedUser } from './utils/seed';
 import { TEST_TENANT_ID } from './setup-env';
+import { runWithTenant } from '../src/common/tenant/tenant-store';
+
+/**
+ * Reads a row belonging to a *different* tenant than the ambient one.
+ *
+ * Necessary, not decorative: `users` is scoped, so a bare
+ * `findFirst({ where: { tenantId: other } })` has the extension inject the
+ * ambient tenant alongside it and throws "Refusing to run a query filtered to
+ * tenant X while tenant Y is in context". Awaited inside, because Prisma
+ * promises are lazy.
+ */
+const inTenant = <T>(tenantId: number, fn: () => Promise<T>): Promise<T> =>
+  runWithTenant(tenantId, async () => await fn());
 
 /**
  * The tenant registry, end to end (REQ-TENANT-01.7).
@@ -178,6 +191,112 @@ describe('System tenant management (e2e)', () => {
       const roots = await prisma.tenants.findMany({ where: { isRoot: true } });
       expect(roots).toHaveLength(1);
       expect(roots[0].id).toBe(TEST_TENANT_ID);
+    });
+  });
+
+  describe('the first admin', () => {
+    // The gap this closes, found on the first two-tenant stage test: a community
+    // created without an admin cannot be signed in to by anyone. Registration
+    // needs an invite, invites need an existing member, and the only other
+    // account is the tenant's own `disabled` service account.
+    it('creates an admin on the new community', async () => {
+      const res = await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({
+          domain: 'withadmin.example.test',
+          adminName: 'Dana Operator',
+          adminEmail: 'dana@example.test',
+          adminPassword: 'P@ssw0rd-Test!',
+        })
+        .expect(201);
+
+      const admin = await inTenant(res.body.id, () =>
+        prisma.users.findFirst({ where: { email: 'dana@example.test' } }),
+      );
+
+      expect(admin).not.toBeNull();
+      expect(admin!.role).toBe(UserRole.ADMIN);
+      expect(admin!.fullName).toBe('Dana Operator');
+      expect(admin!.passwordHash).toBeTruthy();
+      // Verified on creation: an unverified first admin could not complete
+      // verification, since there is nobody on that tenant to ask.
+      expect(admin!.emailVerifiedAt).not.toBeNull();
+      expect(admin!.isServiceAccount).toBe(false);
+    });
+
+    it('puts the admin on the new tenant, not the root one', async () => {
+      const res = await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({
+          domain: 'elsewhere.example.test',
+          adminEmail: 'elsewhere-admin@example.test',
+          adminPassword: 'P@ssw0rd-Test!',
+        })
+        .expect(201);
+
+      const onRoot = await inTenant(TEST_TENANT_ID, () =>
+        prisma.users.findFirst({ where: { email: 'elsewhere-admin@example.test' } }),
+      );
+      const onNew = await inTenant(res.body.id, () =>
+        prisma.users.findFirst({ where: { email: 'elsewhere-admin@example.test' } }),
+      );
+
+      expect(onRoot).toBeNull();
+      expect(onNew).not.toBeNull();
+    });
+
+    it('defaults the name when only credentials are given', async () => {
+      const res = await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({
+          domain: 'noname.example.test',
+          adminEmail: 'noname@example.test',
+          adminPassword: 'P@ssw0rd-Test!',
+        })
+        .expect(201);
+
+      const admin = await inTenant(res.body.id, () =>
+        prisma.users.findFirst({ where: { isServiceAccount: false } }),
+      );
+      expect(admin!.fullName).toBe('Admin');
+    });
+
+    // Still allowed, because an operator may want to stage a community before
+    // deciding who runs it — but it is the case that produces an unusable
+    // tenant, so the service logs a warning and the UI requires the fields.
+    it('still creates the tenant when no admin is supplied', async () => {
+      await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({ domain: 'noadmin.example.test' })
+        .expect(201);
+    });
+
+    it('refuses the address reserved for the service account', async () => {
+      await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({
+          domain: 'reserved.example.test',
+          adminEmail: 'automation@dinnerbears.internal',
+          adminPassword: 'P@ssw0rd-Test!',
+        })
+        .expect(400);
+    });
+
+    it('rejects a weak admin password', async () => {
+      await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({
+          domain: 'weak.example.test',
+          adminEmail: 'weak@example.test',
+          adminPassword: 'short',
+        })
+        .expect(400);
     });
   });
 
