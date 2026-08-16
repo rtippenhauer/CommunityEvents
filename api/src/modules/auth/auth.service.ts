@@ -29,6 +29,7 @@ import { RsvpStatus } from '../../database/enums';
 import type { event_rsvps as EventRsvp } from '@prisma/client';
 import { ELEVATED_ROLES } from '../../common/utils/roles.util';
 import { AUTOMATION_ACCOUNT_EMAIL } from '../../common/utils/service-account.util';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 export interface SessionContext {
   userAgent?: string;
@@ -70,6 +71,7 @@ export class AuthService {
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
     private readonly achievementsService: AchievementsService,
+    private readonly tenantResolution: TenantResolutionService,
   ) {
     this.loginWindowMs = this.configService.get<string>('IS_STAGE') === 'true'
       ? STAGE_LOGIN_WINDOW_MS
@@ -876,6 +878,12 @@ export class AuthService {
   }
 
   private async sendLockoutAlerts(user: User, attempts: number): Promise<void> {
+    // Resolved from the locked-out user's own tenant rather than the ambient
+    // one. They are the same on an ordinary login attempt, but naming the user's
+    // tenant means a lockout alert can never send someone to a community they do
+    // not belong to.
+    const appUrl = await this.tenantResolution.baseUrlFor(user.tenantId);
+
     // Email the affected user
     try {
       await this.emailService.sendNow({
@@ -886,9 +894,9 @@ export class AuthService {
           <p>Hi ${user.fullName},</p>
           <p>We detected <strong>${attempts} failed login attempts</strong> on your DinnerBears account and have temporarily locked it.</p>
           <p>If this was you, please wait a few minutes and try again.</p>
-          <p>If you don't recognize this activity, <a href="${this.configService.get<string>('APP_URL', 'https://dinnerbears.com')}/auth/forgot-password">reset your password immediately</a>.</p>
+          <p>If you don't recognize this activity, <a href="${appUrl}/auth/forgot-password">reset your password immediately</a>.</p>
         `,
-        textBody: `Hi ${user.fullName}, we detected ${attempts} failed login attempts and temporarily locked your account. If this wasn't you, reset your password at ${this.configService.get<string>('APP_URL', 'https://dinnerbears.com')}/auth/forgot-password`,
+        textBody: `Hi ${user.fullName}, we detected ${attempts} failed login attempts and temporarily locked your account. If this wasn't you, reset your password at ${appUrl}/auth/forgot-password`,
       });
     } catch {
       // Non-fatal
@@ -970,7 +978,10 @@ export class AuthService {
       passwordResetExpiresAt: expires,
     } });
 
-    const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
+    // The tenant's own host, not APP_URL: the token lookup behind this link is
+    // scoped, so a link to another community's host finds nothing and the reset
+    // silently fails.
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const resetUrl = `${appUrl}/auth/reset-password?token=${token}`;
 
     await this.emailService.sendNow({
@@ -1059,7 +1070,9 @@ export class AuthService {
   }
 
   private async sendVerificationEmail(user: User, token: string): Promise<void> {
-    const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
+    // Same reason as the reset link: verification is scoped to the tenant that
+    // issued the token.
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const verifyUrl = `${appUrl}/auth/verify-email?token=${token}`;
 
     await this.emailService.sendNow({

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { normalizeTenantDomain } from '../utils/tenant-domain.util';
+import { currentTenantId } from './tenant-store';
 import { TenantContext } from './tenant-context';
 
 /**
@@ -42,11 +43,13 @@ const MAX_ENTRIES = 500;
 export class TenantResolutionService {
   private readonly logger = new Logger(TenantResolutionService.name);
   private readonly cache = new Map<string, CacheEntry>();
+  /** tenant id -> base URL, for building links into a tenant. See baseUrlFor. */
+  private readonly baseUrlCache = new Map<number, { url: string; expiresAt: number }>();
   private readonly ttlMs: number;
 
   constructor(
     private readonly prisma: PrismaService,
-    config: ConfigService,
+    private readonly config: ConfigService,
   ) {
     const configured = Number(config.get<string>('TENANT_CACHE_TTL_MS'));
     this.ttlMs = Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TTL_MS;
@@ -74,6 +77,68 @@ export class TenantResolutionService {
    */
   clearCache(): void {
     this.cache.clear();
+    this.baseUrlCache.clear();
+  }
+
+  /**
+   * The absolute base URL of a tenant, for links that leave the application --
+   * verification and password-reset emails, invite links, event links,
+   * calendar feeds.
+   *
+   * Every one of those used to be built from the single `APP_URL` env var. That
+   * was correct while there was one host, and became a broken flow rather than a
+   * cosmetic problem in v2-6: the token lookups behind those links are scoped to
+   * the tenant now, so a link that lands a member of one community on another
+   * community's host finds no token and fails. A member of a non-root tenant
+   * could not verify an address, reset a password or redeem an invite.
+   *
+   * `tenantId` is explicit wherever the caller is not inside the request that
+   * owns the row -- the reminder sweeps run under `runUnscoped` and mail several
+   * tenants' members in one pass, so each message has to take the URL from its
+   * own event rather than from an ambient context that is deliberately absent.
+   * Omitting it uses the ambient tenant, which is what an ordinary request wants.
+   *
+   * The scheme comes from `APP_URL`, since that is the only place the deployment
+   * states whether it is served over TLS; only the host is per tenant.
+   *
+   * Falls back to `APP_URL` (loudly) rather than throwing if the tenant cannot be
+   * resolved: this is called from inside email composition, and a link pointing
+   * at the wrong host is a better failure than an unsent password-reset mail.
+   */
+  async baseUrlFor(tenantId?: number): Promise<string> {
+    const appUrl = this.config.get<string>('APP_URL', 'http://localhost:8081');
+    const id = tenantId ?? currentTenantId() ?? undefined;
+
+    if (id === undefined) {
+      this.logger.error(
+        'baseUrlFor called with no tenant and no ambient context; falling back to APP_URL. ' +
+          'Links in this message may point at the wrong community.',
+      );
+      return appUrl;
+    }
+
+    const cached = this.baseUrlCache.get(id);
+    if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id },
+      select: { domain: true },
+    });
+    if (!tenant) {
+      this.logger.error(`No tenant ${id} when building a URL; falling back to APP_URL.`);
+      return appUrl;
+    }
+
+    let protocol = 'https:';
+    try {
+      protocol = new URL(appUrl).protocol;
+    } catch {
+      // APP_URL misconfigured; https is the safe assumption for a real link.
+    }
+
+    const url = `${protocol}//${tenant.domain}`;
+    this.baseUrlCache.set(id, { url, expiresAt: Date.now() + this.ttlMs });
+    return url;
   }
 
   private async lookup(domain: string): Promise<TenantResolution> {

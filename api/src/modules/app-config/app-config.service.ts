@@ -4,6 +4,7 @@ import type { app_config as AppConfig } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { baseDomain } from '../../common/config/instance-contact';
 import { requireTenantId } from '../../common/tenant/tenant-store';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 // Only these keys are servable/editable through the config endpoints — keeps
 // this generic key/value table from becoming an accidental back door into
@@ -143,6 +144,7 @@ export class AppConfigService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly tenantResolution: TenantResolutionService,
   ) {}
 
   async getPublicValue(key: string): Promise<string> {
@@ -294,7 +296,11 @@ export class AppConfigService {
       vapidPublicKey: this.config.get<string>('VAPID_PUBLIC_KEY') ?? null,
       facebookAppId: this.config.get<string>('FACEBOOK_APP_ID') ?? null,
       isStage: this.config.get<string>('IS_STAGE') === 'true',
-      appUrl: this.config.get<string>('APP_URL') ?? '',
+      // The requesting tenant's own canonical URL, not the deployment's. Every
+      // other field in this payload is per-tenant (app_config is scoped now), so
+      // a deployment-global value here would be the one thing in the branding
+      // response that describes somebody else's community.
+      appUrl: await this.tenantResolution.baseUrlFor(),
       // Use the shared derivation (BASE_DOMAIN, else APP_URL host sans "www.")
       // so the frontend gets the same value the cookie scope + contact emails
       // use — instances rarely set BASE_DOMAIN explicitly.

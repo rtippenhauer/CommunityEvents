@@ -67,14 +67,14 @@ export class CalendarController {
   @UseGuards(JwtAuthGuard)
   async getToken(@CurrentUser() user: User): Promise<{ url: string }> {
     const token = await this.calendarService.getOrCreateToken(user.id);
-    return { url: this.calendarService.feedUrl(token) };
+    return { url: await this.calendarService.feedUrl(token) };
   }
 
   @Get('token/regenerate')
   @UseGuards(JwtAuthGuard)
   async regenerateToken(@CurrentUser() user: User): Promise<{ url: string }> {
     const token = await this.calendarService.regenerateToken(user.id);
-    return { url: this.calendarService.feedUrl(token) };
+    return { url: await this.calendarService.feedUrl(token) };
   }
 
   @Post('rsvp-reply')

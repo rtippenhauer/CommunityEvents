@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { computeRsvpCutoffAt } from '../../common/utils/rsvp-cutoff.util';
 import { toDateString, toTimeString } from '../../common/utils/prisma-date.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 const EVENT_INVITE_MAX_USES = 10;
 
@@ -28,6 +29,7 @@ export class InvitesService {
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
     private readonly appConfig: AppConfigService,
+    private readonly tenantResolution: TenantResolutionService,
   ) {}
 
   async create(dto: CreateInviteDto, creator: User): Promise<Invite> {
@@ -87,7 +89,9 @@ export class InvitesService {
     });
 
     if (dto.type === InviteType.MEMBER && dto.boundToEmail) {
-      const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+      // The invite's own tenant. `invites` is scoped, so a link to another
+      // community's host cannot find the token and the invite reads as invalid.
+      const appUrl = await this.tenantResolution.baseUrlFor(saved.tenantId);
       const brandName = await this.appConfig.getSiteSetting('brand_name');
       const inviteUrl = `${appUrl}/login?token=${saved.token}`;
       const inviterName = creator.fullName || `A ${brandName} member`;

@@ -401,6 +401,19 @@ authoritative (per REQ-TENANT-01.3).
   takes the `tenant_id` sentinel and is rejected by the foreign key. The
   `app_config` defaults and the automation account live in `bootstrap.ts` for
   exactly this reason; the install is still `migrate` -> `seed` -> `bootstrap`.
+- **Links that leave the app must use the tenant's host**, via
+  `TenantResolutionService.baseUrlFor()` — never `APP_URL`, which is one value
+  for the whole deployment. Verification and reset emails, invite links, event
+  links and calendar feeds all resolve tokens against scoped tables, so a link
+  to the wrong host finds nothing and the flow fails silently. Pass an explicit
+  tenant id inside a `runUnscoped` sweep, where there is no ambient one.
+  `APP_URL` legitimately survives for the OAuth callback registered with Google,
+  the "is this stage" check, and the cookie-clearing domain.
+- **A cron sweep that composes per-tenant content must re-enter
+  `runWithTenant`.** `runUnscoped` is right for *finding* rows across tenants and
+  wrong for *rendering* anything: `app_config` is scoped, so branding read under
+  a waiver returns whichever tenant the engine reached first. See the seats
+  reminder in `events.service.ts`.
 - **Email lookups are `findFirst`, not `findUnique`.** An address no longer
   identifies a row on its own. The exception is a compound unique key
   (`app_config`'s upserts), which Prisma will not let the extension merge a

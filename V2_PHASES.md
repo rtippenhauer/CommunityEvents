@@ -449,6 +449,40 @@ requesting tenant's account *and* role `automation`, so the single platform-wide
 `CLAUDE_AUTOMATION_SECRET` cannot mint a session on a community the operator
 does not run.
 
+**Tenant-aware links, found during the v2-6 stage pass** (2026-08-16). Rob
+asked whether email tokens were tenant-scoped. The *lookups* were — they go
+through `findFirst` on `users`, so the extension injects the tenant. The
+*links* were not: all 26 sites that build a user-facing URL read the single
+`APP_URL` env var, so a member of a non-root tenant received a link to the root
+host, where the scoped token lookup found nothing.
+
+The scoping is what turned this from cosmetic into blocking. While `users` was
+global the lookup succeeded whatever host you landed on; afterwards a
+non-root tenant could not verify an address, reset a password or redeem an
+invite at all — so it could not onboard a single real member, which is the
+thing v2-6 exists to make testable.
+
+`TenantResolutionService.baseUrlFor()` resolves a tenant's base URL (cached,
+invalidated with the resolution cache, scheme from `APP_URL` since TLS is a
+property of the deployment). All 26 sites converted.
+
+Two things that were not find-and-replace:
+
+- **The seats-reminder sweep was rendering with the wrong tenant's branding.**
+  It runs under `runUnscoped` to find events across tenants, then composed each
+  email in that same context — and `getEmailBrand` reads `app_config`, which
+  v2-6 had just scoped, so `findFirst` returned whichever tenant the engine
+  reached first. Fixed by re-entering `runWithTenant(event.tenantId)` around the
+  loop body rather than threading an id through every helper, so later reads are
+  correct too. **The general rule: `runUnscoped` is right for finding rows
+  across tenants and wrong for rendering anything.**
+- **The frontend redirected "unknown" hosts to `APP_URL`.** A v1 safety net for
+  typo'd DNS, it would have bounced a legitimate tenant off its own site
+  whenever that host was not also a city subdomain. Removed: the server already
+  answers that question, and answers it better — an unrecognized host gets 404
+  `TENANT_NOT_FOUND` and the holding page rather than a silent redirect into
+  another community.
+
 ### Still outstanding in v2-6
 
 - ~~Cookie scoping~~ **done 2026-08-15.** The session cookie is host-only, so a

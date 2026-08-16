@@ -9,6 +9,7 @@ import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { calendarOrganizerEmail, supportEmail } from '../../common/config/instance-contact';
 import { AppConfigService } from '../app-config/app-config.service';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 /**
  * The minimum an event needs to expose to be rendered into an .ics entry.
@@ -58,6 +59,7 @@ export class CalendarService {
     private readonly config: ConfigService,
     private readonly locationVisibility: LocationVisibilityService,
     private readonly appConfig: AppConfigService,
+    private readonly tenantResolution: TenantResolutionService,
   ) {}
 
   // Per-instance branding for generated calendar files (Phase 32/33). Same
@@ -100,8 +102,11 @@ export class CalendarService {
     return token;
   }
 
-  feedUrl(token: string): string {
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+  // Async now: the host is the tenant's, not APP_URL's. A feed subscribed on one
+  // community's host must keep pointing there -- the token behind it resolves
+  // against `users`, which is scoped.
+  async feedUrl(token: string): Promise<string> {
+    const appUrl = await this.tenantResolution.baseUrlFor();
     return `${appUrl}/api/v1/calendar/feed.ics?token=${token}`;
   }
 
@@ -116,7 +121,7 @@ export class CalendarService {
 
     const token = await this.getOrCreateToken(userId);
     return {
-      url: this.feedUrl(token),
+      url: await this.feedUrl(token),
       cityFilter: user.calendarCityFilter ?? 'all',
       rsvpOnly: user.calendarRsvpOnly ?? false,
       autoInvite: user.calendarAutoInvite ?? 'none',
@@ -156,6 +161,8 @@ export class CalendarService {
     return ics;
   }
 
+  // Stays on APP_URL deliberately: this asks "is this deployment stage", which
+  // is a property of the deployment and not of any tenant. It builds no link.
   private appName(brandName: string): string {
     const url = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     return url.includes('stage') ? `${brandName} - Stage` : brandName;
@@ -166,7 +173,9 @@ export class CalendarService {
   }
 
   private async buildFeed(user: User): Promise<string> {
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    // The subscriber's own tenant: a feed is fetched by token with no session,
+    // so there may be no ambient context to inherit.
+    const appUrl = await this.tenantResolution.baseUrlFor(user.tenantId);
     const brand = await this.getBrand();
 
     const rsvps = await this.prisma.event_rsvps.findMany({
