@@ -3,7 +3,6 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import cookieParser from 'cookie-parser';
-import session from 'express-session';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/database/prisma/prisma.service';
 import { GlobalExceptionFilter } from '../../src/common/filters/global-exception.filter';
@@ -28,14 +27,6 @@ export async function createTestApp(): Promise<TestApp> {
 
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
-  app.use(
-    session({
-      secret: 'test-session-secret-not-for-real-use',
-      resave: false,
-      saveUninitialized: false,
-      cookie: { httpOnly: true, secure: false, sameSite: 'lax', maxAge: 10 * 60 * 1000 },
-    }),
-  );
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
