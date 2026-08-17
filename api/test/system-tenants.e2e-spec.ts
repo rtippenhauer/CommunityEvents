@@ -300,6 +300,67 @@ describe('System tenant management (e2e)', () => {
     });
   });
 
+  describe('the mail domain', () => {
+    // Asked at creation because the operator is the only person who knows the
+    // DNS behind the new domain, and because getting it wrong is invisible:
+    // mail from a domain with no MX record bounces with nothing to show.
+    it('stores it as a setting on the new community', async () => {
+      const res = await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({ domain: 'mail1.example.test', mailDomain: 'mailer.example.test' })
+        .expect(201);
+
+      const row = await inTenant(res.body.id, () =>
+        prisma.app_config.findFirst({ where: { configKey: 'mail_domain' } }),
+      );
+      expect(row?.configValue).toBe('mailer.example.test');
+    });
+
+    it('normalises a pasted URL down to a bare host', async () => {
+      const res = await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({ domain: 'mail2.example.test', mailDomain: 'https://WWW.Mailer.example.test/x' })
+        .expect(201);
+
+      const row = await inTenant(res.body.id, () =>
+        prisma.app_config.findFirst({ where: { configKey: 'mail_domain' } }),
+      );
+      // www is a web host and never a mail domain -- an address derived from
+      // it bounces, which is the same reason the tenant domain strips it.
+      expect(row?.configValue).toBe('mailer.example.test');
+    });
+
+    it('writes nothing when left blank, so the deployment default applies', async () => {
+      const res = await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({ domain: 'mail3.example.test' })
+        .expect(201);
+
+      const row = await inTenant(res.body.id, () =>
+        prisma.app_config.findFirst({ where: { configKey: 'mail_domain' } }),
+      );
+      // Absent, not empty-string: blank means "inherit", and AppConfigService
+      // resolves that at read time rather than storing a decision.
+      expect(row).toBeNull();
+    });
+
+    it('keeps it on the new community, not the root one', async () => {
+      await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({ domain: 'mail4.example.test', mailDomain: 'mailer4.example.test' })
+        .expect(201);
+
+      const onRoot = await inTenant(TEST_TENANT_ID, () =>
+        prisma.app_config.findFirst({ where: { configKey: 'mail_domain' } }),
+      );
+      expect(onRoot).toBeNull();
+    });
+  });
+
   describe('PATCH /system/tenants/:id', () => {
     let tenantId: number;
 

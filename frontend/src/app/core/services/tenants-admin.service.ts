@@ -26,6 +26,11 @@ export interface CreateTenantPayload {
   adminName?: string;
   adminEmail?: string;
   adminPassword?: string;
+  /**
+   * Domain the new community sends mail from. Blank inherits the deployment's,
+   * which is correct whenever the community is a subdomain of it.
+   */
+  mailDomain?: string;
 }
 
 export type UpdateTenantPayload = Partial<CreateTenantPayload>;

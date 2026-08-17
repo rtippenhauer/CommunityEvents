@@ -8,7 +8,9 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AdminTenant, TenantsAdminService } from '../../../core/services/tenants-admin.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 export interface TenantFormDialogData {
   tenant?: AdminTenant;
@@ -89,6 +91,32 @@ export interface TenantFormDialogData {
               <mat-error>At least 8 characters</mat-error>
             </mat-form-field>
           </div>
+
+          <div class="admin-section">
+            <h3>Mail domain</h3>
+            <p class="admin-note">
+              Where this community's mail comes from — the address on its invites, calendar
+              entries and reminders. It is <strong>not</strong> assumed from the web address
+              above: a subdomain usually has no mail records, so mail sent from it would
+              bounce with nothing to show for it.
+            </p>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Mail domain</mat-label>
+              <input matInput formControlName="mailDomain" [placeholder]="deploymentMailDomain" />
+              @if (suggestionApplies()) {
+                <mat-hint>
+                  Suggested, because {{ form.getRawValue().domain }} sits under
+                  {{ deploymentMailDomain }} — the domain this deployment already sends from.
+                </mat-hint>
+              } @else {
+                <mat-hint>
+                  Leave blank to use {{ deploymentMailDomain || 'the deployment default' }}. Set
+                  it only if this community receives mail on a domain of its own.
+                </mat-hint>
+              }
+            </mat-form-field>
+          </div>
         }
 
         <mat-slide-toggle formControlName="active" [disabled]="isRoot">Active</mat-slide-toggle>
@@ -165,8 +193,25 @@ export class TenantFormDialogComponent {
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly tenantsAdminService = inject(TenantsAdminService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly brandConfig = inject(BrandConfigService);
 
   saving = false;
+
+  /**
+   * The domain this deployment already sends mail from.
+   *
+   * Read from branding rather than assembled here: a system admin is by
+   * definition browsing on the root tenant's host, so this is the root
+   * tenant's own mail domain -- the one value on the page already known to
+   * have working mail records behind it.
+   *
+   * A getter, not a field, so it tracks the signal: branding is fetched, and a
+   * field would snapshot whatever was there when the dialog opened. Same shape
+   * city-form-dialog.component.ts uses.
+   */
+  get deploymentMailDomain(): string {
+    return this.brandConfig.baseDomain();
+  }
 
   readonly isRoot = this.data.tenant?.isRoot ?? false;
 
@@ -188,7 +233,53 @@ export class TenantFormDialogComponent {
       '',
       this.data.tenant ? [] : [Validators.required, Validators.minLength(8)],
     ],
+    // Optional: blank is a real answer meaning "inherit the deployment's".
+    mailDomain: [''],
   });
+
+  constructor() {
+    // Suggest a mail domain as the operator types the web address. Only ever a
+    // suggestion, and only in the one case where a suggestion is safe -- see
+    // suggestFor().
+    this.form.controls.domain.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe((domain) => {
+        // Never overwrite something the operator typed themselves. Once they
+        // touch the field it is theirs, even if they then clear it.
+        if (this.form.controls.mailDomain.dirty) return;
+        this.form.controls.mailDomain.setValue(this.suggestFor(domain), { emitEvent: false });
+      });
+  }
+
+  /**
+   * What to prefill for a given community domain, or '' for "no suggestion".
+   *
+   * Only suggests when the new community sits under the deployment's own
+   * domain, which is the common case -- dayton.communityeventsproject.com
+   * inherits communityeventsproject.com, a domain whose mail already works.
+   *
+   * Deliberately silent for a community on its own apex. Guessing there would
+   * mean asserting that daytonfood.org accepts mail, which this app cannot
+   * know; blank still resolves to the deployment default at read time, and the
+   * hint tells the operator to set it if that is wrong. A wrong guess here is
+   * the expensive kind of wrong -- mail from a domain with no MX record
+   * disappears without an error anywhere.
+   */
+  private suggestFor(domain: string): string {
+    const deployment = this.deploymentMailDomain;
+    return deployment && this.isSubdomainOf(domain, deployment) ? deployment : '';
+  }
+
+  private isSubdomainOf(host: string, parent: string): boolean {
+    const h = host.trim().toLowerCase().replace(/^www\./, '');
+    return !!parent && h.endsWith(`.${parent.toLowerCase()}`);
+  }
+
+  /** Whether the value currently shown is this dialog's suggestion. */
+  suggestionApplies(): boolean {
+    const raw = this.form.getRawValue();
+    return !!raw.mailDomain && raw.mailDomain === this.suggestFor(raw.domain);
+  }
 
   save(): void {
     if (this.form.invalid) return;
@@ -213,6 +304,7 @@ export class TenantFormDialogComponent {
           adminName: raw.adminName || undefined,
           adminEmail: raw.adminEmail,
           adminPassword: raw.adminPassword,
+          mailDomain: raw.mailDomain || undefined,
         });
 
     req$.subscribe({

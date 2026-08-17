@@ -66,4 +66,24 @@ export class CreateTenantDto {
   @MinLength(8)
   @MaxLength(72)
   adminPassword?: string;
+
+  /**
+   * The domain the new community sends mail from, stored as its `mail_domain`
+   * setting.
+   *
+   * Asked here rather than left to Settings because the operator creating the
+   * community is the only person who knows the DNS behind it, and because the
+   * consequence of getting it wrong is invisible: mail from a domain with no MX
+   * record bounces silently. Blank means "inherit the deployment's", which is
+   * the right answer for a community on a subdomain of the deployment's own
+   * apex -- and is what the dialog suggests for exactly that case.
+   *
+   * Create-only, like the admin fields above. Afterwards it belongs to that
+   * community's own Settings page, where its admin can see it beside the other
+   * addresses derived from it.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  mailDomain?: string;
 }

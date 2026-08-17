@@ -199,6 +199,30 @@ export class TenantsAdminService {
       );
     }
 
+    // The community's mail domain, if the operator named one.
+    //
+    // Written as an ordinary app_config row so it is the same setting its admin
+    // sees in Settings -- this is a convenience for setup, not a second place
+    // the value can live. Blank is a real answer and stays unwritten: it means
+    // "inherit the deployment's", which AppConfigService resolves at read time.
+    //
+    // runUnscoped for the same reason as the two writes above: the row belongs
+    // to the new tenant while the request is scoped to the root one.
+    const mailDomain = normalizeTenantDomain(dto.mailDomain ?? '');
+    if (mailDomain) {
+      await runUnscoped("setting the new tenant's mail domain", async () => {
+        await this.prisma.app_config.create({
+          data: {
+            tenantId: created.id,
+            configKey: 'mail_domain',
+            configValue: mailDomain,
+            description: 'Domain this community sends mail from',
+            updatedBy: actorId,
+          },
+        });
+      });
+    }
+
     this.tenantResolution.clearCache();
     await this.auditService.log({
       userId: actorId,
