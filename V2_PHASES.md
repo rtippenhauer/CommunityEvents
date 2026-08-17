@@ -580,6 +580,23 @@ the same failure the `www.` strip in `instance-contact.ts` already guards, one
 level down. A community whose subdomain really does take mail says so
 explicitly.
 
+**The mail domain is asked for when the community is created**, not only in
+Settings afterwards. Rob's point (2026-08-16): the operator creating a community
+is the only person who knows the DNS behind it, and the field is useless to the
+one person who cannot see it. `CreateTenantDto.mailDomain` writes an ordinary
+`mail_domain` row on the new tenant -- the same setting its own admin sees
+later, not a second place the value lives. Blank stays unwritten, because blank
+means "inherit" and that is resolved at read time.
+
+The dialog **suggests** the deployment's own mail domain when the new community
+sits beneath it -- `dayton.communityeventsproject.com` gets
+`communityeventsproject.com` prefilled, which is the starter case and a domain
+whose mail already works. It suggests nothing for a community on its own apex:
+prefilling `daytonfood.org` would be asserting that it accepts mail, which the
+app cannot know, and a confidently wrong guess here is the expensive kind
+because the failure is silent. The suggestion also never overwrites a value the
+operator has touched, including one they deliberately cleared.
+
 **What deliberately did not move: every credential.** `app_config` has no
 encryption at rest -- building that is `v2-7`, and CLAUDE.md already forbids
 writing the reserved `tenants` OAuth secret columns before it lands. Fifteen

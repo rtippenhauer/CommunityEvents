@@ -465,6 +465,12 @@ authoritative (per REQ-TENANT-01.3).
   community's own address, then a derivation from its own mail domain, then the
   env var, then a derivation from the deployment domain. Blank means inherit, so
   an install that sets nothing is unaffected.
+- **Tenant creation asks for the mail domain** (`CreateTenantDto.mailDomain`),
+  writing it as an ordinary `mail_domain` row on the new tenant — the same
+  setting its admin edits later, not a second home for the value. Create-only,
+  like the first-admin fields. The dialog prefills the deployment's own mail
+  domain when the new community is a subdomain of it, and deliberately suggests
+  nothing otherwise.
 - **The mail domain is never derived from the tenant's host.** A tenant is a web
   host; a tenant subdomain normally publishes no MX record, so
   `hello@dayton.example.com` would bounce silently. Same failure the `www.` strip
