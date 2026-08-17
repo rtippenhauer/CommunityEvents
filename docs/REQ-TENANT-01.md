@@ -105,6 +105,21 @@ to exist before tenant scoping has anything to scope:
 
 ### REQ-TENANT-01.4 — Bootstrap vs. runtime config
 
+**Implemented in `v2-6` (2026-08-16).** The classification of every
+operator-settable variable is declared in
+`api/src/common/config/env-classification.ts`, with a spec that holds it to
+`.env.example`. Two notes where the implementation departs from the text below:
+
+- **`DB_MODE` was never implemented and no longer should be read as a
+  requirement.** Nothing consults it, and the `tenants.db_mode` column from
+  REQ-TENANT-01.1 is a different thing (a reserved per-tenant shared/dedicated
+  marker, not a deployment-level bundled/external switch). It was left
+  unimplemented rather than invented.
+- **Credentials stay in env** until `v2-7` provides encryption at rest, which is
+  the same constraint REQ-TENANT-01.1 already places on the `tenants` OAuth
+  secret columns. "Everything else" below means everything else that is not a
+  secret.
+
 - Bootstrap config (env vars, set once at container start): `DB_MODE`
   (bundled/external), DB connection details if external, `ROOT_TENANT_URL`.
   Minimal by design — everything else is runtime-configurable.
@@ -115,6 +130,12 @@ to exist before tenant scoping has anything to scope:
 - This doc does not implement the settings UI itself — that's a follow-up
   doc — but the schema decision (tenant-scoped `app_config`) is made here
   since other docs will build on it.
+- Landed with it: a community's outbound contact identity (`mail_domain`,
+  `contact_support_email`, `contact_calendar_email`, `contact_event_email`) is
+  per-tenant runtime config, resolved most-specific-first with the env var as
+  the deployment-wide default. The mail domain is deliberately not derived from
+  the tenant's own host, since a tenant subdomain normally publishes no MX
+  record.
 
 ### REQ-TENANT-01.5 — User tenant scoping
 

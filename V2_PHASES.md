@@ -523,6 +523,74 @@ and then turned out to be a dead end.
   `test/utils/test-app.ts` mounted its own copy and no longer does, so the test
   app still matches `main.ts` middleware for middleware.
 
+### Bootstrap vs. runtime config (REQ-TENANT-01.4), 2026-08-16
+
+The requirement is one sentence -- bootstrap config shrinks to the database
+connection plus `ROOT_TENANT_URL`, everything else becomes tenant-aware runtime
+config -- and the work turned out to be mostly *deciding*, not moving. Which of
+the operator-settable variables is which was written down nowhere, so the answer
+was being re-derived from `.env.example` comments each time it came up.
+
+**The classification is now declared once**, in
+`api/src/common/config/env-classification.ts`, one entry per variable with the
+reasoning: `bootstrap`, `install`, `deployment`, `runtime`, or
+`secret-pending-v2-7`. `env-classification.spec.ts` holds it to `.env.example`
+in both directions -- a variable added to the sample env without a
+classification fails, and a classification whose variable no longer exists
+anywhere fails too. Same property as `tenant-scoped-models.ts`: you cannot add
+one without saying which kind it is.
+
+Three things fell out of writing it:
+
+- **Bootstrap config was already small** -- eleven variables, all of them
+  genuinely unable to live in the database, because they are how the process
+  reaches the database or finds the root tenant in it. `JWT_SECRET` is in the
+  list for a reason worth stating: verifying a session token happens *before*
+  the request is scoped, so a per-tenant signing key could not be told apart
+  from a forgery until after the tenant had been read out of the token.
+- **`DB_MODE` does not exist.** REQ-TENANT-01.4 names it as bootstrap config and
+  nothing ever implemented it; the `tenants.db_mode` *column* is the reserved
+  shared/dedicated marker from REQ-TENANT-01.1 and is a different thing. Left
+  unimplemented rather than invented, since nothing reads either one yet.
+- **Seventeen variables were documented nowhere** -- not in `.env.example`, not
+  in the setup guide, not in the Unraid template. `AUTO_PROVISION` was one of
+  them, which is why the first stage install needed Rob to be told about it out
+  of band. They are all in `.env.example` now, grouped by class.
+
+**What actually moved: contact identity.** The addresses a community puts on
+outbound mail and calendar entries (`hello@`, `calendar@`, `noreply@`) were
+derived from one deployment-wide `BASE_DOMAIN`, so a second community signed its
+.ics files with the first one's address. Four new `app_config` keys --
+`mail_domain`, `contact_support_email`, `contact_calendar_email`,
+`contact_event_email` -- make them per-community, editable in Site Settings.
+
+Resolution is most-specific-first: the community's explicit address, else a
+derivation from the community's own mail domain, else the deployment env var,
+else a derivation from the deployment's domain. **Step two sits above step
+three deliberately** -- a community that named its own mail domain has said
+something more specific than the deployment default. Everything defaults to
+blank, so an install that never opens the page behaves byte-identically; that
+matters because these are the reply-to on real mail.
+
+**The mail domain is NOT derived from the tenant's own host**, which is the trap
+worth not re-discovering. A tenant is a web host and tenants below the apex are
+subdomains, and `dayton.example.com` normally publishes no MX record -- deriving
+`hello@dayton.example.com` would produce an address that bounces silently. It is
+the same failure the `www.` strip in `instance-contact.ts` already guards, one
+level down. A community whose subdomain really does take mail says so
+explicitly.
+
+**What deliberately did not move: every credential.** `app_config` has no
+encryption at rest -- building that is `v2-7`, and CLAUDE.md already forbids
+writing the reserved `tenants` OAuth secret columns before it lands. Fifteen
+variables are marked `secret-pending-v2-7` and a test asserts the list, so
+moving one into runtime config has to be a deliberate edit rather than a
+plausible-looking commit. The mail *identity* (`BREVO_FROM_*` and friends) is
+held back with them on purpose: it lives in the same global
+`email_provider_config` row as the API key, a provider rejects a From address on
+a domain it has not verified, and every cron send path would need auditing for
+tenant context first.
+
 ## Deferred: self-service tenants and trial mode
 
 Rob, 2026-08-16, while testing the first second community. Two follow-ons to the
@@ -556,11 +624,8 @@ foundation is finished and the branding/demo block has settled.
   set, and the OAuth redirect host is checked against the tenant registry rather
   than "under BASE_DOMAIN". Google OAuth is now single-host until v2-8's
   REQ-TENANT-01.8 handoff; email/password is unaffected.
-- **Bootstrap/runtime config split (REQ-TENANT-01.4).** `app_config` being
-  tenant-scoped is the first half; the second is shrinking bootstrap config to
-  `DB_MODE`/DB connection/`ROOT_TENANT_URL` and moving the rest of the 45
-  `.env.example` vars into tenant-aware runtime config. Large enough to be worth
-  splitting out rather than absorbing here.
+- ~~Bootstrap/runtime config split (REQ-TENANT-01.4)~~ **done 2026-08-16.** See
+  below.
 - **Stage verification**, carrying v2-5's unverified regression surface with it.
   Rob confirmed 2026-08-15 that stage holds no real data, so it can be reset
   rather than migrated -- the backfill path does not have to be exercised there.

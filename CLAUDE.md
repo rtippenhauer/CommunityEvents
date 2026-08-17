@@ -448,6 +448,33 @@ authoritative (per REQ-TENANT-01.3).
 - **`automationLogin` keys on `is_service_account` + the root tenant, never the
   role.** The account is deliberately flipped between roles for testing, so a
   role check locks automation out exactly when it is being used.
+- **Which env vars are bootstrap and which are runtime config is declared in
+  `api/src/common/config/env-classification.ts`**, one entry per variable with
+  the reasoning, and a spec holds it to `.env.example` in both directions. Adding
+  a variable to the sample env without classifying it fails the build, the same
+  way an unclassified Prisma model does. Bootstrap is eleven variables and should
+  stay that size; `DB_MODE` is named by REQ-TENANT-01.4 but was never
+  implemented, and is not the same thing as the reserved `tenants.db_mode`
+  column.
+- **A community's contact addresses are per-tenant** (`mail_domain`,
+  `contact_support_email`, `contact_calendar_email`, `contact_event_email` in
+  `app_config`, edited in Site Settings). Resolve them through
+  `AppConfigService.supportEmail()` / `.calendarOrganizerEmail()` /
+  `.eventOrganizerEmail()`, never `instance-contact.ts` directly — those are the
+  deployment-wide env layer underneath. Order is most-specific-first: the
+  community's own address, then a derivation from its own mail domain, then the
+  env var, then a derivation from the deployment domain. Blank means inherit, so
+  an install that sets nothing is unaffected.
+- **The mail domain is never derived from the tenant's host.** A tenant is a web
+  host; a tenant subdomain normally publishes no MX record, so
+  `hello@dayton.example.com` would bounce silently. Same failure the `www.` strip
+  guards against, one level down. Pass an explicit tenant id inside a
+  `runUnscoped` sweep, as with `baseUrlFor()`.
+- **No credential moves into `app_config` before `v2-7`** — it has no encryption
+  at rest. Fifteen variables are marked `secret-pending-v2-7` and a test asserts
+  that list. The mail *identity* (`BREVO_FROM_*`) is held with them: it shares
+  the global `email_provider_config` row with the API key, and a provider rejects
+  a From address on a domain it has not verified.
 - **Tenant management lives at `/api/v1/system/tenants`**, under `system/` and
   not `admin/` because it acts on the registry of communities rather than inside
   one. No delete route exists: suspending is the reversible way to take a
