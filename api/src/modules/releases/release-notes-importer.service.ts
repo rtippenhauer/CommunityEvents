@@ -21,6 +21,16 @@ const DRAFT_FILE = '_draft.md';
 const DRAFT_VERSION = 'Upcoming';
 const DRAFT_TITLE = "What's New (In Progress)";
 
+/**
+ * Why a union rather than `number | null`: there are two reasons the author
+ * lookup can come up empty -- no root tenant at all, and a root tenant without
+ * an automation account -- and they call for different fixes. Collapsing both
+ * into `null` meant an unbootstrapped deployment logged "No root tenant" and
+ * then "Automation account not found", the second of which cannot be true when
+ * the first is: there is no tenant for an account to be missing from.
+ */
+type AutomationAuthor = { authorId: number } | { authorId: null; reason: string };
+
 // Shared release notes (see docs/RELEASE_NOTE_PIPELINE_SPEC.md) ship inside the
 // Docker image — one markdown file per finalized version under release-notes/,
 // plus release-notes/_draft.md which is docs/NEXT_RELEASE.md copied in at build
@@ -60,11 +70,12 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
       return;
     }
 
-    const authorId = await this.getAutomationAuthorId();
-    if (authorId === null) {
-      this.logger.warn('Automation account not found — skipping release notes import');
+    const lookup = await this.getAutomationAuthor();
+    if (lookup.authorId === null) {
+      this.logger.warn(`${lookup.reason} — skipping release notes import`);
       return;
     }
+    const authorId = lookup.authorId;
 
     const finalized = files.filter((f) => f.endsWith('.md') && f !== DRAFT_FILE);
     for (const file of finalized) {
@@ -77,7 +88,7 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
     }
   }
 
-  private async getAutomationAuthorId(): Promise<number | null> {
+  private async getAutomationAuthor(): Promise<AutomationAuthor> {
     // This runs from onApplicationBootstrap — no request, therefore no tenant
     // context — while `users` is tenant-scoped (REQ-TENANT-01.5), so the lookup
     // has to say which tenant it means or the extension throws and takes the
@@ -98,8 +109,10 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
       // Migrated and seeded but never bootstrapped. Skipping is right: without
       // a root tenant there is no automation account to attribute notes to, and
       // the next boot after bootstrap.js runs will import them.
-      this.logger.warn('No root tenant — skipping release notes import');
-      return null;
+      return {
+        authorId: null,
+        reason: 'This deployment has no root tenant yet (bootstrap.js has not run)',
+      };
     }
 
     // Matched by name + email, not role — the account's role is mutable
@@ -119,7 +132,13 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
         where: { email: AUTOMATION_ACCOUNT_EMAIL, fullName: AUTOMATION_ACCOUNT_NAME },
       }),
     );
-    return user?.id ?? null;
+    if (!user) {
+      return {
+        authorId: null,
+        reason: 'The root tenant has no automation account',
+      };
+    }
+    return { authorId: user.id };
   }
 
   private parseNote(raw: string): { title: string; body: string } {
