@@ -42,7 +42,6 @@ import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
-import { eventOrganizerEmail } from '../../common/config/instance-contact';
 
 /** An event with its location (and that location's photos) loaded. */
 type EventWithLocation = Prisma.eventsGetPayload<{
@@ -1242,10 +1241,14 @@ export class EventsService {
 </html>`;
   }
 
+  // organizerEmail is passed in for the same reason appUrl is: both are
+  // per-tenant now, both need an await to resolve, and this stays synchronous
+  // so it can be called from string building.
   private buildIcs(
     event: EventRow,
     brand: { brandName: string; eventSingular: string },
     appUrl: string,
+    organizerEmail: string,
     descriptionSuffix?: string,
   ): string {
     const { brandName, eventSingular } = brand;
@@ -1283,7 +1286,7 @@ export class EventsService {
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(descParts.join('\n'))}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=${brandName}:mailto:${eventOrganizerEmail(this.config)}`,
+      `ORGANIZER;CN=${brandName}:mailto:${organizerEmail}`,
       'END:VEVENT',
       'END:VCALENDAR',
     ];
@@ -1295,7 +1298,14 @@ export class EventsService {
     const event = await this.findOne(id);
     const appUrl = await this.tenantResolution.baseUrlFor();
     const { brandName, eventSingular } = await this.getEmailBrand();
-    return this.buildIcs(event, { brandName, eventSingular }, appUrl, `View event: ${appUrl}/events/${id}`);
+    const organizerEmail = await this.appConfig.eventOrganizerEmail();
+    return this.buildIcs(
+      event,
+      { brandName, eventSingular },
+      appUrl,
+      organizerEmail,
+      `View event: ${appUrl}/events/${id}`,
+    );
   }
 
   async generateGuestIcs(token: string): Promise<{ ics: string; eventId: number }> {
@@ -1309,7 +1319,14 @@ export class EventsService {
     const appUrl = await this.tenantResolution.baseUrlFor();
     const manageUrl = `${appUrl}/rsvp-guest?token=${token}`;
     const { brandName, eventSingular } = await this.getEmailBrand();
-    const ics = this.buildIcs(link.event, { brandName, eventSingular }, appUrl, `Manage your RSVP: ${manageUrl}`);
+    const organizerEmail = await this.appConfig.eventOrganizerEmail();
+    const ics = this.buildIcs(
+      link.event,
+      { brandName, eventSingular },
+      appUrl,
+      organizerEmail,
+      `Manage your RSVP: ${manageUrl}`,
+    );
     return { ics, eventId: link.event.id };
   }
 

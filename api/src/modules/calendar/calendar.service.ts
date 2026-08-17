@@ -7,7 +7,6 @@ import { EventStatus, RsvpStatus } from '../../database/enums';
 import { asDateString, asTimeString } from '../../common/utils/prisma-date.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
-import { calendarOrganizerEmail, supportEmail } from '../../common/config/instance-contact';
 import { AppConfigService } from '../app-config/app-config.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
@@ -45,6 +44,16 @@ export interface CalendarSettingsResponse {
 interface CacheEntry {
   ics: string;
   expiresAt: number;
+}
+
+/**
+ * The two per-community addresses an .ics carries: the reply-to shown to
+ * members, and the ORGANIZER the calendar client displays. Grouped because they
+ * are always resolved and passed together.
+ */
+interface FeedContacts {
+  support: string;
+  organizer: string;
 }
 
 @Injectable()
@@ -168,8 +177,16 @@ export class CalendarService {
     return url.includes('stage') ? `${brandName} - Stage` : brandName;
   }
 
-  private organizerEmail(): string {
-    return calendarOrganizerEmail(this.config);
+  // Resolved once per feed and threaded through, rather than looked up inside
+  // buildVEvent: that runs once per event in a .map(), so a read there would be
+  // N app_config queries for one feed, and would make the builder async for no
+  // reason other than configuration.
+  private async contactsFor(tenantId?: number): Promise<FeedContacts> {
+    const [support, organizer] = await Promise.all([
+      this.appConfig.supportEmail(tenantId),
+      this.appConfig.calendarOrganizerEmail(tenantId),
+    ]);
+    return { support, organizer };
   }
 
   private async buildFeed(user: User): Promise<string> {
@@ -216,7 +233,12 @@ export class CalendarService {
 
     if (events.length === 0) return this.emptyFeed(brand);
 
-    const vevents = events.map((e) => this.buildVEvent(e, rsvpMap.get(e.id) ?? null, appUrl, brand));
+    // The subscriber's own tenant again, for the same reason appUrl uses it:
+    // a feed is fetched by token, so there is no session to inherit from.
+    const contacts = await this.contactsFor(user.tenantId);
+    const vevents = events.map((e) =>
+      this.buildVEvent(e, rsvpMap.get(e.id) ?? null, appUrl, brand, contacts),
+    );
 
     const lines = [
       'BEGIN:VCALENDAR',
@@ -241,6 +263,7 @@ export class CalendarService {
     rsvpStatus: string | null,
     appUrl: string,
     brand: { brandName: string; eventSingular: string; eventPlural: string },
+    contacts: FeedContacts,
   ): string[] {
     const { brandName, eventSingular } = brand;
 
@@ -289,7 +312,7 @@ export class CalendarService {
       `View details: ${appUrl}/events/${event.id}`,
       '',
       '---',
-      `Questions? Reply to ${supportEmail(this.config)}`,
+      `Questions? Reply to ${contacts.support}`,
       `To manage your calendar subscription, visit your ${brandName} account settings.`,
     ].filter(Boolean).join('\n');
 
@@ -309,7 +332,7 @@ export class CalendarService {
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(description)}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=${brandName}:mailto:${this.organizerEmail()}`,
+      `ORGANIZER;CN=${brandName}:mailto:${contacts.organizer}`,
       `STATUS:${isCancelled ? 'CANCELLED' : 'CONFIRMED'}`,
       'END:VEVENT',
     ];
@@ -359,6 +382,10 @@ export class CalendarService {
     locationAddress: string | null = event.locationAddress,
   ): Promise<string> {
     const { brandName, eventSingular } = await this.getBrand();
+    // Ambient tenant here, unlike buildFeed: every caller reaches this from a
+    // request or from a sweep that has already re-entered runWithTenant, and
+    // resolves the appUrl it passes in the same way.
+    const contacts = await this.contactsFor();
     const startUtc = eventTimeToUtc(asDateString(event.eventDate), asTimeString(event.eventTime));
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
     const dtStart = toIcsUtcString(startUtc);
@@ -397,7 +424,7 @@ export class CalendarService {
       `View details and RSVP: ${appUrl}/events/${event.id}`,
       '',
       '---',
-      `Questions? Reply to ${supportEmail(this.config)}`,
+      `Questions? Reply to ${contacts.support}`,
     ].join('\n');
 
     const location = locationAddress
@@ -421,7 +448,7 @@ export class CalendarService {
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(description)}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=${brandName}:mailto:${this.organizerEmail()}`,
+      `ORGANIZER;CN=${brandName}:mailto:${contacts.organizer}`,
       foldIcsLine(`ATTENDEE;CN=${icsEscape(recipient.name)};RSVP=TRUE:mailto:${recipient.email}`),
       'STATUS:CONFIRMED',
       'END:VEVENT',
