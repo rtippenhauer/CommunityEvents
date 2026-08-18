@@ -424,6 +424,13 @@ authoritative (per REQ-TENANT-01.3).
   `req.tenant.isRoot`, and `admin.service.setRole` refuses to assign or remove
   it — bootstrap creates the first one, further ones are a database edit.
   `disabled` grants nothing at all, since `RolesGuard` is an allowlist.
+- **Every tenant's service account holds `automation`**, root or not. It was
+  `disabled` outside the root tenant until 2026-08-17; that reads as broken on
+  the one screen an operator checks when a community looks wrong, and the
+  escalation it guarded against was unreachable (NULL password hash, no OAuth
+  link, and `automationLogin` admits the root tenant's account only). The guard
+  moved to `setRole`, which now refuses to change **any** non-root service
+  account's role — keyed on what the account is, not on the role it holds.
 - **`users.is_service_account` marks the one non-human account per tenant.**
   Guards key on that column, never on the role (deliberately mutable — the root
   account gets flipped to admin and back for testing) and never on the
@@ -442,9 +449,12 @@ authoritative (per REQ-TENANT-01.3).
   fields are create-only. A one-time setup link replaces the password hand-off in
   `v2-12`.
 - **`system_admin` is assignable from the UI to the root tenant's service account
-  only**, so automation can drive tenant management during live testing. Humans
-  still cannot be promoted. Temporary — expected to revert to database-only
-  before production.
+  only, by someone who already holds it.** Both halves matter and neither implies
+  the other: constraining only the target let any root-community admin mint the
+  role that operates every community. Humans still cannot be promoted. The picker
+  reads `isRoot` off the branding payload so it stops offering an option the API
+  would refuse. Temporary — expected to revert to database-only before
+  production.
 - **`automationLogin` keys on `is_service_account` + the root tenant, never the
   role.** The account is deliberately flipped between roles for testing, so a
   role check locks automation out exactly when it is being used.
