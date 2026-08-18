@@ -34,7 +34,7 @@ export interface TenantFormDialogData {
 
     <mat-dialog-content>
       <form [formGroup]="form" class="tenant-form">
-        <mat-form-field appearance="outline">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
           <mat-label>Domain</mat-label>
           <input matInput formControlName="domain" placeholder="dayton.communityeventsproject.com" />
           <mat-hint>
@@ -52,7 +52,7 @@ export interface TenantFormDialogData {
           </p>
         }
 
-        <mat-form-field appearance="outline">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
           <mat-label>Slug</mat-label>
           <input matInput formControlName="slug" />
           <mat-hint>
@@ -73,51 +73,55 @@ export interface TenantFormDialogData {
               invites have to come from someone who is already a member.
             </p>
 
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
               <mat-label>Admin name</mat-label>
               <input matInput formControlName="adminName" />
             </mat-form-field>
 
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
               <mat-label>Admin email</mat-label>
               <input matInput formControlName="adminEmail" type="email" />
               <mat-error>A valid email address is required</mat-error>
             </mat-form-field>
 
-            <mat-form-field appearance="outline">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
               <mat-label>Admin password</mat-label>
               <input matInput formControlName="adminPassword" type="password" />
               <mat-hint>At least 8 characters. They can change it once signed in.</mat-hint>
               <mat-error>At least 8 characters</mat-error>
             </mat-form-field>
           </div>
-
-          <div class="admin-section">
-            <h3>Mail domain</h3>
-            <p class="admin-note">
-              Where this community's mail comes from — the address on its invites, calendar
-              entries and reminders. It is <strong>not</strong> assumed from the web address
-              above: a subdomain usually has no mail records, so mail sent from it would
-              bounce with nothing to show for it.
-            </p>
-
-            <mat-form-field appearance="outline">
-              <mat-label>Mail domain</mat-label>
-              <input matInput formControlName="mailDomain" [placeholder]="deploymentMailDomain" />
-              @if (suggestionApplies()) {
-                <mat-hint>
-                  Suggested, because {{ form.getRawValue().domain }} sits under
-                  {{ deploymentMailDomain }} — the domain this deployment already sends from.
-                </mat-hint>
-              } @else {
-                <mat-hint>
-                  Leave blank to use {{ deploymentMailDomain || 'the deployment default' }}. Set
-                  it only if this community receives mail on a domain of its own.
-                </mat-hint>
-              }
-            </mat-form-field>
-          </div>
         }
+
+        <!-- Editable on create AND on edit. Unlike the admin block above, this
+             is one setting with two doors onto it: the system admin cannot
+             reach a community's own Settings page, because that page lives on
+             the community's host and needs an account there. -->
+        <div class="admin-section">
+          <h3>Mail domain</h3>
+          <p class="admin-note">
+            Where this community's mail comes from — the address on its invites, calendar
+            entries and reminders. It is <strong>not</strong> assumed from the web address
+            above: a subdomain usually has no mail records, so mail sent from it would
+            bounce with nothing to show for it.
+          </p>
+
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Mail domain</mat-label>
+            <input matInput formControlName="mailDomain" [placeholder]="deploymentMailDomain" />
+            @if (suggestionApplies()) {
+              <mat-hint>
+                Suggested, because {{ form.getRawValue().domain }} sits under
+                {{ deploymentMailDomain }} — the domain this deployment already sends from.
+              </mat-hint>
+            } @else {
+              <mat-hint>
+                Leave blank to use {{ deploymentMailDomain || 'the deployment default' }}. Set
+                it only if this community receives mail on a domain of its own.
+              </mat-hint>
+            }
+          </mat-form-field>
+        </div>
 
         <mat-slide-toggle formControlName="active" [disabled]="isRoot">Active</mat-slide-toggle>
         @if (!form.getRawValue().active) {
@@ -233,8 +237,9 @@ export class TenantFormDialogComponent {
       '',
       this.data.tenant ? [] : [Validators.required, Validators.minLength(8)],
     ],
-    // Optional: blank is a real answer meaning "inherit the deployment's".
-    mailDomain: [''],
+    // Optional: blank is a real answer meaning "inherit the deployment's",
+    // which is why the existing value is read with ?? rather than ||.
+    mailDomain: [this.data.tenant?.mailDomain ?? ''],
   });
 
   constructor() {
@@ -247,6 +252,9 @@ export class TenantFormDialogComponent {
         // Never overwrite something the operator typed themselves. Once they
         // touch the field it is theirs, even if they then clear it.
         if (this.form.controls.mailDomain.dirty) return;
+        // On edit the field already holds what the server has; suggesting over
+        // it would silently rewrite a stored setting.
+        if (this.data.tenant) return;
         this.form.controls.mailDomain.setValue(this.suggestFor(domain), { emitEvent: false });
       });
   }
@@ -292,6 +300,9 @@ export class TenantFormDialogComponent {
     const payload = {
       slug: raw.slug || undefined,
       ...(this.isRoot ? {} : { domain: raw.domain, status: raw.active ? ('active' as const) : ('suspended' as const) }),
+      // Sent even when empty: clearing it is how a community goes back to
+      // inheriting the deployment default, so '' has to reach the API.
+      mailDomain: raw.mailDomain.trim(),
     };
 
     // The admin fields exist on create only, and are never sent on an update --
@@ -304,7 +315,6 @@ export class TenantFormDialogComponent {
           adminName: raw.adminName || undefined,
           adminEmail: raw.adminEmail,
           adminPassword: raw.adminPassword,
-          mailDomain: raw.mailDomain || undefined,
         });
 
     req$.subscribe({
