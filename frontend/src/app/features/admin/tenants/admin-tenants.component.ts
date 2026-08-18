@@ -22,6 +22,12 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
  * adminGuard — a community's admin cannot reach it, and the API refuses it a
  * second time regardless.
  *
+ * Laid out as a list rather than a grid of cards. A community is one name, one
+ * domain, three numbers and three actions -- a row holds that, where a
+ * fixed-width card did not: the third action overflowed the card and, on every
+ * community but the last, was hidden underneath the next one, which looked like
+ * the delete button simply not existing. (Rob, 2026-08-18.)
+ *
  * Delete is offered only on a community that is already suspended, and then
  * only behind a retyped domain. Suspending stays the ordinary way to take one
  * offline -- instant, reversible, and what the Active toggle does; deleting
@@ -61,53 +67,35 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
       @if (loading()) {
         <div class="loading"><mat-spinner diameter="36" /></div>
       } @else {
-        <div class="tenants-grid">
+        <!-- A list, not a grid of cards. The row is what a community actually
+             is here: one name, one domain, three numbers and three actions.
+             Cards forced all of that into a fixed-width column, and the third
+             action pushed the delete button outside the card entirely -- on
+             every community except the last, where it landed underneath the
+             next card and looked like it was missing. -->
+        <div class="tenant-list" role="list">
           @for (tenant of tenants(); track tenant.id) {
-            <div class="tenant-card" [class.suspended]="tenant.status === 'suspended'">
-              <div class="tenant-header">
-                <h3>{{ tenant.slug }}</h3>
-                @if (tenant.isRoot) {
-                  <mat-chip class="chip-root">Root</mat-chip>
-                }
-                @if (tenant.status === 'suspended') {
-                  <mat-chip class="chip-suspended">Suspended</mat-chip>
-                }
-                <button
-                  mat-icon-button
-                  class="edit-btn"
-                  (click)="openEdit(tenant)"
-                  [attr.aria-label]="'Edit ' + tenant.slug"
-                >
-                  <mat-icon>edit</mat-icon>
-                </button>
-                <button
-                  mat-icon-button
-                  (click)="openUsers(tenant)"
-                  [attr.aria-label]="'Manage people in ' + tenant.slug"
-                  matTooltip="People"
-                >
-                  <mat-icon>group</mat-icon>
-                </button>
-                <!-- Suspended only. Deleting and taking offline are separate
-                     decisions, and the API refuses the first without the
-                     second -- so offering it here would just produce an
-                     error. -->
-                @if (!tenant.isRoot && tenant.status === 'suspended') {
-                  <button
-                    mat-icon-button
-                    class="delete-btn"
-                    (click)="openDelete(tenant)"
-                    [attr.aria-label]="'Delete ' + tenant.slug"
-                    matTooltip="Delete permanently"
-                  >
-                    <mat-icon>delete_forever</mat-icon>
-                  </button>
-                }
+            <div
+              class="tenant-row"
+              role="listitem"
+              [class.suspended]="tenant.status === 'suspended'"
+            >
+              <div class="identity">
+                <div class="name-line">
+                  <span class="slug">{{ tenant.slug }}</span>
+                  @if (tenant.isRoot) {
+                    <mat-chip class="chip-root">Root</mat-chip>
+                  }
+                  @if (tenant.status === 'suspended') {
+                    <mat-chip class="chip-suspended">Suspended</mat-chip>
+                  }
+                </div>
+                <a class="domain" [href]="'https://' + tenant.domain" target="_blank" rel="noopener">
+                  {{ tenant.domain }}
+                </a>
               </div>
 
-              <div class="tenant-domain">{{ tenant.domain }}</div>
-
-              <div class="tenant-stats">
+              <div class="stats">
                 <div class="stat">
                   <span class="stat-value">{{ tenant.memberCount }}</span>
                   <span class="stat-label">Members</span>
@@ -120,6 +108,49 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
                   <span class="stat-value">{{ tenant.locationCount }}</span>
                   <span class="stat-label">Locations</span>
                 </div>
+              </div>
+
+              <div class="actions">
+                <button
+                  mat-icon-button
+                  (click)="openEdit(tenant)"
+                  [attr.aria-label]="'Edit ' + tenant.slug"
+                  matTooltip="Edit"
+                >
+                  <mat-icon>edit</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  (click)="openUsers(tenant)"
+                  [attr.aria-label]="'Manage people in ' + tenant.slug"
+                  matTooltip="People"
+                >
+                  <mat-icon>group</mat-icon>
+                </button>
+                <!-- Suspended, non-root only: the API refuses to delete an
+                     active community, so offering it here would only produce an
+                     error. The slot is held open either way so the row's
+                     controls do not shift position between communities. -->
+                @if (!tenant.isRoot && tenant.status === 'suspended') {
+                  <button
+                    mat-icon-button
+                    class="delete-btn"
+                    (click)="openDelete(tenant)"
+                    [attr.aria-label]="'Delete ' + tenant.slug"
+                    matTooltip="Delete permanently"
+                  >
+                    <mat-icon>delete_forever</mat-icon>
+                  </button>
+                } @else {
+                  <span
+                    class="action-placeholder"
+                    [matTooltip]="
+                      tenant.isRoot
+                        ? 'The root community cannot be deleted'
+                        : 'Suspend this community before it can be deleted'
+                    "
+                  ></span>
+                }
               </div>
             </div>
           }
@@ -155,83 +186,151 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
       .subtitle {
         margin: 4px 0 0;
         font-size: 13px;
-        max-width: 52ch;
+        line-height: 1.5;
         color: rgba(0, 0, 0, 0.6);
+        max-width: 60ch;
       }
       .loading {
         display: flex;
         justify-content: center;
-        padding: 48px;
+        padding: 40px;
       }
-      .tenants-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: 16px;
-      }
-      .tenant-card {
+
+      .tenant-list {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+        overflow: hidden;
         background: #fff;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.1);
-        position: relative;
       }
-      .tenant-card.suspended {
-        opacity: 0.72;
-        border-left: 4px solid #b26a00;
+      .tenant-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.07);
       }
-      .delete-btn {
-        color: #b3261e;
+      .tenant-row:last-child {
+        border-bottom: none;
       }
-      .tenant-header {
+      .tenant-row.suspended {
+        background: rgba(178, 106, 0, 0.05);
+        border-left: 3px solid #b26a00;
+      }
+
+      /* Takes the slack, so long domains shrink rather than pushing the
+         actions out of the row -- which is exactly what went wrong with the
+         card layout this replaced. */
+      .identity {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .name-line {
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-bottom: 4px;
+        flex-wrap: wrap;
       }
-      .tenant-header h3 {
-        margin: 0;
-        font-size: 18px;
+      .slug {
+        font-weight: 600;
+        font-size: 15px;
       }
-      .edit-btn {
-        margin-left: auto;
-      }
-      .chip-root {
-        --mdc-chip-label-text-size: 11px;
-        background: #e8f0fe;
-      }
-      .chip-suspended {
-        --mdc-chip-label-text-size: 11px;
-        background: #fff0d6;
-      }
-      .tenant-domain {
-        font-size: 13px;
+      .domain {
+        display: block;
+        margin-top: 2px;
+        font-size: 12.5px;
         color: rgba(0, 0, 0, 0.6);
-        word-break: break-all;
+        text-decoration: none;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
-      .tenant-stats {
+      .domain:hover {
+        text-decoration: underline;
+        color: var(--db-primary);
+      }
+
+      .stats {
         display: flex;
-        gap: 24px;
-        margin-top: 16px;
+        gap: 20px;
+        flex: 0 0 auto;
       }
       .stat {
         display: flex;
         flex-direction: column;
+        align-items: center;
+        min-width: 58px;
       }
       .stat-value {
-        font-size: 20px;
+        font-size: 17px;
         font-weight: 600;
+        line-height: 1.1;
       }
       .stat-label {
-        font-size: 11px;
+        font-size: 10px;
+        letter-spacing: 0.4px;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        color: rgba(0, 0, 0, 0.5);
+      }
+
+      /* Never shrinks: the controls are the one part of the row that must stay
+         where the eye expects them, and clipping them is how the previous
+         layout hid the delete button. */
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex: 0 0 auto;
+      }
+      .delete-btn {
+        color: #b3261e;
+      }
+      /* Holds the delete slot open so Edit and People do not move between one
+         community and the next, and carries the tooltip explaining why the
+         action is unavailable here. */
+      .action-placeholder {
+        display: inline-block;
+        width: 40px;
+        height: 40px;
+      }
+
+      .chip-root,
+      .chip-suspended {
+        font-size: 11px !important;
+        min-height: 22px !important;
+        padding: 0 8px !important;
+      }
+      .chip-root {
+        background: #e1e8f0 !important;
+      }
+      .chip-suspended {
+        background: #ffe0b2 !important;
+      }
+
+      .single-note {
+        margin: 16px 0 0;
+        font-size: 12.5px;
+        line-height: 1.6;
         color: rgba(0, 0, 0, 0.6);
       }
-      .single-note {
-        margin-top: 24px;
-        font-size: 13px;
-        max-width: 60ch;
-        color: rgba(0, 0, 0, 0.6);
+
+      @media (max-width: 700px) {
+        .tenants-header {
+          flex-direction: column;
+        }
+        /* Stacks rather than scrolls sideways: the actions stay reachable on a
+           phone, which is where an operator is most likely to be suspending
+           something in a hurry. */
+        .tenant-row {
+          flex-wrap: wrap;
+        }
+        .identity {
+          flex: 1 1 100%;
+        }
+        .stats {
+          gap: 14px;
+        }
       }
     `,
   ],
