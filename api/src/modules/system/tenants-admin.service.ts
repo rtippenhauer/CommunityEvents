@@ -17,7 +17,12 @@ import {
   AUTOMATION_ACCOUNT_NAME,
 } from '../../common/utils/service-account.util';
 import { AuditService } from '../audit/audit.service';
+import {
+  TENANT_SCOPED_MODELS,
+  type TenantScopedModel,
+} from '../../common/tenant/tenant-scoped-models';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { DeleteTenantDto } from './dto/delete-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
 /** Matches AuthService.register, so this hash verifies like any other. */
@@ -33,6 +38,13 @@ export interface TenantRow {
   createdAt: Date;
   eventCount: number;
   locationCount: number;
+  /**
+   * That community's own mail_domain setting, or '' when it inherits the
+   * deployment's. Returned so the edit form can show what is actually set
+   * rather than an empty box that might mean either.
+   */
+  mailDomain: string;
+  memberCount: number;
 }
 
 /**
@@ -75,17 +87,31 @@ export class TenantsAdminService {
     // Awaited inside the callback, not returned from it: Prisma promises are
     // lazy, so returning them would build the queries in the unscoped context
     // and run them outside it.
-    const [events, locations] = await runUnscoped(
+    const [events, locations, members, mailRows] = await runUnscoped(
       'system admin tenant list reports the size of every tenant',
       async () =>
         await Promise.all([
           this.prisma.events.groupBy({ by: ['tenantId'], _count: { _all: true } }),
           this.prisma.locations.groupBy({ by: ['tenantId'], _count: { _all: true } }),
+          // Real people only: the service account exists in every community and
+          // counting it would make an empty community look like it has one
+          // member. Same rule the member directory and leaderboard follow.
+          this.prisma.users.groupBy({
+            by: ['tenantId'],
+            _count: { _all: true },
+            where: { isServiceAccount: false },
+          }),
+          this.prisma.app_config.findMany({
+            where: { configKey: 'mail_domain' },
+            select: { tenantId: true, configValue: true },
+          }),
         ]),
     );
 
     const eventsByTenant = new Map(events.map((r) => [r.tenantId, r._count._all]));
     const locationsByTenant = new Map(locations.map((r) => [r.tenantId, r._count._all]));
+    const membersByTenant = new Map(members.map((r) => [r.tenantId, r._count._all]));
+    const mailByTenant = new Map(mailRows.map((r) => [r.tenantId, r.configValue]));
 
     return tenants.map((t) => ({
       id: t.id,
@@ -97,6 +123,8 @@ export class TenantsAdminService {
       createdAt: t.createdAt,
       eventCount: eventsByTenant.get(t.id) ?? 0,
       locationCount: locationsByTenant.get(t.id) ?? 0,
+      memberCount: membersByTenant.get(t.id) ?? 0,
+      mailDomain: mailByTenant.get(t.id) ?? '',
     }));
   }
 
@@ -209,19 +237,7 @@ export class TenantsAdminService {
     // runUnscoped for the same reason as the two writes above: the row belongs
     // to the new tenant while the request is scoped to the root one.
     const mailDomain = normalizeTenantDomain(dto.mailDomain ?? '');
-    if (mailDomain) {
-      await runUnscoped("setting the new tenant's mail domain", async () => {
-        await this.prisma.app_config.create({
-          data: {
-            tenantId: created.id,
-            configKey: 'mail_domain',
-            configValue: mailDomain,
-            description: 'Domain this community sends mail from',
-            updatedBy: actorId,
-          },
-        });
-      });
-    }
+    if (mailDomain) await this.writeMailDomain(created.id, mailDomain, actorId);
 
     this.tenantResolution.clearCache();
     await this.auditService.log({
@@ -270,7 +286,29 @@ export class TenantsAdminService {
       data.status = dto.status;
     }
 
-    if (Object.keys(data).length === 0) return this.findOne(id);
+    // Written before the "nothing else changed" return below, because the mail
+    // domain is not a column on `tenants` -- it is that community's own
+    // app_config row, and a request that changes only it still changes
+    // something.
+    let mailDomainChanged = false;
+    if (dto.mailDomain !== undefined) {
+      const mailDomain = normalizeTenantDomain(dto.mailDomain);
+      await this.writeMailDomain(id, mailDomain, actorId);
+      mailDomainChanged = true;
+    }
+
+    if (Object.keys(data).length === 0) {
+      if (mailDomainChanged) {
+        await this.auditService.log({
+          userId: actorId,
+          action: 'tenant.update',
+          entityType: 'tenant',
+          entityId: id,
+          metadata: { changed: ['mailDomain'] },
+        });
+      }
+      return this.findOne(id);
+    }
 
     try {
       await this.prisma.tenants.update({ where: { id }, data });
@@ -288,9 +326,137 @@ export class TenantsAdminService {
       action: 'tenant.update',
       entityType: 'tenant',
       entityId: id,
-      metadata: { changed: Object.keys(data) },
+      metadata: { changed: [...Object.keys(data), ...(mailDomainChanged ? ['mailDomain'] : [])] },
     });
     return this.findOne(id);
+  }
+
+  /**
+   * Permanently deletes a community and everything in it.
+   *
+   * Three gates, in order, because this is the one irreversible action in the
+   * system:
+   *
+   *  1. never the root tenant -- it is the host this API answers on, and the
+   *     system admin is browsing it;
+   *  2. it must already be suspended, so taking a community offline and
+   *     destroying it are separate decisions made at separate times. Suspension
+   *     is reversible and instant, which makes it the right first step
+   *     regardless;
+   *  3. the caller retypes the domain. A boolean can be sent by accident; a
+   *     domain cannot be supplied without having read which community it names.
+   *
+   * The purge itself filters by `tenantId` **explicitly** rather than relying on
+   * the scoping extension. Everywhere else in this codebase the extension is the
+   * enforcement point and adding a manual filter is discouraged -- here the cost
+   * of being wrong is every community's data, and a bare `deleteMany({})` that
+   * silently lost its filter (an unextended transaction client, say) would do
+   * exactly that. The filter is written where it can be read.
+   *
+   * Order does not matter: every foreign key among the scoped tables is
+   * ON DELETE CASCADE, so deleting a parent takes its children and deleting a
+   * child first is equally fine. Only the `tenant_id` keys are RESTRICT, which
+   * is what makes the final `tenants.delete()` a safety net -- if this list ever
+   * misses a table, that call fails loudly instead of leaving orphans.
+   */
+  async remove(
+    id: number,
+    dto: DeleteTenantDto,
+    actorId: number,
+  ): Promise<{ id: number; domain: string; deleted: Record<string, number> }> {
+    const existing = await this.prisma.tenants.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Tenant not found');
+
+    if (existing.isRoot) {
+      throw new BadRequestException(
+        'The root community cannot be deleted — it is the host this system answers on.',
+      );
+    }
+
+    if (existing.status !== 'suspended') {
+      throw new BadRequestException(
+        'Suspend this community first. Deleting is permanent, so taking it offline is a separate step.',
+      );
+    }
+
+    if (normalizeTenantDomain(dto.confirmDomain ?? '') !== existing.domain) {
+      throw new BadRequestException(
+        `Type ${existing.domain} exactly to confirm you are deleting that community.`,
+      );
+    }
+
+    const deleted: Record<string, number> = {};
+    await runUnscoped(`deleting tenant ${existing.domain} and all of its data`, async () => {
+      // One transaction, so a failure part-way leaves the community intact
+      // rather than half-erased. The timeout is raised well past Prisma's 5s
+      // default: this is 29 deletes over what may be years of one community's
+      // history, and it runs once in that community's lifetime.
+      await this.prisma.$transaction(
+        async (tx) => {
+          const delegates = tx as unknown as Record<
+            TenantScopedModel,
+            { deleteMany(args: { where: { tenantId: number } }): Promise<{ count: number }> }
+          >;
+          for (const model of TENANT_SCOPED_MODELS) {
+            const { count } = await delegates[model].deleteMany({ where: { tenantId: id } });
+            if (count > 0) deleted[model] = count;
+          }
+          await (tx as unknown as {
+            tenants: { delete(args: { where: { id: number } }): Promise<unknown> };
+          }).tenants.delete({ where: { id } });
+        },
+        { timeout: 120_000, maxWait: 15_000 },
+      );
+    });
+
+    this.tenantResolution.clearCache();
+    // Logged on the ROOT tenant deliberately: audit_log is itself scoped, so a
+    // record written against the deleted community would have just been deleted
+    // with it. The one trace this leaves has to live somewhere that outlives it.
+    await this.auditService.log({
+      userId: actorId,
+      action: 'tenant.delete',
+      entityType: 'tenant',
+      entityId: id,
+      metadata: { slug: existing.slug, domain: existing.domain, deleted },
+    });
+    this.logger.warn(
+      `Tenant ${existing.domain} (id ${id}) deleted by user ${actorId}. ` +
+        `Rows removed: ${JSON.stringify(deleted)}`,
+    );
+
+    return { id, domain: existing.domain, deleted };
+  }
+
+  /**
+   * Sets (or clears) a community's `mail_domain` setting.
+   *
+   * The same app_config row its own admin edits in Settings -- deliberately one
+   * setting reachable from two places, rather than two settings that can
+   * disagree. Blank clears the row instead of storing an empty string, because
+   * "no row" is what AppConfigService reads as "inherit the deployment's".
+   *
+   * runUnscoped because the row belongs to the tenant being edited while the
+   * request is scoped to the root one.
+   */
+  private async writeMailDomain(tenantId: number, domain: string, actorId: number): Promise<void> {
+    await runUnscoped("setting a tenant's mail domain", async () => {
+      if (!domain) {
+        await this.prisma.app_config.deleteMany({ where: { tenantId, configKey: 'mail_domain' } });
+        return;
+      }
+      await this.prisma.app_config.upsert({
+        where: { tenantId_configKey: { tenantId, configKey: 'mail_domain' } },
+        create: {
+          tenantId,
+          configKey: 'mail_domain',
+          configValue: domain,
+          description: 'Domain this community sends mail from',
+          updatedBy: actorId,
+        },
+        update: { configValue: domain, updatedBy: actorId },
+      });
+    });
   }
 
   private normalizeOrThrow(input: string): string {

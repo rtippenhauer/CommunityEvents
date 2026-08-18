@@ -12,6 +12,34 @@ export interface AdminTenant {
   createdAt: string;
   eventCount: number;
   locationCount: number;
+  memberCount: number;
+  /** That community's own mail domain, or '' when it inherits the deployment's. */
+  mailDomain: string;
+}
+
+/** One person inside a community, as seen from the system admin screens. */
+export interface AdminTenantUser {
+  id: number;
+  fullName: string;
+  email: string;
+  role: string;
+  status: string;
+  emailVerified: boolean;
+  isServiceAccount: boolean;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export interface CreateTenantUserPayload {
+  fullName: string;
+  email: string;
+  password: string;
+  role?: string;
+}
+
+export interface UpdateTenantUserPayload {
+  role?: string;
+  status?: string;
 }
 
 export interface CreateTenantPayload {
@@ -59,5 +87,44 @@ export class TenantsAdminService {
 
   update(id: number, payload: UpdateTenantPayload): Observable<AdminTenant> {
     return this.http.patch<AdminTenant>(`${this.base}/${id}`, payload);
+  }
+
+  /**
+   * Permanently deletes a community and everything in it.
+   *
+   * The domain is sent in the body rather than the query string: it is the
+   * confirmation, and a query string ends up in access logs and browser
+   * history. HttpClient needs `body` inside the options object for DELETE.
+   */
+  remove(id: number, confirmDomain: string): Observable<{ id: number; domain: string }> {
+    return this.http.delete<{ id: number; domain: string }>(`${this.base}/${id}`, {
+      body: { confirmDomain },
+    });
+  }
+
+  // ── People inside one community ──────────────────────────────────────────
+  // Nested under the tenant so a request cannot reach a user without naming
+  // which community it means.
+
+  getUsers(tenantId: number): Observable<AdminTenantUser[]> {
+    return this.http.get<AdminTenantUser[]>(`${this.base}/${tenantId}/users`);
+  }
+
+  createUser(tenantId: number, payload: CreateTenantUserPayload): Observable<AdminTenantUser> {
+    return this.http.post<AdminTenantUser>(`${this.base}/${tenantId}/users`, payload);
+  }
+
+  updateUser(
+    tenantId: number,
+    userId: number,
+    payload: UpdateTenantUserPayload,
+  ): Observable<AdminTenantUser> {
+    return this.http.patch<AdminTenantUser>(`${this.base}/${tenantId}/users/${userId}`, payload);
+  }
+
+  resetUserPassword(tenantId: number, userId: number, password: string): Observable<{ ok: true }> {
+    return this.http.post<{ ok: true }>(`${this.base}/${tenantId}/users/${userId}/password`, {
+      password,
+    });
   }
 }

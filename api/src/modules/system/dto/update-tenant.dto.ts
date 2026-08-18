@@ -24,4 +24,20 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsIn(['active', 'suspended'])
   status?: 'active' | 'suspended';
+
+  /**
+   * The community's mail domain, editable here as well as in its own Settings.
+   *
+   * Both places write the same `mail_domain` app_config row -- this is a second
+   * door onto one setting, not a second setting. It exists because the system
+   * admin cannot reach a community's Settings page: that page lives on the
+   * community's own host and needs an account there.
+   *
+   * An empty string is a meaningful value meaning "inherit the deployment's",
+   * so it clears the row rather than being ignored. Undefined leaves it alone.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  mailDomain?: string;
 }
