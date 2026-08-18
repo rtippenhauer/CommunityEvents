@@ -2,10 +2,10 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { UserRole } from '../src/database/enums';
-import { createTestApp, truncateAllTables } from './utils/test-app';
+import { createTestApp, resetThrottler, truncateAllTables } from './utils/test-app';
 import { loginAs, seedCity, seedUser } from './utils/seed';
 import { TEST_TENANT_ID } from './setup-env';
-import { runWithTenant } from '../src/common/tenant/tenant-store';
+import { runUnscoped, runWithTenant } from '../src/common/tenant/tenant-store';
 
 /**
  * Reads a row belonging to a *different* tenant than the ambient one.
@@ -47,6 +47,9 @@ describe('System tenant management (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAllTables(prisma);
+    // These suites make many writes per test -- creating a community is
+    // several requests -- and would otherwise trip the global rate limit.
+    resetThrottler(app);
     const city = await seedCity(prisma);
 
     const systemAdmin = await seedUser(prisma, city.id, {
@@ -440,12 +443,176 @@ describe('System tenant management (e2e)', () => {
     });
   });
 
-  // Suspending is the supported way to take a community offline. Deleting one
-  // would mean deleting every row of 27 scoped models that reference it.
-  it('exposes no delete route', async () => {
-    await request(server)
-      .delete('/api/v1/system/tenants/1')
-      .set('Cookie', systemAdminCookie)
-      .expect(404);
+  describe('DELETE /system/tenants/:id', () => {
+    let tenantId: number;
+
+    const createTenant = async (domain: string): Promise<number> => {
+      const res = await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({ domain })
+        .expect(201);
+      return res.body.id as number;
+    };
+
+    const suspend = (id: number) =>
+      request(server)
+        .patch(`/api/v1/system/tenants/${id}`)
+        .set('Cookie', systemAdminCookie)
+        .send({ status: 'suspended' })
+        .expect(200);
+
+    beforeEach(async () => {
+      tenantId = await createTenant('doomed.example.test');
+    });
+
+    // Gate 1 of 3. Suspending is instant and reversible; deleting is neither,
+    // so they are separate decisions taken at separate times.
+    it('refuses while the community is still active', async () => {
+      const res = await request(server)
+        .delete(`/api/v1/system/tenants/${tenantId}`)
+        .set('Cookie', systemAdminCookie)
+        .send({ confirmDomain: 'doomed.example.test' })
+        .expect(400);
+
+      expect(res.body.message).toContain('Suspend this community first');
+      expect(await prisma.tenants.findUnique({ where: { id: tenantId } })).not.toBeNull();
+    });
+
+    // Gate 2 of 3. A boolean can be sent by accident; a domain cannot be
+    // supplied without having read which community it names.
+    it('refuses when the typed domain does not match', async () => {
+      await suspend(tenantId);
+      const res = await request(server)
+        .delete(`/api/v1/system/tenants/${tenantId}`)
+        .set('Cookie', systemAdminCookie)
+        .send({ confirmDomain: 'something.else.test' })
+        .expect(400);
+
+      expect(res.body.message).toContain('doomed.example.test');
+      expect(await prisma.tenants.findUnique({ where: { id: tenantId } })).not.toBeNull();
+    });
+
+    // Gate 3 of 3, and the one that would be unrecoverable: the root tenant is
+    // the host this API answers on.
+    it('refuses to delete the root community', async () => {
+      const root = await prisma.tenants.findUnique({ where: { id: TEST_TENANT_ID } });
+      const res = await request(server)
+        .delete(`/api/v1/system/tenants/${TEST_TENANT_ID}`)
+        .set('Cookie', systemAdminCookie)
+        .send({ confirmDomain: root!.domain })
+        .expect(400);
+
+      expect(res.body.message).toContain('root community cannot be deleted');
+      expect(await prisma.tenants.findUnique({ where: { id: TEST_TENANT_ID } })).not.toBeNull();
+    });
+
+    it('deletes the community once suspended and confirmed', async () => {
+      await suspend(tenantId);
+      const res = await request(server)
+        .delete(`/api/v1/system/tenants/${tenantId}`)
+        .set('Cookie', systemAdminCookie)
+        .send({ confirmDomain: 'doomed.example.test' })
+        .expect(200);
+
+      expect(res.body.domain).toBe('doomed.example.test');
+      expect(await prisma.tenants.findUnique({ where: { id: tenantId } })).toBeNull();
+    });
+
+    it('takes the community data with it', async () => {
+      // Its service account, an admin and a mail_domain row, all created with
+      // the tenant. The tenant_id foreign keys are RESTRICT, so a purge that
+      // missed any of them would fail rather than orphan them -- which is why
+      // asserting the tenant row is gone proves the rest went too.
+      const withData = await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({
+          domain: 'populated.example.test',
+          adminEmail: 'boss@populated.test',
+          adminPassword: 'P@ssw0rd-Test!',
+          mailDomain: 'mail.populated.test',
+        })
+        .expect(201);
+      const id = withData.body.id as number;
+
+      const before = await inTenant(id, () => prisma.users.count());
+      expect(before).toBeGreaterThan(0);
+
+      await suspend(id);
+      const res = await request(server)
+        .delete(`/api/v1/system/tenants/${id}`)
+        .set('Cookie', systemAdminCookie)
+        .send({ confirmDomain: 'populated.example.test' })
+        .expect(200);
+
+      expect(res.body.deleted.users).toBe(before);
+      expect(res.body.deleted.app_config).toBe(1);
+      expect(await prisma.tenants.findUnique({ where: { id } })).toBeNull();
+      const left = await runUnscoped('assert purge', async () =>
+        await prisma.users.count({ where: { tenantId: id } }),
+      );
+      expect(left).toBe(0);
+    });
+
+    it('leaves every other community untouched', async () => {
+      // The failure this guards is the expensive one: a purge whose tenant
+      // filter went missing would empty the whole deployment.
+      const survivor = await createTenant('survivor.example.test');
+      const survivorUsers = await inTenant(survivor, () => prisma.users.count());
+      const rootUsers = await inTenant(TEST_TENANT_ID, () => prisma.users.count());
+
+      await suspend(tenantId);
+      await request(server)
+        .delete(`/api/v1/system/tenants/${tenantId}`)
+        .set('Cookie', systemAdminCookie)
+        .send({ confirmDomain: 'doomed.example.test' })
+        .expect(200);
+
+      expect(await prisma.tenants.findUnique({ where: { id: survivor } })).not.toBeNull();
+      expect(await inTenant(survivor, () => prisma.users.count())).toBe(survivorUsers);
+      expect(await inTenant(TEST_TENANT_ID, () => prisma.users.count())).toBe(rootUsers);
+    });
+
+    it('accepts the domain as a URL or with a www. prefix', async () => {
+      // Normalised the same way the domain was on the way in, so what the
+      // operator sees in the list is what they can retype.
+      await suspend(tenantId);
+      await request(server)
+        .delete(`/api/v1/system/tenants/${tenantId}`)
+        .set('Cookie', systemAdminCookie)
+        .send({ confirmDomain: 'https://www.doomed.example.test' })
+        .expect(200);
+
+      expect(await prisma.tenants.findUnique({ where: { id: tenantId } })).toBeNull();
+    });
+
+    it('records the deletion on the root tenant, which outlives it', async () => {
+      await suspend(tenantId);
+      await request(server)
+        .delete(`/api/v1/system/tenants/${tenantId}`)
+        .set('Cookie', systemAdminCookie)
+        .send({ confirmDomain: 'doomed.example.test' })
+        .expect(200);
+
+      // audit_log is itself scoped, so an entry written against the deleted
+      // community would have been deleted along with it.
+      const entries = await inTenant(TEST_TENANT_ID, () =>
+        prisma.audit_log.findMany({ where: { action: 'tenant.delete' } }),
+      );
+      expect(entries).toHaveLength(1);
+      expect(entries[0].entityId).toBe(tenantId);
+    });
+
+    it('is refused for an ordinary admin', async () => {
+      await suspend(tenantId);
+      await request(server)
+        .delete(`/api/v1/system/tenants/${tenantId}`)
+        .set('Cookie', adminCookie)
+        .send({ confirmDomain: 'doomed.example.test' })
+        .expect(403);
+
+      expect(await prisma.tenants.findUnique({ where: { id: tenantId } })).not.toBeNull();
+    });
   });
 });

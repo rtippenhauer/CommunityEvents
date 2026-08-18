@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseIntPipe,
   Patch,
@@ -13,6 +15,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { SystemAdminGuard } from '../../common/guards/system-admin.guard';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { DeleteTenantDto } from './dto/delete-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantsAdminService } from './tenants-admin.service';
 
@@ -31,10 +34,10 @@ import { TenantsAdminService } from './tenants-admin.service';
  * cost of forgetting is exposing one endpoint. SystemAdminGuard checks both the
  * role and that the request resolved to the root tenant.
  *
- * There is deliberately no delete. Removing a tenant means removing every row
- * of the 27 scoped models that reference it, which is a data-destroying
- * operation that a misclick should not reach; suspending it (PATCH status)
- * takes it offline immediately and is reversible.
+ * Delete exists but is deliberately awkward to reach: a community must already
+ * be suspended, and the caller retypes its domain. Suspending is still the
+ * right way to take one offline -- it is instant and reversible, and deleting
+ * removes every row of the 29 scoped models that reference the tenant.
  */
 @Controller('system/tenants')
 @UseGuards(JwtAuthGuard, SystemAdminGuard)
@@ -63,5 +66,21 @@ export class TenantsAdminController {
     @CurrentUser() user: User,
   ) {
     return this.tenantsService.update(id, dto, user.id);
+  }
+
+  /**
+   * DELETE with a body, which is unusual enough to say why: the confirmation is
+   * the domain being deleted, and putting it in the query string would write it
+   * into access logs and browser history for an action whose whole point is
+   * that it was typed deliberately once.
+   */
+  @Delete(':id')
+  @HttpCode(200)
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DeleteTenantDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.tenantsService.remove(id, dto, user.id);
   }
 }

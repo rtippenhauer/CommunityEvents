@@ -4,12 +4,15 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AdminTenant, TenantsAdminService } from '../../../core/services/tenants-admin.service';
 import {
   TenantFormDialogComponent,
   TenantFormDialogData,
 } from './tenant-form-dialog.component';
+import { TenantDeleteDialogComponent } from './tenant-delete-dialog.component';
+import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
 
 /**
  * The tenant registry, for the system admin (REQ-TENANT-01.7).
@@ -19,9 +22,14 @@ import {
  * adminGuard — a community's admin cannot reach it, and the API refuses it a
  * second time regardless.
  *
- * There is no delete control because the API has no delete route: removing a
- * community would mean removing every row that belongs to it. Suspending is the
- * reversible equivalent and is what the Active toggle does.
+ * Delete is offered only on a community that is already suspended, and then
+ * only behind a retyped domain. Suspending stays the ordinary way to take one
+ * offline -- instant, reversible, and what the Active toggle does; deleting
+ * removes every row that belongs to the community and cannot be undone.
+ *
+ * The People button is here rather than inside that community because a system
+ * admin has no account there: its own admin screens live on its host behind a
+ * session for it.
  */
 @Component({
   selector: 'app-admin-tenants',
@@ -32,6 +40,7 @@ import {
     MatIconModule,
     MatProgressSpinnerModule,
     MatChipsModule,
+    MatTooltipModule,
     MatSnackBarModule,
   ],
   template: `
@@ -71,11 +80,38 @@ import {
                 >
                   <mat-icon>edit</mat-icon>
                 </button>
+                <button
+                  mat-icon-button
+                  (click)="openUsers(tenant)"
+                  [attr.aria-label]="'Manage people in ' + tenant.slug"
+                  matTooltip="People"
+                >
+                  <mat-icon>group</mat-icon>
+                </button>
+                <!-- Suspended only. Deleting and taking offline are separate
+                     decisions, and the API refuses the first without the
+                     second -- so offering it here would just produce an
+                     error. -->
+                @if (!tenant.isRoot && tenant.status === 'suspended') {
+                  <button
+                    mat-icon-button
+                    class="delete-btn"
+                    (click)="openDelete(tenant)"
+                    [attr.aria-label]="'Delete ' + tenant.slug"
+                    matTooltip="Delete permanently"
+                  >
+                    <mat-icon>delete_forever</mat-icon>
+                  </button>
+                }
               </div>
 
               <div class="tenant-domain">{{ tenant.domain }}</div>
 
               <div class="tenant-stats">
+                <div class="stat">
+                  <span class="stat-value">{{ tenant.memberCount }}</span>
+                  <span class="stat-label">Members</span>
+                </div>
                 <div class="stat">
                   <span class="stat-value">{{ tenant.eventCount }}</span>
                   <span class="stat-label">Events</span>
@@ -142,6 +178,9 @@ import {
       .tenant-card.suspended {
         opacity: 0.72;
         border-left: 4px solid #b26a00;
+      }
+      .delete-btn {
+        color: #b3261e;
       }
       .tenant-header {
         display: flex;
@@ -229,6 +268,24 @@ export class AdminTenantsComponent implements OnInit {
 
   openEdit(tenant: AdminTenant): void {
     this.openDialog({ tenant });
+  }
+
+  openUsers(tenant: AdminTenant): void {
+    // Reloads on close: adding or suspending someone changes the member count
+    // shown on the card behind it.
+    this.dialog
+      .open(TenantUsersDialogComponent, { data: { tenant } })
+      .afterClosed()
+      .subscribe(() => this.load());
+  }
+
+  openDelete(tenant: AdminTenant): void {
+    this.dialog
+      .open(TenantDeleteDialogComponent, { data: { tenant } })
+      .afterClosed()
+      .subscribe((deleted?: boolean) => {
+        if (deleted) this.load();
+      });
   }
 
   private openDialog(data: TenantFormDialogData): void {
