@@ -608,6 +608,64 @@ held back with them on purpose: it lives in the same global
 a domain it has not verified, and every cron send path would need auditing for
 tenant context first.
 
+### Managing a community from outside it, 2026-08-17
+
+Rob, testing the tenant screens: the first admin is only created with a new
+community, the mail domain is only editable from inside one, and there is no way
+to delete a community at all. All three are the same gap seen from different
+sides -- a system admin holds no account in the communities they administer, and
+those communities' admin screens live on their own hosts behind a session for
+them. A community whose admin left, forgot their password, or was never created
+was permanently unreachable, and the only lever left was suspending the whole
+thing.
+
+**Also fixed here: the edit dialog was visually broken.** Its multi-line
+`mat-hint`s overflowed a fixed-height subscript area and rendered on top of the
+next control -- the Slug field had the domain hint printed through it. The fix
+is `subscriptSizing="dynamic"` on every form field, which the settings screens
+already used. Worth noting because the dialog was shipped and reviewed twice
+without it being spotted in code.
+
+**Mail domain is now editable on edit, not just create.** Deliberately the same
+`mail_domain` app_config row its own admin edits -- one setting with two doors
+onto it, not two settings that can disagree. Blank clears the row rather than
+storing an empty string, because "no row" is what AppConfigService reads as
+"inherit the deployment's", and the suggestion never fires in edit mode where it
+would silently rewrite a stored value.
+
+**Per-community user management** (`/api/v1/system/tenants/:id/users`): list,
+add, change role, suspend/restore, set password. It refuses to touch a service
+account or a system admin, and cannot grant `system_admin` -- the same rule
+`admin.service.setRole` enforces, because a screen that manages one community
+must not be one dropdown away from operating all of them. A user id from another
+community is simply not found: the tenant id comes from the route and the
+extension filters on it.
+
+**Delete passes three gates**, chosen with Rob over a one-step confirm: never
+the root tenant, the community must *already* be suspended, and the caller
+retypes its domain. Suspending is instant and reversible and stays the ordinary
+way to take a community offline, so making it a prerequisite costs nothing and
+separates "take it down" from "destroy it" in time as well as in intent.
+
+Two implementation notes worth keeping:
+
+- **The purge filters by `tenantId` explicitly**, which is the one place in this
+  codebase that should ignore the "never write a tenant filter by hand" rule.
+  Everywhere else a missing filter returns nothing; here a `deleteMany({})` that
+  lost its filter empties every community, and a `$transaction` client is not
+  somewhere to bet on a client extension being applied. The filter is written
+  where it can be read.
+- **Order does not matter, and the RESTRICT keys are the safety net.** Every
+  foreign key among the 29 scoped tables is `ON DELETE CASCADE`, so parents and
+  children can go in any order; only the `tenant_id` keys are `RESTRICT`, which
+  makes the final `tenants.delete()` fail loudly rather than orphan rows if the
+  model list ever misses a table. Nothing needed a schema change.
+
+Audit entries for all of this are written against the **root** tenant, not the
+community acted on. `audit_log` is scoped, so a delete would take its own record
+with it, and the rest would hand a community's admin an edit history of the
+operator.
+
 ## Deferred: self-service tenants and trial mode
 
 Rob, 2026-08-16, while testing the first second community. Two follow-ons to the

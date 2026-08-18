@@ -483,10 +483,30 @@ authoritative (per REQ-TENANT-01.3).
   a From address on a domain it has not verified.
 - **Tenant management lives at `/api/v1/system/tenants`**, under `system/` and
   not `admin/` because it acts on the registry of communities rather than inside
-  one. No delete route exists: suspending is the reversible way to take a
-  community offline. The root tenant cannot be suspended and its domain cannot be
-  changed there — both would lock the system admin out of the only host the API
-  answers on.
+  one. The root tenant cannot be suspended and its domain cannot be changed
+  there — both would lock the system admin out of the only host the API answers
+  on.
+- **Deleting a community passes three gates**: never the root tenant, it must
+  already be `suspended`, and the caller retypes its domain. Suspending stays the
+  ordinary way to take one offline. The purge filters by `tenantId`
+  **explicitly** rather than through the extension — the one place in the
+  codebase that should — because a `deleteMany({})` that silently lost its filter
+  would empty every community, and a transaction client is not somewhere to bet
+  on an extension being applied. Order does not matter (every FK among scoped
+  tables is `CASCADE`); the `tenant_id` keys stay `RESTRICT` so the final
+  `tenants.delete()` fails loudly if the model list ever misses a table.
+- **A community's people are managed from the root tenant** at
+  `/api/v1/system/tenants/:id/users` — list, add, change role, suspend, set
+  password. Necessary because a system admin holds no account in the communities
+  they administer and those admin screens live on each community's own host, so
+  an admin who left or forgot their password made a community unreachable. It
+  refuses to touch a **service account** or any **system_admin**, and cannot
+  grant `system_admin`, matching `admin.service.setRole`.
+- **System-admin actions on other communities are audited on the ROOT tenant.**
+  `audit_log` is itself scoped, so an entry written against the community would
+  be deleted along with it (for a delete) and would hand that community's admin
+  an edit history of the operator (for everything else). The community id goes in
+  the metadata.
 
 **Cookie scoping — fixed in `v2-6`.** The session cookie is **host-only**: no
 `Domain` attribute, so it belongs to the exact tenant host that issued it. It
