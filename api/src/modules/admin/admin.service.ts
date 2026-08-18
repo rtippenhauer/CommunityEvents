@@ -354,28 +354,45 @@ export class AdminService {
     //
     // Agreed with Rob 2026-08-16 for live testing, with the expectation that it
     // reverts to database-only before production. If that happens, delete this
-    // block and the two role-picker entries in the frontend; nothing else
-    // depends on it.
-    if (role === UserRole.SYSTEM_ADMIN || target.role === UserRole.SYSTEM_ADMIN) {
-      const rootTenant = await this.prisma.tenants.findFirst({
-        where: { rootMarker: true },
-        select: { id: true },
-      });
-      const isRootServiceAccount =
-        target.isServiceAccount && !!rootTenant && rootTenant.id === target.tenantId;
+    // block and the role-picker entry in the frontend; nothing else depends on
+    // it.
+    //
+    // Two conditions, not one. The target must be the root tenant's service
+    // account, AND the actor must already be a system admin -- an ordinary
+    // admin cannot mint one (Rob, 2026-08-17). Without the second condition any
+    // admin of the root community could grant the role that operates every
+    // community, which is the exact escalation the first condition was written
+    // to prevent, reached from the other side.
+    const rootTenant = await this.prisma.tenants.findFirst({
+      where: { rootMarker: true },
+      select: { id: true },
+    });
+    const targetIsRootServiceAccount =
+      target.isServiceAccount && !!rootTenant && rootTenant.id === target.tenantId;
 
-      if (!isRootServiceAccount) {
+    if (role === UserRole.SYSTEM_ADMIN || target.role === UserRole.SYSTEM_ADMIN) {
+      const actor = await this.prisma.users.findUnique({
+        where: { id: actorId },
+        select: { role: true },
+      });
+      if (actor?.role !== UserRole.SYSTEM_ADMIN || !targetIsRootServiceAccount) {
         throw new ForbiddenException('The system administrator role is not assignable here');
       }
     }
 
-    // Service accounts on ordinary tenants hold `disabled` and stay there.
-    // There is nothing for them to do on those tenants, and a role change is the
-    // only way an account that cannot be deleted could be turned into one that
-    // can act -- so the two protections are worth exactly as much as each other.
-    // The root tenant's account is the deliberate exception below.
-    if (target.isServiceAccount && target.role === UserRole.DISABLED) {
-      throw new ForbiddenException('Cannot change the role of a disabled service account');
+    // A service account outside the root tenant cannot have its role changed at
+    // all -- keyed on what it IS, not on the role it happens to hold.
+    //
+    // This used to test for `disabled`, which was the role those accounts were
+    // created with. They are created `automation` now (an account named "Claude
+    // Automation" showing `disabled` reads as broken), so a role-based test
+    // would have silently stopped protecting anything. The account cannot be
+    // deleted by any path, so a role change was the only way to turn it into
+    // one that acts.
+    if (target.isServiceAccount && !targetIsRootServiceAccount) {
+      throw new ForbiddenException(
+        'This community service account is managed by the deployment and cannot be given a role.',
+      );
     }
 
     // That exception: the root tenant's automation account. Rob can flip it up

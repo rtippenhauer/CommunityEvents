@@ -24,7 +24,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
 import { CommunityService, Achievement, PointSummary } from '../../core/services/community.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PointsHistoryDialogComponent } from './points-history-dialog.component';
-import { hasAdminRights, isElevatedRole } from '../../core/utils/roles.util';
+import { hasAdminRights, isElevatedRole, isSystemAdmin } from '../../core/utils/roles.util';
 
 interface MiniMember {
   id: number;
@@ -305,15 +305,24 @@ interface AchievementGroup {
                   >
                     <mat-option value="member">Member</mat-option>
                     <mat-option value="moderator">Moderator</mat-option>
-                    <!-- Only ever offered for the service account. Admin and
-                         automation are its documented testing flip; system_admin
-                         is additionally restricted server-side to the ROOT
-                         tenant's service account, so it appears here but is
-                         refused on any other community. -->
+                    <!-- Only ever offered for the service account: admin and
+                         automation are its documented testing flip. -->
                     @if (profile()!.isAutomationAccount) {
                       <mat-option value="admin">Admin</mat-option>
                       <mat-option value="automation">Automation</mat-option>
-                      <mat-option value="system_admin">System Admin</mat-option>
+                      <!-- Root community only, and only to someone who already
+                           holds the role. It used to be offered wherever the
+                           service account appeared, which put a System Admin
+                           entry in front of an ordinary admin on an ordinary
+                           community -- the API refused it, but offering an
+                           option that always fails is its own defect, and the
+                           one it dangles is the role that operates every
+                           community. Both halves are enforced server-side in
+                           admin.service.setRole; this only stops the UI
+                           advertising what it cannot do. -->
+                      @if (canGrantSystemAdmin()) {
+                        <mat-option value="system_admin">System Admin</mat-option>
+                      }
                     }
                   </mat-select>
                 </div>
@@ -979,6 +988,17 @@ export class MemberProfileComponent implements OnInit {
 
   isAdmin(): boolean {
     return hasAdminRights(this.authService.currentUser()?.role);
+  }
+
+  /**
+   * Whether to offer the system_admin option at all.
+   *
+   * Both conditions matter and neither implies the other: the role only means
+   * anything on the root community (SystemAdminGuard wants the role AND
+   * req.tenant.isRoot), and an ordinary admin must not be able to mint one.
+   */
+  canGrantSystemAdmin(): boolean {
+    return this.brand.isRoot() && isSystemAdmin(this.authService.currentUser()?.role);
   }
 
   showElevated(): boolean {

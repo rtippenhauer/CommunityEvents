@@ -22,6 +22,8 @@ export interface BrandConfig {
   isStage: boolean;
   appUrl: string;
   baseDomain: string;
+  /** Whether this community is the root one (REQ-TENANT-01.7). */
+  isRoot: boolean;
   // Per-instance terminology (Phase 32). Singular + plural kept separate so a
   // fork can rename e.g. Restaurant→Location, Dinner→Meeting without unreliable
   // auto-pluralization; points is a single label.
@@ -80,6 +82,9 @@ const DEFAULT_BRAND: BrandConfig = {
   isStage: false,
   appUrl: '',
   baseDomain: '',
+  // Defaults false: until branding loads, assume this is NOT the root
+  // community, so nothing root-only is offered on a guess.
+  isRoot: false,
   // DinnerBears' original wording — the compiled-in default until branding
   // resolves, mirroring the API's SITE_SETTING_DEFAULTS terms.
   terms: {
@@ -137,6 +142,7 @@ export class BrandConfigService {
   readonly isStage = computed(() => this.brand().isStage);
   readonly appUrl = computed(() => this.brand().appUrl);
   readonly baseDomain = computed(() => this.brand().baseDomain);
+  readonly isRoot = computed(() => this.brand().isRoot);
 
   // Configurable terminology (Phase 32). Components bind these instead of
   // hardcoding "Restaurant"/"Dinner"/"Bear Points". Title-cased as stored;

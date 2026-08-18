@@ -4,6 +4,7 @@ import { PrismaService } from '../src/database/prisma/prisma.service';
 import { UserRole, UserStatus } from '../src/database/enums';
 import { createTestApp, resetThrottler, truncateAllTables } from './utils/test-app';
 import { loginAs, seedCity, seedServiceAccount, seedUser } from './utils/seed';
+import { runUnscoped, runWithTenant } from '../src/common/tenant/tenant-store';
 
 /**
  * The two protections a service account carries (see service-account.util.ts):
@@ -20,6 +21,7 @@ describe('Service accounts (e2e)', () => {
   let server: ReturnType<INestApplication['getHttpServer']>;
   let cityId: number;
   let adminCookie: string;
+  let sysAdminCookie: string;
 
   beforeAll(async () => {
     ({ app, prisma } = await createTestApp());
@@ -43,6 +45,11 @@ describe('Service accounts (e2e)', () => {
       email: 'admin@example.test',
     });
     adminCookie = await loginAs(app, admin);
+    const sysAdmin = await seedUser(prisma, cityId, {
+      role: UserRole.SYSTEM_ADMIN,
+      email: 'root-sysadmin@example.test',
+    });
+    sysAdminCookie = await loginAs(app, sysAdmin);
   });
 
   describe('cannot be removed', () => {
@@ -113,25 +120,76 @@ describe('Service accounts (e2e)', () => {
   });
 
   describe('role changes', () => {
-    // A role change is the only way an account that cannot be deleted could be
-    // turned into one that can act, so the two protections are worth exactly as
-    // much as each other.
-    it('refuses to change the role of a disabled service account', async () => {
-      const svc = await seedServiceAccount(prisma, cityId, { role: UserRole.DISABLED });
+    // A community other than the root one, reached by Host header. Its service
+    // account is the case the freeze below exists for, and it cannot be
+    // exercised from the root host: the role route is tenant-scoped, so another
+    // community's user is not found rather than refused.
+    const OTHER_DOMAIN = 'other-community.test';
+    const OTHER_TENANT_ID = 90210;
+
+    const seedOtherCommunity = async (): Promise<{ svcId: number; adminCookie: string }> => {
+      await prisma.tenants.create({
+        data: { id: OTHER_TENANT_ID, slug: 'other', domain: OTHER_DOMAIN },
+      });
+      const [svc, admin] = await runUnscoped('seeding a second community', async () => [
+        await prisma.users.create({
+          data: {
+            tenantId: OTHER_TENANT_ID,
+            cityId,
+            fullName: 'Claude Automation',
+            email: 'automation@dinnerbears.internal',
+            role: UserRole.AUTOMATION,
+            status: UserStatus.ACTIVE,
+            emailStatus: 'active',
+            emailVerifiedAt: new Date(),
+            isServiceAccount: true,
+          },
+        }),
+        await prisma.users.create({
+          data: {
+            tenantId: OTHER_TENANT_ID,
+            cityId,
+            fullName: 'Other Admin',
+            email: 'admin@other.test',
+            role: UserRole.ADMIN,
+            status: UserStatus.ACTIVE,
+            emailStatus: 'active',
+            emailVerifiedAt: new Date(),
+          },
+        }),
+      ]);
+      // loginAs issues a real session, which writes to `users` -- a scoped
+      // update. Outside a request the ambient tenant is the test root, so
+      // without naming this tenant the update matches no row and throws P2025.
+      const cookie = await runWithTenant(OTHER_TENANT_ID, async () => await loginAs(app, admin));
+      return { svcId: svc.id, adminCookie: cookie };
+    };
+
+    // The protection that used to be keyed on the role `disabled`. Service
+    // accounts are created `automation` on every tenant now, so a role-based
+    // test would have silently stopped protecting anything -- this keys on what
+    // the account IS: a service account outside the root tenant.
+    it('refuses to change a non-root service account role', async () => {
+      const { svcId, adminCookie: otherAdmin } = await seedOtherCommunity();
 
       await request(server)
-        .post(`/api/v1/admin/users/${svc.id}/role`)
-        .set('Cookie', adminCookie)
+        .post(`/api/v1/admin/users/${svcId}/role`)
+        .set('Host', OTHER_DOMAIN)
+        .set('Cookie', otherAdmin)
         .send({ role: 'member' })
         .expect(403);
     });
 
-    it('refuses to promote a disabled service account to admin', async () => {
-      const svc = await seedServiceAccount(prisma, cityId, { role: UserRole.DISABLED });
+    it('refuses to promote a non-root service account to admin', async () => {
+      // A role change is the only way an account that cannot be deleted could be
+      // turned into one that can act, so the two protections are worth exactly
+      // as much as each other.
+      const { svcId, adminCookie: otherAdmin } = await seedOtherCommunity();
 
       await request(server)
-        .post(`/api/v1/admin/users/${svc.id}/role`)
-        .set('Cookie', adminCookie)
+        .post(`/api/v1/admin/users/${svcId}/role`)
+        .set('Host', OTHER_DOMAIN)
+        .set('Cookie', otherAdmin)
         .send({ role: 'admin' })
         .expect(403);
     });
@@ -140,12 +198,12 @@ describe('Service accounts (e2e)', () => {
     // account is the one account that may be given system_admin from the UI, so
     // automation can exercise the tenant registry. Expected to revert to
     // database-only before production.
-    it('allows system_admin on the root tenant service account', async () => {
+    it('allows a system admin to set system_admin on the root service account', async () => {
       const svc = await seedServiceAccount(prisma, cityId);
 
       await request(server)
         .post(`/api/v1/admin/users/${svc.id}/role`)
-        .set('Cookie', adminCookie)
+        .set('Cookie', sysAdminCookie)
         .send({ role: 'system_admin' })
         .expect(200);
 
@@ -153,22 +211,50 @@ describe('Service accounts (e2e)', () => {
       expect(after!.role).toBe(UserRole.SYSTEM_ADMIN);
     });
 
-    it('allows flipping it back down again', async () => {
+    // The second half of that rule, added 2026-08-17 after Rob found the option
+    // offered to him as an ordinary admin. Without this, any admin of the root
+    // community could mint the role that operates every community -- the exact
+    // escalation the target-side check exists to prevent, reached from the
+    // actor side instead.
+    it('refuses an ordinary admin setting system_admin, even on the right account', async () => {
+      const svc = await seedServiceAccount(prisma, cityId);
+
+      await request(server)
+        .post(`/api/v1/admin/users/${svc.id}/role`)
+        .set('Cookie', adminCookie)
+        .send({ role: 'system_admin' })
+        .expect(403);
+
+      const after = await prisma.users.findUnique({ where: { id: svc.id } });
+      expect(after!.role).toBe(UserRole.AUTOMATION);
+    });
+
+    it('refuses an ordinary admin demoting a system_admin service account', async () => {
       const svc = await seedServiceAccount(prisma, cityId, { role: UserRole.SYSTEM_ADMIN });
 
       await request(server)
         .post(`/api/v1/admin/users/${svc.id}/role`)
         .set('Cookie', adminCookie)
         .send({ role: 'automation' })
+        .expect(403);
+    });
+
+    it('allows a system admin to flip it back down again', async () => {
+      const svc = await seedServiceAccount(prisma, cityId, { role: UserRole.SYSTEM_ADMIN });
+
+      await request(server)
+        .post(`/api/v1/admin/users/${svc.id}/role`)
+        .set('Cookie', sysAdminCookie)
+        .send({ role: 'automation' })
         .expect(200);
     });
 
-    it('refuses to hand out system_admin', async () => {
+    it('refuses to hand out system_admin to a human', async () => {
       const member = await seedUser(prisma, cityId, { email: 'climber@example.test' });
 
       await request(server)
         .post(`/api/v1/admin/users/${member.id}/role`)
-        .set('Cookie', adminCookie)
+        .set('Cookie', sysAdminCookie)
         .send({ role: 'system_admin' })
         .expect(403);
     });

@@ -11,7 +11,7 @@ import {
   eventOrganizerEmail as envEventOrganizerEmail,
   supportEmail as envSupportEmail,
 } from '../../common/config/instance-contact';
-import { requireTenantId, runWithTenant } from '../../common/tenant/tenant-store';
+import { currentTenantId, requireTenantId, runWithTenant } from '../../common/tenant/tenant-store';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 // Only these keys are servable/editable through the config endpoints — keeps
@@ -291,6 +291,24 @@ export class AppConfigService {
     return appUrl.includes('stage') ? 'calendar-stage' : 'calendar';
   }
 
+  /**
+   * Whether the ambient tenant is the root one.
+   *
+   * Read from the registry rather than compared against APP_URL: `tenants` is
+   * global so this needs no waiver, and `is_root` is the database's own answer
+   * -- the same column SystemAdminGuard checks, so the UI and the guard cannot
+   * disagree about which community this is.
+   */
+  private async servingRootTenant(): Promise<boolean> {
+    const tenantId = currentTenantId();
+    if (!tenantId) return false;
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { isRoot: true },
+    });
+    return tenant?.isRoot ?? false;
+  }
+
   /** The tenant's own mail domain, or null when it has not set one. */
   private async ownMailDomain(tenantId?: number): Promise<string | null> {
     const own = await this.tenantSetting('mail_domain', tenantId);
@@ -350,6 +368,15 @@ export class AppConfigService {
     vapidPublicKey: string | null;
     facebookAppId: string | null;
     isStage: boolean;
+    /**
+     * Whether the community being served is the root one.
+     *
+     * Needed by the frontend, which otherwise has no way to tell: every tenant
+     * looks identical from the browser. The role picker uses it to stop
+     * offering `system_admin` on a community where the API would refuse it --
+     * an option that always fails is worse than no option.
+     */
+    isRoot: boolean;
     appUrl: string;
     baseDomain: string;
     terms: {
@@ -415,6 +442,7 @@ export class AppConfigService {
       vapidPublicKey: this.config.get<string>('VAPID_PUBLIC_KEY') ?? null,
       facebookAppId: this.config.get<string>('FACEBOOK_APP_ID') ?? null,
       isStage: this.config.get<string>('IS_STAGE') === 'true',
+      isRoot: await this.servingRootTenant(),
       // The requesting tenant's own canonical URL, not the deployment's. Every
       // other field in this payload is per-tenant (app_config is scoped now), so
       // a deployment-global value here would be the one thing in the branding
