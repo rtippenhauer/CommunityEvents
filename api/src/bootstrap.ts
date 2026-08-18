@@ -333,7 +333,7 @@ Config:
     // ---- Service account -------------------------------------------------
     // The root tenant's, so role `automation`. Created before the admin because
     // system writes (release-notes import in particular) attribute to it.
-    await createServiceAccount(tx, tenantRow.id, cityId, true);
+    await createServiceAccount(tx, tenantRow.id, cityId);
     console.log(`
 Service account:
   - ${AUTOMATION_ACCOUNT_EMAIL} (automation)`);

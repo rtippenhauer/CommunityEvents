@@ -29,11 +29,23 @@ export type SqlExecutor = Prisma.TransactionClient | PrismaClient;
  * `password_hash` is NULL by design -- nothing signs in as this account with a
  * password, so there is no credential here to leak.
  *
- * The root tenant's account carries `automation`, which AuthService.automationLogin
- * requires. Every other tenant's carries `disabled`, which satisfies no @Roles()
- * at all: those communities have no automation to run, and an `automation` role
- * there would be an escalation path, since admin.service.setRole deliberately
- * permits promoting an automation account to admin.
+ * Every tenant's account carries `automation`, root or not (Rob, 2026-08-17).
+ * It used to be `disabled` outside the root tenant, on the reasoning that those
+ * communities have no automation to run and an `automation` role there would be
+ * an escalation path via admin.service.setRole, which permits promoting an
+ * automation account to admin.
+ *
+ * That reasoning was half right and produced a worse outcome. An account named
+ * "Claude Automation" showing the role `disabled` reads as something broken, on
+ * the one screen an operator checks when a community looks wrong. And the
+ * escalation it guarded against was never reachable: this account has a NULL
+ * password_hash, no OAuth link, and automationLogin admits the root tenant's
+ * account only -- so promoting a non-root one to admin produces an admin nobody
+ * can authenticate as.
+ *
+ * The protection is kept, just moved somewhere it holds regardless of role:
+ * setRole now refuses to change any non-root service account's role at all,
+ * rather than relying on it happening to sit at `disabled`.
  *
  * `users.city_id` is NOT NULL and `cities` is global, so any city serves; the
  * field is meaningless for an account that never attends anything.
@@ -42,7 +54,6 @@ export async function createServiceAccount(
   tx: SqlExecutor,
   tenantId: number,
   cityId: number,
-  isRoot: boolean,
 ): Promise<void> {
   await tx.$executeRawUnsafe(
     `INSERT INTO users
@@ -54,6 +65,6 @@ export async function createServiceAccount(
     AUTOMATION_ACCOUNT_NAME,
     AUTOMATION_ACCOUNT_EMAIL,
     cityId,
-    isRoot ? 'automation' : 'disabled',
+    'automation',
   );
 }

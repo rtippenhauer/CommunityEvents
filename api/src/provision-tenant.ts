@@ -135,7 +135,7 @@ async function main(): Promise<void> {
     if (!city) {
       throw new Error('No city exists -- run the seed step before provisioning a tenant.');
     }
-    await createServiceAccount(prisma, tenant.id, city.id, false);
+    await createServiceAccount(prisma, tenant.id, city.id);
 
     console.log(
       `\nTenant ready: #${tenant.id} "${tenant.slug}" -> ${tenant.domain} (${tenant.status})\n` +

@@ -154,8 +154,10 @@ export class TenantsAdminService {
 
     // Same service account provision-tenant.ts makes, so a community created
     // from the UI is not subtly different from one created by the script. Role
-    // `disabled`: it exists to own the rows the deployment writes on that
-    // tenant's behalf, not to be signed in as.
+    // `automation` on every tenant, root or not -- an account called "Claude
+    // Automation" showing `disabled` reads as broken. It still cannot be signed
+    // in as: the password hash is NULL and automationLogin admits the root
+    // tenant's account only. setRole refuses to change it at all.
     //
     // runUnscoped because the write belongs to the *new* tenant while the
     // request is scoped to the root one -- without the waiver the extension
@@ -169,7 +171,7 @@ export class TenantsAdminService {
             cityId: city.id,
             fullName: AUTOMATION_ACCOUNT_NAME,
             email: AUTOMATION_ACCOUNT_EMAIL,
-            role: UserRole.DISABLED,
+            role: UserRole.AUTOMATION,
             status: UserStatus.ACTIVE,
             emailStatus: EmailStatus.ACTIVE,
             emailVerifiedAt: new Date(),
