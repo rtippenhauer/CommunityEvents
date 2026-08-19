@@ -424,13 +424,24 @@ authoritative (per REQ-TENANT-01.3).
   `req.tenant.isRoot`, and `admin.service.setRole` refuses to assign or remove
   it — bootstrap creates the first one, further ones are a database edit.
   `disabled` grants nothing at all, since `RolesGuard` is an allowlist.
-- **Every tenant's service account holds `automation`**, root or not. It was
-  `disabled` outside the root tenant until 2026-08-17; that reads as broken on
-  the one screen an operator checks when a community looks wrong, and the
-  escalation it guarded against was unreachable (NULL password hash, no OAuth
-  link, and `automationLogin` admits the root tenant's account only). The guard
-  moved to `setRole`, which now refuses to change **any** non-root service
-  account's role — keyed on what the account is, not on the role it holds.
+- **A service account exists only where something can use it**
+  (`tenantGetsServiceAccount`): the root tenant always, other communities on a
+  **stage deployment only**. It used to be created everywhere, justified as
+  owning the rows the deployment writes inside that community — which was false:
+  `audit_log.user_id` is nullable and nothing looks a non-root one up. In
+  production a customer community gets none at all.
+- **`automationLogin` matches that**: root anywhere, non-root on stage only. A
+  single platform-wide `CLAUDE_AUTOMATION_SECRET` would otherwise mint a session
+  inside a customer's community. Gating on `IS_STAGE` means the capability cannot
+  exist in production rather than existing behind a promise to disable it.
+- **`isStageDeployment()` reads `process.env`, not `ConfigService`** — deliberate
+  and the only flag that does. `bootstrap.ts`/`provision-tenant.ts` are plain
+  node processes with nothing to inject from, and two services capture `IS_STAGE`
+  in their constructors, which would make it untestable in both states.
+- **The service account holds `automation` wherever it exists**, root or not. A
+  community's own admin may change its role (it is inert — NULL password hash, so
+  nothing can authenticate as it, and the actor is already an admin there).
+  `system_admin` is the exception and stays guarded on both sides.
 - **`users.is_service_account` marks the one non-human account per tenant.**
   Guards key on that column, never on the role (deliberately mutable — the root
   account gets flipped to admin and back for testing) and never on the
