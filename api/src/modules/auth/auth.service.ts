@@ -29,6 +29,7 @@ import { RsvpStatus } from '../../database/enums';
 import type { event_rsvps as EventRsvp } from '@prisma/client';
 import { ELEVATED_ROLES } from '../../common/utils/roles.util';
 import { AUTOMATION_ACCOUNT_EMAIL } from '../../common/utils/service-account.util';
+import { isStageDeployment } from '../../common/config/deployment.util';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 export interface SessionContext {
@@ -650,26 +651,41 @@ export class AuthService {
       throw new UnauthorizedException('Automation account not found or inactive');
     }
 
-    // Only the root tenant's service account may sign in this way. Every tenant
-    // has one, but elsewhere it exists purely to own the rows the deployment
-    // writes on that community's behalf -- and CLAUDE_AUTOMATION_SECRET is a
-    // single platform-wide value, so without this a valid secret presented to
-    // any community's host would mint a session there.
-    //
-    // Keyed on `is_service_account` plus the tenant being root, never on the
-    // role. An earlier version of this check required role `automation`, which
-    // broke the whole point of the account: it is deliberately flipped up to
-    // admin (and back) so it can browse role-gated pages, and that flip made
-    // automation login start refusing. The role is the one property here
-    // guaranteed to change; the column and the tenant are not.
+    // Keyed on `is_service_account`, never on the role. An earlier version
+    // required role `automation`, which broke the whole point of the account: it
+    // is deliberately flipped up to admin (and back) so it can browse role-gated
+    // pages, and that flip made automation login start refusing. The role is the
+    // one property here guaranteed to change; the column is not.
     if (!user.isServiceAccount) {
       throw new UnauthorizedException('Automation login is not enabled here');
     }
+
+    // Which communities automation may sign in to (Rob, 2026-08-18):
+    //
+    //   root, anywhere      -> yes. The operator's own community.
+    //   non-root, stage     -> yes. Driving a second community is the only way
+    //                          to exercise tenant isolation as a real member,
+    //                          and stage is where that testing happens.
+    //   non-root, production-> NO.
+    //
+    // The last line is the point. CLAUDE_AUTOMATION_SECRET is a single
+    // platform-wide value, so without this check a valid secret presented to any
+    // community's host would mint a session inside it -- which, once communities
+    // belong to paying customers, is the operator silently acting as someone
+    // inside their community. Gating on IS_STAGE means that capability cannot
+    // exist in production at all, rather than existing behind a promise to turn
+    // it off later.
+    //
+    // Note every tenant still HAS a service account in production; it simply
+    // cannot be signed into. It exists to own the rows the deployment writes on
+    // that community's behalf, since users.tenant_id is NOT NULL.
     const rootTenant = await this.prisma.tenants.findFirst({
       where: { rootMarker: true },
       select: { id: true },
     });
-    if (!rootTenant || rootTenant.id !== user.tenantId) {
+    const isRootTenant = !!rootTenant && rootTenant.id === user.tenantId;
+    const isStage = isStageDeployment();
+    if (!isRootTenant && !isStage) {
       throw new UnauthorizedException('Automation login is not enabled here');
     }
 

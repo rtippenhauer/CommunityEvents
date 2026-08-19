@@ -5,6 +5,10 @@ import { UserRole, UserStatus } from '../src/database/enums';
 import { createTestApp, resetThrottler, truncateAllTables } from './utils/test-app';
 import { loginAs, seedCity, seedServiceAccount, seedUser } from './utils/seed';
 import { runUnscoped, runWithTenant } from '../src/common/tenant/tenant-store';
+import { tenantGetsServiceAccount } from '../src/database/prisma/service-account.provision';
+
+const inTenant = <T>(tenantId: number, fn: () => Promise<T>): Promise<T> =>
+  runWithTenant(tenantId, async () => await fn());
 
 /**
  * The two protections a service account carries (see service-account.util.ts):
@@ -165,29 +169,78 @@ describe('Service accounts (e2e)', () => {
       return { svcId: svc.id, adminCookie: cookie };
     };
 
-    // The protection that used to be keyed on the role `disabled`. Service
-    // accounts are created `automation` on every tenant now, so a role-based
-    // test would have silently stopped protecting anything -- this keys on what
-    // the account IS: a service account outside the root tenant.
-    it('refuses to change a non-root service account role', async () => {
+    // A community administers its OWN service account, on any tenant. Briefly
+    // refused; the freeze protected nothing (the account has a NULL
+    // password_hash, so nothing can authenticate as it whatever role it holds)
+    // and blocked the flip the account exists for.
+    it('lets a community admin flip its own service account up to admin', async () => {
       const { svcId, adminCookie: otherAdmin } = await seedOtherCommunity();
 
       await request(server)
         .post(`/api/v1/admin/users/${svcId}/role`)
         .set('Host', OTHER_DOMAIN)
         .set('Cookie', otherAdmin)
-        .send({ role: 'member' })
-        .expect(403);
+        .send({ role: 'admin' })
+        .expect(200);
+
+      const after = await inTenant(OTHER_TENANT_ID, () =>
+        prisma.users.findUnique({ where: { id: svcId } }),
+      );
+      expect(after!.role).toBe(UserRole.ADMIN);
     });
 
-    it('refuses to promote a non-root service account to admin', async () => {
-      // A role change is the only way an account that cannot be deleted could be
-      // turned into one that can act, so the two protections are worth exactly
-      // as much as each other.
+    it('lets a community admin flip it back down again', async () => {
       const { svcId, adminCookie: otherAdmin } = await seedOtherCommunity();
 
       await request(server)
         .post(`/api/v1/admin/users/${svcId}/role`)
+        .set('Host', OTHER_DOMAIN)
+        .set('Cookie', otherAdmin)
+        .send({ role: 'admin' })
+        .expect(200);
+
+      await request(server)
+        .post(`/api/v1/admin/users/${svcId}/role`)
+        .set('Host', OTHER_DOMAIN)
+        .set('Cookie', otherAdmin)
+        .send({ role: 'automation' })
+        .expect(200);
+    });
+
+    // The line that does NOT move: system_admin operates every community, so a
+    // community admin cannot reach it even on their own service account.
+    it('still refuses system_admin on a non-root service account', async () => {
+      const { svcId, adminCookie: otherAdmin } = await seedOtherCommunity();
+
+      await request(server)
+        .post(`/api/v1/admin/users/${svcId}/role`)
+        .set('Host', OTHER_DOMAIN)
+        .set('Cookie', otherAdmin)
+        .send({ role: 'system_admin' })
+        .expect(403);
+    });
+
+    // Still not a lever for promoting people: the exception is the service
+    // account, not the community.
+    it('still refuses to promote a human to admin', async () => {
+      const { adminCookie: otherAdmin } = await seedOtherCommunity();
+      const human = await runUnscoped('seeding a member in the second community', async () =>
+        await prisma.users.create({
+          data: {
+            tenantId: OTHER_TENANT_ID,
+            cityId,
+            fullName: 'Ordinary Member',
+            email: 'member@other.test',
+            role: UserRole.MEMBER,
+            status: UserStatus.ACTIVE,
+            emailStatus: 'active',
+            emailVerifiedAt: new Date(),
+          },
+        }),
+      );
+
+      await request(server)
+        .post(`/api/v1/admin/users/${human.id}/role`)
         .set('Host', OTHER_DOMAIN)
         .set('Cookie', otherAdmin)
         .send({ role: 'admin' })
@@ -468,6 +521,110 @@ describe('Service accounts (e2e)', () => {
       const after = await prisma.users.findUnique({ where: { id: marked.id } });
       expect(after).not.toBeNull();
       expect(after!.fullName).not.toBe('Deleted Member');
+    });
+  });
+
+  /**
+   * Where automation may sign in, and which communities even have an account to
+   * sign in to (Rob, 2026-08-18).
+   *
+   * IS_STAGE is flipped per test rather than set for the suite, because two
+   * services capture it in their constructors and a white-label case asserts it
+   * is false. isStageDeployment() reads it at call time for exactly this reason.
+   */
+  describe('stage vs production', () => {
+    const SECRET = 'test-automation-secret-not-for-real-use';
+    const OTHER_DOMAIN = 'stage-scope.test';
+    const OTHER_TENANT_ID = 90310;
+
+    const originalIsStage = process.env.IS_STAGE;
+    afterEach(() => {
+      if (originalIsStage === undefined) delete process.env.IS_STAGE;
+      else process.env.IS_STAGE = originalIsStage;
+    });
+
+    const seedOther = async (): Promise<number> => {
+      await prisma.tenants.create({
+        data: { id: OTHER_TENANT_ID, slug: 'stage-scope', domain: OTHER_DOMAIN },
+      });
+      const svc = await runUnscoped('seeding a second community', async () =>
+        await prisma.users.create({
+          data: {
+            tenantId: OTHER_TENANT_ID,
+            cityId,
+            fullName: 'Claude Automation',
+            email: 'automation@dinnerbears.internal',
+            role: UserRole.AUTOMATION,
+            status: UserStatus.ACTIVE,
+            emailStatus: 'active',
+            emailVerifiedAt: new Date(),
+            isServiceAccount: true,
+          },
+        }),
+      );
+      return svc.id;
+    };
+
+    it('signs in a non-root service account on stage', async () => {
+      process.env.IS_STAGE = 'true';
+      await seedOther();
+
+      await request(server)
+        .post('/api/v1/auth/automation-login')
+        .set('Host', OTHER_DOMAIN)
+        .send({ secret: SECRET })
+        .expect(200);
+    });
+
+    // The half that matters. Once communities belong to paying customers, this
+    // is the operator being unable to mint a session inside one -- not
+    // unwilling, unable.
+    it('refuses a non-root service account in production', async () => {
+      process.env.IS_STAGE = 'false';
+      await seedOther();
+
+      await request(server)
+        .post('/api/v1/auth/automation-login')
+        .set('Host', OTHER_DOMAIN)
+        .send({ secret: SECRET })
+        .expect(401);
+    });
+
+    it('still signs in the root service account in production', async () => {
+      process.env.IS_STAGE = 'false';
+      await seedServiceAccount(prisma, cityId);
+
+      await request(server)
+        .post('/api/v1/auth/automation-login')
+        .send({ secret: SECRET })
+        .expect(200);
+    });
+  });
+
+  describe('which communities get a service account', () => {
+    const originalIsStage = process.env.IS_STAGE;
+    afterEach(() => {
+      if (originalIsStage === undefined) delete process.env.IS_STAGE;
+      else process.env.IS_STAGE = originalIsStage;
+    });
+
+    it('creates one for a new community on stage', () => {
+      process.env.IS_STAGE = 'true';
+      expect(tenantGetsServiceAccount(false)).toBe(true);
+    });
+
+    // It used to be created everywhere, on the reasoning that the deployment
+    // needed something to attribute its own writes to inside that community.
+    // That was wrong -- audit_log.user_id is nullable and nothing looks a
+    // non-root service account up -- so in production it is not created at all.
+    it('creates none for a new community in production', () => {
+      process.env.IS_STAGE = 'false';
+      expect(tenantGetsServiceAccount(false)).toBe(false);
+    });
+
+    it('always creates one for the root community', () => {
+      process.env.IS_STAGE = 'false';
+      expect(tenantGetsServiceAccount(true)).toBe(true);
     });
   });
 });

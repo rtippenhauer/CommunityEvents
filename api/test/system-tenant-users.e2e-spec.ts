@@ -27,13 +27,22 @@ describe('System tenant user management (e2e)', () => {
   let adminCookie: string;
   let tenantId: number;
 
+  // This suite exercises the whole people surface, including the read-only
+  // service-account row -- and a community other than the root one only gets a
+  // service account on a stage deployment (see tenantGetsServiceAccount). The
+  // flag is read at call time, so setting it here is enough.
+  const originalIsStage = process.env.IS_STAGE;
+
   beforeAll(async () => {
+    process.env.IS_STAGE = 'true';
     ({ app, prisma } = await createTestApp());
     server = app.getHttpServer();
   });
 
   afterAll(async () => {
     await app.close();
+    if (originalIsStage === undefined) delete process.env.IS_STAGE;
+    else process.env.IS_STAGE = originalIsStage;
   });
 
   beforeEach(async () => {

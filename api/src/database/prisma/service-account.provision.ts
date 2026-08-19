@@ -3,6 +3,7 @@ import {
   AUTOMATION_ACCOUNT_EMAIL,
   AUTOMATION_ACCOUNT_NAME,
 } from '../../common/utils/service-account.util';
+import { isStageDeployment } from '../../common/config/deployment.util';
 
 /**
  * Accepts either a client or a transaction client, so a caller inside
@@ -29,7 +30,10 @@ export type SqlExecutor = Prisma.TransactionClient | PrismaClient;
  * `password_hash` is NULL by design -- nothing signs in as this account with a
  * password, so there is no credential here to leak.
  *
- * Every tenant's account carries `automation`, root or not (Rob, 2026-08-17).
+ * Only called for tenants that should have one -- see tenantGetsServiceAccount.
+ *
+ * The account carries `automation` wherever it exists, root or not (Rob,
+ * 2026-08-17).
  * It used to be `disabled` outside the root tenant, on the reasoning that those
  * communities have no automation to run and an `automation` role there would be
  * an escalation path via admin.service.setRole, which permits promoting an
@@ -50,6 +54,30 @@ export type SqlExecutor = Prisma.TransactionClient | PrismaClient;
  * `users.city_id` is NOT NULL and `cities` is global, so any city serves; the
  * field is meaningless for an account that never attends anything.
  */
+/**
+ * Whether a tenant should get a service account at all.
+ *
+ * The root tenant always does: automationLogin admits it on any deployment, and
+ * the release-notes importer attributes to it.
+ *
+ * Every other community gets one only on a stage deployment, because that is
+ * the only place anything can use it (Rob, 2026-08-18). The account used to be
+ * created everywhere, on the stated reasoning that the deployment needed
+ * something to attribute its own writes to inside that community. That was
+ * simply wrong: `audit_log.user_id` is nullable and no code path looks up a
+ * non-root service account. It was an account nobody could sign in to, that
+ * nothing referenced, sitting in every customer community -- so in production
+ * it is not created at all.
+ *
+ * The stage/production difference is deliberate and is exactly the testing
+ * affordance: on stage, automation signs in to each community to exercise
+ * tenant isolation as a real member. In production that capability does not
+ * exist, rather than existing behind a promise to disable it later.
+ */
+export function tenantGetsServiceAccount(isRoot: boolean): boolean {
+  return isRoot || isStageDeployment();
+}
+
 export async function createServiceAccount(
   tx: SqlExecutor,
   tenantId: number,

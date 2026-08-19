@@ -23,7 +23,10 @@ import * as dotenv from 'dotenv';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
 import { normalizeTenantDomain } from './common/utils/tenant-domain.util';
-import { createServiceAccount } from './database/prisma/service-account.provision';
+import {
+  createServiceAccount,
+  tenantGetsServiceAccount,
+} from './database/prisma/service-account.provision';
 
 // Same as bootstrap.ts and seed.ts: this runs standalone rather than through
 // Nest, so nothing else populates env. A container passes DB_* in directly and
@@ -123,23 +126,26 @@ async function main(): Promise<void> {
       update: { slug, status },
     });
 
-    // Every tenant owns exactly one service account, created with the tenant --
-    // see createServiceAccount. A non-root tenant's holds `disabled`, which
-    // satisfies no @Roles(): the row exists so the deployment has something to
-    // attribute its own writes to, not so anything can sign in as it.
+    // A community other than the root one gets a service account on stage only,
+    // because nothing in production can use it -- see tenantGetsServiceAccount.
     //
     // `users.city_id` is NOT NULL and `cities` is a global model, so any city
     // serves; the field is meaningless for a service account. Ordering by id
     // keeps a re-run deterministic.
-    const city = await prisma.cities.findFirst({ orderBy: { id: 'asc' } });
-    if (!city) {
-      throw new Error('No city exists -- run the seed step before provisioning a tenant.');
+    const wantsServiceAccount = tenantGetsServiceAccount(false);
+    if (wantsServiceAccount) {
+      const city = await prisma.cities.findFirst({ orderBy: { id: 'asc' } });
+      if (!city) {
+        throw new Error('No city exists -- run the seed step before provisioning a tenant.');
+      }
+      await createServiceAccount(prisma, tenant.id, city.id);
     }
-    await createServiceAccount(prisma, tenant.id, city.id);
 
     console.log(
       `\nTenant ready: #${tenant.id} "${tenant.slug}" -> ${tenant.domain} (${tenant.status})\n` +
-        '  Service account created (disabled role).\n' +
+        (wantsServiceAccount
+          ? '  Service account created (automation role) -- this is a stage deployment.\n'
+          : '  No service account: only the root community gets one in production.\n') +
         '  Point DNS and the reverse proxy at this deployment for that host, or it will never ' +
         'be reached.\n',
     );

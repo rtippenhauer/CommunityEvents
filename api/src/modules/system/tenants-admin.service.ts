@@ -10,6 +10,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { runUnscoped } from '../../common/tenant/tenant-store';
+import { tenantGetsServiceAccount } from '../../database/prisma/service-account.provision';
 import { normalizeTenantDomain } from '../../common/utils/tenant-domain.util';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import {
@@ -153,17 +154,19 @@ export class TenantsAdminService {
     }
 
     // Same service account provision-tenant.ts makes, so a community created
-    // from the UI is not subtly different from one created by the script. Role
-    // `automation` on every tenant, root or not -- an account called "Claude
-    // Automation" showing `disabled` reads as broken. It still cannot be signed
-    // in as: the password hash is NULL and automationLogin admits the root
-    // tenant's account only. setRole refuses to change it at all.
+    // from the UI is not subtly different from one created by the script --
+    // including that it exists on stage only. Nothing in production can use a
+    // non-root one: automationLogin refuses it there, no code path looks one up,
+    // and audit_log.user_id is nullable. See tenantGetsServiceAccount.
     //
     // runUnscoped because the write belongs to the *new* tenant while the
     // request is scoped to the root one -- without the waiver the extension
     // would stamp the root tenant's id onto it.
+    // Looked up unconditionally: the first admin below needs it too, and
+    // gating it on the service-account decision silently stopped creating that
+    // admin -- which is the whole reason a new community is reachable at all.
     const city = await this.prisma.cities.findFirst({ orderBy: { id: 'asc' } });
-    if (city) {
+    if (city && tenantGetsServiceAccount(false)) {
       await runUnscoped("creating the new tenant's own service account", async () => {
         await this.prisma.users.create({
           data: {
@@ -179,7 +182,7 @@ export class TenantsAdminService {
           },
         });
       });
-    } else {
+    } else if (!city) {
       // Only reachable on a database that was never seeded; the tenant itself is
       // fine, so this is a warning rather than a failed create.
       this.logger.warn(
