@@ -380,40 +380,36 @@ export class AdminService {
       }
     }
 
-    // A service account outside the root tenant cannot have its role changed at
-    // all -- keyed on what it IS, not on the role it happens to hold.
+    // A community's admin may set its OWN service account's role, on any tenant
+    // (Rob, 2026-08-18). There was briefly a rule freezing every non-root
+    // service account, on the theory that an account which cannot be deleted
+    // must not become one that can act. It was protecting nothing and blocking
+    // the workflow the account exists for:
     //
-    // This used to test for `disabled`, which was the role those accounts were
-    // created with. They are created `automation` now (an account named "Claude
-    // Automation" showing `disabled` reads as broken), so a role-based test
-    // would have silently stopped protecting anything. The account cannot be
-    // deleted by any path, so a role change was the only way to turn it into
-    // one that acts.
-    if (target.isServiceAccount && !targetIsRootServiceAccount) {
-      throw new ForbiddenException(
-        'This community service account is managed by the deployment and cannot be given a role.',
-      );
-    }
+    //  - the role is inert. These accounts have a NULL password_hash, and login
+    //    refuses that outright; forgot-password is a no-op for the same reason,
+    //    and automationLogin admits the ROOT tenant's account only. There is no
+    //    path that authenticates as one, so no role makes it "act".
+    //  - the actor is already an admin of that community -- this route is
+    //    @Roles(ADMIN). Granting `admin` to a row in their own community hands
+    //    them nothing they do not already hold, so it is not an escalation.
+    //
+    // The escalation that IS real is system_admin, and that is guarded above by
+    // both the actor's role and the target being the root tenant's account.
+    // Deletion is refused everywhere regardless, which is the protection that
+    // was doing the actual work all along.
 
-    // That exception: the root tenant's automation account. Rob can flip it up
-    // to admin via the UI to let it browse role-gated pages for testing, then
-    // flip it back down. Regular members still require a direct DB edit to be
-    // promoted to admin, and other admins' roles can't be changed here at all.
-    //
-    // Keyed on is_service_account rather than the fixed automation email it used
-    // to compare against: the role is by definition in flux here (that is the
-    // point of the exception) and the email is branding v2-9 rewrites.
+    // Other admins' roles cannot be changed here. Service accounts are the
+    // exception -- keyed on is_service_account rather than the automation email
+    // it used to compare against, since the role is by definition in flux (that
+    // is the point) and the email is branding v2-9 rewrites.
     if (hasAdminRights(target.role) && !target.isServiceAccount) {
       throw new ForbiddenException("Cannot change another admin's role");
     }
-    // Coming back down from system_admin to admin is allowed for the same
-    // account the block above just admitted; anything else still needs a
-    // database edit.
-    if (
-      role === UserRole.ADMIN &&
-      target.role !== UserRole.AUTOMATION &&
-      !(target.isServiceAccount && target.role === UserRole.SYSTEM_ADMIN)
-    ) {
+    // Humans still need a database edit to become admin. A service account may
+    // be flipped up and back down freely, whatever role it currently holds --
+    // browsing role-gated pages is what the account is for.
+    if (role === UserRole.ADMIN && !target.isServiceAccount && target.role !== UserRole.AUTOMATION) {
       throw new ForbiddenException('Cannot promote to admin — set directly in the database');
     }
     const previousRole = target.role;
