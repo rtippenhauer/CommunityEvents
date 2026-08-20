@@ -2,7 +2,17 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { app_config as AppConfig } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { baseDomain } from '../../common/config/instance-contact';
+// Aliased: the methods below have the same names, and an unqualified
+// `supportEmail(...)` inside `async supportEmail()` reads like recursion.
+// The env prefix also says which layer is being reached for at each site.
+import {
+  baseDomain,
+  calendarOrganizerEmail as envCalendarOrganizerEmail,
+  eventOrganizerEmail as envEventOrganizerEmail,
+  supportEmail as envSupportEmail,
+} from '../../common/config/instance-contact';
+import { currentTenantId, requireTenantId, runWithTenant } from '../../common/tenant/tenant-store';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 // Only these keys are servable/editable through the config endpoints — keeps
 // this generic key/value table from becoming an accidental back door into
@@ -40,6 +50,16 @@ export const SITE_SETTING_KEYS = [
   'brand_splash_url',
   'brand_icon_url',
   'brand_story_url',
+  // Contact identity, per community (REQ-TENANT-01.4). Empty means "inherit the
+  // deployment default", which is the matching env var or, failing that, a
+  // derivation from the mail domain -- so an existing install behaves exactly
+  // as it did before these keys existed, and only a community that sets one
+  // diverges. See mailDomain() for why the tenant's own host is NOT the
+  // default here.
+  'mail_domain',
+  'contact_support_email',
+  'contact_calendar_email',
+  'contact_event_email',
   // Configurable per-instance terminology (Phase 32). Singular + plural stored
   // separately rather than derived (naive "+s" pluralization is unreliable), so
   // a fork can set e.g. Location/Locations, Meeting/Meetings. Points is a single
@@ -116,6 +136,12 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   // migration seeds DinnerBears' existing map here; a fresh fork's bootstrap
   // clears it so a new instance shows just the story copy until it uploads one.
   brand_story_url: '',
+  // All four empty on purpose -- see the key list above. A non-empty default
+  // here would silently override the env var every install already has set.
+  mail_domain: '',
+  contact_support_email: '',
+  contact_calendar_email: '',
+  contact_event_email: '',
   // Terminology defaults keep DinnerBears' original wording; a fork overrides
   // these in /admin/settings (e.g. Sons → Location(s)/Meeting(s)/Points).
   term_location_singular: 'Location',
@@ -142,13 +168,14 @@ export class AppConfigService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly tenantResolution: TenantResolutionService,
   ) {}
 
   async getPublicValue(key: string): Promise<string> {
     if (!isKnownConfigKey(key)) {
       throw new NotFoundException('Unknown config key');
     }
-    const row = await this.prisma.app_config.findUnique({ where: { configKey: key } });
+    const row = await this.prisma.app_config.findFirst({ where: { configKey: key } });
     if (row) return row.configValue;
     return isSiteSettingKey(key) ? SITE_SETTING_DEFAULTS[key] : '';
   }
@@ -185,8 +212,121 @@ export class AppConfigService {
   // Server-side read for other services (e.g. LocationsService picking the
   // default privacy for a newly created location) — no HTTP round-trip.
   async getSiteSetting(key: SiteSettingKey): Promise<string> {
-    const row = await this.prisma.app_config.findUnique({ where: { configKey: key } });
+    const row = await this.prisma.app_config.findFirst({ where: { configKey: key } });
     return row?.configValue ?? SITE_SETTING_DEFAULTS[key];
+  }
+
+  // ── Contact identity (REQ-TENANT-01.4) ──────────────────────
+  //
+  // Each of these answers "what address does THIS community put on the mail and
+  // calendar entries it sends". They resolve most specific first:
+  //
+  //   1. the community's own address, if it set one
+  //   2. an address derived from the community's own mail domain, if it set one
+  //   3. the deployment-wide env var, which is what every existing install has
+  //   4. an address derived from the deployment's mail domain
+  //
+  // Step 2 sits ABOVE step 3 deliberately. A community that has gone to the
+  // trouble of naming its own mail domain has said something more specific than
+  // the deployment default, so `hello@its-own-domain` beats the deployment's
+  // SUPPORT_EMAIL; a community that has set nothing still gets exactly what it
+  // got before these keys existed, which is what keeps this invisible to an
+  // install that has not opted in. Steps 3 and 4 are instance-contact.ts,
+  // unchanged and still the only place the env derivation lives.
+  //
+  // `tenantId` is for callers with no ambient tenant -- a cron sweep running
+  // under runUnscoped, which must name the tenant it is composing for rather
+  // than read whichever row the engine reaches first. Request-path callers omit
+  // it and inherit the resolved tenant.
+
+  /**
+   * The community's mail domain.
+   *
+   * Deliberately NOT derived from the tenant's own host. A tenant is a web
+   * host, and tenants below the apex are subdomains -- `dayton.example.com`
+   * normally publishes no MX record at all, so deriving `hello@dayton.example.com`
+   * from it would produce an address that silently bounces. That is the same
+   * failure the "www." strip in instance-contact.ts exists to prevent, one
+   * level down. A community whose subdomain really does accept mail says so by
+   * setting mail_domain; otherwise it inherits the deployment's.
+   */
+  async mailDomain(tenantId?: number): Promise<string> {
+    return (await this.ownMailDomain(tenantId)) ?? baseDomain(this.config);
+  }
+
+  /** Reply-to surfaced to members, e.g. in calendar-feed descriptions. */
+  async supportEmail(tenantId?: number): Promise<string> {
+    const own = await this.tenantSetting('contact_support_email', tenantId);
+    if (own) return own;
+    const domain = await this.ownMailDomain(tenantId);
+    return domain ? `hello@${domain}` : envSupportEmail(this.config);
+  }
+
+  /** ORGANIZER on generated calendar feeds. */
+  async calendarOrganizerEmail(tenantId?: number): Promise<string> {
+    const own = await this.tenantSetting('contact_calendar_email', tenantId);
+    if (own) return own;
+    const domain = await this.ownMailDomain(tenantId);
+    return domain
+      ? `${this.calendarLocalPart()}@${domain}`
+      : envCalendarOrganizerEmail(this.config);
+  }
+
+  /** ORGANIZER on per-event .ics attachments. */
+  async eventOrganizerEmail(tenantId?: number): Promise<string> {
+    const own = await this.tenantSetting('contact_event_email', tenantId);
+    if (own) return own;
+    const domain = await this.ownMailDomain(tenantId);
+    return domain ? `noreply@${domain}` : envEventOrganizerEmail(this.config);
+  }
+
+  /**
+   * "calendar" or "calendar-stage". Keyed on APP_URL because it asks "is this
+   * deployment stage", which is true of the process and not of any one
+   * community -- the same reason CalendarService.appName() stays on APP_URL.
+   * Mirrors instance-contact.ts; kept in step with it by their shared spec.
+   */
+  private calendarLocalPart(): string {
+    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    return appUrl.includes('stage') ? 'calendar-stage' : 'calendar';
+  }
+
+  /**
+   * Whether the ambient tenant is the root one.
+   *
+   * Read from the registry rather than compared against APP_URL: `tenants` is
+   * global so this needs no waiver, and `is_root` is the database's own answer
+   * -- the same column SystemAdminGuard checks, so the UI and the guard cannot
+   * disagree about which community this is.
+   */
+  private async servingRootTenant(): Promise<boolean> {
+    const tenantId = currentTenantId();
+    if (!tenantId) return false;
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { isRoot: true },
+    });
+    return tenant?.isRoot ?? false;
+  }
+
+  /** The tenant's own mail domain, or null when it has not set one. */
+  private async ownMailDomain(tenantId?: number): Promise<string | null> {
+    const own = await this.tenantSetting('mail_domain', tenantId);
+    // Same "www is a web host, never a mail domain" strip instance-contact.ts
+    // applies -- an admin pasting their site URL in here is the likely input.
+    return own ? own.replace(/^www\./i, '') : null;
+  }
+
+  /**
+   * One setting for one tenant, trimmed, with blank treated as unset.
+   *
+   * Awaited *inside* the runWithTenant callback, not returned from it: Prisma
+   * promises are lazy, so returning the promise would build the query in the
+   * tenant context and run it outside.
+   */
+  private async tenantSetting(key: SiteSettingKey, tenantId?: number): Promise<string> {
+    const read = async (): Promise<string> => (await this.getSiteSetting(key)).trim();
+    return tenantId === undefined ? read() : runWithTenant(tenantId, read);
   }
 
   // Server-side feature-flag check used by FeatureGuard and any service that
@@ -228,6 +368,15 @@ export class AppConfigService {
     vapidPublicKey: string | null;
     facebookAppId: string | null;
     isStage: boolean;
+    /**
+     * Whether the community being served is the root one.
+     *
+     * Needed by the frontend, which otherwise has no way to tell: every tenant
+     * looks identical from the browser. The role picker uses it to stop
+     * offering `system_admin` on a community where the API would refuse it --
+     * an option that always fails is worse than no option.
+     */
+    isRoot: boolean;
     appUrl: string;
     baseDomain: string;
     terms: {
@@ -293,11 +442,18 @@ export class AppConfigService {
       vapidPublicKey: this.config.get<string>('VAPID_PUBLIC_KEY') ?? null,
       facebookAppId: this.config.get<string>('FACEBOOK_APP_ID') ?? null,
       isStage: this.config.get<string>('IS_STAGE') === 'true',
-      appUrl: this.config.get<string>('APP_URL') ?? '',
-      // Use the shared derivation (BASE_DOMAIN, else APP_URL host sans "www.")
-      // so the frontend gets the same value the cookie scope + contact emails
-      // use — instances rarely set BASE_DOMAIN explicitly.
-      baseDomain: baseDomain(this.config),
+      isRoot: await this.servingRootTenant(),
+      // The requesting tenant's own canonical URL, not the deployment's. Every
+      // other field in this payload is per-tenant (app_config is scoped now), so
+      // a deployment-global value here would be the one thing in the branding
+      // response that describes somebody else's community.
+      appUrl: await this.tenantResolution.baseUrlFor(),
+      // The requesting community's mail domain, resolved the same way the
+      // contact addresses in its calendar feeds are, so the value the frontend
+      // shows and the value those addresses are built from cannot disagree.
+      // NOT the cookie scope any more -- v2-6 made the session cookie
+      // host-only; see auth-cookie.util.ts.
+      baseDomain: await this.mailDomain(),
     };
   }
 
@@ -306,8 +462,15 @@ export class AppConfigService {
       throw new NotFoundException('Unknown config key');
     }
     // find-or-create then assign becomes one upsert on the unique key.
+    //
+    // The one place in this file that names the tenant by hand, and the reason
+    // is Prisma's, not ours: `upsert.where` must identify a row uniquely, the
+    // unique key is now the compound (tenant_id, config_key), and Prisma spells
+    // a compound key as a single nested object it cannot merge a separate
+    // `tenantId` into. `requireTenantId` is the same escape hatch raw SQL uses,
+    // and it throws rather than guessing when there is no tenant in context.
     return this.prisma.app_config.upsert({
-      where: { configKey: key },
+      where: { tenantId_configKey: { tenantId: requireTenantId('app config update'), configKey: key } },
       update: { configValue: value, updatedBy: userId },
       create: { configKey: key, configValue: value, updatedBy: userId },
     });
@@ -329,10 +492,13 @@ export class AppConfigService {
     // Wrapped in a transaction: the admin settings form submits every field
     // at once, and a failure partway through previously left some keys saved
     // and the rest not.
+    // Read once outside the map: it is the same tenant for every entry, and
+    // calling it per row would only repeat the same throw-or-return.
+    const tenantId = requireTenantId('app config bulk update');
     await this.prisma.$transaction(
       entries.map(({ key, value }) =>
         this.prisma.app_config.upsert({
-          where: { configKey: key },
+          where: { tenantId_configKey: { tenantId, configKey: key } },
           update: { configValue: value, updatedBy: userId },
           create: { configKey: key, configValue: value, updatedBy: userId },
         }),

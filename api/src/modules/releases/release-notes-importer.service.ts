@@ -10,13 +10,26 @@ import { marked } from 'marked';
 // which is how Vitest loads it.
 import sanitizeHtml from 'sanitize-html';
 import { PrismaService } from '../../database/prisma/prisma.service';
+import { runWithTenant } from '../../common/tenant/tenant-store';
+import {
+  AUTOMATION_ACCOUNT_EMAIL,
+  AUTOMATION_ACCOUNT_NAME,
+} from '../../common/utils/service-account.util';
 import { ALLOWED_HTML } from './releases.service';
 
 const DRAFT_FILE = '_draft.md';
 const DRAFT_VERSION = 'Upcoming';
 const DRAFT_TITLE = "What's New (In Progress)";
-const AUTOMATION_EMAIL = 'automation@dinnerbears.internal';
-const AUTOMATION_NAME = 'Claude Automation';
+
+/**
+ * Why a union rather than `number | null`: there are two reasons the author
+ * lookup can come up empty -- no root tenant at all, and a root tenant without
+ * an automation account -- and they call for different fixes. Collapsing both
+ * into `null` meant an unbootstrapped deployment logged "No root tenant" and
+ * then "Automation account not found", the second of which cannot be true when
+ * the first is: there is no tenant for an account to be missing from.
+ */
+type AutomationAuthor = { authorId: number } | { authorId: null; reason: string };
 
 // Shared release notes (see docs/RELEASE_NOTE_PIPELINE_SPEC.md) ship inside the
 // Docker image — one markdown file per finalized version under release-notes/,
@@ -57,11 +70,12 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
       return;
     }
 
-    const authorId = await this.getAutomationAuthorId();
-    if (authorId === null) {
-      this.logger.warn('Automation account not found — skipping release notes import');
+    const lookup = await this.getAutomationAuthor();
+    if (lookup.authorId === null) {
+      this.logger.warn(`${lookup.reason} — skipping release notes import`);
       return;
     }
+    const authorId = lookup.authorId;
 
     const finalized = files.filter((f) => f.endsWith('.md') && f !== DRAFT_FILE);
     for (const file of finalized) {
@@ -74,7 +88,33 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
     }
   }
 
-  private async getAutomationAuthorId(): Promise<number | null> {
+  private async getAutomationAuthor(): Promise<AutomationAuthor> {
+    // This runs from onApplicationBootstrap — no request, therefore no tenant
+    // context — while `users` is tenant-scoped (REQ-TENANT-01.5), so the lookup
+    // has to say which tenant it means or the extension throws and takes the
+    // whole boot down with it.
+    //
+    // It means the root tenant, explicitly, rather than runUnscoped: the
+    // automation account is created by bootstrap.ts alongside the root tenant,
+    // and email uniqueness is per-tenant now, so an unscoped findFirst would
+    // return whichever tenant's automation account the engine happened to reach
+    // first. `releases` itself is deployment-global (see
+    // tenant-scoped-models.ts) — it is only the author lookup that needs a
+    // tenant.
+    const rootTenant = await this.prisma.tenants.findFirst({
+      where: { isRoot: true },
+      select: { id: true },
+    });
+    if (!rootTenant) {
+      // Migrated and seeded but never bootstrapped. Skipping is right: without
+      // a root tenant there is no automation account to attribute notes to, and
+      // the next boot after bootstrap.js runs will import them.
+      return {
+        authorId: null,
+        reason: 'This deployment has no root tenant yet (bootstrap.js has not run)',
+      };
+    }
+
     // Matched by name + email, not role — the account's role is mutable
     // (Rob's admin role-picker can temporarily elevate it to member/
     // moderator/admin for testing, same pattern users.service.ts's
@@ -83,10 +123,22 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
     // boot time, even though the account otherwise still exists. Name is
     // included alongside the (already-unique) email as a belt-and-suspenders
     // check that this is specifically the seeded Claude Automation account.
-    const user = await this.prisma.users.findFirst({
-      where: { email: AUTOMATION_EMAIL, fullName: AUTOMATION_NAME },
-    });
-    return user?.id ?? null;
+    //
+    // Awaited *inside* the callback on purpose: Prisma promises are lazy, so
+    // returning the promise would build the query in the tenant context and run
+    // it outside (see runWithTenant's docs).
+    const user = await runWithTenant(rootTenant.id, async () =>
+      await this.prisma.users.findFirst({
+        where: { email: AUTOMATION_ACCOUNT_EMAIL, fullName: AUTOMATION_ACCOUNT_NAME },
+      }),
+    );
+    if (!user) {
+      return {
+        authorId: null,
+        reason: 'The root tenant has no automation account',
+      };
+    }
+    return { authorId: user.id };
   }
 
   private parseNote(raw: string): { title: string; body: string } {

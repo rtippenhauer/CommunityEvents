@@ -8,11 +8,11 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import {
   ReportContentType,
   ReportStatus,
-  UserRole,
 } from '../../database/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ReviewAction, ReviewReportDto } from './dto/review-report.dto';
+import { ELEVATED_ROLES } from '../../common/utils/roles.util';
 
 interface ContentInfo {
   authorId: number;
@@ -174,7 +174,7 @@ export class ReportsService {
     // TypeORM's array-of-where was an OR across roles; `in` says the same
     // thing directly.
     const mods = await this.prisma.users.findMany({
-      where: { role: { in: [UserRole.ADMIN, UserRole.MODERATOR] } },
+      where: { role: { in: [...ELEVATED_ROLES] } },
       select: { id: true },
     });
 

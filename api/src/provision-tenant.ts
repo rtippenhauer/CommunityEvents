@@ -18,9 +18,21 @@
  * override them. Changing which tenant is root is a schema-level operation, not
  * something a provisioning script should be able to do by accident.
  */
+import * as path from 'node:path';
+import * as dotenv from 'dotenv';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
 import { normalizeTenantDomain } from './common/utils/tenant-domain.util';
+import {
+  createServiceAccount,
+  tenantGetsServiceAccount,
+} from './database/prisma/service-account.provision';
+
+// Same as bootstrap.ts and seed.ts: this runs standalone rather than through
+// Nest, so nothing else populates env. A container passes DB_* in directly and
+// this is a no-op there; locally it is what makes `npm run provision-tenant`
+// work at all.
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 function required(name: string): string {
   const value = process.env[name];
@@ -114,8 +126,26 @@ async function main(): Promise<void> {
       update: { slug, status },
     });
 
+    // A community other than the root one gets a service account on stage only,
+    // because nothing in production can use it -- see tenantGetsServiceAccount.
+    //
+    // `users.city_id` is NOT NULL and `cities` is a global model, so any city
+    // serves; the field is meaningless for a service account. Ordering by id
+    // keeps a re-run deterministic.
+    const wantsServiceAccount = tenantGetsServiceAccount(false);
+    if (wantsServiceAccount) {
+      const city = await prisma.cities.findFirst({ orderBy: { id: 'asc' } });
+      if (!city) {
+        throw new Error('No city exists -- run the seed step before provisioning a tenant.');
+      }
+      await createServiceAccount(prisma, tenant.id, city.id);
+    }
+
     console.log(
       `\nTenant ready: #${tenant.id} "${tenant.slug}" -> ${tenant.domain} (${tenant.status})\n` +
+        (wantsServiceAccount
+          ? '  Service account created (automation role) -- this is a stage deployment.\n'
+          : '  No service account: only the root community gets one in production.\n') +
         '  Point DNS and the reverse proxy at this deployment for that host, or it will never ' +
         'be reached.\n',
     );

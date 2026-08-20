@@ -20,6 +20,7 @@ import { FacebookGroupsModule } from './modules/facebook-groups/facebook-groups.
 import { LocationsModule } from './modules/locations/locations.module';
 import { EventsModule } from './modules/events/events.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { SystemModule } from './modules/system/system.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { EmailModule } from './modules/email/email.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
@@ -57,6 +58,7 @@ import { AvatarsModule } from './modules/avatars/avatars.module';
     LocationsModule,
     EventsModule,
     AdminModule,
+    SystemModule,
     StatsModule,
     EmailModule,
     FeedbackModule,

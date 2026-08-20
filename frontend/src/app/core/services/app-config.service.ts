@@ -24,6 +24,12 @@ export type SiteSettingKey =
   | 'brand_splash_url'
   | 'brand_icon_url'
   | 'brand_story_url'
+  // Contact identity, per community (REQ-TENANT-01.4). Blank means
+  // "inherit the deployment default" -- see AppConfigService on the API.
+  | 'mail_domain'
+  | 'contact_support_email'
+  | 'contact_calendar_email'
+  | 'contact_event_email'
   | 'term_location_singular'
   | 'term_location_plural'
   | 'term_dinner_singular'

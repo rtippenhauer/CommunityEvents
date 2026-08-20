@@ -33,6 +33,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
+import { isElevatedRole } from '../../common/utils/roles.util';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -153,7 +154,7 @@ export class LocationsController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: User,
   ) {
-    const isModOrAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    const isModOrAdmin = isElevatedRole(user.role);
     return isModOrAdmin
       ? this.locationsService.findOneWithModFields(id)
       : this.locationsService.findOneForUser(id, user);

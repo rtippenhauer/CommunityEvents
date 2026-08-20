@@ -23,6 +23,7 @@ import {
 } from '../../core/services/feedback.service';
 import { ReleasesService, Release } from '../../core/services/releases.service';
 import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
+import { isElevatedRole } from '../../core/utils/roles.util';
 
 @Component({
   selector: 'app-feedback-detail',
@@ -435,7 +436,7 @@ export class FeedbackDetailComponent implements OnInit {
   get isAdminOrMod(): () => boolean {
     return () => {
       const role = this.authService.currentUser()?.role;
-      return role === 'admin' || role === 'moderator';
+      return isElevatedRole(role);
     };
   }
 

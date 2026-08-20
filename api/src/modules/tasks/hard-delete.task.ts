@@ -4,6 +4,7 @@ import { unlink } from 'fs/promises';
 import { join } from 'path';
 import type { users as User } from '@prisma/client';
 import { runUnscoped } from '../../common/tenant/tenant-store';
+import { AUTO_DELETE_ELIGIBLE } from '../../common/utils/service-account.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { FacebookDeletionStatus, UserStatus } from '../../database/enums';
 import { AuditService } from '../audit/audit.service';
@@ -36,6 +37,13 @@ export class HardDeleteTask {
     const now = new Date();
     const due = await this.prisma.users.findMany({
       where: {
+        // Belt and braces: an admin, system admin or service account should
+        // never reach status DELETED, because every path that sets it refuses
+        // them. This is here so that if one ever does -- a hand-edited row, a
+        // future path that forgets -- the purge does not quietly destroy the
+        // community's only operator, or the account its own audit and
+        // release-notes rows point at.
+        ...AUTO_DELETE_ELIGIBLE,
         status: UserStatus.DELETED,
         hardDeleteAt: { lte: now },
       },

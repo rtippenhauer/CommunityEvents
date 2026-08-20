@@ -18,6 +18,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AuthService } from '../../core/services/auth.service';
 import { CityService } from '../../core/services/city.service';
+import { isElevatedRole } from '../../core/utils/roles.util';
 
 interface Member {
   id: number;
@@ -510,7 +511,7 @@ export class MembersComponent implements OnInit {
 
   readonly showRoles = computed(() => {
     const role = this.authService.currentUser()?.role;
-    return role === 'admin' || role === 'moderator';
+    return isElevatedRole(role);
   });
 
   private citySeeded = false;

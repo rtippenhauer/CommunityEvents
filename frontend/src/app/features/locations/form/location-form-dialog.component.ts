@@ -20,6 +20,7 @@ import {
 } from '../../../core/services/locations.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
+import { isElevatedRole } from '../../../core/utils/roles.util';
 
 export interface LocationFormDialogData {
   location?: Location;
@@ -465,7 +466,7 @@ export class LocationFormDialogComponent implements OnInit {
 
   isAdminOrMod(): boolean {
     const role = this.authService.currentUser()?.role;
-    return role === 'admin' || role === 'moderator';
+    return isElevatedRole(role);
   }
 
   ngOnInit(): void {

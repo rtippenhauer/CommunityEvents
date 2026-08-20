@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import type { member_points as MemberPoint } from '@prisma/client';
 import { requireTenantId } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { PointType, UserRole, UserStatus } from '../../database/enums';
+import { PointType, UserStatus } from '../../database/enums';
 import { AchievementsService } from './achievements.service';
 import { coerceRawRows } from '../../common/utils/prisma-raw.util';
+import { ADMIN_ROLES } from '../../common/utils/roles.util';
 
 export type SecretDinnerResync = { enabled: true; awarded: number } | { enabled: false; removed: number };
 
@@ -166,18 +167,24 @@ export class PointsService {
     // still appear, and a tenant filter in the WHERE would silently turn that
     // into an inner join and drop every zero-point member from the leaderboard.
     //
-    // The `users` side stays unfiltered because `users` is still a global model
-    // — REQ-TENANT-01.5 (v2-6) is what gives it a tenant_id. Until then the
-    // leaderboard's *rows* span tenants even though each member's *points* are
-    // correctly scoped to the requesting one.
+    // The `users` side carries its own predicate too, as of v2-6. That one goes
+    // in the WHERE rather than an ON clause: `users` is the driving table, so
+    // restricting it is the point, and before REQ-TENANT-01.5 gave it a
+    // tenant_id the leaderboard's *rows* spanned every tenant even though each
+    // member's *points* were correctly scoped to the requesting one.
     const tenantId = requireTenantId('leaderboard');
     const cityFilter = cityId ? 'AND u.city_id = ?' : '';
+    // Admins (both kinds) and service accounts are off the board. Admins by the
+    // existing rule; service accounts because they are not members of the
+    // community and would sit in it permanently on zero points. The service
+    // account test is the column, not the role, so it still holds while the root
+    // tenant's account is temporarily flipped to another role for testing.
     const params: unknown[] = [
       twoWeeksAgo,
       tenantId,
+      tenantId,
       UserStatus.ACTIVE,
-      UserRole.ADMIN,
-      UserRole.AUTOMATION,
+      ...ADMIN_ROLES,
     ];
     if (cityId) params.push(cityId);
 
@@ -204,8 +211,10 @@ export class PointsService {
        FROM users u
        LEFT JOIN cities c ON c.id = u.city_id
        LEFT JOIN member_points mp ON mp.user_id = u.id AND mp.tenant_id = ?
-       WHERE u.status = ?
+       WHERE u.tenant_id = ?
+         AND u.status = ?
          AND u.role NOT IN (?, ?)
+         AND u.is_service_account = 0
          ${cityFilter}
        GROUP BY u.id
        ORDER BY totalPoints DESC, u.full_name ASC`,

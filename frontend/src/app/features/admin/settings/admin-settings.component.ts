@@ -444,6 +444,48 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
         <mat-card>
           <mat-card-header>
+            <mat-card-title>Contact Addresses</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <p class="cadence-hint terms-intro">
+              The addresses this community puts on the mail and calendar entries it sends. Leave
+              any of them blank to use the deployment default — nothing breaks if you never
+              touch this page.
+            </p>
+            <form [formGroup]="form">
+              <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
+                <mat-label>Mail domain</mat-label>
+                <input matInput formControlName="mailDomain" placeholder="example.com" />
+                <mat-hint>
+                  Set this only if your community receives mail on its own domain. It is not
+                  assumed from your web address: a subdomain usually has no mail records, so
+                  anything sent there would bounce silently.
+                </mat-hint>
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
+                <mat-label>Support / reply-to address</mat-label>
+                <input matInput formControlName="contactSupportEmail" type="email" />
+                <mat-hint>Shown to members on calendar entries. Blank derives hello&#64;your mail domain.</mat-hint>
+                <mat-error>Enter a valid email address</mat-error>
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
+                <mat-label>Calendar feed organizer</mat-label>
+                <input matInput formControlName="contactCalendarEmail" type="email" />
+                <mat-hint>Blank derives calendar&#64;your mail domain.</mat-hint>
+                <mat-error>Enter a valid email address</mat-error>
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
+                <mat-label>Event invite organizer</mat-label>
+                <input matInput formControlName="contactEventEmail" type="email" />
+                <mat-hint>Blank derives noreply&#64;your mail domain.</mat-hint>
+                <mat-error>Enter a valid email address</mat-error>
+              </mat-form-field>
+            </form>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card>
+          <mat-card-header>
             <mat-card-title>Features</mat-card-title>
           </mat-card-header>
           <mat-card-content>
@@ -730,6 +772,12 @@ export class AdminSettingsComponent implements OnInit {
     termDinnerSingular: this.fb.control('Event', [Validators.required]),
     termDinnerPlural: this.fb.control('Events', [Validators.required]),
     termPoints: this.fb.control('Points', [Validators.required]),
+    // Contact identity. Optional on purpose: blank inherits the deployment
+    // default, which is what every community gets until it says otherwise.
+    mailDomain: this.fb.control(''),
+    contactSupportEmail: this.fb.control('', [Validators.email]),
+    contactCalendarEmail: this.fb.control('', [Validators.email]),
+    contactEventEmail: this.fb.control('', [Validators.email]),
     featureRatings: this.fb.control(true),
     featureRatingsResidences: this.fb.control(true),
     featureLeaderboard: this.fb.control(true),
@@ -758,6 +806,12 @@ export class AdminSettingsComponent implements OnInit {
           termDinnerSingular: byKey.get('term_dinner_singular') || 'Event',
           termDinnerPlural: byKey.get('term_dinner_plural') || 'Events',
           termPoints: byKey.get('term_points') || 'Points',
+          // No `||` default here -- blank is a meaningful value (inherit),
+          // not a missing one.
+          mailDomain: byKey.get('mail_domain') ?? '',
+          contactSupportEmail: byKey.get('contact_support_email') ?? '',
+          contactCalendarEmail: byKey.get('contact_calendar_email') ?? '',
+          contactEventEmail: byKey.get('contact_event_email') ?? '',
           featureRatings: byKey.get('feature_ratings') !== 'false',
           featureRatingsResidences: byKey.get('feature_ratings_residences') !== 'false',
           featureLeaderboard: byKey.get('feature_leaderboard') !== 'false',
@@ -882,6 +936,10 @@ export class AdminSettingsComponent implements OnInit {
         { key: 'term_dinner_singular', value: val.termDinnerSingular.trim() },
         { key: 'term_dinner_plural', value: val.termDinnerPlural.trim() },
         { key: 'term_points', value: val.termPoints.trim() },
+        { key: 'mail_domain', value: val.mailDomain.trim() },
+        { key: 'contact_support_email', value: val.contactSupportEmail.trim() },
+        { key: 'contact_calendar_email', value: val.contactCalendarEmail.trim() },
+        { key: 'contact_event_email', value: val.contactEventEmail.trim() },
         { key: 'feature_ratings', value: val.featureRatings ? 'true' : 'false' },
         { key: 'feature_ratings_residences', value: val.featureRatingsResidences ? 'true' : 'false' },
         { key: 'feature_leaderboard', value: val.featureLeaderboard ? 'true' : 'false' },

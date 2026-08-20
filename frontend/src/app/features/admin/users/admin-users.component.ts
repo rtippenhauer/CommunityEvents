@@ -452,6 +452,21 @@ interface AdminUser {
         --mat-chip-label-text-color: #fff;
         background: var(--db-primary) !important;
       }
+      /* Deliberately distinct from admin: this one operates the whole
+         deployment, and the badge should not read as "just another admin". */
+      .role-system_admin {
+        --mat-chip-label-text-color: #fff !important;
+        background: #5b3d8f !important;
+      }
+      .role-automation {
+        background: #e1e8f0 !important;
+        --mat-chip-label-text-color: var(--db-primary) !important;
+      }
+      /* Holds no privileges at all — greyed out rather than coloured. */
+      .role-disabled {
+        background: #eeeeee !important;
+        --mat-chip-label-text-color: #757575 !important;
+      }
       .role-moderator {
         --mat-chip-label-text-color: #fff;
         background: var(--db-primary) !important;

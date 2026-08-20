@@ -32,7 +32,6 @@
 
   <Config Name="JWT Secret" Target="JWT_SECRET" Default="" Mode="" Description="Secret key for JWT tokens — generate a new one, don't reuse v1's. openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
   <Config Name="JWT Expires In" Target="JWT_EXPIRES_IN" Default="7d" Mode="" Description="JWT token expiry" Type="Variable" Display="advanced" Required="false" Mask="false">7d</Config>
-  <Config Name="Session Secret" Target="SESSION_SECRET" Default="" Mode="" Description="Session cookie secret — required (main.ts reads this via getOrThrow, missing it crashes boot). Generate a new one: openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
   <Config Name="Google Client ID" Target="GOOGLE_CLIENT_ID" Default="" Mode="" Description="Google OAuth Client ID. Whatever APP_URL you set below needs its own authorized redirect URI (APP_URL + /api/v1/auth/google/callback) added to this client, or a separate client entirely" Type="Variable" Display="always" Required="true" Mask="false"></Config>
   <Config Name="Google Client Secret" Target="GOOGLE_CLIENT_SECRET" Default="" Mode="" Description="Google OAuth Client Secret" Type="Variable" Display="always" Required="true" Mask="true"></Config>
@@ -62,7 +61,7 @@
   <Config Name="Admin Email" Target="ADMIN_EMAIL" Default="" Mode="" Description="Email address granted admin on first login" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
 
   <Config Name="App URL" Target="APP_URL" Default="" Mode="" Description="Public URL for this stage instance, e.g. https://v2-stage.dinnerbears.com — needs its own DNS record and reverse-proxy entry; decide this before first boot" Type="Variable" Display="always" Required="true" Mask="false"></Config>
-  <Config Name="Base Domain" Target="BASE_DOMAIN" Default="" Mode="" Description="Bare domain for cookie scope + derived contact emails. Optional — defaults to APP_URL's host with a leading www. stripped. Use the bare domain, never www., since www.<domain> normally has no MX record" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Base Domain" Target="BASE_DOMAIN" Default="" Mode="" Description="Bare domain for derived contact emails (NOT the session cookie scope -- v2-6 made that cookie host-only). Optional — defaults to APP_URL's host with a leading www. stripped. Use the bare domain, never www., since www.<domain> normally has no MX record" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Calendar Organizer Email" Target="CALENDAR_ORGANIZER_EMAIL" Default="" Mode="" Description="Optional override — defaults to calendar@BASE_DOMAIN" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Event Organizer Email" Target="EVENT_ORGANIZER_EMAIL" Default="" Mode="" Description="Optional override — defaults to noreply@BASE_DOMAIN" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="Support Email" Target="SUPPORT_EMAIL" Default="" Mode="" Description="Optional override — defaults to hello@BASE_DOMAIN" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>

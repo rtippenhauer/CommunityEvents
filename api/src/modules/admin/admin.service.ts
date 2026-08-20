@@ -7,8 +7,10 @@ import {
   UserRole,
   UserStatus,
 } from '../../database/enums';
+import { assertNotServiceAccount } from '../../common/utils/service-account.util';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
+import { hasAdminRights } from '../../common/utils/roles.util';
 
 export interface AdminUserRow {
   id: number;
@@ -283,7 +285,8 @@ export class AdminService {
     const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot ban yourself');
-    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot ban an admin');
+    if (hasAdminRights(target.role)) throw new ForbiddenException('Cannot ban an admin');
+    assertNotServiceAccount(target, 'ban');
     if (actorRole === UserRole.MODERATOR && target.role !== UserRole.MEMBER) {
       throw new ForbiddenException('Moderators can only ban regular members');
     }
@@ -296,7 +299,8 @@ export class AdminService {
     const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot ban yourself');
-    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot ban an admin');
+    if (hasAdminRights(target.role)) throw new ForbiddenException('Cannot ban an admin');
+    assertNotServiceAccount(target, 'ban');
     await this.prisma.users.update({ where: { id: targetId }, data: {
       status: UserStatus.DELETED,
       deletedAt: new Date(),
@@ -316,7 +320,8 @@ export class AdminService {
     const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot delete yourself');
-    if (target.role === UserRole.ADMIN) throw new ForbiddenException('Cannot delete an admin');
+    if (hasAdminRights(target.role)) throw new ForbiddenException('Cannot delete an admin');
+    assertNotServiceAccount(target, 'delete');
 
     await this.prisma.oauth_accounts.deleteMany({ where: { userId: targetId } });
 
@@ -335,16 +340,76 @@ export class AdminService {
     const target = await this.prisma.users.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException('User not found');
     if (target.id === actorId) throw new BadRequestException('Cannot change your own role');
-    // The dedicated automation account (see AddAutomationRole migration) is the
-    // one exception — Rob can flip it up to admin via the UI to let it browse
-    // role-gated pages for testing, then flip it back down. Regular members
-    // still require a direct DB edit to be promoted to admin, and other
-    // admins' roles can't be changed via this endpoint at all.
-    const isAutomationAccount = target.email === 'automation@dinnerbears.internal';
-    if (target.role === UserRole.ADMIN && !isAutomationAccount) {
-      throw new ForbiddenException('Cannot change another admin\'s role');
+    // system_admin manages every tenant on the deployment, so handing it out from
+    // a per-tenant admin screen would put "admin of one community" one click from
+    // "operator of all of them". It is therefore assignable in exactly one case:
+    // the root tenant's own service account, which is the account the operator
+    // drives automated testing with.
+    //
+    // Narrow on purpose. A *human* still cannot be promoted here -- bootstrap
+    // creates the first system admin and any further one is a deliberate
+    // database edit -- and the exception cannot reach an ordinary tenant,
+    // because a non-root service account fails the isRoot test below and is
+    // additionally frozen by the `disabled` rule after it.
+    //
+    // Agreed with Rob 2026-08-16 for live testing, with the expectation that it
+    // reverts to database-only before production. If that happens, delete this
+    // block and the role-picker entry in the frontend; nothing else depends on
+    // it.
+    //
+    // Two conditions, not one. The target must be the root tenant's service
+    // account, AND the actor must already be a system admin -- an ordinary
+    // admin cannot mint one (Rob, 2026-08-17). Without the second condition any
+    // admin of the root community could grant the role that operates every
+    // community, which is the exact escalation the first condition was written
+    // to prevent, reached from the other side.
+    const rootTenant = await this.prisma.tenants.findFirst({
+      where: { rootMarker: true },
+      select: { id: true },
+    });
+    const targetIsRootServiceAccount =
+      target.isServiceAccount && !!rootTenant && rootTenant.id === target.tenantId;
+
+    if (role === UserRole.SYSTEM_ADMIN || target.role === UserRole.SYSTEM_ADMIN) {
+      const actor = await this.prisma.users.findUnique({
+        where: { id: actorId },
+        select: { role: true },
+      });
+      if (actor?.role !== UserRole.SYSTEM_ADMIN || !targetIsRootServiceAccount) {
+        throw new ForbiddenException('The system administrator role is not assignable here');
+      }
     }
-    if (role === UserRole.ADMIN && target.role !== UserRole.AUTOMATION) {
+
+    // A community's admin may set its OWN service account's role, on any tenant
+    // (Rob, 2026-08-18). There was briefly a rule freezing every non-root
+    // service account, on the theory that an account which cannot be deleted
+    // must not become one that can act. It was protecting nothing and blocking
+    // the workflow the account exists for:
+    //
+    //  - the role is inert. These accounts have a NULL password_hash, and login
+    //    refuses that outright; forgot-password is a no-op for the same reason,
+    //    and automationLogin admits the ROOT tenant's account only. There is no
+    //    path that authenticates as one, so no role makes it "act".
+    //  - the actor is already an admin of that community -- this route is
+    //    @Roles(ADMIN). Granting `admin` to a row in their own community hands
+    //    them nothing they do not already hold, so it is not an escalation.
+    //
+    // The escalation that IS real is system_admin, and that is guarded above by
+    // both the actor's role and the target being the root tenant's account.
+    // Deletion is refused everywhere regardless, which is the protection that
+    // was doing the actual work all along.
+
+    // Other admins' roles cannot be changed here. Service accounts are the
+    // exception -- keyed on is_service_account rather than the automation email
+    // it used to compare against, since the role is by definition in flux (that
+    // is the point) and the email is branding v2-9 rewrites.
+    if (hasAdminRights(target.role) && !target.isServiceAccount) {
+      throw new ForbiddenException("Cannot change another admin's role");
+    }
+    // Humans still need a database edit to become admin. A service account may
+    // be flipped up and back down freely, whatever role it currently holds --
+    // browsing role-gated pages is what the account is for.
+    if (role === UserRole.ADMIN && !target.isServiceAccount && target.role !== UserRole.AUTOMATION) {
       throw new ForbiddenException('Cannot promote to admin — set directly in the database');
     }
     const previousRole = target.role;

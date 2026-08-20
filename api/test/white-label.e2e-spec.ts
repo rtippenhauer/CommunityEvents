@@ -1,6 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
+import {
+  createTestApp,
+  resetThrottler,
+  truncateAllTables,
+  TEST_TENANT_DOMAIN,
+} from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { avatar as Avatar, cities as City, users as User } from '@prisma/client';
@@ -47,8 +52,13 @@ describe('White-label runtime config (e2e)', () => {
   describe('GET /config/branding', () => {
     it('is public and surfaces the env-derived per-instance values', async () => {
       const res = await request(server).get('/api/v1/config/branding').expect(200);
-      // From test/setup-env.ts.
-      expect(res.body.appUrl).toBe('http://localhost:8081');
+      // `appUrl` is the *requesting tenant's* canonical URL as of v2-6, not the
+      // deployment's APP_URL. Every other field in this payload is per-tenant
+      // (app_config is scoped now), so a deployment-global value here would have
+      // been the one field describing somebody else's community. The scheme
+      // still comes from APP_URL, since TLS is a property of the deployment.
+      expect(res.body.appUrl).toBe(`http://${TEST_TENANT_DOMAIN}`);
+      // Still env-derived: this is the mail domain, not the cookie or link scope.
       expect(res.body.baseDomain).toBe('localhost');
       // Unset in the test env → the graceful "feature off" defaults.
       expect(res.body.isStage).toBe(false);

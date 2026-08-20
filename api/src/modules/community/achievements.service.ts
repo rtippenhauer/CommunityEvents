@@ -608,11 +608,10 @@ export class AchievementsService {
     // probe is scoped to it as well — holding the achievement in one community
     // must not suppress the grant in another.
     //
-    // The `users` scan is deliberately left unfiltered, because it cannot be
-    // filtered yet: `users` is still global until REQ-TENANT-01.5 lands in v2-6.
-    // On a multi-tenant deployment this therefore grants the founding
-    // achievement to every active member of the deployment, stamped with the
-    // calling tenant. Revisit when users gain a tenant_id.
+    // The `users` scan carries its own tenant predicate too. Before v2-6 it
+    // could not -- `users` was global -- and this granted the founding
+    // achievement to every active member of the *deployment*, stamped with the
+    // calling tenant. Now it grants it to this community's members only.
     const tenantId = requireTenantId('founder achievement backfill');
 
     const result = await this.prisma.$executeRawUnsafe(
@@ -622,12 +621,14 @@ export class AchievementsService {
       FROM users u
       JOIN achievements a ON a.\`key\` = 'founding_bear'
       WHERE u.status = 'active'
+        AND u.tenant_id = ?
         AND NOT EXISTS (
           SELECT 1 FROM member_achievements ma
           WHERE ma.member_id = u.id AND ma.achievement_id = a.id
             AND ma.tenant_id = ?
         )
     `,
+      tenantId,
       tenantId,
       tenantId,
     );
@@ -654,6 +655,7 @@ export class AchievementsService {
       SELECT DISTINCT invitee.invited_by AS inviterId
       FROM users invitee
       WHERE invitee.invited_by IS NOT NULL
+        AND invitee.tenant_id = ?
         AND EXISTS (
           SELECT 1 FROM member_points ap
           WHERE ap.user_id = invitee.id AND ap.point_type = 'attendance'
@@ -667,6 +669,7 @@ export class AchievementsService {
             AND ip.tenant_id = ?
         )
     `,
+      tenantId,
       tenantId,
       tenantId,
     );
@@ -677,6 +680,7 @@ export class AchievementsService {
       SELECT invitee.invited_by, 'invite', invitee.id, 1, NOW(), ?
       FROM users invitee
       WHERE invitee.invited_by IS NOT NULL
+        AND invitee.tenant_id = ?
         AND EXISTS (
           SELECT 1 FROM member_points ap
           WHERE ap.user_id = invitee.id AND ap.point_type = 'attendance'
@@ -690,6 +694,7 @@ export class AchievementsService {
             AND ip.tenant_id = ?
         )
     `,
+      tenantId,
       tenantId,
       tenantId,
       tenantId,

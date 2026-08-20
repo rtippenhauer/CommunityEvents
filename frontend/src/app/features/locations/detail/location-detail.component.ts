@@ -38,6 +38,7 @@ import { EventFormDialogComponent } from '../../events/form/event-form-dialog.co
 import { Event as DinnerEvent } from '../../../core/services/events.service';
 import { ReportButtonComponent } from '../../../shared/components/report-button/report-button.component';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
+import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
 
 @Component({
   selector: 'app-location-detail',
@@ -1077,11 +1078,11 @@ export class LocationDetailComponent implements OnInit {
 
   isAdminOrMod(): boolean {
     const role = this.authService.currentUser()?.role;
-    return role === 'admin' || role === 'moderator';
+    return isElevatedRole(role);
   }
 
   isAdmin(): boolean {
-    return this.authService.currentUser()?.role === 'admin';
+    return hasAdminRights(this.authService.currentUser()?.role);
   }
 
   mapsUrl(): string {

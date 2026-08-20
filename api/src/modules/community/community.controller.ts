@@ -25,6 +25,7 @@ import { CreateAchievementDto } from './dto/create-achievement.dto';
 import { UpdateAchievementDto } from './dto/update-achievement.dto';
 import { CreateCustomIconDto } from './dto/create-custom-icon.dto';
 import { UserRole } from '../../database/enums';
+import { isElevatedRole } from '../../common/utils/roles.util';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -165,7 +166,7 @@ export class CommunityController {
   @UseGuards(JwtAuthGuard)
   async getMemberPointsLedger(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
     const isSelf = req.user.id === id;
-    const isPrivileged = req.user.role === UserRole.ADMIN || req.user.role === UserRole.MODERATOR;
+    const isPrivileged = isElevatedRole(req.user.role);
     if (!isSelf && !isPrivileged) {
       throw new ForbiddenException('Not authorized to view this ledger');
     }
@@ -185,7 +186,7 @@ export class CommunityController {
   async getEventAchievement(@Param('eventId', ParseIntPipe) eventId: number, @Request() req: any) {
     const ach = await this.achievementsService.getEventAchievement(eventId);
     if (!ach) return null;
-    const isPrivileged = req.user?.role === UserRole.ADMIN || req.user?.role === UserRole.MODERATOR;
+    const isPrivileged = isElevatedRole(req.user?.role);
     if (ach.isSecret && !isPrivileged) return null;
     return ach;
   }

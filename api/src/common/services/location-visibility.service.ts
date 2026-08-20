@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { users as User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { RsvpStatus, UserRole } from '../../database/enums';
+import { RsvpStatus } from '../../database/enums';
+import { isElevatedRole } from '../../common/utils/roles.util';
 
 export interface PrivateLocationLike {
   id: number;
@@ -18,7 +19,7 @@ export class LocationVisibilityService {
   constructor(private readonly prisma: PrismaService) {}
 
   isAdminOrMod(user: User | null | undefined): boolean {
-    return user?.role === UserRole.ADMIN || user?.role === UserRole.MODERATOR;
+    return isElevatedRole(user?.role);
   }
 
   // Pure decision, no DB access — for callers that already know (or have

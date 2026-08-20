@@ -68,6 +68,28 @@ export async function seedUser(
   });
 }
 
+/**
+ * The service account a tenant owns (see service-account.util.ts).
+ *
+ * Sets `isServiceAccount` rather than only the automation email, because that
+ * column -- not the address and not the role -- is what the delete guards, the
+ * member directory and the leaderboard all key on. A spec that seeds the email
+ * alone is seeding an ordinary member that happens to be called automation.
+ */
+export async function seedServiceAccount(
+  prisma: PrismaService,
+  cityId: number,
+  overrides: UserOverrides = {},
+): Promise<User> {
+  return seedUser(prisma, cityId, {
+    isServiceAccount: true,
+    role: UserRole.AUTOMATION,
+    email: 'automation@dinnerbears.internal',
+    fullName: 'Claude Automation',
+    ...overrides,
+  });
+}
+
 // Issues a real session (JWT + persisted login_sessions row) the same way a
 // real login would — required because JwtStrategy checks the session table by
 // jti, not just the JWT signature. Returns the cookie header value to attach

@@ -27,6 +27,10 @@ import { stripUserSecrets } from '../../common/utils/public-user.util';
 import { AchievementsService } from '../community/achievements.service';
 import { RsvpStatus } from '../../database/enums';
 import type { event_rsvps as EventRsvp } from '@prisma/client';
+import { ELEVATED_ROLES } from '../../common/utils/roles.util';
+import { AUTOMATION_ACCOUNT_EMAIL } from '../../common/utils/service-account.util';
+import { isStageDeployment } from '../../common/config/deployment.util';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 export interface SessionContext {
   userAgent?: string;
@@ -68,6 +72,7 @@ export class AuthService {
     private readonly notificationsService: NotificationsService,
     private readonly emailService: EmailService,
     private readonly achievementsService: AchievementsService,
+    private readonly tenantResolution: TenantResolutionService,
   ) {
     this.loginWindowMs = this.configService.get<string>('IS_STAGE') === 'true'
       ? STAGE_LOGIN_WINDOW_MS
@@ -126,7 +131,7 @@ export class AuthService {
     }
 
     // Fallback: user row exists (orphaned from a previous partial attempt)
-    const existingByEmail = await this.prisma.users.findUnique({
+    const existingByEmail = await this.prisma.users.findFirst({
       where: { email: email.toLowerCase() },
     });
     if (existingByEmail) {
@@ -262,7 +267,7 @@ export class AuthService {
     }
 
     if (email) {
-      const existingByEmail = await this.prisma.users.findUnique({
+      const existingByEmail = await this.prisma.users.findFirst({
         where: { email: email.toLowerCase() },
       });
       if (existingByEmail) {
@@ -634,11 +639,54 @@ export class AuthService {
       throw new UnauthorizedException('Invalid automation secret');
     }
 
-    const user = await this.prisma.users.findUnique({
-      where: { email: 'automation@dinnerbears.internal' },
+    // findFirst, not findUnique: the address is only unique within a tenant now,
+    // and the extension injects the tenant this request resolved to. That is the
+    // security-relevant half -- CLAUDE_AUTOMATION_SECRET is a single
+    // platform-wide value, so without the tenant in the lookup a valid secret
+    // presented to any community's host would mint a session there.
+    const user = await this.prisma.users.findFirst({
+      where: { email: AUTOMATION_ACCOUNT_EMAIL },
     });
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Automation account not found or inactive');
+    }
+
+    // Keyed on `is_service_account`, never on the role. An earlier version
+    // required role `automation`, which broke the whole point of the account: it
+    // is deliberately flipped up to admin (and back) so it can browse role-gated
+    // pages, and that flip made automation login start refusing. The role is the
+    // one property here guaranteed to change; the column is not.
+    if (!user.isServiceAccount) {
+      throw new UnauthorizedException('Automation login is not enabled here');
+    }
+
+    // Which communities automation may sign in to (Rob, 2026-08-18):
+    //
+    //   root, anywhere      -> yes. The operator's own community.
+    //   non-root, stage     -> yes. Driving a second community is the only way
+    //                          to exercise tenant isolation as a real member,
+    //                          and stage is where that testing happens.
+    //   non-root, production-> NO.
+    //
+    // The last line is the point. CLAUDE_AUTOMATION_SECRET is a single
+    // platform-wide value, so without this check a valid secret presented to any
+    // community's host would mint a session inside it -- which, once communities
+    // belong to paying customers, is the operator silently acting as someone
+    // inside their community. Gating on IS_STAGE means that capability cannot
+    // exist in production at all, rather than existing behind a promise to turn
+    // it off later.
+    //
+    // Note every tenant still HAS a service account in production; it simply
+    // cannot be signed into. It exists to own the rows the deployment writes on
+    // that community's behalf, since users.tenant_id is NOT NULL.
+    const rootTenant = await this.prisma.tenants.findFirst({
+      where: { rootMarker: true },
+      select: { id: true },
+    });
+    const isRootTenant = !!rootTenant && rootTenant.id === user.tenantId;
+    const isStage = isStageDeployment();
+    if (!isRootTenant && !isStage) {
+      throw new UnauthorizedException('Automation login is not enabled here');
     }
 
     const { accessToken } = await this.issueTokens(user, ctx);
@@ -680,7 +728,7 @@ export class AuthService {
   ): Promise<User> {
     const lowerEmail = email.toLowerCase();
 
-    const existing = await this.prisma.users.findUnique({
+    const existing = await this.prisma.users.findFirst({
       where: { email: lowerEmail },
     });
     if (existing && existing.status !== UserStatus.DELETED) {
@@ -770,7 +818,7 @@ export class AuthService {
     password: string,
     ctx: SessionContext,
   ): Promise<{ accessToken: string; jti: string; failedAttemptsSinceLastLogin: number; previousLastLoginAt: Date | null }> {
-    const user = await this.prisma.users.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.users.findFirst({ where: { email: email.toLowerCase() } });
 
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('invalid_credentials');
@@ -859,6 +907,12 @@ export class AuthService {
   }
 
   private async sendLockoutAlerts(user: User, attempts: number): Promise<void> {
+    // Resolved from the locked-out user's own tenant rather than the ambient
+    // one. They are the same on an ordinary login attempt, but naming the user's
+    // tenant means a lockout alert can never send someone to a community they do
+    // not belong to.
+    const appUrl = await this.tenantResolution.baseUrlFor(user.tenantId);
+
     // Email the affected user
     try {
       await this.emailService.sendNow({
@@ -869,9 +923,9 @@ export class AuthService {
           <p>Hi ${user.fullName},</p>
           <p>We detected <strong>${attempts} failed login attempts</strong> on your DinnerBears account and have temporarily locked it.</p>
           <p>If this was you, please wait a few minutes and try again.</p>
-          <p>If you don't recognize this activity, <a href="${this.configService.get<string>('APP_URL', 'https://dinnerbears.com')}/auth/forgot-password">reset your password immediately</a>.</p>
+          <p>If you don't recognize this activity, <a href="${appUrl}/auth/forgot-password">reset your password immediately</a>.</p>
         `,
-        textBody: `Hi ${user.fullName}, we detected ${attempts} failed login attempts and temporarily locked your account. If this wasn't you, reset your password at ${this.configService.get<string>('APP_URL', 'https://dinnerbears.com')}/auth/forgot-password`,
+        textBody: `Hi ${user.fullName}, we detected ${attempts} failed login attempts and temporarily locked your account. If this wasn't you, reset your password at ${appUrl}/auth/forgot-password`,
       });
     } catch {
       // Non-fatal
@@ -880,7 +934,7 @@ export class AuthService {
     // In-app notification to all admins and moderators
     try {
       const elevated = await this.prisma.users.findMany({
-        where: { role: { in: [UserRole.ADMIN, UserRole.MODERATOR] } },
+        where: { role: { in: [...ELEVATED_ROLES] } },
         select: { id: true },
       });
       await Promise.all(
@@ -921,7 +975,7 @@ export class AuthService {
   }
 
   async resendVerification(email: string): Promise<void> {
-    const user = await this.prisma.users.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.users.findFirst({ where: { email: email.toLowerCase() } });
 
     // Always return success to prevent email enumeration
     if (!user || user.emailStatus !== EmailStatus.PENDING || !user.passwordHash) return;
@@ -939,7 +993,7 @@ export class AuthService {
   }
 
   async forgotPassword(email: string): Promise<void> {
-    const user = await this.prisma.users.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await this.prisma.users.findFirst({ where: { email: email.toLowerCase() } });
 
     // Always return success to prevent email enumeration
     if (!user || !user.passwordHash || user.status !== UserStatus.ACTIVE) return;
@@ -953,7 +1007,10 @@ export class AuthService {
       passwordResetExpiresAt: expires,
     } });
 
-    const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
+    // The tenant's own host, not APP_URL: the token lookup behind this link is
+    // scoped, so a link to another community's host finds nothing and the reset
+    // silently fails.
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const resetUrl = `${appUrl}/auth/reset-password?token=${token}`;
 
     await this.emailService.sendNow({
@@ -998,7 +1055,7 @@ export class AuthService {
     const emailChanged = lowerEmail !== user.email.toLowerCase();
 
     if (emailChanged) {
-      const taken = await this.prisma.users.findUnique({ where: { email: lowerEmail } });
+      const taken = await this.prisma.users.findFirst({ where: { email: lowerEmail } });
       if (taken && taken.id !== userId) throw new ConflictException('email_taken');
     }
 
@@ -1042,7 +1099,9 @@ export class AuthService {
   }
 
   private async sendVerificationEmail(user: User, token: string): Promise<void> {
-    const appUrl = this.configService.get<string>('APP_URL', 'https://dinnerbears.com');
+    // Same reason as the reset link: verification is scoped to the tenant that
+    // issued the token.
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const verifyUrl = `${appUrl}/auth/verify-email?token=${token}`;
 
     await this.emailService.sendNow({

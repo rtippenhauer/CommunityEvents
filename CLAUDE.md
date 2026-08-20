@@ -34,16 +34,47 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-6` — bootstrap/runtime config split + user tenant
-scoping (REQ-TENANT-01.4, REQ-TENANT-01.5): `users.tenant_id`, per-tenant email
-uniqueness, and login resolving against the tenant that owns the URL it was
-submitted to. Confirmed with Rob 2026-08-14 that users cannot stay global; this
-is also what blocks meaningful two-tenant testing on stage. See `V2_PHASES.md`
-for the full backlog, each item's Definition of Done, and the survey of this
-one's blast radius (109 `users` call sites, and a startup query that will throw
-the moment `users` is scoped).
+**Current v2 work item:** `v2-7` — encrypted secrets at rest. `schema.prisma` has
+said since `v2-3` that `tenants.google_client_secret` and
+`tenants.facebook_app_secret` must be encrypted before anything writes them, and
+REQ-TENANT-01.9 is what will write them — so this comes first and blocks `v2-8`.
+It also owns the fifteen env vars `v2-6` classified `secret-pending-v2-7` and the
+plaintext `email_provider_config` API keys. Three things worth deciding once
+rather than per column: where the key comes from (bootstrap env is the only thing
+available today), what key rotation looks like, and whether one mechanism covers
+all of it. See `V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-6` — Bootstrap/runtime config split + user tenant scoping**
+  (2026-08-19, REQ-TENANT-01.4/01.5). `users` and `app_config` are tenant-scoped;
+  email is unique per tenant, so one address holds a separate account in each
+  community and login resolves against the tenant owning the URL. Cookies are
+  host-only, `express-session` is gone, and every member-facing link resolves
+  through `baseUrlFor()` rather than `APP_URL`.
+
+  The config split turned out to be mostly *deciding*: which of ~45 variables is
+  bootstrap, install, deployment, runtime or a secret is now declared in
+  `env-classification.ts` with a spec holding it to `.env.example`. Three things
+  fell out of writing it — bootstrap config was already down to eleven variables,
+  `DB_MODE` is named by the requirement but was never implemented, and seventeen
+  variables were documented nowhere at all (`AUTO_PROVISION` among them, which is
+  why the first stage install needed it passed along out of band).
+
+  What actually moved is contact identity: a community's `hello@`, `calendar@`
+  and `noreply@` are its own, resolved most-specific-first with the env var as
+  the deployment default. Every credential stayed in env — `app_config` has no
+  encryption at rest, which is `v2-7`.
+
+  Stage testing drove the rest of the item and found gaps no test would have:
+  a newly created community had no way in at all, an adminless community was
+  unrecoverable, there was no way to delete one, and the tenant dialog's hints
+  rendered on top of the fields beneath them. Each is covered above.
+
+  Two corrections worth remembering, both from Rob pushing back on my reasoning:
+  a non-root service account was created `disabled` to prevent an escalation that
+  was never reachable, and was created *at all* on the claim that it owned the
+  deployment's writes in that community — which was false, since
+  `audit_log.user_id` is nullable and nothing looks one up.
 - **`v2-1` — Prisma data layer** (2026-08-09). TypeORM removed entirely:
   entities deleted, `typeorm`/`@nestjs/typeorm` uninstalled, all 36 services
   converted. `schema.prisma` is the single source of truth and one initial
@@ -140,8 +171,9 @@ the moment `users` is scoped).
 
 V2 is being defined through a sequence of requirements docs. Only one exists
 so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft;
-`v2-1` through `v2-5` are implemented, `v2-6` is outstanding; REQ-TENANT-01.9
-was added 2026-08-14 and is deferred to `v2-13`). It is
+`v2-1` through `v2-6` are implemented, which closes out every requirement in it
+except REQ-TENANT-01.8 and 01.9 — both added later and both landing in `v2-8`,
+which as of 2026-08-15 is the second item after `v2-6` rather than last). It is
 the foundational doc everything else depends on and defines the conventions the
 rest of v2 follows. Key decisions it locks in:
 
@@ -179,6 +211,15 @@ tenant code is written against Vitest from the start rather than ported off
 Jest later (decided with Rob 2026-08-09; this shifted the old `v2-2`–`v2-5`
 each up by one, and no `v2-*` tags existed yet). Full requirement-level
 detail lives in `docs/REQ-TENANT-01.md`.
+
+**After `v2-6` come secrets and per-tenant OAuth** — `v2-7` (encrypted secrets
+at rest) then `v2-8` (per-tenant OAuth apps), moved ahead of the branding,
+demo and wizard work with Rob 2026-08-15 and renumbered from the old
+`v2-12`/`v2-13`.
+The branding, landing page, demo, setup wizard and handbook items each shifted
+down two, to `v2-9`–`v2-13`. Same reasoning as the `v2-2` move above: the
+number is meant to read as the running order, and it was still free to change
+because no `v2-*` tag above `v2-5` has been cut.
 
 Not yet decided/known: whether the frontend framework itself is changing.
 (Its testing choice is settled — `v2-2` put it on Vitest via Angular's
@@ -253,6 +294,10 @@ frontend work unless/until a future requirements doc says otherwise.
   express the statement, and every such site in the codebase carries a comment
   saying why (correlated subqueries, `ON DUPLICATE KEY UPDATE`,
   `COALESCE(resolved_at, NOW())`, `TIMESTAMP(date, time)` window filters).
+  **Raw SQL is where scoping bugs hide** — it produces no compile error when a
+  model becomes scoped, so a statement against a scoped table must carry its own
+  predicate. A join hanging off an already-scoped row (a rating's member) does
+  not need one, but should say so.
 - **Global prefix** `/api/v1` set in main.ts
 - **Never expose stack traces** — GlobalExceptionFilter handles all errors
 - **Tenant scoping is automatic, not manual** (landed in `v2-5`) — never add a
@@ -265,6 +310,12 @@ frontend work unless/until a future requirements doc says otherwise.
   in `runUnscoped('<reason>', ...)`. Without a tenant in context the extension
   throws rather than returning everything, so a forgotten context is a failure
   and not a leak.
+- **Never compare a role with `===` when asking "is this an admin"** — use
+  `hasAdminRights`/`isElevatedRole` from `api/src/common/utils/roles.util.ts`
+  (and the mirrored `frontend/src/app/core/utils/roles.util.ts`). `RolesGuard`
+  knows `system_admin` implies `admin`, but it only guards *route access*; every
+  in-handler comparison has to be told separately, and getting it wrong hides
+  admin controls from the account with the most rights rather than erroring.
 
 ## Database
 MySQL via **Prisma 7**. `api/prisma/schema.prisma` is the single source of
@@ -308,13 +359,13 @@ authoritative (per REQ-TENANT-01.3).
   (shared/dedicated — reserved, defaults shared), `created_at`, plus four
   reserved OAuth credential columns (nullable; the two `*_secret` ones must be
   encrypted at rest before anything writes them — that encryption layer does not
-  exist yet and is `v2-12`).
+  exist yet and is `v2-7`).
 - **NULL OAuth credentials mean that provider is OFF for the tenant**, which
   then offers email/password only — there is no platform-wide fallback app
   (REQ-TENANT-01.9, decided 2026-08-14; this *reversed* the original reading in
   REQ-TENANT-01.1, so ignore any older phrasing that says NULL means "uses the
-  platform's own OAuth apps"). Per-tenant credentials are `v2-13`, gated behind
-  `v2-12`; until then OAuth uses the platform env credentials.
+  platform's own OAuth apps"). Per-tenant credentials are `v2-8`, gated behind
+  `v2-7`; until then OAuth uses the platform env credentials.
 - Exactly one tenant has `is_root = true`; its admin is the system admin. This
   is a **database constraint**, not a convention: `root_marker` is `true` on the
   root and NULL elsewhere, and its unique index rejects a second root (MySQL has
@@ -371,13 +422,169 @@ authoritative (per REQ-TENANT-01.3).
   `runUnscoped`), and no context at all — which throws. Note **Prisma promises
   are lazy**, so `runWithTenant(id, () => prisma.x.find())` runs the query
   *outside* the context; await inside the callback.
-- `users` is **still global** until `v2-6`, so any account can authenticate
-  against any tenant. Sessions do not carry across tenants, though —
-  `JwtStrategy` looks the `jti` up in `login_sessions`, which is scoped.
+- **`users` and `app_config` are tenant-scoped as of `v2-6`.** Email is unique
+  per tenant (`@@unique([tenantId, email])`), not globally, so one address can
+  hold a separate account in each community and login resolves against the
+  tenant that owns the URL. `oauth_accounts` is keyed
+  `(tenant_id, provider, provider_id)` for the same reason.
+- **`seed.ts` may only write tenant-independent reference data.** It runs before
+  `bootstrap.ts` creates the root tenant, so a row it writes to a scoped table
+  takes the `tenant_id` sentinel and is rejected by the foreign key. The
+  `app_config` defaults and the automation account live in `bootstrap.ts` for
+  exactly this reason; the install is still `migrate` -> `seed` -> `bootstrap`.
+- **Links that leave the app must use the tenant's host**, via
+  `TenantResolutionService.baseUrlFor()` — never `APP_URL`, which is one value
+  for the whole deployment. Verification and reset emails, invite links, event
+  links and calendar feeds all resolve tokens against scoped tables, so a link
+  to the wrong host finds nothing and the flow fails silently. Pass an explicit
+  tenant id inside a `runUnscoped` sweep, where there is no ambient one.
+  `APP_URL` legitimately survives for the OAuth callback registered with Google,
+  the "is this stage" check, and the cookie-clearing domain.
+- **A cron sweep that composes per-tenant content must re-enter
+  `runWithTenant`.** `runUnscoped` is right for *finding* rows across tenants and
+  wrong for *rendering* anything: `app_config` is scoped, so branding read under
+  a waiver returns whichever tenant the engine reached first. See the seats
+  reminder in `events.service.ts`.
+- **Email lookups are `findFirst`, not `findUnique`.** An address no longer
+  identifies a row on its own. The exception is a compound unique key
+  (`app_config`'s upserts), which Prisma will not let the extension merge a
+  tenant into — those call `requireTenantId`, like raw SQL.
+- **Roles as of `v2-6`:** `non_validated`, `member`, `moderator`, `admin`,
+  `system_admin`, `automation`, `disabled`. `system_admin` is the deployment
+  operator (tenant management); `SystemAdminGuard` requires the role **and**
+  `req.tenant.isRoot`, and `admin.service.setRole` refuses to assign or remove
+  it — bootstrap creates the first one, further ones are a database edit.
+  `disabled` grants nothing at all, since `RolesGuard` is an allowlist.
+- **A service account exists only where something can use it**
+  (`tenantGetsServiceAccount`): the root tenant always, other communities on a
+  **stage deployment only**. It used to be created everywhere, justified as
+  owning the rows the deployment writes inside that community — which was false:
+  `audit_log.user_id` is nullable and nothing looks a non-root one up. In
+  production a customer community gets none at all.
+- **`automationLogin` matches that**: root anywhere, non-root on stage only. A
+  single platform-wide `CLAUDE_AUTOMATION_SECRET` would otherwise mint a session
+  inside a customer's community. Gating on `IS_STAGE` means the capability cannot
+  exist in production rather than existing behind a promise to disable it.
+- **`isStageDeployment()` reads `process.env`, not `ConfigService`** — deliberate
+  and the only flag that does. `bootstrap.ts`/`provision-tenant.ts` are plain
+  node processes with nothing to inject from, and two services capture `IS_STAGE`
+  in their constructors, which would make it untestable in both states.
+- **The service account holds `automation` wherever it exists**, root or not. A
+  community's own admin may change its role (it is inert — NULL password hash, so
+  nothing can authenticate as it, and the actor is already an admin there).
+  `system_admin` is the exception and stays guarded on both sides.
+- **`users.is_service_account` marks the one non-human account per tenant.**
+  Guards key on that column, never on the role (deliberately mutable — the root
+  account gets flipped to admin and back for testing) and never on the
+  `automation@dinnerbears.internal` address (branding `v2-9` rewrites). Service
+  accounts cannot be deleted by any path and are hidden from the member directory
+  and the leaderboard.
+- **Nothing is deleted on a timer if it is an `admin`, a `system_admin` or a
+  service account** (`AUTO_DELETE_ELIGIBLE`). The interactive paths already
+  refused them; the scheduled sweeps were the gap, and `inactivityCheck`
+  soft-deletes anything idle past 120 days and hard-deletes it 30 days later
+  with no confirmation. Admins still get the 60/90-day re-engagement nudges —
+  only the deletion stages exclude them.
+- **Creating a tenant creates its first admin.** Without one a community is a
+  dead end: registration needs an invite, invites need an existing member of that
+  tenant, and its only other account is the `disabled` service account. The
+  fields are create-only. A one-time setup link replaces the password hand-off in
+  `v2-12`.
+- **`system_admin` is assignable from the UI to the root tenant's service account
+  only, by someone who already holds it.** Both halves matter and neither implies
+  the other: constraining only the target let any root-community admin mint the
+  role that operates every community. Humans still cannot be promoted. The picker
+  reads `isRoot` off the branding payload so it stops offering an option the API
+  would refuse. Temporary — expected to revert to database-only before
+  production.
+- **`automationLogin` keys on `is_service_account` + the root tenant, never the
+  role.** The account is deliberately flipped between roles for testing, so a
+  role check locks automation out exactly when it is being used.
+- **Which env vars are bootstrap and which are runtime config is declared in
+  `api/src/common/config/env-classification.ts`**, one entry per variable with
+  the reasoning, and a spec holds it to `.env.example` in both directions. Adding
+  a variable to the sample env without classifying it fails the build, the same
+  way an unclassified Prisma model does. Bootstrap is eleven variables and should
+  stay that size; `DB_MODE` is named by REQ-TENANT-01.4 but was never
+  implemented, and is not the same thing as the reserved `tenants.db_mode`
+  column.
+- **A community's contact addresses are per-tenant** (`mail_domain`,
+  `contact_support_email`, `contact_calendar_email`, `contact_event_email` in
+  `app_config`, edited in Site Settings). Resolve them through
+  `AppConfigService.supportEmail()` / `.calendarOrganizerEmail()` /
+  `.eventOrganizerEmail()`, never `instance-contact.ts` directly — those are the
+  deployment-wide env layer underneath. Order is most-specific-first: the
+  community's own address, then a derivation from its own mail domain, then the
+  env var, then a derivation from the deployment domain. Blank means inherit, so
+  an install that sets nothing is unaffected.
+- **Tenant creation asks for the mail domain** (`CreateTenantDto.mailDomain`),
+  writing it as an ordinary `mail_domain` row on the new tenant — the same
+  setting its admin edits later, not a second home for the value. Create-only,
+  like the first-admin fields. The dialog prefills the deployment's own mail
+  domain when the new community is a subdomain of it, and deliberately suggests
+  nothing otherwise.
+- **The mail domain is never derived from the tenant's host.** A tenant is a web
+  host; a tenant subdomain normally publishes no MX record, so
+  `hello@dayton.example.com` would bounce silently. Same failure the `www.` strip
+  guards against, one level down. Pass an explicit tenant id inside a
+  `runUnscoped` sweep, as with `baseUrlFor()`.
+- **No credential moves into `app_config` before `v2-7`** — it has no encryption
+  at rest. Fifteen variables are marked `secret-pending-v2-7` and a test asserts
+  that list. The mail *identity* (`BREVO_FROM_*`) is held with them: it shares
+  the global `email_provider_config` row with the API key, and a provider rejects
+  a From address on a domain it has not verified.
+- **Tenant management lives at `/api/v1/system/tenants`**, under `system/` and
+  not `admin/` because it acts on the registry of communities rather than inside
+  one. The root tenant cannot be suspended and its domain cannot be changed
+  there — both would lock the system admin out of the only host the API answers
+  on.
+- **Deleting a community passes three gates**: never the root tenant, it must
+  already be `suspended`, and the caller retypes its domain. Suspending stays the
+  ordinary way to take one offline. The purge filters by `tenantId`
+  **explicitly** rather than through the extension — the one place in the
+  codebase that should — because a `deleteMany({})` that silently lost its filter
+  would empty every community, and a transaction client is not somewhere to bet
+  on an extension being applied. Order does not matter (every FK among scoped
+  tables is `CASCADE`); the `tenant_id` keys stay `RESTRICT` so the final
+  `tenants.delete()` fails loudly if the model list ever misses a table.
+- **A community's people are managed from the root tenant** at
+  `/api/v1/system/tenants/:id/users` — list, add, change role, suspend, set
+  password. Necessary because a system admin holds no account in the communities
+  they administer and those admin screens live on each community's own host, so
+  an admin who left or forgot their password made a community unreachable. It
+  refuses to touch a **service account** or any **system_admin**, and cannot
+  grant `system_admin`, matching `admin.service.setRole`.
+- **System-admin actions on other communities are audited on the ROOT tenant.**
+  `audit_log` is itself scoped, so an entry written against the community would
+  be deleted along with it (for a delete) and would hand that community's admin
+  an edit history of the operator (for everything else). The community id goes in
+  the metadata.
 
-**Design note carried over from v1 (still unfixed after `v2-3`/`v2-4` — those
-built tenant identity and resolution, not cookie scoping, so this now belongs
-to `v2-6`'s auth work):** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
+**Cookie scoping — fixed in `v2-6`.** The session cookie is **host-only**: no
+`Domain` attribute, so it belongs to the exact tenant host that issued it. It
+previously carried `domain: BASE_DOMAIN`, which under v2 meant one login valid
+across every tenant, since `.example.com` covers all of them. `BASE_DOMAIN` is
+now only the mail domain, plus clearing pre-`v2-6` cookies. Options live in
+`api/src/common/utils/auth-cookie.util.ts` — never set a `domain` there.
+
+One consequence: Google's callback lands on a single fixed host, so a host-only
+cookie set there does not reach a different tenant's host. OAuth works on the
+tenant owning the callback URL and nowhere else until REQ-TENANT-01.8's signed
+`state` handoff lands in `v2-8`. Email/password works on every tenant.
+
+**`express-session` is gone, and `SESSION_SECRET` with it** (`v2-6`). The
+comment claiming a session was "required by passport-google-oauth20" was wrong
+for this configuration: `GoogleStrategy` does not pass `state: true`, so
+passport-oauth2 picks its `NullStore`, whose `store()`/`verify()` never touch
+`req.session` and whose `verify()` returns true unconditionally. Nothing else
+read `req.session`. So the middleware only minted a `connect.sid` cookie per
+visitor and leaked a MemoryStore entry per request. Removing it changes no
+behaviour — `state` was already unverified, and REQ-TENANT-01.8's signed state
+(`v2-8`) is the real fix, which needs no store either. `SESSION_SECRET` can be
+dropped from any `.env`; nothing reads it.
+
+**The v1 design note this replaced, kept because the reasoning still explains
+the shape of the problem:** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
 because `www` is genuinely the only public web host — the apex publishes MX
 only, no A record. The same value doubles as the auth cookie domain, which
 means a subdomain like `cincinnati.dinnerbears.com` is a *sibling* of the

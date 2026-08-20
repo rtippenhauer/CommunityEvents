@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { FeedbackCategory, UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
+import { isElevatedRole } from '../../common/utils/roles.util';
 
 const ALLOWED_IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
@@ -99,7 +100,7 @@ export class FeedbackController {
 
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
-    const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    const isAdmin = isElevatedRole(user.role);
     return this.feedbackService.findOne(id, user.id, isAdmin);
   }
 
@@ -110,7 +111,7 @@ export class FeedbackController {
 
   @Get(':id/notes')
   getNotes(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
-    const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    const isAdmin = isElevatedRole(user.role);
     return this.feedbackService.getNotes(id, user.id, isAdmin);
   }
 
@@ -123,7 +124,7 @@ export class FeedbackController {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot add notes');
     }
-    const isAdmin = user.role === UserRole.ADMIN || user.role === UserRole.MODERATOR;
+    const isAdmin = isElevatedRole(user.role);
     return this.feedbackService.addNote(id, user.id, dto, isAdmin);
   }
 }

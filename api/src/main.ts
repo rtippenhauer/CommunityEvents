@@ -4,7 +4,6 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
 import cookieParser = require('cookie-parser');
-import session = require('express-session');
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
@@ -40,21 +39,21 @@ async function bootstrap(): Promise<void> {
 
   const configService = app.get(ConfigService);
 
-  // Session required by passport-google-oauth20 for OAuth state/CSRF verification.
-  // Short maxAge — only needed for the OAuth handshake (a few seconds).
-  app.use(
-    session({
-      secret: configService.getOrThrow<string>('SESSION_SECRET'),
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 10 * 60 * 1000, // 10 minutes
-      },
-    }),
-  );
+  // No express-session. The comment that used to live here said one was
+  // "required by passport-google-oauth20 for OAuth state/CSRF verification".
+  // That was never true of this configuration: GoogleStrategy does not pass
+  // `state: true`, so passport-oauth2 selects its NullStore -- whose store() and
+  // verify() are empty callbacks that never touch req.session -- and the
+  // strategy supplies its own `state` string instead. Nothing else in the
+  // application read req.session either, so the middleware only allocated a
+  // MemoryStore, set a connect.sid cookie on every visitor, and leaked an entry
+  // per request, while printing a production warning about all three.
+  //
+  // Worth being explicit about what this does NOT remove: `state` was already
+  // unverified, because NullStore.verify() returns true unconditionally. The
+  // open-redirect guard in AuthController is what stands in for it today, and
+  // REQ-TENANT-01.8's signed state (v2-8) is the real fix. That design needs no
+  // session store either.
 
   const uploadPath = configService.get<string>('UPLOAD_PATH', '/app/uploads');
 

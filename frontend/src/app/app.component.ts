@@ -13,10 +13,8 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs';
-import { environment } from '../environments/environment';
 import { AuthService } from './core/services/auth.service';
 import { BrandConfigService } from './core/services/brand-config.service';
-import { CityService } from './core/services/city.service';
 import { FeedbackService } from './core/services/feedback.service';
 import { HealthService } from './core/services/health.service';
 import { MerchService } from './core/services/merch.service';
@@ -26,6 +24,7 @@ import { NotificationBellComponent } from './shared/components/notification-bell
 import { IosInstallBannerComponent } from './shared/components/ios-install-banner/ios-install-banner.component';
 import { SplashComponent, SplashDialogData } from './shared/components/splash/splash.component';
 import { TenantUnavailableComponent } from './features/tenant-unavailable/tenant-unavailable.component';
+import { hasAdminRights, isSystemAdmin as isSystemAdminRole } from './core/utils/roles.util';
 
 @Component({
   selector: 'app-root',
@@ -53,7 +52,6 @@ export class AppComponent {
   private readonly breakpointObserver = inject(BreakpointObserver);
   readonly authService = inject(AuthService);
   readonly brandConfig = inject(BrandConfigService);
-  private readonly cityService = inject(CityService);
   readonly feedbackService = inject(FeedbackService);
   private readonly merchService = inject(MerchService);
   private readonly splashService = inject(SplashService);
@@ -123,7 +121,8 @@ export class AppComponent {
       url.startsWith('/admin/email') ||
       url.startsWith('/admin/cities') ||
       url.startsWith('/admin/merch') ||
-      url.startsWith('/admin/legal')
+      url.startsWith('/admin/legal') ||
+      url.startsWith('/admin/tenants')
     );
   });
 
@@ -165,7 +164,14 @@ export class AppComponent {
     () => this.authService.currentUser()?.profilePhotoPath ?? null,
   );
 
-  readonly isAdmin = computed<boolean>(() => this.authService.currentUser()?.role === 'admin');
+  readonly isAdmin = computed<boolean>(() => hasAdminRights(this.authService.currentUser()?.role));
+
+  // Deployment operator rather than community admin. Gates the tenant registry
+  // link only; the API enforces it again and additionally requires the root
+  // host, which the browser cannot check.
+  readonly isSystemAdmin = computed<boolean>(() =>
+    isSystemAdminRole(this.authService.currentUser()?.role),
+  );
 
   readonly isModerator = computed<boolean>(
     () => this.authService.currentUser()?.role === 'moderator',
@@ -183,28 +189,20 @@ export class AppComponent {
   constructor() {
     this.healthService.load();
 
-    // Safety net for unrecognized hosts (typo'd DNS entry, a decommissioned
-    // city, someone hitting the wildcard cert directly): city-scoped features
-    // like Facebook login assume the current hostname is either a known
-    // chapter subdomain or the instance's own canonical root. The canonical
-    // root now comes from the runtime branding config (APP_URL) rather than a
-    // compiled-in constant, so one image can serve any instance. Skipped in
-    // local dev, where the hostname is never one of those anyway.
-    effect(() => {
-      if (!environment.production) return;
-      if (this.cityService.cities().length === 0) return; // wait for the list to load
-
-      const appUrl = this.brandConfig.appUrl();
-      if (!appUrl) return; // no canonical URL configured — nothing to redirect to
-
-      const hostname = window.location.hostname.toLowerCase();
-      const rootHostname = new URL(appUrl).hostname.toLowerCase();
-      const isKnownHost = hostname === rootHostname || this.cityService.currentCity() !== undefined;
-
-      if (!isKnownHost) {
-        window.location.href = appUrl;
-      }
-    });
+    // The unrecognized-host redirect that used to live here is gone as of v2-6.
+    //
+    // It sent any hostname that was neither APP_URL's host nor a known city
+    // subdomain to APP_URL, as a safety net for typo'd DNS and wildcard-cert
+    // probes. Under v2 that is actively wrong: a tenant *is* a domain, and a
+    // legitimate community whose host is not also a city subdomain would be
+    // bounced off its own site to the root tenant's.
+    //
+    // The check it was doing now belongs to the server, which is strictly better
+    // placed for it: TenantMiddleware resolves the Host header before any route
+    // runs. If this code is executing at all, the host resolved to a tenant. An
+    // unrecognized one never reaches the app — it gets 404 TENANT_NOT_FOUND and
+    // the holding page, which is a clearer answer than a silent redirect into
+    // somebody else's community.
 
     effect(() => {
       if (this.isAdmin()) {

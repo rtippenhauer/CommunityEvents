@@ -14,7 +14,7 @@ import type {
   event_rsvps as EventRsvp,
   users as User,
 } from '@prisma/client';
-import { runUnscoped } from '../../common/tenant/tenant-store';
+import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import {
   EventStatus,
@@ -42,7 +42,6 @@ import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
-import { eventOrganizerEmail } from '../../common/config/instance-contact';
 
 /** An event with its location (and that location's photos) loaded. */
 type EventWithLocation = Prisma.eventsGetPayload<{
@@ -71,6 +70,8 @@ type EventListRow = Prisma.eventsGetPayload<{
 }>;
 import { AppConfigService } from '../app-config/app-config.service';
 import { coerceRawRows } from '../../common/utils/prisma-raw.util';
+import { isElevatedRole } from '../../common/utils/roles.util';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 export interface EventFilters {
   cityId?: number;
@@ -95,6 +96,7 @@ export class EventsService {
     private readonly config: ConfigService,
     private readonly locationVisibility: LocationVisibilityService,
     private readonly appConfig: AppConfigService,
+    private readonly tenantResolution: TenantResolutionService,
   ) {}
 
   // Per-instance branding for transactional emails / calendar files. Reads the
@@ -118,7 +120,7 @@ export class EventsService {
       this.appConfig.getSiteSetting('term_dinner_plural'),
       this.appConfig.getSiteSetting('brand_logo_url'),
     ]);
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     // brand_logo_url is already an absolute path (/api/uploads/branding/<file>)
     // once an admin uploads one; empty means no override, so fall back to the
     // same compiled-in default asset the frontend's BrandConfigService.logoSrc
@@ -242,7 +244,7 @@ export class EventsService {
     const isValidatedMember =
       filters.callerRole != null &&
       filters.callerRole !== UserRole.NON_VALIDATED;
-    const isPrivileged = filters.callerRole === UserRole.ADMIN || filters.callerRole === UserRole.MODERATOR;
+    const isPrivileged = isElevatedRole(filters.callerRole);
 
     return events.map((e) => {
       (e as any).createdByUser = toPublicUser(e.createdByUser);
@@ -295,7 +297,7 @@ export class EventsService {
     if (!event) throw new NotFoundException(`Event ${id} not found`);
 
     const isValidatedMember = callerRole != null && callerRole !== UserRole.NON_VALIDATED;
-    const isPrivileged = callerRole === UserRole.ADMIN || callerRole === UserRole.MODERATOR;
+    const isPrivileged = isElevatedRole(callerRole);
 
     const hasGoingRsvp =
       callerId != null &&
@@ -577,7 +579,7 @@ export class EventsService {
   }
 
   private async sendUpdateEmails(event: EventWithLocation): Promise<void> {
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const { brandName, tagline, logoUrl } = await this.getEmailBrand();
     const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
     const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
@@ -710,7 +712,7 @@ export class EventsService {
     const existing = await this.prisma.event_rsvps.findFirst({ where: { eventId, userId } });
 
     const isPastCutoff = isPastRsvpCutoff(toDateString(event.eventDate), toTimeString(event.eventTime));
-    const isPrivileged = userRole === UserRole.ADMIN || userRole === UserRole.MODERATOR;
+    const isPrivileged = isElevatedRole(userRole);
 
     // Block upgrading to GOING after cutoff — applies to new RSVPs and existing non-Going RSVPs
     if (status === RsvpStatus.GOING &&
@@ -784,7 +786,7 @@ export class EventsService {
   }
 
   private async sendPublishInvites(event: EventWithLocation): Promise<void> {
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
     // Every recipient here is, by construction, someone who hasn't RSVP'd yet
     // (see the rsvpedIds filter below) — so for a private location, none of
@@ -890,7 +892,7 @@ export class EventsService {
     const user = await this.prisma.users.findFirst({ where: { id: userId } });
     if (!user?.email) return;
 
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
     const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
     const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
@@ -1086,13 +1088,19 @@ export class EventsService {
   // hasn't earned visibility into a private location's address — otherwise
   // this "Add to Calendar" link would leak it even when the email body itself
   // was correctly redacted.
-  private buildGoogleCalendarUrl(event: EventRow, locationAddress = event.locationAddress): string {
+  // `appUrl` is passed in rather than read from config: it is the tenant's host
+  // now, which only an async lookup can resolve, and every caller has already
+  // resolved it for its own message.
+  private buildGoogleCalendarUrl(
+    event: EventRow,
+    appUrl: string,
+    locationAddress = event.locationAddress,
+  ): string {
     const [y, m, d] = toDateString(event.eventDate).split('-').map(Number);
     const [h, min] = toTimeString(event.eventTime).split(':').map(Number);
     const pad = (n: number) => String(n).padStart(2, '0');
     const start = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
     const end = `${y}${pad(m)}${pad(d)}T${pad(h + 2)}${pad(min)}00`;
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const details: string[] = [`🍽️ ${event.locationName}`];
     if (event.description) details.push(event.description);
     if (event.additionalInfo) details.push(event.additionalInfo);
@@ -1233,12 +1241,16 @@ export class EventsService {
 </html>`;
   }
 
+  // organizerEmail is passed in for the same reason appUrl is: both are
+  // per-tenant now, both need an await to resolve, and this stays synchronous
+  // so it can be called from string building.
   private buildIcs(
     event: EventRow,
     brand: { brandName: string; eventSingular: string },
+    appUrl: string,
+    organizerEmail: string,
     descriptionSuffix?: string,
   ): string {
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
     const { brandName, eventSingular } = brand;
 
     const startUtc = eventTimeToUtc(toDateString(event.eventDate), toTimeString(event.eventTime));
@@ -1274,7 +1286,7 @@ export class EventsService {
       foldIcsLine(`LOCATION:${icsEscape(location)}`),
       foldIcsLine(`DESCRIPTION:${icsEscape(descParts.join('\n'))}`),
       foldIcsLine(`URL:${appUrl}/events/${event.id}`),
-      `ORGANIZER;CN=${brandName}:mailto:${eventOrganizerEmail(this.config)}`,
+      `ORGANIZER;CN=${brandName}:mailto:${organizerEmail}`,
       'END:VEVENT',
       'END:VCALENDAR',
     ];
@@ -1284,9 +1296,16 @@ export class EventsService {
 
   async generateIcs(id: number): Promise<string> {
     const event = await this.findOne(id);
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const { brandName, eventSingular } = await this.getEmailBrand();
-    return this.buildIcs(event, { brandName, eventSingular }, `View event: ${appUrl}/events/${id}`);
+    const organizerEmail = await this.appConfig.eventOrganizerEmail();
+    return this.buildIcs(
+      event,
+      { brandName, eventSingular },
+      appUrl,
+      organizerEmail,
+      `View event: ${appUrl}/events/${id}`,
+    );
   }
 
   async generateGuestIcs(token: string): Promise<{ ics: string; eventId: number }> {
@@ -1297,10 +1316,17 @@ export class EventsService {
       },
     });
     if (!link) throw new NotFoundException('Guest link not found');
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const manageUrl = `${appUrl}/rsvp-guest?token=${token}`;
     const { brandName, eventSingular } = await this.getEmailBrand();
-    const ics = this.buildIcs(link.event, { brandName, eventSingular }, `Manage your RSVP: ${manageUrl}`);
+    const organizerEmail = await this.appConfig.eventOrganizerEmail();
+    const ics = this.buildIcs(
+      link.event,
+      { brandName, eventSingular },
+      appUrl,
+      organizerEmail,
+      `Manage your RSVP: ${manageUrl}`,
+    );
     return { ics, eventId: link.event.id };
   }
 
@@ -1356,7 +1382,7 @@ export class EventsService {
 
     // Fire-and-forget — email delivery is best-effort and must not block returning the link
     if (recipientEmail) {
-      const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+      const appUrl = await this.tenantResolution.baseUrlFor();
       const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
       const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
       const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
@@ -1402,7 +1428,7 @@ export class EventsService {
           description: event.description ?? null,
           additionalInfo: event.additionalInfo ?? null,
           manageUrl,
-          googleCalUrl: this.buildGoogleCalendarUrl(event, addressVisible ? event.locationAddress : ''),
+          googleCalUrl: this.buildGoogleCalendarUrl(event, appUrl, addressVisible ? event.locationAddress : ''),
           icsUrl,
         }),
       }).catch((err: unknown) => {
@@ -1455,7 +1481,7 @@ export class EventsService {
     });
     const saved = await this.prisma.event_guest_links.create({ data: linkData });
 
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
     const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
     const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
@@ -1491,7 +1517,7 @@ export class EventsService {
         description: event.description ?? null,
         additionalInfo: event.additionalInfo ?? null,
         manageUrl,
-        googleCalUrl: this.buildGoogleCalendarUrl(event),
+        googleCalUrl: this.buildGoogleCalendarUrl(event, appUrl),
         icsUrl,
       }),
     });
@@ -1614,7 +1640,7 @@ export class EventsService {
     if (!link.recipientEmail) throw new BadRequestException('This guest link has no email address to resend to');
 
     const event = link.event;
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
     const manageUrl = `${appUrl}/rsvp-guest?token=${link.token}`;
     const icsUrl = `${appUrl}/api/v1/events/guest-ics/${link.token}`;
@@ -1656,7 +1682,7 @@ export class EventsService {
         description: event.description ?? null,
         additionalInfo: event.additionalInfo ?? null,
         manageUrl,
-        googleCalUrl: this.buildGoogleCalendarUrl(event, addressVisible ? event.locationAddress : ''),
+        googleCalUrl: this.buildGoogleCalendarUrl(event, appUrl, addressVisible ? event.locationAddress : ''),
         icsUrl,
       }),
     });
@@ -1782,7 +1808,7 @@ export class EventsService {
       if (dto.contactEmail) {
         const token = randomUUID().replace(/-/g, '');
         event.reservationConfirmToken = token;
-        const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+        const appUrl = await this.tenantResolution.baseUrlFor();
         const confirmUrl = `${appUrl}/events/reservation-confirm/${token}`;
 
         // Create (or reuse) an EVENT_INVITE so the outside contact can sign up
@@ -1863,7 +1889,7 @@ export class EventsService {
     confirmUrl: string | null,
     signupUrl?: string,
   ): Promise<void> {
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
     const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
     const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
@@ -2052,12 +2078,24 @@ export class EventsService {
         })
       : [];
 
+    // Re-enter each event's own tenant for the send. The sweep finds events
+    // across every tenant on purpose, but composing the message is per-tenant
+    // work: getEmailBrand reads `app_config`, which is scoped, and under the
+    // unscoped wrapper `findFirst` would return whichever tenant's branding the
+    // engine reached first -- one community's members receiving another's name,
+    // logo and terminology. The base URL has the same problem.
+    //
+    // Scoping the loop body rather than threading a tenant id through
+    // sendSeatsReminderEmail and everything it calls means anything else those
+    // helpers read is correct too, including reads added later.
     for (const event of events) {
       try {
-        await this.sendSeatsReminderEmail(event);
-        await this.prisma.events.update({
-          where: { id: event.id },
-          data: { reservationSeatsEmailSent: true },
+        await runWithTenant(event.tenantId, async () => {
+          await this.sendSeatsReminderEmail(event);
+          await this.prisma.events.update({
+            where: { id: event.id },
+            data: { reservationSeatsEmailSent: true },
+          });
         });
       } catch (err) {
         this.logger.error(`Seats reminder failed for event ${event.id}`, err);
@@ -2066,7 +2104,7 @@ export class EventsService {
   }
 
   private async sendSeatsReminderEmail(event: EventWithLocation): Promise<void> {
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = await this.tenantResolution.baseUrlFor();
     const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
 
     // Resolve recipient

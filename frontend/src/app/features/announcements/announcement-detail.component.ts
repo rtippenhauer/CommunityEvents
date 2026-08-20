@@ -16,6 +16,7 @@ import {
 } from '../../core/services/announcements.service';
 import { AuthService } from '../../core/services/auth.service';
 import { ReportButtonComponent } from '../../shared/components/report-button/report-button.component';
+import { isElevatedRole } from '../../core/utils/roles.util';
 
 @Component({
   selector: 'app-announcement-detail',
@@ -383,7 +384,7 @@ export class AnnouncementDetailComponent implements OnInit {
 
   canDelete(c: AnnouncementComment): boolean {
     const user = this.authService.currentUser();
-    return !!user && (user.id === c.userId || user.role === 'admin' || user.role === 'moderator');
+    return !!user && (user.id === c.userId || isElevatedRole(user.role));
   }
 
   // Author-only by design: moderators can remove a comment but never reword

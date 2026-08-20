@@ -12,6 +12,11 @@ import { EmailTemplate } from '../email/email.constants';
 import { AvatarsService } from '../avatars/avatars.service';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
 import { coerceRawRows } from '../../common/utils/prisma-raw.util';
+import { hasAdminRights, isElevatedRole } from '../../common/utils/roles.util';
+import {
+  assertNotServiceAccount,
+  EXCLUDE_SERVICE_ACCOUNTS_SQL,
+} from '../../common/utils/service-account.util';
 
 // Shape of the raw findMembers rows. MySQL returns the computed columns as
 // strings or numbers depending on the driver, so the mapper below coerces
@@ -90,7 +95,7 @@ export class UsersService {
 
   async findMembers(viewerRole: UserRole, sort: 'newest' | 'alpha' = 'newest'): Promise<object[]> {
     const isNonValidated = viewerRole === UserRole.NON_VALIDATED;
-    const isElevated = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
+    const isElevated = isElevatedRole(viewerRole);
     const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
     // Kept as SQL rather than rebuilt with the query API. It carries a
@@ -116,9 +121,9 @@ export class UsersService {
     // the filter goes in the ON or subquery clause rather than the WHERE, which
     // would drop members who have no points or no linked provider.
     //
-    // `users` itself stays unfiltered because it is still global until v2-6
-    // (REQ-TENANT-01.5), so this list spans tenants; what each row *reports*
-    // is nonetheless scoped to the requesting one.
+    // `users` itself is filtered too, as of v2-6. Before REQ-TENANT-01.5 gave it
+    // a tenant_id this list spanned every tenant, and only what each row
+    // *reported* was scoped to the requesting one.
     const tenantId = requireTenantId('member directory');
 
     const elevatedJoins = isElevated
@@ -150,18 +155,25 @@ export class UsersService {
           WHERE mp.user_id = u.id AND mp.tenant_id = ?)
           AS totalPoints${elevatedColumns}
       FROM users u
+      -- No predicate on the inviter join: an inviter belongs to the same tenant
+      -- as the member they invited, and the driving table is filtered below. It
+      -- is a LEFT JOIN besides, so a filter here would only be able to blank the
+      -- inviter name, never to widen the result.
       LEFT JOIN users inviter ON inviter.id = u.invited_by
       LEFT JOIN cities city ON city.id = u.city_id${elevatedJoins}
-      WHERE ${statusClause} AND u.role != ?
+      WHERE u.tenant_id = ?
+        AND ${statusClause}
+        AND ${EXCLUDE_SERVICE_ACCOUNTS_SQL}
       ORDER BY ${orderBy}`,
       // Positional and assembled in the order the placeholders appear: the
       // isNew cutoff, the points subquery's tenant, then the two oauth joins'
-      // tenants (only present when the elevated joins are), then the filters.
+      // tenants (only present when the elevated joins are), then the directory's
+      // own tenant filter and the status.
       twoWeeksAgo,
       tenantId,
       ...(isElevated ? [tenantId, tenantId] : []),
+      tenantId,
       statusValue,
-      UserRole.AUTOMATION,
     );
 
     return coerceRawRows(rows).map((r) => ({
@@ -202,7 +214,7 @@ export class UsersService {
     });
     if (!user || user.status === UserStatus.DELETED) throw new NotFoundException('Member not found');
 
-    const isElevated = viewerRole === UserRole.ADMIN || viewerRole === UserRole.MODERATOR;
+    const isElevated = isElevatedRole(viewerRole);
     const isSelf = viewerId === id;
 
     let invitedByInfo: { id: number; fullName: string; profilePhotoPath: string | null } | null = null;
@@ -239,7 +251,7 @@ export class UsersService {
       if (gg) googleEmail = gg.email;
     }
 
-    const isAdmin = user.role === UserRole.ADMIN;
+    const isAdmin = hasAdminRights(user.role);
     return {
       id: user.id,
       fullName: user.fullName,
@@ -257,11 +269,11 @@ export class UsersService {
         hasFacebook,
         facebookProfileUrl,
         googleEmail,
-        // Identifies the dedicated automation account by its fixed email
-        // rather than its (mutable) role, so the admin role-picker can still
-        // offer promoting it back after Rob's temporarily flipped it to
-        // member/moderator/admin for testing.
-        isAutomationAccount: user.email === 'automation@dinnerbears.internal',
+        // Drives the admin role-picker's "promote back" affordance. Reads the
+        // column rather than the fixed email it used to compare against: the
+        // role is deliberately mutable here (that is what the picker is for)
+        // and the email is branding v2-9 rewrites.
+        isAutomationAccount: user.isServiceAccount,
       } : {}),
     };
   }
@@ -278,9 +290,14 @@ export class UsersService {
 
   // REQ-DEL-04 — soft-delete the calling user's own account
   async softDeleteSelf(user: User): Promise<void> {
-    if (user.role === UserRole.ADMIN) {
+    if (hasAdminRights(user.role)) {
       throw new ForbiddenException('Admin accounts cannot be self-deleted.');
     }
+    // Reachable only on the root tenant, whose service account can hold a real
+    // role and therefore a real session; elsewhere it is `disabled` and cannot
+    // authenticate at all. Guarded anyway, because "the account that cannot be
+    // deleted" should not have one route left that deletes it.
+    assertNotServiceAccount(user, 'self-delete');
 
     const linkedProviders = await this.prisma.oauth_accounts.findMany({
       where: { userId: user.id },

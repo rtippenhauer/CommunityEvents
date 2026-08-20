@@ -6,6 +6,7 @@ import { validatedMemberGuard } from './validated-member.guard';
 import { featureGuard } from './feature.guard';
 import { adminGuard } from './admin.guard';
 import { moderatorGuard } from './moderator.guard';
+import { systemAdminGuard } from './system-admin.guard';
 import { unsavedChangesGuard, HasUnsavedChanges } from './unsaved-changes.guard';
 import { AuthService } from '../services/auth.service';
 import { BrandConfigService } from '../services/brand-config.service';
@@ -125,6 +126,14 @@ describe('route guards', () => {
       expect(runGuard(adminGuard as () => boolean | UrlTree)).toBe(true);
     });
 
+    // system_admin implies admin (v2-6), mirroring RolesGuard's hierarchy on the
+    // API. Without this the deployment operator is locked out of every admin
+    // screen while the API would happily serve them.
+    it('allows a system admin through', () => {
+      setup('system_admin');
+      expect(runGuard(adminGuard as () => boolean | UrlTree)).toBe(true);
+    });
+
     // A moderator is privileged but NOT an admin — this guard is the narrower
     // of the two and must not widen to accept them.
     it('turns away a moderator, a member and an anonymous visitor', () => {
@@ -154,8 +163,8 @@ describe('route guards', () => {
 
     // Deliberately wider than adminGuard: admin satisfies it too, so an admin
     // is never locked out of moderator tooling.
-    it('allows both moderator and admin through', () => {
-      for (const role of ['moderator', 'admin']) {
+    it('allows moderator, admin and system admin through', () => {
+      for (const role of ['moderator', 'admin', 'system_admin']) {
         setup(role);
         expect(runGuard(moderatorGuard as () => boolean | UrlTree), `role=${role}`)
           .toBe(true);
@@ -174,6 +183,39 @@ describe('route guards', () => {
   });
 
   // CanDeactivateFn, so it takes the component rather than being called bare.
+  describe('systemAdminGuard', () => {
+    function setup(role: string | null) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          {
+            provide: AuthService,
+            useValue: { currentUser: () => (role === null ? null : { role }) },
+          },
+        ],
+      });
+    }
+
+    it('allows a system admin through', () => {
+      setup('system_admin');
+      expect(runGuard(systemAdminGuard as () => boolean | UrlTree)).toBe(true);
+    });
+
+    // The hierarchy runs one way only. system_admin satisfies adminGuard;
+    // admin must never satisfy this one, or every community's admin would see
+    // the registry of communities.
+    it('turns away an ordinary admin, a moderator and an anonymous visitor', () => {
+      const home = () => TestBed.inject(Router).createUrlTree(['/']);
+
+      for (const role of ['admin', 'moderator', 'member', null]) {
+        setup(role);
+        expect(runGuard(systemAdminGuard as () => boolean | UrlTree), `role=${role}`)
+          .toEqual(home());
+      }
+    });
+  });
+
   describe('unsavedChangesGuard', () => {
     function run(dirty: boolean): boolean {
       const component: HasUnsavedChanges = { hasUnsavedChanges: () => dirty };

@@ -55,6 +55,7 @@ import { ShareInvitesDialogComponent } from './share-invites-dialog.component';
 import { AttendanceDialogComponent } from './attendance-dialog.component';
 import { AchievementAdminDialogComponent } from './achievement-admin-dialog.component';
 import { formatEventTime, initials as sharedInitials } from '../../../shared/utils/format-event';
+import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
 
 @Component({
   selector: 'app-event-detail',
@@ -2930,7 +2931,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
 
   isAdminOrMod(): boolean {
     const role = this.authService.currentUser()?.role;
-    return role === 'admin' || role === 'moderator';
+    return isElevatedRole(role);
   }
 
   openEdit(): void {
@@ -3032,7 +3033,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   }
 
   isAdmin(): boolean {
-    return this.authService.currentUser()?.role === 'admin';
+    return hasAdminRights(this.authService.currentUser()?.role);
   }
 
   startReassign(): void {

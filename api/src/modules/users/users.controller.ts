@@ -34,6 +34,11 @@ import { RequireFeature } from '../../common/decorators/require-feature.decorato
 import { EmailService } from '../email/email.service';
 import { EmailStatus, SuppressionReason, UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import {
+  ACCESS_TOKEN_COOKIE,
+  staleAccessTokenCookieVariants,
+} from '../../common/utils/auth-cookie.util';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -41,10 +46,22 @@ const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
+  private readonly legacyCookieDomain: string;
+
   constructor(
     private readonly usersService: UsersService,
     private readonly emailService: EmailService,
-  ) {}
+    configService: ConfigService,
+  ) {
+    // Only ever used to clear the pre-v2-6 domain-scoped cookie; nothing sets
+    // one any more. Same default as AuthController's, so the two cannot name
+    // different domains and leave a cookie behind.
+    const appUrl = configService.get<string>('APP_URL', 'http://localhost:8081');
+    this.legacyCookieDomain = configService.get<string>(
+      'BASE_DOMAIN',
+      new URL(appUrl).hostname.replace(/^www\./, ''),
+    );
+  }
 
   @Get('me')
   getProfile(@CurrentUser() user: User) {
@@ -62,7 +79,14 @@ export class UsersController {
       throw new BadRequestException('confirm must be "DELETE"');
     }
     await this.usersService.softDeleteSelf(user);
-    res.clearCookie('access_token', { path: '/' });
+    // Every variant, not just the host-only one. This cleared `{ path: '/' }`
+    // alone while login was still setting a domain-scoped cookie, which meant
+    // deleting your own account left the session cookie in the browser -- it
+    // only stopped working because the account was gone, not because the cookie
+    // was removed.
+    for (const options of staleAccessTokenCookieVariants(this.legacyCookieDomain)) {
+      res.clearCookie(ACCESS_TOKEN_COOKIE, options);
+    }
   }
 
   @Get('members')

@@ -189,7 +189,7 @@ describe('Auth (e2e)', () => {
 
     it('rejects login for a suspended user', async () => {
       await seedActiveMember('login-suspended@example.test');
-      await prisma.users.update({ where: { email: 'login-suspended@example.test' }, data: { status: UserStatus.SUSPENDED } });
+      await prisma.users.updateMany({ where: { email: 'login-suspended@example.test' }, data: { status: UserStatus.SUSPENDED } });
 
       await request(server)
         .post('/api/v1/auth/login')
@@ -199,7 +199,7 @@ describe('Auth (e2e)', () => {
 
     it('rejects login while email verification is pending', async () => {
       await seedActiveMember('login-pending@example.test');
-      await prisma.users.update({ where: { email: 'login-pending@example.test' }, data: { emailStatus: EmailStatus.PENDING } });
+      await prisma.users.updateMany({ where: { email: 'login-pending@example.test' }, data: { emailStatus: EmailStatus.PENDING } });
 
       await request(server)
         .post('/api/v1/auth/login')

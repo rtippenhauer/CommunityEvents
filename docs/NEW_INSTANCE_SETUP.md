@@ -77,8 +77,10 @@ Create an API key with the Geocoding and Places APIs enabled →
 disable it.
 
 ### 3g. App secrets
-Generate random values (`openssl rand -hex 32`) for `JWT_SECRET`,
-`SESSION_SECRET`, and `EMAIL_SUPPRESSION_SALT`.
+Generate random values (`openssl rand -hex 32`) for `JWT_SECRET` and
+`EMAIL_SUPPRESSION_SALT`. `SESSION_SECRET` is no longer used and can be
+dropped from an existing `.env` -- v2-6 removed the express-session
+middleware, which never had a reader (see `main.ts`).
 
 ## 4. The `.env` checklist
 
@@ -89,7 +91,7 @@ Create your instance `.env` (on Unraid, the container reads
 # ── Core ──────────────────────────────────────────────────────────────────
 NODE_ENV=production
 APP_URL=https://YOUR_DOMAIN            # your canonical URL, no trailing slash
-BASE_DOMAIN=YOUR_DOMAIN               # bare domain for cookie scope + derived emails
+BASE_DOMAIN=YOUR_DOMAIN               # mail domain (NOT the cookie scope -- sessions are host-only)
 PORT=3000
 
 # ── Database (point at YOUR MySQL) ────────────────────────────────────────
@@ -101,7 +103,6 @@ DB_PASSWORD=...
 
 # ── Auth ──────────────────────────────────────────────────────────────────
 JWT_SECRET=...
-SESSION_SECRET=...
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 # FACEBOOK_APP_ID=...        # omit to hide the Facebook login button
