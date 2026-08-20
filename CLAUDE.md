@@ -34,16 +34,47 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-6` — bootstrap/runtime config split + user tenant
-scoping (REQ-TENANT-01.4, REQ-TENANT-01.5): `users.tenant_id`, per-tenant email
-uniqueness, and login resolving against the tenant that owns the URL it was
-submitted to. Confirmed with Rob 2026-08-14 that users cannot stay global; this
-is also what blocks meaningful two-tenant testing on stage. See `V2_PHASES.md`
-for the full backlog, each item's Definition of Done, and the survey of this
-one's blast radius (109 `users` call sites, and a startup query that will throw
-the moment `users` is scoped).
+**Current v2 work item:** `v2-7` — encrypted secrets at rest. `schema.prisma` has
+said since `v2-3` that `tenants.google_client_secret` and
+`tenants.facebook_app_secret` must be encrypted before anything writes them, and
+REQ-TENANT-01.9 is what will write them — so this comes first and blocks `v2-8`.
+It also owns the fifteen env vars `v2-6` classified `secret-pending-v2-7` and the
+plaintext `email_provider_config` API keys. Three things worth deciding once
+rather than per column: where the key comes from (bootstrap env is the only thing
+available today), what key rotation looks like, and whether one mechanism covers
+all of it. See `V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-6` — Bootstrap/runtime config split + user tenant scoping**
+  (2026-08-19, REQ-TENANT-01.4/01.5). `users` and `app_config` are tenant-scoped;
+  email is unique per tenant, so one address holds a separate account in each
+  community and login resolves against the tenant owning the URL. Cookies are
+  host-only, `express-session` is gone, and every member-facing link resolves
+  through `baseUrlFor()` rather than `APP_URL`.
+
+  The config split turned out to be mostly *deciding*: which of ~45 variables is
+  bootstrap, install, deployment, runtime or a secret is now declared in
+  `env-classification.ts` with a spec holding it to `.env.example`. Three things
+  fell out of writing it — bootstrap config was already down to eleven variables,
+  `DB_MODE` is named by the requirement but was never implemented, and seventeen
+  variables were documented nowhere at all (`AUTO_PROVISION` among them, which is
+  why the first stage install needed it passed along out of band).
+
+  What actually moved is contact identity: a community's `hello@`, `calendar@`
+  and `noreply@` are its own, resolved most-specific-first with the env var as
+  the deployment default. Every credential stayed in env — `app_config` has no
+  encryption at rest, which is `v2-7`.
+
+  Stage testing drove the rest of the item and found gaps no test would have:
+  a newly created community had no way in at all, an adminless community was
+  unrecoverable, there was no way to delete one, and the tenant dialog's hints
+  rendered on top of the fields beneath them. Each is covered above.
+
+  Two corrections worth remembering, both from Rob pushing back on my reasoning:
+  a non-root service account was created `disabled` to prevent an escalation that
+  was never reachable, and was created *at all* on the claim that it owned the
+  deployment's writes in that community — which was false, since
+  `audit_log.user_id` is nullable and nothing looks one up.
 - **`v2-1` — Prisma data layer** (2026-08-09). TypeORM removed entirely:
   entities deleted, `typeorm`/`@nestjs/typeorm` uninstalled, all 36 services
   converted. `schema.prisma` is the single source of truth and one initial
@@ -140,9 +171,9 @@ the moment `users` is scoped).
 
 V2 is being defined through a sequence of requirements docs. Only one exists
 so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft;
-`v2-1` through `v2-5` are implemented, `v2-6` is outstanding; REQ-TENANT-01.9
-was added 2026-08-14 and lands in `v2-8`, which as of 2026-08-15 is the second
-item after `v2-6` rather than last). It is
+`v2-1` through `v2-6` are implemented, which closes out every requirement in it
+except REQ-TENANT-01.8 and 01.9 — both added later and both landing in `v2-8`,
+which as of 2026-08-15 is the second item after `v2-6` rather than last). It is
 the foundational doc everything else depends on and defines the conventions the
 rest of v2 follows. Key decisions it locks in:
 

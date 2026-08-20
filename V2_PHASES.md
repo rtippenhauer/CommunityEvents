@@ -294,7 +294,7 @@ Anything seeded before bootstrap runs is global for the same ordering reason:
 `merch_config`. Reordering the install is v2-6's bootstrap/runtime-config split.
 
 ## v2-6 — Bootstrap/runtime config split + user tenant scoping (REQ-TENANT-01.4, REQ-TENANT-01.5)
-**Status:** In Progress
+**Status:** Complete (2026-08-19)
 
 Last, since both depend on tenants existing and domain resolution working.
 
@@ -701,9 +701,21 @@ foundation is finished and the branding/demo block has settled.
   REQ-TENANT-01.8 handoff; email/password is unaffected.
 - ~~Bootstrap/runtime config split (REQ-TENANT-01.4)~~ **done 2026-08-16.** See
   below.
-- **Stage verification**, carrying v2-5's unverified regression surface with it.
-  Rob confirmed 2026-08-15 that stage holds no real data, so it can be reset
-  rather than migrated -- the backfill path does not have to be exercised there.
+- ~~Stage verification~~ **closed 2026-08-19.** Ran across several stage
+  deploys rather than as one pass at the end, and it is what found most of this
+  item's real defects: a newly created community with no way in, an adminless
+  community that could not be recovered, no way to delete one, a dialog whose
+  hints rendered on top of the fields beneath them, and two pieces of reasoning
+  of mine that did not survive Rob checking them (see the service-account
+  entries above).
+
+  **Not separately re-verified: v2-5's raw SQL surface** -- the 14 hand-edited
+  statements that were deferred to this item's stage pass. Rob closed the item
+  with that outstanding, having been told twice. It is the one part of the
+  codebase the scoping extension does not cover, so a missing predicate produces
+  no compile error and no test failure: the member directory, points leaderboard,
+  achievements and the three ratings queries are where to look first if a
+  cross-community leak ever surfaces.
 
 ---
 
@@ -732,7 +744,7 @@ v2-8**, v2-8 also needs v2-6's user scoping to resolve against, and v2-8 wants
 REQ-TENANT-01.8's callback handoff done in the same item.
 
 ### v2-7 — Encrypted secrets at rest
-**Status:** Not started. Blocks v2-8.
+**Status:** In Progress. Blocks v2-8.
 
 `schema.prisma` has said since v2-3 that `tenants.google_client_secret` and
 `tenants.facebook_app_secret` must be encrypted before anything writes them,

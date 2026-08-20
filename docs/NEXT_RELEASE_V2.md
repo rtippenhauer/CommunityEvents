@@ -186,3 +186,75 @@ with realistic members, restaurants, past events, attendance and reviews, so
 the member directory, leaderboard and ratings pages can be judged with
 something in them. Intended for demonstration and test installations, and it
 refuses to run unless the operator names the database it is being pointed at.
+
+---
+
+## Accounts belong to a community
+
+**Your account now belongs to the community you joined.** Signing in resolves
+against the community whose web address you used, so the same email address can
+hold a separate, independent account in each community — one for the group you
+attend on Tuesdays, another for the one you joined in a different city, with
+their own profiles, points and history. Previously an address could exist only
+once across the whole installation.
+
+**Staying signed in to one community no longer signs you in to another.** Your
+session belongs to the exact web address that issued it. Signing out of one
+community, or having your session expire there, leaves the others alone.
+
+**Signing in with an email address and password works everywhere.** Signing in
+with Google currently works on the main community only; the others offer email
+and password until that is finished.
+
+---
+
+## Contact addresses per community
+
+**Each community controls the addresses its email and calendar entries come
+from.** The reply-to address shown to members, the organiser address on calendar
+subscriptions, and the sender on event invitations can each be set in Site
+Settings, so a community's mail carries its own identity rather than the
+installation's.
+
+Left blank, each of these carries on exactly as before — a community that never
+opens the page sees no change. A community that receives mail on a domain of its
+own can name it, and the rest follow from it automatically.
+
+---
+
+## Running several communities
+
+**Communities are managed from one screen.** An operator running more than one
+community can see all of them in one place, with the number of members, events
+and restaurants in each, and can add, edit, suspend or restore any of them.
+
+**A new community arrives ready to use.** Creating one now sets up its first
+administrator at the same time, so somebody can sign in and start inviting
+members immediately. Previously a newly created community had no way in at all —
+joining required an invitation, and invitations required an existing member.
+
+**People inside a community can be managed from outside it.** An operator can
+list a community's members, change roles, suspend or restore an account, and set
+a password. This exists for the case that used to be unrecoverable: a community
+whose only administrator has left or forgotten their password, whose own
+administration pages nobody can reach.
+
+**Communities can be removed.** Deleting one permanently removes it and
+everything in it, so it takes three deliberate steps: the community must already
+be suspended, the operator retypes its web address, and the confirmation states
+exactly how many members, events and restaurants are about to be destroyed.
+Suspending remains the ordinary way to take a community offline — immediate,
+reversible, and it deletes nothing.
+
+---
+
+## Administration
+
+**Clearer separation between running a community and running the
+installation.** Administering a community and administering the whole
+installation are now distinct roles. A community's administrator manages that
+community; only the installation's operator manages the registry of communities,
+and only from the main community's address.
+
+**Settings pages read correctly again.** Explanatory text under the fields on
+the community setup form was overlapping the fields beneath it.
