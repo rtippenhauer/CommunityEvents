@@ -31,6 +31,8 @@
   <Config Name="DB Password" Target="DB_PASSWORD" Default="" Mode="" Description="MySQL password for the communityevents_user account" Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
   <Config Name="JWT Secret" Target="JWT_SECRET" Default="" Mode="" Description="Secret key for JWT tokens — generate a new one, don't reuse v1's. openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Secret Encryption Key" Target="SECRET_ENCRYPTION_KEY" Default="" Mode="" Description="Encrypts every credential stored in the database (v2-7). Leave EMPTY on a new install and one is generated on first start, written to the appdata volume -- back that file up. Set it only to supply a key an existing database already needs. Generate: openssl rand -base64 32" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Retired Encryption Keys" Target="SECRET_ENCRYPTION_KEYS_RETIRED" Default="" Mode="" Description="Previous encryption keys, comma-separated, decrypt-only. Leave empty except while rotating — see npm run secrets:rewrap." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
   <Config Name="JWT Expires In" Target="JWT_EXPIRES_IN" Default="7d" Mode="" Description="JWT token expiry" Type="Variable" Display="advanced" Required="false" Mask="false">7d</Config>
 
   <Config Name="Google Client ID" Target="GOOGLE_CLIENT_ID" Default="" Mode="" Description="Google OAuth Client ID. Whatever APP_URL you set below needs its own authorized redirect URI (APP_URL + /api/v1/auth/google/callback) added to this client, or a separate client entirely" Type="Variable" Display="always" Required="true" Mask="false"></Config>

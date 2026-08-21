@@ -62,8 +62,8 @@ all of it. See `V2_PHASES.md`.
 
   What actually moved is contact identity: a community's `hello@`, `calendar@`
   and `noreply@` are its own, resolved most-specific-first with the env var as
-  the deployment default. Every credential stayed in env — `app_config` has no
-  encryption at rest, which is `v2-7`.
+  the deployment default. Every credential stayed in env, because `app_config`
+  had no encryption at rest — which `v2-7` then built.
 
   Stage testing drove the rest of the item and found gaps no test would have:
   a newly created community had no way in at all, an adminless community was
@@ -221,6 +221,14 @@ down two, to `v2-9`–`v2-13`. Same reasoning as the `v2-2` move above: the
 number is meant to read as the running order, and it was still free to change
 because no `v2-*` tag above `v2-5` has been cut.
 
+**Then per-community email sending, inserted as `v2-9` on 2026-08-21**, shifting
+that same block down one more to `v2-10`–`v2-14`. It was briefly folded into
+`v2-7` and split back out: the encryption is what makes a per-tenant provider key
+storable, but storing it is the small part next to scoping
+`email_provider_config`, moving its seeding into `bootstrap.ts` and making the
+dispatcher cron re-enter `runWithTenant` per message. Its stage pass also needs
+real sends and real inbound webhooks, which `v2-7`'s does not.
+
 Not yet decided/known: whether the frontend framework itself is changing.
 (Its testing choice is settled — `v2-2` put it on Vitest via Angular's
 `unit-test` builder.)
@@ -310,6 +318,26 @@ frontend work unless/until a future requirements doc says otherwise.
   in `runUnscoped('<reason>', ...)`. Without a tenant in context the extension
   throws rather than returning everything, so a forgotten context is a failure
   and not a leak.
+- **Secrets are encrypted automatically, not manually** (landed in `v2-7`) —
+  never call `encryptSecret`/`decryptSecret` in a service. A second Prisma Client
+  Extension (`api/src/database/prisma/secret-encryption.extension.ts`) encrypts
+  every column declared in `api/src/common/crypto/encrypted-columns.ts` on write
+  and decrypts it on read, nested writes and relation includes included. Adding
+  an encrypted column means adding it to that list. **Raw SQL is again the
+  exception** — no `$queryRaw` site touches one today, and one that does must
+  call the cipher itself. `rewrap-secrets.ts` deliberately uses a bare client for
+  the opposite reason: rewrapping through the extension would be a no-op that
+  reported success.
+- **An encrypted column cannot be filtered, ordered, grouped or joined on** — the
+  cipher is randomised, so the extension throws rather than letting the query
+  return an empty result that reads as "no such key". Look the row up by another
+  column and compare after decryption.
+- **A stored credential never goes back out over HTTP.** `GET /admin/email/config`
+  answers `brevoApiKeySet: boolean` (`email-config.view.ts`) and `/admin/secrets`
+  reports only where each key resolves from. Decrypting at the database edge and
+  re-exporting at the HTTP edge would put the value in an access log, a proxy
+  buffer and a browser cache. The write direction is unchanged: an omitted key
+  means "leave it alone", an explicit null clears it.
 - **Never compare a role with `===` when asking "is this an admin"** — use
   `hasAdminRights`/`isElevatedRole` from `api/src/common/utils/roles.util.ts`
   (and the mirrored `frontend/src/app/core/utils/roles.util.ts`). `RolesGuard`
@@ -357,15 +385,15 @@ authoritative (per REQ-TENANT-01.3).
 - **`tenants` table exists as of `v2-3`**: `id`, `slug`, `domain` (unique),
   `is_root`, `root_marker`, `status` (active/suspended), `db_mode`
   (shared/dedicated — reserved, defaults shared), `created_at`, plus four
-  reserved OAuth credential columns (nullable; the two `*_secret` ones must be
-  encrypted at rest before anything writes them — that encryption layer does not
-  exist yet and is `v2-7`).
+  reserved OAuth credential columns (nullable; the two `*_secret` ones are
+  registered in `encrypted-columns.ts` as of `v2-7`, so the encryption is in
+  place ahead of `v2-8`, which is what first writes them).
 - **NULL OAuth credentials mean that provider is OFF for the tenant**, which
   then offers email/password only — there is no platform-wide fallback app
   (REQ-TENANT-01.9, decided 2026-08-14; this *reversed* the original reading in
   REQ-TENANT-01.1, so ignore any older phrasing that says NULL means "uses the
-  platform's own OAuth apps"). Per-tenant credentials are `v2-8`, gated behind
-  `v2-7`; until then OAuth uses the platform env credentials.
+  platform's own OAuth apps"). Per-tenant credentials are `v2-8`; until then
+  OAuth uses the platform env credentials.
 - Exactly one tenant has `is_root = true`; its admin is the system admin. This
   is a **database constraint**, not a convention: `root_marker` is `true` on the
   root and NULL elsewhere, and its unique index rejects a second root (MySQL has
@@ -476,7 +504,7 @@ authoritative (per REQ-TENANT-01.3).
 - **`users.is_service_account` marks the one non-human account per tenant.**
   Guards key on that column, never on the role (deliberately mutable — the root
   account gets flipped to admin and back for testing) and never on the
-  `automation@dinnerbears.internal` address (branding `v2-9` rewrites). Service
+  `automation@dinnerbears.internal` address (branding `v2-10` rewrites). Service
   accounts cannot be deleted by any path and are hidden from the member directory
   and the leaderboard.
 - **Nothing is deleted on a timer if it is an `admin`, a `system_admin` or a
@@ -489,7 +517,7 @@ authoritative (per REQ-TENANT-01.3).
   dead end: registration needs an invite, invites need an existing member of that
   tenant, and its only other account is the `disabled` service account. The
   fields are create-only. A one-time setup link replaces the password hand-off in
-  `v2-12`.
+  `v2-13`.
 - **`system_admin` is assignable from the UI to the root tenant's service account
   only, by someone who already holds it.** Both halves matter and neither implies
   the other: constraining only the target let any root-community admin mint the
@@ -528,11 +556,45 @@ authoritative (per REQ-TENANT-01.3).
   `hello@dayton.example.com` would bounce silently. Same failure the `www.` strip
   guards against, one level down. Pass an explicit tenant id inside a
   `runUnscoped` sweep, as with `baseUrlFor()`.
-- **No credential moves into `app_config` before `v2-7`** — it has no encryption
-  at rest. Fifteen variables are marked `secret-pending-v2-7` and a test asserts
-  that list. The mail *identity* (`BREVO_FROM_*`) is held with them: it shares
-  the global `email_provider_config` row with the API key, and a provider rejects
-  a From address on a domain it has not verified.
+- **A credential still never goes in `app_config`** — but the reason changed in
+  `v2-7`. It is no longer that nowhere is safe; it is that `app_config` rows are
+  served to unauthenticated visitors (the branding payload, the public
+  `/config/:key`), so a secret there is one allowlist edit away from a public
+  response. Per-community credentials live in **`tenant_secrets`**, a separate
+  scoped table whose whole value column is encrypted.
+- **Three secrets are per-community as of `v2-7`** — `geocoding_api_key`,
+  `places_api_key`, `anthropic_api_key` (`tenant-secret-keys.ts`), resolved
+  most-specific-first through `TenantSecretsService.resolve()` with the env var
+  as the deployment default, and set at Admin → API Keys. Each is metered against
+  whoever owns the key, which is the argument for per-community. The rest stay in
+  env with a reason recorded per variable; the class is now called `secret`
+  rather than `secret-pending-v2-7`. The mail *identity* (`BREVO_FROM_*`) stays
+  with the email keys: it shares the global `email_provider_config` row, and a
+  provider rejects a From address on a domain it has not verified.
+- **The encryption key is bootstrap config and is never in the database** — a
+  dump holding both the key and the ciphertext is a dump of the plaintext, which
+  is the whole threat. `SECRET_ENCRYPTION_KEY`, `SECRET_ENCRYPTION_KEYS_RETIRED`
+  and `SECRET_ENCRYPTION_KEY_FILE` took bootstrap from eleven variables to
+  fourteen; the key is the one value that could not be runtime config even in
+  principle, since it is what makes runtime config readable.
+- **A fresh deployment generates its own key** (`secret-key-bootstrap.ts`, run
+  from `main.ts` after the database is reachable), writes it to the key file on
+  the appdata volume, and logs loudly that it needs backing up. Generating is
+  allowed **only when the database holds no encrypted value** — what the data
+  contributes is not the key but a constraint on it, since every envelope names
+  its key id. Three refusals follow from that, all at startup rather than at the
+  first credential read: no key with secrets present, a key that cannot read
+  what is stored, and (a warning, not a refusal) data still under a retired key.
+  Legacy plaintext names no key, so a pre-`v2-7` database still generates
+  cleanly.
+- **Rotation loses nothing; losing the key loses everything.**
+  `SECRET_ENCRYPTION_KEYS_RETIRED` plus `npm run secrets:rewrap` moves every
+  value onto a new key with the deployment serving throughout. If the key is
+  genuinely gone, `npm run secrets:reset` is the explicit destructive recovery —
+  it NULLs every encrypted column so a new key can be generated, guarded by a
+  confirmation phrase rather than a boolean for the same reason deleting a
+  community makes you retype its domain. `docs/SECRETS.md` is the operator-facing
+  version; `docs/TENANT_ONBOARDING.md` covers the provider-side setup.
 - **Tenant management lives at `/api/v1/system/tenants`**, under `system/` and
   not `admin/` because it acts on the registry of communities rather than inside
   one. The root tenant cannot be suspended and its domain cannot be changed

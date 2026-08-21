@@ -4,6 +4,7 @@ import {
   TENANT_ID_FIELD,
 } from '../../common/tenant/tenant-scoped-models';
 import { currentTenantId } from '../../common/tenant/tenant-store';
+import { relationsOf } from './model-relations';
 
 /**
  * The single enforcement point for tenant isolation (REQ-TENANT-01.3).
@@ -41,35 +42,6 @@ type AnyRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is AnyRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-
-interface RelationInfo {
-  /** The model on the other end. */
-  readonly target: string;
-  /** True for a to-many relation. Only these accept a `where` in an include. */
-  readonly isList: boolean;
-}
-
-/**
- * model name -> (relation field name -> relation info), from the generated DMMF.
- *
- * Built from the datamodel rather than hand-maintained: the walker has to know
- * that `events.rsvps` leads to `event_rsvps` for every relation in the schema,
- * and a hand-written copy of that would drift the first time someone adds a
- * relation. Built once at module load; the DMMF is static.
- */
-const RELATION_TARGETS: ReadonlyMap<string, ReadonlyMap<string, RelationInfo>> = new Map(
-  Prisma.dmmf.datamodel.models.map((model) => [
-    model.name,
-    new Map(
-      model.fields
-        .filter((field) => field.kind === 'object')
-        .map((field) => [field.name, { target: field.type, isList: field.isList }]),
-    ),
-  ]),
-);
-
-const relationsOf = (model: string): ReadonlyMap<string, RelationInfo> =>
-  RELATION_TARGETS.get(model) ?? new Map();
 
 /**
  * Adds `tenantId` to a `where`, refusing to silently override a conflicting one.

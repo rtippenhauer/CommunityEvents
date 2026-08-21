@@ -119,6 +119,7 @@ export class AppComponent {
     const url = this.currentUrl();
     return (
       url.startsWith('/admin/email') ||
+      url.startsWith('/admin/secrets') ||
       url.startsWith('/admin/cities') ||
       url.startsWith('/admin/merch') ||
       url.startsWith('/admin/legal') ||

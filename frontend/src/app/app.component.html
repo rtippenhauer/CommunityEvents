@@ -100,6 +100,9 @@
             <a mat-list-item routerLink="/admin/email" (click)="sidenav.close()">
               <mat-icon matListItemIcon>mail</mat-icon> Email
             </a>
+            <a mat-list-item routerLink="/admin/secrets" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>key</mat-icon> API Keys
+            </a>
             <a mat-list-item routerLink="/admin/cities" (click)="sidenav.close()">
               <mat-icon matListItemIcon>location_city</mat-icon> Cities
             </a>
@@ -323,6 +326,9 @@
             <mat-menu #settingsMenu="matMenu" panelClass="nav-menu">
               <a mat-menu-item routerLink="/admin/email">
                 <mat-icon>mail</mat-icon> Email
+              </a>
+              <a mat-menu-item routerLink="/admin/secrets">
+                <mat-icon>key</mat-icon> API Keys
               </a>
               <a mat-menu-item routerLink="/admin/cities">
                 <mat-icon>location_city</mat-icon> Cities

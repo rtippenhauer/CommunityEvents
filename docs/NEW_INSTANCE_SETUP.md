@@ -76,11 +76,32 @@ Create an API key with the Geocoding and Places APIs enabled →
 `ANTHROPIC_API_KEY` powers the "enrich location" admin helper. Leave unset to
 disable it.
 
+This key, `GEOCODING_API_KEY` and `GOOGLE_PLACES_API_KEY` are all
+**per-community defaults** as of v2-7: a community can set its own in
+Admin -> API Keys, and the value here is what it inherits until it does. Useful
+where each community should spend its own quota rather than the operator's.
+
 ### 3g. App secrets
 Generate random values (`openssl rand -hex 32`) for `JWT_SECRET` and
 `EMAIL_SUPPRESSION_SALT`. `SESSION_SECRET` is no longer used and can be
 dropped from an existing `.env` -- v2-6 removed the express-session
 middleware, which never had a reader (see `main.ts`).
+
+`SECRET_ENCRYPTION_KEY` you can leave blank on a brand-new install: with no key
+and no stored secrets, the API generates one on first start and writes it to
+`/app/appdata/secret-encryption.key` on the persistent volume. It logs a
+warning telling you to back it up, and you should -- every credential stored in
+the database is encrypted under it (the email provider keys, each community's
+own API keys, the per-tenant OAuth secrets v2-8 adds), it is deliberately NOT
+stored in the database, and it cannot be recovered from a backup of one.
+
+If you set it yourself, note it is **base64, not hex** --
+`openssl rand -base64 32`, unlike the two above.
+
+Generating only happens when there is nothing to lose. A deployment whose
+database already holds secrets refuses to start rather than come up with a key
+that cannot read them. Rotating a key loses nothing, and losing one entirely has
+a documented (destructive) recovery -- both in `docs/SECRETS.md`.
 
 ## 4. The `.env` checklist
 
@@ -103,6 +124,8 @@ DB_PASSWORD=...
 
 # ── Auth ──────────────────────────────────────────────────────────────────
 JWT_SECRET=...
+# SECRET_ENCRYPTION_KEY=            # blank = generated on first start; KEEP A COPY of it
+# SECRET_ENCRYPTION_KEYS_RETIRED=   # only while rotating; see docs/SECRETS.md
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 # FACEBOOK_APP_ID=...        # omit to hide the Facebook login button

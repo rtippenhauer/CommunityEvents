@@ -813,7 +813,44 @@ Three things that are easy to conflate, kept separate on purpose:
 | `demo.communityeventsproject.com` | A **sandbox tenant**. Seeded with generated members, locations, events and a populated leaderboard, with its own colours and logo. |
 | `stage.communityeventsproject.com` | **Not a tenant of prod** — a separate deployment (own container, own database). Within that deployment it *is* the root/admin tenant: `ROOT_TENANT_URL` points at it, its tenant row carries `is_root = true`, and an admin there is the system admin of stage. The one Rob develops against until 2.0 goes to prod. **Live as of 2026-08-09**, replacing `communityevents.rtippenhauer.com`. |
 
-### v2-9 — CommunityEvents branding replaces the DinnerBears defaults
+### v2-9 — Per-community email sending
+
+**Status:** Not started. Depends on v2-7.
+
+Today `email_provider_config` is one global row -- a single Brevo key, a single
+sending identity, one daily quota -- so every community's mail leaves under the
+deployment's name. This makes it per-community: `tenant_id` on the model, its
+seeding moved from `seed.ts` into `bootstrap.ts` (seed runs before any tenant
+exists, exactly as v2-6 found with `app_config`), the four
+`findUnique({ where: { id: 1 } })` reads becoming scoped `findFirst`s, and the
+`@Cron` dispatcher re-entering `runWithTenant` per message rather than composing
+under one `runUnscoped` -- the documented v2-6 trap, and the one that silently
+sends with another community's identity.
+
+`BREVO_WEBHOOK_SECRET` moves with the key rather than separately: it
+authenticates callbacks from a Brevo *account*, so a community with its own
+account has its own webhook config and its own secret, arriving on its own host.
+Only the authentication moves. **The handler stays `runUnscoped`** -- a hard
+bounce is a property of the address and not of whichever community mailed it,
+and scoping it would leave every other community still mailing a dead address,
+which is what gets a sending domain blocked.
+
+Split out of v2-7 on 2026-08-21 with Rob, having first been folded into it. It
+is v2-6-sized rather than a tail: the encryption v2-7 built is what makes
+per-tenant keys storable, but storing them is the small part. This renumbered
+the old v2-9–v2-13 down one, which was still free -- no `v2-*` tag above v2-6
+has been cut.
+
+**Not just code.** A provider rejects a From address on a domain it has not
+verified, so a community supplying its own key also has to authenticate its own
+sending domain and route inbound mail. Those manual steps are documented ahead
+of the code in `docs/TENANT_ONBOARDING.md`, which v2-7 wrote.
+
+**Definition of done:** two communities on one deployment sending under their
+own verified domains, each against its own quota, with bounces from either
+correctly suppressing the address everywhere.
+
+### v2-10 — CommunityEvents branding replaces the DinnerBears defaults
 **Status:** Not started (deferred)
 
 The per-instance branding already lives in `app_config` and needs no code, but
@@ -824,7 +861,7 @@ them `dinnerbears.com` in email URLs and fallbacks) and 12 frontend files.
 **Definition of done:** a fresh instance with no `app_config` rows presents as
 CommunityEvents, and no code path emits a dinnerbears.com URL.
 
-### v2-10 — Root tenant landing page
+### v2-11 — Root tenant landing page
 **Status:** Not started (deferred). Depends on v2-3 and v2-4.
 
 Public marketing page served by the root tenant, explaining the project and
@@ -834,7 +871,7 @@ and is the obvious starting point.
 **Definition of done:** `www.communityeventsproject.com` and the apex both
 serve the landing page and resolve to the same root tenant row.
 
-### v2-11 — Demo tenant
+### v2-12 — Demo tenant
 **Status:** Not started (deferred). Depends on v2-3, v2-4 and v2-10.
 
 A tenant anyone can try. Two properties that need care:
@@ -864,7 +901,7 @@ present, sees a standing notice that the data is temporary, and the tenant
 returns to its seeded state on schedule. The same self-registration on any
 other tenant still yields an ordinary member.
 
-### v2-12 — Operator setup wizard / everything configurable from the site
+### v2-13 — Operator setup wizard / everything configurable from the site
 **Status:** Not started (deferred). Depends on v2-6.
 
 REQ-TENANT-01.4 splits config into bootstrap (env, set once) and runtime
@@ -883,7 +920,7 @@ Google login, Facebook login, email delivery and correct DNS without editing
 env vars by hand, with the wizard telling the operator what to do in each
 third-party console.
 
-### v2-13 — Operator handbook
+### v2-14 — Operator handbook
 **Status:** Not started (deferred).
 
 The written counterpart to v2-12: what an operator needs before and during

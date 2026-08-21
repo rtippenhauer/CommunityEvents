@@ -47,13 +47,25 @@ export type EnvClass =
    */
   | 'runtime'
   /**
-   * Would be per-tenant, but holds a credential. Moving these into `app_config`
-   * means writing secrets to a table that has no encryption at rest, which is
-   * exactly what `v2-7` exists to build and what CLAUDE.md already forbids for
-   * the `tenants` OAuth columns. They stay in env until it lands; `v2-8` then
-   * moves the OAuth pair specifically.
+   * Holds a credential.
+   *
+   * This group used to be called `secret-pending-v2-7`, and the "pending" was
+   * the point: there was nowhere in the database to put a secret, so every one
+   * of them stayed in env whether or not that was the right home. v2-7 built
+   * the encryption layer, which turns the question back into an ordinary one --
+   * is this value per-community or per-deployment? -- answered per variable in
+   * the notes below.
+   *
+   * Three of them now resolve per-community, from `tenant_secrets`, with the
+   * env var surviving as the deployment-wide default. The rest stay in env for
+   * reasons that are not about encryption: they belong to one deployment, or
+   * their per-tenant home is a different column that a later item populates.
+   *
+   * The group keeps a name of its own rather than merging into `runtime`
+   * because it still marks the values that must never be logged, echoed back
+   * through an API, or written to a table without encryption.
    */
-  | 'secret-pending-v2-7';
+  | 'secret';
 
 export interface EnvVarClassification {
   readonly cls: EnvClass;
@@ -91,6 +103,31 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
       'so this cannot come from a per-tenant table. Per-tenant signing keys ' +
       'would also mean a token could not be told apart from a forgery until ' +
       'after the tenant was resolved from it.',
+  },
+  SECRET_ENCRYPTION_KEY: {
+    cls: 'bootstrap',
+    note:
+      'The key everything else in the "secret" group is encrypted under. It is ' +
+      'the one variable that could not become runtime config even in ' +
+      'principle: it is what makes runtime config readable, so storing it ' +
+      'there is circular -- and for the same reason it is not in the database ' +
+      'either, since a dump containing the key is a dump of the plaintext. ' +
+      'Optional: a deployment with no key and no secrets generates its own on ' +
+      'first start and writes it to SECRET_ENCRYPTION_KEY_FILE. Set this to ' +
+      'override that, or to supply a key an existing database already needs.',
+  },
+  SECRET_ENCRYPTION_KEY_FILE: {
+    cls: 'bootstrap',
+    note:
+      'Where a generated key is kept, defaulting to the persistent appdata ' +
+      'volume so it survives a container rebuild. Only read when ' +
+      'SECRET_ENCRYPTION_KEY is unset.',
+  },
+  SECRET_ENCRYPTION_KEYS_RETIRED: {
+    cls: 'bootstrap',
+    note:
+      'Previous encryption keys, decrypt-only, comma-separated. Empty except ' +
+      'during a rotation -- see rewrap-secrets.ts for the sequence.',
   },
   EMAIL_SUPPRESSION_SALT: {
     cls: 'bootstrap',
@@ -206,31 +243,76 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
   BREVO_TEMPLATE_EMAIL_VERIFICATION: { cls: 'runtime' },
   BREVO_TEMPLATE_PASSWORD_RESET: { cls: 'runtime' },
 
-  // --- secret, blocked on v2-7 ---------------------------------------------
+  // --- secret ---------------------------------------------------------------
   GOOGLE_CLIENT_ID: {
-    cls: 'secret-pending-v2-7',
+    cls: 'secret',
     note:
       'Not itself secret, but it is meaningless apart from the secret beside ' +
       'it -- the tenants table already has both columns reserved, and they ' +
       'move together in v2-8.',
   },
-  GOOGLE_CLIENT_SECRET: { cls: 'secret-pending-v2-7' },
-  FACEBOOK_APP_ID: { cls: 'secret-pending-v2-7', note: 'As GOOGLE_CLIENT_ID.' },
-  FACEBOOK_APP_SECRET: { cls: 'secret-pending-v2-7' },
-  BREVO_API_KEY: { cls: 'secret-pending-v2-7' },
-  BREVO_WEBHOOK_SECRET: { cls: 'secret-pending-v2-7' },
-  RESEND_API_KEY: { cls: 'secret-pending-v2-7' },
-  GMAIL_USER: { cls: 'secret-pending-v2-7' },
-  GMAIL_APP_PASSWORD: { cls: 'secret-pending-v2-7' },
-  VAPID_PRIVATE_KEY: { cls: 'secret-pending-v2-7' },
-  GEOCODING_API_KEY: { cls: 'secret-pending-v2-7' },
-  GOOGLE_PLACES_API_KEY: { cls: 'secret-pending-v2-7' },
-  ANTHROPIC_API_KEY: { cls: 'secret-pending-v2-7' },
-  CLOUDFLARE_EMAIL_SECRET: { cls: 'secret-pending-v2-7' },
-  CLAUDE_AUTOMATION_SECRET: {
-    cls: 'secret-pending-v2-7',
+  GOOGLE_CLIENT_SECRET: {
+    cls: 'secret',
     note:
-      'Deliberately platform-wide even after v2-7: automationLogin only ever ' +
+      "Per-tenant, but its home is tenants.google_client_secret, which v2-8 " +
+      'populates -- the column has been reserved and declared encrypted since ' +
+      'v2-3. Two homes for one credential would be worse than a late one.',
+  },
+  FACEBOOK_APP_ID: { cls: 'secret', note: 'As GOOGLE_CLIENT_ID.' },
+  FACEBOOK_APP_SECRET: { cls: 'secret', note: 'As GOOGLE_CLIENT_SECRET.' },
+  BREVO_API_KEY: {
+    cls: 'secret',
+    note:
+      'Already DB-overridable, and encrypted there as of v2-7. Still one value ' +
+      'for the deployment: email_provider_config is a single global row, and ' +
+      'per-community sending needs a verified-domain flow, not a text field.',
+  },
+  BREVO_WEBHOOK_SECRET: {
+    cls: 'secret',
+    note:
+      'Per-tenant exactly when BREVO_API_KEY is, and for the same reason: it ' +
+      "authenticates callbacks from a Brevo *account*, so a community with its " +
+      'own account has its own webhook config and its own secret, arriving on ' +
+      'its own host. It is here today only because there is one account today ' +
+      '-- not because anything about a webhook is deployment-wide. When it ' +
+      'moves, only the authentication moves: the handler must stay ' +
+      'runUnscoped, because a bounce is a property of the address and not of ' +
+      'whichever community happened to send the message.',
+  },
+  RESEND_API_KEY: { cls: 'secret', note: 'As BREVO_API_KEY.' },
+  GMAIL_USER: {
+    cls: 'secret',
+    note:
+      'Read by nothing. A v1 SMTP fallback that no longer has code behind it ' +
+      '-- kept documented only so the sample env and this list agree. Delete ' +
+      'both when the Gmail path is formally dropped.',
+  },
+  GMAIL_APP_PASSWORD: { cls: 'secret', note: 'As GMAIL_USER: read by nothing.' },
+  VAPID_PRIVATE_KEY: {
+    cls: 'secret',
+    note:
+      'Half of a keypair whose public half is already held by every browser ' +
+      'that has subscribed to push. A per-tenant value would invalidate those ' +
+      'subscriptions with nothing able to re-establish them, so the keypair ' +
+      'belongs to the deployment until something can re-subscribe.',
+  },
+  GEOCODING_API_KEY: {
+    cls: 'secret',
+    note:
+      'Per-community as of v2-7 (tenant_secrets.geocoding_api_key); this ' +
+      'remains the deployment-wide default. Metered against whoever owns the ' +
+      'key, which is the case for letting a community supply its own.',
+  },
+  GOOGLE_PLACES_API_KEY: { cls: 'secret', note: 'As GEOCODING_API_KEY (places_api_key).' },
+  ANTHROPIC_API_KEY: { cls: 'secret', note: 'As GEOCODING_API_KEY (anthropic_api_key).' },
+  CLOUDFLARE_EMAIL_SECRET: {
+    cls: 'secret',
+    note: 'Authenticates one worker calling one endpoint. Deployment-wide by construction.',
+  },
+  CLAUDE_AUTOMATION_SECRET: {
+    cls: 'secret',
+    note:
+      'Deliberately platform-wide: automationLogin only ever ' +
       "admits the root tenant's service account, so a per-tenant copy would " +
       'be a credential with nothing to open.',
   },

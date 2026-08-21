@@ -7,6 +7,7 @@ import { join } from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
+import { TenantSecretsService } from '../tenant-secrets/tenant-secrets.service';
 import type { location_photos as LocationPhoto } from '@prisma/client';
 
 /**
@@ -120,19 +121,35 @@ interface PlaceDetailsResponse {
 @Injectable()
 export class EnrichmentService {
   private readonly logger = new Logger(EnrichmentService.name);
-  private readonly googleKey: string | undefined;
-  private readonly anthropic: Anthropic | null;
   private readonly uploadPath: string;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly secrets: TenantSecretsService,
   ) {
-    this.googleKey = configService.get<string>('GOOGLE_PLACES_API_KEY');
-    const anthropicKey = configService.get<string>('ANTHROPIC_API_KEY');
-    this.anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
     // This service only ever writes location photos, so point directly at that subfolder
     this.uploadPath = join(configService.get<string>('UPLOAD_PATH') ?? '/app/uploads', 'locations');
+  }
+
+  /**
+   * Both credentials are per-community as of v2-7, so neither can be captured
+   * in the constructor the way they used to be -- there is no single value to
+   * capture. Each method that needs one resolves it, which costs one indexed
+   * read of one small row immediately before an HTTPS call to Google or
+   * Anthropic; the round trip it adds is the cheapest part of what follows.
+   *
+   * Null means the community has set no key and the deployment has none
+   * either, which every caller already handles as "that half of enrichment is
+   * switched off".
+   */
+  private placesKey(): Promise<string | null> {
+    return this.secrets.resolve('places_api_key');
+  }
+
+  private async anthropicClient(): Promise<Anthropic | null> {
+    const apiKey = await this.secrets.resolve('anthropic_api_key');
+    return apiKey ? new Anthropic({ apiKey }) : null;
   }
 
   async bulkEnrich(
@@ -183,12 +200,14 @@ export class EnrichmentService {
       placeFound: false,
     };
 
+    const googleKey = await this.placesKey();
+
     // Residences aren't businesses — skip the Google Places lookup (which would
     // rewrite the name/phone/website/address to some nearby business) and the
     // "restaurant" description. Only try a Street View photo of the address, and
     // never touch the address itself.
     if (location.isResidence) {
-      if (this.googleKey && location.photos.length === 0) {
+      if (googleKey && location.photos.length === 0) {
         result.photoAdded = await this.downloadStreetViewPhoto(
           location.id,
           location.address,
@@ -205,7 +224,7 @@ export class EnrichmentService {
 
     let placeData: PlaceDetailsResponse['result'] | null = null;
 
-    if (this.googleKey) {
+    if (googleKey) {
       placeData = await this.fetchPlaceDetails(location.name, location.address);
       if (placeData) {
         result.placeFound = true;
@@ -261,14 +280,15 @@ export class EnrichmentService {
       }
     }
 
-    if (this.anthropic) {
-      result.description = await this.generateDescription(
-        location.name,
-        location.address,
-        location.city?.name,
-        placeData?.editorial_summary?.overview,
-      );
-    }
+    // No `if (key)` guard around this any more: generateDescription resolves
+    // the credential itself and returns null without one, so the guard would
+    // only be a second lookup to decide whether to do the first.
+    result.description = await this.generateDescription(
+      location.name,
+      location.address,
+      location.city?.name,
+      placeData?.editorial_summary?.overview,
+    );
 
     // Persist updates directly
     const updates: Prisma.locationsUncheckedUpdateInput = { enrichedAt: new Date() };
@@ -289,10 +309,13 @@ export class EnrichmentService {
   }
 
   async diagnose(location: EnrichableLocation): Promise<EnrichDiagnosis> {
+    const googleKey = await this.placesKey();
+    const anthropic = await this.anthropicClient();
+
     const diagnosis: EnrichDiagnosis = {
       keys: {
-        googlePlaces: !!this.googleKey,
-        anthropic: !!this.anthropic,
+        googlePlaces: !!googleKey,
+        anthropic: !!anthropic,
       },
       location: {
         name: location.name,
@@ -309,13 +332,13 @@ export class EnrichmentService {
     };
 
     // Google Places
-    if (!this.googleKey) {
+    if (!googleKey) {
       diagnosis.places = null;
     } else {
       const query = `${location.name} ${location.address}`;
       const searchUrl =
         `https://maps.googleapis.com/maps/api/place/findplacefromtext/json` +
-        `?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id&key=${this.googleKey}`;
+        `?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id&key=${googleKey}`;
 
       let searchStatus = 'ERROR';
       let placeId: string | null = null;
@@ -337,7 +360,7 @@ export class EnrichmentService {
             'name,formatted_address,address_components,geometry,editorial_summary,formatted_phone_number,website,photos';
           const detailUrl =
             `https://maps.googleapis.com/maps/api/place/details/json` +
-            `?place_id=${placeId}&fields=${fields}&key=${this.googleKey}`;
+            `?place_id=${placeId}&fields=${fields}&key=${googleKey}`;
 
           const detailRes = await fetch(detailUrl);
           const detailData = (await detailRes.json()) as PlaceDetailsResponse;
@@ -397,10 +420,10 @@ export class EnrichmentService {
     }
 
     // Claude
-    if (!this.anthropic) {
+    if (!anthropic) {
       diagnosis.claude = {
         status: 'skipped',
-        reason: 'ANTHROPIC_API_KEY not configured',
+        reason: 'no Anthropic API key for this community',
         generatedDescription: null,
       };
       diagnosis.willSkip.push('description (no API key)');
@@ -449,11 +472,12 @@ export class EnrichmentService {
     name: string,
     address: string,
   ): Promise<PlaceDetailsResponse['result'] | null> {
+    const googleKey = await this.placesKey();
     try {
       const query = encodeURIComponent(`${name} ${address}`);
       const searchUrl =
         `https://maps.googleapis.com/maps/api/place/findplacefromtext/json` +
-        `?input=${query}&inputtype=textquery&fields=place_id&key=${this.googleKey}`;
+        `?input=${query}&inputtype=textquery&fields=place_id&key=${googleKey}`;
 
       const searchRes = await fetch(searchUrl);
       const searchData = (await searchRes.json()) as PlaceSearchResponse;
@@ -468,7 +492,7 @@ export class EnrichmentService {
         'name,formatted_address,address_components,geometry,editorial_summary,formatted_phone_number,website,photos';
       const detailUrl =
         `https://maps.googleapis.com/maps/api/place/details/json` +
-        `?place_id=${placeId}&fields=${fields}&key=${this.googleKey}`;
+        `?place_id=${placeId}&fields=${fields}&key=${googleKey}`;
 
       const detailRes = await fetch(detailUrl);
       const detailData = (await detailRes.json()) as PlaceDetailsResponse;
@@ -491,12 +515,13 @@ export class EnrichmentService {
     uploaderId: number,
     startSortOrder: number,
   ): Promise<number> {
+    const googleKey = await this.placesKey();
     let added = 0;
     for (let i = 0; i < photoReferences.length; i++) {
       try {
         const url =
           `https://maps.googleapis.com/maps/api/place/photo` +
-          `?maxwidth=1200&photo_reference=${photoReferences[i]}&key=${this.googleKey}`;
+          `?maxwidth=1200&photo_reference=${photoReferences[i]}&key=${googleKey}`;
 
         const res = await fetch(url);
         if (!res.ok) continue;
@@ -531,7 +556,8 @@ export class EnrichmentService {
     cityName: string | undefined,
     uploaderId: number,
   ): Promise<boolean> {
-    if (!this.googleKey) return false;
+    const googleKey = await this.placesKey();
+    if (!googleKey) return false;
     try {
       const alreadyHasCity = cityName && address.toLowerCase().includes(cityName.toLowerCase());
       const query = cityName && !alreadyHasCity ? `${address}, ${cityName}` : address;
@@ -541,7 +567,7 @@ export class EnrichmentService {
       // when no imagery exists, so we must confirm coverage before downloading.
       const metaUrl =
         `https://maps.googleapis.com/maps/api/streetview/metadata` +
-        `?location=${location}&key=${this.googleKey}`;
+        `?location=${location}&key=${googleKey}`;
       const metaRes = await fetch(metaUrl);
       const meta = (await metaRes.json()) as { status: string };
       if (meta.status !== 'OK') {
@@ -551,7 +577,7 @@ export class EnrichmentService {
 
       const url =
         `https://maps.googleapis.com/maps/api/streetview` +
-        `?size=1200x800&location=${location}&key=${this.googleKey}`;
+        `?size=1200x800&location=${location}&key=${googleKey}`;
 
       const res = await fetch(url);
       if (!res.ok) return false;
@@ -585,14 +611,17 @@ export class EnrichmentService {
     // instance with no key, or a key whose Places API is not enabled, looked
     // exactly like a working instance with an unlucky query -- and left
     // nothing in the log to say otherwise.
-    if (!this.googleKey) {
-      this.logger.warn('[PlaceSearch] GOOGLE_PLACES_API_KEY is not set — place search is disabled');
+    const googleKey = await this.placesKey();
+    if (!googleKey) {
+      this.logger.warn(
+        '[PlaceSearch] No Google Places key for this community — place search is disabled',
+      );
       return [];
     }
     try {
       const url =
         `https://maps.googleapis.com/maps/api/place/textsearch/json` +
-        `?query=${encodeURIComponent(q)}&key=${this.googleKey}`;
+        `?query=${encodeURIComponent(q)}&key=${googleKey}`;
       const res = await fetch(url);
       const data = (await res.json()) as TextSearchResponse;
       // ZERO_RESULTS is a legitimate answer; anything else is a configuration
@@ -622,10 +651,11 @@ export class EnrichmentService {
     cityName?: string,
     editorial?: string,
   ): Promise<string | null> {
-    if (!this.anthropic) return null;
+    const anthropic = await this.anthropicClient();
+    if (!anthropic) return null;
     try {
       const context = editorial ? `\nGoogle says: "${editorial}"` : '';
-      const message = await this.anthropic.messages.create({
+      const message = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 150,
         messages: [

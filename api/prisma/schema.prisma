@@ -133,6 +133,42 @@ model app_config {
   @@index([tenantId], map: "idx_app_config_tenant")
 }
 
+/// Per-community credentials, encrypted at rest (v2-7).
+///
+/// Deliberately a separate table from `app_config` rather than a flag on it,
+/// for one reason that outweighs the duplication: `app_config` rows are served
+/// to unauthenticated visitors. The branding payload reads that table, and the
+/// public `/config/:key` endpoint reads it too — both are allowlisted today, but
+/// the allowlist is the only thing standing between "a new config key" and "a
+/// credential in a public response", and an allowlist is a thing people add to.
+/// A secret and a theme colour have different audiences; giving them different
+/// tables means no future query can confuse them.
+///
+/// `secret_value` always holds a `secret-cipher.ts` envelope, never plaintext —
+/// the encryption extension puts it there and takes it away again, so a service
+/// reading this model sees the plaintext and a database dump does not contain
+/// it. Because the cipher is randomised, this column can never be filtered,
+/// ordered or joined on; look a secret up by `secret_key` and compare in
+/// application code.
+model tenant_secrets {
+  id          Int      @id @default(autoincrement()) @db.UnsignedInt
+  /// The name of the setting, e.g. `geocoding_api_key`. The set that means
+  /// anything is declared in `tenant-secret-keys.ts`; a row with any other key
+  /// is inert rather than rejected, so a downgrade does not lose data.
+  secretKey   String   @map("secret_key") @db.VarChar(100)
+  /// Ciphertext. Text rather than VarChar because an envelope is roughly a
+  /// third longer than its plaintext plus a 40-byte header, and the plaintext
+  /// here is somebody else's API key whose length we do not get to choose.
+  secretValue String   @map("secret_value") @db.Text
+  updatedBy   Int?     @map("updated_by") @db.UnsignedInt
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+  tenantId    Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant      tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_tenant_secrets_tenant")
+
+  @@unique([tenantId, secretKey], map: "uq_tenant_secret_key")
+  @@index([tenantId], map: "idx_tenant_secrets_tenant")
+}
+
 model audit_log {
   id         Int      @id @default(autoincrement()) @db.UnsignedInt
   userId     Int?     @map("user_id") @db.UnsignedInt
@@ -857,11 +893,13 @@ model tenants {
   /// platform's own OAuth apps". That was reversed on 2026-08-14; the columns
   /// are unchanged, their meaning is not.)
   ///
-  /// The two *Secret columns MUST be encrypted at rest before anything writes
-  /// them. There is no encryption layer in this codebase yet, and adding one
-  /// for columns nothing reads would be speculative; whoever first populates
-  /// these owns building it. They are Text rather than VarChar for that reason
-  /// -- ciphertext is longer than the plaintext it replaces.
+  /// The two *Secret columns are encrypted at rest, which is why they are Text
+  /// rather than VarChar -- an envelope is longer than the plaintext it
+  /// replaces. v2-7 built that layer and both columns are declared in
+  /// `encrypted-columns.ts`, so the Prisma extension encrypts them on write and
+  /// decrypts them on read; no service ever handles the ciphertext. Nothing
+  /// populates them yet -- v2-8 is what does -- but the guarantee is in place
+  /// ahead of the writer rather than owed by it.
   googleClientId           String?                    @map("google_client_id") @db.VarChar(255)
   googleClientSecret       String?                    @map("google_client_secret") @db.Text
   facebookAppId            String?                    @map("facebook_app_id") @db.VarChar(255)
@@ -896,6 +934,7 @@ model tenants {
   push_subscriptions       push_subscriptions[]
   app_config               app_config[]
   users                    users[]
+  tenant_secrets           tenant_secrets[]
 
   @@index([status], map: "idx_tenant_status")
 }

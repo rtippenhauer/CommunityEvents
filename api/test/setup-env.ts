@@ -21,6 +21,10 @@ setDefault('DB_USER', 'root');
 setDefault('DB_PASSWORD', 'test');
 setDefault('DB_NAME', 'dinnerbears_test');
 setDefault('JWT_SECRET', 'test-jwt-secret-not-for-real-use');
+// 32 bytes of base64, fixed rather than random: a value that changed per run
+// would still work (every spec writes and reads within one process), but a
+// fixed one means a ciphertext captured in a failing test is reproducible.
+setDefault('SECRET_ENCRYPTION_KEY', 'Y29tbXVuaXR5ZXZlbnRzLXRlc3Qta2V5LTMyYnl0ZXM=');
 setDefault('GOOGLE_CLIENT_ID', 'test-google-client-id');
 setDefault('GOOGLE_CLIENT_SECRET', 'test-google-client-secret');
 setDefault('APP_URL', 'http://localhost:8081');

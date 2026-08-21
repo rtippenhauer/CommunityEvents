@@ -43,6 +43,15 @@ interface EmailQueueItem {
   createdAt: string;
 }
 
+/**
+ * What a PATCH may send. Distinct from EmailConfig because the two API keys are
+ * write-only: they go up, they never come back down.
+ */
+type EmailConfigPatch = Partial<Omit<EmailConfig, 'brevoApiKeySet' | 'resendApiKeySet'>> & {
+  brevoApiKey?: string | null;
+  resendApiKey?: string | null;
+};
+
 interface EmailConfig {
   id: number;
   brevoEnabled: boolean;
@@ -52,11 +61,14 @@ interface EmailConfig {
   brevoSentToday: number;
   resendSentToday: number;
   lastResetDate: string;
-  // credentials
-  brevoApiKey: string | null;
+  // credentials. The API keys themselves are never sent to the browser -- they
+  // are encrypted at rest and the endpoint answers with whether one is stored
+  // (v2-7). An empty key field therefore means "leave the stored key alone",
+  // not "clear it"; clearing is the explicit Remove button.
+  brevoApiKeySet: boolean;
   brevoFromEmail: string | null;
   brevoFromName: string | null;
-  resendApiKey: string | null;
+  resendApiKeySet: boolean;
   resendFromEmail: string | null;
   resendFromName: string | null;
   // template IDs
@@ -173,7 +185,13 @@ interface EmailConfig {
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>API Key</mat-label>
                 <input matInput formControlName="brevoApiKey" type="password" autocomplete="off" />
-                <mat-hint>Overrides BREVO_API_KEY env var</mat-hint>
+                <mat-hint>
+                  @if (config()?.brevoApiKeySet) {
+                    A key is stored — leave blank to keep it.
+                  } @else {
+                    Not set; falls back to the BREVO_API_KEY env var.
+                  }
+                </mat-hint>
               </mat-form-field>
               <div class="two-col">
                 <mat-form-field appearance="outline">
@@ -185,9 +203,21 @@ interface EmailConfig {
                   <input matInput formControlName="brevoFromName" />
                 </mat-form-field>
               </div>
-              <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
-                Save Brevo Credentials
-              </button>
+              <div class="cred-actions">
+                <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
+                  Save Brevo Credentials
+                </button>
+                @if (config()?.brevoApiKeySet) {
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    [disabled]="saving()"
+                    (click)="removeKey('brevo')"
+                  >
+                    Remove stored key
+                  </button>
+                }
+              </div>
             </form>
           </mat-expansion-panel>
 
@@ -200,7 +230,13 @@ interface EmailConfig {
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>API Key</mat-label>
                 <input matInput formControlName="resendApiKey" type="password" autocomplete="off" />
-                <mat-hint>Overrides RESEND_API_KEY env var</mat-hint>
+                <mat-hint>
+                  @if (config()?.resendApiKeySet) {
+                    A key is stored — leave blank to keep it.
+                  } @else {
+                    Not set; falls back to the RESEND_API_KEY env var.
+                  }
+                </mat-hint>
               </mat-form-field>
               <div class="two-col">
                 <mat-form-field appearance="outline">
@@ -212,9 +248,21 @@ interface EmailConfig {
                   <input matInput formControlName="resendFromName" />
                 </mat-form-field>
               </div>
-              <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
-                Save Resend Credentials
-              </button>
+              <div class="cred-actions">
+                <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
+                  Save Resend Credentials
+                </button>
+                @if (config()?.resendApiKeySet) {
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    [disabled]="saving()"
+                    (click)="removeKey('resend')"
+                  >
+                    Remove stored key
+                  </button>
+                }
+              </div>
             </form>
           </mat-expansion-panel>
 
@@ -477,6 +525,12 @@ interface EmailConfig {
         gap: 12px;
         padding: 16px 0 8px;
       }
+      .cred-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
       .full-width {
         width: 100%;
       }
@@ -631,13 +685,14 @@ export class AdminEmailComponent implements OnInit {
     this.http.get<EmailConfig>('/api/v1/admin/email/config').subscribe({
       next: (cfg) => {
         this.config.set(cfg);
+        // The key fields are deliberately left blank: the API no longer sends
+        // the stored value, and blank is what "keep the existing key" looks
+        // like on save.
         this.brevoForm.patchValue({
-          brevoApiKey: cfg.brevoApiKey ?? '',
           brevoFromEmail: cfg.brevoFromEmail ?? '',
           brevoFromName: cfg.brevoFromName ?? '',
         });
         this.resendForm.patchValue({
-          resendApiKey: cfg.resendApiKey ?? '',
           resendFromEmail: cfg.resendFromEmail ?? '',
           resendFromName: cfg.resendFromName ?? '',
         });
@@ -669,7 +724,26 @@ export class AdminEmailComponent implements OnInit {
     });
   }
 
-  patchConfig(patch: Partial<EmailConfig>): void {
+  /** Clears a stored key, so the provider falls back to its env var. */
+  removeKey(provider: 'brevo' | 'resend'): void {
+    if (!confirm(`Remove the stored ${provider === 'brevo' ? 'Brevo' : 'Resend'} API key?`)) return;
+    this.saving.set(true);
+    const patch: EmailConfigPatch =
+      provider === 'brevo' ? { brevoApiKey: null } : { resendApiKey: null };
+    this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
+      next: (cfg) => {
+        this.config.set(cfg);
+        this.saving.set(false);
+        this.snackBar.open('Stored key removed', 'OK', { duration: 2000 });
+      },
+      error: () => {
+        this.saving.set(false);
+        this.snackBar.open('Failed to remove key', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  patchConfig(patch: EmailConfigPatch): void {
     this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
       next: (cfg) => {
         this.config.set(cfg);
@@ -682,11 +756,14 @@ export class AdminEmailComponent implements OnInit {
   saveBrevo(): void {
     this.saving.set(true);
     const val = this.brevoForm.getRawValue();
-    const patch: Partial<EmailConfig> = {
-      brevoApiKey: val.brevoApiKey || null,
+    // Omitted, not null, when blank. The API treats an absent key as "leave it
+    // alone" and an explicit null as "clear it", and blank here means the admin
+    // did not retype a key they cannot see.
+    const patch: EmailConfigPatch = {
       brevoFromEmail: val.brevoFromEmail || null,
       brevoFromName: val.brevoFromName || null,
     };
+    if (val.brevoApiKey) patch.brevoApiKey = val.brevoApiKey;
     this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
       next: (cfg) => {
         this.config.set(cfg);
@@ -703,11 +780,11 @@ export class AdminEmailComponent implements OnInit {
   saveResend(): void {
     this.saving.set(true);
     const val = this.resendForm.getRawValue();
-    const patch: Partial<EmailConfig> = {
-      resendApiKey: val.resendApiKey || null,
+    const patch: EmailConfigPatch = {
       resendFromEmail: val.resendFromEmail || null,
       resendFromName: val.resendFromName || null,
     };
+    if (val.resendApiKey) patch.resendApiKey = val.resendApiKey;
     this.http.patch<EmailConfig>('/api/v1/admin/email/config', patch).subscribe({
       next: (cfg) => {
         this.config.set(cfg);

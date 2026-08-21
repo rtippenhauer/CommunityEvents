@@ -286,6 +286,14 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    path: 'admin/secrets',
+    loadComponent: () =>
+      import('./features/admin/secrets/admin-secrets.component').then(
+        (m) => m.AdminSecretsComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/legal',
     loadComponent: () =>
       import('./features/admin/legal/admin-legal.component').then(
