@@ -95,7 +95,15 @@ the database is encrypted under it (the email provider keys, each community's
 own API keys, the per-tenant OAuth secrets v2-8 adds), it is deliberately NOT
 stored in the database, and it cannot be recovered from a backup of one.
 
-If you set it yourself, note it is **base64, not hex** --
+**The container path holding that file must be mapped to persistent storage.**
+On Unraid that means an explicit `/app/appdata` -> `/mnt/user/appdata/<name>`
+mapping in the container template. Without it the key lives in the container's
+writable layer and is regenerated every time the container is recreated, taking
+any secret encrypted under it with it. The same applies to `/app/uploads`,
+which holds member-uploaded photos. Startup logs an error when it can detect an
+unmapped key path, but check the mapping rather than relying on that.
+
+If you set the key yourself, note it is **base64, not hex** --
 `openssl rand -base64 32`, unlike the two above.
 
 Generating only happens when there is nothing to lose. A deployment whose

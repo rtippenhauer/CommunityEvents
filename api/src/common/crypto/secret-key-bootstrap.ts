@@ -4,6 +4,7 @@ import { allEncryptedColumns } from './encrypted-columns';
 import { isEncryptedSecret, secretKeyIdOf } from './secret-cipher';
 import {
   generateSecretKey,
+  keyFileLooksPersistent,
   keyFilePath,
   PRIMARY_KEY_ENV,
   persistSecretKey,
@@ -151,6 +152,22 @@ export async function ensureDeploymentKey(client: RawQueryClient): Promise<void>
         `stores is encrypted under it, it is not recoverable from the database, and losing ` +
         `it means re-entering every secret by hand.`,
     );
+
+    // The stage pass for v2-7 generated three keys in a row because
+    // /app/appdata was not mapped to a host path. Nothing was lost -- generating
+    // requires an empty database -- but "BACK IT UP" pointed at a file that
+    // could not survive the next `docker run`, which is a worse instruction than
+    // none. Loud, and separate from the message above, because it changes what
+    // the operator has to do next.
+    if (!keyFileLooksPersistent()) {
+      logger.error(
+        `${path} does not look like it is on a mounted volume -- its directory shares a ` +
+          `filesystem with its parent, which is what an unmapped container path looks like. ` +
+          `If that is right, this key is lost the moment the container is recreated, and any ` +
+          `secret encrypted under it goes with it. Map that directory to persistent storage, ` +
+          `or set ${PRIMARY_KEY_ENV} explicitly, before storing any credential.`,
+      );
+    }
     return;
   }
 

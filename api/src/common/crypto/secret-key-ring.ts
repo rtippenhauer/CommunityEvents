@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 
 /**
@@ -68,6 +68,41 @@ export const KEY_FILE_ENV = 'SECRET_ENCRYPTION_KEY_FILE';
 const DEFAULT_KEY_FILE = '/app/appdata/secret-encryption.key';
 
 export const keyFilePath = (): string => process.env[KEY_FILE_ENV] ?? DEFAULT_KEY_FILE;
+
+/**
+ * Whether the key file's directory looks like a mounted volume rather than the
+ * container's own writable layer.
+ *
+ * Found on the v2-7 stage pass, which is the only place it could have been
+ * found: `/app/appdata` was not mapped to a host path, so each generated key
+ * lived in the container layer and vanished when the container was recreated.
+ * The deployment behaved correctly at every step -- it only ever generates when
+ * the database holds nothing encrypted, so nothing was lost -- but it told the
+ * operator to back up a key it had just written somewhere that could not hold
+ * it, which is worse than saying nothing.
+ *
+ * The heuristic is `st_dev`: a bind mount or a named volume is a different
+ * filesystem from the container's overlay root, so the directory's device id
+ * differs from its parent's. An unmapped directory shares its parent's.
+ *
+ * Deliberately optimistic when it cannot tell. This drives a warning, not a
+ * refusal, and a false alarm telling an operator their correctly-mounted volume
+ * is broken would train them to ignore the message that matters.
+ */
+export function keyFileLooksPersistent(): boolean {
+  const directory = dirname(keyFilePath());
+  const parent = dirname(directory);
+
+  // A directory that is its own parent is the filesystem root; there is nothing
+  // to compare against and nothing useful to say.
+  if (directory === parent) return true;
+
+  try {
+    return statSync(directory).dev !== statSync(parent).dev;
+  } catch {
+    return true;
+  }
+}
 
 /** The key file's contents, or null if there is no readable file. */
 function readKeyFile(): string | null {

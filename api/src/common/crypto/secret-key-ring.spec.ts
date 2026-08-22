@@ -5,6 +5,7 @@ import { join } from 'path';
 import {
   generateSecretKey,
   KEY_FILE_ENV,
+  keyFileLooksPersistent,
   keyIdFor,
   keyFilePath,
   PRIMARY_KEY_ENV,
@@ -115,6 +116,32 @@ describe('secret key ring (v2-7)', () => {
 
     it('honours SECRET_ENCRYPTION_KEY_FILE over the default path', () => {
       expect(keyFilePath()).toBe(join(keyDir, 'secret-encryption.key'));
+    });
+
+    // Found on the v2-7 stage pass: /app/appdata was not mapped to a host path,
+    // so every generated key lived in the container layer and vanished on the
+    // next recreate. Nothing was lost -- generating requires an empty database
+    // -- but the log told the operator to back up a file that could not survive.
+    describe('detecting a directory that cannot persist', () => {
+      it('reports an ordinary directory as not persistent', () => {
+        // keyDir is a plain directory inside the temp dir, sharing its parent's
+        // filesystem -- which is exactly what an unmapped container path looks
+        // like from inside the container.
+        expect(keyFileLooksPersistent()).toBe(false);
+      });
+
+      it('says nothing useful rather than crying wolf when it cannot tell', () => {
+        // A path whose parent does not exist cannot be compared. Optimism is
+        // deliberate: a false alarm about a correctly mounted volume trains an
+        // operator to ignore the warning that matters.
+        process.env[KEY_FILE_ENV] = join(keyDir, 'no', 'such', 'dir', 'key');
+        expect(keyFileLooksPersistent()).toBe(true);
+      });
+
+      it('treats the filesystem root as nothing to compare', () => {
+        process.env[KEY_FILE_ENV] = '/key';
+        expect(keyFileLooksPersistent()).toBe(true);
+      });
     });
   });
 

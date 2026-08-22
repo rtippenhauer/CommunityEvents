@@ -19,13 +19,26 @@ an operator has to do in each case.
 
 **A fresh install needs no key.** On first start, a deployment with no key and
 no stored secrets generates one and writes it to
-`SECRET_ENCRYPTION_KEY_FILE` (default `/app/appdata/secret-encryption.key`, on
-the persistent volume so it survives a rebuild). It logs a warning telling you
-to back it up. To supply one yourself instead:
+`SECRET_ENCRYPTION_KEY_FILE` (default `/app/appdata/secret-encryption.key`). It
+logs a warning telling you to back it up. To supply one yourself instead:
 
 ```
 openssl rand -base64 32
 ```
+
+**That directory must be mapped to persistent storage.** If it is not, the key
+lives in the container's own writable layer and is gone the next time the
+container is recreated — and so is anything encrypted under it. Startup checks
+for this and logs an error if the path does not look like a mounted volume, but
+check the mapping rather than relying on the check: it is a heuristic
+(comparing the directory's filesystem against its parent's) and it deliberately
+stays quiet when it cannot tell.
+
+This is not theoretical. It is what happened on the v2-7 stage deploy, where
+`/app/appdata` had no host mapping and three consecutive container recreations
+produced three different keys. Nothing was lost, because generating requires a
+database with nothing encrypted in it — but the log had cheerfully said "BACK
+IT UP" each time.
 
 **Keep a copy somewhere other than the key file and the `.env` beside it.** The
 key is not in the database and cannot be recovered from a backup of it — that
@@ -213,6 +226,8 @@ the current primary key.
 | API exits saying the key does not hold `<id>` | Wrong key, or a rotation where the old key was dropped too early | Add the old key to `SECRET_ENCRYPTION_KEYS_RETIRED` and rewrap |
 | Warning at startup that a rotation is unfinished | Restarted on the new key, rewrap not yet run | Run the rewrap |
 | `... is not a valid encryption key: expected 32 bytes` | Malformed key (hex instead of base64 is the usual cause) | `openssl rand -base64 32` — base64, not hex |
+| A new key is generated on every restart | The key file's directory is not mapped to persistent storage | Map it; startup logs an error naming the path when it can detect this |
+| `... does not look like it is on a mounted volume` | Same, detected at generation time | Add the volume mapping before storing any credential |
 | `... is encrypted under key <id>, which this deployment does not hold` | A key was rotated out before the rewrap finished | Put the old key back in `SECRET_ENCRYPTION_KEYS_RETIRED`, then rewrap |
 | `Failed to authenticate <column>` | The stored value was altered, or copied from another column | Re-enter that one credential; nothing else is affected |
 | Warning that a column "still holds an unencrypted value" | Upgraded database, rewrap not yet run | Run the rewrap |
