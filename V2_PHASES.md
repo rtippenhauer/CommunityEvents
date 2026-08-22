@@ -858,8 +858,32 @@ the *fallbacks* are still DinnerBears: `SITE_SETTING_DEFAULTS` in
 `app-config.service.ts`, ~93 hardcoded references across `api/src` (most of
 them `dinnerbears.com` in email URLs and fallbacks) and 12 frontend files.
 
+**Not a find-and-replace, and this is the trap.** Branding became per-community
+in v2-6: `app_config` is tenant-scoped, so `brand_name` is whatever each
+community chose. Swapping the literals to "CommunityEvents" would be the same
+mistake one level up -- a community called "Dayton Dinners" would send mail
+saying "Welcome to CommunityEvents!". Every one of these sites has to resolve
+the *tenant's* brand name and interpolate it; only the deployment-wide
+fallbacks become CommunityEvents.
+
+Two consequences follow. Email bodies composed in a `@Cron` sweep must re-enter
+`runWithTenant` to read branding, or they render whichever tenant the engine
+reached first -- the v2-6 trap already documented in CLAUDE.md. And a string
+like `subject: 'Verify your DinnerBears email'` becomes an async lookup, which
+changes the shape of the functions holding it.
+
+**Found on the v2-7 stage pass**, which is how the numbers below got specific:
+a real invite and a real verification email both arrived branded DinnerBears
+from a sender correctly named "Community Events Project". The From identity
+comes from `brevoFromName` and was already configurable; the body copy is
+string literals (`auth.service.ts:1110-1116` among them). Current count is 38
+non-comment references in `api/src` across 14 files and 14 in the frontend
+across 5 -- lower than the ~93 above, which counted comments and `.spec` files.
+
 **Definition of done:** a fresh instance with no `app_config` rows presents as
-CommunityEvents, and no code path emits a dinnerbears.com URL.
+CommunityEvents; a community that has set its own `brand_name` sees that name
+everywhere including in email subjects and bodies; and no code path emits a
+dinnerbears.com URL.
 
 ### v2-11 — Root tenant landing page
 **Status:** Not started (deferred). Depends on v2-3 and v2-4.
