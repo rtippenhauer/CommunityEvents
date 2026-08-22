@@ -121,7 +121,7 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   event_cadence_weekday: '2', // 0 = Sunday … 6 = Saturday; 2 = Tuesday
   event_cadence_time: '18:30',
   home_show_stats: 'true', // toggles the home-page stats strip (members/dinners/etc.)
-  brand_name: 'DinnerBears',
+  brand_name: 'CommunityEvents',
   brand_tagline: 'Good food. Great company. Bear memories.',
   theme_color_primary: '#C9933A',
   theme_color_accent: '#C9933A',
@@ -214,6 +214,26 @@ export class AppConfigService {
   async getSiteSetting(key: SiteSettingKey): Promise<string> {
     const row = await this.prisma.app_config.findFirst({ where: { configKey: key } });
     return row?.configValue ?? SITE_SETTING_DEFAULTS[key];
+  }
+
+  /**
+   * What this community calls itself, for anything a member reads.
+   *
+   * The community's own `brand_name` if it has set one, otherwise the
+   * deployment default. Deliberately falls back rather than throwing: an email
+   * with a generic name is a cosmetic problem, an email that fails to send is
+   * not.
+   *
+   * **Returns the default when there is no tenant in context**, rather than
+   * reading whichever row comes back first. `app_config` is tenant-scoped, so
+   * a read under `runUnscoped` would answer with an arbitrary community's name
+   * -- the trap v2-6 documented for branding in cron sweeps. A sweep that wants
+   * a specific community's name must re-enter `runWithTenant`, which is the
+   * same rule `baseUrlFor()` follows.
+   */
+  async brandName(): Promise<string> {
+    if (typeof currentTenantId() !== 'number') return SITE_SETTING_DEFAULTS.brand_name;
+    return this.getSiteSetting('brand_name');
   }
 
   // ── Contact identity (REQ-TENANT-01.4) ──────────────────────

@@ -32,6 +32,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { EmailService } from '../email/email.service';
+import { AppConfigService } from '../app-config/app-config.service';
 import { EmailStatus, SuppressionReason, UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
@@ -51,6 +52,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly emailService: EmailService,
+    private readonly appConfig: AppConfigService,
     configService: ConfigService,
   ) {
     // Only ever used to clear the pre-v2-6 domain-scoped cookie; nothing sets
@@ -165,7 +167,9 @@ export class UsersController {
   async unsubscribe(@CurrentUser() user: User): Promise<{ message: string }> {
     await this.usersService.updateEmailStatus(user.id, EmailStatus.UNSUBSCRIBED);
     await this.emailService.suppress(user.email, SuppressionReason.UNSUBSCRIBED);
-    return { message: 'You have been unsubscribed from DinnerBears emails.' };
+    return {
+      message: `You have been unsubscribed from ${await this.appConfig.brandName()} emails.`,
+    };
   }
 
   @Post('me/resubscribe')
@@ -175,7 +179,9 @@ export class UsersController {
     }
     await this.usersService.updateEmailStatus(user.id, EmailStatus.ACTIVE);
     await this.emailService.removeSuppression(user.email);
-    return { message: 'You have been resubscribed to DinnerBears emails.' };
+    return {
+      message: `You have been resubscribed to ${await this.appConfig.brandName()} emails.`,
+    };
   }
 
   @Patch(':id/validate')

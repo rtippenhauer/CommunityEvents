@@ -89,7 +89,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
       expect(res.text).toContain('STATUS:CONFIRMED');
       // calendar@<BASE_DOMAIN>; setup-env.ts pins BASE_DOMAIN=localhost. The old
       // literal named the production domain and could never match here.
-      expect(res.text).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@localhost');
+      expect(res.text).toContain('ORGANIZER;CN=CommunityEvents:mailto:calendar@localhost');
       expect(res.text).toContain('METHOD:PUBLISH');
     });
 
@@ -354,7 +354,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
       // The old literal named the production domain; the assertion never ran,
       // because this call was not awaited and the Promise silently passed the
       // earlier toContain checks.
-      expect(ics).toContain('ORGANIZER;CN=DinnerBears:mailto:calendar@localhost');
+      expect(ics).toContain('ORGANIZER;CN=CommunityEvents:mailto:calendar@localhost');
       expect(ics).toMatch(/DTSTAMP:\d{8}T\d{6}Z/);
     });
 

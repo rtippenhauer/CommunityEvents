@@ -140,7 +140,7 @@ export class AnnouncementsService {
 
     const pushPayload = {
       title: a.title,
-      body: 'New announcement from DinnerBears',
+      body: 'New announcement from {{brand}}',
       url: `/announcements/${a.id}`,
     };
     if (a.cityId) {

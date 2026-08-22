@@ -67,7 +67,7 @@ export class BrevoService {
     return {
       apiKey: db?.brevoApiKey || this.config.get<string>('BREVO_API_KEY', ''),
       fromEmail: db?.brevoFromEmail || this.config.get<string>('BREVO_FROM_EMAIL', 'rob@dinnerbears.com'),
-      fromName: db?.brevoFromName || this.config.get<string>('BREVO_FROM_NAME', 'DinnerBears'),
+      fromName: db?.brevoFromName || this.config.get<string>('BREVO_FROM_NAME', 'CommunityEvents'),
     };
   }
 

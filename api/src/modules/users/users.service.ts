@@ -372,7 +372,7 @@ export class UsersService {
       await this.emailService.queue({
         toEmail: user.email,
         toName: user.fullName,
-        subject: 'Your DinnerBears account has been deactivated',
+        subject: 'Your {{brand}} account has been deactivated',
         templateId: EmailTemplate.ACCOUNT_DELETED,
         templateParams: { name: user.fullName },
         userId: user.id,
