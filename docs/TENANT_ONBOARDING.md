@@ -117,13 +117,32 @@ Use a second Brevo account for stage, with a different login email.
    existing one. A domain may have only **one** SPF record — two is a hard fail,
    not a merge.
 
-Confirm from outside before sending anything real:
+Confirm from outside before sending anything real. Brevo's console will tell
+you the records verified; that is not the same question as whether a public
+resolver can see them, which is what actually decides whether your mail passes.
+
+Replace `<selector>` with the record name Brevo gave you -- usually `mail` or
+`brevo`. Query a public resolver explicitly, so you are not reading your own
+cache.
+
+PowerShell (Windows -- `dig` is not installed by default):
+
+```powershell
+Resolve-DnsName -Type TXT -Server 1.1.1.1 <selector>._domainkey.example.com
+Resolve-DnsName -Type TXT -Server 1.1.1.1 _dmarc.example.com
+(Resolve-DnsName -Type TXT -Server 1.1.1.1 example.com).Strings
+```
+
+macOS / Linux:
 
 ```
-dig +short TXT <selector>._domainkey.example.com
-dig +short TXT _dmarc.example.com
-dig +short TXT example.com | grep spf
+dig @1.1.1.1 +short TXT <selector>._domainkey.example.com
+dig @1.1.1.1 +short TXT _dmarc.example.com
+dig @1.1.1.1 +short TXT example.com | grep spf
 ```
+
+A subdomain does **not** inherit its parent's SPF record. If the mail domain is
+`stage.example.com`, that name needs its own.
 
 ### Giving the app the key
 
