@@ -146,12 +146,28 @@ A subdomain does **not** inherit its parent's SPF record. If the mail domain is
 
 ### Giving the app the key
 
+**An API key is not tied to a domain, and cannot be.** The key authenticates
+you to the *account*; domain authentication is also account-level. Once a domain
+is verified, every key on that account can send from it. What actually ties a
+send to a domain is the **From address** on that send, which Brevo checks
+against the domains the account has authenticated.
+
+That is the concrete reason stage and production need separate *accounts*
+rather than separate keys: a key carries no domain restriction, so a stage key
+on a shared account could send as production's domain, spend its quota and
+inherit its blocklist.
+
 1. In Brevo: **SMTP & API → API Keys → Generate a new API key**.
 2. In the app: **Admin → Email → Brevo Credentials**, paste it, save.
 3. Set **From Email** and **From Name** on the same screen. The From address
    must be at the domain you just authenticated — a provider rejects a From
    address on a domain it has not verified, which is the whole reason that step
    cannot be skipped.
+4. Set **Site Settings → mail domain** to the same domain. These are two
+   different settings and both matter: From Email is what Brevo validates,
+   while the mail domain is what `hello@`, `calendar@` and `noreply@` resolve
+   from. If they disagree, mail sends but replies go to an address with no
+   routing behind it.
 
 The key is encrypted before it is stored and is never shown again; the screen
 reports only that one is set. To replace it, paste a new one. To remove it, use
