@@ -157,7 +157,17 @@ rather than separate keys: a key carries no domain restriction, so a stage key
 on a shared account could send as production's domain, spend its quota and
 inherit its blocklist.
 
-1. In Brevo: **SMTP & API → API Keys → Generate a new API key**.
+> **Generate an API key, not an SMTP key.** The SMTP & API page has two tabs
+> and they issue different credentials. The app calls Brevo's REST API, so it
+> needs a key from the **API keys & MCP** tab (these start `xkeysib-`). A key
+> from the **SMTP** tab is a password for `smtp-relay.brevo.com:587` and the
+> REST API does not recognise it — you get `401 {"message":"Key not found"}`,
+> which reads like a revoked key rather than the wrong kind of key.
+>
+> Brevo's naming does not help: the REST endpoint is `/v3/smtp/email` and is
+> not SMTP.
+
+1. In Brevo: **SMTP & API → API keys & MCP → Generate a new API key**.
 2. In the app: **Admin → Email → Brevo Credentials**, paste it, save.
 3. Set **From Email** and **From Name** on the same screen. The From address
    must be at the domain you just authenticated — a provider rejects a From
