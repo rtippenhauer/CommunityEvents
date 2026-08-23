@@ -65,7 +65,7 @@ const DEFAULT_ICON = 'images/DinnerBearsIcon.png';
 // Image URLs start empty so the compiled-in default assets show through.
 const DEFAULT_BRAND: BrandConfig = {
   name: 'DinnerBears',
-  tagline: 'Good food. Great company. Bear memories.',
+  tagline: 'Good food. Great company.',
   colorPrimary: '#C9933A',
   colorAccent: '#C9933A',
   colorBackground: '#FDFAF5',

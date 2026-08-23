@@ -130,7 +130,7 @@
   {
     "id": 17,
     "configKey": "brand_name",
-    "configValue": "DinnerBears",
+    "configValue": "CommunityEvents",
     "description": "App name shown in nav, footer, and page titles",
     "updatedBy": null,
     "updatedAt": "2026-08-09T16:30:16.000Z"
@@ -138,7 +138,7 @@
   {
     "id": 18,
     "configKey": "brand_tagline",
-    "configValue": "Good food. Great company. Bear memories.",
+    "configValue": "Good food. Great company.",
     "description": "Short tagline shown on the login page and footer",
     "updatedBy": null,
     "updatedAt": "2026-08-09T16:30:16.000Z"

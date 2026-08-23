@@ -977,8 +977,10 @@ Seed rows:
   ("2nd Saturday") pattern
 - `event_cadence_time` (Phase 29) = `18:30` — time of day (24h `HH:mm`) new events
   default to
-- `brand_name` (Phase 29) = `DinnerBears` — app name shown in nav/footer/page title
-- `brand_tagline` (Phase 29) = `Good food. Great company. Bear memories.`
+- `brand_name` (Phase 29) = `CommunityEvents` — app name shown in nav/footer/page
+  title, and in every email the community sends
+- `brand_tagline` (Phase 29) = `Good food. Great company.` — login page, footer, and
+  the line under the invitation in an invite email
 - `theme_color_primary` (Phase 29) = `#C9933A` — primary brand color (also drives
   Angular Material `--mat-sys-*` tokens at runtime)
 - `theme_color_accent` (Phase 29) = `#C9933A`

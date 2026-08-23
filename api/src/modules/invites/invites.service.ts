@@ -93,6 +93,11 @@ export class InvitesService {
       // community's host cannot find the token and the invite reads as invalid.
       const appUrl = await this.tenantResolution.baseUrlFor(saved.tenantId);
       const brandName = await this.appConfig.getSiteSetting('brand_name');
+      // The line under the invitation is the community's own tagline, the one
+      // it edits in Site Settings. It used to be a hardcoded "people who love
+      // good food and great company" — true of DinnerBears, an assertion about
+      // a stranger's community anywhere else.
+      const tagline = (await this.appConfig.getSiteSetting('brand_tagline')).trim();
       const inviteUrl = `${appUrl}/login?token=${saved.token}`;
       const inviterName = creator.fullName || `A ${brandName} member`;
 
@@ -106,10 +111,12 @@ export class InvitesService {
           invite_url: inviteUrl,
           invitee_name: dto.boundToName ?? dto.boundToEmail,
           brand_name: brandName,
+          brand_tagline: tagline,
         },
         htmlBody: `
           <h2>You're invited to ${brandName}!</h2>
-          <p><strong>${inviterName}</strong> has invited you to join ${brandName} — a community of people who love good food and great company.</p>
+          <p><strong>${inviterName}</strong> has invited you to join ${brandName}.</p>
+          ${tagline ? `<p style="color:#666">${tagline}</p>` : ''}
           <p><a href="${inviteUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Accept Invite</a></p>
           <p style="color:#888;font-size:0.85em">This link expires in 48 hours and can only be used by this email address.</p>
         `,

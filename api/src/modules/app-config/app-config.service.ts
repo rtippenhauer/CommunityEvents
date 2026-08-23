@@ -122,7 +122,7 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   event_cadence_time: '18:30',
   home_show_stats: 'true', // toggles the home-page stats strip (members/dinners/etc.)
   brand_name: 'CommunityEvents',
-  brand_tagline: 'Good food. Great company. Bear memories.',
+  brand_tagline: 'Good food. Great company.',
   theme_color_primary: '#C9933A',
   theme_color_accent: '#C9933A',
   theme_color_background: '#FDFAF5',

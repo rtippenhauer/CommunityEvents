@@ -766,7 +766,7 @@ export class AdminSettingsComponent implements OnInit {
     // saving writes the form's, so the screen for fixing branding is the screen
     // that reintroduces it.
     brandName: this.fb.control('CommunityEvents'),
-    brandTagline: this.fb.control('Good food. Great company. Bear memories.'),
+    brandTagline: this.fb.control('Good food. Great company.'),
     colorPrimary: this.fb.control('#C9933A', [Validators.pattern(HEX_COLOR_PATTERN)]),
     colorAccent: this.fb.control('#C9933A', [Validators.pattern(HEX_COLOR_PATTERN)]),
     colorBackground: this.fb.control('#FDFAF5', [Validators.pattern(HEX_COLOR_PATTERN)]),
@@ -799,7 +799,7 @@ export class AdminSettingsComponent implements OnInit {
         const byKey = new Map(settings.map((s) => [s.configKey, s.configValue]));
         this.form.patchValue({
           brandName: byKey.get('brand_name') ?? 'CommunityEvents',
-          brandTagline: byKey.get('brand_tagline') ?? 'Good food. Great company. Bear memories.',
+          brandTagline: byKey.get('brand_tagline') ?? 'Good food. Great company.',
           colorPrimary: byKey.get('theme_color_primary') ?? '#C9933A',
           colorAccent: byKey.get('theme_color_accent') ?? '#C9933A',
           colorBackground: byKey.get('theme_color_background') ?? '#FDFAF5',
