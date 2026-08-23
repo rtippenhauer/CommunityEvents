@@ -62,17 +62,23 @@ export class AuthService {
     return this.http.post<{ message: string }>('/api/v1/auth/facebook/link', { accessToken });
   }
 
-  logout(): void {
+  /**
+   * `returnTo` exists for the invite flow, which has to come back to
+   * `/login?token=…` rather than the bare login page — the token is the whole
+   * point of the round trip and a plain `/login` drops it.
+   */
+  logout(returnTo?: { path: string; queryParams?: Record<string, string> }): void {
+    const destination = returnTo ?? { path: '/login' };
+    const land = () => {
+      this.currentUser.set(null);
+      void this.router.navigate([destination.path], { queryParams: destination.queryParams });
+    };
     this.http
       .post('/api/v1/auth/logout', {}, { withCredentials: true })
       .pipe(
-        tap(() => {
-          this.currentUser.set(null);
-          this.router.navigate(['/login']);
-        }),
+        tap(land),
         catchError(() => {
-          this.currentUser.set(null);
-          this.router.navigate(['/login']);
+          land();
           return of(null);
         }),
       )

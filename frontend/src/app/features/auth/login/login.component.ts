@@ -41,134 +41,153 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
         <div class="login-box">
           <p class="tagline">{{ brandConfig.brand().tagline }}</p>
 
-          @if (inviteToken()) {
+          @if (signedInAs(); as signedInEmail) {
             <p class="invite-notice">
-              🐾 You have an invite — sign in or create an account to claim your seat at the table.
+              🐾 You have an invite — but you're already signed in as {{ signedInEmail }}.
             </p>
-          }
-
-          <!-- OAuth buttons -->
-          <button mat-raised-button class="google-btn" (click)="signInWithGoogle()">
-            <svg class="google-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-              />
-            </svg>
-            Continue with Google
-          </button>
-
-          @if (fbReady()) {
+            <p class="invite-help">
+              An invite creates a new account, so this one can only be accepted from a signed-out
+              browser. Signing out brings you back here with the invite intact.
+            </p>
             <button
               mat-raised-button
-              class="fb-btn"
-              (click)="signInWithFacebook()"
-              [disabled]="fbLogging()"
+              color="primary"
+              class="full-width"
+              (click)="signOutToAcceptInvite()"
             >
-              @if (fbLogging()) {
-                <mat-spinner diameter="20" />
-              } @else {
-                <svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    fill="white"
-                    d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
-                  />
-                </svg>
-                Continue with Facebook
-              }
+              Sign out and accept invite
             </button>
-          }
+            <a mat-button routerLink="/profile" class="full-width">Stay signed in as {{ signedInEmail }}</a>
+          } @else {
+            @if (inviteToken()) {
+              <p class="invite-notice">
+                🐾 You have an invite — sign in or create an account to claim your seat at the table.
+              </p>
+            }
 
-          <!-- Divider -->
-          <div class="divider"><span>or</span></div>
-
-          <!-- Email / password form -->
-          @if (showEmailForm()) {
-            <form [formGroup]="form" (ngSubmit)="submitEmailForm()" class="email-form">
-              @if (inviteToken()) {
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>Full name</mat-label>
-                  <input matInput formControlName="fullName" autocomplete="name" />
-                </mat-form-field>
-              }
-
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Email</mat-label>
-                <input matInput formControlName="email" type="email" autocomplete="email" />
-              </mat-form-field>
-
-              <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Password</mat-label>
-                <input
-                  matInput
-                  formControlName="password"
-                  [type]="showPassword() ? 'text' : 'password'"
-                  [autocomplete]="inviteToken() ? 'new-password' : 'current-password'"
+            <!-- OAuth buttons -->
+            <button mat-raised-button class="google-btn" (click)="signInWithGoogle()">
+              <svg class="google-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                 />
-                <button
-                  mat-icon-button
-                  matSuffix
-                  type="button"
-                  (click)="showPassword.set(!showPassword())"
-                >
-                  <mat-icon>{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
-                </button>
-              </mat-form-field>
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                />
+              </svg>
+              Continue with Google
+            </button>
 
-              @if (inviteToken()) {
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>Confirm password</mat-label>
-                  <input
-                    matInput
-                    formControlName="confirmPassword"
-                    [type]="showPassword() ? 'text' : 'password'"
-                    autocomplete="new-password"
-                  />
-                </mat-form-field>
-              }
-
-              @if (formError()) {
-                <p class="form-error">{{ formError() }}</p>
-              }
-
+            @if (fbReady()) {
               <button
                 mat-raised-button
-                color="primary"
-                type="submit"
-                class="full-width"
-                [disabled]="form.invalid || submitting()"
+                class="fb-btn"
+                (click)="signInWithFacebook()"
+                [disabled]="fbLogging()"
               >
-                @if (submitting()) {
+                @if (fbLogging()) {
                   <mat-spinner diameter="20" />
                 } @else {
-                  {{ inviteToken() ? 'Create account' : 'Sign in' }}
+                  <svg class="fb-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fill="white"
+                      d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
+                    />
+                  </svg>
+                  Continue with Facebook
                 }
               </button>
+            }
 
-              @if (!inviteToken()) {
-                <a routerLink="/auth/forgot-password" class="forgot-link">Forgot password?</a>
-              }
-            </form>
-          } @else {
-            <button mat-button class="email-toggle-btn" (click)="showEmailForm.set(true)">
-              <mat-icon>mail</mat-icon>
-              {{ inviteToken() ? 'Sign up with email' : 'Sign in with email' }}
-            </button>
+            <!-- Divider -->
+            <div class="divider"><span>or</span></div>
+
+            <!-- Email / password form -->
+            @if (showEmailForm()) {
+              <form [formGroup]="form" (ngSubmit)="submitEmailForm()" class="email-form">
+                @if (inviteToken()) {
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Full name</mat-label>
+                    <input matInput formControlName="fullName" autocomplete="name" />
+                  </mat-form-field>
+                }
+
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Email</mat-label>
+                  <input matInput formControlName="email" type="email" autocomplete="email" />
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Password</mat-label>
+                  <input
+                    matInput
+                    formControlName="password"
+                    [type]="showPassword() ? 'text' : 'password'"
+                    [autocomplete]="inviteToken() ? 'new-password' : 'current-password'"
+                  />
+                  <button
+                    mat-icon-button
+                    matSuffix
+                    type="button"
+                    (click)="showPassword.set(!showPassword())"
+                  >
+                    <mat-icon>{{ showPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                  </button>
+                </mat-form-field>
+
+                @if (inviteToken()) {
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Confirm password</mat-label>
+                    <input
+                      matInput
+                      formControlName="confirmPassword"
+                      [type]="showPassword() ? 'text' : 'password'"
+                      autocomplete="new-password"
+                    />
+                  </mat-form-field>
+                }
+
+                @if (formError()) {
+                  <p class="form-error">{{ formError() }}</p>
+                }
+
+                <button
+                  mat-raised-button
+                  color="primary"
+                  type="submit"
+                  class="full-width"
+                  [disabled]="form.invalid || submitting()"
+                >
+                  @if (submitting()) {
+                    <mat-spinner diameter="20" />
+                  } @else {
+                    {{ inviteToken() ? 'Create account' : 'Sign in' }}
+                  }
+                </button>
+
+                @if (!inviteToken()) {
+                  <a routerLink="/auth/forgot-password" class="forgot-link">Forgot password?</a>
+                }
+              </form>
+            } @else {
+              <button mat-button class="email-toggle-btn" (click)="showEmailForm.set(true)">
+                <mat-icon>mail</mat-icon>
+                {{ inviteToken() ? 'Sign up with email' : 'Sign in with email' }}
+              </button>
+            }
+
+            <p class="invite-help">Don't have an invite? Contact a {{ brandConfig.brand().name }} member to get one.</p>
           }
-
-          <p class="invite-help">Don't have an invite? Contact a {{ brandConfig.brand().name }} member to get one.</p>
         </div>
       </div>
     </div>
@@ -370,6 +389,8 @@ export class LoginComponent implements OnInit {
   readonly showPassword = signal(false);
   readonly submitting = signal(false);
   readonly formError = signal<string | null>(null);
+  /** Set only when an invite link is opened by a browser that is already signed in. */
+  readonly signedInAs = signal<string | null>(null);
 
   readonly form = this.fb.group({
     fullName: [''],
@@ -379,17 +400,35 @@ export class LoginComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    if (this.authService.isLoggedIn()) {
-      void this.router.navigate(['/profile']);
-      return;
-    }
+    // Read the token before the signed-in check: an invite arriving at a browser
+    // that already holds a session used to be bounced to /profile with the token
+    // silently discarded, which looked exactly like a dead invite link.
     const token = this.route.snapshot.queryParamMap.get('token');
     this.inviteToken.set(token);
+
+    const signedIn = this.authService.currentUser();
+    if (signedIn) {
+      if (!token) {
+        void this.router.navigate(['/profile']);
+        return;
+      }
+      this.signedInAs.set(signedIn.email);
+      return;
+    }
 
     const facebookAppId = this.brandConfig.facebookAppId();
     if (facebookAppId) {
       this.loadFbSdk(facebookAppId);
     }
+  }
+
+  /**
+   * Signs out and returns to this same URL, invite token and all, so the signup
+   * form is what the visitor lands on rather than a bare login page.
+   */
+  signOutToAcceptInvite(): void {
+    const token = this.inviteToken();
+    this.authService.logout(token ? { path: '/login', queryParams: { token } } : undefined);
   }
 
   private loadFbSdk(appId: string): void {
