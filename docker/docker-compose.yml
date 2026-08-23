@@ -81,9 +81,17 @@ services:
       - CALENDAR_ORGANIZER_EMAIL=${CALENDAR_ORGANIZER_EMAIL:-}
       - EVENT_ORGANIZER_EMAIL=${EVENT_ORGANIZER_EMAIL:-}
       - SUPPORT_EMAIL=${SUPPORT_EMAIL:-}
+      # Named as the operator in the Terms and Privacy Policy every community is
+      # seeded with. Deployment-wide: one operator runs them all. Unset means
+      # each community's legal pages name the community itself.
+      - LEGAL_ENTITY_NAME=${LEGAL_ENTITY_NAME:-}
       - UPLOAD_PATH=/app/uploads
     volumes:
       - uploads:/app/uploads
+      # Holds the generated secret encryption key. Without this the key exists
+      # only inside the container: every recreate generates a new one, and the
+      # startup log says to back up a file that cannot survive.
+      - appdata:/app/appdata
     networks:
       - internal
       - public
@@ -97,6 +105,7 @@ services:
 volumes:
   angular-dist:
   uploads:
+  appdata:
 
 networks:
   public:

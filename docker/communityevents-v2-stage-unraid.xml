@@ -71,7 +71,15 @@
   <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="Must be 'production' even on stage — a value of 'staging' leaves cookies non-Secure and can leak stack traces. Stage-vs-prod is controlled entirely by IS_STAGE below" Type="Variable" Display="always" Required="true" Mask="false">production</Config>
   <Config Name="Is Stage" Target="IS_STAGE" Default="true" Mode="" Description="true for this container — flags the UI as a stage build. Must be paired with NODE_ENV=production, not 'staging'" Type="Variable" Display="always" Required="true" Mask="false">true</Config>
 
-  <Config Name="App Data" Target="/app/uploads" Default="/mnt/user/appdata/communityevents-v2-stage/uploads" Mode="rw" Description="Persistent storage for uploaded photos and files — separate path from v1's dinnerbears/uploads" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/communityevents-v2-stage/uploads</Config>
+  <Config Name="Legal Entity Name" Target="LEGAL_ENTITY_NAME" Default="" Mode="" Description="The company or person operating this deployment, named in the Terms of Service and Privacy Policy every community starts with. Deployment-wide on purpose: one operator runs every community here. Leave empty and each community's legal pages name the community itself, which is right only when the two are the same." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+
+  <Config Name="Uploads" Target="/app/uploads" Default="/mnt/user/appdata/communityevents-v2-stage/uploads" Mode="rw" Description="Persistent storage for uploaded photos and files — separate path from v1's dinnerbears/uploads" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/communityevents-v2-stage/uploads</Config>
+
+  <!-- REQUIRED, and easy to miss: a generated encryption key is written here.
+       Without this mapping the key lives only inside the container, so every
+       recreate silently generates a new one and the startup log says to back up
+       a file that cannot survive. Found exactly that way on stage. -->
+  <Config Name="App Data" Target="/app/appdata" Default="/mnt/user/appdata/communityevents-v2-stage/appdata" Mode="rw" Description="Persistent storage for the secret encryption key (and an optional .env). MUST be mapped: without it a generated key is lost on every container recreate, and the deployment then refuses to start once any secret is stored under the old one." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/communityevents-v2-stage/appdata</Config>
 
   <!-- One-time instance bootstrap (api/src/bootstrap.ts). Not read by the app
        itself at boot — only by `docker exec <container> node /app/dist/bootstrap.js`,
