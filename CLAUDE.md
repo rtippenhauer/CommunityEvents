@@ -34,17 +34,50 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-7` — encrypted secrets at rest. `schema.prisma` has
-said since `v2-3` that `tenants.google_client_secret` and
-`tenants.facebook_app_secret` must be encrypted before anything writes them, and
-REQ-TENANT-01.9 is what will write them — so this comes first and blocks `v2-8`.
-It also owns the fifteen env vars `v2-6` classified `secret-pending-v2-7` and the
-plaintext `email_provider_config` API keys. Three things worth deciding once
-rather than per column: where the key comes from (bootstrap env is the only thing
-available today), what key rotation looks like, and whether one mechanism covers
-all of it. See `V2_PHASES.md`.
+**Current v2 work item:** `v2-9` — per-community email sending. `email_provider_config`
+is still a single global row (`id: 1`, in `GLOBAL_MODELS`), so one Brevo key, one
+daily counter and one From identity serve every community — and any community's
+admin can rewrite all three from `/admin/email`, which is an isolation gap as much
+as a missing feature. The work is scoping that table, moving its seeding into
+`bootstrap.ts` (it is written by `seed.ts` today, before any tenant exists, which
+is why it was never scoped), and making the dispatcher cron re-enter
+`runWithTenant` per message. **Moved ahead of `v2-8` on 2026-08-23** with Rob:
+neither depends on the other, and stage now runs two communities on two Brevo
+accounts, which is exactly what v2-9's stage pass needs and v2-8's does not.
+See `V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-7` — Encrypted secrets at rest** (2026-08-23). Every credential in the
+  database is encrypted by a second Prisma Client Extension applied beside tenant
+  scoping — AES-256-GCM, random IV per value, the column name authenticated as
+  AAD so a ciphertext moved between columns fails instead of working in the wrong
+  place. Services read and write plaintext; adding a column means adding it to
+  `encrypted-columns.ts`. The rules it established are in the NestJS conventions
+  and Multi-Tenancy sections above.
+
+  The key is bootstrap config and never in the database. A fresh deployment
+  generates its own, writes it to the appdata volume and says loudly to back it
+  up — but only when the database holds no encrypted value, since every envelope
+  names the key that wrote it. Three startup refusals follow, all at boot rather
+  than at the first credential read. Rotation loses nothing
+  (`SECRET_ENCRYPTION_KEYS_RETIRED` + `secrets:rewrap`, serving throughout);
+  losing the key loses everything, so `secrets:reset` is guarded by a phrase.
+
+  Also landed: `tenant_secrets` makes `geocoding_api_key`, `places_api_key` and
+  `anthropic_api_key` per-community (Admin → API Keys), and
+  `GET /admin/email/config` stopped returning the operator's Brevo key in
+  plaintext on every page load — which would have undone the column encryption at
+  the last hop.
+
+  **Stage found what tests could not.** `/app/appdata` was unmapped in both the
+  compose file and the Unraid template, so three container recreates produced
+  three keys while the log said to back up a file that could not survive. Nothing
+  was lost only because nothing was encrypted under them yet. Four documentation
+  fixes came out of the same pass (an SMTP key is not an API key; an API key is
+  not tied to a domain; DNS commands that work on Windows).
+
+  Landed on this branch but belonging to other items: the invite auto-login fix,
+  and five commits of `v2-10` email/legal branding — see that item's notes.
 - **`v2-6` — Bootstrap/runtime config split + user tenant scoping**
   (2026-08-19, REQ-TENANT-01.4/01.5). `users` and `app_config` are tenant-scoped;
   email is unique per tenant, so one address holds a separate account in each
@@ -228,6 +261,16 @@ storable, but storing it is the small part next to scoping
 `email_provider_config`, moving its seeding into `bootstrap.ts` and making the
 dispatcher cron re-enter `runWithTenant` per message. Its stage pass also needs
 real sends and real inbound webhooks, which `v2-7`'s does not.
+
+**`v2-9` runs before `v2-8`, decided 2026-08-23 with Rob.** The numbers stay as
+they are this time — `v2-7` is tagged, so renumbering around it would no longer
+be free, and the running order is stated here instead. Neither item depends on
+the other (`v2-8` needs `v2-6` and `v2-7`, both done; `v2-9` needs neither), and
+what decided it was stage: it now runs two communities on two Brevo accounts,
+which is precisely what `v2-9`'s stage pass needs. `v2-8`'s does not benefit —
+the second community is email/password-only until `v2-8` itself lands. The
+trigger was finding that a community admin on one host can rewrite the whole
+deployment's sending credentials, since `email_provider_config` is global.
 
 Not yet decided/known: whether the frontend framework itself is changing.
 (Its testing choice is settled — `v2-2` put it on Vitest via Angular's

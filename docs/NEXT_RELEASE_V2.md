@@ -258,3 +258,67 @@ and only from the main community's address.
 
 **Settings pages read correctly again.** Explanatory text under the fields on
 the community setup form was overlapping the fields beneath it.
+
+---
+
+## Stored credentials
+
+**Every credential in the database is encrypted.** Provider API keys, each
+community's own third-party keys, and the sign-in credentials a community will
+supply for Google and Facebook are all stored encrypted rather than as readable
+text. A copy of the database is no longer a copy of the credentials in it.
+
+**The encryption key is never stored alongside what it protects.** It lives with
+the installation's start-up settings, not in the database, because a backup
+holding both would be a backup of the plain values. A brand-new installation
+generates its own key on first start and says, loudly, that it needs backing up.
+
+**The installation refuses to start rather than run half-readable.** If it is
+given a key that cannot read what is already stored, it stops and names the key
+it needs, instead of starting up healthy and then failing at the moment somebody
+sends an email or looks up an address.
+
+**Changing the key costs nothing and loses nothing.** The old key is kept for
+reading while a background task moves every stored value onto the new one, with
+the installation serving normally throughout. Losing the key entirely is the
+one unrecoverable case, so clearing out the unreadable values is a separate,
+explicitly destructive step that makes the operator type a confirmation phrase.
+
+**A stored credential is never sent back out.** Administration pages report
+whether a key is set, never what it is — so a credential cannot end up in a
+browser cache, a proxy log or a screenshot.
+
+## Per-community API keys
+
+**Three services can now be paid for by the community that uses them.** Address
+lookup, place details and the assisted description writer each accept a key per
+community, set on a new API Keys page. Usage is billed to whoever owns the key.
+A community that sets none keeps working on the installation's own key, so
+nothing changes for an existing setup until somebody chooses otherwise.
+
+## Invitations
+
+**An invitation is no longer discarded when the browser is already signed in.**
+Opening an invite link while signed in used to bounce to the profile page with
+the invitation silently dropped — the same link worked in a private window,
+which made it look like a broken invitation rather than a signed-in browser.
+It now says which account is signed in and offers to sign out and continue, with
+the invitation intact.
+
+**Invitation email describes the community that sent it.** The wording claimed
+its recipients love good food and great company, which was true of one community
+and an assumption about every other. It now carries the community's own tagline,
+and nothing at all when that is blank.
+
+## Terms and privacy
+
+**Every community starts with a Terms of Service and a Privacy Policy.** A newly
+created community had neither, so both pages appeared with a heading and nothing
+under them — which reads as finished rather than missing. Each community now
+starts from the platform's own documents, with its name and contact address
+filled in as the pages are served, so renaming a community keeps them correct.
+
+**Administrators are asked to read them.** Because the starter documents look
+finished, nothing would otherwise prompt anyone to check them. A notice appears
+for a community's administrators until somebody confirms the two documents, and
+a single button restores the starter copy if a community wants to begin again.

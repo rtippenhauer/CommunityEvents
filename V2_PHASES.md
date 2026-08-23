@@ -744,7 +744,7 @@ v2-8**, v2-8 also needs v2-6's user scoping to resolve against, and v2-8 wants
 REQ-TENANT-01.8's callback handoff done in the same item.
 
 ### v2-7 — Encrypted secrets at rest
-**Status:** In Progress. Blocks v2-8.
+**Status:** Complete (2026-08-23). Tag `v2-7`.
 
 `schema.prisma` has said since v2-3 that `tenants.google_client_secret` and
 `tenants.facebook_app_secret` must be encrypted before anything writes them,
@@ -762,6 +762,97 @@ treatment.
 **Definition of done:** a documented encrypt/decrypt path used by at least one
 real column, secrets unreadable in a database dump, and a stated answer for key
 rotation that does not require re-entering every secret by hand.
+
+#### What landed
+
+**A second Prisma Client Extension**
+(`api/src/database/prisma/secret-encryption.extension.ts`), applied beside tenant
+scoping, for the reason that one exists at all: a service that forgets to encrypt
+does not fail. The credential works, the screen looks right, and the plaintext is
+found later by whoever finds the backup. Services read and write plaintext;
+adding a column means adding it to `encrypted-columns.ts`, which is where the
+three registered tables are declared -- `email_provider_config`
+(`brevoApiKey`, `resendApiKey`), `tenant_secrets` (`secretValue`) and the two
+`tenants` OAuth columns v2-8 will be first to write.
+
+AES-256-GCM, random IV per value, **the column name authenticated as AAD** so a
+ciphertext moved between columns fails rather than working in the wrong place.
+Every envelope names the key that wrote it, which is what makes rotation a
+background task instead of an outage.
+
+**The key is bootstrap config and never in the database** -- a dump holding both
+is a dump of the plaintext. `secret-key-bootstrap.ts` runs from `main.ts` after
+the database is reachable and generates one **only when the database holds no
+encrypted value**: what the data contributes is not the key but a constraint on
+it. Three outcomes, all decided at startup rather than at the first credential
+read: refuse to generate with secrets present, refuse a key that cannot read what
+is stored (naming the key ids it needs), and warn when data is still under a
+retired key. Legacy plaintext names no key, so a pre-v2-7 database still
+generates cleanly, and reads tolerate plaintext with a once-per-column warning
+until the rewrap ends it.
+
+**Rotation loses nothing; losing the key loses everything.**
+`SECRET_ENCRYPTION_KEYS_RETIRED` + `npm run secrets:rewrap` moves every value
+onto a new key with the deployment serving throughout. `npm run secrets:reset` is
+the explicit destructive recovery, guarded by a confirmation phrase rather than a
+boolean. `rewrap-secrets.ts` deliberately uses a bare client -- rewrapping
+through the extension would be a no-op that reported success.
+
+**Three per-community secrets** (`tenant_secrets`, Admin → API Keys):
+`geocoding_api_key`, `places_api_key`, `anthropic_api_key`, resolved
+most-specific-first with the env var as the deployment default. Each is metered
+against whoever owns the key, which is the argument for per-community. The
+`secret-pending-v2-7` env class became plain `secret`, with a reason recorded per
+variable for the ones that stayed.
+
+**A stored credential never goes back out over HTTP.** `GET /admin/email/config`
+had been answering with the operator's Brevo key in plaintext on every page load,
+which would have undone the column encryption at the last hop; it now answers
+`brevoApiKeySet: boolean`, with an explicit Remove replacing clear-by-blanking.
+
+**Two constraints the extension imposes**, both documented in CLAUDE.md: an
+encrypted column cannot be filtered, ordered, grouped or joined on (the extension
+throws rather than letting a randomised cipher silently match nothing, which
+reads as "no such key"); and raw SQL still bypasses extensions, so a `$queryRaw`
+touching one must call the cipher itself. None does today.
+
+Docs: `docs/SECRETS.md` (operator-facing) and `docs/TENANT_ONBOARDING.md`
+(provider-side setup, written ahead of v2-9's code).
+
+#### Stage pass
+
+Key generation onto a real volume, persistence across container recreate, the
+Admin → Email write path with a real Brevo key, Cloudflare Email Routing on
+`communityeventsproject.com`, and Brevo authenticated on
+`stage.communityeventsproject.com` in a new Community Events account.
+
+**The defect stage found is the one no test could.** `/app/appdata` was mapped in
+neither `docker/docker-compose.yml` nor the Unraid template, so the generated key
+lived only inside the container: three recreates produced three keys while the
+log said, loudly and correctly, to back up a file that could not survive. Nothing
+was lost only because nothing was encrypted under them yet -- once something is,
+that deployment refuses to start. Fixed on stage by hand and then in both files
+(`2179d42`).
+
+Four documentation fixes came out of the same pass: an SMTP key is not an API
+key, an API key is not tied to a domain, and DNS verification commands that work
+on Windows.
+
+Deferred out of this item's stage pass, not lost: the junk-key refusal path, a
+real geocoding key end-to-end, v2-5's raw SQL surface (which needs two populated
+communities -- stage now has them), and confirming no stale Brevo template IDs
+carried over from the DinnerBears account.
+
+#### Landed on this branch, belonging elsewhere
+
+- `748df4a` -- invite links were discarded when opened by an already-signed-in
+  browser (`/login` read the session before the query string). Not tied to any
+  item; found while stage-testing invites.
+- Five commits of **v2-10** email and legal branding, done early at Rob's
+  direction: `{{brand}}` substituted at enqueue time, the settings form's
+  DinnerBears fallback, the invite email's hardcoded description, platform legal
+  templates seeded per community with a review gate, and the restore button. See
+  v2-10 below -- its remaining scope is unchanged apart from these.
 
 ### v2-8 — Per-tenant OAuth apps (REQ-TENANT-01.9, REQ-TENANT-01.8)
 **Status:** Not started. Depends on v2-7 and on v2-6.
@@ -815,7 +906,21 @@ Three things that are easy to conflate, kept separate on purpose:
 
 ### v2-9 — Per-community email sending
 
-**Status:** Not started. Depends on v2-7.
+**Status:** In Progress (started 2026-08-23). Depends on v2-7, which is done.
+
+**Runs before v2-8, decided 2026-08-23 with Rob.** The numbers stay put this
+time -- `v2-7` is tagged, so renumbering is no longer free, and the order is
+stated rather than encoded. Neither item depends on the other, and stage decided
+it: two communities now run there on two Brevo accounts, which is exactly what
+this item's stage pass needs and v2-8's does not benefit from (the second
+community is email/password-only until v2-8 itself lands).
+
+**The trigger was an isolation gap, not the missing feature.** `/admin/email` is
+`@Roles(ADMIN)` with no root-tenant check, acting on a global row, so any
+community's admin can rewrite the whole deployment's sending credentials and the
+From identity every other community sends under. Found on stage by entering a
+second Brevo account's key on the second community's host and watching the first
+community's counter move.
 
 Today `email_provider_config` is one global row -- a single Brevo key, a single
 sending identity, one daily quota -- so every community's mail leaves under the
@@ -851,7 +956,34 @@ own verified domains, each against its own quota, with bounces from either
 correctly suppressing the address everywhere.
 
 ### v2-10 — CommunityEvents branding replaces the DinnerBears defaults
-**Status:** Not started (deferred)
+**Status:** Not started (deferred) -- **except five commits landed early on the
+v2-7 branch** at Rob's direction, because stage testing kept surfacing them:
+
+- `b219c5e` -- emails carry the community's name. `{{brand}}` is substituted once
+  in `EmailService` at **enqueue** time, not at dispatch: the cron drains every
+  tenant's queue under one `runUnscoped`, so branding read there is whichever
+  community the engine reached first.
+- `dad8b50` -- the settings form defaulted to `DinnerBears`, so the screen for
+  fixing branding was the screen that wrote it back as a stored row.
+- `7da6ace` -- the invite email asserted its recipients "love good food and great
+  company"; it now carries the community's own tagline. Took three more copies of
+  the DinnerBears tagline with it, including the seeded row that made
+  `SITE_SETTING_DEFAULTS` irrelevant.
+- `0dd9e5d` / `8ca6f27` -- platform legal templates seeded per community, filled
+  in on the public read, with a review gate and a restore button. See the
+  Multi-Tenancy section of CLAUDE.md.
+
+Everything below is unchanged apart from those. Still DinnerBears' in
+`prisma/seed-data/app_config.json`, and needing content decisions rather than
+renames: `about_story_html` (the real origin story, named people, dated
+milestones), `home_hero_html`, `home_howitworks_html`, `term_points` = "Bear
+Points", and a leftover `tz_probe` row. Two more found on stage: the footer
+hardcodes `.Com, LLC` after the brand name (`app.component.html:444`), fabricating
+a legal entity for every community -- `LEGAL_ENTITY_NAME` now exists for exactly
+that -- and the invite subject appends `!` to a name that may already end in one.
+`frontend/public/manifest.webmanifest` still names the PWA DinnerBears, and being
+per-deployment rather than per-community it needs a decision about what a single
+deployment serving many communities calls itself.
 
 The per-instance branding already lives in `app_config` and needs no code, but
 the *fallbacks* are still DinnerBears: `SITE_SETTING_DEFAULTS` in
