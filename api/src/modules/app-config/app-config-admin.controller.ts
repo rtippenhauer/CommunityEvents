@@ -81,6 +81,15 @@ export class AppConfigAdminController {
     return this.appConfigService.getSiteSettings();
   }
 
+  // Replaces this community's Terms and Privacy Policy with the platform
+  // templates and un-confirms them. Declared before the generic ':key' routes
+  // for the usual reason, though it is also the only POST among them.
+  @Post('legal/restore-defaults')
+  async restoreLegalDefaults(@CurrentUser() user: User) {
+    await this.appConfigService.restoreLegalDefaults(user.id);
+    return this.appConfigService.getLegalConfig();
+  }
+
   // Uploads a brand image (logo | splash | icon), stores it under
   // /api/uploads/branding/, and records the resulting path in the matching
   // app_config row. The unique filename doubles as cache-busting — a new

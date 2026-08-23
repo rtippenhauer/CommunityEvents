@@ -11,7 +11,7 @@ import {
   eventOrganizerEmail as envEventOrganizerEmail,
   supportEmail as envSupportEmail,
 } from '../../common/config/instance-contact';
-import { fillLegalPlaceholders } from '../../common/legal/legal-defaults';
+import { LEGAL_DEFAULT_ROWS, fillLegalPlaceholders } from '../../common/legal/legal-defaults';
 import { currentTenantId, requireTenantId, runWithTenant } from '../../common/tenant/tenant-store';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
@@ -540,6 +540,26 @@ export class AppConfigService {
       update: { configValue: value, updatedBy: userId },
       create: { configKey: key, configValue: value, updatedBy: userId },
     });
+  }
+
+  /**
+   * Puts this community's Terms and Privacy Policy back to the platform
+   * templates.
+   *
+   * Needed because seeding only ever runs at creation: a community whose copy
+   * predates the templates -- or one that edited itself into a corner -- has no
+   * other route back, since `bootstrap.ts` INSERT IGNOREs and will not touch a
+   * row that exists.
+   *
+   * Clears `legal_reviewed_at` deliberately. Restoring is the opposite of
+   * reviewing: it replaces the copy with something nobody has read, so the
+   * banner comes back until somebody does.
+   */
+  async restoreLegalDefaults(userId: number): Promise<void> {
+    for (const row of LEGAL_DEFAULT_ROWS) {
+      await this.updateConfigValue(row.configKey, row.configValue, userId);
+    }
+    await this.updateConfigValue('legal_reviewed_at', '', userId);
   }
 
   // Saves many keys in one call — used by the /admin/settings form, which

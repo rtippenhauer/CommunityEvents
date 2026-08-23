@@ -81,6 +81,13 @@ export class AppConfigService {
     return this.http.get<SiteSettingItem[]>('/api/v1/admin/config/site-settings');
   }
 
+  // Replaces Terms and Privacy with the platform templates and un-confirms
+  // them. Returns the whole legal set so the editor can reload without a
+  // second round trip.
+  restoreLegalDefaults(): Observable<LegalConfigItem[]> {
+    return this.http.post<LegalConfigItem[]>('/api/v1/admin/config/legal/restore-defaults', {});
+  }
+
   updateValue(key: LegalConfigKey | SiteSettingKey, value: string): Observable<LegalConfigItem> {
     return this.http.patch<LegalConfigItem>(`/api/v1/admin/config/${key}`, { value });
   }

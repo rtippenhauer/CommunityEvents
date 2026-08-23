@@ -4,11 +4,13 @@ import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
 import { QuillModule } from 'ngx-quill';
 import { AppConfigService, LegalConfigKey } from '../../../core/services/app-config.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
+import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { normalizeNbsp } from '../../../shared/utils/normalize-nbsp';
 
 interface LegalTab {
@@ -68,18 +70,32 @@ const TABS: LegalTab[] = [
               at the top of the site stays up until you do.
             </span>
           }
-          <button
-            mat-stroked-button
-            type="button"
-            [disabled]="markingReviewed()"
-            (click)="markReviewed()"
-          >
-            @if (markingReviewed()) {
-              <mat-spinner diameter="18" />
-            } @else {
-              {{ reviewedAt() ? 'Confirm again' : 'Mark as reviewed' }}
-            }
-          </button>
+          <span class="callout-actions">
+            <button
+              mat-button
+              type="button"
+              [disabled]="restoring()"
+              (click)="restoreDefaults()"
+            >
+              @if (restoring()) {
+                <mat-spinner diameter="18" />
+              } @else {
+                Restore starter copy
+              }
+            </button>
+            <button
+              mat-stroked-button
+              type="button"
+              [disabled]="markingReviewed()"
+              (click)="markReviewed()"
+            >
+              @if (markingReviewed()) {
+                <mat-spinner diameter="18" />
+              } @else {
+                {{ reviewedAt() ? 'Confirm again' : 'Mark as reviewed' }}
+              }
+            </button>
+          </span>
         </div>
       }
 
@@ -165,6 +181,13 @@ const TABS: LegalTab[] = [
           flex: 1 1 320px;
         }
 
+        .callout-actions {
+          flex: 0 0 auto;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
         &.reviewed {
           background: #eef6ec;
           border-color: #cfe3ca;
@@ -213,6 +236,7 @@ export class AdminLegalComponent implements OnInit {
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly appConfigService = inject(AppConfigService);
   private readonly brandConfig = inject(BrandConfigService);
+  private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
 
   readonly tabs = TABS;
@@ -235,6 +259,7 @@ export class AdminLegalComponent implements OnInit {
   /** Empty until this community confirms its legal copy; see app.component's banner. */
   readonly reviewedAt = signal<string>('');
   readonly markingReviewed = signal(false);
+  readonly restoring = signal(false);
 
   readonly form = this.fb.group({
     home_hero_html: [''],
@@ -277,6 +302,47 @@ export class AdminLegalComponent implements OnInit {
         );
       },
       error: () => {},
+    });
+  }
+
+  /**
+   * Replaces Terms and Privacy with the platform templates.
+   *
+   * Behind a confirm because it discards whatever is there -- and unlike the
+   * per-tab Save, there is no draft in the editor to recover it from.
+   */
+  restoreDefaults(): void {
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Restore the starter copy?',
+        message:
+          'Your current Terms of Service and Privacy Policy will be replaced by the ' +
+          'platform templates, and will need reviewing again. Nothing else on this page ' +
+          'changes.',
+        confirmLabel: 'Restore',
+        confirmColor: 'warn',
+      },
+    });
+    ref.afterClosed().subscribe((confirmed: boolean) => {
+      if (!confirmed) return;
+      this.restoring.set(true);
+      this.appConfigService.restoreLegalDefaults().subscribe({
+        next: (items) => {
+          const values = Object.fromEntries(items.map((i) => [i.configKey, i.configValue]));
+          this.form.patchValue({
+            legal_terms_html: values['legal_terms_html'] ?? '',
+            legal_privacy_html: values['legal_privacy_html'] ?? '',
+          });
+          this.reviewedAt.set('');
+          this.restoring.set(false);
+          void this.brandConfig.refresh();
+          this.snackBar.open('Starter copy restored', 'OK', { duration: 2500 });
+        },
+        error: () => {
+          this.restoring.set(false);
+          this.snackBar.open('Failed to restore', 'OK', { duration: 4000 });
+        },
+      });
     });
   }
 
