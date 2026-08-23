@@ -12,6 +12,21 @@
   in the container entrypoint
 - Tests are Vitest: `npm test` for unit specs under `src/`, `npm run test:e2e`
   for the Supertest suites in `test/`
+- **Never encrypt or decrypt a secret by hand** (v2-7) — the Prisma extension
+  does it for every column in `src/common/crypto/encrypted-columns.ts`, so
+  services read and write plaintext. Adding an encrypted column means adding it
+  to that list, not calling the cipher. Raw SQL is the one exception, as with
+  tenant scoping. An encrypted column can never be filtered or ordered on; the
+  extension throws rather than returning an empty result. See `docs/SECRETS.md`.
+- **Never return a stored credential in a response.** The admin email endpoint
+  answers with `brevoApiKeySet: boolean`, and `/admin/secrets` lists only where
+  each key resolves from. Decrypting at the database edge and re-exporting at
+  the HTTP edge would leave the value in an access log and a browser cache.
+- **The encryption key never goes in the database.** A dump holding the key and
+  the ciphertext is a dump of the plaintext. The database may hold a
+  *fingerprint* — every envelope already names its key id — which is what
+  `secret-key-bootstrap.ts` uses at startup to decide whether generating a key
+  is safe and to refuse a key that cannot read what is stored.
 
 ## Module Structure
 src/modules/

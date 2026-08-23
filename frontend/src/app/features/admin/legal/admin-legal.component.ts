@@ -1,12 +1,16 @@
 import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
 import { QuillModule } from 'ngx-quill';
 import { AppConfigService, LegalConfigKey } from '../../../core/services/app-config.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
+import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { normalizeNbsp } from '../../../shared/utils/normalize-nbsp';
 
 interface LegalTab {
@@ -26,6 +30,7 @@ const TABS: LegalTab[] = [
   selector: 'app-admin-legal',
   standalone: true,
   imports: [
+    DatePipe,
     ReactiveFormsModule,
     MatButtonModule,
     MatIconModule,
@@ -41,7 +46,58 @@ const TABS: LegalTab[] = [
           Edit the home-page hero, Terms of Service, Privacy Policy, and the home page's "Our
           Story" copy. Changes go live immediately — no deploy needed.
         </p>
+        <p class="subtitle">
+          Terms and Privacy support
+          @for (name of placeholders; track name) {
+            <code>{{ name }}</code>@if (!$last) {<span>, </span>}
+          }
+          — filled in when the page is served, so renaming this community does not strand its
+          old name inside two documents.
+        </p>
       </div>
+
+      @if (!loading()) {
+        <div class="review-callout" [class.reviewed]="reviewedAt()">
+          @if (reviewedAt()) {
+            <span>
+              Terms and Privacy Policy confirmed {{ reviewedAt() | date: 'MMM d, y' }}. Confirm
+              again after any material change.
+            </span>
+          } @else {
+            <span>
+              This community's Terms and Privacy Policy are the starter copy it was created
+              with. Read both, edit anything that is wrong for you, then confirm — the banner
+              at the top of the site stays up until you do.
+            </span>
+          }
+          <span class="callout-actions">
+            <button
+              mat-button
+              type="button"
+              [disabled]="restoring()"
+              (click)="restoreDefaults()"
+            >
+              @if (restoring()) {
+                <mat-spinner diameter="18" />
+              } @else {
+                Restore starter copy
+              }
+            </button>
+            <button
+              mat-stroked-button
+              type="button"
+              [disabled]="markingReviewed()"
+              (click)="markReviewed()"
+            >
+              @if (markingReviewed()) {
+                <mat-spinner diameter="18" />
+              } @else {
+                {{ reviewedAt() ? 'Confirm again' : 'Mark as reviewed' }}
+              }
+            </button>
+          </span>
+        </div>
+      }
 
       @if (loading()) {
         <div class="center"><mat-spinner /></div>
@@ -96,9 +152,47 @@ const TABS: LegalTab[] = [
         }
       }
       .subtitle {
-        margin: 0;
+        margin: 0 0 6px;
         color: #666;
         font-size: 0.9rem;
+
+        code {
+          font-size: 0.85em;
+          background: rgba(0, 0, 0, 0.05);
+          padding: 1px 4px;
+          border-radius: 3px;
+        }
+      }
+      .review-callout {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        justify-content: space-between;
+        background: #fdf3d8;
+        border: 1px solid #e6d3a3;
+        color: #6b4e12;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        font-size: 0.85rem;
+
+        span {
+          flex: 1 1 320px;
+        }
+
+        .callout-actions {
+          flex: 0 0 auto;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        &.reviewed {
+          background: #eef6ec;
+          border-color: #cfe3ca;
+          color: #38603a;
+        }
       }
       .center {
         display: flex;
@@ -141,9 +235,14 @@ const TABS: LegalTab[] = [
 export class AdminLegalComponent implements OnInit {
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly appConfigService = inject(AppConfigService);
+  private readonly brandConfig = inject(BrandConfigService);
+  private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
 
   readonly tabs = TABS;
+  // Written as data rather than in the template: Angular decodes HTML entities
+  // before parsing interpolation, so a literal {{...}} cannot be escaped there.
+  readonly placeholders = ['{{brand_name}}', '{{legal_entity}}', '{{support_email}}'];
   readonly loading = signal(true);
   readonly saving = signal<LegalConfigKey | null>(null);
 
@@ -156,6 +255,11 @@ export class AdminLegalComponent implements OnInit {
       ['clean'],
     ],
   };
+
+  /** Empty until this community confirms its legal copy; see app.component's banner. */
+  readonly reviewedAt = signal<string>('');
+  readonly markingReviewed = signal(false);
+  readonly restoring = signal(false);
 
   readonly form = this.fb.group({
     home_hero_html: [''],
@@ -184,6 +288,84 @@ export class AdminLegalComponent implements OnInit {
       error: () => {
         this.loading.set(false);
         this.snackBar.open('Failed to load legal copy', 'OK', { duration: 4000 });
+      },
+    });
+
+    // Separate request because the review flag is a site setting, not legal
+    // copy -- it says something about the copy rather than being part of it.
+    // A failure here leaves the callout in its unreviewed state, which is the
+    // safe way round.
+    this.appConfigService.getSiteSettings().subscribe({
+      next: (settings) => {
+        this.reviewedAt.set(
+          settings.find((s) => s.configKey === 'legal_reviewed_at')?.configValue ?? '',
+        );
+      },
+      error: () => {},
+    });
+  }
+
+  /**
+   * Replaces Terms and Privacy with the platform templates.
+   *
+   * Behind a confirm because it discards whatever is there -- and unlike the
+   * per-tab Save, there is no draft in the editor to recover it from.
+   */
+  restoreDefaults(): void {
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Restore the starter copy?',
+        message:
+          'Your current Terms of Service and Privacy Policy will be replaced by the ' +
+          'platform templates, and will need reviewing again. Nothing else on this page ' +
+          'changes.',
+        confirmLabel: 'Restore',
+        confirmColor: 'warn',
+      },
+    });
+    ref.afterClosed().subscribe((confirmed: boolean) => {
+      if (!confirmed) return;
+      this.restoring.set(true);
+      this.appConfigService.restoreLegalDefaults().subscribe({
+        next: (items) => {
+          const values = Object.fromEntries(items.map((i) => [i.configKey, i.configValue]));
+          this.form.patchValue({
+            legal_terms_html: values['legal_terms_html'] ?? '',
+            legal_privacy_html: values['legal_privacy_html'] ?? '',
+          });
+          this.reviewedAt.set('');
+          this.restoring.set(false);
+          void this.brandConfig.refresh();
+          this.snackBar.open('Starter copy restored', 'OK', { duration: 2500 });
+        },
+        error: () => {
+          this.restoring.set(false);
+          this.snackBar.open('Failed to restore', 'OK', { duration: 4000 });
+        },
+      });
+    });
+  }
+
+  /**
+   * Records that a human has read this community's Terms and Privacy Policy.
+   *
+   * Refreshes branding afterwards because the site-wide banner reads
+   * `legalReviewed` off that payload, which was fetched at app start -- without
+   * this the banner would stay up until the next full page load.
+   */
+  markReviewed(): void {
+    this.markingReviewed.set(true);
+    const now = new Date().toISOString();
+    this.appConfigService.updateValue('legal_reviewed_at', now).subscribe({
+      next: () => {
+        this.reviewedAt.set(now);
+        this.markingReviewed.set(false);
+        void this.brandConfig.refresh();
+        this.snackBar.open('Legal copy confirmed', 'OK', { duration: 2500 });
+      },
+      error: () => {
+        this.markingReviewed.set(false);
+        this.snackBar.open('Failed to save', 'OK', { duration: 4000 });
       },
     });
   }

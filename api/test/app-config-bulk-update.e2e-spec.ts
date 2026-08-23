@@ -118,7 +118,10 @@ describe('PATCH /admin/config/bulk (e2e)', () => {
       .set('Cookie', adminCookie)
       .expect(200);
     const brandName = settings.body.find((s: { configKey: string }) => s.configKey === 'brand_name');
-    expect(brandName.configValue).toBe('DinnerBears');
+    // The deployment default, since the rejected batch wrote nothing. It became
+    // CommunityEvents when email branding stopped being hard-coded; the point of
+    // the assertion is that no row was written, not what the default happens to be.
+    expect(brandName.configValue).toBe('CommunityEvents');
   });
 
   it('rejects requests from a non-admin member', async () => {

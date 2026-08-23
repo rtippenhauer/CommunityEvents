@@ -24,7 +24,7 @@ export class ResendService {
     return {
       apiKey: db?.resendApiKey || this.config.get<string>('RESEND_API_KEY', ''),
       fromEmail: db?.resendFromEmail || this.config.get<string>('RESEND_FROM_EMAIL', 'rob@dinnerbears.com'),
-      fromName: db?.resendFromName || this.config.get<string>('RESEND_FROM_NAME', 'DinnerBears'),
+      fromName: db?.resendFromName || this.config.get<string>('RESEND_FROM_NAME', 'CommunityEvents'),
     };
   }
 

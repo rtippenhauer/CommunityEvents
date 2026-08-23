@@ -744,7 +744,7 @@ v2-8**, v2-8 also needs v2-6's user scoping to resolve against, and v2-8 wants
 REQ-TENANT-01.8's callback handoff done in the same item.
 
 ### v2-7 — Encrypted secrets at rest
-**Status:** In Progress. Blocks v2-8.
+**Status:** Complete (2026-08-23). Tag `v2-7`.
 
 `schema.prisma` has said since v2-3 that `tenants.google_client_secret` and
 `tenants.facebook_app_secret` must be encrypted before anything writes them,
@@ -762,6 +762,97 @@ treatment.
 **Definition of done:** a documented encrypt/decrypt path used by at least one
 real column, secrets unreadable in a database dump, and a stated answer for key
 rotation that does not require re-entering every secret by hand.
+
+#### What landed
+
+**A second Prisma Client Extension**
+(`api/src/database/prisma/secret-encryption.extension.ts`), applied beside tenant
+scoping, for the reason that one exists at all: a service that forgets to encrypt
+does not fail. The credential works, the screen looks right, and the plaintext is
+found later by whoever finds the backup. Services read and write plaintext;
+adding a column means adding it to `encrypted-columns.ts`, which is where the
+three registered tables are declared -- `email_provider_config`
+(`brevoApiKey`, `resendApiKey`), `tenant_secrets` (`secretValue`) and the two
+`tenants` OAuth columns v2-8 will be first to write.
+
+AES-256-GCM, random IV per value, **the column name authenticated as AAD** so a
+ciphertext moved between columns fails rather than working in the wrong place.
+Every envelope names the key that wrote it, which is what makes rotation a
+background task instead of an outage.
+
+**The key is bootstrap config and never in the database** -- a dump holding both
+is a dump of the plaintext. `secret-key-bootstrap.ts` runs from `main.ts` after
+the database is reachable and generates one **only when the database holds no
+encrypted value**: what the data contributes is not the key but a constraint on
+it. Three outcomes, all decided at startup rather than at the first credential
+read: refuse to generate with secrets present, refuse a key that cannot read what
+is stored (naming the key ids it needs), and warn when data is still under a
+retired key. Legacy plaintext names no key, so a pre-v2-7 database still
+generates cleanly, and reads tolerate plaintext with a once-per-column warning
+until the rewrap ends it.
+
+**Rotation loses nothing; losing the key loses everything.**
+`SECRET_ENCRYPTION_KEYS_RETIRED` + `npm run secrets:rewrap` moves every value
+onto a new key with the deployment serving throughout. `npm run secrets:reset` is
+the explicit destructive recovery, guarded by a confirmation phrase rather than a
+boolean. `rewrap-secrets.ts` deliberately uses a bare client -- rewrapping
+through the extension would be a no-op that reported success.
+
+**Three per-community secrets** (`tenant_secrets`, Admin → API Keys):
+`geocoding_api_key`, `places_api_key`, `anthropic_api_key`, resolved
+most-specific-first with the env var as the deployment default. Each is metered
+against whoever owns the key, which is the argument for per-community. The
+`secret-pending-v2-7` env class became plain `secret`, with a reason recorded per
+variable for the ones that stayed.
+
+**A stored credential never goes back out over HTTP.** `GET /admin/email/config`
+had been answering with the operator's Brevo key in plaintext on every page load,
+which would have undone the column encryption at the last hop; it now answers
+`brevoApiKeySet: boolean`, with an explicit Remove replacing clear-by-blanking.
+
+**Two constraints the extension imposes**, both documented in CLAUDE.md: an
+encrypted column cannot be filtered, ordered, grouped or joined on (the extension
+throws rather than letting a randomised cipher silently match nothing, which
+reads as "no such key"); and raw SQL still bypasses extensions, so a `$queryRaw`
+touching one must call the cipher itself. None does today.
+
+Docs: `docs/SECRETS.md` (operator-facing) and `docs/TENANT_ONBOARDING.md`
+(provider-side setup, written ahead of v2-9's code).
+
+#### Stage pass
+
+Key generation onto a real volume, persistence across container recreate, the
+Admin → Email write path with a real Brevo key, Cloudflare Email Routing on
+`communityeventsproject.com`, and Brevo authenticated on
+`stage.communityeventsproject.com` in a new Community Events account.
+
+**The defect stage found is the one no test could.** `/app/appdata` was mapped in
+neither `docker/docker-compose.yml` nor the Unraid template, so the generated key
+lived only inside the container: three recreates produced three keys while the
+log said, loudly and correctly, to back up a file that could not survive. Nothing
+was lost only because nothing was encrypted under them yet -- once something is,
+that deployment refuses to start. Fixed on stage by hand and then in both files
+(`2179d42`).
+
+Four documentation fixes came out of the same pass: an SMTP key is not an API
+key, an API key is not tied to a domain, and DNS verification commands that work
+on Windows.
+
+Deferred out of this item's stage pass, not lost: the junk-key refusal path, a
+real geocoding key end-to-end, v2-5's raw SQL surface (which needs two populated
+communities -- stage now has them), and confirming no stale Brevo template IDs
+carried over from the DinnerBears account.
+
+#### Landed on this branch, belonging elsewhere
+
+- `748df4a` -- invite links were discarded when opened by an already-signed-in
+  browser (`/login` read the session before the query string). Not tied to any
+  item; found while stage-testing invites.
+- Five commits of **v2-10** email and legal branding, done early at Rob's
+  direction: `{{brand}}` substituted at enqueue time, the settings form's
+  DinnerBears fallback, the invite email's hardcoded description, platform legal
+  templates seeded per community with a review gate, and the restore button. See
+  v2-10 below -- its remaining scope is unchanged apart from these.
 
 ### v2-8 — Per-tenant OAuth apps (REQ-TENANT-01.9, REQ-TENANT-01.8)
 **Status:** Not started. Depends on v2-7 and on v2-6.
@@ -813,18 +904,120 @@ Three things that are easy to conflate, kept separate on purpose:
 | `demo.communityeventsproject.com` | A **sandbox tenant**. Seeded with generated members, locations, events and a populated leaderboard, with its own colours and logo. |
 | `stage.communityeventsproject.com` | **Not a tenant of prod** — a separate deployment (own container, own database). Within that deployment it *is* the root/admin tenant: `ROOT_TENANT_URL` points at it, its tenant row carries `is_root = true`, and an admin there is the system admin of stage. The one Rob develops against until 2.0 goes to prod. **Live as of 2026-08-09**, replacing `communityevents.rtippenhauer.com`. |
 
-### v2-9 — CommunityEvents branding replaces the DinnerBears defaults
-**Status:** Not started (deferred)
+### v2-9 — Per-community email sending
+
+**Status:** In Progress (started 2026-08-23). Depends on v2-7, which is done.
+
+**Runs before v2-8, decided 2026-08-23 with Rob.** The numbers stay put this
+time -- `v2-7` is tagged, so renumbering is no longer free, and the order is
+stated rather than encoded. Neither item depends on the other, and stage decided
+it: two communities now run there on two Brevo accounts, which is exactly what
+this item's stage pass needs and v2-8's does not benefit from (the second
+community is email/password-only until v2-8 itself lands).
+
+**The trigger was an isolation gap, not the missing feature.** `/admin/email` is
+`@Roles(ADMIN)` with no root-tenant check, acting on a global row, so any
+community's admin can rewrite the whole deployment's sending credentials and the
+From identity every other community sends under. Found on stage by entering a
+second Brevo account's key on the second community's host and watching the first
+community's counter move.
+
+Today `email_provider_config` is one global row -- a single Brevo key, a single
+sending identity, one daily quota -- so every community's mail leaves under the
+deployment's name. This makes it per-community: `tenant_id` on the model, its
+seeding moved from `seed.ts` into `bootstrap.ts` (seed runs before any tenant
+exists, exactly as v2-6 found with `app_config`), the four
+`findUnique({ where: { id: 1 } })` reads becoming scoped `findFirst`s, and the
+`@Cron` dispatcher re-entering `runWithTenant` per message rather than composing
+under one `runUnscoped` -- the documented v2-6 trap, and the one that silently
+sends with another community's identity.
+
+`BREVO_WEBHOOK_SECRET` moves with the key rather than separately: it
+authenticates callbacks from a Brevo *account*, so a community with its own
+account has its own webhook config and its own secret, arriving on its own host.
+Only the authentication moves. **The handler stays `runUnscoped`** -- a hard
+bounce is a property of the address and not of whichever community mailed it,
+and scoping it would leave every other community still mailing a dead address,
+which is what gets a sending domain blocked.
+
+Split out of v2-7 on 2026-08-21 with Rob, having first been folded into it. It
+is v2-6-sized rather than a tail: the encryption v2-7 built is what makes
+per-tenant keys storable, but storing them is the small part. This renumbered
+the old v2-9–v2-13 down one, which was still free -- no `v2-*` tag above v2-6
+has been cut.
+
+**Not just code.** A provider rejects a From address on a domain it has not
+verified, so a community supplying its own key also has to authenticate its own
+sending domain and route inbound mail. Those manual steps are documented ahead
+of the code in `docs/TENANT_ONBOARDING.md`, which v2-7 wrote.
+
+**Definition of done:** two communities on one deployment sending under their
+own verified domains, each against its own quota, with bounces from either
+correctly suppressing the address everywhere.
+
+### v2-10 — CommunityEvents branding replaces the DinnerBears defaults
+**Status:** Not started (deferred) -- **except five commits landed early on the
+v2-7 branch** at Rob's direction, because stage testing kept surfacing them:
+
+- `b219c5e` -- emails carry the community's name. `{{brand}}` is substituted once
+  in `EmailService` at **enqueue** time, not at dispatch: the cron drains every
+  tenant's queue under one `runUnscoped`, so branding read there is whichever
+  community the engine reached first.
+- `dad8b50` -- the settings form defaulted to `DinnerBears`, so the screen for
+  fixing branding was the screen that wrote it back as a stored row.
+- `7da6ace` -- the invite email asserted its recipients "love good food and great
+  company"; it now carries the community's own tagline. Took three more copies of
+  the DinnerBears tagline with it, including the seeded row that made
+  `SITE_SETTING_DEFAULTS` irrelevant.
+- `0dd9e5d` / `8ca6f27` -- platform legal templates seeded per community, filled
+  in on the public read, with a review gate and a restore button. See the
+  Multi-Tenancy section of CLAUDE.md.
+
+Everything below is unchanged apart from those. Still DinnerBears' in
+`prisma/seed-data/app_config.json`, and needing content decisions rather than
+renames: `about_story_html` (the real origin story, named people, dated
+milestones), `home_hero_html`, `home_howitworks_html`, `term_points` = "Bear
+Points", and a leftover `tz_probe` row. Two more found on stage: the footer
+hardcodes `.Com, LLC` after the brand name (`app.component.html:444`), fabricating
+a legal entity for every community -- `LEGAL_ENTITY_NAME` now exists for exactly
+that -- and the invite subject appends `!` to a name that may already end in one.
+`frontend/public/manifest.webmanifest` still names the PWA DinnerBears, and being
+per-deployment rather than per-community it needs a decision about what a single
+deployment serving many communities calls itself.
 
 The per-instance branding already lives in `app_config` and needs no code, but
 the *fallbacks* are still DinnerBears: `SITE_SETTING_DEFAULTS` in
 `app-config.service.ts`, ~93 hardcoded references across `api/src` (most of
 them `dinnerbears.com` in email URLs and fallbacks) and 12 frontend files.
 
-**Definition of done:** a fresh instance with no `app_config` rows presents as
-CommunityEvents, and no code path emits a dinnerbears.com URL.
+**Not a find-and-replace, and this is the trap.** Branding became per-community
+in v2-6: `app_config` is tenant-scoped, so `brand_name` is whatever each
+community chose. Swapping the literals to "CommunityEvents" would be the same
+mistake one level up -- a community called "Dayton Dinners" would send mail
+saying "Welcome to CommunityEvents!". Every one of these sites has to resolve
+the *tenant's* brand name and interpolate it; only the deployment-wide
+fallbacks become CommunityEvents.
 
-### v2-10 — Root tenant landing page
+Two consequences follow. Email bodies composed in a `@Cron` sweep must re-enter
+`runWithTenant` to read branding, or they render whichever tenant the engine
+reached first -- the v2-6 trap already documented in CLAUDE.md. And a string
+like `subject: 'Verify your DinnerBears email'` becomes an async lookup, which
+changes the shape of the functions holding it.
+
+**Found on the v2-7 stage pass**, which is how the numbers below got specific:
+a real invite and a real verification email both arrived branded DinnerBears
+from a sender correctly named "Community Events Project". The From identity
+comes from `brevoFromName` and was already configurable; the body copy is
+string literals (`auth.service.ts:1110-1116` among them). Current count is 38
+non-comment references in `api/src` across 14 files and 14 in the frontend
+across 5 -- lower than the ~93 above, which counted comments and `.spec` files.
+
+**Definition of done:** a fresh instance with no `app_config` rows presents as
+CommunityEvents; a community that has set its own `brand_name` sees that name
+everywhere including in email subjects and bodies; and no code path emits a
+dinnerbears.com URL.
+
+### v2-11 — Root tenant landing page
 **Status:** Not started (deferred). Depends on v2-3 and v2-4.
 
 Public marketing page served by the root tenant, explaining the project and
@@ -834,7 +1027,7 @@ and is the obvious starting point.
 **Definition of done:** `www.communityeventsproject.com` and the apex both
 serve the landing page and resolve to the same root tenant row.
 
-### v2-11 — Demo tenant
+### v2-12 — Demo tenant
 **Status:** Not started (deferred). Depends on v2-3, v2-4 and v2-10.
 
 A tenant anyone can try. Two properties that need care:
@@ -864,7 +1057,7 @@ present, sees a standing notice that the data is temporary, and the tenant
 returns to its seeded state on schedule. The same self-registration on any
 other tenant still yields an ordinary member.
 
-### v2-12 — Operator setup wizard / everything configurable from the site
+### v2-13 — Operator setup wizard / everything configurable from the site
 **Status:** Not started (deferred). Depends on v2-6.
 
 REQ-TENANT-01.4 splits config into bootstrap (env, set once) and runtime
@@ -883,7 +1076,7 @@ Google login, Facebook login, email delivery and correct DNS without editing
 env vars by hand, with the wizard telling the operator what to do in each
 third-party console.
 
-### v2-13 — Operator handbook
+### v2-14 — Operator handbook
 **Status:** Not started (deferred).
 
 The written counterpart to v2-12: what an operator needs before and during

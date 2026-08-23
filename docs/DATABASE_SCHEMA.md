@@ -967,8 +967,15 @@ Seed rows:
 - `inactivity_hard_delete_days` = `150`
 - `max_additional_guests` = `9`
 - `max_facebook_groups` = `3`
-- `legal_terms_html` (Phase 30) — Terms of Service body copy, rendered on `/terms`
-- `legal_privacy_html` (Phase 30) — Privacy Policy body copy, rendered on `/privacy`
+- `legal_terms_html` (Phase 30) — Terms of Service body copy, rendered on `/terms`.
+  Seeded from `api/src/common/legal/legal-defaults.ts` when a community is created,
+  so the page is never blank; `{{brand_name}}`, `{{legal_entity}}` and
+  `{{support_email}}` are substituted on the public read
+- `legal_privacy_html` (Phase 30) — Privacy Policy body copy, rendered on `/privacy`.
+  Seeded and substituted the same way
+- `legal_reviewed_at` (v2-10) = `` — ISO timestamp of the last time an admin confirmed
+  the two above. Empty means never, and every admin of that community sees a banner
+  until it is set
 - `about_story_html` (Phase 30) — Home page "Our Story" narrative + milestone timeline
 - `location_privacy_default` (Phase 29) = `public` — privacy assigned to a newly
   created location when its create payload doesn't specify `isPrivate` explicitly
@@ -977,8 +984,10 @@ Seed rows:
   ("2nd Saturday") pattern
 - `event_cadence_time` (Phase 29) = `18:30` — time of day (24h `HH:mm`) new events
   default to
-- `brand_name` (Phase 29) = `DinnerBears` — app name shown in nav/footer/page title
-- `brand_tagline` (Phase 29) = `Good food. Great company. Bear memories.`
+- `brand_name` (Phase 29) = `CommunityEvents` — app name shown in nav/footer/page
+  title, and in every email the community sends
+- `brand_tagline` (Phase 29) = `Good food. Great company.` — login page, footer, and
+  the line under the invitation in an invite email
 - `theme_color_primary` (Phase 29) = `#C9933A` — primary brand color (also drives
   Angular Material `--mat-sys-*` tokens at runtime)
 - `theme_color_accent` (Phase 29) = `#C9933A`

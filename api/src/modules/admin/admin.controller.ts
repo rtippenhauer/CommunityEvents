@@ -23,6 +23,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { SetRoleDto } from './dto/set-role.dto';
 import { SetMembershipDto } from './dto/set-membership.dto';
 import { UpdateEmailConfigDto } from './dto/update-email-config.dto';
+import { toEmailConfigView, type EmailConfigView } from './email-config.view';
 import { UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
 
@@ -154,20 +155,32 @@ export class AdminController {
     return this.emailService.getQueue();
   }
 
+  // Both endpoints answer through toEmailConfigView, which drops the two API
+  // keys in favour of booleans. v2-7 encrypts them at rest, and the extension
+  // decrypts on read -- so without this the screen would fetch an operator's
+  // Brevo key in plaintext on every load, which is the exact exposure the
+  // column encryption exists to close.
   @Get('email/config')
   @Roles(UserRole.ADMIN)
-  async getEmailConfig() {
-    return this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
+  async getEmailConfig(): Promise<EmailConfigView | null> {
+    const config = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
+    return config ? toEmailConfigView(config) : null;
   }
 
   @Patch('email/config')
   @Roles(UserRole.ADMIN)
-  async updateEmailConfig(@Body() body: UpdateEmailConfigDto) {
+  async updateEmailConfig(@Body() body: UpdateEmailConfigDto): Promise<EmailConfigView | undefined> {
     const config = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
     if (!config) return;
     // Patch from the DTO rather than mutating the loaded row and saving it
-    // back, so only the fields the request actually sent are written.
-    return this.prisma.email_provider_config.update({ where: { id: 1 }, data: body });
+    // back, so only the fields the request actually sent are written. That is
+    // also what lets the client leave a key alone: an omitted key is undefined
+    // and untouched, an explicit null clears it.
+    const updated = await this.prisma.email_provider_config.update({
+      where: { id: 1 },
+      data: body,
+    });
+    return toEmailConfigView(updated);
   }
 
   @Post('email/flush')

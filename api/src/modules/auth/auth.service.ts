@@ -449,7 +449,7 @@ export class AuthService {
     await this.emailService.queue({
       toEmail: user.email,
       toName: user.fullName,
-      subject: `${providerLabel} login removed from DinnerBears`,
+      subject: `${providerLabel} login removed from {{brand}}`,
       templateId: EmailTemplate.PROVIDER_DISCONNECTED,
       templateParams: { provider: providerLabel, name: user.fullName },
       userId,
@@ -520,7 +520,7 @@ export class AuthService {
               await this.emailService.queue({
                 toEmail: user.email,
                 toName: user.fullName,
-                subject: 'Your DinnerBears account has been deactivated',
+                subject: 'Your {{brand}} account has been deactivated',
                 templateId: EmailTemplate.ACCOUNT_DELETED,
                 templateParams: { name: user.fullName },
                 userId: user.id,
@@ -918,10 +918,10 @@ export class AuthService {
       await this.emailService.sendNow({
         toEmail: user.email,
         toName: user.fullName,
-        subject: 'Security alert: your DinnerBears account has been locked',
+        subject: 'Security alert: your {{brand}} account has been locked',
         htmlBody: `
           <p>Hi ${user.fullName},</p>
-          <p>We detected <strong>${attempts} failed login attempts</strong> on your DinnerBears account and have temporarily locked it.</p>
+          <p>We detected <strong>${attempts} failed login attempts</strong> on your {{brand}} account and have temporarily locked it.</p>
           <p>If this was you, please wait a few minutes and try again.</p>
           <p>If you don't recognize this activity, <a href="${appUrl}/auth/forgot-password">reset your password immediately</a>.</p>
         `,
@@ -1016,7 +1016,7 @@ export class AuthService {
     await this.emailService.sendNow({
       toEmail: user.email,
       toName: user.fullName,
-      subject: 'Reset your DinnerBears password',
+      subject: 'Reset your {{brand}} password',
       htmlBody: `
         <h2>Password reset request</h2>
         <p>Hi ${user.fullName},</p>
@@ -1107,13 +1107,13 @@ export class AuthService {
     await this.emailService.sendNow({
       toEmail: user.email,
       toName: user.fullName,
-      subject: 'Verify your DinnerBears email',
+      subject: 'Verify your {{brand}} email',
       htmlBody: `
-        <h2>Welcome to DinnerBears!</h2>
+        <h2>Welcome to {{brand}}!</h2>
         <p>Hi ${user.fullName},</p>
         <p>Click below to verify your email and activate your account. This link expires in 48 hours.</p>
         <p><a href="${verifyUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Verify Email</a></p>
-        <p style="color:#888;font-size:0.85em">If you didn't create a DinnerBears account, you can safely ignore this email.</p>
+        <p style="color:#888;font-size:0.85em">If you didn't create a {{brand}} account, you can safely ignore this email.</p>
       `,
     });
   }

@@ -6,6 +6,8 @@ import { join } from 'path';
 import cookieParser = require('cookie-parser');
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { ensureDeploymentKey } from './common/crypto/secret-key-bootstrap';
+import { PrismaService } from './database/prisma/prisma.service';
 
 // Cookie `secure` flags (here and in AuthController) are gated on this exact
 // string. Every deployed instance — prod AND stage — must set NODE_ENV=production;
@@ -31,11 +33,21 @@ function warnIfNodeEnvMisconfigured(): void {
 async function bootstrap(): Promise<void> {
   warnIfNodeEnvMisconfigured();
 
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.set('query parser', 'extended');
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());
+
+  // Secrets are encrypted at rest as of v2-7, and this is where the deployment
+  // settles which key it holds: generating one if (and only if) the database
+  // has no secrets to lose, and refusing to start if the key cannot read what
+  // is already stored. It runs after app creation because it needs the database
+  // to answer that question, and before listen() because the alternative to
+  // failing here is discovering it when a password-reset mail does not send at
+  // 2am. See secret-key-bootstrap.ts for why the key is not in the database.
+  await ensureDeploymentKey(app.get(PrismaService));
 
   const configService = app.get(ConfigService);
 

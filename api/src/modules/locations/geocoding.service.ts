@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { TenantSecretsService } from '../tenant-secrets/tenant-secrets.service';
 
 export interface Coordinates {
   lat: number;
@@ -9,20 +9,24 @@ export interface Coordinates {
 @Injectable()
 export class GeocodingService {
   private readonly logger = new Logger(GeocodingService.name);
-  private readonly apiKey: string | undefined;
 
-  constructor(configService: ConfigService) {
-    this.apiKey = configService.get<string>('GEOCODING_API_KEY');
-  }
+  constructor(private readonly secrets: TenantSecretsService) {}
 
+  /**
+   * The key is resolved per call rather than captured in the constructor: it is
+   * per-community as of v2-7, so there is no single value to capture. A
+   * community that has set its own key uses it, otherwise the deployment's
+   * GEOCODING_API_KEY, otherwise geocoding is off.
+   */
   async geocode(address: string): Promise<Coordinates | null> {
-    if (!this.apiKey || this.apiKey === 'your_geocoding_api_key') {
-      this.logger.warn('GEOCODING_API_KEY not configured — skipping geocoding');
+    const apiKey = await this.secrets.resolve('geocoding_api_key');
+    if (!apiKey || apiKey === 'your_geocoding_api_key') {
+      this.logger.warn('No geocoding API key for this community — skipping geocoding');
       return null;
     }
 
     try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${this.apiKey}`;
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
       const res = await fetch(url);
       const data = (await res.json()) as {
         status: string;

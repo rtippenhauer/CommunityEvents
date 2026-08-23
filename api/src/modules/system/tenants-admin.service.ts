@@ -12,6 +12,7 @@ import { TenantResolutionService } from '../../common/tenant/tenant-resolution.s
 import { runUnscoped } from '../../common/tenant/tenant-store';
 import { tenantGetsServiceAccount } from '../../database/prisma/service-account.provision';
 import { normalizeTenantDomain } from '../../common/utils/tenant-domain.util';
+import { LEGAL_DEFAULT_ROWS } from '../../common/legal/legal-defaults';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import {
   AUTOMATION_ACCOUNT_EMAIL,
@@ -243,6 +244,17 @@ export class TenantsAdminService {
     // to the new tenant while the request is scoped to the root one.
     const mailDomain = normalizeTenantDomain(dto.mailDomain ?? '');
     if (mailDomain) await this.writeMailDomain(created.id, mailDomain, actorId);
+
+    // Terms and a Privacy Policy, so /terms and /privacy are never a titled
+    // page with nothing under it. These are the platform's templates, not
+    // finished documents -- `legal_reviewed_at` stays empty until the
+    // community's admin confirms them, and the admin UI says so until it is.
+    // Same runUnscoped reasoning as the writes above.
+    await runUnscoped("seeding the new tenant's legal copy", async () => {
+      await this.prisma.app_config.createMany({
+        data: LEGAL_DEFAULT_ROWS.map((row) => ({ ...row, tenantId: created.id })),
+      });
+    });
 
     this.tenantResolution.clearCache();
     await this.auditService.log({

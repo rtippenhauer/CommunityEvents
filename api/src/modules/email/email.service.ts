@@ -10,6 +10,17 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
 import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
+import { AppConfigService } from '../app-config/app-config.service';
+
+/**
+ * The placeholder every email writes instead of a hard-coded product name.
+ *
+ * Substituted here rather than at each call site, so a new email gets branding
+ * by writing `{{brand}}` and nothing else. Before this, nine subjects and
+ * bodies said "DinnerBears" outright, which reached a real member on the v2-7
+ * stage pass from a sender correctly named "Community Events Project".
+ */
+export const BRAND_PLACEHOLDER = /\{\{\s*brand\s*\}\}/g;
 
 const NOTIFICATION_PREF_FIELDS = [
   'emailInvite',
@@ -51,6 +62,7 @@ export class EmailService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly brevo: BrevoService,
+    private readonly appConfig: AppConfigService,
   ) {
     this.suppressionSalt = this.config.get<string>('EMAIL_SUPPRESSION_SALT', 'default-salt');
   }
@@ -99,7 +111,37 @@ export class EmailService {
     return Number(value) !== 0;
   }
 
-  async queue(dto: QueueEmailDto): Promise<EmailQueueRow | null> {
+  /**
+   * Replaces `{{brand}}` with this community's name, everywhere a member reads.
+   *
+   * Runs at *enqueue* time, not at dispatch. That matters: the dispatcher cron
+   * drains every tenant's queue under one `runUnscoped`, so a substitution
+   * there would resolve whichever community the engine reached first. Here we
+   * are still inside the caller's tenant context, and the row that lands in
+   * `email_queue` already carries the right name.
+   *
+   * `brand` is also added to `templateParams`, so a Brevo-side template can use
+   * `{{ params.brand }}` without the caller passing it. That only helps
+   * templates written to reference it -- Brevo renders its own copy, and this
+   * code cannot reach inside one.
+   */
+  private async applyBranding(dto: QueueEmailDto): Promise<QueueEmailDto> {
+    const brand = await this.appConfig.brandName();
+    const swap = (value: string | null | undefined): string | null | undefined =>
+      typeof value === 'string' ? value.replace(BRAND_PLACEHOLDER, brand) : value;
+
+    return {
+      ...dto,
+      subject: swap(dto.subject) as string,
+      htmlBody: swap(dto.htmlBody),
+      textBody: swap(dto.textBody),
+      templateParams: { brand, ...(dto.templateParams ?? {}) },
+    };
+  }
+
+  async queue(input: QueueEmailDto): Promise<EmailQueueRow | null> {
+    const dto = await this.applyBranding(input);
+
     if (!dto.bypassSuppression) {
       const suppressed = await this.isSuppressed(dto.toEmail);
       if (suppressed) {
@@ -144,7 +186,12 @@ export class EmailService {
     });
   }
 
-  async sendNow(dto: QueueEmailDto): Promise<void> {
+  async sendNow(input: QueueEmailDto): Promise<void> {
+    // Branded before the attempt, so the queued copy on failure carries the
+    // same text the immediate send would have. queue() substitutes again and
+    // finds nothing left to replace, which is the intended no-op.
+    const dto = await this.applyBranding(input);
+
     try {
       await this.brevo.send({
         toEmail: dto.toEmail,

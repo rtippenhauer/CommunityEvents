@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaModule } from './database/prisma/prisma.module';
 import { TenantModule } from './common/tenant/tenant.module';
+import { TenantSecretsModule } from './modules/tenant-secrets/tenant-secrets.module';
 import { TenantMiddleware } from './common/tenant/tenant.middleware';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerAuditGuard } from './common/guards/throttler-audit.guard';
@@ -47,6 +48,7 @@ import { AvatarsModule } from './modules/avatars/avatars.module';
     // to sit here; it is gone along with the entities and the packages.
     PrismaModule,
     TenantModule,
+    TenantSecretsModule,
     HealthModule,
     CitiesModule,
     InvitesModule,

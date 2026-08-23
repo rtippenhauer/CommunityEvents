@@ -56,6 +56,7 @@ export const TENANT_SCOPED_MODELS = [
   'notifications',
   'oauth_accounts',
   'push_subscriptions',
+  'tenant_secrets',
   'users',
 ] as const;
 

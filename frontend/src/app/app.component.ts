@@ -119,6 +119,7 @@ export class AppComponent {
     const url = this.currentUrl();
     return (
       url.startsWith('/admin/email') ||
+      url.startsWith('/admin/secrets') ||
       url.startsWith('/admin/cities') ||
       url.startsWith('/admin/merch') ||
       url.startsWith('/admin/legal') ||
@@ -165,6 +166,19 @@ export class AppComponent {
   );
 
   readonly isAdmin = computed<boolean>(() => hasAdminRights(this.authService.currentUser()?.role));
+
+  /**
+   * Shown to this community's admins until somebody confirms its legal pages.
+   *
+   * A community is seeded with the platform's Terms and Privacy templates so
+   * /terms and /privacy are never blank -- which means nothing would ever
+   * prompt a review, since the pages look finished. This is that prompt, and it
+   * is deliberately in the shell rather than on the legal screen: an admin who
+   * never opens that screen is exactly who it is for.
+   */
+  readonly needsLegalReview = computed<boolean>(
+    () => this.isAdmin() && !this.brandConfig.legalReviewed(),
+  );
 
   // Deployment operator rather than community admin. Gates the tenant registry
   // link only; the API enforces it again and additionally requires the root

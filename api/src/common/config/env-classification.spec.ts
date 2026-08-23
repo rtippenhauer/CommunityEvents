@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 import { ENV_CLASSIFICATION, envVarsIn } from './env-classification';
+import { TENANT_SECRET_ENV_FALLBACK } from '../../modules/tenant-secrets/tenant-secret-keys';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 
@@ -51,14 +52,24 @@ describe('env classification (REQ-TENANT-01.4)', () => {
     // tenant registry is reachable. If this assertion starts failing, the
     // question to ask is whether the new variable could have been runtime
     // config, not whether to raise the number.
-    expect(envVarsIn('bootstrap').length).toBeLessThanOrEqual(11);
+    //
+    // Raised from 11 to 14 by v2-7, for three variables that genuinely cannot
+    // be anything else: SECRET_ENCRYPTION_KEY is what makes runtime config
+    // readable, so storing it in runtime config is circular (and storing it in
+    // the database would put the key in the same dump as the ciphertext);
+    // SECRET_ENCRYPTION_KEYS_RETIRED is the same value one rotation ago; and
+    // SECRET_ENCRYPTION_KEY_FILE says where to find the first of them.
+    expect(envVarsIn('bootstrap').length).toBeLessThanOrEqual(14);
   });
 
-  it('leaves every credential in env until v2-7 can encrypt it', () => {
-    // Guards the actual risk in this split: a well-meaning change that moves an
-    // API key into app_config, which has no encryption at rest. Named
-    // explicitly so the list has to be edited deliberately.
-    expect(envVarsIn('secret-pending-v2-7')).toEqual([
+  it('accounts for every credential', () => {
+    // Named explicitly so the list has to be edited deliberately. Before v2-7
+    // this guarded a stronger claim -- that no credential had left env, because
+    // nowhere in the database could hold one safely. Now that ciphertext has a
+    // home the list is a manifest rather than a fence: each of these has a note
+    // saying whether it is per-community, per-deployment, or waiting on the
+    // item that populates its real column.
+    expect(envVarsIn('secret')).toEqual([
       'ANTHROPIC_API_KEY',
       'BREVO_API_KEY',
       'BREVO_WEBHOOK_SECRET',
@@ -75,6 +86,16 @@ describe('env classification (REQ-TENANT-01.4)', () => {
       'RESEND_API_KEY',
       'VAPID_PRIVATE_KEY',
     ]);
+  });
+
+  // The three secrets that became per-community in v2-7 are named in two
+  // places: here, and as the env fallbacks in tenant-secret-keys.ts. They have
+  // to agree, or a community setting its own key would override a variable the
+  // code never reads.
+  it('agrees with tenant-secret-keys.ts about which secrets are per-community', () => {
+    for (const envVar of Object.values(TENANT_SECRET_ENV_FALLBACK)) {
+      expect(ENV_CLASSIFICATION[envVar]?.cls).toBe('secret');
+    }
   });
 
   it('never classifies a secret as runtime config', () => {

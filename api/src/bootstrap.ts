@@ -58,6 +58,7 @@ import { PrismaClient } from '@prisma/client';
 import { coerceRawRow } from './common/utils/prisma-raw.util';
 import { resolveRootTenantDomain } from './common/utils/tenant-domain.util';
 import { AUTOMATION_ACCOUNT_EMAIL } from './common/utils/service-account.util';
+import { LEGAL_DEFAULT_ROWS } from './common/legal/legal-defaults';
 import {
   createServiceAccount,
   type SqlExecutor,
@@ -133,11 +134,21 @@ async function seedTenantConfigDefaults(tx: SqlExecutor, tenantId: number): Prom
   // `api/dist/` in the image -- dist mirrors src, so the same hop lands on
   // `api/` either way. (seed.ts needs three hops because it sits deeper.)
   const file = path.join(__dirname, '..', 'prisma', 'seed-data', 'app_config.json');
-  const rows = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+  const rows: {
     configKey: string;
     configValue: string;
     description?: string | null;
-  }[];
+  }[] = [
+    ...(JSON.parse(fs.readFileSync(file, 'utf8')) as {
+      configKey: string;
+      configValue: string;
+      description?: string | null;
+    }[]),
+    // Terms and Privacy come from code, not from that JSON: the file is a dump
+    // of one community's settings, and legal copy is the part of it that must
+    // not be inherited by whoever installs this next. See legal-defaults.ts.
+    ...LEGAL_DEFAULT_ROWS,
+  ];
 
   let written = 0;
   for (const row of rows) {
