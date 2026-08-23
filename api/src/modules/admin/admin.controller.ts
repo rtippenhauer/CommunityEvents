@@ -160,24 +160,49 @@ export class AdminController {
   // decrypts on read -- so without this the screen would fetch an operator's
   // Brevo key in plaintext on every load, which is the exact exposure the
   // column encryption exists to close.
+  // Per-community as of v2-9: `findFirst` with no `where`, so the extension
+  // supplies the tenant. It was `findUnique({ id: 1 })` against a single global
+  // row, which meant this screen edited every community's sending credentials
+  // from whichever community's host the admin happened to be on.
   @Get('email/config')
   @Roles(UserRole.ADMIN)
   async getEmailConfig(): Promise<EmailConfigView | null> {
-    const config = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
+    const config = await this.prisma.email_provider_config.findFirst();
     return config ? toEmailConfigView(config) : null;
   }
 
   @Patch('email/config')
   @Roles(UserRole.ADMIN)
   async updateEmailConfig(@Body() body: UpdateEmailConfigDto): Promise<EmailConfigView | undefined> {
-    const config = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
-    if (!config) return;
+    const config = await this.prisma.email_provider_config.findFirst();
+
+    // Created on first save rather than returning silently (v2-9). The row used
+    // to exist for everyone because seed.ts wrote the one global copy; now it
+    // belongs to a community, and a community that has never sent mail has
+    // none. Making the admin screen depend on the dispatcher having run first
+    // -- which is how the row appeared before -- would mean the settings page
+    // silently discarded the first save.
+    if (!config) {
+      const created = await this.prisma.email_provider_config.create({
+        data: {
+          brevoEnabled: true,
+          resendOverflowEnabled: false,
+          brevoDailyLimit: 300,
+          resendDailyLimit: 1000,
+          brevoSentToday: 0,
+          resendSentToday: 0,
+          lastResetDate: new Date(),
+          ...body,
+        },
+      });
+      return toEmailConfigView(created);
+    }
     // Patch from the DTO rather than mutating the loaded row and saving it
     // back, so only the fields the request actually sent are written. That is
     // also what lets the client leave a key alone: an omitted key is undefined
     // and untouched, an explicit null clears it.
     const updated = await this.prisma.email_provider_config.update({
-      where: { id: 1 },
+      where: { id: config.id },
       data: body,
     });
     return toEmailConfigView(updated);

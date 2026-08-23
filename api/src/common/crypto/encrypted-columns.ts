@@ -58,7 +58,7 @@ export const ENCRYPTED_COLUMNS = {
   // Populated today, on every install that sends mail. This is the pair v2-7
   // exists to protect: an operator's Brevo key sat in plaintext in a global
   // table, and the admin email-settings screen writes it there over HTTP.
-  email_provider_config: ['brevoApiKey', 'resendApiKey'],
+  email_provider_config: ['brevoApiKey', 'resendApiKey', 'webhookSecret'],
 
   // Every per-community credential, one row per setting. The whole column is
   // encrypted rather than some rows of it, which is the advantage of a table

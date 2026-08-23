@@ -256,6 +256,25 @@ export class TenantsAdminService {
       });
     });
 
+    // Its own email quota and counters (v2-9). No credential: the key and
+    // sending identity fall back to the deployment's env vars until this
+    // community supplies its own, so a community created today behaves exactly
+    // as it did when the row was a deployment-wide singleton.
+    await runUnscoped("seeding the new tenant's email provider config", async () => {
+      await this.prisma.email_provider_config.create({
+        data: {
+          tenantId: created.id,
+          brevoEnabled: true,
+          resendOverflowEnabled: false,
+          brevoDailyLimit: 300,
+          resendDailyLimit: 1000,
+          brevoSentToday: 0,
+          resendSentToday: 0,
+          lastResetDate: new Date(),
+        },
+      });
+    });
+
     this.tenantResolution.clearCache();
     await this.auditService.log({
       userId: actorId,

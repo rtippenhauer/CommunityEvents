@@ -5,7 +5,7 @@ import type {
   email_queue as EmailQueueRow,
   Prisma,
 } from '@prisma/client';
-import { runUnscoped } from '../../common/tenant/tenant-store';
+import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import {
   AUTO_DELETE_ELIGIBLE,
   EXCLUDE_SERVICE_ACCOUNTS,
@@ -46,10 +46,20 @@ export class EmailDispatcherService {
     );
   }
 
+  /**
+   * Drains the queue, one community at a time.
+   *
+   * Finding the batch is deliberately done in whatever context the caller is
+   * in: the cron wraps this in `runUnscoped` and gets every community's mail,
+   * while Admin -> Send Now runs inside a request and gets only that
+   * community's. **Sending is always re-entered per tenant**, because as of
+   * v2-9 the provider settings are per-community -- the API key, the sending
+   * identity and the daily counter all belong to the community whose message
+   * this is. Sending the whole batch under one config would mail every
+   * community through whichever account the engine happened to load first,
+   * which is the v2-6 trap one layer down.
+   */
   async dispatchPending(): Promise<void> {
-    const providerConfig = await this.getOrCreateConfig();
-    this.resetDailyCountersIfNeeded(providerConfig);
-
     const now = new Date();
     // TypeORM took an array of where-objects as an OR; Prisma spells that out.
     const batch = await this.prisma.email_queue.findMany({
@@ -61,23 +71,39 @@ export class EmailDispatcherService {
       take: BATCH_SIZE,
     });
 
+    // Grouped rather than sorted-and-scanned so each community's config is
+    // loaded and written exactly once, as the single config was before.
+    const byTenant = new Map<number, EmailQueueRow[]>();
     for (const email of batch) {
-      await this.sendOne(email, providerConfig);
+      const list = byTenant.get(email.tenantId);
+      if (list) list.push(email);
+      else byTenant.set(email.tenantId, [email]);
     }
 
-    // providerConfig is still mutated in memory across the batch and written
-    // once at the end, exactly as before -- one write per run, not per email.
-    // updateMany for the same reason as the queue writes below: nothing in this
-    // scheduled sweep is wrapped in a try/catch, so a P2025 here becomes an
-    // unhandled rejection rather than a logged failure.
-    await this.prisma.email_provider_config.updateMany({
-      where: { id: providerConfig.id },
-      data: {
-        brevoSentToday: providerConfig.brevoSentToday,
-        resendSentToday: providerConfig.resendSentToday,
-        lastResetDate: providerConfig.lastResetDate,
-      },
-    });
+    for (const [tenantId, emails] of byTenant) {
+      await runWithTenant(tenantId, async () => {
+        const providerConfig = await this.getOrCreateConfig();
+        this.resetDailyCountersIfNeeded(providerConfig);
+
+        for (const email of emails) {
+          await this.sendOne(email, providerConfig);
+        }
+
+        // Still mutated in memory across the batch and written once at the end
+        // -- one write per community per run, not per email. updateMany for the
+        // same reason as the queue writes below: nothing in this scheduled
+        // sweep is wrapped in a try/catch, so a P2025 here becomes an unhandled
+        // rejection rather than a logged failure.
+        await this.prisma.email_provider_config.updateMany({
+          where: { id: providerConfig.id },
+          data: {
+            brevoSentToday: providerConfig.brevoSentToday,
+            resendSentToday: providerConfig.resendSentToday,
+            lastResetDate: providerConfig.lastResetDate,
+          },
+        });
+      });
+    }
   }
 
   /** Re-engagement mail for members who have gone quiet, across every tenant. */
@@ -243,8 +269,16 @@ export class EmailDispatcherService {
     await this.prisma.email_queue.updateMany({ where: { id: email.id }, data: patch });
   }
 
+  /**
+   * This community's provider settings, created empty on first use.
+   *
+   * A community with no row falls back to the deployment's env vars for the key
+   * and identity (see BrevoService.getEffectiveConfig); what the row adds is
+   * somewhere to keep its own counters, which is why one is created rather than
+   * the send being skipped.
+   */
   private async getOrCreateConfig(): Promise<EmailProviderConfig> {
-    const existing = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
+    const existing = await this.prisma.email_provider_config.findFirst();
     if (existing) return existing;
     return this.prisma.email_provider_config.create({
       data: {

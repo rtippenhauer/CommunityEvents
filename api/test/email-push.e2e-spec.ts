@@ -129,12 +129,13 @@ describe('Email/Push Dispatch (e2e)', () => {
       expect(res.text).toBe('');
     });
 
-    it('self-heals the config row once the dispatcher has run, and admin can update it', async () => {
-      await request(server).post('/api/v1/admin/email/flush').set('Cookie', adminCookie).expect(200);
-
-      const res = await request(server).get('/api/v1/admin/email/config').set('Cookie', adminCookie).expect(200);
-      expect(res.body).toBeTruthy();
-
+    it('creates the config row on the first save, and admin can update it', async () => {
+      // v2-9 changed what creates it. The row used to be a deployment-wide
+      // singleton written by seed.ts, so it existed for everybody and the
+      // dispatcher only ever self-healed a deleted one. It now belongs to a
+      // community, and a community that has never sent mail has none -- so the
+      // admin screen has to be able to make it, or the first save would be
+      // silently discarded.
       await request(server)
         .patch('/api/v1/admin/email/config')
         .set('Cookie', adminCookie)

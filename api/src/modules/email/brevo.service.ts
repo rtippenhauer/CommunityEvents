@@ -62,8 +62,16 @@ export class BrevoService {
     private readonly prisma: PrismaService,
   ) {}
 
+  /**
+   * This community's provider settings, falling back to the deployment's env.
+   *
+   * `findFirst` with no `where`, not `findUnique({ id: 1 })` -- as of v2-9 the
+   * row is per-community and the extension supplies the tenant. Asking for id 1
+   * would ask for the root community's row and, from anywhere else, correctly
+   * return nothing.
+   */
   private async getEffectiveConfig(): Promise<{ apiKey: string; fromEmail: string; fromName: string }> {
-    const db = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
+    const db = await this.prisma.email_provider_config.findFirst();
     return {
       apiKey: db?.brevoApiKey || this.config.get<string>('BREVO_API_KEY', ''),
       fromEmail: db?.brevoFromEmail || this.config.get<string>('BREVO_FROM_EMAIL', 'rob@dinnerbears.com'),
@@ -72,7 +80,7 @@ export class BrevoService {
   }
 
   private async getTemplateId(templateName: EmailTemplateName): Promise<number> {
-    const db = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
+    const db = await this.prisma.email_provider_config.findFirst();
     const dbKey = TEMPLATE_DB_KEY[templateName];
     const dbValue = db ? (db[dbKey] as number | null) : null;
     if (dbValue && dbValue > 0) return dbValue;
