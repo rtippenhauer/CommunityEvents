@@ -57,7 +57,10 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
               <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
                 <mat-label>App name</mat-label>
                 <input matInput formControlName="brandName" />
-                <mat-hint>Shown in the nav, footer, and browser tab title.</mat-hint>
+                <mat-hint>
+                  Shown in the nav, footer and browser tab title, and in every email this
+                  community sends.
+                </mat-hint>
               </mat-form-field>
 
               <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
@@ -758,7 +761,11 @@ export class AdminSettingsComponent implements OnInit {
   readonly weekdays = WEEKDAYS;
 
   readonly form = this.fb.group({
-    brandName: this.fb.control('DinnerBears'),
+    // Must match SITE_SETTING_DEFAULTS.brand_name on the API. When these
+    // disagree, the form shows one name while the app uses another -- and
+    // saving writes the form's, so the screen for fixing branding is the screen
+    // that reintroduces it.
+    brandName: this.fb.control('CommunityEvents'),
     brandTagline: this.fb.control('Good food. Great company. Bear memories.'),
     colorPrimary: this.fb.control('#C9933A', [Validators.pattern(HEX_COLOR_PATTERN)]),
     colorAccent: this.fb.control('#C9933A', [Validators.pattern(HEX_COLOR_PATTERN)]),
@@ -791,7 +798,7 @@ export class AdminSettingsComponent implements OnInit {
       next: (settings) => {
         const byKey = new Map(settings.map((s) => [s.configKey, s.configValue]));
         this.form.patchValue({
-          brandName: byKey.get('brand_name') ?? 'DinnerBears',
+          brandName: byKey.get('brand_name') ?? 'CommunityEvents',
           brandTagline: byKey.get('brand_tagline') ?? 'Good food. Great company. Bear memories.',
           colorPrimary: byKey.get('theme_color_primary') ?? '#C9933A',
           colorAccent: byKey.get('theme_color_accent') ?? '#C9933A',
