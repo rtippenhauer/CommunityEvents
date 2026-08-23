@@ -14,6 +14,29 @@
   z-index: 1001;
 }
 
+// Sits under the stage banner when both are up. Deliberately quieter than the
+// stage one: it is a to-do for this community's admins, not a warning about
+// which deployment you are looking at.
+.legal-review-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #fdf3d8;
+  color: #6b4e12;
+  border-bottom: 1px solid #e6d3a3;
+  font-size: 0.8rem;
+  padding: 8px 16px;
+  text-align: center;
+
+  a {
+    color: #6b4e12;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
 .stage-badge {
   display: inline-block;
   background: var(--db-banner, #b34a00);

@@ -4,6 +4,15 @@
 @if (isStage) {
   <div class="stage-banner">⚠ STAGE ENVIRONMENT — Not production</div>
 }
+@if (needsLegalReview()) {
+  <div class="legal-review-banner">
+    <span>
+      Your Terms of Service and Privacy Policy are still the starter copy this community was
+      created with. Read them before you invite anyone.
+    </span>
+    <a routerLink="/admin/legal">Review now</a>
+  </div>
+}
 <mat-sidenav-container class="app-container">
 
   <!-- Mobile sidenav -->

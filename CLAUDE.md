@@ -518,6 +518,25 @@ authoritative (per REQ-TENANT-01.3).
   tenant, and its only other account is the `disabled` service account. The
   fields are create-only. A one-time setup link replaces the password hand-off in
   `v2-13`.
+- **A new community is seeded with the platform's Terms and Privacy Policy**
+  (`api/src/common/legal/legal-defaults.ts`), by `bootstrap.ts` for the root
+  tenant and by `tenants-admin.service.create` for every other. `/terms` and
+  `/privacy` render whatever `app_config` holds, and a missing row is not an
+  error there — it is a titled page with nothing under it, which reads as
+  answered. They are templates, not finished documents: `{{brand_name}}`,
+  `{{legal_entity}}` and `{{support_email}}` are filled in on the **public read**
+  (`getPublicValue`), never at seed time, so renaming a community does not
+  strand its old name inside two documents nobody re-reads. The admin editor
+  deliberately sees the raw copy.
+- **`legal_entity` is deployment-wide (`LEGAL_ENTITY_NAME`), not per-community.**
+  One operator runs every community on a deployment, and a community cannot
+  accurately describe processing it does not control. Blank falls back to the
+  community's own name, which is right only when the two are the same.
+- **`legal_reviewed_at` is what says a human read them.** Empty until an admin
+  confirms at Admin → Legal; until then every admin of that community sees a
+  banner in the app shell. Seeding is what makes this necessary — the pages look
+  finished, so nothing else would ever prompt a review. It rides in the branding
+  payload so the banner costs no extra request.
 - **`system_admin` is assignable from the UI to the root tenant's service account
   only, by someone who already holds it.** Both halves matter and neither implies
   the other: constraining only the target let any root-community admin mint the

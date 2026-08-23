@@ -24,6 +24,12 @@ export interface BrandConfig {
   baseDomain: string;
   /** Whether this community is the root one (REQ-TENANT-01.7). */
   isRoot: boolean;
+  /**
+   * Whether a human has confirmed this community's Terms and Privacy Policy.
+   * Every community is seeded with the platform's templates so its legal pages
+   * are never blank; this says somebody has since read them.
+   */
+  legalReviewed: boolean;
   // Per-instance terminology (Phase 32). Singular + plural kept separate so a
   // fork can rename e.g. Restaurant→Location, Dinner→Meeting without unreliable
   // auto-pluralization; points is a single label.
@@ -64,7 +70,10 @@ const DEFAULT_ICON = 'images/DinnerBearsIcon.png';
 // if it fails, so a network hiccup never blocks the app shell on branding.
 // Image URLs start empty so the compiled-in default assets show through.
 const DEFAULT_BRAND: BrandConfig = {
-  name: 'DinnerBears',
+  // Must match SITE_SETTING_DEFAULTS.brand_name on the API, for the same
+  // reason the settings form must (see dad8b50): two defaults that disagree
+  // show one name while the app uses another.
+  name: 'CommunityEvents',
   tagline: 'Good food. Great company.',
   colorPrimary: '#C9933A',
   colorAccent: '#C9933A',
@@ -85,6 +94,10 @@ const DEFAULT_BRAND: BrandConfig = {
   // Defaults false: until branding loads, assume this is NOT the root
   // community, so nothing root-only is offered on a guess.
   isRoot: false,
+  // Defaults true, unlike isRoot: this one drives a warning banner, and a slow
+  // or failed branding fetch should not accuse a community of skipping a review
+  // it may well have done.
+  legalReviewed: true,
   // DinnerBears' original wording — the compiled-in default until branding
   // resolves, mirroring the API's SITE_SETTING_DEFAULTS terms.
   terms: {
@@ -143,6 +156,7 @@ export class BrandConfigService {
   readonly appUrl = computed(() => this.brand().appUrl);
   readonly baseDomain = computed(() => this.brand().baseDomain);
   readonly isRoot = computed(() => this.brand().isRoot);
+  readonly legalReviewed = computed(() => this.brand().legalReviewed);
 
   // Configurable terminology (Phase 32). Components bind these instead of
   // hardcoding "Restaurant"/"Dinner"/"Bear Points". Title-cased as stored;

@@ -228,6 +228,41 @@ describe('System tenant management (e2e)', () => {
       expect(admin!.isServiceAccount).toBe(false);
     });
 
+    it('gives the new community legal pages that are not blank', async () => {
+      // /terms and /privacy render whatever app_config holds, and a missing row
+      // is not an error there -- it is a titled page with nothing under it,
+      // which reads as answered rather than missing.
+      const res = await request(server)
+        .post('/api/v1/system/tenants')
+        .set('Cookie', systemAdminCookie)
+        .send({
+          domain: 'legalseed.example.test',
+          adminEmail: 'legal-admin@example.test',
+          adminPassword: 'P@ssw0rd-Test!',
+        })
+        .expect(201);
+
+      const rows = await inTenant(res.body.id, () =>
+        prisma.app_config.findMany({
+          where: { configKey: { in: ['legal_terms_html', 'legal_privacy_html'] } },
+        }),
+      );
+
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row.configValue.length).toBeGreaterThan(0);
+        // Stored as a template. Substitution happens on the public read, so a
+        // rename does not strand the old name inside two documents.
+        expect(row.configValue).toContain('{{brand_name}}');
+      }
+
+      // ...and nobody has confirmed them yet, which is what raises the banner.
+      const reviewed = await inTenant(res.body.id, () =>
+        prisma.app_config.findFirst({ where: { configKey: 'legal_reviewed_at' } }),
+      );
+      expect(reviewed).toBeNull();
+    });
+
     it('puts the admin on the new tenant, not the root one', async () => {
       const res = await request(server)
         .post('/api/v1/system/tenants')
@@ -520,10 +555,11 @@ describe('System tenant management (e2e)', () => {
     });
 
     it('takes the community data with it', async () => {
-      // Its service account, an admin and a mail_domain row, all created with
-      // the tenant. The tenant_id foreign keys are RESTRICT, so a purge that
-      // missed any of them would fail rather than orphan them -- which is why
-      // asserting the tenant row is gone proves the rest went too.
+      // Its service account, an admin, a mail_domain row and the two seeded
+      // legal documents, all created with the tenant. The tenant_id foreign
+      // keys are RESTRICT, so a purge that missed any of them would fail rather
+      // than orphan them -- which is why asserting the tenant row is gone
+      // proves the rest went too.
       const withData = await request(server)
         .post('/api/v1/system/tenants')
         .set('Cookie', systemAdminCookie)
@@ -547,7 +583,9 @@ describe('System tenant management (e2e)', () => {
         .expect(200);
 
       expect(res.body.deleted.users).toBe(before);
-      expect(res.body.deleted.app_config).toBe(1);
+      // mail_domain, plus the Terms and Privacy Policy every new community is
+      // seeded with so its public legal pages are never blank.
+      expect(res.body.deleted.app_config).toBe(3);
       expect(await prisma.tenants.findUnique({ where: { id } })).toBeNull();
       const left = await runUnscoped('assert purge', async () =>
         await prisma.users.count({ where: { tenantId: id } }),

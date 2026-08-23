@@ -180,6 +180,14 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
     cls: 'deployment',
     note: 'Tunes the resolver that runs before a tenant exists to ask.',
   },
+  LEGAL_ENTITY_NAME: {
+    cls: 'deployment',
+    note:
+      'Who operates the deployment, named in every community\'s seeded Terms ' +
+      'and Privacy Policy. Deliberately not per-tenant: one operator runs them ' +
+      'all, and a community cannot accurately describe processing it does not ' +
+      'control. Blank falls back to the community\'s own name.',
+  },
   JWT_EXPIRES_IN: {
     cls: 'deployment',
     note:

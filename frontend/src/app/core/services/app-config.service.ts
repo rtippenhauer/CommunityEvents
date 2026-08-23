@@ -40,7 +40,10 @@ export type SiteSettingKey =
   | 'feature_leaderboard'
   | 'feature_merch'
   | 'feature_members'
-  | 'feature_require_membership';
+  | 'feature_require_membership'
+  // ISO timestamp of the last time an admin confirmed this community's Terms
+  // and Privacy Policy; empty means never. Written from Admin -> Legal.
+  | 'legal_reviewed_at';
 
 export type BrandImageSlot = 'logo' | 'splash' | 'icon' | 'story';
 

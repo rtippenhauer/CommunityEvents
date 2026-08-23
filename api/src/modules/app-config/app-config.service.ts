@@ -11,6 +11,7 @@ import {
   eventOrganizerEmail as envEventOrganizerEmail,
   supportEmail as envSupportEmail,
 } from '../../common/config/instance-contact';
+import { fillLegalPlaceholders } from '../../common/legal/legal-defaults';
 import { currentTenantId, requireTenantId, runWithTenant } from '../../common/tenant/tenant-store';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
@@ -80,6 +81,12 @@ export const SITE_SETTING_KEYS = [
   // depends on, unlike the Phase 33 toggles which defaulted on for
   // backward-compat.
   'feature_require_membership',
+  // When this community last confirmed its Terms and Privacy Policy (ISO
+  // timestamp; empty = never). A community is seeded with platform templates so
+  // its legal pages are never blank, and this is what says a human has since
+  // read them. Public like every other site setting — it says a review
+  // happened, not what was reviewed.
+  'legal_reviewed_at',
 ] as const;
 export type SiteSettingKey = (typeof SITE_SETTING_KEYS)[number];
 
@@ -161,6 +168,9 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   // Off by default — a fresh instance never enforces membership until an
   // admin explicitly opts in.
   feature_require_membership: 'false',
+  // Empty until a human confirms the seeded legal copy. Never defaulted to a
+  // date: the whole value of the flag is that it cannot be true by accident.
+  legal_reviewed_at: '',
 };
 
 @Injectable()
@@ -176,8 +186,30 @@ export class AppConfigService {
       throw new NotFoundException('Unknown config key');
     }
     const row = await this.prisma.app_config.findFirst({ where: { configKey: key } });
-    if (row) return row.configValue;
-    return isSiteSettingKey(key) ? SITE_SETTING_DEFAULTS[key] : '';
+    const value = row?.configValue ?? (isSiteSettingKey(key) ? SITE_SETTING_DEFAULTS[key] : '');
+    // Only the public read is filled in. `getLegalConfig` hands the admin
+    // editor the raw copy, placeholders included, or saving would freeze
+    // today's name into the document as literal text.
+    return isLegalConfigKey(key) ? this.fillLegalCopy(value) : value;
+  }
+
+  /**
+   * The community's name, its operator and its support address, substituted
+   * into whatever legal copy it currently has. See `legal-defaults.ts` for why
+   * this happens on read.
+   */
+  private async fillLegalCopy(html: string): Promise<string> {
+    if (!html.includes('{{')) return html;
+    const [brandName, supportEmail] = await Promise.all([
+      this.brandName(),
+      this.supportEmail(),
+    ]);
+    // The operator is a deployment fact, not a community one -- one company
+    // runs every community on this deployment. Falling back to the community's
+    // own name keeps an install that never set it readable rather than leaving
+    // "{{legal_entity}}" on a public page.
+    const legalEntity = this.config.get<string>('LEGAL_ENTITY_NAME')?.trim() || brandName;
+    return fillLegalPlaceholders(html, { brandName, legalEntity, supportEmail });
   }
 
   async getLegalConfig(): Promise<Pick<AppConfig, 'configKey' | 'configValue' | 'updatedAt'>[]> {
@@ -397,6 +429,17 @@ export class AppConfigService {
      * an option that always fails is worse than no option.
      */
     isRoot: boolean;
+    /**
+     * Whether a human has confirmed this community's Terms and Privacy Policy.
+     *
+     * A community is seeded with the platform's templates so its legal pages
+     * are never blank; this is what says somebody has since read them. Carried
+     * in the branding payload rather than fetched separately so the admin
+     * banner costs no request -- and it is no more public than the
+     * `legal_reviewed_at` setting it reads, which like every site setting is
+     * already servable from /config/:key.
+     */
+    legalReviewed: boolean;
     appUrl: string;
     baseDomain: string;
     terms: {
@@ -424,6 +467,7 @@ export class AppConfigService {
       dinnerPlural,
       points,
       features,
+      legalReviewedAt,
     ] = await Promise.all([
       this.getSiteSetting('brand_name'),
       this.getSiteSetting('brand_tagline'),
@@ -440,6 +484,7 @@ export class AppConfigService {
       this.getSiteSetting('term_dinner_plural'),
       this.getSiteSetting('term_points'),
       this.getFeatureFlags(),
+      this.getSiteSetting('legal_reviewed_at'),
     ]);
     return {
       name,
@@ -463,6 +508,7 @@ export class AppConfigService {
       facebookAppId: this.config.get<string>('FACEBOOK_APP_ID') ?? null,
       isStage: this.config.get<string>('IS_STAGE') === 'true',
       isRoot: await this.servingRootTenant(),
+      legalReviewed: legalReviewedAt.trim().length > 0,
       // The requesting tenant's own canonical URL, not the deployment's. Every
       // other field in this payload is per-tenant (app_config is scoped now), so
       // a deployment-global value here would be the one thing in the branding
