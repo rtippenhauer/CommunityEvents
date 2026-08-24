@@ -66,6 +66,12 @@ interface EmailConfig {
   // (v2-7). An empty key field therefore means "leave the stored key alone",
   // not "clear it"; clearing is the explicit Remove button.
   brevoApiKeySet: boolean;
+  // Deliverability callbacks. The token itself never reaches the browser --
+  // it is minted server-side, handed to Brevo through their API and stored
+  // encrypted, so the screen only ever learns whether one is registered.
+  webhookRegistered: boolean;
+  webhookRotatedAt: string | null;
+  webhookError: string | null;
   brevoFromEmail: string | null;
   brevoFromName: string | null;
   resendApiKeySet: boolean;
@@ -219,6 +225,47 @@ interface EmailConfig {
                 }
               </div>
             </form>
+
+            <div class="webhook-block">
+              <h4>Deliverability webhook</h4>
+              <p class="webhook-help">
+                Brevo tells this community when a message bounces or somebody unsubscribes, so
+                the address stops being mailed. Registering sets it up in your Brevo account —
+                there is nothing to copy, and the token is rotated automatically from then on.
+              </p>
+
+              @if (config()?.webhookRegistered) {
+                <p class="webhook-state ok">
+                  <mat-icon>check_circle</mat-icon>
+                  Registered
+                  @if (config()?.webhookRotatedAt) {
+                    <span> — token last changed {{ config()!.webhookRotatedAt | date: 'MMM d, y' }}</span>
+                  }
+                </p>
+              } @else {
+                <p class="webhook-state">
+                  <mat-icon>error_outline</mat-icon>
+                  Not registered — bounces are not being recorded for this community.
+                </p>
+              }
+
+              @if (config()?.webhookError) {
+                <p class="webhook-state failed">Last attempt failed: {{ config()!.webhookError }}</p>
+              }
+
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="registeringWebhook() || !config()"
+                (click)="registerWebhook()"
+              >
+                @if (registeringWebhook()) {
+                  <mat-spinner diameter="18" />
+                } @else {
+                  {{ config()?.webhookRegistered ? 'Re-register webhook' : 'Register webhook' }}
+                }
+              </button>
+            </div>
           </mat-expansion-panel>
 
           <mat-expansion-panel>
@@ -525,6 +572,43 @@ interface EmailConfig {
         gap: 12px;
         padding: 16px 0 8px;
       }
+      .webhook-block {
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+        padding-top: 16px;
+        margin-top: 8px;
+
+        h4 {
+          margin: 0 0 4px;
+          font-size: 0.95rem;
+        }
+      }
+      .webhook-help {
+        margin: 0 0 12px;
+        color: #666;
+        font-size: 0.82rem;
+      }
+      .webhook-state {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0 0 12px;
+        font-size: 0.85rem;
+        color: #8a6d3b;
+
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+        }
+
+        &.ok {
+          color: #38603a;
+        }
+
+        &.failed {
+          color: #c62828;
+        }
+      }
       .cred-actions {
         display: flex;
         flex-wrap: wrap;
@@ -637,6 +721,7 @@ export class AdminEmailComponent implements OnInit {
   readonly retrying = signal(false);
   readonly flushing = signal(false);
   readonly saving = signal(false);
+  readonly registeringWebhook = signal(false);
   readonly failedCount = computed(() => this.queue().filter((e) => e.status === 'failed').length);
   readonly expandedRowId = signal<number | null>(null);
 
@@ -649,6 +734,36 @@ export class AdminEmailComponent implements OnInit {
     'createdAt',
     'actions',
   ];
+
+  /**
+   * Asks the API to register this community's webhook in Brevo.
+   *
+   * The server mints the token, calls Brevo with this community's own key and
+   * host, and stores the result -- nothing is copied by hand, and the token
+   * never reaches this screen. A failure is reported rather than thrown: the
+   * usual cause is a revoked API key, which the operator has to fix in Brevo.
+   */
+  registerWebhook(): void {
+    this.registeringWebhook.set(true);
+    this.http
+      .post<{ ok: boolean; error?: string }>('/api/v1/admin/email/webhook/register', {})
+      .subscribe({
+        next: (res) => {
+          this.registeringWebhook.set(false);
+          this.loadConfig();
+          this.snackBar.open(
+            res.ok ? 'Webhook registered with Brevo' : (res.error ?? 'Registration failed'),
+            'OK',
+            { duration: res.ok ? 3000 : 6000 },
+          );
+        },
+        error: () => {
+          this.registeringWebhook.set(false);
+          this.loadConfig();
+          this.snackBar.open('Registration failed', 'OK', { duration: 6000 });
+        },
+      });
+  }
 
   readonly brevoForm = this.fb.group({
     brevoApiKey: [''],

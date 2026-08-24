@@ -15,6 +15,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AdminService, AuditLogFilter } from './admin.service';
 import { EmailService } from '../email/email.service';
 import { EmailDispatcherService } from '../email/email-dispatcher.service';
+import { BrevoWebhookService } from '../email/brevo-webhook.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -34,6 +35,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly emailService: EmailService,
     private readonly emailDispatcher: EmailDispatcherService,
+    private readonly brevoWebhook: BrevoWebhookService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -205,7 +207,34 @@ export class AdminController {
       where: { id: config.id },
       data: body,
     });
+
+    // A changed key may belong to a different Brevo account, where the webhook
+    // this community registered does not exist -- so the webhook is re-created
+    // with a fresh token rather than left pointing into an account we no longer
+    // have a key for. Deliberately not awaited for its success: registration
+    // failing must not fail the save that triggered it, or a Brevo outage would
+    // stop an operator fixing their own credentials. The outcome is recorded on
+    // the row and shown on the screen.
+    if (body.brevoApiKey !== undefined && body.brevoApiKey !== config.brevoApiKey) {
+      await this.brevoWebhook.register({ newToken: true });
+      const refreshed = await this.prisma.email_provider_config.findFirst();
+      if (refreshed) return toEmailConfigView(refreshed);
+    }
+
     return toEmailConfigView(updated);
+  }
+
+  /**
+   * Registers (or re-registers) this community's Brevo webhook.
+   *
+   * The manual path for the automatic one above: a retry after a failure, or a
+   * first registration for a community whose key was set before this existed.
+   */
+  @Post('email/webhook/register')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  registerBrevoWebhook(): Promise<{ ok: boolean; error?: string }> {
+    return this.brevoWebhook.register({ newToken: true });
   }
 
   @Post('email/flush')

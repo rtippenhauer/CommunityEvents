@@ -44,6 +44,7 @@ describe('encrypted columns (v2-7)', () => {
       'brevoApiKey',
       'resendApiKey',
       'webhookSecret',
+      'webhookSecretPrevious',
     ]);
     expect(hasEncryptedColumns('users')).toBe(false);
     expect(encryptedFieldsOf(undefined)).toBeUndefined();

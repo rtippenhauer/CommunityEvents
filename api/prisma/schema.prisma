@@ -303,6 +303,19 @@ model email_provider_config {
   /// value -- the tenant is resolved from the Host header first and the token
   /// compared after decryption.
   webhookSecret             String?  @map("webhook_secret") @db.VarChar(500)
+  /// The token this one replaced, accepted for a grace window after a rotation
+  /// so callbacks already in flight are not rejected. Same idea as
+  /// SECRET_ENCRYPTION_KEYS_RETIRED: the old value still verifies while the new
+  /// one takes over. Cleared once the window passes.
+  webhookSecretPrevious     String?  @map("webhook_secret_previous") @db.VarChar(500)
+  /// When the current token was minted. Rotation is scheduled off this, and it
+  /// is what the grace window for `webhookSecretPrevious` is measured from.
+  webhookRotatedAt          DateTime? @map("webhook_rotated_at") @db.DateTime(0)
+  /// Why the last registration or rotation attempt failed, or NULL if it did
+  /// not. Kept so the admin screen can say what went wrong rather than showing
+  /// an unregistered webhook with no explanation -- a revoked API key and a
+  /// Brevo outage need different responses from the operator.
+  webhookError              String?  @map("webhook_error") @db.VarChar(500)
   /// Brevo's id for the webhook this deployment registered, so re-registering
   /// updates it rather than adding a duplicate (an account is capped at 40).
   /// Stored as a string although Brevo returns a number: a BIGINT column comes

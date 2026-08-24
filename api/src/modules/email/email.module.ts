@@ -4,6 +4,7 @@ import { EmailService } from './email.service';
 import { BrevoService } from './brevo.service';
 import { ResendService } from './resend.service';
 import { EmailDispatcherService } from './email-dispatcher.service';
+import { BrevoWebhookService } from './brevo-webhook.service';
 import { EmailWebhookController } from './email-webhook.controller';
 
 @Module({
@@ -11,7 +12,13 @@ import { EmailWebhookController } from './email-webhook.controller';
   // outgoing subject and body. No cycle: AppConfigModule imports nothing.
   imports: [AppConfigModule],
   controllers: [EmailWebhookController],
-  providers: [EmailService, BrevoService, ResendService, EmailDispatcherService],
-  exports: [EmailService, EmailDispatcherService],
+  providers: [
+    EmailService,
+    BrevoService,
+    ResendService,
+    EmailDispatcherService,
+    BrevoWebhookService,
+  ],
+  exports: [EmailService, EmailDispatcherService, BrevoWebhookService],
 })
 export class EmailModule {}
