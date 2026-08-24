@@ -203,9 +203,10 @@ export class AdminController {
     // back, so only the fields the request actually sent are written. That is
     // also what lets the client leave a key alone: an omitted key is undefined
     // and untouched, an explicit null clears it.
+    const keyChanged = body.brevoApiKey !== undefined && body.brevoApiKey !== config.brevoApiKey;
     const updated = await this.prisma.email_provider_config.update({
       where: { id: config.id },
-      data: body,
+      data: { ...body, ...(keyChanged ? { brevoApiKeySetAt: new Date() } : {}) },
     });
 
     // A changed key may belong to a different Brevo account, where the webhook
@@ -215,7 +216,7 @@ export class AdminController {
     // failing must not fail the save that triggered it, or a Brevo outage would
     // stop an operator fixing their own credentials. The outcome is recorded on
     // the row and shown on the screen.
-    if (body.brevoApiKey !== undefined && body.brevoApiKey !== config.brevoApiKey) {
+    if (keyChanged) {
       await this.brevoWebhook.register({ newToken: true });
       const refreshed = await this.prisma.email_provider_config.findFirst();
       if (refreshed) return toEmailConfigView(refreshed);

@@ -85,8 +85,9 @@ export class EmailDispatcherService {
         const providerConfig = await this.getOrCreateConfig();
         this.resetDailyCountersIfNeeded(providerConfig);
 
+        let anySent = false;
         for (const email of emails) {
-          await this.sendOne(email, providerConfig);
+          anySent = (await this.sendOne(email, providerConfig)) || anySent;
         }
 
         // Still mutated in memory across the batch and written once at the end
@@ -100,6 +101,10 @@ export class EmailDispatcherService {
             brevoSentToday: providerConfig.brevoSentToday,
             resendSentToday: providerConfig.resendSentToday,
             lastResetDate: providerConfig.lastResetDate,
+            // Not a statistic. Brevo deactivates an API key after 90 days of
+            // inactivity, so this is what lets the admin screen warn a quiet
+            // community before its key stops working.
+            ...(anySent ? { lastSuccessfulSendAt: new Date() } : {}),
           },
         });
       });
@@ -193,10 +198,11 @@ export class EmailDispatcherService {
     }
   }
 
+  /** Returns whether the message actually left, which the caller records. */
   private async sendOne(
     email: EmailQueueRow,
     providerConfig: EmailProviderConfig,
-  ): Promise<void> {
+  ): Promise<boolean> {
     // Collected rather than mutated-and-saved: Prisma writes an explicit patch,
     // so the fields that change are accumulated and written once at the end,
     // matching the single save() the entity version performed.
@@ -225,7 +231,7 @@ export class EmailDispatcherService {
       // P2025, and because this runs on a scheduler there is no request to
       // surface that on, so it becomes an unhandled rejection inside a cron.
       await this.prisma.email_queue.updateMany({ where: { id: email.id }, data: patch });
-      return;
+      return false;
     }
 
     try {
@@ -267,6 +273,7 @@ export class EmailDispatcherService {
     // Same reasoning as the blocked branch above: the row may have been removed
     // while the provider call was in flight.
     await this.prisma.email_queue.updateMany({ where: { id: email.id }, data: patch });
+    return patch.status === EmailQueueStatus.SENT;
   }
 
   /**

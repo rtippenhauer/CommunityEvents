@@ -68,12 +68,42 @@ the deployment's env var. Blank means inherit.
 
 ## 3. A Brevo account
 
-### One account per deployment, not per community — for now
+### One account per community, or one shared — both work (v2-9)
 
-Today `email_provider_config` is a single global row: one API key and one
-sending identity for the whole deployment. Per-community sending is a separate
-piece of work, and it is larger than a text field precisely because of the
-verification step below.
+`email_provider_config` is per-community as of v2-9: a community can hold its
+own Brevo key, sending identity and daily quota. A community that sets none
+falls back to the deployment's env vars exactly as before, so sharing one
+account across several communities is still a supported setup, not a leftover.
+
+One account authenticates **many sending domains**, so a second Brevo account is
+not needed just to send from a second domain — and Brevo's terms limit a user to
+one account without prior authorization. Reach for a second account when a
+community should own its own billing, quota and reputation, not when it merely
+has its own domain.
+
+### The API key: no expiry, but it is not permanent either
+
+Brevo lets you set an expiry when creating a key (7 days to 1 year) or choose
+**no expiration**. Choose no expiration. Nothing in this codebase can reissue a
+Brevo key — their API has no endpoint for it, so replacing one is always a human
+in their dashboard — and an expiry date on a credential nobody can auto-rotate
+is a scheduled outage waiting for somebody to be paying attention that week.
+
+**But Brevo deactivates a key after 90 days of inactivity**, whatever expiry was
+chosen. That is a real hazard for a community that sends little — a demo, a test
+community, one between seasons — because nothing here changes and mail simply
+stops. Two things soften it:
+
+- Admin → Email shows when the key was set and when the community last sent
+  successfully, and warns after 60 quiet days rather than at 90, when a warning
+  would arrive with the failure.
+- The monthly webhook rotation calls Brevo's API with that community's key, which
+  should itself count as activity. Treat that as likely rather than guaranteed —
+  the warning above is the thing to act on.
+
+The **webhook token is the opposite case**: this deployment mints it, so it is
+rotated automatically every 30 days with no expiry to track and nothing to
+re-enter. See "Deliverability webhook" below.
 
 **Stage and production should not share one Brevo account.** They are separate
 deployments with separate databases, and three things in Brevo are account-wide:
@@ -185,14 +215,30 @@ reports only that one is set. To replace it, paste a new one. To remove it, use
 
 ### The webhook
 
-1. In Brevo: **Transactional → Settings → Webhooks → Add a new webhook**.
-2. URL: `https://<host>/api/v1/email/webhook/brevo?secret=<BREVO_WEBHOOK_SECRET>`
-3. Events: at minimum **delivered**, **hard bounce**, **soft bounce**,
-   **unsubscribed**, **spam** and **blocked**.
+**There is nothing to set up by hand.** Save the community's API key at
+Admin → Email and the deployment registers the webhook in Brevo itself, using
+that community's own key and host — or press **Register webhook** on the same
+screen to retry, or to set one up for a key that predates this. That removes a
+class of error a pasted URL invites: the wrong host, or a production account
+pointed at stage.
 
-The secret is the `BREVO_WEBHOOK_SECRET` env var. Without a matching one the
-endpoint answers 401 and every bounce is silently discarded — which looks like
-nothing at all, until the sending reputation drops.
+The token authenticating those callbacks is minted here, sent to Brevo as a
+bearer token rather than in the URL — a secret in a query string ends up in every
+access log and proxy buffer along the way — and **rotated automatically every 30
+days**, with the replaced token honoured for a further seven so a callback in
+flight during the swap is not rejected. Nothing to diary, nothing to re-enter.
+
+If registration fails, the screen says why. The usual cause is a revoked or
+mistyped API key, which is fixed in Brevo and then retried here.
+
+> Webhooks registered before v2-9 — the `?secret=<BREVO_WEBHOOK_SECRET>` form —
+> still work, on the deployment-wide env value. Press **Register webhook** to
+> move a community onto its own token; the old webhook in Brevo can then be
+> deleted by hand.
+
+Without a working webhook the endpoint answers 401 and every bounce is silently
+discarded — which looks like nothing at all, until the sending reputation
+drops.
 
 What the webhook does is deliberately **cross-community**: a hard bounce marks
 that address bounced everywhere, because a dead address is a property of the

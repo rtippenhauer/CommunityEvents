@@ -72,6 +72,10 @@ interface EmailConfig {
   webhookRegistered: boolean;
   webhookRotatedAt: string | null;
   webhookError: string | null;
+  // Brevo deactivates a key after 90 days of inactivity, so a community that
+  // has gone quiet is heading for a broken key with nothing here changing.
+  brevoApiKeySetAt: string | null;
+  lastSuccessfulSendAt: string | null;
   brevoFromEmail: string | null;
   brevoFromName: string | null;
   resendApiKeySet: boolean;
@@ -194,6 +198,9 @@ interface EmailConfig {
                 <mat-hint>
                   @if (config()?.brevoApiKeySet) {
                     A key is stored — leave blank to keep it.
+                    @if (config()?.brevoApiKeySetAt) {
+                      Set {{ config()!.brevoApiKeySetAt | date: 'MMM d, y' }}.
+                    }
                   } @else {
                     Not set; falls back to the BREVO_API_KEY env var.
                   }
@@ -251,6 +258,18 @@ interface EmailConfig {
 
               @if (config()?.webhookError) {
                 <p class="webhook-state failed">Last attempt failed: {{ config()!.webhookError }}</p>
+              }
+
+              @if (sendingHasGoneQuiet()) {
+                <p class="webhook-state failed">
+                  Brevo deactivates an API key after 90 days without use, and this community
+                  @if (config()?.lastSuccessfulSendAt) {
+                    has not sent since {{ config()!.lastSuccessfulSendAt | date: 'MMM d, y' }}.
+                  } @else {
+                    has not sent anything yet.
+                  }
+                  Send something, or expect the key to stop working.
+                </p>
               }
 
               <button
@@ -722,6 +741,22 @@ export class AdminEmailComponent implements OnInit {
   readonly flushing = signal(false);
   readonly saving = signal(false);
   readonly registeringWebhook = signal(false);
+
+  /**
+   * Whether this community is close to Brevo's inactivity cutoff.
+   *
+   * Sixty days, not ninety: a warning that arrives on the day the key dies is
+   * not a warning. Measured from the last successful send, or from when the key
+   * was set if there has never been one -- a key that has never sent is on the
+   * same clock as one that has gone quiet.
+   */
+  readonly sendingHasGoneQuiet = computed<boolean>(() => {
+    const cfg = this.config();
+    if (!cfg?.brevoApiKeySet) return false;
+    const since = cfg.lastSuccessfulSendAt ?? cfg.brevoApiKeySetAt;
+    if (!since) return false;
+    return Date.now() - new Date(since).getTime() > 60 * 24 * 60 * 60 * 1000;
+  });
   readonly failedCount = computed(() => this.queue().filter((e) => e.status === 'failed').length);
   readonly expandedRowId = signal<number | null>(null);
 

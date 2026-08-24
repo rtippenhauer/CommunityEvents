@@ -316,6 +316,16 @@ model email_provider_config {
   /// an unregistered webhook with no explanation -- a revoked API key and a
   /// Brevo outage need different responses from the operator.
   webhookError              String?  @map("webhook_error") @db.VarChar(500)
+  /// When this community's Brevo key was last replaced. Not an expiry -- Brevo
+  /// keys do not expire unless one is chosen at creation, and choosing one for
+  /// a key nothing can auto-rotate schedules an outage. It is here so the screen
+  /// can show the key's age rather than assert a policy.
+  brevoApiKeySetAt          DateTime? @map("brevo_api_key_set_at") @db.DateTime(0)
+  /// The last message this community actually got out of a provider. Brevo
+  /// deactivates an API key after 90 days of inactivity, so a community that
+  /// has gone quiet is heading for a broken key with nothing in this codebase
+  /// changing -- which is a warning worth showing before it happens.
+  lastSuccessfulSendAt      DateTime? @map("last_successful_send_at") @db.DateTime(0)
   /// Brevo's id for the webhook this deployment registered, so re-registering
   /// updates it rather than adding a duplicate (an account is capped at 40).
   /// Stored as a string although Brevo returns a number: a BIGINT column comes
