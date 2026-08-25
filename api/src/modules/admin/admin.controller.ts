@@ -24,7 +24,13 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { SetRoleDto } from './dto/set-role.dto';
 import { SetMembershipDto } from './dto/set-membership.dto';
 import { UpdateEmailConfigDto } from './dto/update-email-config.dto';
-import { toEmailConfigView, type EmailConfigView } from './email-config.view';
+import { requireTenantId } from '../../common/tenant/tenant-store';
+import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
+import {
+  effectiveEmailConfigView,
+  toEmailConfigView,
+  type EmailConfigView,
+} from './email-config.view';
 import { UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
 
@@ -166,11 +172,19 @@ export class AdminController {
   // supplies the tenant. It was `findUnique({ id: 1 })` against a single global
   // row, which meant this screen edited every community's sending credentials
   // from whichever community's host the admin happened to be on.
+  // Answers for a community with no row too, rather than null. The screen
+  // renders nothing without a config, so returning null left a community that
+  // had never configured email staring at a spinner on the very screen that
+  // creates the row. The row is still written on first save -- a GET does not
+  // write.
   @Get('email/config')
   @Roles(UserRole.ADMIN)
-  async getEmailConfig(): Promise<EmailConfigView | null> {
+  async getEmailConfig(): Promise<EmailConfigView> {
     const config = await this.prisma.email_provider_config.findFirst();
-    return config ? toEmailConfigView(config) : null;
+    // requireTenantId rather than the request object, for the same reason raw
+    // SQL and the app_config upserts use it: it throws where there is no tenant
+    // instead of inventing one.
+    return effectiveEmailConfigView(config, requireTenantId('email config read'));
   }
 
   @Patch('email/config')
@@ -186,16 +200,7 @@ export class AdminController {
     // silently discarded the first save.
     if (!config) {
       const created = await this.prisma.email_provider_config.create({
-        data: {
-          brevoEnabled: true,
-          resendOverflowEnabled: false,
-          brevoDailyLimit: 300,
-          resendDailyLimit: 1000,
-          brevoSentToday: 0,
-          resendSentToday: 0,
-          lastResetDate: new Date(),
-          ...body,
-        },
+        data: { ...newEmailProviderConfig(), ...body },
       });
       return toEmailConfigView(created);
     }

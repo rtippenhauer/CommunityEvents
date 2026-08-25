@@ -13,6 +13,7 @@ import { runUnscoped } from '../../common/tenant/tenant-store';
 import { tenantGetsServiceAccount } from '../../database/prisma/service-account.provision';
 import { normalizeTenantDomain } from '../../common/utils/tenant-domain.util';
 import { LEGAL_DEFAULT_ROWS } from '../../common/legal/legal-defaults';
+import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import {
   AUTOMATION_ACCOUNT_EMAIL,
@@ -262,16 +263,7 @@ export class TenantsAdminService {
     // as it did when the row was a deployment-wide singleton.
     await runUnscoped("seeding the new tenant's email provider config", async () => {
       await this.prisma.email_provider_config.create({
-        data: {
-          tenantId: created.id,
-          brevoEnabled: true,
-          resendOverflowEnabled: false,
-          brevoDailyLimit: 300,
-          resendDailyLimit: 1000,
-          brevoSentToday: 0,
-          resendSentToday: 0,
-          lastResetDate: new Date(),
-        },
+        data: { tenantId: created.id, ...newEmailProviderConfig() },
       });
     });
 

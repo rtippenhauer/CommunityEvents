@@ -521,12 +521,18 @@ interface EmailConfig {
         </mat-card>
       } @else {
         <mat-spinner diameter="40" />
+        <p class="loading-note">Loading email settings…</p>
       }
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
+      .loading-note {
+        color: #888;
+        font-size: 0.85rem;
+        margin-top: 8px;
+      }
       .email-admin-container {
         max-width: 900px;
         margin: 0 auto;
@@ -859,6 +865,12 @@ export class AdminEmailComponent implements OnInit {
           tmplEmailVerification: cfg.tmplEmailVerification,
           tmplPasswordReset: cfg.tmplPasswordReset,
         });
+      },
+      // Without this a failed request left `config()` null forever, and the
+      // template's else-branch is a spinner -- so the screen span indefinitely
+      // with nothing said. The same symptom the API's null response caused.
+      error: () => {
+        this.snackBar.open('Could not load email settings', 'OK', { duration: 6000 });
       },
     });
   }

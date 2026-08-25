@@ -6,6 +6,7 @@ import { EmailService } from '../src/modules/email/email.service';
 import { EmailTemplate } from '../src/modules/email/email.constants';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
 import { PrismaService } from '../src/database/prisma/prisma.service';
+import { runUnscoped } from '../src/common/tenant/tenant-store';
 import type { cities as City, email_queue as EmailQueue, notification_preferences as NotificationPreferences, notifications as Notification, push_subscriptions as PushSubscription, users as User } from '@prisma/client';
 import { EmailQueueStatus, EmailStatus, SuppressionReason, UserRole } from '../src/database/enums';
 
@@ -121,12 +122,27 @@ describe('Email/Push Dispatch (e2e)', () => {
   });
 
   describe('GET/PATCH /admin/email/config', () => {
-    it('returns an empty response immediately after a truncate, before any dispatch has run', async () => {
-      // Controller returns the raw findOne() result (null when no row exists yet);
-      // Nest/Express sends that as an empty body rather than the JSON literal
-      // "null", so the observable behavior is an empty response text.
-      const res = await request(server).get('/api/v1/admin/email/config').set('Cookie', adminCookie).expect(200);
-      expect(res.text).toBe('');
+    it('answers for a community that has never configured email', async () => {
+      // It used to return an empty body when no row existed, which the admin
+      // screen renders as a permanent spinner -- on the one screen that could
+      // have created the row. Found on stage by a community created before its
+      // config became per-community. The settings returned are real: it sends on
+      // the deployment's env credentials, against these limits, having sent
+      // nothing of its own.
+      const res = await request(server)
+        .get('/api/v1/admin/email/config')
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(res.body.brevoApiKeySet).toBe(false);
+      expect(res.body.brevoDailyLimit).toBe(300);
+      expect(res.body.brevoSentToday).toBe(0);
+      expect(res.body.webhookRegistered).toBe(false);
+      // Answering does not write. The row appears on the first save, not here.
+      const rows = await runUnscoped('assert nothing was written', async () =>
+        await prisma.email_provider_config.count(),
+      );
+      expect(rows).toBe(0);
     });
 
     it('creates the config row on the first save, and admin can update it', async () => {

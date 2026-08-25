@@ -12,6 +12,7 @@ import {
 } from '../../common/utils/service-account.util';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailProvider, EmailQueueStatus, UserStatus } from '../../database/enums';
+import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
 import { BrevoService } from './brevo.service';
 import { ResendService } from './resend.service';
 import { EmailTemplateName } from './email.constants';
@@ -287,17 +288,7 @@ export class EmailDispatcherService {
   private async getOrCreateConfig(): Promise<EmailProviderConfig> {
     const existing = await this.prisma.email_provider_config.findFirst();
     if (existing) return existing;
-    return this.prisma.email_provider_config.create({
-      data: {
-        brevoEnabled: true,
-        resendOverflowEnabled: false,
-        brevoDailyLimit: 300,
-        resendDailyLimit: 1000,
-        brevoSentToday: 0,
-        resendSentToday: 0,
-        lastResetDate: new Date(),
-      },
-    });
+    return this.prisma.email_provider_config.create({ data: newEmailProviderConfig() });
   }
 
   /**
