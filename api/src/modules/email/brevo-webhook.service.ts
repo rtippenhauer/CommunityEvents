@@ -165,8 +165,12 @@ export class BrevoWebhookService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async rotateDueTokens(): Promise<void> {
-    const due = await runUnscoped('webhook token rotation covers every tenant', () =>
-      this.prisma.email_provider_config.findMany({
+    // `async () => await`, not `() =>`. A Prisma promise is lazy: returning one
+    // unawaited builds the query inside the context and runs it outside, where
+    // there is no tenant and the extension throws. Documented in tenant-store.ts
+    // and hit here anyway -- it is only visible at runtime, and only in a cron.
+    const due = await runUnscoped('webhook token rotation covers every tenant', async () =>
+      await this.prisma.email_provider_config.findMany({
         where: {
           webhookId: { not: null },
           OR: [
@@ -193,10 +197,16 @@ export class BrevoWebhookService {
   /** Drops a replaced token once its grace window has passed. */
   @Cron(CronExpression.EVERY_HOUR)
   async clearExpiredPreviousTokens(): Promise<void> {
-    await runUnscoped('clearing replaced webhook tokens covers every tenant', () =>
-      this.prisma.email_provider_config.updateMany({
+    // Filtered on the rotation date alone. The obvious extra condition --
+    // `webhookSecretPrevious: { not: null }`, to touch only rows that have one
+    // -- is exactly what v2-7's extension refuses: the column is encrypted with
+    // a random IV, so no comparison against a stored value can match, and it
+    // throws rather than quietly updating nothing. Clearing a column that is
+    // already null costs one write per community per hour and is the honest
+    // way to express it.
+    await runUnscoped('clearing replaced webhook tokens covers every tenant', async () =>
+      await this.prisma.email_provider_config.updateMany({
         where: {
-          webhookSecretPrevious: { not: null },
           webhookRotatedAt: {
             lt: new Date(Date.now() - BrevoWebhookService.PREVIOUS_TOKEN_GRACE_MS),
           },

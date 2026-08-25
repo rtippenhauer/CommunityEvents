@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { runWithTenant } from '../src/common/tenant/tenant-store';
+import { BrevoWebhookService } from '../src/modules/email/brevo-webhook.service';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedUser } from './utils/seed';
 import { TEST_TENANT_ID } from './setup-env';
@@ -132,6 +133,38 @@ describe('Brevo webhook authentication (e2e)', () => {
       .set('Authorization', `Bearer ${PREVIOUS}`)
       .send(bounceFor('member@example.test'))
       .expect(401);
+  });
+
+  // These two run on the scheduler, which means no request and therefore no
+  // tenant in context -- and that is the whole point of calling them bare here.
+  // Both threw in production on the first hour boundary after deploying:
+  // `runUnscoped(reason, () => prisma.x.updateMany())` returns a Prisma promise
+  // unawaited, so the query was built inside the context and executed outside
+  // it. Nothing in the suite ran a cron, so nothing caught it.
+  describe('scheduled sweeps, called the way the scheduler calls them', () => {
+    it('clears a replaced token past its window without a tenant in context', async () => {
+      await configure({
+        webhookSecret: CURRENT,
+        webhookSecretPrevious: PREVIOUS,
+        webhookRotatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+      });
+
+      await app.get(BrevoWebhookService).clearExpiredPreviousTokens();
+
+      const after = await inTenant(TEST_TENANT_ID, () =>
+        prisma.email_provider_config.findFirst(),
+      );
+      expect(after!.webhookSecretPrevious).toBeNull();
+      expect(after!.webhookSecret).toBe(CURRENT);
+    });
+
+    it('looks for rotation candidates without a tenant in context', async () => {
+      // No webhook is registered, so nothing is due and Brevo is never called --
+      // but the query that failed in production still runs, which is the point.
+      await configure({ webhookSecret: CURRENT, webhookRotatedAt: new Date() });
+
+      await expect(app.get(BrevoWebhookService).rotateDueTokens()).resolves.toBeUndefined();
+    });
   });
 
   it('keeps honouring the deployment-wide secret in the query string', async () => {
