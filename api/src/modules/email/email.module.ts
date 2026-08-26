@@ -19,6 +19,9 @@ import { EmailWebhookController } from './email-webhook.controller';
     EmailDispatcherService,
     BrevoWebhookService,
   ],
-  exports: [EmailService, EmailDispatcherService, BrevoWebhookService],
+  // BrevoService is exported for the admin screen's quota cross-check, which
+  // asks Brevo what is left of the account's daily allowance. Sending still
+  // goes through EmailService.
+  exports: [EmailService, EmailDispatcherService, BrevoWebhookService, BrevoService],
 })
 export class EmailModule {}

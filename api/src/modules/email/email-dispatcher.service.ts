@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import type {
   email_provider_config as EmailProviderConfig,
@@ -13,6 +14,7 @@ import {
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailProvider, EmailQueueStatus, UserStatus } from '../../database/enums';
 import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
+import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { BrevoService } from './brevo.service';
 import { ResendService } from './resend.service';
 import { EmailTemplateName } from './email.constants';
@@ -20,15 +22,48 @@ import { EmailTemplateName } from './email.constants';
 const MAX_ATTEMPTS = 3;
 const BATCH_SIZE = 20;
 
+/**
+ * How often a community's counter is checked against the provider's own number.
+ *
+ * Not every run: the dispatcher wakes every five minutes, and an HTTP call to
+ * Brevo per community per wake would be 288 a day each to answer a question
+ * whose answer barely moves. Fifteen minutes bounds how long a drift can hide
+ * while keeping the call rare, and it is only made at all for a community that
+ * has mail waiting -- a quiet community never asks.
+ */
+const RECONCILE_EVERY_MS = 15 * 60 * 1000;
+
 @Injectable()
 export class EmailDispatcherService {
   private readonly logger = new Logger(EmailDispatcherService.name);
+
+  /**
+   * The zone the provider accounts reset their daily allowance in.
+   *
+   * Read once, here, rather than per send: it is deployment config that cannot
+   * change without a restart, and resolving it on every counter check would
+   * repeat the same validation thousands of times a day.
+   */
+  private readonly quotaTimeZone: string;
+
+  /** When each community's counter was last checked against the provider. */
+  private readonly lastReconciledAt = new Map<number, number>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly brevo: BrevoService,
     private readonly resend: ResendService,
-  ) {}
+    private readonly config: ConfigService,
+  ) {
+    const resolved = resolveQuotaTimeZone(this.config.get<string>('EMAIL_QUOTA_TIMEZONE'));
+    if (resolved.invalid) {
+      this.logger.warn(
+        `EMAIL_QUOTA_TIMEZONE="${resolved.invalid}" is not a time zone this runtime knows; ` +
+          'daily send counters will roll over at UTC midnight instead.',
+      );
+    }
+    this.quotaTimeZone = resolved.timeZone;
+  }
 
   /**
    * The scheduled entry point, which drains every tenant's queue in one pass.
@@ -84,30 +119,48 @@ export class EmailDispatcherService {
     for (const [tenantId, emails] of byTenant) {
       await runWithTenant(tenantId, async () => {
         const providerConfig = await this.getOrCreateConfig();
-        this.resetDailyCountersIfNeeded(providerConfig);
+        await this.rollOverIfDayChanged(providerConfig);
+        // After the rollover and before the sends: a counter zeroed by the
+        // boundary must not then be corrected upward from a provider number
+        // that still describes the window that just closed.
+        await this.reconcileWithProvider(providerConfig);
+
+        const brevoBefore = providerConfig.brevoSentToday;
+        const resendBefore = providerConfig.resendSentToday;
 
         let anySent = false;
         for (const email of emails) {
           anySent = (await this.sendOne(email, providerConfig)) || anySent;
         }
 
-        // Still mutated in memory across the batch and written once at the end
-        // -- one write per community per run, not per email. updateMany for the
-        // same reason as the queue writes below: nothing in this scheduled
-        // sweep is wrapped in a try/catch, so a P2025 here becomes an unhandled
-        // rejection rather than a logged failure.
-        await this.prisma.email_provider_config.updateMany({
-          where: { id: providerConfig.id },
-          data: {
-            brevoSentToday: providerConfig.brevoSentToday,
-            resendSentToday: providerConfig.resendSentToday,
-            lastResetDate: providerConfig.lastResetDate,
-            // Not a statistic. Brevo deactivates an API key after 90 days of
-            // inactivity, so this is what lets the admin screen warn a quiet
-            // community before its key stops working.
-            ...(anySent ? { lastSuccessfulSendAt: new Date() } : {}),
-          },
-        });
+        // Written as a delta, not as the absolute the batch arrived at.
+        //
+        // This was `brevoSentToday: <what we counted to>`, which was correct
+        // while the dispatcher was the only thing that ever wrote the column.
+        // It no longer is: `sendNow` counts password resets and verifications
+        // the moment they go out, from ordinary requests that can land in the
+        // middle of this batch. An absolute write would silently discard them
+        // -- and the counter losing sends is the failure that started all this.
+        //
+        // Still one write per community per run, not one per email. updateMany
+        // for the same reason as the queue writes below: nothing in this
+        // scheduled sweep is wrapped in a try/catch, so a P2025 here becomes an
+        // unhandled rejection rather than a logged failure.
+        const brevoDelta = providerConfig.brevoSentToday - brevoBefore;
+        const resendDelta = providerConfig.resendSentToday - resendBefore;
+        if (brevoDelta || resendDelta || anySent) {
+          await this.prisma.email_provider_config.updateMany({
+            where: { id: providerConfig.id },
+            data: {
+              ...(brevoDelta ? { brevoSentToday: { increment: brevoDelta } } : {}),
+              ...(resendDelta ? { resendSentToday: { increment: resendDelta } } : {}),
+              // Not a statistic. Brevo deactivates an API key after 90 days of
+              // inactivity, so this is what lets the admin screen warn a quiet
+              // community before its key stops working.
+              ...(anySent ? { lastSuccessfulSendAt: new Date() } : {}),
+            },
+          });
+        }
       });
     }
   }
@@ -292,21 +345,84 @@ export class EmailDispatcherService {
   }
 
   /**
-   * last_reset_date is a DATE column. The entity typed it as a 'YYYY-MM-DD'
-   * string so this was a string comparison; Prisma surfaces DATE as a Date at
-   * UTC midnight, so the day is compared explicitly rather than by identity —
-   * two Date objects for the same day are never ===.
+   * Zeroes the counters if the provider's sending day has turned over.
+   *
+   * This used to compare calendar days in UTC, which is a guess about when the
+   * provider's allowance resets and, for a US operator, the wrong one by four
+   * or five hours. `quotaDayStart` draws the boundary in `EMAIL_QUOTA_TIMEZONE`
+   * instead; see `quota-day.ts` for why the guess was not merely cosmetic.
+   *
+   * Persisted here rather than folded into the write at the end of the batch,
+   * because the batch's write is now a delta and a reset is not one.
+   *
+   * `lastResetDate` is set to the boundary itself rather than to now, so the
+   * column says when the window opened -- which is what the admin screen shows
+   * and what the immediate-send path compares against.
    */
-  private resetDailyCountersIfNeeded(config: EmailProviderConfig): void {
-    const today = new Date();
-    const sameDay =
-      config.lastResetDate.getUTCFullYear() === today.getUTCFullYear() &&
-      config.lastResetDate.getUTCMonth() === today.getUTCMonth() &&
-      config.lastResetDate.getUTCDate() === today.getUTCDate();
-    if (!sameDay) {
-      config.brevoSentToday = 0;
-      config.resendSentToday = 0;
-      config.lastResetDate = today;
-    }
+  private async rollOverIfDayChanged(config: EmailProviderConfig): Promise<void> {
+    const dayStart = quotaDayStart(new Date(), this.quotaTimeZone);
+    if (config.lastResetDate.getTime() >= dayStart.getTime()) return;
+
+    // The `lt` is repeated in the where clause rather than trusted from the row
+    // we read: `sendNow` performs the same rollover, and whichever of the two
+    // gets there first should be the only one that zeroes the counter.
+    await this.prisma.email_provider_config.updateMany({
+      where: { id: config.id, lastResetDate: { lt: dayStart } },
+      data: { brevoSentToday: 0, resendSentToday: 0, lastResetDate: dayStart },
+    });
+
+    config.brevoSentToday = 0;
+    config.resendSentToday = 0;
+    config.lastResetDate = dayStart;
+  }
+
+  /**
+   * Believes the provider over our own tally, when the provider says less.
+   *
+   * Our counter tallies what this deployment sent and recorded. The provider's
+   * is what the provider will actually cut off on, and the two drift -- another
+   * application on the same account, a send we failed to record, a day boundary
+   * drawn a few hours out. Asking beats modelling their clock, which is why
+   * this exists alongside the timezone setting rather than instead of it.
+   *
+   * **Only ever tightens.** A provider number that looks *more* generous than
+   * our tally is exactly what a reset on their side looks like, and trusting it
+   * would hand back an allowance we may already have spent. Erring toward
+   * under-sending delays an invite; erring the other way costs the account.
+   *
+   * Skipped unless the number is a daily allowance -- a prepaid balance is not
+   * a today number and has no daily cap to reconcile with.
+   */
+  private async reconcileWithProvider(config: EmailProviderConfig): Promise<void> {
+    const since = this.lastReconciledAt.get(config.tenantId) ?? 0;
+    if (Date.now() - since < RECONCILE_EVERY_MS) return;
+    this.lastReconciledAt.set(config.tenantId, Date.now());
+
+    const quota = await this.brevo.getAccountQuota();
+    if (!quota?.isDailyAllowance) return;
+
+    // Framed as remaining rather than as used on purpose: our configured limit
+    // is not necessarily the plan's, so `limit - remaining` means something
+    // only as a comparison against what our own counter implies is left.
+    const impliedRemaining = config.brevoDailyLimit - config.brevoSentToday;
+    if (quota.remaining >= impliedRemaining) return;
+
+    const corrected = Math.min(
+      config.brevoDailyLimit,
+      Math.max(0, config.brevoDailyLimit - quota.remaining),
+    );
+    this.logger.log(
+      `Tenant ${config.tenantId}: Brevo reports ${quota.remaining} sends left, ` +
+        `we had counted ${config.brevoSentToday} of ${config.brevoDailyLimit} used. ` +
+        `Trusting the provider and counting ${corrected}.`,
+    );
+    // An absolute write, and one of only two the column takes -- a correction
+    // is not a delta. Persisted immediately so the admin screen shows the
+    // corrected figure even on a run where nothing sends.
+    await this.prisma.email_provider_config.updateMany({
+      where: { id: config.id },
+      data: { brevoSentToday: corrected },
+    });
+    config.brevoSentToday = corrected;
   }
 }

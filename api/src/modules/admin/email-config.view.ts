@@ -113,3 +113,31 @@ export function toEmailConfigView(config: EmailProviderConfig): EmailConfigView 
     webhookRegistered: Boolean(webhookId),
   };
 }
+
+/**
+ * The sending window, and what the provider itself says about it.
+ *
+ * Deliberately a separate response from the config above, fetched separately by
+ * the screen. It makes an outbound call to Brevo, and a settings page must not
+ * be held up -- or emptied -- by a provider that is slow or down.
+ *
+ * The two numbers are different kinds of thing and are shown as such: ours is
+ * what this deployment recorded sending, theirs is what they will actually cut
+ * off on. They agreeing is the point; them disagreeing is the thing worth
+ * seeing.
+ */
+export interface EmailQuotaWindowView {
+  /** IANA zone the daily allowance is counted in (`EMAIL_QUOTA_TIMEZONE`). */
+  readonly timeZone: string;
+  /** When the current window opened. */
+  readonly windowStartedAt: string;
+  /** When it closes and the counters go back to zero. */
+  readonly windowEndsAt: string;
+  /**
+   * Brevo's own figure, or null when there is no key, the call failed, or the
+   * account is on a plan whose credits are not a daily allowance.
+   */
+  readonly providerRemaining: number | null;
+  /** Brevo's plan naming, for the cases where the number is not comparable. */
+  readonly providerPlan: string | null;
+}

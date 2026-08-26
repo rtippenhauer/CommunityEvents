@@ -188,6 +188,16 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
       'all, and a community cannot accurately describe processing it does not ' +
       'control. Blank falls back to the community\'s own name.',
   },
+  EMAIL_QUOTA_TIMEZONE: {
+    cls: 'deployment',
+    note:
+      'The zone the email provider accounts reset their daily allowance in. ' +
+      'Deployment-wide rather than per-community because it describes the ' +
+      'operator\'s provider accounts, not a community: every community here is ' +
+      'administered by the same operator, and a community admin has no way to ' +
+      'know another account\'s billing schedule. Defaults to UTC, which is what ' +
+      'the counters did before it existed.',
+  },
   JWT_EXPIRES_IN: {
     cls: 'deployment',
     note:

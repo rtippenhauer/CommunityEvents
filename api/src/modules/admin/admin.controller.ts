@@ -11,11 +11,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { AdminService, AuditLogFilter } from './admin.service';
 import { EmailService } from '../email/email.service';
 import { EmailDispatcherService } from '../email/email-dispatcher.service';
 import { BrevoWebhookService } from '../email/brevo-webhook.service';
+import { BrevoService } from '../email/brevo.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -30,7 +32,9 @@ import {
   effectiveEmailConfigView,
   toEmailConfigView,
   type EmailConfigView,
+  type EmailQuotaWindowView,
 } from './email-config.view';
+import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
 
@@ -42,7 +46,9 @@ export class AdminController {
     private readonly emailService: EmailService,
     private readonly emailDispatcher: EmailDispatcherService,
     private readonly brevoWebhook: BrevoWebhookService,
+    private readonly brevo: BrevoService,
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get('users')
@@ -185,6 +191,40 @@ export class AdminController {
     // SQL and the app_config upserts use it: it throws where there is no tenant
     // instead of inventing one.
     return effectiveEmailConfigView(config, requireTenantId('email config read'));
+  }
+
+  /**
+   * When this community's sending day starts and ends, and what Brevo says is
+   * left of it.
+   *
+   * Separate from the config endpoint because it calls out to Brevo. The screen
+   * renders without it and fills it in when it arrives, so an unreachable
+   * provider costs a line of the page rather than the page.
+   */
+  @Get('email/quota-window')
+  @Roles(UserRole.ADMIN)
+  async getEmailQuotaWindow(): Promise<EmailQuotaWindowView> {
+    const { timeZone } = resolveQuotaTimeZone(this.config.get<string>('EMAIL_QUOTA_TIMEZONE'));
+    const windowStartedAt = quotaDayStart(new Date(), timeZone);
+    // Twenty-six hours past the start always lands inside the next day, which
+    // a flat +24h does not: a spring-forward day is 23 hours long and an
+    // autumn one 25.
+    const windowEndsAt = quotaDayStart(
+      new Date(windowStartedAt.getTime() + 26 * 60 * 60 * 1000),
+      timeZone,
+    );
+
+    const quota = await this.brevo.getAccountQuota();
+    return {
+      timeZone,
+      windowStartedAt: windowStartedAt.toISOString(),
+      windowEndsAt: windowEndsAt.toISOString(),
+      // Only a daily allowance is comparable with our own counter. A prepaid
+      // balance is reported as a plan name and no number rather than as a
+      // number that means something else.
+      providerRemaining: quota?.isDailyAllowance ? quota.remaining : null,
+      providerPlan: quota?.planType ?? null,
+    };
   }
 
   @Patch('email/config')

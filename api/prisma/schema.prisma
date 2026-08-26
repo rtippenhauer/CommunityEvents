@@ -296,7 +296,13 @@ model email_provider_config {
   tmplPasswordReset         Int?     @map("tmpl_password_reset") @db.UnsignedInt
   tmplProviderDisconnected  Int?     @map("tmpl_provider_disconnected") @db.UnsignedInt
   tmplAccountDeleted        Int?     @map("tmpl_account_deleted") @db.UnsignedInt
-  lastResetDate             DateTime @map("last_reset_date") @db.Date
+  /// When the daily counters beside it were last zeroed -- an instant, not a
+  /// calendar day. It was a DATE column, which forced the rollover test to be a
+  /// UTC day comparison and so drew the deployment's sending day in a zone the
+  /// provider does not use. See `quota-day.ts`: the boundary is now
+  /// `EMAIL_QUOTA_TIMEZONE`'s midnight, which the database can compare directly
+  /// against this.
+  lastResetDate             DateTime @map("last_reset_date") @db.DateTime(3)
   updatedAt                 DateTime @default(now()) @map("updated_at") @db.DateTime(0)
   /// Authenticates Brevo's deliverability callbacks for THIS community's Brevo
   /// account. Encrypted like the keys beside it, so it cannot be looked up by

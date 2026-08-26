@@ -52,6 +52,16 @@ type EmailConfigPatch = Partial<Omit<EmailConfig, 'brevoApiKeySet' | 'resendApiK
   resendApiKey?: string | null;
 };
 
+/** GET /admin/email/quota-window -- the sending day, and what Brevo says. */
+interface EmailQuotaWindow {
+  timeZone: string;
+  windowStartedAt: string;
+  windowEndsAt: string;
+  /** Null when there is no key, Brevo did not answer, or the plan is prepaid. */
+  providerRemaining: number | null;
+  providerPlan: string | null;
+}
+
 interface EmailConfig {
   id: number;
   brevoEnabled: boolean;
@@ -160,11 +170,20 @@ interface EmailConfig {
                   />
                 </div>
                 <div class="provider-stat">
-                  <span>Sent today</span>
+                  <span>We have counted</span>
                   <strong>{{ cfg.brevoSentToday }} / {{ cfg.brevoDailyLimit }}</strong>
                 </div>
+                @if (quota(); as q) {
+                  @if (q.providerRemaining !== null) {
+                    <div class="provider-stat">
+                      <span>Brevo says left</span>
+                      <strong>{{ q.providerRemaining }}</strong>
+                    </div>
+                  }
+                }
                 <div class="provider-stat">
-                  <span>Reset date</span> <strong>{{ cfg.lastResetDate }}</strong>
+                  <span>Counting since</span>
+                  <strong>{{ cfg.lastResetDate | date: 'MMM d, h:mm a' }}</strong>
                 </div>
               </div>
               <div class="provider-block">
@@ -181,6 +200,20 @@ interface EmailConfig {
                 </div>
               </div>
             </div>
+            @if (quota(); as q) {
+              <p class="counter-note">
+                The sending day rolls over at midnight {{ q.timeZone }} —
+                {{ q.windowEndsAt | date: 'h:mm a' }} where you are — and both counts start
+                again then.
+                @if (q.providerRemaining !== null) {
+                  Brevo's own figure is the one that decides whether a message goes out; when
+                  the two disagree the deployment believes Brevo.
+                } @else if (q.providerPlan) {
+                  Brevo reports a {{ q.providerPlan }} balance rather than a daily allowance,
+                  so there is no provider number to compare against.
+                }
+              </p>
+            }
           </mat-card-content>
         </mat-card>
 
@@ -528,6 +561,12 @@ interface EmailConfig {
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
+      .counter-note {
+        margin: 10px 0 0;
+        color: #777;
+        font-size: 0.78rem;
+        line-height: 1.4;
+      }
       .loading-note {
         color: #888;
         font-size: 0.85rem;
@@ -749,6 +788,21 @@ export class AdminEmailComponent implements OnInit {
   readonly registeringWebhook = signal(false);
 
   /**
+   * The sending window, and Brevo's own count, once they arrive.
+   *
+   * Null until then, and null forever if Brevo cannot be reached -- which is
+   * why it is a second request rather than part of the config: the settings on
+   * this screen must render whether or not the provider answers, and this one
+   * makes an outbound call.
+   *
+   * Worth showing at all because the boundary is genuinely surprising. It was
+   * UTC midnight, which for a US operator is the early evening, so two sends a
+   * few hours apart could leave the card reading 1 of 300 twice over. Naming
+   * the zone and the local time it falls at is what makes the number readable.
+   */
+  readonly quota = signal<EmailQuotaWindow | null>(null);
+
+  /**
    * Whether this community is close to Brevo's inactivity cutoff.
    *
    * Sixty days, not ninety: a warning that arrives on the day the key dies is
@@ -835,6 +889,22 @@ export class AdminEmailComponent implements OnInit {
   ngOnInit(): void {
     this.loadConfig();
     this.loadQueue();
+    this.loadQuotaWindow();
+  }
+
+  /**
+   * Asks the API what the sending window is and what Brevo says is left of it.
+   *
+   * Failure is silent on purpose -- no snackbar. Everything this fills in is a
+   * cross-check on numbers already shown, so a provider that does not answer
+   * should cost the reader a line of explanation, not an error they cannot act
+   * on and did not ask for.
+   */
+  loadQuotaWindow(): void {
+    this.http.get<EmailQuotaWindow>('/api/v1/admin/email/quota-window').subscribe({
+      next: (quota) => this.quota.set(quota),
+      error: () => this.quota.set(null),
+    });
   }
 
   loadConfig(): void {

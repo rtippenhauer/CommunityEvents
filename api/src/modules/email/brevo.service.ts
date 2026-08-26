@@ -10,6 +10,20 @@ export interface EmailAttachment {
   contentType?: string;
 }
 
+/** Brevo's own view of what is left of an account's allowance. */
+export interface BrevoAccountQuota {
+  /** Credits Brevo reports remaining. */
+  remaining: number;
+  /** `free`, `payAsYouGo`, `subscription` -- Brevo's own plan naming. */
+  planType: string;
+  /**
+   * Whether `remaining` is a DAILY allowance, and so comparable with
+   * `brevoSentToday`. True only for a free plan; a prepaid balance is not a
+   * daily number and reconciling against it would be nonsense.
+   */
+  isDailyAllowance: boolean;
+}
+
 export interface BrevoSendPayload {
   toEmail: string;
   toName?: string | null;
@@ -92,6 +106,59 @@ export class BrevoService {
   async isConfigured(): Promise<boolean> {
     const { apiKey } = await this.getEffectiveConfig();
     return apiKey.length > 0;
+  }
+
+  /**
+   * What Brevo itself says is left of this community's daily allowance.
+   *
+   * The counters in `email_provider_config` are our own tally, and a tally can
+   * drift from the thing it is tallying: mail sent from another application on
+   * the same Brevo account, a send this deployment made and failed to record, a
+   * day boundary drawn in the wrong zone. This is the authoritative number, and
+   * asking for it beats modelling the provider's clock.
+   *
+   * `plan[]` is a list, and only some of it is a daily allowance. A free plan's
+   * `sendLimit` credits are the sends remaining today -- it resets daily and
+   * does not roll over. A pay-as-you-go or subscription balance is prepaid
+   * credit with no daily cap, and treating that as "remaining today" would put
+   * a five-figure number where a three-figure one belongs. So the plan type
+   * travels with the number and the caller decides: only `isDailyAllowance` may
+   * be reconciled against `brevoSentToday`.
+   *
+   * Never throws. This is a cross-check, and a provider outage must not take
+   * down the screen showing it or the dispatcher consulting it.
+   */
+  async getAccountQuota(): Promise<BrevoAccountQuota | null> {
+    const { apiKey } = await this.getEffectiveConfig();
+    if (!apiKey) return null;
+
+    try {
+      const response = await fetch('https://api.brevo.com/v3/account', {
+        headers: { 'api-key': apiKey, Accept: 'application/json' },
+      });
+      if (!response.ok) {
+        this.logger.warn(`Brevo account lookup failed: ${response.status}`);
+        return null;
+      }
+
+      const data = (await response.json()) as {
+        plan?: { type?: string; creditsType?: string; credits?: number }[];
+      };
+      // SMS credits share the `sendLimit` type and are not email at all.
+      const emailPlan = data.plan?.find(
+        (entry) => entry.creditsType === 'sendLimit' && entry.type !== 'sms',
+      );
+      if (!emailPlan || typeof emailPlan.credits !== 'number') return null;
+
+      return {
+        remaining: Math.max(0, Math.floor(emailPlan.credits)),
+        planType: emailPlan.type ?? 'unknown',
+        isDailyAllowance: emailPlan.type === 'free',
+      };
+    } catch (err) {
+      this.logger.warn(`Brevo account lookup failed: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   async send(payload: BrevoSendPayload): Promise<void> {

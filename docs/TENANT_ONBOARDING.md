@@ -115,12 +115,42 @@ deployments with separate databases, and three things in Brevo are account-wide:
    second is what gets a sending domain blocked.
 2. **The daily quota.** Each deployment counts its own sends against its own
    limit, while Brevo enforces one shared limit. Stage testing quietly eats
-   production's allowance, and the Resend overflow will not trigger, because
-   each deployment's counter looks healthy.
+   production's allowance. The admin screen now shows Brevo's own figure beside
+   ours, so a shared account is at least visible as two numbers that do not
+   agree — but the Resend overflow still keys off the local counter, and a
+   deployment that has sent nothing itself has no reason to overflow.
 3. **The blocklist.** A stage test that hard-bounces a fake address suppresses
    that address for production too.
 
 Use a second Brevo account for stage, with a different login email.
+
+### The daily sending window
+
+Brevo's free plan allows 300 sends a day, resets on its own schedule and does
+not roll over. The deployment keeps its own count per community so it can stop
+before Brevo does — and for that count to mean anything, the two have to agree
+on when the day starts.
+
+Set **`EMAIL_QUOTA_TIMEZONE`** to the zone your Brevo accounts reset in
+(`America/New_York`, say). It defaults to UTC, which is what the counters used
+before the setting existed and is almost certainly wrong for a US operator: the
+sending day ends at 8pm Eastern, so mail sent that evening is counted against
+tomorrow while Brevo is still counting it against today. The consequence is not
+a confusing screen. It is that for those four hours the deployment believes it
+has a fresh 300 sends and will happily spend an allowance that is already gone.
+
+It is deployment-wide rather than per-community on purpose: it describes your
+provider accounts, and a community admin has no way to know another account's
+billing schedule.
+
+As a backstop, **Admin → Email** shows what Brevo itself reports is left, beside
+our own count, and the dispatcher checks the two every fifteen minutes for a
+community with mail waiting. When they disagree the provider's number wins — it
+is the one that decides whether a message actually goes out. That check only
+applies to a free plan, whose credits are a daily allowance; a prepaid balance
+is reported as a plan name and no number, because it is not a "today" figure and
+comparing it to a daily counter would be meaningless.
+
 
 > **Check this before committing to that split.** Brevo publishes DKIM under a
 > fixed selector, so two accounts authenticating the *same* domain may collide

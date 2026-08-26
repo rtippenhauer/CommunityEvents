@@ -121,6 +121,40 @@ describe('Email/Push Dispatch (e2e)', () => {
     });
   });
 
+  describe('GET /admin/email/quota-window', () => {
+    it('reports the sending window, and no provider figure without a key', async () => {
+      // The window is what the daily counters are counted against, and it was
+      // silently UTC -- which for a US operator ends the sending day in the
+      // early evening. Two invites four hours apart landed either side of it on
+      // stage and the screen read 1 of 300 on both communities.
+      const res = await request(server)
+        .get('/api/v1/admin/email/quota-window')
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(res.body.timeZone).toBe('UTC');
+      const started = new Date(res.body.windowStartedAt);
+      const ends = new Date(res.body.windowEndsAt);
+      expect(started.toISOString()).toMatch(/T00:00:00\.000Z$/);
+      expect(ends.getTime() - started.getTime()).toBe(24 * 60 * 60 * 1000);
+      expect(Date.now()).toBeGreaterThanOrEqual(started.getTime());
+      expect(Date.now()).toBeLessThan(ends.getTime());
+
+      // No key configured, so there is nobody to ask -- and the endpoint says
+      // so with a null rather than inventing a number.
+      expect(res.body.providerRemaining).toBeNull();
+      expect(res.body.providerPlan).toBeNull();
+    });
+
+    it('is admin-only', async () => {
+      await request(server)
+        .get('/api/v1/admin/email/quota-window')
+        .set('Cookie', moderatorCookie)
+        .expect(403);
+      await request(server).get('/api/v1/admin/email/quota-window').expect(401);
+    });
+  });
+
   describe('GET/PATCH /admin/email/config', () => {
     it('answers for a community that has never configured email', async () => {
       // It used to return an empty body when no row existed, which the admin
