@@ -179,6 +179,52 @@ describe('Email/Push Dispatch (e2e)', () => {
       expect(rows).toBe(0);
     });
 
+    it('reports a lapsed window as reset, without writing', async () => {
+      // Found on stage. The stored counters only advance when something sends,
+      // because that is the only moment there is reason to write them -- so a
+      // community that has sent nothing since the day before last still held
+      // that day's window and that day's count, and the screen reported both as
+      // current. It read "counting since Aug 25, 8:00 PM" at 5am on the 27th.
+      //
+      // The stale date is merely confusing. The stale count is not: it reports
+      // an allowance as spent that the provider has since reset, which is the
+      // inverse of the error the counter exists to prevent.
+      const stale = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      await request(server)
+        .patch('/api/v1/admin/email/config')
+        .set('Cookie', adminCookie)
+        .send({ brevoEnabled: true })
+        .expect(200);
+      await runUnscoped('age the window past its boundary', async () =>
+        await prisma.email_provider_config.updateMany({
+          data: { brevoSentToday: 7, resendSentToday: 3, lastResetDate: stale },
+        }),
+      );
+
+      const res = await request(server)
+        .get('/api/v1/admin/email/config')
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(res.body.brevoSentToday).toBe(0);
+      expect(res.body.resendSentToday).toBe(0);
+      // And it agrees with the window the quota endpoint reports, which is what
+      // the screen prints beside it -- the two disagreeing is the bug.
+      const windowRes = await request(server)
+        .get('/api/v1/admin/email/quota-window')
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(new Date(res.body.lastResetDate).toISOString()).toBe(windowRes.body.windowStartedAt);
+
+      // Derived, not written. A GET must not write -- the same rule that keeps
+      // this endpoint from creating the row it answers for.
+      const stored = await runUnscoped('assert the row is untouched', async () =>
+        await prisma.email_provider_config.findFirst(),
+      );
+      expect(stored!.brevoSentToday).toBe(7);
+      expect(stored!.lastResetDate.getTime()).toBe(stale.getTime());
+    });
+
     it('creates the config row on the first save, and admin can update it', async () => {
       // v2-9 changed what creates it. The row used to be a deployment-wide
       // singleton written by seed.ts, so it existed for everybody and the

@@ -1,5 +1,6 @@
 import type { email_provider_config as EmailProviderConfig } from '@prisma/client';
 import { EMAIL_PROVIDER_DEFAULTS } from '../../common/email/email-config-defaults';
+import { quotaDayStart } from '../../common/email/quota-day';
 
 /**
  * The email provider config as the admin screen is allowed to see it (v2-7).
@@ -48,7 +49,7 @@ export type EmailConfigView = Omit<
  * `id: 0` says "not persisted yet". Nothing keys off it, and a real row's id is
  * never 0.
  */
-function unconfigured(tenantId: number): EmailProviderConfig {
+function unconfigured(tenantId: number, timeZone: string): EmailProviderConfig {
   return {
     id: 0,
     tenantId,
@@ -72,7 +73,9 @@ function unconfigured(tenantId: number): EmailProviderConfig {
     tmplPasswordReset: null,
     tmplProviderDisconnected: null,
     tmplAccountDeleted: null,
-    lastResetDate: new Date(),
+    // The window it would be counting in, not the instant it was asked. A
+    // community with no row has sent nothing all window, not since now.
+    lastResetDate: quotaDayStart(new Date(), timeZone),
     updatedAt: new Date(),
     webhookSecret: null,
     webhookSecretPrevious: null,
@@ -84,12 +87,50 @@ function unconfigured(tenantId: number): EmailProviderConfig {
   };
 }
 
+/**
+ * The row as it is true *now*, with a lapsed sending window rolled forward.
+ *
+ * The stored counters are a ledger: they only advance when something sends,
+ * because that is the only moment the deployment has reason to write them. So a
+ * community that has sent nothing since yesterday still holds yesterday's
+ * window and yesterday's count, and reading the row straight out reports both
+ * as though they were current.
+ *
+ * That is not cosmetic. The date being wrong is merely confusing -- it showed a
+ * window that opened two days ago -- but the count beside it is an allowance
+ * reported as spent when the provider has since reset it, which is the opposite
+ * of the error this whole counter exists to prevent.
+ *
+ * Derived rather than written, because **a GET must not write**: the rule this
+ * screen already follows for creating the row, and for the same reason. The
+ * dispatcher and `sendNow` still perform the real, persisted rollover when they
+ * next act; until then nothing has been sent in this window, and reporting zero
+ * is simply true.
+ */
+export function rollForwardWindow(
+  config: EmailProviderConfig,
+  timeZone: string,
+): EmailProviderConfig {
+  const windowStart = quotaDayStart(new Date(), timeZone);
+  if (config.lastResetDate.getTime() >= windowStart.getTime()) return config;
+
+  return {
+    ...config,
+    brevoSentToday: 0,
+    resendSentToday: 0,
+    lastResetDate: windowStart,
+  };
+}
+
 /** This community's effective email settings, whether or not a row exists. */
 export function effectiveEmailConfigView(
   config: EmailProviderConfig | null,
   tenantId: number,
+  timeZone: string,
 ): EmailConfigView {
-  return toEmailConfigView(config ?? unconfigured(tenantId));
+  return toEmailConfigView(
+    config ? rollForwardWindow(config, timeZone) : unconfigured(tenantId, timeZone),
+  );
 }
 
 export function toEmailConfigView(config: EmailProviderConfig): EmailConfigView {

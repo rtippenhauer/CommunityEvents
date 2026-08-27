@@ -30,6 +30,7 @@ import { requireTenantId } from '../../common/tenant/tenant-store';
 import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
 import {
   effectiveEmailConfigView,
+  rollForwardWindow,
   toEmailConfigView,
   type EmailConfigView,
   type EmailQuotaWindowView,
@@ -190,7 +191,11 @@ export class AdminController {
     // requireTenantId rather than the request object, for the same reason raw
     // SQL and the app_config upserts use it: it throws where there is no tenant
     // instead of inventing one.
-    return effectiveEmailConfigView(config, requireTenantId('email config read'));
+    return effectiveEmailConfigView(
+      config,
+      requireTenantId('email config read'),
+      this.quotaTimeZone(),
+    );
   }
 
   /**
@@ -242,7 +247,7 @@ export class AdminController {
       const created = await this.prisma.email_provider_config.create({
         data: { ...newEmailProviderConfig(), ...body },
       });
-      return toEmailConfigView(created);
+      return toEmailConfigView(rollForwardWindow(created, this.quotaTimeZone()));
     }
     // Patch from the DTO rather than mutating the loaded row and saving it
     // back, so only the fields the request actually sent are written. That is
@@ -264,10 +269,19 @@ export class AdminController {
     if (keyChanged) {
       await this.brevoWebhook.register({ newToken: true });
       const refreshed = await this.prisma.email_provider_config.findFirst();
-      if (refreshed) return toEmailConfigView(refreshed);
+      if (refreshed) return toEmailConfigView(rollForwardWindow(refreshed, this.quotaTimeZone()));
     }
 
-    return toEmailConfigView(updated);
+    return toEmailConfigView(rollForwardWindow(updated, this.quotaTimeZone()));
+  }
+
+  /**
+   * The configured quota zone. Resolved per call rather than cached in a field
+   * because this controller is request-scoped in neither direction and the
+   * lookup is a string compare against a validated name -- see quota-day.ts.
+   */
+  private quotaTimeZone(): string {
+    return resolveQuotaTimeZone(this.config.get<string>('EMAIL_QUOTA_TIMEZONE')).timeZone;
   }
 
   /**
