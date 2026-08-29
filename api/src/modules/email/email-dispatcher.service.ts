@@ -23,15 +23,17 @@ const MAX_ATTEMPTS = 3;
 const BATCH_SIZE = 20;
 
 /**
- * How often a community's counter is checked against the provider's own number.
+ * What is left of the shared account allowance, decremented as a batch spends
+ * it.
  *
- * Not every run: the dispatcher wakes every five minutes, and an HTTP call to
- * Brevo per community per wake would be 288 a day each to answer a question
- * whose answer barely moves. Fifteen minutes bounds how long a drift can hide
- * while keeping the call rare, and it is only made at all for a community that
- * has mail waiting -- a quiet community never asks.
+ * `null` means there is no daily cap to hold anything against -- no key, Brevo
+ * unreachable, or a prepaid plan whose balance is not a daily figure. That is
+ * deliberately permissive: an unknown budget must not stop a deployment
+ * sending, because the local per-community limit is still in force underneath.
  */
-const RECONCILE_EVERY_MS = 15 * 60 * 1000;
+interface AccountRoom {
+  remaining: number | null;
+}
 
 @Injectable()
 export class EmailDispatcherService {
@@ -45,9 +47,6 @@ export class EmailDispatcherService {
    * repeat the same validation thousands of times a day.
    */
   private readonly quotaTimeZone: string;
-
-  /** When each community's counter was last checked against the provider. */
-  private readonly lastReconciledAt = new Map<number, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -120,17 +119,21 @@ export class EmailDispatcherService {
       await runWithTenant(tenantId, async () => {
         const providerConfig = await this.getOrCreateConfig();
         await this.rollOverIfDayChanged(providerConfig);
-        // After the rollover and before the sends: a counter zeroed by the
-        // boundary must not then be corrected upward from a provider number
-        // that still describes the window that just closed.
-        await this.reconcileWithProvider(providerConfig);
+
+        // Before the batch, because the decision each send makes is only as
+        // good as this number -- and once per batch rather than once per
+        // message, which is the same freshness for a twentieth of the calls.
+        const quota = await this.brevo.getAccountQuota();
+        const room: AccountRoom = {
+          remaining: quota?.isDailyAllowance ? quota.remaining : null,
+        };
 
         const brevoBefore = providerConfig.brevoSentToday;
         const resendBefore = providerConfig.resendSentToday;
 
         let anySent = false;
         for (const email of emails) {
-          anySent = (await this.sendOne(email, providerConfig)) || anySent;
+          anySent = (await this.sendOne(email, providerConfig, room)) || anySent;
         }
 
         // Written as a delta, not as the absolute the batch arrived at.
@@ -161,6 +164,11 @@ export class EmailDispatcherService {
             },
           });
         }
+
+        // After the batch, the number we hold is a batch out of date. Dropped
+        // rather than re-fetched: the next caller that needs it will fetch it,
+        // and on a quiet deployment that is a page load rather than a cron.
+        if (brevoDelta) await this.brevo.invalidateAccountQuota();
       });
     }
   }
@@ -256,6 +264,7 @@ export class EmailDispatcherService {
   private async sendOne(
     email: EmailQueueRow,
     providerConfig: EmailProviderConfig,
+    room: AccountRoom,
   ): Promise<boolean> {
     // Collected rather than mutated-and-saved: Prisma writes an explicit patch,
     // so the fields that change are accumulated and written once at the end,
@@ -265,10 +274,21 @@ export class EmailDispatcherService {
       lastAttemptAt: new Date(),
     };
 
+    // Two independent budgets, and both have to allow the send.
+    //
+    // The per-community limit says how much of the deployment's sending this
+    // community may account for. The account allowance says how much there
+    // actually is -- and it is shared, because a community with no key of its
+    // own sends on the deployment's. Two communities each under their own limit
+    // of 300 will spend 350 of one 300/day account between them and be cut off
+    // having never exceeded what either believed was its budget. Only the
+    // account number can see that coming.
+    const accountHasRoom = room.remaining === null || room.remaining > 0;
     const useBrevo =
       providerConfig.brevoEnabled &&
       (await this.brevo.isConfigured()) &&
-      providerConfig.brevoSentToday < providerConfig.brevoDailyLimit;
+      providerConfig.brevoSentToday < providerConfig.brevoDailyLimit &&
+      accountHasRoom;
 
     const useResend =
       !useBrevo &&
@@ -278,7 +298,12 @@ export class EmailDispatcherService {
 
     if (!useBrevo && !useResend) {
       patch.status = EmailQueueStatus.BLOCKED;
-      patch.errorMessage = 'No provider available or daily limit reached';
+      // Named separately, because the two cases need different responses from
+      // an operator: one is a setting on this screen, the other is an account
+      // that is out of allowance until tomorrow no matter what is configured.
+      patch.errorMessage = accountHasRoom
+        ? 'No provider available or daily limit reached'
+        : "Brevo account's daily allowance is spent";
       // updateMany, not update: this row was read at the top of the sweep and
       // may be gone by now -- cancelled by an admin, or removed by a retention
       // pass. TypeORM's update() reported affected: 0; Prisma's update() throws
@@ -301,6 +326,10 @@ export class EmailDispatcherService {
         });
         patch.provider = EmailProvider.BREVO;
         providerConfig.brevoSentToday += 1;
+        // Spent from the shared allowance too, so the rest of this batch sees
+        // it. The stored counter stays what this community sent; this is what
+        // the account has left, and they are no longer the same question.
+        if (room.remaining !== null) room.remaining -= 1;
       } else {
         await this.resend.send({
           toEmail: email.toEmail,
@@ -376,53 +405,4 @@ export class EmailDispatcherService {
     config.lastResetDate = dayStart;
   }
 
-  /**
-   * Believes the provider over our own tally, when the provider says less.
-   *
-   * Our counter tallies what this deployment sent and recorded. The provider's
-   * is what the provider will actually cut off on, and the two drift -- another
-   * application on the same account, a send we failed to record, a day boundary
-   * drawn a few hours out. Asking beats modelling their clock, which is why
-   * this exists alongside the timezone setting rather than instead of it.
-   *
-   * **Only ever tightens.** A provider number that looks *more* generous than
-   * our tally is exactly what a reset on their side looks like, and trusting it
-   * would hand back an allowance we may already have spent. Erring toward
-   * under-sending delays an invite; erring the other way costs the account.
-   *
-   * Skipped unless the number is a daily allowance -- a prepaid balance is not
-   * a today number and has no daily cap to reconcile with.
-   */
-  private async reconcileWithProvider(config: EmailProviderConfig): Promise<void> {
-    const since = this.lastReconciledAt.get(config.tenantId) ?? 0;
-    if (Date.now() - since < RECONCILE_EVERY_MS) return;
-    this.lastReconciledAt.set(config.tenantId, Date.now());
-
-    const quota = await this.brevo.getAccountQuota();
-    if (!quota?.isDailyAllowance) return;
-
-    // Framed as remaining rather than as used on purpose: our configured limit
-    // is not necessarily the plan's, so `limit - remaining` means something
-    // only as a comparison against what our own counter implies is left.
-    const impliedRemaining = config.brevoDailyLimit - config.brevoSentToday;
-    if (quota.remaining >= impliedRemaining) return;
-
-    const corrected = Math.min(
-      config.brevoDailyLimit,
-      Math.max(0, config.brevoDailyLimit - quota.remaining),
-    );
-    this.logger.log(
-      `Tenant ${config.tenantId}: Brevo reports ${quota.remaining} sends left, ` +
-        `we had counted ${config.brevoSentToday} of ${config.brevoDailyLimit} used. ` +
-        `Trusting the provider and counting ${corrected}.`,
-    );
-    // An absolute write, and one of only two the column takes -- a correction
-    // is not a delta. Persisted immediately so the admin screen shows the
-    // corrected figure even on a run where nothing sends.
-    await this.prisma.email_provider_config.updateMany({
-      where: { id: config.id },
-      data: { brevoSentToday: corrected },
-    });
-    config.brevoSentToday = corrected;
-  }
 }

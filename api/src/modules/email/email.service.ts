@@ -211,6 +211,12 @@ export class EmailService {
         attachments: dto.attachments,
       });
       await this.countImmediateSend();
+      // The account allowance we hold is now one send out of date. Dropping it
+      // rather than re-reading it is what keeps this off the critical path: a
+      // password reset is something a person is waiting on, and clearing a map
+      // entry costs nothing where another call to Brevo would have tripled the
+      // time this endpoint takes. Whoever asks next pays for the fresh number.
+      await this.brevo.invalidateAccountQuota();
     } catch (err) {
       this.logger.warn(`Immediate send failed for ${dto.toEmail}, falling back to queue: ${(err as Error).message}`);
       await this.queue({ ...dto, bypassSuppression: true });

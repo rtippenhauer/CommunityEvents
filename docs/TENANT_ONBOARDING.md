@@ -113,16 +113,57 @@ deployments with separate databases, and three things in Brevo are account-wide:
    — so either stage events land in production's database and mark a real
    member's address as bounced, or production's bounces never arrive at all. The
    second is what gets a sending domain blocked.
-2. **The daily quota.** Each deployment counts its own sends against its own
-   limit, while Brevo enforces one shared limit. Stage testing quietly eats
-   production's allowance. The admin screen now shows Brevo's own figure beside
-   ours, so a shared account is at least visible as two numbers that do not
-   agree — but the Resend overflow still keys off the local counter, and a
-   deployment that has sent nothing itself has no reason to overflow.
+2. **The daily quota.** Brevo enforces one limit per account, and a deployment
+   counts its own sends. Stage testing quietly eats production's allowance, and
+   the deployment reading its own counter cannot see it happening. The account
+   allowance is now read from Brevo and is what actually gates sending (see
+   "Communities sharing one account"), which makes a shared account safe rather
+   than merely visible — but it makes stage and production throttle each other,
+   which is its own reason to keep them apart.
 3. **The blocklist.** A stage test that hard-bounces a fake address suppresses
    that address for production too.
 
 Use a second Brevo account for stage, with a different login email.
+
+### Communities sharing one account
+
+A community that has not set its own API key sends on the deployment's
+`BREVO_API_KEY`. That is the default, so several communities routinely share one
+Brevo account — and the daily allowance they are spending is **one allowance,
+not one each**.
+
+This is not something a per-community counter can see. Two communities on a
+300/day account, each counting its own sends against its own limit of 300, will
+send 350 between them and be cut off by Brevo having never once exceeded what
+either believed was its budget.
+
+So there are two numbers on **Admin → Email**, and they answer different
+questions:
+
+- **This community sent** — attribution. What this community is responsible
+  for, counted locally, never overwritten by the provider.
+- **Account has left** — budget. Read from Brevo, shared by every community on
+  that key, and the number that decides whether a message goes out.
+
+Both have to allow a send. A community can be well under its own limit and still
+be stopped because the account is spent, which is correct: there is nothing left
+to send with. Queue entries blocked that way say so ("Brevo account's daily
+allowance is spent") rather than blaming a local setting an operator would then
+go and change to no effect.
+
+Two API keys on the same Brevo account resolve to the same allowance and stop at
+the same point. They are cached separately, so it costs one extra call and no
+correctness.
+
+The figure is refreshed where it matters rather than on a timer: before a queue
+batch, after any send, and whenever the admin screen loads. **Send Now refreshes
+it even when the queue is empty**, which makes the button a way to ask "where are
+we at" as well as a way to flush. A short floor on the cache (20 seconds) keeps a
+burst of those from becoming a burst of calls to Brevo.
+
+On a prepaid plan Brevo reports a balance rather than a daily allowance. There is
+then no daily cap to hold anything against, so the account guard does not apply
+and the per-community limit is the only one in force.
 
 ### The daily sending window
 

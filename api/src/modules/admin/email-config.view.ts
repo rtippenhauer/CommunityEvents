@@ -181,4 +181,12 @@ export interface EmailQuotaWindowView {
   readonly providerRemaining: number | null;
   /** Brevo's plan naming, for the cases where the number is not comparable. */
   readonly providerPlan: string | null;
+  /**
+   * Brevo's account id. The allowance belongs to the account, not to this
+   * community, and two communities sending on the same key are spending the
+   * same number -- which is worth being able to see rather than infer.
+   */
+  readonly providerAccountId: string | null;
+  /** When the figure was read, since it is cached rather than live per call. */
+  readonly providerCheckedAt: string | null;
 }

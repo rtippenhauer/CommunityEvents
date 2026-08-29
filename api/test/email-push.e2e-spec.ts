@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
 import { EmailService } from '../src/modules/email/email.service';
+import { BrevoService } from '../src/modules/email/brevo.service';
 import { EmailTemplate } from '../src/modules/email/email.constants';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
 import { PrismaService } from '../src/database/prisma/prisma.service';
@@ -110,6 +111,99 @@ describe('Email/Push Dispatch (e2e)', () => {
       const updated = await prisma.email_queue.findFirst({ where: { id: row!.id } });
       expect(updated!.status).toBe(EmailQueueStatus.BLOCKED);
       expect(updated!.errorMessage).toBe('No provider available or daily limit reached');
+    });
+
+    it("stops sending once the shared Brevo account is spent, under this community's own limit", async () => {
+      // The case the per-community counter cannot see. A community that has not
+      // set its own key sends on the deployment's, so several communities share
+      // one Brevo account and one daily allowance -- while each counts only its
+      // own sends against its own limit of 300. Two of them will spend 350 of a
+      // 300/day account between them without either ever exceeding what it
+      // believed was its budget, and be cut off by Brevo mid-batch.
+      const brevo = app.get(BrevoService);
+      vi.spyOn(brevo, 'isConfigured').mockResolvedValue(true);
+      vi.spyOn(brevo, 'getAccountQuota').mockResolvedValue({
+        remaining: 0,
+        planType: 'free',
+        isDailyAllowance: true,
+        organizationId: 'org-1',
+        fetchedAt: Date.now(),
+      });
+      const send = vi.spyOn(brevo, 'send').mockResolvedValue(undefined);
+
+      const row = await emailService.queue({
+        toEmail: 'shared-account@example.test',
+        subject: 'Hi',
+        htmlBody: '<p>hi</p>',
+      });
+      await request(server).post('/api/v1/admin/email/flush').set('Cookie', adminCookie).expect(200);
+
+      expect(send).not.toHaveBeenCalled();
+      const updated = await prisma.email_queue.findFirst({ where: { id: row!.id } });
+      expect(updated!.status).toBe(EmailQueueStatus.BLOCKED);
+      // Named distinctly from the local-limit case: one is a setting on the
+      // admin screen, the other is an account that has nothing left today no
+      // matter what is configured.
+      expect(updated!.errorMessage).toContain("account's daily allowance");
+      vi.restoreAllMocks();
+    });
+
+    it('spends the shared allowance across the batch, not per message', async () => {
+      // The account figure is read once before the batch, so the batch has to
+      // decrement it as it goes. Without that, a budget of 2 would authorise
+      // every message in the batch -- each one checking the same stale number.
+      const brevo = app.get(BrevoService);
+      vi.spyOn(brevo, 'isConfigured').mockResolvedValue(true);
+      vi.spyOn(brevo, 'getAccountQuota').mockResolvedValue({
+        remaining: 2,
+        planType: 'free',
+        isDailyAllowance: true,
+        organizationId: 'org-1',
+        fetchedAt: Date.now(),
+      });
+      const send = vi.spyOn(brevo, 'send').mockResolvedValue(undefined);
+
+      for (let n = 0; n < 5; n++) {
+        await emailService.queue({
+          toEmail: `batch-${n}@example.test`,
+          subject: 'Hi',
+          htmlBody: '<p>hi</p>',
+        });
+      }
+      await request(server).post('/api/v1/admin/email/flush').set('Cookie', adminCookie).expect(200);
+
+      expect(send).toHaveBeenCalledTimes(2);
+      const blocked = await prisma.email_queue.count({
+        where: { status: EmailQueueStatus.BLOCKED },
+      });
+      expect(blocked).toBe(3);
+      vi.restoreAllMocks();
+    });
+
+    it('sends normally when the account reports no daily cap', async () => {
+      // A prepaid plan has a balance, not a daily allowance. Treating it as one
+      // would stop sending at an imaginary line, so an unknown or non-daily
+      // budget is permissive -- the per-community limit still applies beneath.
+      const brevo = app.get(BrevoService);
+      vi.spyOn(brevo, 'isConfigured').mockResolvedValue(true);
+      vi.spyOn(brevo, 'getAccountQuota').mockResolvedValue({
+        remaining: 0,
+        planType: 'payAsYouGo',
+        isDailyAllowance: false,
+        organizationId: 'org-1',
+        fetchedAt: Date.now(),
+      });
+      const send = vi.spyOn(brevo, 'send').mockResolvedValue(undefined);
+
+      await emailService.queue({
+        toEmail: 'prepaid@example.test',
+        subject: 'Hi',
+        htmlBody: '<p>hi</p>',
+      });
+      await request(server).post('/api/v1/admin/email/flush').set('Cookie', adminCookie).expect(200);
+
+      expect(send).toHaveBeenCalledTimes(1);
+      vi.restoreAllMocks();
     });
 
     it('rejects a moderator flushing the queue (admin-only)', async () => {

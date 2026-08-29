@@ -60,6 +60,8 @@ interface EmailQuotaWindow {
   /** Null when there is no key, Brevo did not answer, or the plan is prepaid. */
   providerRemaining: number | null;
   providerPlan: string | null;
+  providerAccountId: string | null;
+  providerCheckedAt: string | null;
 }
 
 interface EmailConfig {
@@ -170,13 +172,13 @@ interface EmailConfig {
                   />
                 </div>
                 <div class="provider-stat">
-                  <span>We have counted</span>
+                  <span>This community sent</span>
                   <strong>{{ cfg.brevoSentToday }} / {{ cfg.brevoDailyLimit }}</strong>
                 </div>
                 @if (quota(); as q) {
                   @if (q.providerRemaining !== null) {
                     <div class="provider-stat">
-                      <span>Brevo says left</span>
+                      <span>Account has left</span>
                       <strong>{{ q.providerRemaining }}</strong>
                     </div>
                   }
@@ -206,11 +208,13 @@ interface EmailConfig {
                 {{ q.windowEndsAt | date: 'h:mm a' }} where you are — and both counts start
                 again then.
                 @if (q.providerRemaining !== null) {
-                  Brevo's own figure is the one that decides whether a message goes out; when
-                  the two disagree the deployment believes Brevo.
+                  The two numbers answer different questions. The first is what this community
+                  sent. The second is what the Brevo <em>account</em> has left — and any
+                  community without its own API key sends on the same account, so that
+                  allowance is shared. It is the one that decides whether a message goes out.
                 } @else if (q.providerPlan) {
                   Brevo reports a {{ q.providerPlan }} balance rather than a daily allowance,
-                  so there is no provider number to compare against.
+                  so there is no daily figure to hold sending against.
                 }
               </p>
             }
@@ -1053,6 +1057,11 @@ export class AdminEmailComponent implements OnInit {
         this.snackBar.open('Queue flushed', 'OK', { duration: 2000 });
         this.flushing.set(false);
         this.loadQueue();
+        // The counters and the account allowance both moved, or the button was
+        // pressed precisely to find out that they had not. Either way the
+        // numbers on screen are the point of pressing it.
+        this.loadConfig();
+        this.loadQuotaWindow();
       },
       error: () => {
         this.snackBar.open('Flush failed', 'OK', { duration: 3000 });

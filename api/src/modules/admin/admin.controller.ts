@@ -224,11 +224,13 @@ export class AdminController {
       timeZone,
       windowStartedAt: windowStartedAt.toISOString(),
       windowEndsAt: windowEndsAt.toISOString(),
-      // Only a daily allowance is comparable with our own counter. A prepaid
+      // Only a daily allowance is something to hold sending against. A prepaid
       // balance is reported as a plan name and no number rather than as a
       // number that means something else.
       providerRemaining: quota?.isDailyAllowance ? quota.remaining : null,
       providerPlan: quota?.planType ?? null,
+      providerAccountId: quota?.organizationId ?? null,
+      providerCheckedAt: quota ? new Date(quota.fetchedAt).toISOString() : null,
     };
   }
 
@@ -297,10 +299,21 @@ export class AdminController {
     return this.brevoWebhook.register({ newToken: true });
   }
 
+  /**
+   * Drains this community's queue -- and, when there is nothing to drain,
+   * still refreshes what Brevo says is left.
+   *
+   * The dispatcher only enters its per-tenant block for a community with mail
+   * waiting, so a flush with an empty queue used to do nothing whatsoever, not
+   * even update the numbers on the screen that just called it. Since the button
+   * is the obvious thing to press when you want the page to tell you something
+   * current, it now always at least does that.
+   */
   @Post('email/flush')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
   async flushQueue() {
+    await this.brevo.invalidateAccountQuota();
     await this.emailDispatcher.dispatchPending();
     return { ok: true };
   }
