@@ -5,6 +5,8 @@ import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedUser, loginAs, hashPassword } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
+import { AuthService } from '../src/modules/auth/auth.service';
+import { AuthFlowError } from '../src/common/errors/auth-flow.error';
 import type { cities as City, facebook_deletion_requests as FacebookDeletionRequest, invites as Invite, oauth_accounts as OAuthAccount, users as User } from '@prisma/client';
 import { EmailStatus, FacebookDeletionStatus, InviteType, OAuthProvider, UserRole, UserStatus } from '../src/database/enums';
 import { TEST_TENANT_ID } from './setup-env';
@@ -524,6 +526,54 @@ describe('Auth (e2e)', () => {
 
     it('rejects unauthenticated requests', async () => {
       await request(server).delete('/api/v1/auth/providers/google').expect(401);
+    });
+  });
+
+  // Google's OAuth round trip cannot be driven from a spec, so this exercises
+  // the identity half directly -- which is where the rule lives.
+  describe('findOrCreateGoogleUser', () => {
+    // Changed in v2-8 after stage: Google used to link itself to any account
+    // whose address matched, so disconnecting it and signing in again silently
+    // re-linked, and Disconnect meant nothing. Facebook has always refused this.
+    it('refuses to link itself to an existing account', async () => {
+      const user = await seedUser(prisma, city.id, { email: 'already-here@example.test' });
+      const authService = app.get(AuthService);
+
+      await expect(
+        authService.findOrCreateGoogleUser('google-new-sub', user.email, user.fullName),
+      ).rejects.toMatchObject({ reason: 'provider_not_linked' });
+
+      // And nothing was written on the way to refusing.
+      const links = await prisma.oauth_accounts.findMany({ where: { userId: user.id } });
+      expect(links).toHaveLength(0);
+    });
+
+    it('still signs in an account that is genuinely linked', async () => {
+      const user = await seedUser(prisma, city.id, { email: 'linked@example.test' });
+      await prisma.oauth_accounts.create({
+        data: {
+          userId: user.id,
+          provider: OAuthProvider.GOOGLE,
+          providerId: 'google-known-sub',
+          email: user.email,
+        },
+      });
+
+      const resolved = await app
+        .get(AuthService)
+        .findOrCreateGoogleUser('google-known-sub', user.email, user.fullName);
+      expect(resolved.id).toBe(user.id);
+    });
+
+    it('refuses a suspended account before anything else', async () => {
+      const user = await seedUser(prisma, city.id, {
+        email: 'suspended@example.test',
+        status: UserStatus.SUSPENDED,
+      });
+
+      await expect(
+        app.get(AuthService).findOrCreateGoogleUser('google-susp', user.email, user.fullName),
+      ).rejects.toMatchObject({ reason: 'not_active' });
     });
   });
 

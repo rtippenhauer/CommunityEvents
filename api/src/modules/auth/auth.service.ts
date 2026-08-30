@@ -130,7 +130,6 @@ export class AuthService {
       return existing.user;
     }
 
-    // Fallback: user row exists (orphaned from a previous partial attempt)
     const existingByEmail = await this.prisma.users.findFirst({
       where: { email: email.toLowerCase() },
     });
@@ -139,15 +138,18 @@ export class AuthService {
         throw new AuthFlowError('not_active');
       }
       if (existingByEmail.status !== UserStatus.DELETED) {
-        await this.prisma.oauth_accounts.create({
-      data: {
-            userId: existingByEmail.id,
-            provider: OAuthProvider.GOOGLE,
-            providerId: googleId,
-            email: email.toLowerCase(),
-      },
-    });
-        return existingByEmail;
+        // Account exists but Google is not linked — it was either never linked or was
+        // disconnected. Do NOT auto-relink; require the user to reconnect via account
+        // settings. This matches findOrCreateFacebookUser, which has always refused.
+        //
+        // It used to create the link here, on the reasoning that the row was
+        // "orphaned from a previous partial attempt". That reasoning cannot tell a
+        // half-finished signup from a deliberate disconnect, and the second is far
+        // commoner: found on stage, where disconnecting Google and signing in again
+        // silently re-linked it, which made Disconnect decorative. Linking is an
+        // action taken from inside an authenticated session, not a side effect of
+        // presenting a matching address.
+        throw new AuthFlowError('provider_not_linked');
       }
       // DELETED: fall through — fresh registration; scramble old email before insert
     }

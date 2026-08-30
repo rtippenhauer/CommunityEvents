@@ -91,10 +91,14 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
     body: 'Something went wrong verifying your Facebook account. Please try again, or use Google to sign in instead.',
     showInviteHint: false,
   },
+  // Both providers reach this now. It used to be Facebook's alone, because
+  // Google quietly re-linked on a matching address instead of refusing -- so the
+  // copy named Facebook and told people to use Google, advice that is wrong half
+  // the time now that either can be the one that is not connected.
   provider_not_linked: {
     icon: 'link_off',
-    title: 'Facebook login not connected',
-    body: 'Facebook is not linked to your account. Sign in with Google instead, then reconnect Facebook from Account Settings if you want to use it again.',
+    title: 'That account is not connected yet',
+    body: 'An account already exists with this email address, but that sign-in method is not connected to it. Sign in the way you normally do, then connect it from Account Settings.',
     showInviteHint: false,
   },
 };
