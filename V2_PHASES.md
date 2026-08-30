@@ -887,6 +887,35 @@ only; a tenant with Google credentials offers Google and email/password; the
 same address can hold a different set of linked providers on two tenants; and
 no secret is readable in a database dump.
 
+#### Known gap, deliberately deferred: login CSRF
+
+**The signed `state` proves which community, not which browser.** It stops a
+forged tenant id -- which would be a cross-tenant account takeover, and is what
+the signing exists for -- but an attacker can obtain a perfectly valid `state`
+simply by starting a flow of their own. Feed a victim the resulting callback
+URL and the victim's browser completes *the attacker's* sign-in and lands
+logged into the attacker's account. The harm is the victim then acting inside
+somebody else's account without noticing, which is materially less than
+takeover, and it is not a regression: v1's state was unsigned and had the same
+property. But it is the other half of what a `state` parameter is normally
+expected to cover, and it should not be rediscovered as a surprise.
+
+The conventional fix -- bind `state` to a nonce in a cookie -- normally cannot
+work in this architecture, because the authorization request is on the tenant's
+host and the callback is on the root host, so a cookie set at the start is not
+readable when the callback runs. **The handoff makes it work anyway**, which is
+the part worth writing down: redemption happens back on the originating host,
+where that cookie *is* readable. Set a nonce cookie at `/auth/google`, carry its
+hash through `state` into the `oauth_handoffs` row, and require it to match at
+redemption.
+
+Deferred to its own branch after v2-8's stage pass, decided with Rob
+2026-08-30, to keep this item's diff reviewable and get the cross-host OAuth fix
+onto stage sooner. **PKCE was considered and rejected** for the same flow: this
+is a confidential client with a server-side secret, so the payoff is small, and
+the same cross-host split means the `code_verifier` would need its own storage
+row -- real cost, marginal benefit.
+
 ---
 
 ## Deferred: CommunityEvents domain, branding and demo

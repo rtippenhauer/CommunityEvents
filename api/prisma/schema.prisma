@@ -865,6 +865,47 @@ model oauth_accounts {
   @@index([tenantId], map: "idx_oauth_accounts_tenant")
 }
 
+/// A single-use ticket that moves a completed OAuth login from the callback host
+/// to the community the member actually started on (REQ-TENANT-01.8).
+///
+/// Every provider callback lands on one fixed host, because Google and Meta both
+/// require redirect URIs to be registered in advance. The session cookie is
+/// host-only (REQ-TENANT-01.7), so the callback is on the wrong domain to set
+/// one: a cookie written there does not travel to `dayton.example.com`. The
+/// callback therefore writes a row here, redirects to the originating host with
+/// the token, and that host exchanges it for a cookie it *can* set.
+///
+/// Why a table rather than a signed token that needs no storage: single-use is
+/// the property that matters, and single-use is state. A replayable ticket in a
+/// URL is a session in a URL -- it lands in browser history, in the `Referer` of
+/// whatever the landing page loads, and in any proxy log along the way.
+///
+/// Scoped like every other transactional model, and that is load-bearing here:
+/// the exchange runs on the originating community's own host, so the extension
+/// filters this lookup to that community, and a ticket minted for one community
+/// cannot be redeemed on another's host even if the token leaks.
+model oauth_handoffs {
+  id         Int       @id @default(autoincrement()) @db.UnsignedInt
+  userId     Int       @map("user_id") @db.UnsignedInt
+  /// SHA-256 of the token, never the token. Whoever reads this table gets no
+  /// usable ticket out of it -- the same reason a password is not stored either.
+  /// A plain digest rather than the encrypted-column machinery on purpose: this
+  /// is looked up *by value*, which a randomised cipher cannot do.
+  tokenHash  String    @unique(map: "uq_oauth_handoff_token") @map("token_hash") @db.Char(64)
+  /// Set when redeemed. The row is kept rather than deleted so a second attempt
+  /// can be told apart from a token that never existed -- one is a double-
+  /// submitted page, the other is worth logging.
+  consumedAt DateTime? @map("consumed_at") @db.DateTime(3)
+  expiresAt  DateTime  @map("expires_at") @db.DateTime(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  user       users     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_oauth_handoff_user")
+  tenantId   Int       @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant     tenants   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_oauth_handoffs_tenant")
+
+  @@index([expiresAt], map: "idx_oauth_handoff_expires")
+  @@index([tenantId], map: "idx_oauth_handoffs_tenant")
+}
+
 model push_subscriptions {
   id        Int      @id @default(autoincrement()) @db.UnsignedInt
   userId    Int      @map("user_id") @db.UnsignedInt
@@ -930,8 +971,9 @@ model tenants {
   /// column exists so a future dedicated-database option does not need a
   /// migration on a live table.
   dbMode                   tenants_db_mode            @default(shared) @map("db_mode")
-  /// Reserved for REQ-TENANT-01.9, read by no code as of v2-5. NULL -- the
-  /// default -- means **that provider is switched off for this tenant**, which
+  /// A community's own OAuth app (REQ-TENANT-01.9), written by v2-8 from
+  /// Admin -> Sign-in Providers. NULL -- the default -- means **that provider is
+  /// switched off for this tenant**, which
   /// then offers email/password only. There is no platform-wide fallback app:
   /// a community that has not registered its own OAuth app has no relationship
   /// with Google or Meta, and signing its members in through the platform's app
@@ -945,9 +987,14 @@ model tenants {
   /// rather than VarChar -- an envelope is longer than the plaintext it
   /// replaces. v2-7 built that layer and both columns are declared in
   /// `encrypted-columns.ts`, so the Prisma extension encrypts them on write and
-  /// decrypts them on read; no service ever handles the ciphertext. Nothing
-  /// populates them yet -- v2-8 is what does -- but the guarantee is in place
-  /// ahead of the writer rather than owed by it.
+  /// decrypts them on read; no service ever handles the ciphertext. The
+  /// guarantee was in place a release before the writer arrived, which is why
+  /// v2-8 got it by adding a column value rather than by remembering a rule.
+  ///
+  /// **The id and secret of a pair are written and cleared together.** A row
+  /// holding one without the other is not a half-configured provider, it is a
+  /// button that sends a member to a consent screen and then fails the token
+  /// exchange; `TenantOAuthService` treats it as switched off and says so.
   googleClientId           String?                    @map("google_client_id") @db.VarChar(255)
   googleClientSecret       String?                    @map("google_client_secret") @db.Text
   facebookAppId            String?                    @map("facebook_app_id") @db.VarChar(255)
@@ -979,6 +1026,7 @@ model tenants {
   notification_preferences notification_preferences[]
   notifications            notifications[]
   oauth_accounts           oauth_accounts[]
+  oauth_handoffs           oauth_handoffs[]
   push_subscriptions       push_subscriptions[]
   app_config               app_config[]
   users                    users[]
@@ -1066,6 +1114,7 @@ model users {
   notification_preferences                                     notification_preferences?
   notifications                                                notifications[]
   oauth_accounts                                               oauth_accounts[]
+  oauth_handoffs                                               oauth_handoffs[]
   push_subscriptions                                           push_subscriptions[]
   releases_releases_created_byTousers                          releases[]                 @relation("releases_created_byTousers")
   city                                                         cities                     @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_city")

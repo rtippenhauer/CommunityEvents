@@ -693,6 +693,20 @@ export class AuthService {
     return { accessToken };
   }
 
+  /**
+   * The member named by a redeemed OAuth handoff ticket (REQ-TENANT-01.8).
+   *
+   * Re-checked rather than trusted: the ticket is minted on the callback host
+   * and redeemed on the community's, and an account can be suspended in
+   * between. Scoped like every other `users` read, so a ticket that somehow
+   * named a member of another community resolves to nothing here.
+   */
+  async findActiveUserById(userId: number): Promise<User | null> {
+    const user = await this.prisma.users.findFirst({ where: { id: userId } });
+    if (!user) return null;
+    return user.status === UserStatus.ACTIVE ? user : null;
+  }
+
   async me(user: User) {
     await this.trackQualifyingLogin(user);
     return stripUserSecrets(user);

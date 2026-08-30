@@ -4,6 +4,12 @@ import { Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
 import { reshade, darkenBy } from '../utils/color.util';
 
+/** The social sign-ins a community offers. See BrandConfig.authProviders. */
+export interface AuthProviders {
+  google: boolean;
+  facebook: boolean;
+}
+
 export interface BrandConfig {
   name: string;
   tagline: string;
@@ -19,6 +25,15 @@ export interface BrandConfig {
   // /config/branding so one generic image serves any instance.
   vapidPublicKey: string | null;
   facebookAppId: string | null;
+  /**
+   * Which social sign-ins this community offers (REQ-TENANT-01.9).
+   *
+   * A community registers its own OAuth apps or offers none; there is no
+   * deployment-wide app to fall back to, so a button shown without credentials
+   * behind it is a button that fails after the member has already left for a
+   * consent screen. Email/password is absent because it is always available.
+   */
+  authProviders: AuthProviders;
   isStage: boolean;
   appUrl: string;
   baseDomain: string;
@@ -88,6 +103,10 @@ const DEFAULT_BRAND: BrandConfig = {
   // `null` defaults gave.
   vapidPublicKey: null,
   facebookAppId: null,
+  // Defaults off, like isRoot and for the same reason: until branding loads we
+  // do not know what this community offers, and offering nothing briefly is
+  // better than offering a button that cannot work.
+  authProviders: { google: false, facebook: false },
   isStage: false,
   appUrl: '',
   baseDomain: '',
@@ -152,6 +171,9 @@ export class BrandConfigService {
   // callers stay reactive if branding is ever refreshed mid-session.
   readonly vapidPublicKey = computed(() => this.brand().vapidPublicKey);
   readonly facebookAppId = computed(() => this.brand().facebookAppId);
+  readonly authProviders = computed(() => this.brand().authProviders);
+  readonly offersGoogle = computed(() => this.brand().authProviders.google);
+  readonly offersFacebook = computed(() => this.brand().authProviders.facebook);
   readonly isStage = computed(() => this.brand().isStage);
   readonly appUrl = computed(() => this.brand().appUrl);
   readonly baseDomain = computed(() => this.brand().baseDomain);

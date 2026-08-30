@@ -18,14 +18,12 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthFlowError } from '../../common/errors/auth-flow.error';
-import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { AuthService } from './auth.service';
 import { CitiesService } from '../cities/cities.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { GoogleCallbackGuard } from '../../common/guards/google-callback.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { FacebookAuthDto } from './dto/facebook-auth.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -36,6 +34,14 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { OAuthProvider } from '../../database/enums';
 import type { users as User } from '@prisma/client';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import type { TenantContext } from '../../common/tenant/tenant-context';
+import { runWithTenant } from '../../common/tenant/tenant-store';
+import { GoogleOAuthError, GoogleOAuthService } from './oauth/google-oauth.service';
+import { OAuthHandoffService } from './oauth/oauth-handoff.service';
+import { FacebookOAuthService } from './oauth/facebook-oauth.service';
+import type { OAuthState } from './oauth/oauth-state.util';
+import { OAuthHandoffDto } from './dto/oauth-handoff.dto';
+import type { Profile as GoogleProfile } from 'passport-google-oauth20';
 import {
   ACCESS_TOKEN_COOKIE,
   accessTokenCookieOptions,
@@ -45,7 +51,6 @@ import {
 @Controller('auth')
 export class AuthController {
   private readonly frontendUrl: string;
-  private readonly fbAppSecret: string;
   private readonly baseDomain: string;
   private readonly logger = new Logger(AuthController.name);
 
@@ -53,32 +58,18 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly citiesService: CitiesService,
     private readonly tenantResolution: TenantResolutionService,
+    private readonly googleOAuth: GoogleOAuthService,
+    private readonly handoffService: OAuthHandoffService,
+    private readonly facebookOAuth: FacebookOAuthService,
     configService: ConfigService,
   ) {
     this.frontendUrl = configService.get<string>('APP_URL', 'http://localhost:8081');
-    this.fbAppSecret = configService.get<string>('FACEBOOK_APP_SECRET', '');
     // City subdomains are siblings of the main app host, not children of it (e.g.
     // cincinnati.dinnerbears.com sits alongside www.dinnerbears.com, not under it),
     // so the allowed redirect zone is APP_URL's host with any leading "www." stripped.
     // Set BASE_DOMAIN explicitly in .env to override this default.
     const defaultBaseDomain = new URL(this.frontendUrl).hostname.replace(/^www\./, '');
     this.baseDomain = configService.get<string>('BASE_DOMAIN', defaultBaseDomain);
-  }
-
-  // Only ever used to build a redirect Location header. The host arrives inside
-  // OAuth `state`, which is base64 JSON and unsigned -- anyone can craft one --
-  // so it is an open-redirect vector unless it is checked against something the
-  // caller does not control.
-  //
-  // That check used to be "under the configured base domain", which was right
-  // when every subdomain was the same community. Under v2 it would accept any
-  // subdomain of the zone, including hosts that are not tenants at all. The
-  // registry is the authority now: a redirect target must be a domain this
-  // deployment actually serves. TenantResolutionService caches, misses included,
-  // so this costs nothing on the hot path.
-  private async isAllowedRedirectHost(host: string): Promise<boolean> {
-    const resolution = await this.tenantResolution.resolve(host);
-    return resolution.outcome === 'resolved' || resolution.outcome === 'suspended';
   }
 
   // Host-only. See accessTokenCookieOptions -- the scope is the whole point:
@@ -97,51 +88,220 @@ export class AuthController {
     }
   }
 
-  // --- Google OAuth ---
-
-  @Get('google')
-  @UseGuards(AuthGuard('google'))
-  googleLogin(): void {
-    // Passport redirects — inviteToken forwarded as OAuth state in GoogleStrategy
+  /**
+   * The community this request arrived on.
+   *
+   * Unreachable as a failure behind TenantMiddleware, which 404s an unresolved
+   * host before any handler runs -- but these are authentication paths, and the
+   * alternative to throwing is signing somebody in without knowing where.
+   */
+  private requireTenant(req: Request): TenantContext {
+    const tenant = req.tenant;
+    if (!tenant) throw new UnauthorizedException('No community resolved for this request.');
+    return tenant;
   }
 
-  @Get('google/callback')
-  @UseGuards(GoogleCallbackGuard)
-  async googleCallback(
-    @Req() req: Request & { user: User; authOriginHost?: string },
-    @Res() res: Response,
+  /**
+   * Sends a failed sign-in to an error page **on the community it belongs to**.
+   *
+   * `tenantId` is absent only when the failure happened before the state
+   * verified, i.e. when nothing trustworthy says which community this was. The
+   * deployment's own page is the fallback rather than a guess.
+   *
+   * Note what is no longer here: v1 carried the origin host inside an unsigned
+   * `state` and had to check it against an allowlist before putting it in a
+   * `Location` header, because anyone could craft one. The host is now looked
+   * up from the tenant registry by a signed id, so there is no
+   * attacker-supplied host to validate and the open-redirect surface is gone
+   * rather than guarded.
+   */
+  private async authErrorRedirect(
+    res: Response,
+    reason: string,
+    tenantId?: number,
+    email?: string,
   ): Promise<void> {
-    if (res.headersSent) return;
+    const base = tenantId
+      ? await this.tenantResolution.baseUrlFor(tenantId)
+      : this.frontendUrl;
+    const params = new URLSearchParams({ reason });
+    if (email) params.set('email', email);
+    res.redirect(`${base}/auth/error?${params.toString()}`);
+  }
 
-    const { accessToken } = await this.authService.issueTokens(req.user, {
+  /**
+   * The city a new member lands in, from the community's own subdomain.
+   *
+   * v1 read this off the request's Host header, which cannot work at a callback
+   * that always arrives on one fixed host -- it would file every OAuth
+   * registration under the root community's default city. The tenant's
+   * registered domain is the same information, available at the point it is
+   * actually needed. Returns undefined when nothing matches, which is what
+   * `resolveCityId` already treats as "use the default".
+   */
+  private async cityForTenant(tenantId: number): Promise<number | undefined> {
+    try {
+      const baseUrl = await this.tenantResolution.baseUrlFor(tenantId);
+      const subdomain = new URL(baseUrl).hostname.split('.')[0];
+      const city = await this.citiesService.findBySubdomainOrNull(subdomain);
+      return city?.id;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // --- Google OAuth ---
+
+  /**
+   * Starts a Google sign-in **with this community's own app**
+   * (REQ-TENANT-01.9).
+   *
+   * No longer `AuthGuard('google')`: that resolves one strategy registered once
+   * at module init from the deployment's env credentials, and there is no such
+   * thing now. Which app a member is sent to is a property of the community
+   * they are standing on.
+   */
+  @Get('google')
+  async googleLogin(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('inviteToken') inviteToken?: string,
+  ): Promise<void> {
+    const tenant = req.tenant;
+    if (!tenant) {
+      // Unreachable behind TenantMiddleware, which 404s an unresolved host
+      // before any handler runs. Guarding anyway: the alternative is starting
+      // an OAuth flow with no idea whose it is.
+      await this.authErrorRedirect(res, 'provider_not_offered');
+      return;
+    }
+
+    try {
+      res.redirect(await this.googleOAuth.authorizationUrl(req, tenant.id, inviteToken));
+    } catch (err) {
+      const reason = err instanceof GoogleOAuthError ? err.reason : 'exchange_failed';
+      if (!(err instanceof GoogleOAuthError)) {
+        this.logger.error(`Could not start Google sign-in: ${(err as Error).message}`);
+      }
+      await this.authErrorRedirect(res, reason, tenant.id);
+    }
+  }
+
+  /**
+   * Google's one registered callback, for every community (REQ-TENANT-01.8).
+   *
+   * Three things are true here at once and each one is a trap:
+   *
+   *  - **The Host header is this host**, never the community the member started
+   *    on, so `req.tenant` resolves to the root tenant and is the wrong answer
+   *    to every question below.
+   *  - **The signed `state` is the only thing that knows** which community this
+   *    is, which is why it is verified before a credential is loaded or a user
+   *    is looked up.
+   *  - **The session cookie cannot be set here.** It is host-only, so a cookie
+   *    written on this host never reaches the community's own. The login leaves
+   *    as a single-use ticket instead.
+   */
+  @Get('google/callback')
+  async googleCallback(@Req() req: Request, @Res() res: Response): Promise<void> {
+    let state: OAuthState;
+    let profile: GoogleProfile;
+    try {
+      ({ state, profile } = await this.googleOAuth.completeCallback(req));
+    } catch (err) {
+      // The error carries a community only if it happened after `state`
+      // verified. Before that, nothing trustworthy says whose sign-in this was,
+      // and this deployment's own error page is the only honest destination.
+      const reason = err instanceof GoogleOAuthError ? err.reason : 'exchange_failed';
+      const tenantId = err instanceof GoogleOAuthError ? err.tenantId : undefined;
+      if (!(err instanceof GoogleOAuthError)) {
+        this.logger.error(`Google callback failed: ${(err as Error).message}`);
+      }
+      await this.authErrorRedirect(res, reason, tenantId);
+      return;
+    }
+
+    const email = profile.emails?.[0]?.value;
+    if (!email) {
+      await this.authErrorRedirect(res, 'no_email', state.tenantId);
+      return;
+    }
+
+    // Everything from here belongs to the community the flow started on, not to
+    // the host it landed on. `users` and `oauth_accounts` are scoped and the
+    // same address is a different person in each community (REQ-TENANT-01.5),
+    // so running this in the ambient (root) context would resolve the wrong
+    // member -- or create one in the wrong place.
+    //
+    // The callback awaits inside runWithTenant rather than returning its
+    // promise: Prisma's promises are lazy, and handing one back would build the
+    // query in the context and run it outside.
+    let handoffToken: string;
+    try {
+      handoffToken = await runWithTenant(state.tenantId, async () => {
+        const user = await this.authService.findOrCreateGoogleUser(
+          profile.id,
+          email,
+          profile.displayName ?? email,
+          state.inviteToken,
+          profile.photos?.[0]?.value ?? null,
+          await this.cityForTenant(state.tenantId),
+        );
+        return await this.handoffService.issue(user.id);
+      });
+    } catch (err) {
+      if (err instanceof AuthFlowError) {
+        await this.authErrorRedirect(res, err.reason, state.tenantId, err.boundEmail);
+        return;
+      }
+      this.logger.error(`Google sign-in failed after exchange: ${(err as Error).message}`);
+      await this.authErrorRedirect(res, 'unknown', state.tenantId);
+      return;
+    }
+
+    const baseUrl = await this.tenantResolution.baseUrlFor(state.tenantId);
+    const params = new URLSearchParams({ handoff: handoffToken });
+    res.redirect(`${baseUrl}/auth/callback?${params.toString()}`);
+  }
+
+  /**
+   * Redeems the ticket the callback issued, on the community's own host, for a
+   * session cookie scoped to it (REQ-TENANT-01.8).
+   *
+   * A POST from the landing page rather than something the redirect does by
+   * itself, and that is what keeps `SameSite=strict` workable: the cross-site
+   * hop is the navigation *before* this, which carries no cookie because none
+   * exists yet. This request is same-site, so the cookie it sets is stored and
+   * sent normally from then on.
+   *
+   * `oauth_handoffs` is tenant-scoped, so a ticket minted for another community
+   * simply is not found here -- the isolation costs no comparison in this
+   * method.
+   */
+  @Post('handoff')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async oauthHandoff(
+    @Body() dto: OAuthHandoffDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ message: string }> {
+    const userId = await this.handoffService.redeem(dto.token);
+    const user = userId ? await this.authService.findActiveUserById(userId) : null;
+    if (!user) {
+      throw new UnauthorizedException({
+        message: 'This sign-in link has already been used or has expired.',
+        reason: 'handoff_invalid',
+      });
+    }
+
+    const { accessToken } = await this.authService.issueTokens(user, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
     });
 
     this.clearStaleAccessTokenCookies(res);
-    res.cookie('access_token', accessToken, this.accessTokenCookieOptions());
-
-    const originHost = req.authOriginHost;
-    const allowed = originHost ? await this.isAllowedRedirectHost(originHost) : false;
-
-    // The session cookie is host-only, so it exists on the host that just set it
-    // and nowhere else. If the flow started on a different tenant, redirecting
-    // there lands the user on a page where they are still signed out, with
-    // nothing to explain why. That cannot be fixed here -- it needs
-    // REQ-TENANT-01.8's signed handoff (v2-8) -- so log it rather than let it be
-    // an invisible "OAuth just doesn't work on that community".
-    if (allowed && originHost !== req.headers.host) {
-      this.logger.warn(
-        `Google OAuth started on ${originHost} but returned via ${req.headers.host}. ` +
-          `The session cookie is host-only, so it will not be present on ${originHost}. ` +
-          `Cross-host OAuth needs REQ-TENANT-01.8's state handoff (v2-8).`,
-      );
-    }
-
-    const redirectUrl = originHost && allowed
-      ? `${new URL(this.frontendUrl).protocol}//${originHost}/auth/callback`
-      : `${this.frontendUrl}/auth/callback`;
-    res.redirect(redirectUrl);
+    res.cookie(ACCESS_TOKEN_COOKIE, accessToken, this.accessTokenCookieOptions());
+    return { message: 'ok' };
   }
 
   // --- Facebook OAuth ---
@@ -152,22 +312,13 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
-    const fbRes = await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email,picture.type(large),link&access_token=${encodeURIComponent(dto.accessToken)}`,
-    );
-    if (!fbRes.ok) throw new UnauthorizedException('Invalid Facebook token');
-    const fbUser = await fbRes.json() as {
-      id: string;
-      name: string;
-      email?: string;
-      picture?: { data?: { url?: string } };
-      link?: string;
-    };
+    const tenant = this.requireTenant(req);
+    // Verified against this community's own Meta app, not merely against
+    // Facebook -- see FacebookOAuthService for why that distinction is the
+    // whole point once apps are per community.
+    const fbUser = await this.facebookOAuth.profileFor(tenant.id, dto.accessToken);
     const fbPhoto = fbUser.picture?.data?.url ?? null;
-    const subdomain = req.headers['x-subdomain'];
-    const city = await this.citiesService.findBySubdomainOrNull(
-      typeof subdomain === 'string' ? subdomain : undefined,
-    );
+    const city = await this.cityForTenant(tenant.id);
 
     let user;
     try {
@@ -178,7 +329,7 @@ export class AuthController {
         dto.inviteToken,
         fbPhoto,
         fbUser.link ?? null,
-        city?.id,
+        city,
       );
     } catch (err) {
       if (err instanceof AuthFlowError) {
@@ -210,12 +361,12 @@ export class AuthController {
   async facebookLink(
     @Body() dto: FacebookAuthDto,
     @CurrentUser() user: User,
+    @Req() req: Request,
   ): Promise<{ message: string }> {
-    const fbRes = await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email,link&access_token=${encodeURIComponent(dto.accessToken)}`,
+    const fbUser = await this.facebookOAuth.profileFor(
+      this.requireTenant(req).id,
+      dto.accessToken,
     );
-    if (!fbRes.ok) throw new UnauthorizedException('Invalid Facebook token');
-    const fbUser = await fbRes.json() as { id: string; name: string; email?: string; link?: string };
 
     await this.authService.linkFacebook(user.id, fbUser.id, fbUser.email ?? null, fbUser.link ?? null);
     return { message: 'Facebook account linked' };
@@ -227,6 +378,7 @@ export class AuthController {
   @HttpCode(200)
   async facebookDeletionCallback(
     @Body('signed_request') signedRequest: string,
+    @Req() req: Request,
   ): Promise<{ url: string; confirmation_code: string }> {
     if (!signedRequest) throw new UnauthorizedException('Missing signed_request');
 
@@ -234,7 +386,13 @@ export class AuthController {
     if (parts.length !== 2) throw new UnauthorizedException('Malformed signed_request');
     const [encodedSig, payload] = parts;
 
-    const expected = createHmac('sha256', this.fbAppSecret).update(payload).digest();
+    // Meta posts this to the callback URL registered on the app that was
+    // deleted, and that app belongs to one community -- so the secret that
+    // verifies it is that community's, resolved from the host it arrived on.
+    const appSecret = await this.facebookOAuth.appSecretFor(this.requireTenant(req).id);
+    if (!appSecret) throw new UnauthorizedException('This community does not offer Facebook sign-in.');
+
+    const expected = createHmac('sha256', appSecret).update(payload).digest();
     const actual = Buffer.from(encodedSig.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       throw new UnauthorizedException('Invalid signed_request signature');

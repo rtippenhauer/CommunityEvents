@@ -286,6 +286,12 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    path: 'admin/oauth',
+    loadComponent: () =>
+      import('./features/admin/oauth/admin-oauth.component').then((m) => m.AdminOAuthComponent),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/secrets',
     loadComponent: () =>
       import('./features/admin/secrets/admin-secrets.component').then(

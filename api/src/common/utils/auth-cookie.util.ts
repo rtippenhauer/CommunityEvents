@@ -20,13 +20,23 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
  * every tenant under it. Scoping to the apex would have shared one login across
  * every community on the deployment.
  *
- * A consequence worth stating plainly: **Google's OAuth round-trip lands on a
- * single fixed callback host**, so a host-only cookie set there does not travel
- * back to a different tenant's host. OAuth therefore works on the tenant that
- * owns the callback URL and not on the others until REQ-TENANT-01.8's signed
- * `state` handoff exists (v2-8, alongside per-tenant OAuth credentials —
- * building the handoff before those exist would mean building it twice).
- * Email/password login is unaffected and works on every tenant today.
+ * A consequence this used to warn about, now handled: **Google's OAuth
+ * round-trip lands on a single fixed callback host**, so a host-only cookie set
+ * there does not travel back to a different tenant's host. v2-8 solved it the
+ * way REQ-TENANT-01.8 specifies — the callback issues a single-use ticket and
+ * redirects to the originating host, which redeems it for a cookie it can
+ * actually set. Nothing in this file changed to make that work, which is the
+ * point: the handoff exists so the cookie's scope does not have to be widened.
+ *
+ * **`sameSite` deliberately stays `strict`.** REQ-TENANT-01.8 expected this to
+ * need relaxing to `lax`, on the reasoning that browsers withhold a Strict
+ * cookie from a request arriving via a cross-site redirect. That reasoning
+ * applies to a cookie *sent* on the redirect; here there is no cookie yet. The
+ * cross-site hop is the navigation to `/auth/callback`, and the cookie is set
+ * on the same-site POST the landing page then makes to `/auth/handoff`. The
+ * requirement asked for this to be confirmed in a real browser rather than read
+ * off the spec — that confirmation is a stage-testing item, and `lax` is the
+ * one-line fallback if it turns out otherwise.
  *
  * `secure` follows NODE_ENV because local development is plain HTTP.
  */

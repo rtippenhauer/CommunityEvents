@@ -62,10 +62,11 @@ async function bootstrap(): Promise<void> {
   // per request, while printing a production warning about all three.
   //
   // Worth being explicit about what this does NOT remove: `state` was already
-  // unverified, because NullStore.verify() returns true unconditionally. The
-  // open-redirect guard in AuthController is what stands in for it today, and
-  // REQ-TENANT-01.8's signed state (v2-8) is the real fix. That design needs no
-  // session store either.
+  // unverified, because NullStore.verify() returns true unconditionally. v2-8
+  // supplied the real fix -- REQ-TENANT-01.8's signed state, in
+  // `oauth/oauth-state.util.ts`, HMACed under a key derived from JWT_SECRET and
+  // verified by us rather than by Passport. It needs no session store either,
+  // which is why removing the middleware first cost nothing.
 
   const uploadPath = configService.get<string>('UPLOAD_PATH', '/app/uploads');
 

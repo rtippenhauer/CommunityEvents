@@ -46,6 +46,45 @@ const ERROR_CONTENT: Record<string, ErrorContent> = {
     body: "The account you signed in with doesn't match the email this invite was sent to. Try again with the account your invite was sent to.",
     showInviteHint: false,
   },
+  // v2-8 reasons. Each one is a state the sign-in genuinely reached, and each
+  // says what to do next -- the fallback below says "try again", which is wrong
+  // advice for three of these four.
+  provider_not_offered: {
+    icon: 'no_accounts',
+    title: 'That sign-in method is not available here',
+    body: 'This community does not offer that way of signing in. Use your email address and password instead.',
+    showInviteHint: false,
+  },
+  consent_denied: {
+    icon: 'do_not_disturb_on',
+    title: 'Sign-in cancelled',
+    body: 'You cancelled before granting access, so nothing was shared and you are not signed in. You can try again whenever you like.',
+    showInviteHint: false,
+  },
+  invalid_state: {
+    icon: 'gpp_maybe',
+    title: 'Sign-in could not be verified',
+    body: 'We could not confirm that this sign-in started here, so it was stopped. This usually means it took too long or the link was tampered with. Please start again from the login page.',
+    showInviteHint: false,
+  },
+  exchange_failed: {
+    icon: 'cloud_off',
+    title: 'Sign-in failed',
+    body: 'Something went wrong while confirming your account with the provider. Please try again.',
+    showInviteHint: false,
+  },
+  no_email: {
+    icon: 'alternate_email',
+    title: 'No email address shared',
+    body: 'Your account did not share an email address, and one is needed to identify you here. Sign in with your email address and password instead.',
+    showInviteHint: false,
+  },
+  handoff_invalid: {
+    icon: 'timer_off',
+    title: 'That sign-in link has already been used',
+    body: 'Sign-ins are completed once and cannot be repeated -- refreshing this page is the usual way to see this. Please sign in again.',
+    showInviteHint: false,
+  },
   fb_error: {
     icon: 'cloud_off',
     title: 'Facebook sign-in failed',

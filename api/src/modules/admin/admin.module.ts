@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
+import { OAuthConfigController } from './oauth-config.controller';
 import { EmailModule } from '../email/email.module';
 import { AuditModule } from '../audit/audit.module';
 
@@ -10,6 +11,6 @@ import { AuditModule } from '../audit/audit.module';
     AuditModule,
   ],
   providers: [AdminService],
-  controllers: [AdminController],
+  controllers: [AdminController, OAuthConfigController],
 })
 export class AdminModule {}

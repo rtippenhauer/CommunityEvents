@@ -362,20 +362,46 @@ Provider-side setup, which is the same whoever ends up holding the credentials:
    need verification, which takes time — start it early.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**,
    type **Web application**.
-4. **Authorized redirect URI**: `https://<host>/api/v1/auth/google/callback`.
-   This must match exactly — scheme, host, path, no trailing slash. A mismatch
-   gives `redirect_uri_mismatch`, which is at least an honest error.
-5. Copy the **Client ID** and **Client secret**.
+4. **Authorized redirect URI**: this deployment's own callback, which is **not
+   the community's host**:
 
-> **Where those values go depends on the release.** Today the deployment uses one
-> platform-wide Google app, configured through the `GOOGLE_CLIENT_ID` and
-> `GOOGLE_CLIENT_SECRET` environment variables, and OAuth works on the host that
-> owns the callback URL. Per-community credentials — a community supplying its
-> own pair, with the provider offered only where it has them — are `v2-8`. The
-> Google Cloud steps above do not change; only where the app keeps the result.
+   ```
+   https://<deployment host>/api/v1/auth/google/callback
+   ```
+
+   The exact value is shown, with a copy button, at **Admin → Sign-in
+   Providers** — copy it from there rather than typing it. It must match
+   exactly: scheme, host, path, no trailing slash. A mismatch gives
+   `redirect_uri_mismatch`, which is at least an honest error.
+
+   Pasting the community's own address here is the commonest way to get this
+   wrong, and it looks so reasonable that it is worth saying why it is not: a
+   provider will not accept a wildcard for subdomains, so one redirect URI per
+   community would mean editing Google's console before any new community could
+   offer sign-in — and a community that brings its own domain could not verify
+   it as an authorized domain on this project's consent screen at all. Every
+   callback therefore lands on the one host and is handed back to the community
+   that started it (REQ-TENANT-01.8).
+5. Copy the **Client ID** and **Client secret**.
+6. In the community, sign in as an admin and go to **Admin → Sign-in
+   Providers**. Paste both values under Google and save. The secret is stored
+   encrypted and is never shown again — the screen reports only whether one is
+   set.
+
+The provider appears on that community's login page as soon as it is saved, and
+on no other community's. To stop offering it, use **Switch off**, which deletes
+both values.
+
+**The consent screen says "Community Events", not the community's name.** Google
+and Meta render the app name and logo from the OAuth client's own project, so a
+member signing in sees whoever registered the app. A community that registers
+its own app therefore gets its own name there — which is most of the argument
+for doing so.
 
 Facebook follows the same pattern through the Meta app dashboard, and is equally
-optional.
+optional. There is no redirect URI to register: Facebook sign-in happens in the
+browser, so add the community's own address to the app's allowed domains
+instead. The App ID and App secret go in the same screen.
 
 ## 6. Creating the community
 
@@ -403,6 +429,7 @@ With DNS and mail in place:
 [ ] Brevo webhook registered with the secret, and a test bounce lands
 [ ] Cloudflare Email Routing on; every published address forwards, and tested
 [ ] Exactly one SPF record on the domain
-[ ] Google OAuth client created and redirect URI matched (if wanted)
+[ ] Google OAuth client created, deployment redirect URI matched (if wanted)
+[ ] Client ID + secret saved at Admin -> Sign-in Providers (if wanted)
 [ ] Community created with a first admin; sign-in confirmed at its own host
 ```
