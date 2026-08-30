@@ -28,15 +28,20 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
  * actually set. Nothing in this file changed to make that work, which is the
  * point: the handoff exists so the cookie's scope does not have to be widened.
  *
- * **`sameSite` deliberately stays `strict`.** REQ-TENANT-01.8 expected this to
- * need relaxing to `lax`, on the reasoning that browsers withhold a Strict
- * cookie from a request arriving via a cross-site redirect. That reasoning
- * applies to a cookie *sent* on the redirect; here there is no cookie yet. The
- * cross-site hop is the navigation to `/auth/callback`, and the cookie is set
- * on the same-site POST the landing page then makes to `/auth/handoff`. The
- * requirement asked for this to be confirmed in a real browser rather than read
- * off the spec — that confirmation is a stage-testing item, and `lax` is the
- * one-line fallback if it turns out otherwise.
+ * **`sameSite` stays `strict`, and this is now measured rather than argued.**
+ * REQ-TENANT-01.8 expected it to need relaxing to `lax`, on the reasoning that
+ * browsers withhold a Strict cookie from a request arriving via a cross-site
+ * redirect. That reasoning applies to a cookie *sent* on the redirect; here
+ * there is no cookie yet. The cross-site hop is the navigation to
+ * `/auth/callback`, and the cookie is set on the same-site POST the landing
+ * page then makes to `/auth/handoff`.
+ *
+ * The requirement asked for this to be confirmed in a real browser rather than
+ * read off the spec. **Confirmed on stage 2026-08-30**: Google sign-in
+ * completes on a non-root community and the session sticks, and signing in on
+ * one community leaves the other signed out. Do not "fix" this to `lax` on the
+ * strength of the spec-reading above — it was tried the other way and `strict`
+ * is correct for this flow.
  *
  * `secure` follows NODE_ENV because local development is plain HTTP.
  */

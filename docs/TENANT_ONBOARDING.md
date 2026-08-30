@@ -398,10 +398,36 @@ member signing in sees whoever registered the app. A community that registers
 its own app therefore gets its own name there — which is most of the argument
 for doing so.
 
-Facebook follows the same pattern through the Meta app dashboard, and is equally
-optional. There is no redirect URI to register: Facebook sign-in happens in the
-browser, so add the community's own address to the app's allowed domains
-instead. The App ID and App secret go in the same screen.
+### Facebook: same wiring, very different effort
+
+The App ID and App secret go in the same screen, and there is no redirect URI to
+register -- Facebook sign-in happens in the browser, so add the community's own
+address to the app's allowed domains instead.
+
+**What is not the same is the cost of getting there.** Meta's App Review is
+attached to a single App ID and does not transfer, so a community wanting
+Facebook sign-in needs its own review, its own demo video, and Business
+Verification if Meta asks for it -- days to weeks, per community. Until then the
+app is in Development mode, where it works only for people holding a role on it
+(admin, developer, tester), which is enough to test with and not enough to
+launch with. `email` is the permission that needs approving; `public_profile` is
+granted by default.
+
+Google has no equivalent gate for `email`/`profile`. A community can register a
+Google app and be signing members in the same afternoon; an unverified app shows
+a warning and is capped at around 100 users, so verification matters eventually
+but does not block getting started.
+
+**So Google is the practical default and Facebook is an advanced option.** Set
+expectations accordingly with a community that asks for both.
+
+One asymmetry worth knowing before changing credentials later: **Google's user
+id is global and Meta's is app-scoped.** Rotating a Google secret, client, or
+even the whole project keeps every existing link working, because the `sub` we
+store is the member's Google account id and does not vary per client. Changing a
+Facebook **App ID** issues different ids for the same people and orphans every
+Facebook link in that community -- so treat it as a migration, not a settings
+change. Rotating the Facebook *secret* alone is safe, like Google's.
 
 ## 6. Creating the community
 

@@ -273,6 +273,19 @@ did not take. `lax` is the conventional setting for OAuth returns and is
 sufficient here. v1 currently ships `strict`; confirm the real behaviour in a
 browser rather than trusting a reading of the spec.
 
+> **Resolved by `v2-8`, and the prediction above was wrong — `strict` holds.**
+> Confirming in a browser was the right instruction and is what settled it
+> (stage, 2026-08-30: sign-in completes on a non-root community and the session
+> sticks; signing in on one community leaves the other signed out).
+>
+> The reasoning missed which request carries the cookie. `SameSite` governs
+> whether a browser *attaches* a cookie to an outgoing request; it does not stop
+> a response from *setting* one. On the cross-site hop — the navigation to
+> `/auth/callback` — there is no cookie yet to withhold. The handoff is redeemed
+> by a POST the landing page makes to its own origin, which is same-site, so the
+> cookie it sets is stored and sent normally from then on. The handoff design
+> removed the need for the relaxation rather than needing it.
+
 **Consent-screen branding is accepted as platform-branded.** Google and Meta
 both render the app name and logo from the OAuth client's own project, not from
 the redirect URI, so a member signing in at any tenant sees "Community Events"
