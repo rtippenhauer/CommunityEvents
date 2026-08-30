@@ -239,13 +239,6 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
     cls: 'runtime',
     note: 'Public half -- already served to every browser in the branding payload.',
   },
-  GOOGLE_CALLBACK_URL: {
-    cls: 'runtime',
-    note:
-      'Per-tenant in principle, but pinned to one host in practice until ' +
-      "v2-8's signed state handoff, because Google matches it exactly.",
-  },
-  FACEBOOK_CALLBACK_URL: { cls: 'runtime', note: 'As GOOGLE_CALLBACK_URL.' },
   BREVO_TEMPLATE_INVITE: {
     cls: 'runtime',
     note: 'Already DB-overridable via email_provider_config.',
@@ -262,22 +255,16 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
   BREVO_TEMPLATE_PASSWORD_RESET: { cls: 'runtime' },
 
   // --- secret ---------------------------------------------------------------
-  GOOGLE_CLIENT_ID: {
-    cls: 'secret',
-    note:
-      'Not itself secret, but it is meaningless apart from the secret beside ' +
-      'it -- the tenants table already has both columns reserved, and they ' +
-      'move together in v2-8.',
-  },
-  GOOGLE_CLIENT_SECRET: {
-    cls: 'secret',
-    note:
-      "Per-tenant, but its home is tenants.google_client_secret, which v2-8 " +
-      'populates -- the column has been reserved and declared encrypted since ' +
-      'v2-3. Two homes for one credential would be worse than a late one.',
-  },
-  FACEBOOK_APP_ID: { cls: 'secret', note: 'As GOOGLE_CLIENT_ID.' },
-  FACEBOOK_APP_SECRET: { cls: 'secret', note: 'As GOOGLE_CLIENT_SECRET.' },
+  // GOOGLE_CLIENT_ID/SECRET, FACEBOOK_APP_ID/SECRET and the two *_CALLBACK_URL
+  // variables were here until v2-8 and are deliberately gone rather than
+  // deprecated. A community's OAuth app now lives in `tenants`, and NULL means
+  // the provider is switched off for it -- so a deployment-wide fallback app is
+  // not a default, it is the one arrangement REQ-TENANT-01.9 rules out: it
+  // would sign a community's members in through an app they have no
+  // relationship with. The callback URLs went because they are derived from
+  // APP_URL, which is the single host every callback terminates on
+  // (REQ-TENANT-01.8); a second way to spell it is a second way to get it
+  // subtly wrong.
   BREVO_API_KEY: {
     cls: 'secret',
     note:

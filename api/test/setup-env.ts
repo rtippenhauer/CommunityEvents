@@ -25,12 +25,13 @@ setDefault('JWT_SECRET', 'test-jwt-secret-not-for-real-use');
 // would still work (every spec writes and reads within one process), but a
 // fixed one means a ciphertext captured in a failing test is reproducible.
 setDefault('SECRET_ENCRYPTION_KEY', 'Y29tbXVuaXR5ZXZlbnRzLXRlc3Qta2V5LTMyYnl0ZXM=');
-setDefault('GOOGLE_CLIENT_ID', 'test-google-client-id');
-setDefault('GOOGLE_CLIENT_SECRET', 'test-google-client-secret');
+// No GOOGLE_CLIENT_* or FACEBOOK_APP_* here as of v2-8: OAuth credentials are a
+// community's own, on its `tenants` row, and there is no deployment-wide app to
+// fall back to. A spec that needs a provider gives its tenant one -- see
+// auth.e2e-spec.ts and per-tenant-oauth.e2e-spec.ts.
 setDefault('APP_URL', 'http://localhost:8081');
 setDefault('BASE_DOMAIN', 'localhost');
 setDefault('UPLOAD_PATH', '/tmp/dinnerbears-test-uploads');
-setDefault('FACEBOOK_APP_SECRET', 'test-facebook-app-secret-not-for-real-use');
 setDefault('CLAUDE_AUTOMATION_SECRET', 'test-automation-secret-not-for-real-use');
 setDefault('CLOUDFLARE_EMAIL_SECRET', 'test-cloudflare-email-secret-not-for-real-use');
 setDefault('BREVO_WEBHOOK_SECRET', 'test-brevo-webhook-secret-not-for-real-use');

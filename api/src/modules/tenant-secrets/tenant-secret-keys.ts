@@ -27,9 +27,10 @@
  * will; some only until the item that gives them a per-community home, which
  * is not this one. Which is which matters more than the split:
  *
- *  - `GOOGLE_CLIENT_*` / `FACEBOOK_APP_*` are per-tenant, but their home is the
- *    reserved `tenants` columns, which v2-8 populates. Two homes for one
- *    credential would be worse than a late one.
+ *  - `GOOGLE_CLIENT_*` / `FACEBOOK_APP_*` are gone as of v2-8. Their home is the
+ *    `tenants` columns, set at Admin -> Sign-in Providers, and a community
+ *    without them offers email/password rather than falling back to a
+ *    deployment-wide app -- so there was no deployment default left to keep.
  *  - `BREVO_API_KEY` / `RESEND_API_KEY` / `BREVO_WEBHOOK_SECRET` are all three
  *    per-community *in principle* -- the webhook secret included, since it
  *    authenticates callbacks from a particular Brevo account and a community
