@@ -167,6 +167,120 @@ describe('Brevo webhook authentication (e2e)', () => {
     });
   });
 
+  /**
+   * What Brevo is already holding when we try to register.
+   *
+   * Found on stage the moment the Re-register button was pressed on a community
+   * that already had a webhook: `register()` treated "mint a new token" as
+   * "create a new webhook", so it always POSTed, and Brevo answers a POST for a
+   * URL it already holds with `duplicate_parameter`. The button could therefore
+   * never succeed in any situation anyone would press it in -- including every
+   * community registered before this code existed.
+   */
+  describe('registering over what Brevo already has', () => {
+    const svc = () => app.get(BrevoWebhookService);
+
+    const mockBrevo = (
+      handler: (method: string, url: string, body: unknown) => Response,
+    ): void => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async (input: RequestInfo | URL, init?: RequestInit) =>
+          handler(
+            init?.method ?? 'GET',
+            String(input),
+            init?.body ? JSON.parse(String(init.body)) : undefined,
+          ),
+      );
+    };
+
+    const duplicate = () =>
+      new Response(
+        JSON.stringify({ code: 'duplicate_parameter', message: 'Notify url already exists' }),
+        { status: 400 },
+      );
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('adopts a webhook that already exists at this URL', async () => {
+      await configure({ brevoApiKey: 'key-for-this-account', webhookSecret: CURRENT });
+
+      let registeredUrl: string | undefined;
+      const seen: string[] = [];
+      mockBrevo((method, url, body) => {
+        seen.push(`${method} ${url}`);
+        if (method === 'POST') {
+          registeredUrl = (body as { url: string }).url;
+          return duplicate();
+        }
+        if (method === 'GET') {
+          return new Response(JSON.stringify({ webhooks: [{ id: 42, url: registeredUrl }] }), {
+            status: 200,
+          });
+        }
+        return new Response(null, { status: 204 });
+      });
+
+      const result = await inTenant(TEST_TENANT_ID, () => svc().register({ newToken: true }));
+
+      expect(result.ok).toBe(true);
+      // Looked it up and updated it, rather than giving up on the POST.
+      expect(seen.some((call) => call.startsWith('GET'))).toBe(true);
+      expect(seen.some((call) => call.includes('PUT') && call.endsWith('/42'))).toBe(true);
+
+      const after = await inTenant(TEST_TENANT_ID, () =>
+        prisma.email_provider_config.findFirst(),
+      );
+      expect(after!.webhookId).toBe('42');
+      expect(after!.webhookError).toBeNull();
+    });
+
+    it('creates a new one when the id we hold belongs to another account', async () => {
+      // A replaced API key can point at an entirely different Brevo account,
+      // where the webhook we recorded does not exist. That is a 404, and the
+      // recovery is to create rather than to fail.
+      await configure({
+        brevoApiKey: 'key-for-a-different-account',
+        webhookSecret: CURRENT,
+        webhookId: '999',
+      });
+
+      const seen: string[] = [];
+      mockBrevo((method, url) => {
+        seen.push(`${method} ${url}`);
+        if (method === 'PUT') return new Response('no such webhook', { status: 404 });
+        if (method === 'POST') return new Response(JSON.stringify({ id: 7 }), { status: 201 });
+        return new Response(null, { status: 204 });
+      });
+
+      const result = await inTenant(TEST_TENANT_ID, () => svc().register({ newToken: true }));
+
+      expect(result.ok).toBe(true);
+      expect(seen.some((call) => call.startsWith('PUT'))).toBe(true);
+      expect(seen.some((call) => call.startsWith('POST'))).toBe(true);
+      const after = await inTenant(TEST_TENANT_ID, () =>
+        prisma.email_provider_config.findFirst(),
+      );
+      expect(after!.webhookId).toBe('7');
+    });
+
+    it('surfaces a failure it cannot route around, and records why', async () => {
+      // A revoked key is not something to recover from by creating a second
+      // webhook. It needs the operator, so it has to reach the screen.
+      await configure({ brevoApiKey: 'revoked', webhookSecret: CURRENT });
+      mockBrevo(() => new Response('{"message":"Key not found"}', { status: 401 }));
+
+      const result = await inTenant(TEST_TENANT_ID, () => svc().register({ newToken: true }));
+
+      expect(result.ok).toBe(false);
+      const after = await inTenant(TEST_TENANT_ID, () =>
+        prisma.email_provider_config.findFirst(),
+      );
+      expect(after!.webhookError).toContain('401');
+    });
+  });
+
   it('keeps honouring the deployment-wide secret in the query string', async () => {
     // A webhook registered before v2-9 keeps delivering until its community
     // re-registers. Dropping the old form on upgrade would lose events in

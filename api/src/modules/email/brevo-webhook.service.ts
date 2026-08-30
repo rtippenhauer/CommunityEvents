@@ -93,16 +93,20 @@ export class BrevoWebhookService {
     const url = `${await this.tenantResolution.baseUrlFor(config.tenantId)}/api/v1/email/webhook/brevo`;
     const token = options.newToken || !config.webhookSecret ? mintToken() : config.webhookSecret;
 
-    // A key that changed may belong to a different Brevo account entirely, in
-    // which case the stored id names a webhook this key cannot see. Creating
-    // rather than updating is the safe way round: an orphaned webhook in an
-    // account we can no longer reach is untidy, a lost one is broken.
-    const existingId = options.newToken ? null : config.webhookId;
-
     try {
-      const id = existingId
-        ? await this.updateWebhook(apiKey, existingId, url, token)
-        : await this.createWebhook(apiKey, url, token);
+      // Minting a new token and creating a new webhook are different questions,
+      // and conflating them is what broke the Re-register button: it always
+      // passes newToken, so it always POSTed, and Brevo answers a POST for a URL
+      // it already holds with `duplicate_parameter`. The button could therefore
+      // never succeed once a webhook existed -- which is every case anybody
+      // would press it in.
+      //
+      // So: update what we are pointing at, and fall back to creating only when
+      // there is genuinely nothing there. `upsertWebhook` handles the reverse
+      // too, adopting a webhook that exists at this URL but whose id we do not
+      // know -- a registration from before this code, or from a hand-made one in
+      // the Brevo dashboard.
+      const id = await this.upsertWebhook(apiKey, config.webhookId, url, token);
 
       await this.prisma.email_provider_config.updateMany({
         where: { id: config.id },
@@ -216,6 +220,64 @@ export class BrevoWebhookService {
     );
   }
 
+  /**
+   * Points one webhook at this community, whatever state Brevo is already in.
+   *
+   * Four cases, and only the first is the happy one:
+   *
+   * - we hold an id and it is live      -> update it
+   * - we hold an id from another account -> 404, so create instead
+   * - we hold no id and none exists      -> create
+   * - we hold no id but one exists here  -> `duplicate_parameter`, so find it
+   *                                         by URL and adopt it
+   *
+   * The fourth is not an edge case: every community registered before this code
+   * existed is in it, and so is anyone who set a webhook up by hand. Failing
+   * there would mean the only fix is deleting the webhook in Brevo's dashboard,
+   * which is precisely the manual step this service exists to remove.
+   */
+  private async upsertWebhook(
+    apiKey: string,
+    knownId: string | null,
+    url: string,
+    token: string,
+  ): Promise<string> {
+    if (knownId) {
+      try {
+        return await this.updateWebhook(apiKey, knownId, url, token);
+      } catch (err) {
+        // Anything but "no such webhook" is a real failure and must surface: a
+        // revoked key and a Brevo outage both need the operator, and quietly
+        // creating a second webhook would not help either.
+        if (!isNotFound(err)) throw err;
+        this.logger.warn(
+          `Brevo webhook ${knownId} is not in this account; registering a new one.`,
+        );
+      }
+    }
+
+    try {
+      return await this.createWebhook(apiKey, url, token);
+    } catch (err) {
+      if (!isDuplicateUrl(err)) throw err;
+      const existing = await this.findWebhookByUrl(apiKey, url);
+      if (!existing) throw err;
+      this.logger.log(`Adopting the Brevo webhook already registered at ${url}.`);
+      return await this.updateWebhook(apiKey, existing, url, token);
+    }
+  }
+
+  /** The id of the webhook Brevo already holds for this URL, if any. */
+  private async findWebhookByUrl(apiKey: string, url: string): Promise<string | null> {
+    const body = await this.callBrevo<{ webhooks?: { id?: number; url?: string }[] }>(
+      apiKey,
+      'GET',
+      'https://api.brevo.com/v3/webhooks?type=transactional',
+    );
+    const match = body.webhooks?.find((hook) => hook.url === url);
+    return match?.id === undefined ? null : String(match.id);
+  }
+
   private async createWebhook(
     apiKey: string,
     url: string,
@@ -247,9 +309,9 @@ export class BrevoWebhookService {
 
   private async callBrevo<T>(
     apiKey: string,
-    method: 'POST' | 'PUT',
+    method: 'GET' | 'POST' | 'PUT',
     url: string,
-    body: unknown,
+    body?: unknown,
   ): Promise<T> {
     const response = await fetch(url, {
       method,
@@ -258,16 +320,54 @@ export class BrevoWebhookService {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
 
     if (!response.ok) {
-      throw new Error(`Brevo API error ${response.status}: ${(await response.text()).slice(0, 300)}`);
+      // The status and Brevo's own body are both carried, because the caller
+      // has to tell a missing webhook and a duplicate URL apart from a revoked
+      // key -- and the two recoverable ones are only distinguishable from the
+      // text. The message is what the admin screen shows, so it stays readable.
+      throw new BrevoApiError(response.status, (await response.text()).slice(0, 300));
     }
     // PUT answers 204 with no body; POST answers 201 with { id }.
     const text = await response.text();
     return (text ? JSON.parse(text) : {}) as T;
   }
+}
+
+/**
+ * A Brevo failure that kept its status code.
+ *
+ * `register()` has to distinguish three outcomes that all arrive as a non-2xx:
+ * the webhook we named is gone (recover by creating), one already exists at this
+ * URL (recover by adopting it), and everything else (surface it -- a revoked key
+ * is not something this code can route around).
+ */
+class BrevoApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(`Brevo API error ${status}: ${body}`);
+    this.name = 'BrevoApiError';
+  }
+}
+
+/** Brevo does not hold the webhook we asked about. */
+function isNotFound(err: unknown): boolean {
+  return err instanceof BrevoApiError && err.status === 404;
+}
+
+/**
+ * Brevo already has a webhook for this URL.
+ *
+ * Matched on the machine-readable code rather than the prose, which Brevo is
+ * free to reword: `{"code":"duplicate_parameter","message":"Notify url already
+ * exists"}`.
+ */
+function isDuplicateUrl(err: unknown): boolean {
+  return err instanceof BrevoApiError && err.body.includes('duplicate_parameter');
 }
 
 /** 32 random bytes, URL-safe — it travels in an Authorization header. */
