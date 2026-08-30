@@ -916,6 +916,57 @@ is a confidential client with a server-side secret, so the payoff is small, and
 the same cross-host split means the `code_verifier` would need its own storage
 row -- real cost, marginal benefit.
 
+#### Deferred to the next phase: a callback on the community's own host
+
+Every callback currently terminates on the deployment's single registered URI,
+and `oauth_handoffs` carries the session the last hop. A community that owns its
+domain does not need that detour, and REQ-TENANT-01.8 always said so -- it left
+the direct path "undesigned until someone asks for it". Asked for, 2026-08-30;
+agreed with Rob to build it in the next phase rather than widen v2-8.
+
+**Why the fixed URI is not simply obsolete**, which is the part worth not
+re-deriving. Adding an authorised domain to a Google project means verifying
+ownership in Search Console, so a redirect URI can only live on a domain the
+project's owner controls. Four cases:
+
+| Tenant host | Whose Google project | Fixed URI | Own-host URI |
+| --- | --- | --- | --- |
+| subdomain of ours | ours | works, zero setup | a console edit per community |
+| subdomain of ours | theirs | impossible | impossible |
+| their own domain | theirs | impossible | works |
+| their own domain | ours | works | impossible |
+
+Row 1 is the self-service and demo case and is the fixed URI's real
+constituency: one URI already registered covers every client in that project, so
+a new community needs no console interaction at all. Row 3 is what the direct
+path unlocks.
+
+**Row 4 is disallowed by policy, decided with Rob 2026-08-30**, and that
+decision is what makes the design simple: a community that brings its own domain
+but will not run its own Google project gets email/password, exactly as
+REQ-TENANT-01.9 already says for a community that registers no app. With row 4
+gone, nothing in rows 1-3 conflicts, so the two paths can coexist without a
+per-tenant setting having to be right.
+
+Shape: a nullable/boolean flag on `tenants` (the callback path is ours, so only
+the *host* varies -- deriving it from the tenant's domain avoids validating a
+free-text URL that could point anywhere); `GoogleOAuthService.callbackUrl`
+becomes per-tenant and must return the same value on both legs, since Google
+matches `redirect_uri` at the token exchange too; the direct path skips the
+handoff entirely and sets the cookie itself, and should still check the signed
+state's tenant against `req.tenant` rather than trusting the host alone. The
+admin screen shows whichever URI applies.
+
+**Worth carrying into that phase: email and OAuth have opposite fallback
+policies.** `v2-9` lets a community with no Brevo key send on the deployment's
+credentials; REQ-TENANT-01.9 gives OAuth no platform fallback at all. There is a
+real argument for the asymmetry -- mailing *as* a community creates no
+relationship between its members and Brevo, whereas signing them in through the
+platform's app makes the platform the party they granted consent to -- but a
+self-service deployment means several communities sharing one Brevo allowance,
+which is the quota trap `v2-9` documents. Decide it deliberately rather than by
+inheritance.
+
 ---
 
 ## Deferred: CommunityEvents domain, branding and demo

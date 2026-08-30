@@ -90,7 +90,11 @@ type Provider = 'google' | 'facebook';
                 <input matInput formControlName="clientId" autocomplete="off" />
               </mat-form-field>
 
-              <mat-form-field appearance="outline" class="full-width">
+              <!-- subscriptSizing="dynamic" because the hint below runs to two
+                   lines. Material reserves a fixed-height subscript area by
+                   default, so a wrapped hint overflows it and the card's action
+                   row renders on top of the second line. -->
+              <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
                 <mat-label>Client secret</mat-label>
                 <input matInput formControlName="clientSecret" type="password" autocomplete="off" />
                 <mat-hint>
@@ -147,7 +151,7 @@ type Provider = 'google' | 'facebook';
                 <input matInput formControlName="clientId" autocomplete="off" />
               </mat-form-field>
 
-              <mat-form-field appearance="outline" class="full-width">
+              <mat-form-field appearance="outline" class="full-width" subscriptSizing="dynamic">
                 <mat-label>App secret</mat-label>
                 <input matInput formControlName="clientSecret" type="password" autocomplete="off" />
                 <mat-hint>
@@ -240,6 +244,10 @@ type Provider = 'google' | 'facebook';
       .provider-form {
         display: flex;
         flex-direction: column;
+      }
+      /* Space between the last field's hint and the card's action row. */
+      .provider-form mat-form-field:last-of-type {
+        margin-bottom: 8px;
       }
       .full-width {
         width: 100%;
