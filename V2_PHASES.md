@@ -855,7 +855,8 @@ carried over from the DinnerBears account.
   v2-10 below -- its remaining scope is unchanged apart from these.
 
 ### v2-8 — Per-tenant OAuth apps (REQ-TENANT-01.9, REQ-TENANT-01.8)
-**Status:** Not started. Depends on v2-7 and on v2-6.
+**Status:** In Progress (started 2026-08-29). Depends on v2-7 and on v2-6,
+both done. Runs after v2-9, which was taken first.
 
 Each tenant supplies its own Google and/or Meta credentials; a provider is
 offered only where that tenant has them, and email/password is always
@@ -906,7 +907,7 @@ Three things that are easy to conflate, kept separate on purpose:
 
 ### v2-9 — Per-community email sending
 
-**Status:** In Progress (started 2026-08-23). Depends on v2-7, which is done.
+**Status:** Complete (2026-08-29). Tag `v2-9`.
 
 **Runs before v2-8, decided 2026-08-23 with Rob.** The numbers stay put this
 time -- `v2-7` is tagged, so renumbering is no longer free, and the order is
@@ -953,7 +954,66 @@ of the code in `docs/TENANT_ONBOARDING.md`, which v2-7 wrote.
 
 **Definition of done:** two communities on one deployment sending under their
 own verified domains, each against its own quota, with bounces from either
-correctly suppressing the address everywhere.
+correctly suppressing the address everywhere. **Met on stage 2026-08-29**, the
+last piece being a `delivered` callback authenticating against a freshly rotated
+token on an adopted webhook.
+
+**What actually landed**, beyond the scoping above:
+
+- **Self-registering webhooks per community.** `BrevoWebhookService.register()`
+  calls Brevo's API rather than asking an operator to paste a URL. The token is
+  ours, which is the whole reason rotation can be automatic: 30 days, with the
+  replaced token honoured for a 7-day grace. The API key cannot be rotated the
+  same way -- Brevo mints it and exposes no reissue endpoint -- so it gets a
+  60-day quiet-community warning instead, since Brevo deactivates a key after 90
+  days without a send.
+- **The daily counter was wrong twice, in opposite directions.** `sendNow`
+  bypasses the dispatcher by design, so password resets, verification and
+  security alerts were never counted at all. And the sending day ended at UTC
+  midnight, which is 8pm Eastern -- so the screen read `1 / 300` on two
+  communities after four messages. `EMAIL_QUOTA_TIMEZONE` now draws the boundary;
+  `last_reset_date` widened from DATE to DATETIME(3) so the rollover is a
+  conditional write both send paths can perform safely.
+- **The allowance belongs to the account, not the community.** Rob's
+  observation, and the item's most durable outcome. Communities without their own
+  key share one Brevo account and one allowance, which no per-community counter
+  can see. Attribution and budget are now separate numbers, both shown, and the
+  budget gates sending. Refreshed where it matters -- before a batch, after a
+  send, on a page load, and on Send Now even with an empty queue -- rather than
+  on an interval.
+
+  This also settled the timezone question. The setting was built to mirror the
+  provider's reset; that turned out to be unknowable (no timezone field on the
+  account, and separate accounts may reset on separate cycles), and the account
+  budget is what makes it safe not to know. So the setting is the operator's
+  calendar day, for legibility, and not an attempt to track Brevo.
+
+**Traps, all runtime-only:** Brevo's registration API spells events camelCase
+(`hardBounce`) while its payloads use snake_case (`hard_bounce`), so a webhook
+registered with the payload spelling is accepted and never fires. An encrypted
+column cannot be filtered on, so the grace sweep keys on `webhookRotatedAt`
+alone. `runUnscoped(reason, () => prisma.x.updateMany())` returns a lazy promise
+that runs outside the context -- it threw on stage on the first hour boundary,
+and nothing caught it because no test ran a cron. And **"mint a new token" is not
+"create a new webhook"**: conflating them made the Re-register button POST every
+time, which Brevo rejects with `duplicate_parameter` for a URL it already holds,
+so the button could only ever succeed on a community that had no webhook -- the
+one case nobody presses it in.
+
+**Stage found five things tests did not:** a community with no config row got a
+permanent spinner on the one screen that could create it; an idle community never
+advanced its row and so displayed a window that had closed two days earlier; the
+cron sweeps threw on every hour boundary; `provision-tenant.ts` seeded neither
+the email row nor the legal pages; and the Re-register button above, found by
+pressing it once before the merge. Separately, a `prisma generate` skipped after
+a schema change left local tests running against a client that still believed a
+column was a DATE -- the image was never affected, since the Dockerfile generates
+during the build.
+
+**Known and deliberate:** template ids are scoped too, so a newly created
+community has none and falls back to `BREVO_TEMPLATE_*`. With those unset the
+invite goes out on the raw-HTML fallback -- it sends and delivers, which is
+exactly why it is easy to miss. Set them on the deployment, or per community.
 
 ### v2-10 — CommunityEvents branding replaces the DinnerBears defaults
 **Status:** Not started (deferred) -- **except five commits landed early on the

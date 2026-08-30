@@ -334,11 +334,22 @@ Config:
     }
 
     // ── Email provider config (leave an existing configured row untouched) ──
+    //
+    // Per-community as of v2-9, and written here rather than in seed.ts for the
+    // reason the app_config defaults are: seed runs before any tenant exists, so
+    // a row it wrote would take the tenant_id sentinel and be rejected by the
+    // foreign key. The row holds no credential -- the key and identity fall back
+    // to the deployment's env until this community sets its own -- so what it
+    // seeds is the quota and the counters.
+    //
+    // Raw SQL, so it carries its own tenant predicate: `tenant_id` is in the
+    // INSERT and in the unique key that makes IGNORE a no-op on re-run.
     await tx.$executeRawUnsafe(
       `INSERT IGNORE INTO email_provider_config
-         (id, brevo_enabled, resend_overflow_enabled, brevo_daily_limit,
+         (tenant_id, brevo_enabled, resend_overflow_enabled, brevo_daily_limit,
           resend_daily_limit, brevo_sent_today, resend_sent_today, last_reset_date)
-       VALUES (1, 1, 0, 300, 1000, 0, 0, CURDATE())`,
+       VALUES (?, 1, 0, 300, 1000, 0, 0, CURDATE())`,
+      tenantRow.id,
     );
 
     // ---- Service account -------------------------------------------------

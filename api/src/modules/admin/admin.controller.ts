@@ -11,10 +11,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { AdminService, AuditLogFilter } from './admin.service';
 import { EmailService } from '../email/email.service';
 import { EmailDispatcherService } from '../email/email-dispatcher.service';
+import { BrevoWebhookService } from '../email/brevo-webhook.service';
+import { BrevoService } from '../email/brevo.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -23,7 +26,16 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { SetRoleDto } from './dto/set-role.dto';
 import { SetMembershipDto } from './dto/set-membership.dto';
 import { UpdateEmailConfigDto } from './dto/update-email-config.dto';
-import { toEmailConfigView, type EmailConfigView } from './email-config.view';
+import { requireTenantId } from '../../common/tenant/tenant-store';
+import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
+import {
+  effectiveEmailConfigView,
+  rollForwardWindow,
+  toEmailConfigView,
+  type EmailConfigView,
+  type EmailQuotaWindowView,
+} from './email-config.view';
+import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
 
@@ -34,7 +46,10 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly emailService: EmailService,
     private readonly emailDispatcher: EmailDispatcherService,
+    private readonly brevoWebhook: BrevoWebhookService,
+    private readonly brevo: BrevoService,
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get('users')
@@ -160,33 +175,145 @@ export class AdminController {
   // decrypts on read -- so without this the screen would fetch an operator's
   // Brevo key in plaintext on every load, which is the exact exposure the
   // column encryption exists to close.
+  // Per-community as of v2-9: `findFirst` with no `where`, so the extension
+  // supplies the tenant. It was `findUnique({ id: 1 })` against a single global
+  // row, which meant this screen edited every community's sending credentials
+  // from whichever community's host the admin happened to be on.
+  // Answers for a community with no row too, rather than null. The screen
+  // renders nothing without a config, so returning null left a community that
+  // had never configured email staring at a spinner on the very screen that
+  // creates the row. The row is still written on first save -- a GET does not
+  // write.
   @Get('email/config')
   @Roles(UserRole.ADMIN)
-  async getEmailConfig(): Promise<EmailConfigView | null> {
-    const config = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
-    return config ? toEmailConfigView(config) : null;
+  async getEmailConfig(): Promise<EmailConfigView> {
+    const config = await this.prisma.email_provider_config.findFirst();
+    // requireTenantId rather than the request object, for the same reason raw
+    // SQL and the app_config upserts use it: it throws where there is no tenant
+    // instead of inventing one.
+    return effectiveEmailConfigView(
+      config,
+      requireTenantId('email config read'),
+      this.quotaTimeZone(),
+    );
+  }
+
+  /**
+   * When this community's sending day starts and ends, and what Brevo says is
+   * left of it.
+   *
+   * Separate from the config endpoint because it calls out to Brevo. The screen
+   * renders without it and fills it in when it arrives, so an unreachable
+   * provider costs a line of the page rather than the page.
+   */
+  @Get('email/quota-window')
+  @Roles(UserRole.ADMIN)
+  async getEmailQuotaWindow(): Promise<EmailQuotaWindowView> {
+    const { timeZone } = resolveQuotaTimeZone(this.config.get<string>('EMAIL_QUOTA_TIMEZONE'));
+    const windowStartedAt = quotaDayStart(new Date(), timeZone);
+    // Twenty-six hours past the start always lands inside the next day, which
+    // a flat +24h does not: a spring-forward day is 23 hours long and an
+    // autumn one 25.
+    const windowEndsAt = quotaDayStart(
+      new Date(windowStartedAt.getTime() + 26 * 60 * 60 * 1000),
+      timeZone,
+    );
+
+    const quota = await this.brevo.getAccountQuota();
+    return {
+      timeZone,
+      windowStartedAt: windowStartedAt.toISOString(),
+      windowEndsAt: windowEndsAt.toISOString(),
+      // Only a daily allowance is something to hold sending against. A prepaid
+      // balance is reported as a plan name and no number rather than as a
+      // number that means something else.
+      providerRemaining: quota?.isDailyAllowance ? quota.remaining : null,
+      providerPlan: quota?.planType ?? null,
+      providerAccountId: quota?.organizationId ?? null,
+      providerCheckedAt: quota ? new Date(quota.fetchedAt).toISOString() : null,
+    };
   }
 
   @Patch('email/config')
   @Roles(UserRole.ADMIN)
   async updateEmailConfig(@Body() body: UpdateEmailConfigDto): Promise<EmailConfigView | undefined> {
-    const config = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
-    if (!config) return;
+    const config = await this.prisma.email_provider_config.findFirst();
+
+    // Created on first save rather than returning silently (v2-9). The row used
+    // to exist for everyone because seed.ts wrote the one global copy; now it
+    // belongs to a community, and a community that has never sent mail has
+    // none. Making the admin screen depend on the dispatcher having run first
+    // -- which is how the row appeared before -- would mean the settings page
+    // silently discarded the first save.
+    if (!config) {
+      const created = await this.prisma.email_provider_config.create({
+        data: { ...newEmailProviderConfig(), ...body },
+      });
+      return toEmailConfigView(rollForwardWindow(created, this.quotaTimeZone()));
+    }
     // Patch from the DTO rather than mutating the loaded row and saving it
     // back, so only the fields the request actually sent are written. That is
     // also what lets the client leave a key alone: an omitted key is undefined
     // and untouched, an explicit null clears it.
+    const keyChanged = body.brevoApiKey !== undefined && body.brevoApiKey !== config.brevoApiKey;
     const updated = await this.prisma.email_provider_config.update({
-      where: { id: 1 },
-      data: body,
+      where: { id: config.id },
+      data: { ...body, ...(keyChanged ? { brevoApiKeySetAt: new Date() } : {}) },
     });
-    return toEmailConfigView(updated);
+
+    // A changed key may belong to a different Brevo account, where the webhook
+    // this community registered does not exist -- so the webhook is re-created
+    // with a fresh token rather than left pointing into an account we no longer
+    // have a key for. Deliberately not awaited for its success: registration
+    // failing must not fail the save that triggered it, or a Brevo outage would
+    // stop an operator fixing their own credentials. The outcome is recorded on
+    // the row and shown on the screen.
+    if (keyChanged) {
+      await this.brevoWebhook.register({ newToken: true });
+      const refreshed = await this.prisma.email_provider_config.findFirst();
+      if (refreshed) return toEmailConfigView(rollForwardWindow(refreshed, this.quotaTimeZone()));
+    }
+
+    return toEmailConfigView(rollForwardWindow(updated, this.quotaTimeZone()));
   }
 
+  /**
+   * The configured quota zone. Resolved per call rather than cached in a field
+   * because this controller is request-scoped in neither direction and the
+   * lookup is a string compare against a validated name -- see quota-day.ts.
+   */
+  private quotaTimeZone(): string {
+    return resolveQuotaTimeZone(this.config.get<string>('EMAIL_QUOTA_TIMEZONE')).timeZone;
+  }
+
+  /**
+   * Registers (or re-registers) this community's Brevo webhook.
+   *
+   * The manual path for the automatic one above: a retry after a failure, or a
+   * first registration for a community whose key was set before this existed.
+   */
+  @Post('email/webhook/register')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  registerBrevoWebhook(): Promise<{ ok: boolean; error?: string }> {
+    return this.brevoWebhook.register({ newToken: true });
+  }
+
+  /**
+   * Drains this community's queue -- and, when there is nothing to drain,
+   * still refreshes what Brevo says is left.
+   *
+   * The dispatcher only enters its per-tenant block for a community with mail
+   * waiting, so a flush with an empty queue used to do nothing whatsoever, not
+   * even update the numbers on the screen that just called it. Since the button
+   * is the obvious thing to press when you want the page to tell you something
+   * current, it now always at least does that.
+   */
   @Post('email/flush')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
   async flushQueue() {
+    await this.brevo.invalidateAccountQuota();
     await this.emailDispatcher.dispatchPending();
     return { ok: true };
   }

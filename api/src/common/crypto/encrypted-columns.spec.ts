@@ -40,7 +40,12 @@ const LOOKS_LIKE_A_SECRET = /secret|api_?key|password|token|private_?key|credent
 
 describe('encrypted columns (v2-7)', () => {
   it('resolves the declared columns and nothing else', () => {
-    expect(encryptedFieldsOf('email_provider_config')).toEqual(['brevoApiKey', 'resendApiKey']);
+    expect(encryptedFieldsOf('email_provider_config')).toEqual([
+      'brevoApiKey',
+      'resendApiKey',
+      'webhookSecret',
+      'webhookSecretPrevious',
+    ]);
     expect(hasEncryptedColumns('users')).toBe(false);
     expect(encryptedFieldsOf(undefined)).toBeUndefined();
   });

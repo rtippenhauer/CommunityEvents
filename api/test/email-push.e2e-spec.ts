@@ -3,9 +3,11 @@ import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
 import { EmailService } from '../src/modules/email/email.service';
+import { BrevoService } from '../src/modules/email/brevo.service';
 import { EmailTemplate } from '../src/modules/email/email.constants';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';
 import { PrismaService } from '../src/database/prisma/prisma.service';
+import { runUnscoped } from '../src/common/tenant/tenant-store';
 import type { cities as City, email_queue as EmailQueue, notification_preferences as NotificationPreferences, notifications as Notification, push_subscriptions as PushSubscription, users as User } from '@prisma/client';
 import { EmailQueueStatus, EmailStatus, SuppressionReason, UserRole } from '../src/database/enums';
 
@@ -111,6 +113,99 @@ describe('Email/Push Dispatch (e2e)', () => {
       expect(updated!.errorMessage).toBe('No provider available or daily limit reached');
     });
 
+    it("stops sending once the shared Brevo account is spent, under this community's own limit", async () => {
+      // The case the per-community counter cannot see. A community that has not
+      // set its own key sends on the deployment's, so several communities share
+      // one Brevo account and one daily allowance -- while each counts only its
+      // own sends against its own limit of 300. Two of them will spend 350 of a
+      // 300/day account between them without either ever exceeding what it
+      // believed was its budget, and be cut off by Brevo mid-batch.
+      const brevo = app.get(BrevoService);
+      vi.spyOn(brevo, 'isConfigured').mockResolvedValue(true);
+      vi.spyOn(brevo, 'getAccountQuota').mockResolvedValue({
+        remaining: 0,
+        planType: 'free',
+        isDailyAllowance: true,
+        organizationId: 'org-1',
+        fetchedAt: Date.now(),
+      });
+      const send = vi.spyOn(brevo, 'send').mockResolvedValue(undefined);
+
+      const row = await emailService.queue({
+        toEmail: 'shared-account@example.test',
+        subject: 'Hi',
+        htmlBody: '<p>hi</p>',
+      });
+      await request(server).post('/api/v1/admin/email/flush').set('Cookie', adminCookie).expect(200);
+
+      expect(send).not.toHaveBeenCalled();
+      const updated = await prisma.email_queue.findFirst({ where: { id: row!.id } });
+      expect(updated!.status).toBe(EmailQueueStatus.BLOCKED);
+      // Named distinctly from the local-limit case: one is a setting on the
+      // admin screen, the other is an account that has nothing left today no
+      // matter what is configured.
+      expect(updated!.errorMessage).toContain("account's daily allowance");
+      vi.restoreAllMocks();
+    });
+
+    it('spends the shared allowance across the batch, not per message', async () => {
+      // The account figure is read once before the batch, so the batch has to
+      // decrement it as it goes. Without that, a budget of 2 would authorise
+      // every message in the batch -- each one checking the same stale number.
+      const brevo = app.get(BrevoService);
+      vi.spyOn(brevo, 'isConfigured').mockResolvedValue(true);
+      vi.spyOn(brevo, 'getAccountQuota').mockResolvedValue({
+        remaining: 2,
+        planType: 'free',
+        isDailyAllowance: true,
+        organizationId: 'org-1',
+        fetchedAt: Date.now(),
+      });
+      const send = vi.spyOn(brevo, 'send').mockResolvedValue(undefined);
+
+      for (let n = 0; n < 5; n++) {
+        await emailService.queue({
+          toEmail: `batch-${n}@example.test`,
+          subject: 'Hi',
+          htmlBody: '<p>hi</p>',
+        });
+      }
+      await request(server).post('/api/v1/admin/email/flush').set('Cookie', adminCookie).expect(200);
+
+      expect(send).toHaveBeenCalledTimes(2);
+      const blocked = await prisma.email_queue.count({
+        where: { status: EmailQueueStatus.BLOCKED },
+      });
+      expect(blocked).toBe(3);
+      vi.restoreAllMocks();
+    });
+
+    it('sends normally when the account reports no daily cap', async () => {
+      // A prepaid plan has a balance, not a daily allowance. Treating it as one
+      // would stop sending at an imaginary line, so an unknown or non-daily
+      // budget is permissive -- the per-community limit still applies beneath.
+      const brevo = app.get(BrevoService);
+      vi.spyOn(brevo, 'isConfigured').mockResolvedValue(true);
+      vi.spyOn(brevo, 'getAccountQuota').mockResolvedValue({
+        remaining: 0,
+        planType: 'payAsYouGo',
+        isDailyAllowance: false,
+        organizationId: 'org-1',
+        fetchedAt: Date.now(),
+      });
+      const send = vi.spyOn(brevo, 'send').mockResolvedValue(undefined);
+
+      await emailService.queue({
+        toEmail: 'prepaid@example.test',
+        subject: 'Hi',
+        htmlBody: '<p>hi</p>',
+      });
+      await request(server).post('/api/v1/admin/email/flush').set('Cookie', adminCookie).expect(200);
+
+      expect(send).toHaveBeenCalledTimes(1);
+      vi.restoreAllMocks();
+    });
+
     it('rejects a moderator flushing the queue (admin-only)', async () => {
       await request(server).post('/api/v1/admin/email/flush').set('Cookie', moderatorCookie).expect(403);
     });
@@ -120,21 +215,117 @@ describe('Email/Push Dispatch (e2e)', () => {
     });
   });
 
-  describe('GET/PATCH /admin/email/config', () => {
-    it('returns an empty response immediately after a truncate, before any dispatch has run', async () => {
-      // Controller returns the raw findOne() result (null when no row exists yet);
-      // Nest/Express sends that as an empty body rather than the JSON literal
-      // "null", so the observable behavior is an empty response text.
-      const res = await request(server).get('/api/v1/admin/email/config').set('Cookie', adminCookie).expect(200);
-      expect(res.text).toBe('');
+  describe('GET /admin/email/quota-window', () => {
+    it('reports the sending window, and no provider figure without a key', async () => {
+      // The window is what the daily counters are counted against, and it was
+      // silently UTC -- which for a US operator ends the sending day in the
+      // early evening. Two invites four hours apart landed either side of it on
+      // stage and the screen read 1 of 300 on both communities.
+      const res = await request(server)
+        .get('/api/v1/admin/email/quota-window')
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(res.body.timeZone).toBe('UTC');
+      const started = new Date(res.body.windowStartedAt);
+      const ends = new Date(res.body.windowEndsAt);
+      expect(started.toISOString()).toMatch(/T00:00:00\.000Z$/);
+      expect(ends.getTime() - started.getTime()).toBe(24 * 60 * 60 * 1000);
+      expect(Date.now()).toBeGreaterThanOrEqual(started.getTime());
+      expect(Date.now()).toBeLessThan(ends.getTime());
+
+      // No key configured, so there is nobody to ask -- and the endpoint says
+      // so with a null rather than inventing a number.
+      expect(res.body.providerRemaining).toBeNull();
+      expect(res.body.providerPlan).toBeNull();
     });
 
-    it('self-heals the config row once the dispatcher has run, and admin can update it', async () => {
-      await request(server).post('/api/v1/admin/email/flush').set('Cookie', adminCookie).expect(200);
+    it('is admin-only', async () => {
+      await request(server)
+        .get('/api/v1/admin/email/quota-window')
+        .set('Cookie', moderatorCookie)
+        .expect(403);
+      await request(server).get('/api/v1/admin/email/quota-window').expect(401);
+    });
+  });
 
-      const res = await request(server).get('/api/v1/admin/email/config').set('Cookie', adminCookie).expect(200);
-      expect(res.body).toBeTruthy();
+  describe('GET/PATCH /admin/email/config', () => {
+    it('answers for a community that has never configured email', async () => {
+      // It used to return an empty body when no row existed, which the admin
+      // screen renders as a permanent spinner -- on the one screen that could
+      // have created the row. Found on stage by a community created before its
+      // config became per-community. The settings returned are real: it sends on
+      // the deployment's env credentials, against these limits, having sent
+      // nothing of its own.
+      const res = await request(server)
+        .get('/api/v1/admin/email/config')
+        .set('Cookie', adminCookie)
+        .expect(200);
 
+      expect(res.body.brevoApiKeySet).toBe(false);
+      expect(res.body.brevoDailyLimit).toBe(300);
+      expect(res.body.brevoSentToday).toBe(0);
+      expect(res.body.webhookRegistered).toBe(false);
+      // Answering does not write. The row appears on the first save, not here.
+      const rows = await runUnscoped('assert nothing was written', async () =>
+        await prisma.email_provider_config.count(),
+      );
+      expect(rows).toBe(0);
+    });
+
+    it('reports a lapsed window as reset, without writing', async () => {
+      // Found on stage. The stored counters only advance when something sends,
+      // because that is the only moment there is reason to write them -- so a
+      // community that has sent nothing since the day before last still held
+      // that day's window and that day's count, and the screen reported both as
+      // current. It read "counting since Aug 25, 8:00 PM" at 5am on the 27th.
+      //
+      // The stale date is merely confusing. The stale count is not: it reports
+      // an allowance as spent that the provider has since reset, which is the
+      // inverse of the error the counter exists to prevent.
+      const stale = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      await request(server)
+        .patch('/api/v1/admin/email/config')
+        .set('Cookie', adminCookie)
+        .send({ brevoEnabled: true })
+        .expect(200);
+      await runUnscoped('age the window past its boundary', async () =>
+        await prisma.email_provider_config.updateMany({
+          data: { brevoSentToday: 7, resendSentToday: 3, lastResetDate: stale },
+        }),
+      );
+
+      const res = await request(server)
+        .get('/api/v1/admin/email/config')
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      expect(res.body.brevoSentToday).toBe(0);
+      expect(res.body.resendSentToday).toBe(0);
+      // And it agrees with the window the quota endpoint reports, which is what
+      // the screen prints beside it -- the two disagreeing is the bug.
+      const windowRes = await request(server)
+        .get('/api/v1/admin/email/quota-window')
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(new Date(res.body.lastResetDate).toISOString()).toBe(windowRes.body.windowStartedAt);
+
+      // Derived, not written. A GET must not write -- the same rule that keeps
+      // this endpoint from creating the row it answers for.
+      const stored = await runUnscoped('assert the row is untouched', async () =>
+        await prisma.email_provider_config.findFirst(),
+      );
+      expect(stored!.brevoSentToday).toBe(7);
+      expect(stored!.lastResetDate.getTime()).toBe(stale.getTime());
+    });
+
+    it('creates the config row on the first save, and admin can update it', async () => {
+      // v2-9 changed what creates it. The row used to be a deployment-wide
+      // singleton written by seed.ts, so it existed for everybody and the
+      // dispatcher only ever self-healed a deleted one. It now belongs to a
+      // community, and a community that has never sent mail has none -- so the
+      // admin screen has to be able to make it, or the first save would be
+      // silently discarded.
       await request(server)
         .patch('/api/v1/admin/email/config')
         .set('Cookie', adminCookie)

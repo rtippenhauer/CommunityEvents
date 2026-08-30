@@ -13,6 +13,7 @@ import { runUnscoped } from '../../common/tenant/tenant-store';
 import { tenantGetsServiceAccount } from '../../database/prisma/service-account.provision';
 import { normalizeTenantDomain } from '../../common/utils/tenant-domain.util';
 import { LEGAL_DEFAULT_ROWS } from '../../common/legal/legal-defaults';
+import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import {
   AUTOMATION_ACCOUNT_EMAIL,
@@ -253,6 +254,16 @@ export class TenantsAdminService {
     await runUnscoped("seeding the new tenant's legal copy", async () => {
       await this.prisma.app_config.createMany({
         data: LEGAL_DEFAULT_ROWS.map((row) => ({ ...row, tenantId: created.id })),
+      });
+    });
+
+    // Its own email quota and counters (v2-9). No credential: the key and
+    // sending identity fall back to the deployment's env vars until this
+    // community supplies its own, so a community created today behaves exactly
+    // as it did when the row was a deployment-wide singleton.
+    await runUnscoped("seeding the new tenant's email provider config", async () => {
+      await this.prisma.email_provider_config.create({
+        data: { tenantId: created.id, ...newEmailProviderConfig() },
       });
     });
 

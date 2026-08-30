@@ -20,7 +20,8 @@ export class ResendService {
   ) {}
 
   private async getEffectiveConfig(): Promise<{ apiKey: string; fromEmail: string; fromName: string }> {
-    const db = await this.prisma.email_provider_config.findUnique({ where: { id: 1 } });
+    // Per-community as of v2-9; see BrevoService.getEffectiveConfig.
+    const db = await this.prisma.email_provider_config.findFirst();
     return {
       apiKey: db?.resendApiKey || this.config.get<string>('RESEND_API_KEY', ''),
       fromEmail: db?.resendFromEmail || this.config.get<string>('RESEND_FROM_EMAIL', 'rob@dinnerbears.com'),

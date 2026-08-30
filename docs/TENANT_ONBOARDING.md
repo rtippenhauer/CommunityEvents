@@ -68,12 +68,42 @@ the deployment's env var. Blank means inherit.
 
 ## 3. A Brevo account
 
-### One account per deployment, not per community — for now
+### One account per community, or one shared — both work (v2-9)
 
-Today `email_provider_config` is a single global row: one API key and one
-sending identity for the whole deployment. Per-community sending is a separate
-piece of work, and it is larger than a text field precisely because of the
-verification step below.
+`email_provider_config` is per-community as of v2-9: a community can hold its
+own Brevo key, sending identity and daily quota. A community that sets none
+falls back to the deployment's env vars exactly as before, so sharing one
+account across several communities is still a supported setup, not a leftover.
+
+One account authenticates **many sending domains**, so a second Brevo account is
+not needed just to send from a second domain — and Brevo's terms limit a user to
+one account without prior authorization. Reach for a second account when a
+community should own its own billing, quota and reputation, not when it merely
+has its own domain.
+
+### The API key: no expiry, but it is not permanent either
+
+Brevo lets you set an expiry when creating a key (7 days to 1 year) or choose
+**no expiration**. Choose no expiration. Nothing in this codebase can reissue a
+Brevo key — their API has no endpoint for it, so replacing one is always a human
+in their dashboard — and an expiry date on a credential nobody can auto-rotate
+is a scheduled outage waiting for somebody to be paying attention that week.
+
+**But Brevo deactivates a key after 90 days of inactivity**, whatever expiry was
+chosen. That is a real hazard for a community that sends little — a demo, a test
+community, one between seasons — because nothing here changes and mail simply
+stops. Two things soften it:
+
+- Admin → Email shows when the key was set and when the community last sent
+  successfully, and warns after 60 quiet days rather than at 90, when a warning
+  would arrive with the failure.
+- The monthly webhook rotation calls Brevo's API with that community's key, which
+  should itself count as activity. Treat that as likely rather than guaranteed —
+  the warning above is the thing to act on.
+
+The **webhook token is the opposite case**: this deployment mints it, so it is
+rotated automatically every 30 days with no expiry to track and nothing to
+re-enter. See "Deliverability webhook" below.
 
 **Stage and production should not share one Brevo account.** They are separate
 deployments with separate databases, and three things in Brevo are account-wide:
@@ -83,14 +113,85 @@ deployments with separate databases, and three things in Brevo are account-wide:
    — so either stage events land in production's database and mark a real
    member's address as bounced, or production's bounces never arrive at all. The
    second is what gets a sending domain blocked.
-2. **The daily quota.** Each deployment counts its own sends against its own
-   limit, while Brevo enforces one shared limit. Stage testing quietly eats
-   production's allowance, and the Resend overflow will not trigger, because
-   each deployment's counter looks healthy.
+2. **The daily quota.** Brevo enforces one limit per account, and a deployment
+   counts its own sends. Stage testing quietly eats production's allowance, and
+   the deployment reading its own counter cannot see it happening. The account
+   allowance is now read from Brevo and is what actually gates sending (see
+   "Communities sharing one account"), which makes a shared account safe rather
+   than merely visible — but it makes stage and production throttle each other,
+   which is its own reason to keep them apart.
 3. **The blocklist.** A stage test that hard-bounces a fake address suppresses
    that address for production too.
 
 Use a second Brevo account for stage, with a different login email.
+
+### Communities sharing one account
+
+A community that has not set its own API key sends on the deployment's
+`BREVO_API_KEY`. That is the default, so several communities routinely share one
+Brevo account — and the daily allowance they are spending is **one allowance,
+not one each**.
+
+This is not something a per-community counter can see. Two communities on a
+300/day account, each counting its own sends against its own limit of 300, will
+send 350 between them and be cut off by Brevo having never once exceeded what
+either believed was its budget.
+
+So there are two numbers on **Admin → Email**, and they answer different
+questions:
+
+- **This community sent** — attribution. What this community is responsible
+  for, counted locally, never overwritten by the provider.
+- **Account has left** — budget. Read from Brevo, shared by every community on
+  that key, and the number that decides whether a message goes out.
+
+Both have to allow a send. A community can be well under its own limit and still
+be stopped because the account is spent, which is correct: there is nothing left
+to send with. Queue entries blocked that way say so ("Brevo account's daily
+allowance is spent") rather than blaming a local setting an operator would then
+go and change to no effect.
+
+Two API keys on the same Brevo account resolve to the same allowance and stop at
+the same point. They are cached separately, so it costs one extra call and no
+correctness.
+
+The figure is refreshed where it matters rather than on a timer: before a queue
+batch, after any send, and whenever the admin screen loads. **Send Now refreshes
+it even when the queue is empty**, which makes the button a way to ask "where are
+we at" as well as a way to flush. A short floor on the cache (20 seconds) keeps a
+burst of those from becoming a burst of calls to Brevo.
+
+On a prepaid plan Brevo reports a balance rather than a daily allowance. There is
+then no daily cap to hold anything against, so the account guard does not apply
+and the per-community limit is the only one in force.
+
+### The daily sending window
+
+Brevo's free plan allows 300 sends a day, resets on its own schedule and does
+not roll over. The deployment keeps its own count per community so it can stop
+before Brevo does — and for that count to mean anything, the two have to agree
+on when the day starts.
+
+Set **`EMAIL_QUOTA_TIMEZONE`** to the zone your Brevo accounts reset in
+(`America/New_York`, say). It defaults to UTC, which is what the counters used
+before the setting existed and is almost certainly wrong for a US operator: the
+sending day ends at 8pm Eastern, so mail sent that evening is counted against
+tomorrow while Brevo is still counting it against today. The consequence is not
+a confusing screen. It is that for those four hours the deployment believes it
+has a fresh 300 sends and will happily spend an allowance that is already gone.
+
+It is deployment-wide rather than per-community on purpose: it describes your
+provider accounts, and a community admin has no way to know another account's
+billing schedule.
+
+As a backstop, **Admin → Email** shows what Brevo itself reports is left, beside
+our own count, and the dispatcher checks the two every fifteen minutes for a
+community with mail waiting. When they disagree the provider's number wins — it
+is the one that decides whether a message actually goes out. That check only
+applies to a free plan, whose credits are a daily allowance; a prepaid balance
+is reported as a plan name and no number, because it is not a "today" figure and
+comparing it to a daily counter would be meaningless.
+
 
 > **Check this before committing to that split.** Brevo publishes DKIM under a
 > fixed selector, so two accounts authenticating the *same* domain may collide
@@ -185,14 +286,30 @@ reports only that one is set. To replace it, paste a new one. To remove it, use
 
 ### The webhook
 
-1. In Brevo: **Transactional → Settings → Webhooks → Add a new webhook**.
-2. URL: `https://<host>/api/v1/email/webhook/brevo?secret=<BREVO_WEBHOOK_SECRET>`
-3. Events: at minimum **delivered**, **hard bounce**, **soft bounce**,
-   **unsubscribed**, **spam** and **blocked**.
+**There is nothing to set up by hand.** Save the community's API key at
+Admin → Email and the deployment registers the webhook in Brevo itself, using
+that community's own key and host — or press **Register webhook** on the same
+screen to retry, or to set one up for a key that predates this. That removes a
+class of error a pasted URL invites: the wrong host, or a production account
+pointed at stage.
 
-The secret is the `BREVO_WEBHOOK_SECRET` env var. Without a matching one the
-endpoint answers 401 and every bounce is silently discarded — which looks like
-nothing at all, until the sending reputation drops.
+The token authenticating those callbacks is minted here, sent to Brevo as a
+bearer token rather than in the URL — a secret in a query string ends up in every
+access log and proxy buffer along the way — and **rotated automatically every 30
+days**, with the replaced token honoured for a further seven so a callback in
+flight during the swap is not rejected. Nothing to diary, nothing to re-enter.
+
+If registration fails, the screen says why. The usual cause is a revoked or
+mistyped API key, which is fixed in Brevo and then retried here.
+
+> Webhooks registered before v2-9 — the `?secret=<BREVO_WEBHOOK_SECRET>` form —
+> still work, on the deployment-wide env value. Press **Register webhook** to
+> move a community onto its own token; the old webhook in Brevo can then be
+> deleted by hand.
+
+Without a working webhook the endpoint answers 401 and every bounce is silently
+discarded — which looks like nothing at all, until the sending reputation
+drops.
 
 What the webhook does is deliberately **cross-community**: a hard bounce marks
 that address bounced everywhere, because a dead address is a property of the

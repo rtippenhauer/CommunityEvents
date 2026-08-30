@@ -21,7 +21,6 @@ function load(table: string): Record<string, unknown>[] {
 const achievements = load('achievements');
 const avatar = load('avatar');
 const cities = load('cities');
-const emailProviderConfig = load('email_provider_config');
 const merchConfig = load('merch_config');
 
 dotenv.config({ path: path.join(__dirname, '../../../../.env') });
@@ -58,8 +57,14 @@ dotenv.config({ path: path.join(__dirname, '../../../../.env') });
  * seed then tried to create Cincinnati as id 1 as well. The ids are left to
  * auto-increment; nothing references these rows by id.
  *
- * email_provider_config and merch_config are the exception and keep id 1: they
- * are true singletons that the application looks up by that id.
+ * merch_config is the exception and keeps id 1: it is a true singleton that the
+ * application looks up by that id.
+ *
+ * email_provider_config used to be the other one. It became per-community in
+ * v2-9 and moved to bootstrap.ts, for the reason the app_config defaults and the
+ * automation account moved there in v2-6: seed runs before any tenant exists, so
+ * a row written here takes the tenant_id sentinel and is rejected by the foreign
+ * key.
  */
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
@@ -129,15 +134,6 @@ async function main() {
   }
 
   // Single-row config tables with no natural key -- keyed on their fixed id.
-  for (const row of emailProviderConfig) {
-    const data = normalize(row);
-    await prisma.email_provider_config.upsert({
-      where: { id: row.id as number },
-      update: data as never,
-      create: data as never,
-    });
-  }
-
   for (const row of merchConfig) {
     const data = normalize(row);
     await prisma.merch_config.upsert({
@@ -151,7 +147,6 @@ async function main() {
     cities: await prisma.cities.count(),
     avatar: await prisma.avatar.count(),
     achievements: await prisma.achievements.count(),
-    email_provider_config: await prisma.email_provider_config.count(),
     merch_config: await prisma.merch_config.count(),
   };
   console.log('Seeded:', counts);

@@ -188,6 +188,16 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
       'all, and a community cannot accurately describe processing it does not ' +
       'control. Blank falls back to the community\'s own name.',
   },
+  EMAIL_QUOTA_TIMEZONE: {
+    cls: 'deployment',
+    note:
+      'The zone the email provider accounts reset their daily allowance in. ' +
+      'Deployment-wide rather than per-community because it describes the ' +
+      'operator\'s provider accounts, not a community: every community here is ' +
+      'administered by the same operator, and a community admin has no way to ' +
+      'know another account\'s billing schedule. Defaults to UTC, which is what ' +
+      'the counters did before it existed.',
+  },
   JWT_EXPIRES_IN: {
     cls: 'deployment',
     note:
@@ -271,21 +281,24 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
   BREVO_API_KEY: {
     cls: 'secret',
     note:
-      'Already DB-overridable, and encrypted there as of v2-7. Still one value ' +
-      'for the deployment: email_provider_config is a single global row, and ' +
-      'per-community sending needs a verified-domain flow, not a text field.',
+      'Per-community as of v2-9 (email_provider_config.brevoApiKey, encrypted ' +
+      'since v2-7). This survives as the deployment-wide default, which is what ' +
+      'keeps a community that has set none sending exactly as it did before.',
   },
   BREVO_WEBHOOK_SECRET: {
     cls: 'secret',
     note:
-      'Per-tenant exactly when BREVO_API_KEY is, and for the same reason: it ' +
-      "authenticates callbacks from a Brevo *account*, so a community with its " +
-      'own account has its own webhook config and its own secret, arriving on ' +
-      'its own host. It is here today only because there is one account today ' +
-      '-- not because anything about a webhook is deployment-wide. When it ' +
-      'moves, only the authentication moves: the handler must stay ' +
-      'runUnscoped, because a bounce is a property of the address and not of ' +
-      'whichever community happened to send the message.',
+      'Superseded by a per-community token as of v2-9, and kept only as a ' +
+      'fallback. The deployment no longer authenticates callbacks with this: ' +
+      'each community has its own token, minted here, handed to Brevo through ' +
+      'their API and rotated monthly -- so there is nothing for an operator to ' +
+      'set. What this still does is honour webhooks registered BEFORE v2-9, ' +
+      'which carry it in the query string, until each community re-registers. ' +
+      'Removable once none does; losing bounce events in the meantime is the ' +
+      'outcome worth avoiding, since a bounce that never arrives is an address ' +
+      'the deployment keeps mailing. Note the handler stays runUnscoped either ' +
+      'way -- a bounce is a property of the address, not of whichever community ' +
+      'happened to send the message.',
   },
   RESEND_API_KEY: { cls: 'secret', note: 'As BREVO_API_KEY.' },
   GMAIL_USER: {

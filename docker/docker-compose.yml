@@ -85,6 +85,11 @@ services:
       # seeded with. Deployment-wide: one operator runs them all. Unset means
       # each community's legal pages name the community itself.
       - LEGAL_ENTITY_NAME=${LEGAL_ENTITY_NAME:-}
+      # The zone the Brevo accounts reset their daily allowance in. The daily
+      # send counters roll over at midnight here; leaving it unset keeps the
+      # old UTC behaviour, which for a US operator ends the sending day in the
+      # early evening.
+      - EMAIL_QUOTA_TIMEZONE=${EMAIL_QUOTA_TIMEZONE:-}
       - UPLOAD_PATH=/app/uploads
     volumes:
       - uploads:/app/uploads

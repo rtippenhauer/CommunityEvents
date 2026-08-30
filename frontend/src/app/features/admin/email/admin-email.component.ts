@@ -52,6 +52,18 @@ type EmailConfigPatch = Partial<Omit<EmailConfig, 'brevoApiKeySet' | 'resendApiK
   resendApiKey?: string | null;
 };
 
+/** GET /admin/email/quota-window -- the sending day, and what Brevo says. */
+interface EmailQuotaWindow {
+  timeZone: string;
+  windowStartedAt: string;
+  windowEndsAt: string;
+  /** Null when there is no key, Brevo did not answer, or the plan is prepaid. */
+  providerRemaining: number | null;
+  providerPlan: string | null;
+  providerAccountId: string | null;
+  providerCheckedAt: string | null;
+}
+
 interface EmailConfig {
   id: number;
   brevoEnabled: boolean;
@@ -66,6 +78,16 @@ interface EmailConfig {
   // (v2-7). An empty key field therefore means "leave the stored key alone",
   // not "clear it"; clearing is the explicit Remove button.
   brevoApiKeySet: boolean;
+  // Deliverability callbacks. The token itself never reaches the browser --
+  // it is minted server-side, handed to Brevo through their API and stored
+  // encrypted, so the screen only ever learns whether one is registered.
+  webhookRegistered: boolean;
+  webhookRotatedAt: string | null;
+  webhookError: string | null;
+  // Brevo deactivates a key after 90 days of inactivity, so a community that
+  // has gone quiet is heading for a broken key with nothing here changing.
+  brevoApiKeySetAt: string | null;
+  lastSuccessfulSendAt: string | null;
   brevoFromEmail: string | null;
   brevoFromName: string | null;
   resendApiKeySet: boolean;
@@ -150,11 +172,20 @@ interface EmailConfig {
                   />
                 </div>
                 <div class="provider-stat">
-                  <span>Sent today</span>
+                  <span>This community sent</span>
                   <strong>{{ cfg.brevoSentToday }} / {{ cfg.brevoDailyLimit }}</strong>
                 </div>
+                @if (quota(); as q) {
+                  @if (q.providerRemaining !== null) {
+                    <div class="provider-stat">
+                      <span>Account has left</span>
+                      <strong>{{ q.providerRemaining }}</strong>
+                    </div>
+                  }
+                }
                 <div class="provider-stat">
-                  <span>Reset date</span> <strong>{{ cfg.lastResetDate }}</strong>
+                  <span>Counting since</span>
+                  <strong>{{ cfg.lastResetDate | date: 'MMM d, h:mm a' }}</strong>
                 </div>
               </div>
               <div class="provider-block">
@@ -171,6 +202,22 @@ interface EmailConfig {
                 </div>
               </div>
             </div>
+            @if (quota(); as q) {
+              <p class="counter-note">
+                The sending day rolls over at midnight {{ q.timeZone }} —
+                {{ q.windowEndsAt | date: 'h:mm a' }} where you are — and both counts start
+                again then.
+                @if (q.providerRemaining !== null) {
+                  The two numbers answer different questions. The first is what this community
+                  sent. The second is what the Brevo <em>account</em> has left — and any
+                  community without its own API key sends on the same account, so that
+                  allowance is shared. It is the one that decides whether a message goes out.
+                } @else if (q.providerPlan) {
+                  Brevo reports a {{ q.providerPlan }} balance rather than a daily allowance,
+                  so there is no daily figure to hold sending against.
+                }
+              </p>
+            }
           </mat-card-content>
         </mat-card>
 
@@ -188,6 +235,9 @@ interface EmailConfig {
                 <mat-hint>
                   @if (config()?.brevoApiKeySet) {
                     A key is stored — leave blank to keep it.
+                    @if (config()?.brevoApiKeySetAt) {
+                      Set {{ config()!.brevoApiKeySetAt | date: 'MMM d, y' }}.
+                    }
                   } @else {
                     Not set; falls back to the BREVO_API_KEY env var.
                   }
@@ -219,6 +269,59 @@ interface EmailConfig {
                 }
               </div>
             </form>
+
+            <div class="webhook-block">
+              <h4>Deliverability webhook</h4>
+              <p class="webhook-help">
+                Brevo tells this community when a message bounces or somebody unsubscribes, so
+                the address stops being mailed. Registering sets it up in your Brevo account —
+                there is nothing to copy, and the token is rotated automatically from then on.
+              </p>
+
+              @if (config()?.webhookRegistered) {
+                <p class="webhook-state ok">
+                  <mat-icon>check_circle</mat-icon>
+                  Registered
+                  @if (config()?.webhookRotatedAt) {
+                    <span> — token last changed {{ config()!.webhookRotatedAt | date: 'MMM d, y' }}</span>
+                  }
+                </p>
+              } @else {
+                <p class="webhook-state">
+                  <mat-icon>error_outline</mat-icon>
+                  Not registered — bounces are not being recorded for this community.
+                </p>
+              }
+
+              @if (config()?.webhookError) {
+                <p class="webhook-state failed">Last attempt failed: {{ config()!.webhookError }}</p>
+              }
+
+              @if (sendingHasGoneQuiet()) {
+                <p class="webhook-state failed">
+                  Brevo deactivates an API key after 90 days without use, and this community
+                  @if (config()?.lastSuccessfulSendAt) {
+                    has not sent since {{ config()!.lastSuccessfulSendAt | date: 'MMM d, y' }}.
+                  } @else {
+                    has not sent anything yet.
+                  }
+                  Send something, or expect the key to stop working.
+                </p>
+              }
+
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="registeringWebhook() || !config()"
+                (click)="registerWebhook()"
+              >
+                @if (registeringWebhook()) {
+                  <mat-spinner diameter="18" />
+                } @else {
+                  {{ config()?.webhookRegistered ? 'Re-register webhook' : 'Register webhook' }}
+                }
+              </button>
+            </div>
           </mat-expansion-panel>
 
           <mat-expansion-panel>
@@ -455,12 +558,24 @@ interface EmailConfig {
         </mat-card>
       } @else {
         <mat-spinner diameter="40" />
+        <p class="loading-note">Loading email settings…</p>
       }
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
+      .counter-note {
+        margin: 10px 0 0;
+        color: #777;
+        font-size: 0.78rem;
+        line-height: 1.4;
+      }
+      .loading-note {
+        color: #888;
+        font-size: 0.85rem;
+        margin-top: 8px;
+      }
       .email-admin-container {
         max-width: 900px;
         margin: 0 auto;
@@ -524,6 +639,43 @@ interface EmailConfig {
         flex-direction: column;
         gap: 12px;
         padding: 16px 0 8px;
+      }
+      .webhook-block {
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+        padding-top: 16px;
+        margin-top: 8px;
+
+        h4 {
+          margin: 0 0 4px;
+          font-size: 0.95rem;
+        }
+      }
+      .webhook-help {
+        margin: 0 0 12px;
+        color: #666;
+        font-size: 0.82rem;
+      }
+      .webhook-state {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0 0 12px;
+        font-size: 0.85rem;
+        color: #8a6d3b;
+
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+        }
+
+        &.ok {
+          color: #38603a;
+        }
+
+        &.failed {
+          color: #c62828;
+        }
       }
       .cred-actions {
         display: flex;
@@ -637,6 +789,38 @@ export class AdminEmailComponent implements OnInit {
   readonly retrying = signal(false);
   readonly flushing = signal(false);
   readonly saving = signal(false);
+  readonly registeringWebhook = signal(false);
+
+  /**
+   * The sending window, and Brevo's own count, once they arrive.
+   *
+   * Null until then, and null forever if Brevo cannot be reached -- which is
+   * why it is a second request rather than part of the config: the settings on
+   * this screen must render whether or not the provider answers, and this one
+   * makes an outbound call.
+   *
+   * Worth showing at all because the boundary is genuinely surprising. It was
+   * UTC midnight, which for a US operator is the early evening, so two sends a
+   * few hours apart could leave the card reading 1 of 300 twice over. Naming
+   * the zone and the local time it falls at is what makes the number readable.
+   */
+  readonly quota = signal<EmailQuotaWindow | null>(null);
+
+  /**
+   * Whether this community is close to Brevo's inactivity cutoff.
+   *
+   * Sixty days, not ninety: a warning that arrives on the day the key dies is
+   * not a warning. Measured from the last successful send, or from when the key
+   * was set if there has never been one -- a key that has never sent is on the
+   * same clock as one that has gone quiet.
+   */
+  readonly sendingHasGoneQuiet = computed<boolean>(() => {
+    const cfg = this.config();
+    if (!cfg?.brevoApiKeySet) return false;
+    const since = cfg.lastSuccessfulSendAt ?? cfg.brevoApiKeySetAt;
+    if (!since) return false;
+    return Date.now() - new Date(since).getTime() > 60 * 24 * 60 * 60 * 1000;
+  });
   readonly failedCount = computed(() => this.queue().filter((e) => e.status === 'failed').length);
   readonly expandedRowId = signal<number | null>(null);
 
@@ -649,6 +833,36 @@ export class AdminEmailComponent implements OnInit {
     'createdAt',
     'actions',
   ];
+
+  /**
+   * Asks the API to register this community's webhook in Brevo.
+   *
+   * The server mints the token, calls Brevo with this community's own key and
+   * host, and stores the result -- nothing is copied by hand, and the token
+   * never reaches this screen. A failure is reported rather than thrown: the
+   * usual cause is a revoked API key, which the operator has to fix in Brevo.
+   */
+  registerWebhook(): void {
+    this.registeringWebhook.set(true);
+    this.http
+      .post<{ ok: boolean; error?: string }>('/api/v1/admin/email/webhook/register', {})
+      .subscribe({
+        next: (res) => {
+          this.registeringWebhook.set(false);
+          this.loadConfig();
+          this.snackBar.open(
+            res.ok ? 'Webhook registered with Brevo' : (res.error ?? 'Registration failed'),
+            'OK',
+            { duration: res.ok ? 3000 : 6000 },
+          );
+        },
+        error: () => {
+          this.registeringWebhook.set(false);
+          this.loadConfig();
+          this.snackBar.open('Registration failed', 'OK', { duration: 6000 });
+        },
+      });
+  }
 
   readonly brevoForm = this.fb.group({
     brevoApiKey: [''],
@@ -679,6 +893,22 @@ export class AdminEmailComponent implements OnInit {
   ngOnInit(): void {
     this.loadConfig();
     this.loadQueue();
+    this.loadQuotaWindow();
+  }
+
+  /**
+   * Asks the API what the sending window is and what Brevo says is left of it.
+   *
+   * Failure is silent on purpose -- no snackbar. Everything this fills in is a
+   * cross-check on numbers already shown, so a provider that does not answer
+   * should cost the reader a line of explanation, not an error they cannot act
+   * on and did not ask for.
+   */
+  loadQuotaWindow(): void {
+    this.http.get<EmailQuotaWindow>('/api/v1/admin/email/quota-window').subscribe({
+      next: (quota) => this.quota.set(quota),
+      error: () => this.quota.set(null),
+    });
   }
 
   loadConfig(): void {
@@ -709,6 +939,12 @@ export class AdminEmailComponent implements OnInit {
           tmplEmailVerification: cfg.tmplEmailVerification,
           tmplPasswordReset: cfg.tmplPasswordReset,
         });
+      },
+      // Without this a failed request left `config()` null forever, and the
+      // template's else-branch is a spinner -- so the screen span indefinitely
+      // with nothing said. The same symptom the API's null response caused.
+      error: () => {
+        this.snackBar.open('Could not load email settings', 'OK', { duration: 6000 });
       },
     });
   }
@@ -821,6 +1057,11 @@ export class AdminEmailComponent implements OnInit {
         this.snackBar.open('Queue flushed', 'OK', { duration: 2000 });
         this.flushing.set(false);
         this.loadQueue();
+        // The counters and the account allowance both moved, or the button was
+        // pressed precisely to find out that they had not. Either way the
+        // numbers on screen are the point of pressing it.
+        this.loadConfig();
+        this.loadQuotaWindow();
       },
       error: () => {
         this.snackBar.open('Flush failed', 'OK', { duration: 3000 });

@@ -23,6 +23,8 @@ import * as dotenv from 'dotenv';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
 import { normalizeTenantDomain } from './common/utils/tenant-domain.util';
+import { LEGAL_DEFAULT_ROWS } from './common/legal/legal-defaults';
+import { newEmailProviderConfig } from './common/email/email-config-defaults';
 import {
   createServiceAccount,
   tenantGetsServiceAccount,
@@ -125,6 +127,26 @@ async function main(): Promise<void> {
       // only things a re-run is allowed to change.
       update: { slug, status },
     });
+
+    // The same rows tenants-admin.create gives a community made through the UI.
+    //
+    // These were missing here, and the two paths silently diverged: a community
+    // provisioned by this script had blank Terms and Privacy pages, and an Email
+    // Admin screen that could not be used because there was no row behind it.
+    // Both defaults now come from one place so the paths cannot drift again.
+    // upsert/skipDuplicates because this script is re-runnable by design.
+    await prisma.app_config.createMany({
+      data: LEGAL_DEFAULT_ROWS.map((row) => ({ ...row, tenantId: tenant.id })),
+      skipDuplicates: true,
+    });
+    const existingEmailConfig = await prisma.email_provider_config.findFirst({
+      where: { tenantId: tenant.id },
+    });
+    if (!existingEmailConfig) {
+      await prisma.email_provider_config.create({
+        data: { tenantId: tenant.id, ...newEmailProviderConfig() },
+      });
+    }
 
     // A community other than the root one gets a service account on stage only,
     // because nothing in production can use it -- see tenantGetsServiceAccount.

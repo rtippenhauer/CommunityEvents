@@ -1,8 +1,9 @@
-import { Body, Controller, Logger, Post, Query, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Headers, Logger, Post, Query, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailStatus, SuppressionReason } from '../../database/enums';
+import { BrevoWebhookService } from './brevo-webhook.service';
 import { EmailService } from './email.service';
 import { runUnscoped } from '../../common/tenant/tenant-store';
 
@@ -24,16 +25,41 @@ export class EmailWebhookController {
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
+    private readonly webhookRegistration: BrevoWebhookService,
   ) {}
 
+  /**
+   * Deliverability events from Brevo, for the community this host belongs to.
+   *
+   * Authentication is per-community as of v2-9 and travels in an Authorization
+   * header, because the deployment-wide `?secret=` it replaces put a shared
+   * credential in every access log and proxy buffer between here and Brevo. The
+   * token is looked up by tenant — resolved from the Host header by
+   * `TenantMiddleware` before this runs — and compared after decryption, since
+   * an encrypted column cannot be searched by value.
+   *
+   * **The query-string form still works**, on the deployment-wide env secret
+   * only. A webhook registered before this change keeps delivering until its
+   * community re-registers, and losing events in the meantime is the outcome
+   * worth avoiding: a bounce that never arrives is an address the deployment
+   * keeps mailing.
+   */
   @Post('brevo')
   @Throttle({ default: { limit: 120, ttl: 60000 } })
   async brevoWebhook(
     @Query('secret') secret: string | undefined,
+    @Headers('authorization') authorization: string | undefined,
     @Body() events: BrevoWebhookEvent | BrevoWebhookEvent[],
   ): Promise<{ ok: boolean }> {
-    const expected = this.config.get<string>('BREVO_WEBHOOK_SECRET', '');
-    if (!expected || secret !== expected) {
+    const bearer = authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length).trim()
+      : undefined;
+    const legacySecret = this.config.get<string>('BREVO_WEBHOOK_SECRET', '');
+    const authorized =
+      (await this.webhookRegistration.verifyToken(bearer)) ||
+      Boolean(legacySecret && secret === legacySecret);
+
+    if (!authorized) {
       throw new UnauthorizedException('Invalid Brevo webhook secret');
     }
 

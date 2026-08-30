@@ -265,6 +265,10 @@ model custom_icons {
   @@index([tenantId], map: "idx_custom_icons_tenant")
 }
 
+/// One row per community (v2-9). It was a singleton looked up by `id: 1` until
+/// then, which meant one Brevo key, one daily counter and one From identity for
+/// every community on the deployment -- and any community's admin able to
+/// rewrite all three.
 model email_provider_config {
   id                        Int      @id @default(autoincrement()) @db.UnsignedInt
   brevoEnabled              Boolean  @default(true) @map("brevo_enabled")
@@ -292,8 +296,52 @@ model email_provider_config {
   tmplPasswordReset         Int?     @map("tmpl_password_reset") @db.UnsignedInt
   tmplProviderDisconnected  Int?     @map("tmpl_provider_disconnected") @db.UnsignedInt
   tmplAccountDeleted        Int?     @map("tmpl_account_deleted") @db.UnsignedInt
-  lastResetDate             DateTime @map("last_reset_date") @db.Date
+  /// When the daily counters beside it were last zeroed -- an instant, not a
+  /// calendar day. It was a DATE column, which forced the rollover test to be a
+  /// UTC day comparison and so drew the deployment's sending day in a zone the
+  /// provider does not use. See `quota-day.ts`: the boundary is now
+  /// `EMAIL_QUOTA_TIMEZONE`'s midnight, which the database can compare directly
+  /// against this.
+  lastResetDate             DateTime @map("last_reset_date") @db.DateTime(3)
   updatedAt                 DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+  /// Authenticates Brevo's deliverability callbacks for THIS community's Brevo
+  /// account. Encrypted like the keys beside it, so it cannot be looked up by
+  /// value -- the tenant is resolved from the Host header first and the token
+  /// compared after decryption.
+  webhookSecret             String?  @map("webhook_secret") @db.VarChar(500)
+  /// The token this one replaced, accepted for a grace window after a rotation
+  /// so callbacks already in flight are not rejected. Same idea as
+  /// SECRET_ENCRYPTION_KEYS_RETIRED: the old value still verifies while the new
+  /// one takes over. Cleared once the window passes.
+  webhookSecretPrevious     String?  @map("webhook_secret_previous") @db.VarChar(500)
+  /// When the current token was minted. Rotation is scheduled off this, and it
+  /// is what the grace window for `webhookSecretPrevious` is measured from.
+  webhookRotatedAt          DateTime? @map("webhook_rotated_at") @db.DateTime(0)
+  /// Why the last registration or rotation attempt failed, or NULL if it did
+  /// not. Kept so the admin screen can say what went wrong rather than showing
+  /// an unregistered webhook with no explanation -- a revoked API key and a
+  /// Brevo outage need different responses from the operator.
+  webhookError              String?  @map("webhook_error") @db.VarChar(500)
+  /// When this community's Brevo key was last replaced. Not an expiry -- Brevo
+  /// keys do not expire unless one is chosen at creation, and choosing one for
+  /// a key nothing can auto-rotate schedules an outage. It is here so the screen
+  /// can show the key's age rather than assert a policy.
+  brevoApiKeySetAt          DateTime? @map("brevo_api_key_set_at") @db.DateTime(0)
+  /// The last message this community actually got out of a provider. Brevo
+  /// deactivates an API key after 90 days of inactivity, so a community that
+  /// has gone quiet is heading for a broken key with nothing in this codebase
+  /// changing -- which is a warning worth showing before it happens.
+  lastSuccessfulSendAt      DateTime? @map("last_successful_send_at") @db.DateTime(0)
+  /// Brevo's id for the webhook this deployment registered, so re-registering
+  /// updates it rather than adding a duplicate (an account is capped at 40).
+  /// Stored as a string although Brevo returns a number: a BIGINT column comes
+  /// back from Prisma as a JS BigInt, which `JSON.stringify` throws on, and
+  /// nothing here does arithmetic on it.
+  webhookId                 String?  @map("webhook_id") @db.VarChar(64)
+  tenantId                  Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant                    tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_provider_config_tenant")
+
+  @@unique([tenantId], map: "uq_email_provider_config_tenant")
 }
 
 model email_queue {
@@ -935,6 +983,7 @@ model tenants {
   app_config               app_config[]
   users                    users[]
   tenant_secrets           tenant_secrets[]
+  email_provider_config    email_provider_config?
 
   @@index([status], map: "idx_tenant_status")
 }

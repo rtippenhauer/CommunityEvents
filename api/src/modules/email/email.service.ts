@@ -10,6 +10,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
 import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
+import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { AppConfigService } from '../app-config/app-config.service';
 
 /**
@@ -57,6 +58,8 @@ export interface QueueEmailDto {
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private readonly suppressionSalt: string;
+  /** The zone the provider's daily allowance resets in. See quota-day.ts. */
+  private readonly quotaTimeZone: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -65,6 +68,12 @@ export class EmailService {
     private readonly appConfig: AppConfigService,
   ) {
     this.suppressionSalt = this.config.get<string>('EMAIL_SUPPRESSION_SALT', 'default-salt');
+    // Same setting the dispatcher reads, resolved the same way. Both paths
+    // write the same counter, so both have to agree on when the day turns over
+    // or one of them undoes the other's reset.
+    this.quotaTimeZone = resolveQuotaTimeZone(
+      this.config.get<string>('EMAIL_QUOTA_TIMEZONE'),
+    ).timeZone;
   }
 
   private hashEmail(email: string): string {
@@ -201,9 +210,63 @@ export class EmailService {
         textBody: dto.textBody,
         attachments: dto.attachments,
       });
+      await this.countImmediateSend();
+      // The account allowance we hold is now one send out of date. Dropping it
+      // rather than re-reading it is what keeps this off the critical path: a
+      // password reset is something a person is waiting on, and clearing a map
+      // entry costs nothing where another call to Brevo would have tripled the
+      // time this endpoint takes. Whoever asks next pays for the fresh number.
+      await this.brevo.invalidateAccountQuota();
     } catch (err) {
       this.logger.warn(`Immediate send failed for ${dto.toEmail}, falling back to queue: ${(err as Error).message}`);
       await this.queue({ ...dto, bypassSuppression: true });
+    }
+  }
+
+  /**
+   * Counts a send that skipped the queue.
+   *
+   * `sendNow` calls the provider directly, so it never passed through the
+   * dispatcher that maintains `brevoSentToday` -- which meant password resets,
+   * email verification, the lockout alert and two event mails were invisible to
+   * the one number that exists to track how much of the daily allowance is
+   * gone. Found on stage: resets arrived and the counter never moved.
+   *
+   * An atomic `increment` rather than read-modify-write: unlike the dispatcher,
+   * which owns its batch and writes once at the end, these fire from ordinary
+   * requests that can overlap.
+   *
+   * `updateMany` so a community with no row yet is a no-op rather than a throw.
+   * Nothing here is worth failing a password reset over.
+   *
+   * Deliberately does NOT enforce the daily limit. The dispatcher refuses to
+   * send past it; this path is for mail somebody is waiting on -- a reset link,
+   * a verification, a security alert -- and a quota is a worse reason to
+   * withhold those than it is to delay a queued invite. The counter still tells
+   * the truth about what was used.
+   */
+  private async countImmediateSend(): Promise<void> {
+    try {
+      const dayStart = quotaDayStart(new Date(), this.quotaTimeZone);
+
+      // The rollover, expressed as a condition the database evaluates, so two
+      // statements -- Prisma has no conditional increment. Both are safe to
+      // interleave with the dispatcher, which is why neither reads the row and
+      // writes it back: the counter only ever takes "zero it if the window has
+      // moved on", "add one", and the reconciliation's correction. The
+      // dispatcher's own write was changed to a delta for the same reason, as
+      // an absolute would have discarded whatever this counted mid-batch.
+      await this.prisma.email_provider_config.updateMany({
+        where: { lastResetDate: { lt: dayStart } },
+        data: { brevoSentToday: 0, resendSentToday: 0, lastResetDate: dayStart },
+      });
+
+      await this.prisma.email_provider_config.updateMany({
+        data: { brevoSentToday: { increment: 1 }, lastSuccessfulSendAt: new Date() },
+      });
+    } catch (err) {
+      // Never let bookkeeping fail the send it is describing.
+      this.logger.warn(`Could not record an immediate send: ${(err as Error).message}`);
     }
   }
 
