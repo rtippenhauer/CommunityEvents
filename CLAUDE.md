@@ -34,19 +34,70 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-9` — per-community email sending. `email_provider_config`
-is still a single global row (`id: 1`, in `GLOBAL_MODELS`), so one Brevo key, one
-daily counter and one From identity serve every community — and any community's
-admin can rewrite all three from `/admin/email`, which is an isolation gap as much
-as a missing feature. The work is scoping that table, moving its seeding into
-`bootstrap.ts` (it is written by `seed.ts` today, before any tenant exists, which
-is why it was never scoped), and making the dispatcher cron re-enter
-`runWithTenant` per message. **Moved ahead of `v2-8` on 2026-08-23** with Rob:
-neither depends on the other, and stage now runs two communities on two Brevo
-accounts, which is exactly what v2-9's stage pass needs and v2-8's does not.
-See `V2_PHASES.md`.
+**Current v2 work item:** `v2-8` — per-tenant OAuth apps (REQ-TENANT-01.9 and
+REQ-TENANT-01.8). The four credential columns have been reserved on `tenants`
+since `v2-3` and encrypted since `v2-7`; this is what first writes them. NULL
+means the provider is OFF for that tenant, which then offers email/password
+only — there is no platform-wide fallback app. It also owes REQ-TENANT-01.8's
+signed `state` handoff: Google's callback lands on one fixed host, and the
+host-only cookie `v2-6` introduced does not reach any other tenant's host, so
+OAuth currently works on the callback tenant and nowhere else. `v2-9` ran ahead
+of it and the numbers stayed put. See `V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-9` — Per-community email sending** (2026-08-29). `email_provider_config`
+  is tenant-scoped: each community holds its own Brevo key, From identity,
+  template ids and daily counter, and a community that sets none sends on the
+  deployment's env credentials exactly as before. Seeding moved out of `seed.ts`
+  into `bootstrap.ts` and `tenants-admin.service.create`, the four
+  `findUnique({ id: 1 })` reads became scoped `findFirst`s, and the dispatcher
+  groups its batch by `tenantId` and re-enters `runWithTenant` per community.
+
+  **The trigger was isolation, not the feature.** `/admin/email` is
+  `@Roles(ADMIN)` with no root check and acted on one global row, so any
+  community's admin could rewrite the whole deployment's sending credentials.
+
+  Webhooks are per-community and self-registering (`BrevoWebhookService`): the
+  token is **ours**, minted here and handed to Brevo through their API, which is
+  the only reason rotation can be automatic — 30 days, with the replaced token
+  honoured for a 7-day grace so callbacks in flight are not rejected. The API key
+  beside it is the opposite: Brevo mints it and offers no reissue endpoint, so it
+  gets a warning rather than a schedule. **The handler stays `runUnscoped`** — a
+  bounce is a property of the address, not of whichever community mailed it.
+
+  Five traps worth not re-discovering. Brevo's *registration* API names events in
+  camelCase (`hardBounce`) while the *payload* it posts uses snake_case
+  (`hard_bounce`), so a webhook registered with the payload spelling is accepted
+  and simply never fires. An encrypted column cannot be filtered on, which is why
+  the grace sweep keys on `webhookRotatedAt` alone and clears unconditionally.
+  `runUnscoped(reason, () => prisma.x.updateMany())` returns a lazy Prisma
+  promise that executes *outside* the context — it threw on stage on the first
+  hour boundary, and no test caught it because nothing ran a cron.
+  `GET /v3/account` carries no timezone field, so the provider's day cannot be
+  asked for. And **"mint a new token" is not "create a new webhook"** — conflating
+  them made the Re-register button POST every time, which Brevo rejects with
+  `duplicate_parameter` for a URL it already holds, so the button could only ever
+  work on a community that had none. `upsertWebhook` now updates, falls back to
+  creating on a 404, and adopts an existing webhook by URL on a duplicate.
+
+  **The counters were wrong twice, in opposite directions.** `sendNow` bypasses
+  the dispatcher by design, so password resets, verification and security alerts
+  were never counted; and the day ended at UTC midnight — 8pm Eastern — which is
+  not the operator's calendar day. `EMAIL_QUOTA_TIMEZONE` now draws the boundary
+  (`quota-day.ts`), `last_reset_date` widened from DATE to DATETIME(3) so it is
+  an instant SQL can compare, and both send paths do the rollover as a
+  conditional write rather than a read-modify-write.
+
+  **A provider's allowance belongs to the account, not the community**, which is
+  the rule that outlives this item — see the Multi-Tenancy section.
+
+  Stage found what tests could not, again: an idle community never advanced its
+  row, so the screen reported a window that had closed two days earlier, fixed by
+  deriving it at read time rather than writing on a GET; and the Re-register
+  button above, found by pressing it once before the merge. Also worth knowing —
+  a `prisma generate` skipped after a schema change left local tests running
+  against a client that still believed a column was a DATE. The image was never
+  affected, since the Dockerfile generates during the build.
 - **`v2-7` — Encrypted secrets at rest** (2026-08-23). Every credential in the
   database is encrypted by a second Prisma Client Extension applied beside tenant
   scoping — AES-256-GCM, random IV per value, the column name authenticated as
@@ -269,8 +320,9 @@ the other (`v2-8` needs `v2-6` and `v2-7`, both done; `v2-9` needs neither), and
 what decided it was stage: it now runs two communities on two Brevo accounts,
 which is precisely what `v2-9`'s stage pass needs. `v2-8`'s does not benefit —
 the second community is email/password-only until `v2-8` itself lands. The
-trigger was finding that a community admin on one host can rewrite the whole
-deployment's sending credentials, since `email_provider_config` is global.
+trigger was finding that a community admin on one host could rewrite the whole
+deployment's sending credentials, since `email_provider_config` was global —
+which `v2-9` then closed.
 
 Not yet decided/known: whether the frontend framework itself is changing.
 (Its testing choice is settled — `v2-2` put it on Vitest via Angular's
@@ -631,8 +683,10 @@ authoritative (per REQ-TENANT-01.3).
   whoever owns the key, which is the argument for per-community. The rest stay in
   env with a reason recorded per variable; the class is now called `secret`
   rather than `secret-pending-v2-7`. The mail *identity* (`BREVO_FROM_*`) stays
-  with the email keys: it shares the global `email_provider_config` row, and a
-  provider rejects a From address on a domain it has not verified.
+  with the email keys, and `v2-9` made both per-community in
+  `email_provider_config` rather than in `tenant_secrets` — they move together
+  because a provider rejects a From address on a domain that account has not
+  verified.
 - **The encryption key is bootstrap config and is never in the database** — a
   dump holding both the key and the ciphertext is a dump of the plaintext, which
   is the whole threat. `SECRET_ENCRYPTION_KEY`, `SECRET_ENCRYPTION_KEYS_RETIRED`
@@ -657,6 +711,37 @@ authoritative (per REQ-TENANT-01.3).
   confirmation phrase rather than a boolean for the same reason deleting a
   community makes you retype its domain. `docs/SECRETS.md` is the operator-facing
   version; `docs/TENANT_ONBOARDING.md` covers the provider-side setup.
+- **Email sending is per-community as of `v2-9`.** `email_provider_config` is
+  scoped: its Brevo key, From identity, template ids, webhook token and daily
+  counters all belong to a community, resolved with the env credentials as the
+  deployment default. A cron that sends must therefore re-enter `runWithTenant`
+  per message — the dispatcher groups its batch by `tenantId` for exactly this
+  reason, since sending the whole batch under one config mails every community
+  through whichever account the engine loaded first. **Template ids are scoped
+  too**, so a newly created community has none and falls back to
+  `BREVO_TEMPLATE_*`; set those on the deployment or every new community sends
+  the raw-HTML fallback, which works and therefore goes unnoticed.
+- **A provider's daily allowance belongs to the ACCOUNT, not the community.** A
+  community with no key of its own sends on the deployment's, so several share
+  one Brevo account and one allowance. Two of them each counting only their own
+  sends against their own limit of 300 will spend 350 of one 300/day account and
+  be cut off having never exceeded what either believed was its budget. So there
+  are two numbers and they answer different questions: `brevoSentToday` is
+  attribution and is never overwritten by the provider, while the account budget
+  (`BrevoService.getAccountQuota`, cached against a hash of the API key) is what
+  gates sending. Both must allow a message. Only a `free` plan reports a daily
+  figure — a prepaid balance has no daily cap, and treating it as one would stop
+  sending at an imaginary line.
+- **`EMAIL_QUOTA_TIMEZONE` is the operator's calendar day, not the provider's.**
+  It was built to mirror the provider's reset, which turned out to be
+  unknowable: `GET /v3/account` has no timezone field, and separate accounts can
+  reset on separate cycles, so one deployment-wide setting could not match them
+  all. The account budget above is what makes that safe to accept — a send needs
+  both budgets, so a local counter that zeroes mid-provider-day cannot overshoot.
+  What the setting decides is only which day a human reading the screen is
+  looking at. `quotaDayStart` takes the offset in force at midnight rather than
+  the one in force now, so a DST changeover day does not sit an hour out for its
+  whole length.
 - **Tenant management lives at `/api/v1/system/tenants`**, under `system/` and
   not `admin/` because it acts on the registry of communities rather than inside
   one. The root tenant cannot be suspended and its domain cannot be changed

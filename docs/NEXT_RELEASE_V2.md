@@ -322,3 +322,50 @@ filled in as the pages are served, so renaming a community keeps them correct.
 finished, nothing would otherwise prompt anyone to check them. A notice appears
 for a community's administrators until somebody confirms the two documents, and
 a single button restores the starter copy if a community wants to begin again.
+
+## Email per community
+
+**Each community sends its own email, under its own name.** A community can now
+hold its own email provider account, its own From address and its own daily
+allowance, set at Administration → Email. Mail from one community no longer
+leaves under another's name, and a community that sets nothing keeps sending
+exactly as before, on the deployment's own account.
+
+**One community's administrator can no longer change another's.** The email
+settings were previously a single set shared by the whole deployment, so an
+administrator of any community could rewrite the sending credentials and From
+identity that every other community sent under — usually without realising it.
+Those settings now belong to the community being administered.
+
+**Bounce handling is set up with one button.** Telling a provider where to
+report bounces and unsubscribes used to be a manual step with a shared password
+copied by hand. A community's connection is now registered for it, its
+credential is generated rather than chosen, and it is replaced on a schedule
+without anyone doing anything. A connection that was set up by hand earlier is
+adopted rather than duplicated, so there is nothing to tidy up first.
+
+**A community is warned before its provider key stops working.** Brevo
+deactivates an API key after 90 days without a send, which is a real prospect
+for a quiet community and gives no warning of its own. The email screen now says
+so at 60 days, while there is still time to do something about it.
+
+**The email settings screen works for a community that has never used it.** A
+newly created community got a spinner that never resolved, on the one screen
+that could have configured email in the first place.
+
+**The daily send counter counts everything, and counts it against the right
+day.** Two faults: messages sent immediately rather than queued — password
+resets, address verification, security alerts — were never counted at all; and
+the sending day ended at midnight UTC regardless of the operator's own calendar,
+which for a US operator is the early evening. Together they meant the screen
+could report two messages when four had been sent. Both are fixed, and the day
+boundary is now a deployment setting (`EMAIL_QUOTA_TIMEZONE`).
+
+**Sending stops before the provider cuts it off, even across communities.** A
+sending allowance belongs to the provider account, and communities without their
+own key share one. Each counting only its own sends meant several communities
+could exceed a shared allowance without any of them exceeding what it believed
+was its budget. The screen now shows both figures — what this community sent,
+and what the account has left — and the second is what decides whether a message
+goes out.
+
