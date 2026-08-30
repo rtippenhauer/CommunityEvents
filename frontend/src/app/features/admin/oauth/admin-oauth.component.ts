@@ -95,8 +95,8 @@ type Provider = 'google' | 'facebook';
                 <input matInput formControlName="clientSecret" type="password" autocomplete="off" />
                 <mat-hint>
                   @if (config()?.google?.secretSet) {
-                    A secret is saved. It is stored encrypted and cannot be shown again — leave
-                    this blank to keep it, or type a new one to replace it.
+                    A secret is saved, encrypted, and cannot be shown again — so saving any
+                    change means entering it once more, alongside the client ID it belongs to.
                   } @else {
                     Stored encrypted, and never shown again once saved.
                   }
@@ -152,7 +152,8 @@ type Provider = 'google' | 'facebook';
                 <input matInput formControlName="clientSecret" type="password" autocomplete="off" />
                 <mat-hint>
                   @if (config()?.facebook?.secretSet) {
-                    A secret is saved. Leave blank to keep it, or type a new one to replace it.
+                    A secret is saved, encrypted, and cannot be shown again — so saving any
+                    change means entering it once more, alongside the App ID it belongs to.
                   } @else {
                     Stored encrypted, and never shown again once saved.
                   }
@@ -302,25 +303,21 @@ export class AdminOAuthComponent implements OnInit {
     const clientSecret = form.value.clientSecret?.trim();
     if (!clientId) return;
 
-    const current = this.config();
-    const alreadyHasSecret =
-      provider === 'google' ? current?.google.secretSet : current?.facebook.secretSet;
-
-    // The API needs both halves together — a client id with no secret is a
-    // button that fails after the member has already seen a consent screen. So
-    // a blank secret is only allowed to mean "keep the stored one".
-    if (!clientSecret && !alreadyHasSecret) {
-      this.snackBar.open('Enter the client secret as well — both are needed.', 'Dismiss', {
-        duration: 5000,
-      });
+    // Both halves, always — the API requires it and this says so before a
+    // round trip. There is no "leave it blank to keep the stored one": the
+    // secret cannot be read back, so a blank box looks the same whether you
+    // meant to keep one or forgot to supply one, and the failure that produces
+    // surfaces at the token exchange, after the member has granted consent.
+    if (!clientSecret) {
+      this.snackBar.open(
+        'Enter the client secret as well — it cannot be shown back, so it has to be entered with the ID each time.',
+        'Dismiss',
+        { duration: 6000 },
+      );
       return;
     }
 
-    const update: OAuthProviderUpdate = clientSecret
-      ? { clientId, clientSecret }
-      : { clientId };
-
-    this.submit(provider, update, 'Sign-in provider saved.');
+    this.submit(provider, { clientId, clientSecret }, 'Sign-in provider saved.');
   }
 
   switchOff(provider: Provider): void {

@@ -97,11 +97,22 @@ export class OAuthConfigController {
   /**
    * Sets or clears this community's Google app.
    *
-   * **Both halves move together, always.** A client id with no secret is not a
-   * half-configured provider, it is a button that sends a member to a consent
-   * screen and then fails the token exchange afterwards -- and it is the only
-   * state that would make `offeredProviders` (which reads the id alone, so that
-   * a page load never touches a secret) tell the login page something untrue.
+   * **Both halves move together, always** -- enforced by the DTO, which
+   * requires a secret whenever an id is present. A client id with no secret is
+   * not a half-configured provider, it is a button that sends a member to a
+   * consent screen and then fails the token exchange afterwards, and it is the
+   * only state that would make `offeredProviders` (which reads the id alone, so
+   * that a page load never touches a secret) tell the login page something
+   * untrue.
+   *
+   * There is deliberately no "leave the secret blank to keep the stored one"
+   * path. It reads as a convenience and is a trap: the secret cannot be shown
+   * back, so the blank box looks identical whether you are keeping a secret or
+   * forgetting to supply one, and the failure it produces lands at the token
+   * exchange -- after the member has already granted consent. A credential of
+   * exactly two fields has no meaningful partial update anyway: the only other
+   * thing to edit is the id, and changing that is precisely when the old secret
+   * stops applying.
    */
   @Put('google')
   async setGoogle(
