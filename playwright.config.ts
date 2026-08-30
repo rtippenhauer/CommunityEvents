@@ -31,6 +31,30 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
 
+  /**
+   * Playwright's own bundled Chromium, in a throwaway profile per test.
+   *
+   * `devices['Desktop Chrome']` is a **device descriptor** -- viewport, user
+   * agent, scale factor -- and not a browser selector. It does not use the
+   * Chrome installed on this machine, and it is worth knowing the difference
+   * because the two read alike.
+   *
+   * **Do not add `channel: 'chrome'` (or `executablePath`) here.** That would
+   * launch the developer's real Chrome, and the reason to avoid it is not
+   * theoretical: Playwright would still supply its own `--user-data-dir`, but
+   * a second Chrome process against a machine-wide install is exactly how test
+   * runs start interfering with a browser somebody is using for real. The
+   * bundled Chromium has neither problem and is what CI runs anyway, so a spec
+   * that passes locally and fails in CI is one less thing to chase.
+   *
+   * `launchPersistentContext`/`userDataDir` are likewise absent on purpose.
+   * Each test gets a fresh ephemeral context, so `fullyParallel` workers share
+   * no browser state and cannot corrupt one another. If persistent state is
+   * ever genuinely needed -- a signed-in session reused across specs -- reach
+   * for `storageState` (a JSON file of cookies and localStorage) rather than a
+   * persistent profile: it is per-worker safe, diffable, and cannot touch a
+   * real browser installation.
+   */
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
   webServer: {
