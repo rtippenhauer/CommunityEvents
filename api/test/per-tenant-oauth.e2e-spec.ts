@@ -7,6 +7,7 @@ import { OAuthProvider, UserRole } from '../src/database/enums';
 import { createTestApp, truncateAllTables, TEST_TENANT_DOMAIN } from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
 import { OAuthHandoffService } from '../src/modules/auth/oauth/oauth-handoff.service';
+import { encodeOAuthState } from '../src/modules/auth/oauth/oauth-state.util';
 import { TEST_TENANT_ID } from './setup-env';
 import type { users as User } from '@prisma/client';
 
@@ -167,6 +168,29 @@ describe('Per-tenant OAuth (e2e)', () => {
 
       expect(res.headers.location).toContain('reason=consent_denied');
     });
+
+    // Found on stage: cancelling on one community showed the *root* community's
+    // error page. Google returns `state` alongside `error=access_denied`, so the
+    // originating community was knowable -- the error was just being checked
+    // before the state was decoded, throwing that away.
+    //
+    // The request deliberately arrives on tenant A's host, because that is what
+    // really happens: every callback lands on the one registered host regardless
+    // of where the member started.
+    it('sends a cancelled sign-in back to the community it started on', async () => {
+      const state = encodeOAuthState(
+        { tenantId: TENANT_B_ID },
+        process.env.JWT_SECRET as string,
+      );
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/auth/google/callback?error=access_denied&state=${state}`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .expect(302);
+
+      expect(res.headers.location).toContain(TENANT_B_DOMAIN);
+      expect(res.headers.location).toContain('reason=consent_denied');
+    });
   });
 
   describe('the handoff', () => {
@@ -286,13 +310,31 @@ describe('Per-tenant OAuth (e2e)', () => {
       expect(res.body.google).toEqual({ clientId: null, secretSet: false, enabled: false });
     });
 
-    it('refuses an id with no secret behind it', async () => {
+    // Both halves or neither, enforced by the DTO. There is deliberately no
+    // "keep the stored secret" path: the secret cannot be read back, so a blank
+    // box is ambiguous between keeping one and forgetting one, and the failure
+    // that produces lands at the token exchange after consent. Stage found the
+    // UI claiming otherwise -- the API had always refused it.
+    it('refuses a client id with no secret beside it, and changes nothing', async () => {
+      await configureGoogleOnA();
+
       await request(app.getHttpServer())
         .put('/api/v1/admin/oauth/google')
         .set('Host', TEST_TENANT_DOMAIN)
         .set('Cookie', cookieA)
-        .send({ clientId: 'half-configured' })
+        .send({ clientId: 'rotated-client-id' })
         .expect(400);
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/admin/oauth')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .expect(200);
+      expect(res.body.google).toEqual({
+        clientId: GOOGLE_A.clientId,
+        secretSet: true,
+        enabled: true,
+      });
     });
 
     it('is closed to a member who is not an admin', async () => {

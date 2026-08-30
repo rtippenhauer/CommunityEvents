@@ -36,6 +36,24 @@ export class GoogleOAuthError extends Error {
 }
 
 /**
+ * Flattens whatever a provider or Passport hands back into one loggable line.
+ *
+ * `InternalOAuthError` keeps the token endpoint's response in `oauthError`,
+ * which is the field that actually names the problem (`invalid_client`,
+ * `redirect_uri_mismatch`), and hides it from `message`.
+ */
+function describe(err: unknown): string {
+  if (err === null || err === undefined) return 'no detail';
+  const e = err as { message?: string; oauthError?: unknown };
+  const provider = e.oauthError;
+  const providerText =
+    provider === undefined
+      ? ''
+      : ` -- provider said: ${typeof provider === 'string' ? provider : JSON.stringify(provider)}`;
+  return `${e.message ?? String(err)}${providerText}`;
+}
+
+/**
  * Runs Google's OAuth dance with **the originating community's own app**
  * (REQ-TENANT-01.9).
  *
@@ -116,13 +134,27 @@ export class GoogleOAuthService {
   async completeCallback(req: Request): Promise<{ state: OAuthState; profile: Profile }> {
     const query = req.query as { state?: string; error?: string };
 
+    // State first, even when the provider reported an error.
+    //
+    // Google returns `state` alongside `error=access_denied`, so a cancelled
+    // sign-in still says which community it started on -- and checking the
+    // error first threw that away, landing the member on the deployment's own
+    // error page instead of their community's. Found on stage: cancelling on
+    // one host produced the root host's error page.
+    //
+    // Verifying the signature costs nothing and is the only thing that makes
+    // the tenant id trustworthy, so there is no reason to skip it on this path.
+    const state = decodeOAuthState(query.state, this.config.getOrThrow<string>('JWT_SECRET'));
+
     // The member pressed Cancel on the consent screen. Not an error condition,
-    // and telling them "exchange failed" would be a lie.
+    // and telling them "exchange failed" would be a lie. Reported against their
+    // own community where the state verified, and against this deployment only
+    // when it did not -- a cancel with an unverifiable state has nowhere honest
+    // to go.
     if (query.error) {
-      throw new GoogleOAuthError('consent_denied', query.error);
+      throw new GoogleOAuthError('consent_denied', query.error, state?.tenantId);
     }
 
-    const state = decodeOAuthState(query.state, this.config.getOrThrow<string>('JWT_SECRET'));
     if (!state) {
       this.logger.warn('Google callback carried a state that did not verify; refusing it.');
       throw new GoogleOAuthError('invalid_state');
@@ -135,9 +167,30 @@ export class GoogleOAuthService {
       throw new GoogleOAuthError('provider_not_offered', undefined, state.tenantId);
     }
 
-    const outcome = await this.run(credentials, req, {});
+    let outcome: Awaited<ReturnType<GoogleOAuthService['run']>>;
+    try {
+      outcome = await this.run(credentials, req, {});
+    } catch (err) {
+      // Where a wrong client secret lands: passport-oauth2 reports the token
+      // endpoint's refusal through error(), wrapping the provider's own body in
+      // InternalOAuthError.oauthError. Losing that turns "Google says this
+      // client_id and client_secret do not go together" into "something went
+      // wrong", which is the difference between a two-minute fix and an
+      // afternoon.
+      throw new GoogleOAuthError('exchange_failed', describe(err), state.tenantId);
+    }
+
+    if (outcome.type === 'failure') {
+      throw new GoogleOAuthError('exchange_failed', outcome.detail, state.tenantId);
+    }
     if (outcome.type !== 'success') {
-      throw new GoogleOAuthError('exchange_failed', outcome.type, state.tenantId);
+      // A redirect on the callback leg would mean the strategy decided to start
+      // the flow again rather than finish it, which should be unreachable.
+      throw new GoogleOAuthError(
+        'exchange_failed',
+        `Strategy asked to redirect from the callback instead of completing`,
+        state.tenantId,
+      );
     }
     return { state, profile: outcome.profile };
   }
@@ -159,7 +212,7 @@ export class GoogleOAuthService {
   ): Promise<
     | { type: 'redirect'; url: string }
     | { type: 'success'; profile: Profile }
-    | { type: 'failure' }
+    | { type: 'failure'; detail: string }
   > {
     return new Promise((resolve, reject) => {
       const strategy = new Strategy(
@@ -179,7 +232,11 @@ export class GoogleOAuthService {
       Object.assign(strategy, {
         redirect: (url: string) => resolve({ type: 'redirect', url }),
         success: (profile: Profile) => resolve({ type: 'success', profile }),
-        fail: () => resolve({ type: 'failure' }),
+        // Passport hands back a challenge here and this used to discard it,
+        // which made a rejected token exchange indistinguishable from every
+        // other way the flow can end -- see completeCallback.
+        fail: (challenge: unknown) =>
+          resolve({ type: 'failure', detail: describe(challenge) }),
         error: (err: Error) => reject(err),
       });
 

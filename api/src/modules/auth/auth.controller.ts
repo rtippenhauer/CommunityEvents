@@ -214,9 +214,22 @@ export class AuthController {
       // and this deployment's own error page is the only honest destination.
       const reason = err instanceof GoogleOAuthError ? err.reason : 'exchange_failed';
       const tenantId = err instanceof GoogleOAuthError ? err.tenantId : undefined;
-      if (!(err instanceof GoogleOAuthError)) {
-        this.logger.error(`Google callback failed: ${(err as Error).message}`);
+
+      // Every failure is logged, including the ones we raised ourselves. This
+      // used to log only the unexpected kind, on the reasoning that a
+      // GoogleOAuthError is self-describing -- which is true of its *reason*
+      // and useless for the one that matters: exchange_failed says the
+      // credentials were refused without saying why, and that is exactly the
+      // case somebody is staring at an error page trying to diagnose.
+      //
+      // consent_denied is a member changing their mind, not a fault.
+      const detail = `${reason} (tenant ${tenantId ?? 'unknown'}): ${(err as Error).message}`;
+      if (reason === 'consent_denied') {
+        this.logger.log(`Google sign-in cancelled by the member -- ${detail}`);
+      } else {
+        this.logger.error(`Google callback failed: ${detail}`);
       }
+
       await this.authErrorRedirect(res, reason, tenantId);
       return;
     }
