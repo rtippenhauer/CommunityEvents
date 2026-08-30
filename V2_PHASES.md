@@ -1072,10 +1072,39 @@ string literals (`auth.service.ts:1110-1116` among them). Current count is 38
 non-comment references in `api/src` across 14 files and 14 in the frontend
 across 5 -- lower than the ~93 above, which counted comments and `.spec` files.
 
+**Email bodies are part of this, and provider templates are not.** Decided with
+Rob 2026-08-29, at the end of v2-9. Every email's HTML is an inline string at its
+call site -- about 15 of them -- and only four of the thirteen names in
+`EmailTemplate` are wired to a `templateId` at all. Brevo with no template id
+falls back to that same `htmlBody`, and `ResendService` has no template concept
+whatsoever and only ever sends it. So the inline HTML is not a degraded path, it
+is **the uniform one**: one string, built once, delivered identically by either
+provider.
+
+That is the argument against adopting Brevo's template store, which was
+considered and rejected here. It would improve Brevo only and silently diverge
+from what Resend sends on overflow -- two versions of every email, one of which
+nobody looks at until the day it is the one that goes out. Brevo templates are
+also per-*account*, so communities sharing the deployment key would share them,
+against the per-community branding v2-9 established. The reason to use a provider
+template store is its drag-and-drop designer; nobody here intends to open it.
+
+So the branding work covers the bodies themselves. They are plain -- a heading, a
+paragraph, an inline-styled button -- and improving them lands on both providers
+at once, with no per-account state, no template ids to track and no provider API
+call at setup.
+
+**One log line to fix with it:** `BrevoService.getTemplateId` logs
+`No Brevo template ID for <name>` at **WARN** on every send without one. Since
+template ids are per-community as of v2-9, a newly created community has none and
+this fires for every message it ever sends -- describing a supported and now
+preferred configuration as though it were a fault. Drop it to `DEBUG`.
+
 **Definition of done:** a fresh instance with no `app_config` rows presents as
 CommunityEvents; a community that has set its own `brand_name` sees that name
-everywhere including in email subjects and bodies; and no code path emits a
-dinnerbears.com URL.
+everywhere including in email subjects and bodies; no code path emits a
+dinnerbears.com URL; and a community that has configured no provider templates
+produces no warnings for it.
 
 ### v2-11 — Root tenant landing page
 **Status:** Not started (deferred). Depends on v2-3 and v2-4.
