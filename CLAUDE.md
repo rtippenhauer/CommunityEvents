@@ -306,7 +306,12 @@ number is meant to read as the running order, and it was still free to change
 because no `v2-*` tag above `v2-5` has been cut.
 
 **Then per-community email sending, inserted as `v2-9` on 2026-08-21**, shifting
-that same block down one more to `v2-10`–`v2-14`. It was briefly folded into
+that same block down one more to `v2-10`–`v2-14`. Two more were inserted on
+2026-08-30 — `v2-11` (a real colour system, next to the branding item because
+they share a surface) and `v2-12` (OAuth callback on a community's own host, the
+follow-on v2-8 deferred) — shifting the landing page, demo, wizard and handbook
+down two again, to `v2-13`–`v2-16`. Still free: no `v2-*` tag above `v2-9`
+exists. It was briefly folded into
 `v2-7` and split back out: the encryption is what makes a per-tenant provider key
 storable, but storing it is the small part next to scoping
 `email_provider_config`, moving its seeding into `bootstrap.ts` and making the
@@ -612,7 +617,7 @@ authoritative (per REQ-TENANT-01.3).
   dead end: registration needs an invite, invites need an existing member of that
   tenant, and its only other account is the `disabled` service account. The
   fields are create-only. A one-time setup link replaces the password hand-off in
-  `v2-13`.
+  `v2-15`.
 - **A new community is seeded with the platform's Terms and Privacy Policy**
   (`api/src/common/legal/legal-defaults.ts`), by `bootstrap.ts` for the root
   tenant and by `tenants-admin.service.create` for every other. `/terms` and

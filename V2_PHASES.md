@@ -677,7 +677,7 @@ which is what unblocked testing. The better shape is a one-time setup link the
 new operator uses to set their own credentials — no password handling in
 between. It depends on the tenant-aware link work (landed) and on email being
 configured, and it overlaps heavily with the setup wizard, so it belongs with
-**v2-12** rather than as its own item.
+**v2-14** rather than as its own item.
 
 **Self-service tenant creation with a trial tier.** Anyone can create a
 community and try it, bounded by caps — on the order of 2-5 users and a small
@@ -916,13 +916,16 @@ is a confidential client with a server-side secret, so the payoff is small, and
 the same cross-host split means the `code_verifier` would need its own storage
 row -- real cost, marginal benefit.
 
-#### Deferred to the next phase: a callback on the community's own host
+#### Deferred to v2-12: a callback on the community's own host
 
 Every callback currently terminates on the deployment's single registered URI,
 and `oauth_handoffs` carries the session the last hop. A community that owns its
 domain does not need that detour, and REQ-TENANT-01.8 always said so -- it left
 the direct path "undesigned until someone asks for it". Asked for, 2026-08-30;
-agreed with Rob to build it in the next phase rather than widen v2-8.
+agreed with Rob to build it separately rather than widen v2-8. **The design,
+including the four-case table and the policy decision that makes it simple, is
+recorded here rather than in v2-12** -- it was worked out against this item's
+code and reads better next to it.
 
 **Why the fixed URI is not simply obsolete**, which is the part worth not
 re-deriving. Adding an authorised domain to a Google project means verifying
@@ -1162,9 +1165,15 @@ own everywhere, including in email subjects and bodies. No code path emits a
 dinnerbears.com URL. DinnerBears' own artwork and copy exist only as that
 community's rows and uploads after it migrates.
 
-### v2-1x — A real colour system (not yet numbered)
+### v2-11 — A real colour system
 
-**Raised by Rob 2026-08-30.** Branding today is **three** admin-editable colours
+**Status:** Not started. Numbered 2026-08-30, immediately after v2-10 because
+the two share a surface: the branding pass decides what a community *is*, and
+this decides what it *looks like*, and doing them in the other order means
+restyling the same components twice. v2-13's landing page and v2-14's demo
+tenant both want it finished.
+
+Branding today is **three** admin-editable colours
 -- `--db-primary`, `--db-accent`, `--db-cream` -- and `frontend/CLAUDE.md`
 already records the two places that falls down: `on-primary` text is hardcoded
 white rather than contrast-computed, so a light brand colour renders unreadable;
@@ -1338,7 +1347,31 @@ everywhere including in email subjects and bodies; no code path emits a
 dinnerbears.com URL; and a community that has configured no provider templates
 produces no warnings for it.
 
-### v2-11 — Root tenant landing page
+### v2-12 — OAuth callback on the community's own host
+
+**Status:** Not started. Depends on v2-8. Design, rationale and the four-case
+table live under v2-8's "Deferred to v2-12" note -- they were worked out against
+that item's code and are not repeated here.
+
+In short: a community that owns its domain *and* runs its own Google project
+registers `https://<its domain>/api/v1/auth/google/callback` itself, so the
+callback arrives on the right host, the tenant resolves from the Host header,
+and the cookie is set directly -- no `oauth_handoffs` hop. Communities on a
+subdomain of this deployment keep the single registered URI and the handoff,
+because their operator cannot register a redirect URI on a domain they do not
+own, and one URI covers every client in the project, so self-service onboarding
+needs no console edit.
+
+A boolean on `tenants` rather than a free-text URL: the callback path is ours,
+so only the host varies, and deriving it from the tenant's domain removes a
+field that could otherwise point anywhere.
+
+**Definition of done:** a community flagged for its own host completes a Google
+sign-in with no handoff row written; a community not flagged is unchanged; both
+are exercised on stage; and the admin screen shows whichever redirect URI that
+community's operator actually has to register.
+
+### v2-13 — Root tenant landing page
 **Status:** Not started (deferred). Depends on v2-3 and v2-4.
 
 Public marketing page served by the root tenant, explaining the project and
@@ -1348,7 +1381,7 @@ and is the obvious starting point.
 **Definition of done:** `www.communityeventsproject.com` and the apex both
 serve the landing page and resolve to the same root tenant row.
 
-### v2-12 — Demo tenant
+### v2-14 — Demo tenant
 **Status:** Not started (deferred). Depends on v2-3, v2-4 and v2-10.
 
 A tenant anyone can try. Two properties that need care:
@@ -1378,7 +1411,7 @@ present, sees a standing notice that the data is temporary, and the tenant
 returns to its seeded state on schedule. The same self-registration on any
 other tenant still yields an ordinary member.
 
-### v2-13 — Operator setup wizard / everything configurable from the site
+### v2-15 — Operator setup wizard / everything configurable from the site
 **Status:** Not started (deferred). Depends on v2-6.
 
 REQ-TENANT-01.4 splits config into bootstrap (env, set once) and runtime
@@ -1397,10 +1430,10 @@ Google login, Facebook login, email delivery and correct DNS without editing
 env vars by hand, with the wizard telling the operator what to do in each
 third-party console.
 
-### v2-14 — Operator handbook
+### v2-16 — Operator handbook
 **Status:** Not started (deferred).
 
-The written counterpart to v2-12: what an operator needs before and during
+The written counterpart to v2-15: what an operator needs before and during
 setup. Same content, different form — the wizard prompts in the moment, the
 handbook is what they read beforehand and what support points at afterwards.
 
