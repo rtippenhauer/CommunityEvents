@@ -1096,6 +1096,102 @@ invite goes out on the raw-HTML fallback -- it sends and delivers, which is
 exactly why it is easy to miss. Set them on the deployment, or per community.
 
 ### v2-10 — CommunityEvents branding replaces the DinnerBears defaults
+
+**Reframed 2026-08-30 with Rob, and this is the organising idea rather than a
+longer checklist.** The item has read as "remove DinnerBears", which has no
+clear finish line -- every pass removes some and leaves the rest looking like an
+oversight, which is exactly how it has felt across three items now. The end
+state is instead:
+
+> **CommunityEvents is the platform identity. Every DinnerBears artifact either
+> becomes its CommunityEvents equivalent, or becomes data owned by the
+> DinnerBears community when it migrates.**
+
+Nothing needs to keep working as a DinnerBears default, because DinnerBears
+stops being the default and becomes a tenant like any other -- with its own
+`app_config` rows, its own uploaded artwork, its own terminology. That makes
+every question below answerable: a fallback is CommunityEvents, a community's
+own value is whatever it uploaded, and there is no third case.
+
+#### Why it keeps recurring: three different problems wearing one label
+
+The audit (2026-08-30) found 23 references in `api/src`, 19 in `frontend/src`,
+31 bear/paw terminology hits, plus seed data and static assets. They are not one
+task:
+
+**1. Renames and fallbacks.** Mechanical. `dinnerbears.com` URL fallbacks, email
+copy, `instance-contact.ts`, `calendar.service.ts`. The rule from v2-6 still
+governs: resolve the *tenant's* brand and interpolate it; only the
+deployment-wide fallback becomes CommunityEvents. `SITE_SETTING_DEFAULTS.brand_name`
+is already `CommunityEvents`, so this is finishing a job, not starting one.
+
+**2. Assets, which need artwork rather than code.** This is the part that cannot
+be done by editing strings, and the reason previous passes stopped short. The
+frontend hardcodes these as the fallback a community with no uploads gets:
+
+| Constant / file | Where it shows |
+| --- | --- |
+| `DEFAULT_LOGO = assets/logo.png` | nav bar; also both PWA icon sizes |
+| `DEFAULT_SPLASH = images/dinnerbears-splash.png` | login page hero |
+| `DEFAULT_ICON = images/DinnerBearsIcon.png` | favicon, apple-touch-icon |
+| `images/ErrorMenuBoard.png` | the frame around every error page -- **not configurable at all**, so no community can override it |
+| `public/backgrounds/background-chef.png`, `background-cool.png` | page backgrounds, via `gen-bg-manifest.js` |
+| `src/index.html` | `<title>DinnerBears`, apple-mobile-web-app-title, icon links |
+| `public/manifest.webmanifest`, `manifest.stage.webmanifest` | PWA name, short_name, description "Bear memories" |
+| `public/landing.html` | v1-era placeholder |
+
+`ErrorMenuBoard.png` is the sharpest instance: a member of any community sees
+DinnerBears artwork on every error, and there is no setting that changes it.
+
+**3. Branding seeded *into* new communities, which is the structural miss.**
+`prisma/seed-data/achievements.json` writes "Founding **Bear**" and "Attended 5
+**DinnerBears** dinners" as real rows in every community at creation. Unlike a
+fallback, a community cannot override these -- they are its data, and they are
+already wrong in both communities on stage. v2-6 made branding per-community and
+the seed data never followed. Either the descriptions interpolate the
+community's own terms at read time (as the legal templates already do via
+`getPublicValue`), or they become generic. `term_points` = "Bear Points" is the
+same shape: configurable, seeded wrong.
+
+#### Definition of done, restated
+
+A fresh install with no `app_config` rows and no uploads presents as
+CommunityEvents in every surface -- nav, login, favicon, PWA, error pages,
+backgrounds, achievements. A community that has set its own branding sees its
+own everywhere, including in email subjects and bodies. No code path emits a
+dinnerbears.com URL. DinnerBears' own artwork and copy exist only as that
+community's rows and uploads after it migrates.
+
+### v2-1x — A real colour system (not yet numbered)
+
+**Raised by Rob 2026-08-30.** Branding today is **three** admin-editable colours
+-- `--db-primary`, `--db-accent`, `--db-cream` -- and `frontend/CLAUDE.md`
+already records the two places that falls down: `on-primary` text is hardcoded
+white rather than contrast-computed, so a light brand colour renders unreadable;
+and hover and derived shades are not generated, so an unusual hue looks wrong in
+the nav and in button states. Both are accessibility problems, not taste ones.
+
+A conventional token set is roughly: primary and `on-primary`; accent and
+`on-accent`; surface and surface-variant; outline; text primary / secondary /
+disabled; and the semantic four -- success, warning, error, info -- each with an
+`on-` pair.
+
+**The decision to make first, because everything else follows from it:** does an
+admin pick every token, or pick two or three seeds with the rest *derived*
+(tints, shades, and contrast computed to a WCAG ratio)? Derived is far harder to
+get wrong and fixes the white-text problem by construction; explicit is more
+flexible and much easier to make both ugly and inaccessible. Recommendation:
+derived, with the semantic four fixed by the platform -- red-means-error is not
+a branding choice.
+
+Work: a token layer feeding both the `--db-*` and Material `--mat-sys-*`
+variables; a derivation function with contrast checks; migrating component
+styles off the three current variables; and an admin screen with live preview.
+Note `index.html`'s `theme-color` and the webmanifest are static, pre-bootstrap
+files with no CSS-variable indirection, so they do not follow a runtime change
+-- same limitation the branding item hits.
+
+
 **Status:** Not started (deferred) -- **except five commits landed early on the
 v2-7 branch** at Rob's direction, because stage testing kept surfacing them:
 
