@@ -1176,20 +1176,76 @@ A conventional token set is roughly: primary and `on-primary`; accent and
 disabled; and the semantic four -- success, warning, error, info -- each with an
 `on-` pair.
 
-**The decision to make first, because everything else follows from it:** does an
-admin pick every token, or pick two or three seeds with the rest *derived*
-(tints, shades, and contrast computed to a WCAG ratio)? Derived is far harder to
-get wrong and fixes the white-text problem by construction; explicit is more
-flexible and much easier to make both ugly and inaccessible. Recommendation:
-derived, with the semantic four fixed by the platform -- red-means-error is not
-a branding choice.
+**Decided with Rob 2026-08-30: seed-and-derive, with per-token overrides.**
+Three tiers, each an escape hatch from the one before, so the common case is one
+click and the rare case is still possible:
+
+1. **Pick a preset.** A short curated list of complete palettes. Most communities
+   stop here and never see a colour picker.
+2. **Set one or two seed colours.** Everything else is derived -- tints and
+   shades for hover and active states, surfaces, outline, and every `on-` colour
+   computed for contrast rather than assumed white. This is what fixes the
+   unreadable-light-brand problem by construction rather than by asking an admin
+   to notice it.
+3. **Override any individual token.** Full control for whoever wants it.
+
+**Overrides must survive re-derivation**, which decides the storage shape: keep
+`{ seeds, overrides }` and derive at read time, rather than materialising a flat
+set of colours. Otherwise changing a seed either silently discards an override
+or silently keeps a stale one. The codebase already has this pattern twice --
+legal templates interpolate on the public read rather than at seed time, and
+contact addresses resolve most-specific-first -- so it is the house style, not a
+new idea.
+
+**Contrast is checked even on overrides**, and warns rather than blocks. An admin
+who insists on a low-contrast pair should be told what it will do to their
+members, not silently obeyed or silently overruled.
+
+The semantic four -- success, warning, error, info -- stay platform-fixed.
+Red-means-error is not a branding choice.
+
+#### Ship the prompts, not just the pickers
+
+Rob's idea, and the part that makes tier 2 usable by someone who does not think
+in hex: put a **copyable prompt** on the screen that an admin can paste into
+ChatGPT or Claude, together with a **paste-back format** the screen accepts. The
+round trip becomes: describe your community in words -> get a palette -> paste
+it in -> preview -> save.
+
+That only works if the prompt names our tokens and constraints exactly, so the
+answer is directly importable. Draft to react to:
+
+> You are helping choose a colour palette for a community website. Return **only**
+> a JSON object, no commentary, in exactly this shape:
+>
+> `{"primary":"#RRGGBB","accent":"#RRGGBB","surface":"#RRGGBB"}`
+>
+> Constraints:
+> - `primary` is used for buttons, links and highlights; `accent` for secondary
+>   actions; `surface` is the page background and should be very light or very
+>   dark, not mid-tone.
+> - White or black text must reach WCAG AA contrast (4.5:1) against `primary`
+>   and against `accent`.
+> - `surface` must reach 4.5:1 against a near-black and a near-white body text
+>   colour, so state which of the two the design assumes.
+> - Avoid pure `#000000` and `#FFFFFF`.
+>
+> The community is: **<describe it -- its name, what it does, the feeling you
+> want>**.
+
+Validate on paste rather than trusting it: parse, check the ratios ourselves,
+and show the preview before anything is saved. An LLM will occasionally return a
+pair that fails its own brief, and the screen should catch that rather than the
+members.
 
 Work: a token layer feeding both the `--db-*` and Material `--mat-sys-*`
-variables; a derivation function with contrast checks; migrating component
-styles off the three current variables; and an admin screen with live preview.
+variables; the derivation function with contrast checks; migrating component
+styles off the three current variables; the preset list; and an admin screen
+with live preview, the prompt, and the paste-back importer.
+
 Note `index.html`'s `theme-color` and the webmanifest are static, pre-bootstrap
 files with no CSS-variable indirection, so they do not follow a runtime change
--- same limitation the branding item hits.
+-- the same limitation the branding item hits, and worth deciding once for both.
 
 
 **Status:** Not started (deferred) -- **except five commits landed early on the
