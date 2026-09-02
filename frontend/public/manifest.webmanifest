@@ -1,21 +1,16 @@
 {
-  "name": "DinnerBears",
-  "short_name": "DinnerBears",
-  "description": "Good food. Great company. Bear memories.",
+  "name": "CommunityEvents",
+  "short_name": "CommunityEvents",
+  "description": "Good food. Great company.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FDFAF5",
   "theme_color": "#C9933A",
   "icons": [
     {
-      "src": "assets/logo.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "assets/logo.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "brand/communityevents-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ]
 }

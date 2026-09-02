@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
 import { reshade, darkenBy } from '../utils/color.util';
+import { wordmarkDataUri, splashDataUri, monogramDataUri } from '../utils/brand-mark.util';
 
 /** The social sign-ins a community offers. See BrandConfig.authProviders. */
 export interface AuthProviders {
@@ -72,13 +73,25 @@ export interface BrandFeatures {
   requireMembership: boolean;
 }
 
-// Compiled-in default assets a fresh fork ships with. Used whenever the
-// matching app_config image URL is empty (no admin upload yet). A fork can
-// override either by uploading in /admin/settings or by swapping these
-// static files in public/ before building.
-const DEFAULT_LOGO = 'assets/logo.png';
-const DEFAULT_SPLASH = 'images/dinnerbears-splash.png';
-const DEFAULT_ICON = 'images/DinnerBearsIcon.png';
+// Default assets for a community that has uploaded none (v2-10). These used to
+// be three checked-in DinnerBears PNGs; they are now drawn at runtime from the
+// community's own name and palette by brand-mark.util.ts.
+//
+// The change is not cosmetic. A compiled-in image is one file for the whole
+// deployment, but what it stands in for is a single community's identity — so
+// every community that had not uploaded a logo wore DinnerBears' bear, and
+// swapping in a CommunityEvents PNG would only have changed whose. A generated
+// mark says the community's own name, which is the only answer that is right
+// for all of them. It also drops ~13MB of PNGs from the bundle.
+//
+// An admin upload still overrides by the same plain string substitution as
+// before: these are URLs, so nothing downstream of `logoSrc` had to change.
+const defaultLogo = (b: BrandConfig): string =>
+  wordmarkDataUri(b.name, { primary: b.colorPrimary, background: b.colorBackground });
+const defaultSplash = (b: BrandConfig): string =>
+  splashDataUri(b.name, b.tagline, { primary: b.colorPrimary, background: b.colorBackground });
+const defaultIcon = (b: BrandConfig): string =>
+  monogramDataUri(b.name, { primary: b.colorPrimary, background: b.colorBackground });
 
 // Mirrors the live styles.scss palette / api-side SITE_SETTING_DEFAULTS —
 // what renders before the branding fetch resolves, and what stays in place
@@ -161,9 +174,9 @@ export class BrandConfigService {
   // Resolved image sources: the admin-uploaded URL if set, else the
   // compiled-in default. Components bind [src] to these so a fork's uploaded
   // images flow everywhere with no per-component fallback logic.
-  readonly logoSrc = computed(() => this.brand().logoUrl || DEFAULT_LOGO);
-  readonly splashSrc = computed(() => this.brand().splashUrl || DEFAULT_SPLASH);
-  readonly iconSrc = computed(() => this.brand().iconUrl || DEFAULT_ICON);
+  readonly logoSrc = computed(() => this.brand().logoUrl || defaultLogo(this.brand()));
+  readonly splashSrc = computed(() => this.brand().splashUrl || defaultSplash(this.brand()));
+  readonly iconSrc = computed(() => this.brand().iconUrl || defaultIcon(this.brand()));
   // No compiled-in fallback: empty means the home-page story image is hidden.
   readonly storyImageUrl = computed(() => this.brand().storyUrl);
 
@@ -223,7 +236,7 @@ export class BrandConfigService {
       const config = await firstValueFrom(this.http.get<BrandConfig>('/api/v1/config/branding'));
       this.brand.set(config);
       this.applyColors(config);
-      this.applyFavicon(config.iconUrl || DEFAULT_ICON);
+      this.applyFavicon(config.iconUrl || defaultIcon(config));
       // index.html's static <title> is what search engines/the initial tab
       // title show — this only updates the *live* tab title once Angular
       // has booted. Per-route titles (if ever added) would override this.

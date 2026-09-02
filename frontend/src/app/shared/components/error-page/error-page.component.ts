@@ -1,7 +1,8 @@
-import { Component, input, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, inject, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-error-page',
@@ -23,8 +24,8 @@ import { MatIconModule } from '@angular/material/icon';
 
         @if (showInviteHint()) {
           <p class="invite-hint">
-            Don't have an invite? Have a current member visit
-            <strong>dinnerbears.com</strong> to send you one.
+            Don't have an invite? Ask a current member of
+            <strong>{{ brandConfig.brand().name }}</strong> to send you one.
           </p>
         }
 
@@ -42,19 +43,36 @@ import { MatIconModule } from '@angular/material/icon';
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
+      /* Was a fixed DinnerBears menu-board photo (v2-10). It was the one
+         branded surface with no setting behind it at all, so a member of any
+         community met DinnerBears' artwork on every error. Built from the
+         brand custom properties instead, it follows whatever palette the
+         community has configured — BrandConfigService.applyChrome sets these
+         at runtime, and styles.scss supplies the pre-JS fallbacks, which is
+         what makes this legible on an unresolved tenant that never loaded
+         branding at all. */
       .error-bg {
         min-height: 100vh;
-        background: url('/images/ErrorMenuBoard.png') center top / cover no-repeat;
+        background:
+          radial-gradient(
+            ellipse 120% 80% at 50% 0%,
+            color-mix(in srgb, var(--db-primary, #c9933a) 18%, transparent),
+            transparent 70%
+          ),
+          var(--db-cream, #fdfaf5);
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: center;
-        padding: clamp(140px, 30vw, 440px) 16px 60px;
+        padding: 48px 16px;
       }
 
       .error-card {
-        background: transparent;
-        padding: 0 28px;
-        max-width: 360px;
+        background: #fff;
+        border-radius: 16px;
+        border-top: 4px solid var(--db-primary, #c9933a);
+        box-shadow: 0 10px 34px rgb(0 0 0 / 9%);
+        padding: 36px 28px 32px;
+        max-width: 400px;
         width: 100%;
         display: flex;
         flex-direction: column;
@@ -74,7 +92,7 @@ import { MatIconModule } from '@angular/material/icon';
         margin: 0;
         font-size: 1.4rem;
         font-weight: 700;
-        color: #3d1c05;
+        color: var(--db-brown-dark, #3d1c05);
       }
 
       .error-body {
@@ -89,8 +107,8 @@ import { MatIconModule } from '@angular/material/icon';
         flex-direction: column;
         align-items: center;
         gap: 2px;
-        background: #fff3e0;
-        border: 1px solid #ffe0b2;
+        background: color-mix(in srgb, var(--db-primary, #c9933a) 10%, #fff);
+        border: 1px solid color-mix(in srgb, var(--db-primary, #c9933a) 28%, #fff);
         border-radius: 8px;
         padding: 10px 20px;
         width: 100%;
@@ -105,7 +123,7 @@ import { MatIconModule } from '@angular/material/icon';
 
       .invited-address {
         font-weight: 600;
-        color: #3d1c05;
+        color: var(--db-brown-dark, #3d1c05);
         word-break: break-all;
       }
 
@@ -126,6 +144,12 @@ import { MatIconModule } from '@angular/material/icon';
   ],
 })
 export class ErrorPageComponent {
+  // The invite hint names the community, so this page needs branding. Note it
+  // also renders when branding could not load at all (an unresolved tenant),
+  // where BrandConfigService keeps DEFAULT_BRAND — hence "CommunityEvents",
+  // which is the correct thing to say on a host that belongs to no community.
+  readonly brandConfig = inject(BrandConfigService);
+
   readonly icon = input('error_outline');
   readonly title = input('Something went wrong');
   readonly body = input(

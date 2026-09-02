@@ -1,21 +1,16 @@
 {
-  "name": "DinnerBears Stage",
-  "short_name": "DB Stage",
-  "description": "DinnerBears — Stage environment",
+  "name": "CommunityEvents Stage",
+  "short_name": "CE Stage",
+  "description": "CommunityEvents — Stage environment",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FDFAF5",
   "theme_color": "#b34a00",
   "icons": [
     {
-      "src": "images/DinnerBearsIcon-stage.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "images/DinnerBearsIcon-stage.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "brand/communityevents-icon-stage.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ]
 }

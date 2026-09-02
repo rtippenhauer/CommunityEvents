@@ -1,0 +1,14 @@
+<!--
+  Stage variant of the platform mark (v2-10), replacing DinnerBearsIcon-stage.png.
+  Deliberately a different hue from the production mark (matching this
+  manifest's #b34a00 theme_color) — the whole reason a separate stage icon
+  exists is so an installed stage PWA is not mistakable for the real one on a
+  home screen.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="CommunityEvents Stage">
+  <rect width="64" height="64" rx="14" fill="#B34A00"/>
+  <text x="32" y="33" text-anchor="middle" dominant-baseline="central"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="27" font-weight="700" fill="#FDFAF5">CE</text>
+</svg>
