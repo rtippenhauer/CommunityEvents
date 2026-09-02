@@ -369,3 +369,58 @@ was its budget. The screen now shows both figures — what this community sent,
 and what the account has left — and the second is what decides whether a message
 goes out.
 
+
+---
+
+## Signing in, per community
+
+**Each community brings its own Google and Facebook sign-in.** A community
+registers its own application with the provider and enters the credentials at
+Administration → Sign-in Providers. Google appears on the sign-in page only for
+a community that has set it up, Facebook likewise, and email and password are
+always available — so a community that wants neither simply doesn't configure
+them, and nothing looks broken.
+
+There is deliberately no shared platform application to fall back on. Signing in
+through somebody else's application would make that party — not the community —
+the one a member granted access to, which is not a relationship to create by
+default.
+
+**Signing in with Google now works on every community, not just the main one.**
+Google returns every sign-in to a single fixed web address, and a session issued
+there did not reach any other community's address — which is why the previous
+release said Google worked on the main community only. The return trip now
+carries a signed record of which community the sign-in started on, hands the
+session back to that community's own address, and the record is single-use and
+expires in minutes.
+
+**A community's credentials are stored encrypted and are never shown again.**
+The settings page reports whether a provider is configured, not what its
+credentials are. Leaving a field untouched leaves the stored value alone;
+clearing it turns that provider off for the community.
+
+**A sign-in cannot be carried from one community to another.** A Facebook
+sign-in is now checked against the community's own application before it is
+accepted, so a token issued for one community's application is refused by
+another's.
+
+### Fixes found while testing
+
+**Cancelling a Google sign-in returns you to the community you started on.**
+Pressing Cancel used to land you on the main community's address with an error,
+which for anyone signing in to a different community looked like being thrown
+out of the site entirely.
+
+**Disconnecting Google now really disconnects it.** After disconnecting, signing
+in with Google again silently reconnected it to the account with the same email
+address, so the setting appeared not to work at all. Google now behaves the same
+way Facebook already did: it refuses, and says the account isn't connected.
+
+**A sign-in failure now explains itself.** When a provider rejected the
+community's credentials, the site reported only that sign-in failed and recorded
+nothing — the reason the provider gave is now written to the logs, so a mistyped
+credential is a minute's work instead of a guess.
+
+**The credentials form matches what it will accept.** It offered to save a
+client ID without its secret, which the site then refused, and the explanatory
+text under the field was covered by the Save button.

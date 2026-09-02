@@ -855,8 +855,22 @@ carried over from the DinnerBears account.
   v2-10 below -- its remaining scope is unchanged apart from these.
 
 ### v2-8 — Per-tenant OAuth apps (REQ-TENANT-01.9, REQ-TENANT-01.8)
-**Status:** In Progress (started 2026-08-29). Depends on v2-7 and on v2-6,
-both done. Runs after v2-9, which was taken first.
+**Status:** Complete (2026-09-01). Tag `v2-8`. Depended on v2-7 and v2-6, both
+done. Ran after v2-9, which was taken first. **This closes REQ-TENANT-01** —
+every requirement in the tenant foundation doc is now implemented.
+
+Landed as described below, with four defects found on stage rather than by the
+suite: a cancelled sign-in read `query.error` before decoding `state` and so
+returned to the wrong community; Google silently re-linked on email match after
+Disconnect where Facebook refused (Google now matches Facebook); `POST
+/auth/facebook` never checked *which app* minted the token, which is latent with
+one app and a cross-community hole with per-tenant ones; and `exchange_failed`
+logged nothing, dropping the provider's own reason from
+`InternalOAuthError.oauthError`. `SameSite=strict` was expected to need
+loosening for the handoff and does not — verified in a browser.
+
+Two things below are deferred rather than done: the login-CSRF gap and v2-12's
+own-host callback. Both sections are kept here on purpose.
 
 Each tenant supplies its own Google and/or Meta credentials; a provider is
 offered only where that tenant has them, and email/password is always
@@ -1099,6 +1113,8 @@ invite goes out on the raw-HTML fallback -- it sends and delivers, which is
 exactly why it is easy to miss. Set them on the deployment, or per community.
 
 ### v2-10 — CommunityEvents branding replaces the DinnerBears defaults
+
+**Status:** In Progress (started 2026-09-01).
 
 **Reframed 2026-08-30 with Rob, and this is the organising idea rather than a
 longer checklist.** The item has read as "remove DinnerBears", which has no
@@ -1446,3 +1462,237 @@ going Live.
 Meta app creation plus review and business verification, and email provider
 setup, accurate enough that someone other than Rob can stand up an instance
 from it.
+
+### v2-17 — Member validation audit trail + attendance-triggered validation (REQ-VALIDATE-01)
+**Status:** Not started (deferred). Depends on v2-6 (user tenant scoping,
+non-validated role). Sequenced before v2-18 onward per Rob's explicit call
+(2026-08-30) — no technical dependency forces this order, it's a
+priority call.
+
+**Correction (2026-08-31):** this item originally assumed an existing
+moderator-vouch audit trail (`validated_by`, `validated_at`) that it
+would extend. Confirmed against the actual code that no such trail
+exists — `UsersService.validateMember()` only updates `role`, despite
+`AuditService` being injected in that class and used elsewhere in it.
+This item now creates the audit trail from scratch and retrofits the
+vouch path to use it, rather than extending something that was never
+there. Full spec in `docs/REQ-VALIDATE-01.md`.
+
+Adds `validated_by`, `validated_at`, and a `validation_source` enum
+(`vouch` | `attendance`) to `users`, all nullable. Pre-existing validated
+members are left with null trail columns — there's no way to reconstruct
+who vouched for them, and fabricating a value would be worse than an
+honest gap. `validateMember()` is rewritten to populate all three and log
+to `AuditService`, bringing it in line with the rest of its own class.
+Attendance-triggered validation is then the new second path, using the
+same trail: when a moderator/admin marks a non-validated member as
+attended, an option in the same action validates them, recording the
+marking admin/moderator and timestamp.
+
+**Definition of done:** both the vouch path and attendance-triggered
+validation populate the full trail and log to the audit service,
+consistently; pre-existing validated members keep null trail columns
+rather than fabricated ones; attempting to validate an already-validated
+member via either path is rejected, not silently overwritten.
+
+### v2-18 — Shared media pipeline (REQ-CMS-01.1)
+**Status:** Not started (deferred). Depends on v2-17. First of the
+REQ-CMS-01 batch — v2-20 (discussion) and v2-23 (event photos) both build
+on this rather than inventing their own upload path.
+
+Single `media` table (`tenant_id`, `attached_to_type`, `attached_to_id`,
+`uploaded_by`, `file_path`, `caption`, soft delete) and one upload
+endpoint, tagged by context. Closes the uploaded-file auth-gating gap
+carried over from the v1 backlog — fixed once here instead of three times
+downstream. Delivers a paste-to-upload directive wired to every rich-text
+surface platform-wide (discussion, feedback, event comments,
+announcements), not built per-feature.
+
+**Non-validated members are blocked at this endpoint** — the one place to
+enforce it so nothing downstream needs its own check.
+
+**Definition of done:** `media` table and upload endpoint exist,
+tenant-scoped and context-tagged; a non-validated member's upload attempt
+is rejected server-side; paste-to-upload works on at least one rich-text
+surface as proof the directive is shared, not per-feature.
+
+### v2-19 — Page/block CMS foundation (REQ-CMS-01.2)
+**Status:** Not started (deferred). Depends on v2-18.
+
+`pages` and `page_blocks` tables, a block type registry (backend config
+schema validation, frontend dynamic component loading), and the page
+builder admin UI. Ships with two block types to prove the registry: Rich
+Text and Custom HTML. Custom HTML is a sanitized allowlist
+(`sanitize-html` or equivalent) — scripts, inline event handlers, and
+`javascript:` URLs stripped unconditionally server-side, not raw HTML
+input. Tenant admins manage their own tenant's pages; system admin can
+manage any tenant's.
+
+**Definition of done:** a tenant admin can create a page, add/reorder/
+remove Rich Text and Custom HTML blocks, and it renders on the public
+site; a failing-if-unfixed integration test proves the sanitizer strips
+injected scripts through the actual page-save path.
+
+### v2-20 — Block library (REQ-CMS-01.3)
+**Status:** Not started (deferred). Depends on v2-19.
+
+The full block set on the v2-19 registry: Hero, Image/Gallery, Signup
+Form, Upcoming Events List, Full Event Calendar, Event Detail, Event
+Register/RSVP, Leaderboard Snippet, Full Leaderboard, Member Directory,
+Announcements Feed, Discussion Thread (depends on v2-22), Location
+Spotlight, Location Directory, Location Ratings Summary, Feedback Board
+Embed, Public Changelog Embed. Each block calls existing module APIs — no
+new backend logic beyond block-level filter/count config. List-shaped
+blocks share one config shape (count, sort/filter) rather than one-off
+per block.
+
+**Leaderboard Snippet, Full Leaderboard, and Member Directory are hidden
+outright from non-validated members**, not merely read-only — they carry
+no visibility into other members' identity or standing.
+
+**Definition of done:** every block above is placeable via the v2-19 page
+builder and renders correctly; the three person-info blocks are confirmed
+absent (not just unstyled) for a non-validated member.
+
+### v2-21 — Menu system (REQ-CMS-01.4)
+**Status:** Not started (deferred). Depends on v2-20.
+
+`menu_items` table (tenant-scoped: label, `target_type` of `page` or
+`external_link`, target, order, `feature_flag`, `menu_context` of
+`main`/`admin`/`profile`). Admin and Profile menus stay structurally
+fixed but each entry is feature-flag gated server-side, matching the
+existing `@RequireFeature` pattern — hiding is UX, the guard is the
+actual enforcement. New tenants get their standard nav auto-seeded as
+real pages built from v2-20 block templates on tenant creation.
+
+**Definition of done:** menu items are DB-driven and editable per tenant;
+disabling a feature flag 403s the route server-side, not just hides the
+nav link; a newly created tenant has a complete standard nav with no
+manual page-building required.
+
+### v2-22 — Discussion board (REQ-CMS-01.5)
+**Status:** Not started (deferred). Depends on v2-18, v2-20 (for the
+Discussion Thread block).
+
+`discussion_categories`, `discussion_topics`, `discussion_posts` with
+real threading (`parent_post_id`, self-referencing — not the one-level
+cap used by event comments), depth-capped rendering, photos via v2-18's
+`media` table. Plugs into the existing `content_reports` system
+(`discussion_topic`/`discussion_post` added to `content_type`), reusing
+the current report button and mod queue rather than a parallel one.
+
+**Non-validated members cannot post, reply, or upload — read-only,
+enforced server-side on each endpoint**, consistent with their existing
+event-comment restriction and the v2-18 upload block.
+
+**Definition of done:** threaded replies with photo attachments work end
+to end; a non-validated member's post/reply/upload attempts are rejected
+server-side; reporting a post or topic reaches the existing mod queue.
+
+### v2-23 — Event photo galleries (REQ-CMS-01.6)
+**Status:** Not started (deferred). Depends on v2-18.
+
+Event photos via v2-18's `media` table (`attached_to_type: 'event_photo'`).
+Upload gated to `attended = true`, reusing the existing
+ratings-eligibility attendance check rather than a new one. Grid/lightbox
+on the event detail page; doubles as a Photo Gallery block once v2-20
+exists. Same `content_reports` hook as v2-22.
+
+**Non-validated members are excluded outright regardless of attendance**
+— attendance alone does not override the restriction, even for a member
+validated via v2-17's attendance path for a different event.
+
+**Definition of done:** an attendee can upload event photos, displayed in
+a grid/lightbox on the event page; a non-attendee's upload is rejected; a
+non-validated member's upload is rejected even if marked attended.
+
+### v2-24 — Cities as a toggleable event filter, tenant-scoped (REQ-CITIES-01)
+**Status:** Not started (deferred). Sequenced before v2-25 (import) — the
+import script needs a settled city model rather than one it has to work
+around.
+
+`cities` currently has no `tenant_id` at all — the one model the v2-6
+scoping pass never touched — and its `subdomain` column is globally
+unique, so two tenants today would collide on city names. Per Rob
+(revised 2026-08-31, extended 2026-09-01): **Facebook groups are dropped
+entirely** — first the per-city relation, then group ids altogether, so
+the table, its module and `invites.facebook_group_id` all go. Meta's API
+already blocks automated group posting, so the structure served a
+capability that barely worked. The `campaign_facebook` invite *type*
+survives (it drives `users.inviteSource`, which is attribution, not a
+group id); its group picker becomes a city picker. City filtering
+becomes a **tenant feature toggle**: off, cities are invisible everywhere
+and nothing requires one; on, every event, user and location requires a
+city and members
+choose **All** or a specific multi-select set of cities to see and be
+notified about — generalizing what the personal iCal feed already did
+from single-city to multi-city, applied consistently to the event list,
+the calendar feed, and notification targeting. Nothing about city ever
+gates RSVP, ratings, achievements, or moderation.
+
+Adds `tenant_id` to `cities`, drops the now-meaningless `subdomain`
+column, adds a `user_city_preferences` join table (no rows = "All",
+replacing the single-value `calendarCityFilter` enum, which can't express
+"Dayton and Cincinnati but not Columbus"), and drops
+`facebook_group_config` outright.
+
+Three decisions from the doc review that aren't obvious from the summary
+above. **Every `city_id` column becomes nullable in the database** —
+`events`, `users` and `locations` are `NOT NULL` today, and the toggle
+can't be validation-only while they are; the business layer enforces the
+requirement, since it's the only layer that knows the tenant's flag.
+**Turning the toggle on backfills** every null `city_id` to the tenant's
+first city in the same transaction as the flag write, so a tenant is
+never observably "cities on with null city rows" — and the toggle is
+refused until at least one city exists. **`calendarAutoInvite` does not
+fold into the preference table**: it defaults to `none` where
+`calendarCityFilter` defaults to `all`, so "no rows means All" would opt
+in every member who never touched it. It narrows to an on/off and reads
+its cities from the new table.
+
+**Definition of done:** `cities` is tenant-scoped with no cross-tenant
+name collisions; the feature toggle correctly makes cities either fully
+required or fully invisible; members can select All or specific cities
+via `user_city_preferences`, applied consistently to event list defaults,
+the iCal feed, and notifications; nothing uses city as an access gate; a
+member with a city-limited preference can still freely RSVP to and rate
+events outside it; enabling the toggle on a tenant with existing data
+leaves no null `city_id` behind and no member auto-invited who wasn't
+before; `facebook_group_config` is gone while `campaign_facebook` invites
+still work.
+
+### v2-25 — DinnerBears import (new tenant) (REQ-IMPORT-01)
+**Status:** Not started (deferred). Sequenced last, per Rob (2026-08-30).
+Depends on v2-24 — cities import as tenant-scoped rows now, not excluded,
+and each imported user's legacy single city becomes one row in their new
+`user_city_preferences` set. No other technical dependency on v2-17
+through v2-23 — an imported tenant works identically whether or not
+blocks/pages/discussion exist yet — placed last because it's the
+highest-consequence one-time operation in the project and benefits from
+running against the most complete, most-tested schema rather than being
+re-verified after every subsequent change.
+
+One-time, re-runnable script importing a complete DinnerBears (v1)
+database over an external read-only connection into a **new** tenant —
+not root, which stays the platform's own empty tenant. Every source
+auto-increment ID is remapped via per-table `Map<oldId, newId>`, since
+the target database already has rows from root and any other tenants.
+Full scope: accounts, invites/lineage, events/RSVPs/attendance/comments,
+locations, ratings, achievements/points ledger (full ledger, not just
+totals), feedback, announcements, moderation history, audit log, and
+cities (per v2-24's tenant-scoped model). Explicitly excluded: email
+queue/suppression (already global — deliverability is a property of the
+address, not the tenant), release notes, and per-city Facebook group
+config (dropped per v2-24).
+
+Built generically enough to run again later against the second,
+manually-duplicated DinnerBears database in its own container — same
+script, different connection string and target slug, producing a second
+independent tenant.
+
+**Definition of done:** primary DinnerBears database imports cleanly into
+a new tenant with all FKs remapped and validated; dry-run mode reports
+accurate counts and writes nothing; re-running against the same target
+tenant is refused rather than duplicating; the same script run against
+the second source database produces an independent second tenant with no
+cross-contamination.
