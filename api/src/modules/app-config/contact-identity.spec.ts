@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AppConfigService } from './app-config.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import { TenantOAuthService } from '../../common/tenant/tenant-oauth.service';
 import { runWithTenant } from '../../common/tenant/tenant-store';
 
 /**
@@ -41,6 +42,9 @@ function make(
     stubPrisma(rows),
     stubConfig({ APP_URL: 'https://communityeventsproject.com', ...env }),
     {} as unknown as TenantResolutionService,
+    // Not exercised here: these specs cover contact-address precedence, and the
+    // OAuth reader is only reached by getBrandingConfig.
+    {} as unknown as TenantOAuthService,
   );
 }
 

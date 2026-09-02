@@ -69,19 +69,20 @@ describe('env classification (REQ-TENANT-01.4)', () => {
     // home the list is a manifest rather than a fence: each of these has a note
     // saying whether it is per-community, per-deployment, or waiting on the
     // item that populates its real column.
+    //
+    // v2-8 removed four rather than moving them: the two Google and two
+    // Facebook variables have no deployment-wide meaning left, because a
+    // community without its own app offers email/password rather than falling
+    // back to the platform's (REQ-TENANT-01.9).
     expect(envVarsIn('secret')).toEqual([
       'ANTHROPIC_API_KEY',
       'BREVO_API_KEY',
       'BREVO_WEBHOOK_SECRET',
       'CLAUDE_AUTOMATION_SECRET',
       'CLOUDFLARE_EMAIL_SECRET',
-      'FACEBOOK_APP_ID',
-      'FACEBOOK_APP_SECRET',
       'GEOCODING_API_KEY',
       'GMAIL_APP_PASSWORD',
       'GMAIL_USER',
-      'GOOGLE_CLIENT_ID',
-      'GOOGLE_CLIENT_SECRET',
       'GOOGLE_PLACES_API_KEY',
       'RESEND_API_KEY',
       'VAPID_PRIVATE_KEY',

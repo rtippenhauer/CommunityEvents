@@ -14,6 +14,7 @@ import {
 import { LEGAL_DEFAULT_ROWS, fillLegalPlaceholders } from '../../common/legal/legal-defaults';
 import { currentTenantId, requireTenantId, runWithTenant } from '../../common/tenant/tenant-store';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import { TenantOAuthService } from '../../common/tenant/tenant-oauth.service';
 
 // Only these keys are servable/editable through the config endpoints — keeps
 // this generic key/value table from becoming an accidental back door into
@@ -179,6 +180,7 @@ export class AppConfigService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly tenantResolution: TenantResolutionService,
+    private readonly tenantOAuth: TenantOAuthService,
   ) {}
 
   async getPublicValue(key: string): Promise<string> {
@@ -419,6 +421,20 @@ export class AppConfigService {
     storyUrl: string;
     vapidPublicKey: string | null;
     facebookAppId: string | null;
+    /**
+     * Which sign-in methods this community offers (REQ-TENANT-01.9).
+     *
+     * Carried here rather than on a new endpoint because the login page already
+     * fetches this payload before anything is rendered, and a second
+     * unauthenticated round-trip to answer "which buttons?" would show the form
+     * twice -- once wrong. `GET /auth/providers` cannot answer it: that route
+     * is JwtAuthGuard-ed and reports the *signed-in* member's linked accounts,
+     * which is a different question asked at a different time.
+     *
+     * Email/password is absent because it is not a variable: it is available on
+     * every community, with no configuration.
+     */
+    authProviders: { google: boolean; facebook: boolean };
     isStage: boolean;
     /**
      * Whether the community being served is the root one.
@@ -505,7 +521,12 @@ export class AppConfigService {
       },
       features,
       vapidPublicKey: this.config.get<string>('VAPID_PUBLIC_KEY') ?? null,
-      facebookAppId: this.config.get<string>('FACEBOOK_APP_ID') ?? null,
+      // The community's own Meta app, not the deployment's -- there is no
+      // deployment-wide app any more (v2-8). Null switches every Facebook
+      // control off in the frontend, which is exactly what a community that
+      // registered no app should show.
+      facebookAppId: await this.tenantOAuth.facebookAppId(),
+      authProviders: await this.tenantOAuth.offeredProviders(),
       isStage: this.config.get<string>('IS_STAGE') === 'true',
       isRoot: await this.servingRootTenant(),
       legalReviewed: legalReviewedAt.trim().length > 0,

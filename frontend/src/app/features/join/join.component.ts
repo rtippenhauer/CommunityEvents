@@ -91,6 +91,9 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
               }
 
               <div class="auth-buttons">
+                <!-- Offered only where this community registered its own Google
+                     app (REQ-TENANT-01.9); see the login page for the same gate. -->
+                @if (brandConfig.offersGoogle()) {
                 <button mat-raised-button class="auth-btn google-btn" (click)="signInWithGoogle()">
                   <svg class="provider-icon" viewBox="0 0 24 24" aria-hidden="true">
                     <path
@@ -112,6 +115,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
                   </svg>
                   Continue with Google
                 </button>
+                }
 
                 @if (fbReady()) {
                   <button

@@ -5,8 +5,11 @@ import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedUser, loginAs, hashPassword } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
+import { AuthService } from '../src/modules/auth/auth.service';
+import { AuthFlowError } from '../src/common/errors/auth-flow.error';
 import type { cities as City, facebook_deletion_requests as FacebookDeletionRequest, invites as Invite, oauth_accounts as OAuthAccount, users as User } from '@prisma/client';
 import { EmailStatus, FacebookDeletionStatus, InviteType, OAuthProvider, UserRole, UserStatus } from '../src/database/enums';
+import { TEST_TENANT_ID } from './setup-env';
 
 // Matches the base64url signed_request format AuthController.facebookDeletionCallback
 // verifies: `${sigB64url}.${payloadB64url}`, HMAC-SHA256 computed over the raw
@@ -17,6 +20,18 @@ function buildSignedRequest(secret: string, payload: Record<string, unknown>): s
   const sig = createHmac('sha256', secret).update(payloadB64).digest();
   return `${b64url(sig)}.${payloadB64}`;
 }
+
+/**
+ * The Meta app the test community registers.
+ *
+ * A community offers Facebook only where it has its own app (REQ-TENANT-01.9),
+ * so these specs have to give it one -- there is no deployment-wide app to fall
+ * back to any more, and the env vars that used to hold one are gone. The secret
+ * is the same value `setup-env.ts` used to put in FACEBOOK_APP_SECRET, so the
+ * signed_request fixtures below are unchanged.
+ */
+const FB_APP_ID = 'test-facebook-app-id';
+const FB_SECRET = 'test-facebook-app-secret-not-for-real-use';
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;
@@ -39,6 +54,12 @@ describe('Auth (e2e)', () => {
     await truncateAllTables(prisma);
     resetThrottler(app);
     city = await seedCity(prisma);
+
+    // Re-applied every test because truncateAllTables re-seeds the tenant row.
+    await prisma.tenants.update({
+      where: { id: TEST_TENANT_ID },
+      data: { facebookAppId: FB_APP_ID, facebookAppSecret: FB_SECRET },
+    });
   });
 
   async function seedMemberInvite(overrides: Partial<Invite> = {}): Promise<Invite> {
@@ -508,6 +529,54 @@ describe('Auth (e2e)', () => {
     });
   });
 
+  // Google's OAuth round trip cannot be driven from a spec, so this exercises
+  // the identity half directly -- which is where the rule lives.
+  describe('findOrCreateGoogleUser', () => {
+    // Changed in v2-8 after stage: Google used to link itself to any account
+    // whose address matched, so disconnecting it and signing in again silently
+    // re-linked, and Disconnect meant nothing. Facebook has always refused this.
+    it('refuses to link itself to an existing account', async () => {
+      const user = await seedUser(prisma, city.id, { email: 'already-here@example.test' });
+      const authService = app.get(AuthService);
+
+      await expect(
+        authService.findOrCreateGoogleUser('google-new-sub', user.email, user.fullName),
+      ).rejects.toMatchObject({ reason: 'provider_not_linked' });
+
+      // And nothing was written on the way to refusing.
+      const links = await prisma.oauth_accounts.findMany({ where: { userId: user.id } });
+      expect(links).toHaveLength(0);
+    });
+
+    it('still signs in an account that is genuinely linked', async () => {
+      const user = await seedUser(prisma, city.id, { email: 'linked@example.test' });
+      await prisma.oauth_accounts.create({
+        data: {
+          userId: user.id,
+          provider: OAuthProvider.GOOGLE,
+          providerId: 'google-known-sub',
+          email: user.email,
+        },
+      });
+
+      const resolved = await app
+        .get(AuthService)
+        .findOrCreateGoogleUser('google-known-sub', user.email, user.fullName);
+      expect(resolved.id).toBe(user.id);
+    });
+
+    it('refuses a suspended account before anything else', async () => {
+      const user = await seedUser(prisma, city.id, {
+        email: 'suspended@example.test',
+        status: UserStatus.SUSPENDED,
+      });
+
+      await expect(
+        app.get(AuthService).findOrCreateGoogleUser('google-susp', user.email, user.fullName),
+      ).rejects.toMatchObject({ reason: 'not_active' });
+    });
+  });
+
   describe('POST /auth/facebook + POST /auth/facebook/link', () => {
     const originalFetch = global.fetch;
 
@@ -515,10 +584,21 @@ describe('Auth (e2e)', () => {
       global.fetch = originalFetch;
     });
 
+    // Two calls now, not one. `debug_token` ties the access token back to the
+    // app that minted it -- without it, a token from any Facebook app at all
+    // would resolve to a profile and sign that person in, which is a live
+    // problem once apps are per community. See FacebookOAuthService.
     function mockFacebookGraphApi(fbUser: Record<string, unknown>): void {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => fbUser,
+      global.fetch = vi.fn().mockImplementation((url: unknown) => {
+        if (String(url).includes('/debug_token')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              data: { app_id: FB_APP_ID, is_valid: true, user_id: fbUser.id },
+            }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => fbUser });
       }) as unknown as typeof fetch;
     }
 
@@ -587,7 +667,9 @@ describe('Auth (e2e)', () => {
   });
 
   describe('POST /auth/facebook/deletion-callback + GET /auth/facebook/deletion-status', () => {
-    const FB_SECRET = 'test-facebook-app-secret-not-for-real-use';
+    // Signed with the community's own app secret now, not the deployment's --
+    // Meta posts this to the callback registered on the app that was deleted,
+    // and that app belongs to one community.
 
     it('rejects a signed_request with an invalid signature', async () => {
       await request(server)

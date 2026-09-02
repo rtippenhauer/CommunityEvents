@@ -677,7 +677,7 @@ which is what unblocked testing. The better shape is a one-time setup link the
 new operator uses to set their own credentials — no password handling in
 between. It depends on the tenant-aware link work (landed) and on email being
 configured, and it overlaps heavily with the setup wizard, so it belongs with
-**v2-12** rather than as its own item.
+**v2-14** rather than as its own item.
 
 **Self-service tenant creation with a trial tier.** Anyone can create a
 community and try it, bounded by caps — on the order of 2-5 users and a small
@@ -855,8 +855,22 @@ carried over from the DinnerBears account.
   v2-10 below -- its remaining scope is unchanged apart from these.
 
 ### v2-8 — Per-tenant OAuth apps (REQ-TENANT-01.9, REQ-TENANT-01.8)
-**Status:** In Progress (started 2026-08-29). Depends on v2-7 and on v2-6,
-both done. Runs after v2-9, which was taken first.
+**Status:** Complete (2026-09-01). Tag `v2-8`. Depended on v2-7 and v2-6, both
+done. Ran after v2-9, which was taken first. **This closes REQ-TENANT-01** —
+every requirement in the tenant foundation doc is now implemented.
+
+Landed as described below, with four defects found on stage rather than by the
+suite: a cancelled sign-in read `query.error` before decoding `state` and so
+returned to the wrong community; Google silently re-linked on email match after
+Disconnect where Facebook refused (Google now matches Facebook); `POST
+/auth/facebook` never checked *which app* minted the token, which is latent with
+one app and a cross-community hole with per-tenant ones; and `exchange_failed`
+logged nothing, dropping the provider's own reason from
+`InternalOAuthError.oauthError`. `SameSite=strict` was expected to need
+loosening for the handoff and does not — verified in a browser.
+
+Two things below are deferred rather than done: the login-CSRF gap and v2-12's
+own-host callback. Both sections are kept here on purpose.
 
 Each tenant supplies its own Google and/or Meta credentials; a provider is
 offered only where that tenant has them, and email/password is always
@@ -886,6 +900,89 @@ Known work beyond the columns themselves:
 only; a tenant with Google credentials offers Google and email/password; the
 same address can hold a different set of linked providers on two tenants; and
 no secret is readable in a database dump.
+
+#### Known gap, deliberately deferred: login CSRF
+
+**The signed `state` proves which community, not which browser.** It stops a
+forged tenant id -- which would be a cross-tenant account takeover, and is what
+the signing exists for -- but an attacker can obtain a perfectly valid `state`
+simply by starting a flow of their own. Feed a victim the resulting callback
+URL and the victim's browser completes *the attacker's* sign-in and lands
+logged into the attacker's account. The harm is the victim then acting inside
+somebody else's account without noticing, which is materially less than
+takeover, and it is not a regression: v1's state was unsigned and had the same
+property. But it is the other half of what a `state` parameter is normally
+expected to cover, and it should not be rediscovered as a surprise.
+
+The conventional fix -- bind `state` to a nonce in a cookie -- normally cannot
+work in this architecture, because the authorization request is on the tenant's
+host and the callback is on the root host, so a cookie set at the start is not
+readable when the callback runs. **The handoff makes it work anyway**, which is
+the part worth writing down: redemption happens back on the originating host,
+where that cookie *is* readable. Set a nonce cookie at `/auth/google`, carry its
+hash through `state` into the `oauth_handoffs` row, and require it to match at
+redemption.
+
+Deferred to its own branch after v2-8's stage pass, decided with Rob
+2026-08-30, to keep this item's diff reviewable and get the cross-host OAuth fix
+onto stage sooner. **PKCE was considered and rejected** for the same flow: this
+is a confidential client with a server-side secret, so the payoff is small, and
+the same cross-host split means the `code_verifier` would need its own storage
+row -- real cost, marginal benefit.
+
+#### Deferred to v2-12: a callback on the community's own host
+
+Every callback currently terminates on the deployment's single registered URI,
+and `oauth_handoffs` carries the session the last hop. A community that owns its
+domain does not need that detour, and REQ-TENANT-01.8 always said so -- it left
+the direct path "undesigned until someone asks for it". Asked for, 2026-08-30;
+agreed with Rob to build it separately rather than widen v2-8. **The design,
+including the four-case table and the policy decision that makes it simple, is
+recorded here rather than in v2-12** -- it was worked out against this item's
+code and reads better next to it.
+
+**Why the fixed URI is not simply obsolete**, which is the part worth not
+re-deriving. Adding an authorised domain to a Google project means verifying
+ownership in Search Console, so a redirect URI can only live on a domain the
+project's owner controls. Four cases:
+
+| Tenant host | Whose Google project | Fixed URI | Own-host URI |
+| --- | --- | --- | --- |
+| subdomain of ours | ours | works, zero setup | a console edit per community |
+| subdomain of ours | theirs | impossible | impossible |
+| their own domain | theirs | impossible | works |
+| their own domain | ours | works | impossible |
+
+Row 1 is the self-service and demo case and is the fixed URI's real
+constituency: one URI already registered covers every client in that project, so
+a new community needs no console interaction at all. Row 3 is what the direct
+path unlocks.
+
+**Row 4 is disallowed by policy, decided with Rob 2026-08-30**, and that
+decision is what makes the design simple: a community that brings its own domain
+but will not run its own Google project gets email/password, exactly as
+REQ-TENANT-01.9 already says for a community that registers no app. With row 4
+gone, nothing in rows 1-3 conflicts, so the two paths can coexist without a
+per-tenant setting having to be right.
+
+Shape: a nullable/boolean flag on `tenants` (the callback path is ours, so only
+the *host* varies -- deriving it from the tenant's domain avoids validating a
+free-text URL that could point anywhere); `GoogleOAuthService.callbackUrl`
+becomes per-tenant and must return the same value on both legs, since Google
+matches `redirect_uri` at the token exchange too; the direct path skips the
+handoff entirely and sets the cookie itself, and should still check the signed
+state's tenant against `req.tenant` rather than trusting the host alone. The
+admin screen shows whichever URI applies.
+
+**Worth carrying into that phase: email and OAuth have opposite fallback
+policies.** `v2-9` lets a community with no Brevo key send on the deployment's
+credentials; REQ-TENANT-01.9 gives OAuth no platform fallback at all. There is a
+real argument for the asymmetry -- mailing *as* a community creates no
+relationship between its members and Brevo, whereas signing them in through the
+platform's app makes the platform the party they granted consent to -- but a
+self-service deployment means several communities sharing one Brevo allowance,
+which is the quota trap `v2-9` documents. Decide it deliberately rather than by
+inheritance.
 
 ---
 
@@ -1016,6 +1113,166 @@ invite goes out on the raw-HTML fallback -- it sends and delivers, which is
 exactly why it is easy to miss. Set them on the deployment, or per community.
 
 ### v2-10 — CommunityEvents branding replaces the DinnerBears defaults
+
+**Status:** In Progress (started 2026-09-01).
+
+**Reframed 2026-08-30 with Rob, and this is the organising idea rather than a
+longer checklist.** The item has read as "remove DinnerBears", which has no
+clear finish line -- every pass removes some and leaves the rest looking like an
+oversight, which is exactly how it has felt across three items now. The end
+state is instead:
+
+> **CommunityEvents is the platform identity. Every DinnerBears artifact either
+> becomes its CommunityEvents equivalent, or becomes data owned by the
+> DinnerBears community when it migrates.**
+
+Nothing needs to keep working as a DinnerBears default, because DinnerBears
+stops being the default and becomes a tenant like any other -- with its own
+`app_config` rows, its own uploaded artwork, its own terminology. That makes
+every question below answerable: a fallback is CommunityEvents, a community's
+own value is whatever it uploaded, and there is no third case.
+
+#### Why it keeps recurring: three different problems wearing one label
+
+The audit (2026-08-30) found 23 references in `api/src`, 19 in `frontend/src`,
+31 bear/paw terminology hits, plus seed data and static assets. They are not one
+task:
+
+**1. Renames and fallbacks.** Mechanical. `dinnerbears.com` URL fallbacks, email
+copy, `instance-contact.ts`, `calendar.service.ts`. The rule from v2-6 still
+governs: resolve the *tenant's* brand and interpolate it; only the
+deployment-wide fallback becomes CommunityEvents. `SITE_SETTING_DEFAULTS.brand_name`
+is already `CommunityEvents`, so this is finishing a job, not starting one.
+
+**2. Assets, which need artwork rather than code.** This is the part that cannot
+be done by editing strings, and the reason previous passes stopped short. The
+frontend hardcodes these as the fallback a community with no uploads gets:
+
+| Constant / file | Where it shows |
+| --- | --- |
+| `DEFAULT_LOGO = assets/logo.png` | nav bar; also both PWA icon sizes |
+| `DEFAULT_SPLASH = images/dinnerbears-splash.png` | login page hero |
+| `DEFAULT_ICON = images/DinnerBearsIcon.png` | favicon, apple-touch-icon |
+| `images/ErrorMenuBoard.png` | the frame around every error page -- **not configurable at all**, so no community can override it |
+| `public/backgrounds/background-chef.png`, `background-cool.png` | page backgrounds, via `gen-bg-manifest.js` |
+| `src/index.html` | `<title>DinnerBears`, apple-mobile-web-app-title, icon links |
+| `public/manifest.webmanifest`, `manifest.stage.webmanifest` | PWA name, short_name, description "Bear memories" |
+| `public/landing.html` | v1-era placeholder |
+
+`ErrorMenuBoard.png` is the sharpest instance: a member of any community sees
+DinnerBears artwork on every error, and there is no setting that changes it.
+
+**3. Branding seeded *into* new communities, which is the structural miss.**
+`prisma/seed-data/achievements.json` writes "Founding **Bear**" and "Attended 5
+**DinnerBears** dinners" as real rows in every community at creation. Unlike a
+fallback, a community cannot override these -- they are its data, and they are
+already wrong in both communities on stage. v2-6 made branding per-community and
+the seed data never followed. Either the descriptions interpolate the
+community's own terms at read time (as the legal templates already do via
+`getPublicValue`), or they become generic. `term_points` = "Bear Points" is the
+same shape: configurable, seeded wrong.
+
+#### Definition of done, restated
+
+A fresh install with no `app_config` rows and no uploads presents as
+CommunityEvents in every surface -- nav, login, favicon, PWA, error pages,
+backgrounds, achievements. A community that has set its own branding sees its
+own everywhere, including in email subjects and bodies. No code path emits a
+dinnerbears.com URL. DinnerBears' own artwork and copy exist only as that
+community's rows and uploads after it migrates.
+
+### v2-11 — A real colour system
+
+**Status:** Not started. Numbered 2026-08-30, immediately after v2-10 because
+the two share a surface: the branding pass decides what a community *is*, and
+this decides what it *looks like*, and doing them in the other order means
+restyling the same components twice. v2-13's landing page and v2-14's demo
+tenant both want it finished.
+
+Branding today is **three** admin-editable colours
+-- `--db-primary`, `--db-accent`, `--db-cream` -- and `frontend/CLAUDE.md`
+already records the two places that falls down: `on-primary` text is hardcoded
+white rather than contrast-computed, so a light brand colour renders unreadable;
+and hover and derived shades are not generated, so an unusual hue looks wrong in
+the nav and in button states. Both are accessibility problems, not taste ones.
+
+A conventional token set is roughly: primary and `on-primary`; accent and
+`on-accent`; surface and surface-variant; outline; text primary / secondary /
+disabled; and the semantic four -- success, warning, error, info -- each with an
+`on-` pair.
+
+**Decided with Rob 2026-08-30: seed-and-derive, with per-token overrides.**
+Three tiers, each an escape hatch from the one before, so the common case is one
+click and the rare case is still possible:
+
+1. **Pick a preset.** A short curated list of complete palettes. Most communities
+   stop here and never see a colour picker.
+2. **Set one or two seed colours.** Everything else is derived -- tints and
+   shades for hover and active states, surfaces, outline, and every `on-` colour
+   computed for contrast rather than assumed white. This is what fixes the
+   unreadable-light-brand problem by construction rather than by asking an admin
+   to notice it.
+3. **Override any individual token.** Full control for whoever wants it.
+
+**Overrides must survive re-derivation**, which decides the storage shape: keep
+`{ seeds, overrides }` and derive at read time, rather than materialising a flat
+set of colours. Otherwise changing a seed either silently discards an override
+or silently keeps a stale one. The codebase already has this pattern twice --
+legal templates interpolate on the public read rather than at seed time, and
+contact addresses resolve most-specific-first -- so it is the house style, not a
+new idea.
+
+**Contrast is checked even on overrides**, and warns rather than blocks. An admin
+who insists on a low-contrast pair should be told what it will do to their
+members, not silently obeyed or silently overruled.
+
+The semantic four -- success, warning, error, info -- stay platform-fixed.
+Red-means-error is not a branding choice.
+
+#### Ship the prompts, not just the pickers
+
+Rob's idea, and the part that makes tier 2 usable by someone who does not think
+in hex: put a **copyable prompt** on the screen that an admin can paste into
+ChatGPT or Claude, together with a **paste-back format** the screen accepts. The
+round trip becomes: describe your community in words -> get a palette -> paste
+it in -> preview -> save.
+
+That only works if the prompt names our tokens and constraints exactly, so the
+answer is directly importable. Draft to react to:
+
+> You are helping choose a colour palette for a community website. Return **only**
+> a JSON object, no commentary, in exactly this shape:
+>
+> `{"primary":"#RRGGBB","accent":"#RRGGBB","surface":"#RRGGBB"}`
+>
+> Constraints:
+> - `primary` is used for buttons, links and highlights; `accent` for secondary
+>   actions; `surface` is the page background and should be very light or very
+>   dark, not mid-tone.
+> - White or black text must reach WCAG AA contrast (4.5:1) against `primary`
+>   and against `accent`.
+> - `surface` must reach 4.5:1 against a near-black and a near-white body text
+>   colour, so state which of the two the design assumes.
+> - Avoid pure `#000000` and `#FFFFFF`.
+>
+> The community is: **<describe it -- its name, what it does, the feeling you
+> want>**.
+
+Validate on paste rather than trusting it: parse, check the ratios ourselves,
+and show the preview before anything is saved. An LLM will occasionally return a
+pair that fails its own brief, and the screen should catch that rather than the
+members.
+
+Work: a token layer feeding both the `--db-*` and Material `--mat-sys-*`
+variables; the derivation function with contrast checks; migrating component
+styles off the three current variables; the preset list; and an admin screen
+with live preview, the prompt, and the paste-back importer.
+
+Note `index.html`'s `theme-color` and the webmanifest are static, pre-bootstrap
+files with no CSS-variable indirection, so they do not follow a runtime change
+-- the same limitation the branding item hits, and worth deciding once for both.
+
+
 **Status:** Not started (deferred) -- **except five commits landed early on the
 v2-7 branch** at Rob's direction, because stage testing kept surfacing them:
 
@@ -1106,7 +1363,31 @@ everywhere including in email subjects and bodies; no code path emits a
 dinnerbears.com URL; and a community that has configured no provider templates
 produces no warnings for it.
 
-### v2-11 — Root tenant landing page
+### v2-12 — OAuth callback on the community's own host
+
+**Status:** Not started. Depends on v2-8. Design, rationale and the four-case
+table live under v2-8's "Deferred to v2-12" note -- they were worked out against
+that item's code and are not repeated here.
+
+In short: a community that owns its domain *and* runs its own Google project
+registers `https://<its domain>/api/v1/auth/google/callback` itself, so the
+callback arrives on the right host, the tenant resolves from the Host header,
+and the cookie is set directly -- no `oauth_handoffs` hop. Communities on a
+subdomain of this deployment keep the single registered URI and the handoff,
+because their operator cannot register a redirect URI on a domain they do not
+own, and one URI covers every client in the project, so self-service onboarding
+needs no console edit.
+
+A boolean on `tenants` rather than a free-text URL: the callback path is ours,
+so only the host varies, and deriving it from the tenant's domain removes a
+field that could otherwise point anywhere.
+
+**Definition of done:** a community flagged for its own host completes a Google
+sign-in with no handoff row written; a community not flagged is unchanged; both
+are exercised on stage; and the admin screen shows whichever redirect URI that
+community's operator actually has to register.
+
+### v2-13 — Root tenant landing page
 **Status:** Not started (deferred). Depends on v2-3 and v2-4.
 
 Public marketing page served by the root tenant, explaining the project and
@@ -1116,7 +1397,7 @@ and is the obvious starting point.
 **Definition of done:** `www.communityeventsproject.com` and the apex both
 serve the landing page and resolve to the same root tenant row.
 
-### v2-12 — Demo tenant
+### v2-14 — Demo tenant
 **Status:** Not started (deferred). Depends on v2-3, v2-4 and v2-10.
 
 A tenant anyone can try. Two properties that need care:
@@ -1146,7 +1427,7 @@ present, sees a standing notice that the data is temporary, and the tenant
 returns to its seeded state on schedule. The same self-registration on any
 other tenant still yields an ordinary member.
 
-### v2-13 — Operator setup wizard / everything configurable from the site
+### v2-15 — Operator setup wizard / everything configurable from the site
 **Status:** Not started (deferred). Depends on v2-6.
 
 REQ-TENANT-01.4 splits config into bootstrap (env, set once) and runtime
@@ -1165,10 +1446,10 @@ Google login, Facebook login, email delivery and correct DNS without editing
 env vars by hand, with the wizard telling the operator what to do in each
 third-party console.
 
-### v2-14 — Operator handbook
+### v2-16 — Operator handbook
 **Status:** Not started (deferred).
 
-The written counterpart to v2-12: what an operator needs before and during
+The written counterpart to v2-15: what an operator needs before and during
 setup. Same content, different form — the wizard prompts in the moment, the
 handbook is what they read beforehand and what support points at afterwards.
 
@@ -1181,3 +1462,237 @@ going Live.
 Meta app creation plus review and business verification, and email provider
 setup, accurate enough that someone other than Rob can stand up an instance
 from it.
+
+### v2-17 — Member validation audit trail + attendance-triggered validation (REQ-VALIDATE-01)
+**Status:** Not started (deferred). Depends on v2-6 (user tenant scoping,
+non-validated role). Sequenced before v2-18 onward per Rob's explicit call
+(2026-08-30) — no technical dependency forces this order, it's a
+priority call.
+
+**Correction (2026-08-31):** this item originally assumed an existing
+moderator-vouch audit trail (`validated_by`, `validated_at`) that it
+would extend. Confirmed against the actual code that no such trail
+exists — `UsersService.validateMember()` only updates `role`, despite
+`AuditService` being injected in that class and used elsewhere in it.
+This item now creates the audit trail from scratch and retrofits the
+vouch path to use it, rather than extending something that was never
+there. Full spec in `docs/REQ-VALIDATE-01.md`.
+
+Adds `validated_by`, `validated_at`, and a `validation_source` enum
+(`vouch` | `attendance`) to `users`, all nullable. Pre-existing validated
+members are left with null trail columns — there's no way to reconstruct
+who vouched for them, and fabricating a value would be worse than an
+honest gap. `validateMember()` is rewritten to populate all three and log
+to `AuditService`, bringing it in line with the rest of its own class.
+Attendance-triggered validation is then the new second path, using the
+same trail: when a moderator/admin marks a non-validated member as
+attended, an option in the same action validates them, recording the
+marking admin/moderator and timestamp.
+
+**Definition of done:** both the vouch path and attendance-triggered
+validation populate the full trail and log to the audit service,
+consistently; pre-existing validated members keep null trail columns
+rather than fabricated ones; attempting to validate an already-validated
+member via either path is rejected, not silently overwritten.
+
+### v2-18 — Shared media pipeline (REQ-CMS-01.1)
+**Status:** Not started (deferred). Depends on v2-17. First of the
+REQ-CMS-01 batch — v2-20 (discussion) and v2-23 (event photos) both build
+on this rather than inventing their own upload path.
+
+Single `media` table (`tenant_id`, `attached_to_type`, `attached_to_id`,
+`uploaded_by`, `file_path`, `caption`, soft delete) and one upload
+endpoint, tagged by context. Closes the uploaded-file auth-gating gap
+carried over from the v1 backlog — fixed once here instead of three times
+downstream. Delivers a paste-to-upload directive wired to every rich-text
+surface platform-wide (discussion, feedback, event comments,
+announcements), not built per-feature.
+
+**Non-validated members are blocked at this endpoint** — the one place to
+enforce it so nothing downstream needs its own check.
+
+**Definition of done:** `media` table and upload endpoint exist,
+tenant-scoped and context-tagged; a non-validated member's upload attempt
+is rejected server-side; paste-to-upload works on at least one rich-text
+surface as proof the directive is shared, not per-feature.
+
+### v2-19 — Page/block CMS foundation (REQ-CMS-01.2)
+**Status:** Not started (deferred). Depends on v2-18.
+
+`pages` and `page_blocks` tables, a block type registry (backend config
+schema validation, frontend dynamic component loading), and the page
+builder admin UI. Ships with two block types to prove the registry: Rich
+Text and Custom HTML. Custom HTML is a sanitized allowlist
+(`sanitize-html` or equivalent) — scripts, inline event handlers, and
+`javascript:` URLs stripped unconditionally server-side, not raw HTML
+input. Tenant admins manage their own tenant's pages; system admin can
+manage any tenant's.
+
+**Definition of done:** a tenant admin can create a page, add/reorder/
+remove Rich Text and Custom HTML blocks, and it renders on the public
+site; a failing-if-unfixed integration test proves the sanitizer strips
+injected scripts through the actual page-save path.
+
+### v2-20 — Block library (REQ-CMS-01.3)
+**Status:** Not started (deferred). Depends on v2-19.
+
+The full block set on the v2-19 registry: Hero, Image/Gallery, Signup
+Form, Upcoming Events List, Full Event Calendar, Event Detail, Event
+Register/RSVP, Leaderboard Snippet, Full Leaderboard, Member Directory,
+Announcements Feed, Discussion Thread (depends on v2-22), Location
+Spotlight, Location Directory, Location Ratings Summary, Feedback Board
+Embed, Public Changelog Embed. Each block calls existing module APIs — no
+new backend logic beyond block-level filter/count config. List-shaped
+blocks share one config shape (count, sort/filter) rather than one-off
+per block.
+
+**Leaderboard Snippet, Full Leaderboard, and Member Directory are hidden
+outright from non-validated members**, not merely read-only — they carry
+no visibility into other members' identity or standing.
+
+**Definition of done:** every block above is placeable via the v2-19 page
+builder and renders correctly; the three person-info blocks are confirmed
+absent (not just unstyled) for a non-validated member.
+
+### v2-21 — Menu system (REQ-CMS-01.4)
+**Status:** Not started (deferred). Depends on v2-20.
+
+`menu_items` table (tenant-scoped: label, `target_type` of `page` or
+`external_link`, target, order, `feature_flag`, `menu_context` of
+`main`/`admin`/`profile`). Admin and Profile menus stay structurally
+fixed but each entry is feature-flag gated server-side, matching the
+existing `@RequireFeature` pattern — hiding is UX, the guard is the
+actual enforcement. New tenants get their standard nav auto-seeded as
+real pages built from v2-20 block templates on tenant creation.
+
+**Definition of done:** menu items are DB-driven and editable per tenant;
+disabling a feature flag 403s the route server-side, not just hides the
+nav link; a newly created tenant has a complete standard nav with no
+manual page-building required.
+
+### v2-22 — Discussion board (REQ-CMS-01.5)
+**Status:** Not started (deferred). Depends on v2-18, v2-20 (for the
+Discussion Thread block).
+
+`discussion_categories`, `discussion_topics`, `discussion_posts` with
+real threading (`parent_post_id`, self-referencing — not the one-level
+cap used by event comments), depth-capped rendering, photos via v2-18's
+`media` table. Plugs into the existing `content_reports` system
+(`discussion_topic`/`discussion_post` added to `content_type`), reusing
+the current report button and mod queue rather than a parallel one.
+
+**Non-validated members cannot post, reply, or upload — read-only,
+enforced server-side on each endpoint**, consistent with their existing
+event-comment restriction and the v2-18 upload block.
+
+**Definition of done:** threaded replies with photo attachments work end
+to end; a non-validated member's post/reply/upload attempts are rejected
+server-side; reporting a post or topic reaches the existing mod queue.
+
+### v2-23 — Event photo galleries (REQ-CMS-01.6)
+**Status:** Not started (deferred). Depends on v2-18.
+
+Event photos via v2-18's `media` table (`attached_to_type: 'event_photo'`).
+Upload gated to `attended = true`, reusing the existing
+ratings-eligibility attendance check rather than a new one. Grid/lightbox
+on the event detail page; doubles as a Photo Gallery block once v2-20
+exists. Same `content_reports` hook as v2-22.
+
+**Non-validated members are excluded outright regardless of attendance**
+— attendance alone does not override the restriction, even for a member
+validated via v2-17's attendance path for a different event.
+
+**Definition of done:** an attendee can upload event photos, displayed in
+a grid/lightbox on the event page; a non-attendee's upload is rejected; a
+non-validated member's upload is rejected even if marked attended.
+
+### v2-24 — Cities as a toggleable event filter, tenant-scoped (REQ-CITIES-01)
+**Status:** Not started (deferred). Sequenced before v2-25 (import) — the
+import script needs a settled city model rather than one it has to work
+around.
+
+`cities` currently has no `tenant_id` at all — the one model the v2-6
+scoping pass never touched — and its `subdomain` column is globally
+unique, so two tenants today would collide on city names. Per Rob
+(revised 2026-08-31, extended 2026-09-01): **Facebook groups are dropped
+entirely** — first the per-city relation, then group ids altogether, so
+the table, its module and `invites.facebook_group_id` all go. Meta's API
+already blocks automated group posting, so the structure served a
+capability that barely worked. The `campaign_facebook` invite *type*
+survives (it drives `users.inviteSource`, which is attribution, not a
+group id); its group picker becomes a city picker. City filtering
+becomes a **tenant feature toggle**: off, cities are invisible everywhere
+and nothing requires one; on, every event, user and location requires a
+city and members
+choose **All** or a specific multi-select set of cities to see and be
+notified about — generalizing what the personal iCal feed already did
+from single-city to multi-city, applied consistently to the event list,
+the calendar feed, and notification targeting. Nothing about city ever
+gates RSVP, ratings, achievements, or moderation.
+
+Adds `tenant_id` to `cities`, drops the now-meaningless `subdomain`
+column, adds a `user_city_preferences` join table (no rows = "All",
+replacing the single-value `calendarCityFilter` enum, which can't express
+"Dayton and Cincinnati but not Columbus"), and drops
+`facebook_group_config` outright.
+
+Three decisions from the doc review that aren't obvious from the summary
+above. **Every `city_id` column becomes nullable in the database** —
+`events`, `users` and `locations` are `NOT NULL` today, and the toggle
+can't be validation-only while they are; the business layer enforces the
+requirement, since it's the only layer that knows the tenant's flag.
+**Turning the toggle on backfills** every null `city_id` to the tenant's
+first city in the same transaction as the flag write, so a tenant is
+never observably "cities on with null city rows" — and the toggle is
+refused until at least one city exists. **`calendarAutoInvite` does not
+fold into the preference table**: it defaults to `none` where
+`calendarCityFilter` defaults to `all`, so "no rows means All" would opt
+in every member who never touched it. It narrows to an on/off and reads
+its cities from the new table.
+
+**Definition of done:** `cities` is tenant-scoped with no cross-tenant
+name collisions; the feature toggle correctly makes cities either fully
+required or fully invisible; members can select All or specific cities
+via `user_city_preferences`, applied consistently to event list defaults,
+the iCal feed, and notifications; nothing uses city as an access gate; a
+member with a city-limited preference can still freely RSVP to and rate
+events outside it; enabling the toggle on a tenant with existing data
+leaves no null `city_id` behind and no member auto-invited who wasn't
+before; `facebook_group_config` is gone while `campaign_facebook` invites
+still work.
+
+### v2-25 — DinnerBears import (new tenant) (REQ-IMPORT-01)
+**Status:** Not started (deferred). Sequenced last, per Rob (2026-08-30).
+Depends on v2-24 — cities import as tenant-scoped rows now, not excluded,
+and each imported user's legacy single city becomes one row in their new
+`user_city_preferences` set. No other technical dependency on v2-17
+through v2-23 — an imported tenant works identically whether or not
+blocks/pages/discussion exist yet — placed last because it's the
+highest-consequence one-time operation in the project and benefits from
+running against the most complete, most-tested schema rather than being
+re-verified after every subsequent change.
+
+One-time, re-runnable script importing a complete DinnerBears (v1)
+database over an external read-only connection into a **new** tenant —
+not root, which stays the platform's own empty tenant. Every source
+auto-increment ID is remapped via per-table `Map<oldId, newId>`, since
+the target database already has rows from root and any other tenants.
+Full scope: accounts, invites/lineage, events/RSVPs/attendance/comments,
+locations, ratings, achievements/points ledger (full ledger, not just
+totals), feedback, announcements, moderation history, audit log, and
+cities (per v2-24's tenant-scoped model). Explicitly excluded: email
+queue/suppression (already global — deliverability is a property of the
+address, not the tenant), release notes, and per-city Facebook group
+config (dropped per v2-24).
+
+Built generically enough to run again later against the second,
+manually-duplicated DinnerBears database in its own container — same
+script, different connection string and target slug, producing a second
+independent tenant.
+
+**Definition of done:** primary DinnerBears database imports cleanly into
+a new tenant with all FKs remapped and validated; dry-run mode reports
+accurate counts and writes nothing; re-running against the same target
+tenant is refused rather than duplicating; the same script run against
+the second source database produces an independent second tenant with no
+cross-contamination.

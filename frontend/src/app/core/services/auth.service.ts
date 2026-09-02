@@ -1,7 +1,7 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { catchError, firstValueFrom, of, tap } from 'rxjs';
+import { catchError, firstValueFrom, of, switchMap, tap } from 'rxjs';
 import { Observable } from 'rxjs';
 
 export interface CurrentUser {
@@ -55,6 +55,28 @@ export class AuthService {
           ),
         );
       }),
+    );
+  }
+
+  /**
+   * Exchanges the single-use ticket an OAuth callback handed us for a session
+   * cookie on *this* host (REQ-TENANT-01.8).
+   *
+   * A POST rather than something the redirect could do by itself, and that is
+   * what lets the session cookie stay `SameSite=strict`: the cross-site hop is
+   * the navigation before this one, which carries no cookie because none exists
+   * yet. This request is same-site, so the cookie it sets is stored and sent
+   * normally from then on.
+   */
+  redeemHandoff(token: string): Observable<CurrentUser | null> {
+    return this.http.post<{ message: string }>('/api/v1/auth/handoff', { token }).pipe(
+      // The cookie exists only once the POST returns, so who we are is a
+      // separate question that can only be asked afterwards.
+      switchMap(() =>
+        this.http.get<CurrentUser>('/api/v1/auth/me').pipe(
+          tap((user) => this.currentUser.set(user)),
+        ),
+      ),
     );
   }
 

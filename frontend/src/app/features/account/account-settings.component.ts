@@ -53,7 +53,12 @@ import { hasAdminRights } from '../../core/utils/roles.util';
           @if (loading()) {
             <div class="loading-row"><mat-spinner diameter="28"></mat-spinner></div>
           } @else if (providers()) {
-            <!-- Google -->
+            <!-- Google. Hidden entirely where this community offers no Google
+                 app and the member has none linked (REQ-TENANT-01.9) -- a row
+                 reading "Not connected" with no way to connect is a dead end.
+                 An existing link still shows, so somebody who linked before the
+                 community switched Google off can still see and remove it. -->
+            @if (googleEnabled || providers()!.google) {
             <div class="provider-row">
               <div class="provider-info">
                 <svg class="provider-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -96,14 +101,15 @@ import { hasAdminRights } from '../../core/utils/roles.util';
                 } @else {
                   <span class="only-method-label">Only login method</span>
                 }
-              } @else {
+              } @else if (googleEnabled) {
                 <button mat-stroked-button (click)="connectGoogle()">Connect</button>
               }
             </div>
-
             <mat-divider></mat-divider>
+            }
 
-            <!-- Facebook -->
+            <!-- Facebook. Hidden on the same rule as Google above. -->
+            @if (facebookEnabled || providers()!.facebook) {
             <div class="provider-row">
               <div class="provider-info">
                 <svg class="provider-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -150,10 +156,8 @@ import { hasAdminRights } from '../../core/utils/roles.util';
                 </button>
               }
             </div>
-
             <mat-divider></mat-divider>
-
-            <mat-divider></mat-divider>
+            }
 
             <!-- Email/Password -->
             <div class="provider-row">
@@ -692,6 +696,15 @@ export class AccountSettingsComponent implements OnInit {
 
   get facebookEnabled(): boolean {
     return !!this.brandConfig.facebookAppId();
+  }
+
+  /**
+   * Whether this community offers Google at all (REQ-TENANT-01.9). Mirrors
+   * `facebookEnabled`; a getter rather than exposing brandConfig to the
+   * template, which is how the Facebook one has always done it.
+   */
+  get googleEnabled(): boolean {
+    return this.brandConfig.offersGoogle();
   }
   readonly fbReady = signal(false);
   readonly fbLinking = signal(false);

@@ -56,6 +56,7 @@ export const TENANT_SCOPED_MODELS = [
   'notification_preferences',
   'notifications',
   'oauth_accounts',
+  'oauth_handoffs',
   'push_subscriptions',
   'tenant_secrets',
   'users',

@@ -362,20 +362,72 @@ Provider-side setup, which is the same whoever ends up holding the credentials:
    need verification, which takes time — start it early.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**,
    type **Web application**.
-4. **Authorized redirect URI**: `https://<host>/api/v1/auth/google/callback`.
-   This must match exactly — scheme, host, path, no trailing slash. A mismatch
-   gives `redirect_uri_mismatch`, which is at least an honest error.
+4. **Authorized redirect URI**: this deployment's own callback, which is **not
+   the community's host**:
+
+   ```
+   https://<deployment host>/api/v1/auth/google/callback
+   ```
+
+   The exact value is shown, with a copy button, at **Admin → Sign-in
+   Providers** — copy it from there rather than typing it. It must match
+   exactly: scheme, host, path, no trailing slash. A mismatch gives
+   `redirect_uri_mismatch`, which is at least an honest error.
+
+   Pasting the community's own address here is the commonest way to get this
+   wrong, and it looks so reasonable that it is worth saying why it is not: a
+   provider will not accept a wildcard for subdomains, so one redirect URI per
+   community would mean editing Google's console before any new community could
+   offer sign-in — and a community that brings its own domain could not verify
+   it as an authorized domain on this project's consent screen at all. Every
+   callback therefore lands on the one host and is handed back to the community
+   that started it (REQ-TENANT-01.8).
 5. Copy the **Client ID** and **Client secret**.
+6. In the community, sign in as an admin and go to **Admin → Sign-in
+   Providers**. Paste both values under Google and save. The secret is stored
+   encrypted and is never shown again — the screen reports only whether one is
+   set.
 
-> **Where those values go depends on the release.** Today the deployment uses one
-> platform-wide Google app, configured through the `GOOGLE_CLIENT_ID` and
-> `GOOGLE_CLIENT_SECRET` environment variables, and OAuth works on the host that
-> owns the callback URL. Per-community credentials — a community supplying its
-> own pair, with the provider offered only where it has them — are `v2-8`. The
-> Google Cloud steps above do not change; only where the app keeps the result.
+The provider appears on that community's login page as soon as it is saved, and
+on no other community's. To stop offering it, use **Switch off**, which deletes
+both values.
 
-Facebook follows the same pattern through the Meta app dashboard, and is equally
-optional.
+**The consent screen says "Community Events", not the community's name.** Google
+and Meta render the app name and logo from the OAuth client's own project, so a
+member signing in sees whoever registered the app. A community that registers
+its own app therefore gets its own name there — which is most of the argument
+for doing so.
+
+### Facebook: same wiring, very different effort
+
+The App ID and App secret go in the same screen, and there is no redirect URI to
+register -- Facebook sign-in happens in the browser, so add the community's own
+address to the app's allowed domains instead.
+
+**What is not the same is the cost of getting there.** Meta's App Review is
+attached to a single App ID and does not transfer, so a community wanting
+Facebook sign-in needs its own review, its own demo video, and Business
+Verification if Meta asks for it -- days to weeks, per community. Until then the
+app is in Development mode, where it works only for people holding a role on it
+(admin, developer, tester), which is enough to test with and not enough to
+launch with. `email` is the permission that needs approving; `public_profile` is
+granted by default.
+
+Google has no equivalent gate for `email`/`profile`. A community can register a
+Google app and be signing members in the same afternoon; an unverified app shows
+a warning and is capped at around 100 users, so verification matters eventually
+but does not block getting started.
+
+**So Google is the practical default and Facebook is an advanced option.** Set
+expectations accordingly with a community that asks for both.
+
+One asymmetry worth knowing before changing credentials later: **Google's user
+id is global and Meta's is app-scoped.** Rotating a Google secret, client, or
+even the whole project keeps every existing link working, because the `sub` we
+store is the member's Google account id and does not vary per client. Changing a
+Facebook **App ID** issues different ids for the same people and orphans every
+Facebook link in that community -- so treat it as a migration, not a settings
+change. Rotating the Facebook *secret* alone is safe, like Google's.
 
 ## 6. Creating the community
 
@@ -403,6 +455,7 @@ With DNS and mail in place:
 [ ] Brevo webhook registered with the secret, and a test bounce lands
 [ ] Cloudflare Email Routing on; every published address forwards, and tested
 [ ] Exactly one SPF record on the domain
-[ ] Google OAuth client created and redirect URI matched (if wanted)
+[ ] Google OAuth client created, deployment redirect URI matched (if wanted)
+[ ] Client ID + secret saved at Admin -> Sign-in Providers (if wanted)
 [ ] Community created with a first admin; sign-in confirmed at its own host
 ```

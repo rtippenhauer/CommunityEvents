@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -65,7 +65,10 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
               </p>
             }
 
-            <!-- OAuth buttons -->
+            <!-- OAuth buttons. A community offers a provider only where it has
+                 registered its own app (REQ-TENANT-01.9); one with neither gets
+                 email/password, which is always available. -->
+            @if (brandConfig.offersGoogle()) {
             <button mat-raised-button class="google-btn" (click)="signInWithGoogle()">
               <svg class="google-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -87,6 +90,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
               </svg>
               Continue with Google
             </button>
+            }
 
             @if (fbReady()) {
               <button
@@ -109,11 +113,15 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
               </button>
             }
 
-            <!-- Divider -->
-            <div class="divider"><span>or</span></div>
+            <!-- Divider. Nothing to divide when this community offers no social
+                 sign-in at all, and an "or" above a lone password form reads as
+                 a missing button. -->
+            @if (brandConfig.offersGoogle() || fbReady()) {
+              <div class="divider"><span>or</span></div>
+            }
 
             <!-- Email / password form -->
-            @if (showEmailForm()) {
+            @if (showEmailForm() || noSocialSignIn()) {
               <form [formGroup]="form" (ngSubmit)="submitEmailForm()" class="email-form">
                 @if (inviteToken()) {
                   <mat-form-field appearance="outline" class="full-width">
@@ -179,7 +187,11 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
                   <a routerLink="/auth/forgot-password" class="forgot-link">Forgot password?</a>
                 }
               </form>
-            } @else {
+            } @else if (!noSocialSignIn()) {
+              <!-- The toggle exists to keep the password form out of the way of
+                   the social buttons. With no social buttons there is nothing to
+                   keep it out of the way of, and it becomes one click between a
+                   member and the only way in this community has. -->
               <button mat-button class="email-toggle-btn" (click)="showEmailForm.set(true)">
                 <mat-icon>mail</mat-icon>
                 {{ inviteToken() ? 'Sign up with email' : 'Sign in with email' }}
@@ -386,6 +398,11 @@ export class LoginComponent implements OnInit {
   readonly fbReady = signal(false);
   readonly fbStatus = signal<'connected' | 'not_authorized' | 'unknown'>('unknown');
   readonly showEmailForm = signal(false);
+  /**
+   * True when this community has registered no OAuth app at all, so
+   * email/password is not one option among several -- it is the only one.
+   */
+  readonly noSocialSignIn = computed(() => !this.brandConfig.offersGoogle() && !this.fbReady());
   readonly showPassword = signal(false);
   readonly submitting = signal(false);
   readonly formError = signal<string | null>(null);

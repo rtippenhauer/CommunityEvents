@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { TenantResolutionService } from './tenant-resolution.service';
+import { TenantOAuthService } from './tenant-oauth.service';
 
 /**
  * Global because the resolution cache must be one instance process-wide — a
@@ -8,7 +9,7 @@ import { TenantResolutionService } from './tenant-resolution.service';
  */
 @Global()
 @Module({
-  providers: [TenantResolutionService],
-  exports: [TenantResolutionService],
+  providers: [TenantResolutionService, TenantOAuthService],
+  exports: [TenantResolutionService, TenantOAuthService],
 })
 export class TenantModule {}

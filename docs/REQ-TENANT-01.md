@@ -273,6 +273,19 @@ did not take. `lax` is the conventional setting for OAuth returns and is
 sufficient here. v1 currently ships `strict`; confirm the real behaviour in a
 browser rather than trusting a reading of the spec.
 
+> **Resolved by `v2-8`, and the prediction above was wrong — `strict` holds.**
+> Confirming in a browser was the right instruction and is what settled it
+> (stage, 2026-08-30: sign-in completes on a non-root community and the session
+> sticks; signing in on one community leaves the other signed out).
+>
+> The reasoning missed which request carries the cookie. `SameSite` governs
+> whether a browser *attaches* a cookie to an outgoing request; it does not stop
+> a response from *setting* one. On the cross-site hop — the navigation to
+> `/auth/callback` — there is no cookie yet to withhold. The handoff is redeemed
+> by a POST the landing page makes to its own origin, which is same-site, so the
+> cookie it sets is stored and sent normally from then on. The handoff design
+> removed the need for the relaxation rather than needing it.
+
 **Consent-screen branding is accepted as platform-branded.** Google and Meta
 both render the app name and logo from the OAuth client's own project, not from
 the redirect URI, so a member signing in at any tenant sees "Community Events"
@@ -290,13 +303,16 @@ registering their callback URI is therefore not merely tedious but impossible.
 Terminating every callback on a domain this project owns is the only
 arrangement that works for such a tenant at all.
 
-**Reserved, not designed:** the nullable per-tenant OAuth credential columns on
-`tenants` (REQ-TENANT-01.1) exist for a tenant that eventually wants its own
-consent-screen identity. Null means the platform's apps and the handoff above.
-Populated would mean the tenant registered its own app — and because a tenant
-owning its domain can verify that domain, it could receive the callback on its
-own host and skip the handoff entirely. That second code path is deliberately
-left undesigned until someone asks for it. DinnerBears is the concrete case
+**Superseded in part by REQ-TENANT-01.9, and left here because the reasoning
+still holds for the half that was not built.** This paragraph originally read
+"null means the platform's apps and the handoff above". It does not: null means
+the provider is switched off for that community, and there is no platform-wide
+app. What survives is the observation underneath it — a community that owns its
+domain could verify that domain with the provider, receive the callback on its
+own host, and skip the handoff entirely. That second code path is still
+deliberately undesigned until someone asks for it, and `v2-8` built the
+credentials without it: every community's app registers the same single
+root-host redirect URI, so the "register once" property is unaffected. DinnerBears is the concrete case
 whenever it is designed: it already has registered Google and Facebook apps, so
 reusing them as that tenant's credentials would both preserve the identity its
 members already recognise and spare every existing user a fresh consent prompt
@@ -393,8 +409,12 @@ established by REQ-TENANT-01.6 above:
 - Setup wizard UI
 - Tenant/system-admin settings UI
 - Dedicated-container-per-tenant option (schema field reserved, not built)
-- Per-tenant OAuth app credentials and the direct-callback path they would
-  allow (columns reserved, not built — see REQ-TENANT-01.8)
+- The **direct-callback path** a per-tenant OAuth app would allow — a community
+  that owns its domain could verify it with the provider and receive the
+  callback on its own host, skipping the handoff entirely. Still deliberately
+  undesigned; nobody has asked for it. (The credentials themselves are no longer
+  out of scope: REQ-TENANT-01.9 specifies them and `v2-8` built them, with every
+  callback still terminating on the one registered host.)
 
 ## Definition of done
 
@@ -409,5 +429,9 @@ established by REQ-TENANT-01.6 above:
   data leakage impossible even with colliding IDs)
 - `users.tenant_id` enforced; duplicate email allowed across tenants, blocked
   within a tenant
+- A community with no OAuth credentials offers email/password only; one with
+  Google credentials offers Google alongside it; the same address can hold a
+  different set of linked providers in two communities; and no client secret is
+  readable in a database dump
 - All new code covered by unit and integration tests per the testing
   requirements above

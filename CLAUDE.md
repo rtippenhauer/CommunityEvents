@@ -34,17 +34,56 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-8` — per-tenant OAuth apps (REQ-TENANT-01.9 and
-REQ-TENANT-01.8). The four credential columns have been reserved on `tenants`
-since `v2-3` and encrypted since `v2-7`; this is what first writes them. NULL
-means the provider is OFF for that tenant, which then offers email/password
-only — there is no platform-wide fallback app. It also owes REQ-TENANT-01.8's
-signed `state` handoff: Google's callback lands on one fixed host, and the
-host-only cookie `v2-6` introduced does not reach any other tenant's host, so
-OAuth currently works on the callback tenant and nowhere else. `v2-9` ran ahead
-of it and the numbers stayed put. See `V2_PHASES.md`.
+**Current v2 work item:** `v2-10` — CommunityEvents branding replaces the
+DinnerBears defaults. Reframed 2026-08-30: not "remove DinnerBears" (which has
+no finish line and has felt like an oversight across three items) but
+"CommunityEvents is the platform identity, and every DinnerBears artifact either
+becomes its CommunityEvents equivalent or becomes data owned by the DinnerBears
+community when it migrates". `v2-11` (a real colour system) shares that surface
+and follows it. See `V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-8` — Per-tenant OAuth apps** (2026-09-01, REQ-TENANT-01.9 and
+  REQ-TENANT-01.8). Each tenant supplies its own Google and/or Meta credentials
+  in the four columns reserved since `v2-3` and encrypted since `v2-7`; this is
+  what first writes them. A provider is offered only where that tenant has
+  credentials, and email/password always is — `GET /auth/methods` is
+  unauthenticated and tenant-resolved, and `TenantOAuthService.offeredProviders`
+  selects **only the two id columns** so a page load never decrypts a secret.
+  `GoogleStrategy` stopped being a singleton: it is constructed per request from
+  the resolved tenant, which is why the file and its callback guard are gone.
+
+  **The cross-host handoff is the substance, not the columns.** Google returns
+  to one fixed host and the host-only cookie `v2-6` introduced does not reach
+  any other tenant's host, so OAuth worked on the callback tenant and nowhere
+  else. `state` is now signed (HMAC-SHA256 over an HKDF-separated key, 15-minute
+  age limit, `timingSafeEqual` with a length pre-check) and names the
+  originating tenant; the callback mints a single-use `oauth_handoffs` ticket and
+  redirects to that tenant's own host, which redeems it and sets the cookie
+  there. `SameSite=strict` was expected to need loosening to `lax` and does
+  **not** — confirmed in a real browser, because SameSite governs whether a
+  cookie is *attached* to a request, not whether one can be *set* in a response.
+  Don't revert it.
+
+  Four defects found by stage testing, three of them behavioural. A cancelled
+  sign-in checked `query.error` **before** decoding `state`, discarding the
+  tenant Google had just returned, so Cancel landed on the wrong community.
+  Google silently re-linked on email match after Disconnect while Facebook
+  refused — opposite policies for the same gesture; Google now matches Facebook.
+  `POST /auth/facebook` never verified *which app* minted the token, latent with
+  one app and a cross-community hole with per-tenant ones — it now calls
+  `debug_token` and compares `app_id`. And `exchange_failed` logged nothing at
+  all, dropping `InternalOAuthError.oauthError` where the provider's actual
+  reason lives.
+
+  **Deferred deliberately, both recorded in `V2_PHASES.md` rather than lost:**
+  login CSRF (the signed `state` proves which *community*, not which *browser* —
+  the conventional nonce-cookie fix is unusually available here because
+  redemption happens back on the originating host), and `v2-12`'s callback on a
+  community's own host. The four-case table behind that second one lives in
+  v2-8's section because it was worked out against this code; the policy that
+  makes it simple is that a community bringing its own domain but not its own
+  Google project gets email/password, exactly as REQ-TENANT-01.9 already says.
 - **`v2-9` — Per-community email sending** (2026-08-29). `email_provider_config`
   is tenant-scoped: each community holds its own Brevo key, From identity,
   template ids and daily counter, and a community that sets none sends on the
@@ -254,12 +293,13 @@ of it and the numbers stayed put. See `V2_PHASES.md`.
   restart-loop with a misleading "not found").
 
 V2 is being defined through a sequence of requirements docs. Only one exists
-so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft;
-`v2-1` through `v2-6` are implemented, which closes out every requirement in it
-except REQ-TENANT-01.8 and 01.9 — both added later and both landing in `v2-8`,
-which as of 2026-08-15 is the second item after `v2-6` rather than last). It is
-the foundational doc everything else depends on and defines the conventions the
-rest of v2 follows. Key decisions it locks in:
+so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft; **fully
+implemented as of `v2-8`** — `v2-1` through `v2-6` closed out every requirement
+except REQ-TENANT-01.8 and 01.9, both added later, and `v2-8` landed both). Four
+further requirements docs exist as of 2026-09-01 and are not implemented:
+`REQ-VALIDATE-01` (v2-17), `REQ-CMS-01` (v2-18 to v2-23), `REQ-CITIES-01`
+(v2-24) and `REQ-IMPORT-01` (v2-25). REQ-TENANT-01 remains the foundational doc
+everything else depends on and defines the conventions the rest of v2 follows. Key decisions it locks in:
 
 - **Prisma replaces TypeORM entirely** (not incrementally) — `schema.prisma`
   becomes the single source of truth, TypeORM removed once Prisma is
@@ -306,7 +346,12 @@ number is meant to read as the running order, and it was still free to change
 because no `v2-*` tag above `v2-5` has been cut.
 
 **Then per-community email sending, inserted as `v2-9` on 2026-08-21**, shifting
-that same block down one more to `v2-10`–`v2-14`. It was briefly folded into
+that same block down one more to `v2-10`–`v2-14`. Two more were inserted on
+2026-08-30 — `v2-11` (a real colour system, next to the branding item because
+they share a surface) and `v2-12` (OAuth callback on a community's own host, the
+follow-on v2-8 deferred) — shifting the landing page, demo, wizard and handbook
+down two again, to `v2-13`–`v2-16`. Still free: no `v2-*` tag above `v2-9`
+exists. It was briefly folded into
 `v2-7` and split back out: the encryption is what makes a per-tenant provider key
 storable, but storing it is the small part next to scoping
 `email_provider_config`, moving its seeding into `bootstrap.ts` and making the
@@ -345,7 +390,9 @@ assume everything here is the target architecture.
 - **Frontend:** Angular 22, standalone components (NO NgModules), Angular Material (MDC), SCSS
 - **Backend:** NestJS (Node.js, TypeScript), **Prisma 7**, Passport.js
 - **Database:** MySQL (stage runs 9.7 — the v1-era "8.x" note was wrong)
-- **Auth:** JWT sessions + Google OAuth + Facebook OAuth (Passport strategies)
+- **Auth:** JWT sessions + email/password, plus Google and Facebook OAuth using
+  each tenant's own app credentials (`v2-8`). The Google Passport strategy is
+  built per request, not registered once at boot.
 - **Email:** Brevo SDK (primary) + Resend (overflow fallback)
 - **Push:** Web Push API with VAPID keys (@angular/pwa service worker)
 - **Proxy:** NGINX Proxy Manager (Docker)
@@ -481,14 +528,27 @@ authoritative (per REQ-TENANT-01.3).
   `is_root`, `root_marker`, `status` (active/suspended), `db_mode`
   (shared/dedicated — reserved, defaults shared), `created_at`, plus four
   reserved OAuth credential columns (nullable; the two `*_secret` ones are
-  registered in `encrypted-columns.ts` as of `v2-7`, so the encryption is in
-  place ahead of `v2-8`, which is what first writes them).
+  registered in `encrypted-columns.ts` as of `v2-7`, and written since `v2-8`).
 - **NULL OAuth credentials mean that provider is OFF for the tenant**, which
   then offers email/password only — there is no platform-wide fallback app
   (REQ-TENANT-01.9, decided 2026-08-14; this *reversed* the original reading in
   REQ-TENANT-01.1, so ignore any older phrasing that says NULL means "uses the
-  platform's own OAuth apps"). Per-tenant credentials are `v2-8`; until then
-  OAuth uses the platform env credentials.
+  platform's own OAuth apps"). Live as of `v2-8`: the deployment-wide
+  `GOOGLE_CLIENT_*`/`FACEBOOK_APP_*` env vars are **gone**, not kept as a
+  fallback, so there is no configuration that can reintroduce one.
+- **Which providers a tenant offers is answered by `GET /auth/methods`** —
+  unauthenticated and tenant-resolved, since the login page has no session yet.
+  `GET /auth/providers` cannot do it: it is `JwtAuthGuard`ed and reports the
+  signed-in user's *linked* accounts, a different question.
+  `TenantOAuthService.offeredProviders()` selects only `googleClientId` and
+  `facebookAppId` — never the secrets — so answering it decrypts nothing.
+- **The OAuth callback runs on one fixed host and hands the session back.**
+  `state` is signed and carries the originating tenant; the callback writes a
+  single-use `oauth_handoffs` row and redirects to that tenant's own host to
+  redeem it. Two rules fall out: the tenant in a decoded `state` must be read
+  **before** any error branch (a cancelled sign-in still has to know where to
+  return), and the callback resolves a user belonging to a tenant other than the
+  host's, so it runs inside an explicit `runWithTenant`.
 - Exactly one tenant has `is_root = true`; its admin is the system admin. This
   is a **database constraint**, not a convention: `root_marker` is `true` on the
   root and NULL elsewhere, and its unique index rejects a second root (MySQL has
@@ -612,7 +672,7 @@ authoritative (per REQ-TENANT-01.3).
   dead end: registration needs an invite, invites need an existing member of that
   tenant, and its only other account is the `disabled` service account. The
   fields are create-only. A one-time setup link replaces the password hand-off in
-  `v2-13`.
+  `v2-15`.
 - **A new community is seeded with the platform's Terms and Privacy Policy**
   (`api/src/common/legal/legal-defaults.ts`), by `bootstrap.ts` for the root
   tenant and by `tenants-admin.service.create` for every other. `/terms` and
@@ -776,10 +836,14 @@ across every tenant, since `.example.com` covers all of them. `BASE_DOMAIN` is
 now only the mail domain, plus clearing pre-`v2-6` cookies. Options live in
 `api/src/common/utils/auth-cookie.util.ts` — never set a `domain` there.
 
-One consequence: Google's callback lands on a single fixed host, so a host-only
-cookie set there does not reach a different tenant's host. OAuth works on the
-tenant owning the callback URL and nowhere else until REQ-TENANT-01.8's signed
-`state` handoff lands in `v2-8`. Email/password works on every tenant.
+One consequence, **closed by `v2-8`**: Google's callback lands on a single fixed
+host, so a host-only cookie set there does not reach a different tenant's host.
+REQ-TENANT-01.8's signed `state` plus the single-use `oauth_handoffs` ticket
+carry the session back to the originating host, so OAuth now works on every
+tenant that has credentials. **`SameSite=strict` survives that redirect** — it
+was expected to need `lax` and does not, because SameSite decides whether a
+cookie is *attached* to a request, not whether one can be *set* in a response.
+Don't loosen it on the theory that the handoff needs it.
 
 **`express-session` is gone, and `SESSION_SECRET` with it** (`v2-6`). The
 comment claiming a session was "required by passport-google-oauth20" was wrong
@@ -789,7 +853,7 @@ passport-oauth2 picks its `NullStore`, whose `store()`/`verify()` never touch
 read `req.session`. So the middleware only minted a `connect.sid` cookie per
 visitor and leaked a MemoryStore entry per request. Removing it changes no
 behaviour — `state` was already unverified, and REQ-TENANT-01.8's signed state
-(`v2-8`) is the real fix, which needs no store either. `SESSION_SECRET` can be
+(`v2-8`) was the real fix and landed there, needing no store either. `SESSION_SECRET` can be
 dropped from any `.env`; nothing reads it.
 
 **The v1 design note this replaced, kept because the reasoning still explains
