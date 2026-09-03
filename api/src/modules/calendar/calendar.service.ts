@@ -5,7 +5,7 @@ import type { Prisma, users as User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EventStatus, RsvpStatus } from '../../database/enums';
 import { asDateString, asTimeString } from '../../common/utils/prisma-date.util';
-import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS, eventUid, parseEventUid } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { AppConfigService } from '../app-config/app-config.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
@@ -170,42 +170,6 @@ export class CalendarService {
     return ics;
   }
 
-  /**
-   * The iCalendar UID for an event (v2-10).
-   *
-   * A UID is a calendar entry's stable identity, not decoration: a client that
-   * sees a known event arrive under a new UID treats the old one as cancelled
-   * and the new one as a fresh entry. So this changed exactly once, when the
-   * old `dinnerbears-event-N@dinnerbears.com` stopped being an acceptable thing
-   * for every community's feed to emit, and it must not change again.
-   *
-   * The domain is the platform's and deliberately NOT the community's own host.
-   * A UID has to stay stable for the life of the entry, and a community can
-   * change its domain -- which would silently re-identify every event it has
-   * ever published.
-   */
-  private eventUid(eventId: number): string {
-    return `communityevents-event-${eventId}@communityeventsproject.com`;
-  }
-
-  /**
-   * Event id from an inbound reply's UID, accepting the pre-v2-10 format.
-   *
-   * Both are matched because the two live side by side indefinitely: a member
-   * whose calendar still holds an event published under the old UID replies
-   * with that UID, and dropping it would silently discard their RSVP. The
-   * legacy branch can only be retired once no client anywhere holds a
-   * pre-v2-10 entry, which is not an event this code can observe.
-   */
-  private parseEventUid(ical: string): number | null {
-    const match = ical.match(
-      /UID:(?:communityevents-event-(\d+)@communityeventsproject\.com|dinnerbears-event-(\d+)@dinnerbears\.com)/i,
-    );
-    if (!match) return null;
-    // Exactly one branch matches, so exactly one group is defined.
-    return parseInt(match[1] ?? match[2], 10);
-  }
-
   // Stays on APP_URL deliberately: this asks "is this deployment stage", which
   // is a property of the deployment and not of any tenant. It builds no link.
   private appName(brandName: string): string {
@@ -358,7 +322,7 @@ export class CalendarService {
 
     const lines = [
       'BEGIN:VEVENT',
-      `UID:${this.eventUid(event.id)}`,
+      `UID:${eventUid(event.id)}`,
       `DTSTAMP:${dtStamp}`,
       `DTSTART:${dtStart}`,
       `DTEND:${dtEnd}`,
@@ -474,7 +438,7 @@ export class CalendarService {
       'CALSCALE:GREGORIAN',
       'METHOD:REQUEST',
       'BEGIN:VEVENT',
-      `UID:${this.eventUid(event.id)}`,
+      `UID:${eventUid(event.id)}`,
       `DTSTAMP:${dtStamp}`,
       `DTSTART:${dtStart}`,
       `DTEND:${dtEnd}`,
@@ -508,7 +472,7 @@ export class CalendarService {
       return;
     }
 
-    const eventId = this.parseEventUid(ical);
+    const eventId = parseEventUid(ical);
     if (eventId === null) {
       this.logger.warn('rsvp-reply: unrecognized UID format');
       return;

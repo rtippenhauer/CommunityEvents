@@ -158,7 +158,7 @@ export const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   contact_support_email: '',
   contact_calendar_email: '',
   contact_event_email: '',
-  // Terminology defaults keep DinnerBears' original wording; a fork overrides
+  // Terminology defaults are the generic platform wording; a community overrides
   // these in /admin/settings (e.g. Sons → Location(s)/Meeting(s)/Points).
   term_location_singular: DEFAULT_TERM_LOCATION_SINGULAR,
   term_location_plural: DEFAULT_TERM_LOCATION_PLURAL,

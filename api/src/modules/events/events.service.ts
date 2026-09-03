@@ -40,7 +40,7 @@ import { AchievementsService } from '../community/achievements.service';
 import { ConfigService } from '@nestjs/config';
 import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
-import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS, eventUid } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 
 /** An event with its location (and that location's photos) loaded. */
@@ -1276,7 +1276,7 @@ export class EventsService {
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       'BEGIN:VEVENT',
-      `UID:dinnerbears-event-${event.id}@dinnerbears.com`,
+      `UID:${eventUid(event.id)}`,
       `DTSTART:${toIcsUtcString(startUtc)}`,
       `DTEND:${toIcsUtcString(endUtc)}`,
       `LAST-MODIFIED:${lastMod}`,
