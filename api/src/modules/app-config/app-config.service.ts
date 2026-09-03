@@ -58,6 +58,7 @@ export const SITE_SETTING_KEYS = [
   'theme_color_background',
   'brand_logo_url',
   'brand_splash_url',
+  'brand_error_url',
   'brand_icon_url',
   'brand_story_url',
   // Contact identity, per community (REQ-TENANT-01.4). Empty means "inherit the
@@ -158,6 +159,11 @@ export const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   // /api/uploads/branding/... path once an admin uploads a replacement.
   brand_logo_url: '',
   brand_splash_url: '',
+  // Backdrop behind the card on every error page (v2-10). Empty is a real
+  // choice, not a missing value: with none uploaded the page draws a
+  // gradient from this community's own brand colours, which is why there is
+  // no compiled-in default image here the way there was before.
+  brand_error_url: '',
   brand_icon_url: '',
   // Home-page "Our Story" image. Unlike logo/splash/icon there is NO
   // compiled-in fallback — empty means the story image is simply hidden. A
@@ -475,6 +481,7 @@ export class AppConfigService {
     colorBackground: string;
     logoUrl: string;
     splashUrl: string;
+    errorUrl: string;
     iconUrl: string;
     storyUrl: string;
     vapidPublicKey: string | null;
@@ -537,6 +544,7 @@ export class AppConfigService {
       colorBackground,
       logoUrl,
       splashUrl,
+      errorUrl,
       iconUrl,
       storyUrl,
       locationSingular,
@@ -554,6 +562,7 @@ export class AppConfigService {
       this.getSiteSetting('theme_color_background'),
       this.getSiteSetting('brand_logo_url'),
       this.getSiteSetting('brand_splash_url'),
+      this.getSiteSetting('brand_error_url'),
       this.getSiteSetting('brand_icon_url'),
       this.getSiteSetting('brand_story_url'),
       this.getSiteSetting('term_location_singular'),
@@ -572,6 +581,7 @@ export class AppConfigService {
       colorBackground,
       logoUrl,
       splashUrl,
+      errorUrl,
       iconUrl,
       storyUrl,
       terms: {

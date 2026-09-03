@@ -19,6 +19,12 @@ export interface BrandConfig {
   colorBackground: string;
   logoUrl: string;
   splashUrl: string;
+  /**
+   * Backdrop behind the card on every error page. Empty is a real choice, not a
+   * missing value: with none uploaded the page draws a gradient from this
+   * community's own brand colours, so there is no compiled-in default image.
+   */
+  errorUrl: string;
   iconUrl: string;
   storyUrl: string;
   // Per-instance values that used to be compiled into the frontend bundle
@@ -119,6 +125,7 @@ const DEFAULT_BRAND: BrandConfig = {
   colorBackground: '#FDFAF5',
   logoUrl: '',
   splashUrl: '',
+  errorUrl: '',
   iconUrl: '',
   storyUrl: '',
   // Null/empty until the branding fetch resolves. A network hiccup leaves push
@@ -197,6 +204,9 @@ export class BrandConfigService {
   readonly iconSrc = computed(() => this.brand().iconUrl || defaultIcon(this.brand()));
   // No compiled-in fallback: empty means the home-page story image is hidden.
   readonly storyImageUrl = computed(() => this.brand().storyUrl);
+  // Likewise no fallback image -- an empty value means the error page falls back
+  // to a gradient built from the brand colours rather than to a stock picture.
+  readonly errorImageUrl = computed(() => this.brand().errorUrl);
 
   // Per-instance runtime values (formerly environment.*.ts). Read as signals so
   // callers stay reactive if branding is ever refreshed mid-session.

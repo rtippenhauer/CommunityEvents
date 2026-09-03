@@ -32,10 +32,18 @@ const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 // its compiled-in default asset whenever the stored value is empty.
 const BRAND_IMAGE_SLOTS: Record<
   string,
-  'brand_logo_url' | 'brand_splash_url' | 'brand_icon_url' | 'brand_story_url'
+  | 'brand_logo_url'
+  | 'brand_splash_url'
+  | 'brand_error_url'
+  | 'brand_icon_url'
+  | 'brand_story_url'
 > = {
   logo: 'brand_logo_url',
   splash: 'brand_splash_url',
+  // The backdrop behind every error page (v2-10). It used to be a fixed image
+  // with no setting at all, so a member of any community met DinnerBears'
+  // artwork whenever anything went wrong.
+  error: 'brand_error_url',
   icon: 'brand_icon_url',
   story: 'brand_story_url',
 };

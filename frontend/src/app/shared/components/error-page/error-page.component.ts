@@ -1,4 +1,4 @@
-import { Component, input, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, inject, computed, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -9,7 +9,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
   standalone: true,
   imports: [MatButtonModule, MatIconModule, RouterLink],
   template: `
-    <div class="error-bg">
+    <div class="error-bg" [style.background-image]="backdrop()">
       <div class="error-card">
         <mat-icon class="error-icon">{{ icon() }}</mat-icon>
         <h1 class="error-title">{{ title() }}</h1>
@@ -43,23 +43,34 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
-      /* Was a fixed DinnerBears menu-board photo (v2-10). It was the one
-         branded surface with no setting behind it at all, so a member of any
-         community met DinnerBears' artwork on every error. Built from the
-         brand custom properties instead, it follows whatever palette the
-         community has configured — BrandConfigService.applyChrome sets these
-         at runtime, and styles.scss supplies the pre-JS fallbacks, which is
-         what makes this legible on an unresolved tenant that never loaded
-         branding at all. */
+      /* Was a fixed DinnerBears menu-board photo (v2-10) — the one branded
+         surface with no setting behind it at all, so a member of any community
+         met DinnerBears' artwork on every error.
+
+         Two things replaced it. A community can now upload its own backdrop
+         (the "error" brand-image slot), which the component binds over
+         background-image; and when it has uploaded none, this gradient is what
+         shows. The gradient is built from the brand custom properties, so even
+         the no-upload case is in that community's own colours —
+         BrandConfigService.applyChrome sets them at runtime and styles.scss
+         supplies the pre-JS fallbacks, which is what keeps this legible on an
+         unresolved tenant that never loaded branding at all.
+
+         The sizing properties below are for the uploaded case; a gradient fills
+         its box regardless. Without them an uploaded photo tiles at its natural
+         size. */
       .error-bg {
         min-height: 100vh;
-        background:
+        background-image:
           radial-gradient(
             ellipse 120% 80% at 50% 0%,
             color-mix(in srgb, var(--db-primary, #c9933a) 18%, transparent),
             transparent 70%
-          ),
-          var(--db-cream, #fdfaf5);
+          );
+        background-color: var(--db-cream, #fdfaf5);
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -149,6 +160,20 @@ export class ErrorPageComponent {
   // where BrandConfigService keeps DEFAULT_BRAND — hence "CommunityEvents",
   // which is the correct thing to say on a host that belongs to no community.
   readonly brandConfig = inject(BrandConfigService);
+
+  /**
+   * The community's uploaded error backdrop, as a CSS background-image value.
+   *
+   * `null` when nothing is uploaded, which leaves the stylesheet's gradient in
+   * place rather than overriding it with an empty url() -- an empty value would
+   * paint nothing and lose the fallback entirely. The gradient is deliberately
+   * the default: it follows whatever palette the community has configured, so a
+   * community that uploads nothing still gets its own colours here.
+   */
+  readonly backdrop = computed(() => {
+    const url = this.brandConfig.errorImageUrl();
+    return url ? `url('${encodeURI(url)}')` : null;
+  });
 
   readonly icon = input('error_outline');
   readonly title = input('Something went wrong');

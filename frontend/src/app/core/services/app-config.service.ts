@@ -22,6 +22,7 @@ export type SiteSettingKey =
   | 'theme_color_background'
   | 'brand_logo_url'
   | 'brand_splash_url'
+  | 'brand_error_url'
   | 'brand_icon_url'
   | 'brand_story_url'
   // Contact identity, per community (REQ-TENANT-01.4). Blank means
@@ -45,7 +46,7 @@ export type SiteSettingKey =
   // and Privacy Policy; empty means never. Written from Admin -> Legal.
   | 'legal_reviewed_at';
 
-export type BrandImageSlot = 'logo' | 'splash' | 'icon' | 'story';
+export type BrandImageSlot = 'logo' | 'splash' | 'error' | 'icon' | 'story';
 
 export interface LegalConfigItem {
   configKey: LegalConfigKey;
