@@ -84,7 +84,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
       const res = await request(server).get('/api/v1/calendar/feed.ics').query({ token }).expect(200);
       expect(res.headers['content-type']).toContain('text/calendar');
       expect(res.text).toContain('BEGIN:VCALENDAR');
-      expect(res.text).toContain(`UID:dinnerbears-event-${event.id}@dinnerbears.com`);
+      expect(res.text).toContain(`UID:communityevents-event-${event.id}@communityeventsproject.com`);
       expect(res.text).toMatch(/DTSTART:\d{8}T\d{6}Z/);
       expect(res.text).toContain('STATUS:CONFIRMED');
       // calendar@<BASE_DOMAIN>; setup-env.ts pins BASE_DOMAIN=localhost. The old
@@ -114,7 +114,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
       const token = await calendarService.getOrCreateToken(member.id);
 
       const res = await request(server).get('/api/v1/calendar/feed.ics').query({ token }).expect(200);
-      expect(res.text).toContain(`UID:dinnerbears-event-${event.id}@dinnerbears.com`);
+      expect(res.text).toContain(`UID:communityevents-event-${event.id}@communityeventsproject.com`);
       expect(res.text).toContain('STATUS:CANCELLED');
       expect(res.text).toContain('[CANCELLED]');
     });
@@ -138,7 +138,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
       calendarService.invalidateForUser(member.id);
       const res = await request(server).get('/api/v1/calendar/feed.ics').query({ token }).expect(200);
 
-      expect(res.text).toContain(`UID:dinnerbears-event-${rsvpEvent.id}@dinnerbears.com`);
+      expect(res.text).toContain(`UID:communityevents-event-${rsvpEvent.id}@communityeventsproject.com`);
       const matches = res.text.match(/BEGIN:VEVENT/g) ?? [];
       expect(matches).toHaveLength(1);
     });
@@ -164,7 +164,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
       calendarService.invalidateForUser(member.id);
       const res = await request(server).get('/api/v1/calendar/feed.ics').query({ token }).expect(200);
 
-      expect(res.text).not.toContain(`UID:dinnerbears-event-${otherCityEvent.id}@dinnerbears.com`);
+      expect(res.text).not.toContain(`UID:communityevents-event-${otherCityEvent.id}@communityeventsproject.com`);
     });
   });
 
@@ -231,8 +231,16 @@ describe('Calendar / ICS Feed (e2e)', () => {
   });
 
   describe('POST /calendar/rsvp-reply', () => {
+    // Deliberately the PRE-v2-10 UID. Members' calendars still hold entries
+    // published under the old one, and their replies have to keep resolving --
+    // so the whole reply suite below runs against the legacy format, and the
+    // format this code now emits gets its own case.
     function replyBody(eventId: number, partstat: string, email: string): string {
       return `BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:dinnerbears-event-${eventId}@dinnerbears.com\r\nATTENDEE;PARTSTAT=${partstat};CN=Reply Test:mailto:${email}\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+    }
+
+    function currentReplyBody(eventId: number, partstat: string, email: string): string {
+      return `BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nBEGIN:VEVENT\r\nUID:communityevents-event-${eventId}@communityeventsproject.com\r\nATTENDEE;PARTSTAT=${partstat};CN=Reply Test:mailto:${email}\r\nEND:VEVENT\r\nEND:VCALENDAR`;
     }
 
     it('rejects a request with no secret header', async () => {
@@ -254,6 +262,19 @@ describe('Calendar / ICS Feed (e2e)', () => {
         .post('/api/v1/calendar/rsvp-reply')
         .set('X-Cloudflare-Secret', CLOUDFLARE_SECRET)
         .send({ raw: replyBody(event.id, 'ACCEPTED', member.email) })
+        .expect(200);
+
+      const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
+      expect(rsvp!.status).toBe(RsvpStatus.GOING);
+    });
+
+    it('accepts a reply carrying the current UID format', async () => {
+      const event = await seedEvent();
+
+      await request(server)
+        .post('/api/v1/calendar/rsvp-reply')
+        .set('X-Cloudflare-Secret', CLOUDFLARE_SECRET)
+        .send({ raw: currentReplyBody(event.id, 'ACCEPTED', member.email) })
         .expect(200);
 
       const rsvp = await prisma.event_rsvps.findFirst({ where: { eventId: event.id, userId: member.id } });
@@ -348,7 +369,7 @@ describe('Calendar / ICS Feed (e2e)', () => {
       );
 
       expect(ics).toContain('METHOD:REQUEST');
-      expect(ics).toContain(`UID:dinnerbears-event-${event.id}@dinnerbears.com`);
+      expect(ics).toContain(`UID:communityevents-event-${event.id}@communityeventsproject.com`);
       expect(ics).toContain('ATTENDEE;CN=Guest Name;RSVP=TRUE:mailto:guest@example.test');
       // calendar@<BASE_DOMAIN>, and setup-env.ts pins BASE_DOMAIN=localhost.
       // The old literal named the production domain; the assertion never ran,

@@ -170,6 +170,42 @@ export class CalendarService {
     return ics;
   }
 
+  /**
+   * The iCalendar UID for an event (v2-10).
+   *
+   * A UID is a calendar entry's stable identity, not decoration: a client that
+   * sees a known event arrive under a new UID treats the old one as cancelled
+   * and the new one as a fresh entry. So this changed exactly once, when the
+   * old `dinnerbears-event-N@dinnerbears.com` stopped being an acceptable thing
+   * for every community's feed to emit, and it must not change again.
+   *
+   * The domain is the platform's and deliberately NOT the community's own host.
+   * A UID has to stay stable for the life of the entry, and a community can
+   * change its domain -- which would silently re-identify every event it has
+   * ever published.
+   */
+  private eventUid(eventId: number): string {
+    return `communityevents-event-${eventId}@communityeventsproject.com`;
+  }
+
+  /**
+   * Event id from an inbound reply's UID, accepting the pre-v2-10 format.
+   *
+   * Both are matched because the two live side by side indefinitely: a member
+   * whose calendar still holds an event published under the old UID replies
+   * with that UID, and dropping it would silently discard their RSVP. The
+   * legacy branch can only be retired once no client anywhere holds a
+   * pre-v2-10 entry, which is not an event this code can observe.
+   */
+  private parseEventUid(ical: string): number | null {
+    const match = ical.match(
+      /UID:(?:communityevents-event-(\d+)@communityeventsproject\.com|dinnerbears-event-(\d+)@dinnerbears\.com)/i,
+    );
+    if (!match) return null;
+    // Exactly one branch matches, so exactly one group is defined.
+    return parseInt(match[1] ?? match[2], 10);
+  }
+
   // Stays on APP_URL deliberately: this asks "is this deployment stage", which
   // is a property of the deployment and not of any tenant. It builds no link.
   private appName(brandName: string): string {
@@ -322,7 +358,7 @@ export class CalendarService {
 
     const lines = [
       'BEGIN:VEVENT',
-      `UID:dinnerbears-event-${event.id}@dinnerbears.com`,
+      `UID:${this.eventUid(event.id)}`,
       `DTSTAMP:${dtStamp}`,
       `DTSTART:${dtStart}`,
       `DTEND:${dtEnd}`,
@@ -438,7 +474,7 @@ export class CalendarService {
       'CALSCALE:GREGORIAN',
       'METHOD:REQUEST',
       'BEGIN:VEVENT',
-      `UID:dinnerbears-event-${event.id}@dinnerbears.com`,
+      `UID:${this.eventUid(event.id)}`,
       `DTSTAMP:${dtStamp}`,
       `DTSTART:${dtStart}`,
       `DTEND:${dtEnd}`,
@@ -472,12 +508,11 @@ export class CalendarService {
       return;
     }
 
-    const uidMatch = ical.match(/UID:dinnerbears-event-(\d+)@dinnerbears\.com/i);
-    if (!uidMatch) {
+    const eventId = this.parseEventUid(ical);
+    if (eventId === null) {
       this.logger.warn('rsvp-reply: unrecognized UID format');
       return;
     }
-    const eventId = parseInt(uidMatch[1], 10);
 
     // Unfold RFC 5545 line continuations then parse ATTENDEE
     const unfolded = ical.replace(/\r?\n[ \t]/g, '');
