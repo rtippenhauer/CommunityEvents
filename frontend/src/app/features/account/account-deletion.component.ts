@@ -1,7 +1,8 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
 import { RouterLink } from '@angular/router';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-account-deletion',
@@ -59,9 +60,13 @@ import { RouterLink } from '@angular/router';
       <section>
         <h2>No account access?</h2>
         <p>
-          Email <a href="mailto:support@dinnerbears.com">support&#64;dinnerbears.com</a> from the
-          address associated with your account. Include your name and the email address you
-          registered with.
+          @if (brandConfig.supportEmail(); as support) {
+            Email <a [href]="'mailto:' + support">{{ support }}</a> from the address associated
+            with your account. Include your name and the email address you registered with.
+          } @else {
+            Contact an admin from the address associated with your account. Include your name
+            and the email address you registered with.
+          }
         </p>
       </section>
     </div>
@@ -123,4 +128,7 @@ import { RouterLink } from '@angular/router';
     `,
   ],
 })
-export class AccountDeletionComponent {}
+export class AccountDeletionComponent {
+  // The community's own support address, not a hardcoded one (v2-10).
+  readonly brandConfig = inject(BrandConfigService);
+}

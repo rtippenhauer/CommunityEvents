@@ -329,7 +329,7 @@ export class UsersService {
           deletedAt: new Date(),
           hardDeleteAt,
           fullName: 'Deleted Member',
-          email: `deleted-${user.id}@deleted.dinnerbears.com`,
+          email: `deleted-${user.id}@deleted.invalid`,
           passwordHash: null,
           profilePhotoPath: null,
         },

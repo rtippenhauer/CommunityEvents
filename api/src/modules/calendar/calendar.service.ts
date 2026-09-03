@@ -173,7 +173,7 @@ export class CalendarService {
   // Stays on APP_URL deliberately: this asks "is this deployment stage", which
   // is a property of the deployment and not of any tenant. It builds no link.
   private appName(brandName: string): string {
-    const url = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const url = this.config.get<string>('APP_URL', 'https://communityeventsproject.com');
     return url.includes('stage') ? `${brandName} - Stage` : brandName;
   }
 

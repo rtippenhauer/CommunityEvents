@@ -15,6 +15,7 @@ import { LEGAL_DEFAULT_ROWS, fillLegalPlaceholders } from '../../common/legal/le
 import { currentTenantId, requireTenantId, runWithTenant } from '../../common/tenant/tenant-store';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { TenantOAuthService } from '../../common/tenant/tenant-oauth.service';
+import { FOUNDING_ACHIEVEMENT_KEY } from '../../common/achievements/achievement-defaults';
 import {
   DEFAULT_TERM_LOCATION_SINGULAR,
   DEFAULT_TERM_LOCATION_PLURAL,
@@ -348,7 +349,7 @@ export class AppConfigService {
    * Mirrors instance-contact.ts; kept in step with it by their shared spec.
    */
   private calendarLocalPart(): string {
-    const appUrl = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const appUrl = this.config.get<string>('APP_URL', 'https://communityeventsproject.com');
     return appUrl.includes('stage') ? 'calendar-stage' : 'calendar';
   }
 
@@ -360,6 +361,22 @@ export class AppConfigService {
    * -- the same column SystemAdminGuard checks, so the UI and the guard cannot
    * disagree about which community this is.
    */
+  /**
+   * The community's own name for its founding achievement.
+   *
+   * Falls back to the platform default when the row is missing -- which happens
+   * only if an admin deleted it, since every community is seeded with one. The
+   * `title` is preferred over `name` because that is the field the badge is
+   * displayed under; both are the community's to edit.
+   */
+  private async foundingAchievementLabel(): Promise<string> {
+    const row = await this.prisma.achievements.findFirst({
+      where: { key: FOUNDING_ACHIEVEMENT_KEY },
+      select: { name: true, title: true },
+    });
+    return row?.title?.trim() || row?.name?.trim() || 'Founding Member';
+  }
+
   private async servingRootTenant(): Promise<boolean> {
     const tenantId = currentTenantId();
     if (!tenantId) return false;
@@ -463,6 +480,10 @@ export class AppConfigService {
      * already servable from /config/:key.
      */
     legalReviewed: boolean;
+    /** This community's support address, not a deployment-wide one (v2-10). */
+    supportEmail: string;
+    /** What this community calls its founding badge (v2-10). */
+    foundingLabel: string;
     appUrl: string;
     baseDomain: string;
     terms: {
@@ -536,6 +557,22 @@ export class AppConfigService {
       authProviders: await this.tenantOAuth.offeredProviders(),
       isStage: this.config.get<string>('IS_STAGE') === 'true',
       isRoot: await this.servingRootTenant(),
+      // The community's own support address (v2-10). Two member-facing pages
+      // -- account deletion and the Facebook data-deletion callback -- told
+      // people to email support@dinnerbears.com, a hardcoded address belonging
+      // to one community and reachable by none of the others. Resolved through
+      // the same most-specific-first chain as everywhere else: the community's
+      // own contact_support_email, then a derivation from its mail domain, then
+      // SUPPORT_EMAIL, then the deployment domain.
+      supportEmail: await this.supportEmail(),
+      // What this community calls its founding badge (v2-10). The frontend used
+      // to derive it by comparing brand_name against the literal 'dinnerbears',
+      // which was a guess standing in for data that did not exist -- the
+      // catalogue was global, so there was no per-community badge to read. Now
+      // that it is scoped, the community's own row IS the label, and a community
+      // that renames the badge sees the new name in the surrounding UI (merch
+      // gate, achievement headers) instead of a name derived from its brand.
+      foundingLabel: await this.foundingAchievementLabel(),
       legalReviewed: legalReviewedAt.trim().length > 0,
       // The requesting tenant's own canonical URL, not the deployment's. Every
       // other field in this payload is per-tenant (app_config is scoped now), so

@@ -52,8 +52,10 @@ describe('instance-contact', () => {
       );
     });
 
-    it('falls back to dinnerbears.com when APP_URL is unparseable', () => {
-      expect(baseDomain(stubConfig({ APP_URL: 'not a url' }))).toBe('dinnerbears.com');
+    it('falls back to the platform domain when APP_URL is unparseable', () => {
+      expect(baseDomain(stubConfig({ APP_URL: 'not a url' }))).toBe(
+        'communityeventsproject.com',
+      );
     });
   });
 

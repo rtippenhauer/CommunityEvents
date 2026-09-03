@@ -43,6 +43,15 @@ import { $Enums } from '@prisma/client';
  * this module changing.
  */
 
+/**
+ * The founding-member achievement's key.
+ *
+ * Referenced by the merch gate, `adminBackfillFounders` and the branding
+ * payload's `foundingLabel`. It is an identifier, not copy -- a community may
+ * rename the badge freely, and everything keys on this instead.
+ */
+export const FOUNDING_ACHIEVEMENT_KEY = 'founding_member';
+
 export interface AchievementSeedTerms {
   /** `term_dinner_singular`, lower-cased mid-sentence ("your first dinner"). */
   dinnerSingularLower: string;

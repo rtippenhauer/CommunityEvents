@@ -41,7 +41,12 @@ import { ADMIN_ROLES } from './roles.util';
  *
  * v2-9 rebrands this. Grep for the constant, not the string.
  */
-export const AUTOMATION_ACCOUNT_EMAIL = 'automation@dinnerbears.internal';
+// Renamed from automation@dinnerbears.internal in v2-10. The address is not
+// an identifier -- guards key on `users.is_service_account`, never on this
+// string (see the note in CLAUDE.md) -- but bootstrap upserts ON DUPLICATE KEY
+// against it, so an existing deployment would grow a SECOND service account
+// rather than update its own. The v2-10 migration renames the stored rows.
+export const AUTOMATION_ACCOUNT_EMAIL = 'automation@communityevents.internal';
 export const AUTOMATION_ACCOUNT_NAME = 'Claude Automation';
 
 export function assertNotServiceAccount(

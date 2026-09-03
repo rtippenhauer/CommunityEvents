@@ -659,9 +659,13 @@ authoritative (per REQ-TENANT-01.3).
 - **`users.is_service_account` marks the one non-human account per tenant.**
   Guards key on that column, never on the role (deliberately mutable — the root
   account gets flipped to admin and back for testing) and never on the
-  `automation@dinnerbears.internal` address (branding `v2-10` rewrites). Service
-  accounts cannot be deleted by any path and are hidden from the member directory
-  and the leaderboard.
+  address, which `v2-10` duly renamed to `automation@communityevents.internal`
+  without anything breaking — that rename is the proof the column is the real
+  key. It still needed a migration, because `createServiceAccount` upserts
+  `ON DUPLICATE KEY UPDATE` against `(tenant_id, email)`, so an unrenamed
+  deployment would have grown a *second* service account rather than updating
+  its own. Service accounts cannot be deleted by any path and are hidden from
+  the member directory and the leaderboard.
 - **Nothing is deleted on a timer if it is an `admin`, a `system_admin` or a
   service account** (`AUTO_DELETE_ELIGIBLE`). The interactive paths already
   refused them; the scheduled sweeps were the gap, and `inactivityCheck`

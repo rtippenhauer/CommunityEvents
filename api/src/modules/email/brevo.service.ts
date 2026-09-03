@@ -127,7 +127,7 @@ export class BrevoService {
     const db = await this.prisma.email_provider_config.findFirst();
     return {
       apiKey: db?.brevoApiKey || this.config.get<string>('BREVO_API_KEY', ''),
-      fromEmail: db?.brevoFromEmail || this.config.get<string>('BREVO_FROM_EMAIL', 'rob@dinnerbears.com'),
+      fromEmail: db?.brevoFromEmail || this.config.get<string>('BREVO_FROM_EMAIL', 'noreply@communityeventsproject.com'),
       fromName: db?.brevoFromName || this.config.get<string>('BREVO_FROM_NAME', 'CommunityEvents'),
     };
   }

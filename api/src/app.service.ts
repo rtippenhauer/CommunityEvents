@@ -3,6 +3,6 @@ import { Injectable } from '@nestjs/common';
 @Injectable()
 export class AppService {
   info(): { name: string; version: string } {
-    return { name: 'DinnerBears API', version: 'v1' };
+    return { name: 'CommunityEvents API', version: 'v1' };
   }
 }

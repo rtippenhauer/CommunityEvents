@@ -41,6 +41,17 @@ export interface BrandConfig {
   /** Whether this community is the root one (REQ-TENANT-01.7). */
   isRoot: boolean;
   /**
+   * Where a member is told to write for help. Resolved per community by the
+   * API; the pages that surface it used to hardcode support@dinnerbears.com,
+   * which no other community could receive mail at.
+   */
+  supportEmail: string;
+  /**
+   * What this community calls its founding achievement, read from its own
+   * catalogue row rather than guessed from the brand name.
+   */
+  foundingLabel: string;
+  /**
    * Whether a human has confirmed this community's Terms and Privacy Policy.
    * Every community is seeded with the platform's templates so its legal pages
    * are never blank; this says somebody has since read them.
@@ -121,6 +132,12 @@ const DEFAULT_BRAND: BrandConfig = {
   // better than offering a button that cannot work.
   authProviders: { google: false, facebook: false },
   isStage: false,
+  // Empty until branding resolves. The pages that use it hide the mailto rather
+  // than render a broken one, the same way storyImageUrl hides its image.
+  supportEmail: '',
+  // The platform default until branding resolves. Unlike the old brand-name
+  // comparison this is only a placeholder for one request, not a rule.
+  foundingLabel: 'Founding Member',
   appUrl: '',
   baseDomain: '',
   // Defaults false: until branding loads, assume this is NOT the root
@@ -130,8 +147,9 @@ const DEFAULT_BRAND: BrandConfig = {
   // or failed branding fetch should not accuse a community of skipping a review
   // it may well have done.
   legalReviewed: true,
-  // DinnerBears' original wording — the compiled-in default until branding
-  // resolves, mirroring the API's SITE_SETTING_DEFAULTS terms.
+  // The generic platform wording, not DinnerBears' — these mirror the API's
+  // SITE_SETTING_DEFAULTS terms (now term-defaults.ts) and are what shows until
+  // branding resolves. A community renames them in Site Settings.
   terms: {
     locationSingular: 'Location',
     locationPlural: 'Locations',
@@ -191,6 +209,8 @@ export class BrandConfigService {
   readonly appUrl = computed(() => this.brand().appUrl);
   readonly baseDomain = computed(() => this.brand().baseDomain);
   readonly isRoot = computed(() => this.brand().isRoot);
+  readonly supportEmail = computed(() => this.brand().supportEmail);
+  readonly foundingLabel = computed(() => this.brand().foundingLabel);
   readonly legalReviewed = computed(() => this.brand().legalReviewed);
 
   // Configurable terminology (Phase 32). Components bind these instead of
@@ -222,14 +242,16 @@ export class BrandConfigService {
   // column/edit UI visibility.
   readonly requireMembershipEnabled = computed(() => this.features().requireMembership);
 
-  // Founding-achievement label. DinnerBears keeps "Founding Bear"; every fork
-  // reads the generic "Founding Member" — matching the same brand_name rule the
-  // RenameFoundingBearAchievement migration uses server-side, so the surrounding
-  // UI labels (merch, achievement category headers) stay consistent with the
-  // actual badge name. Append "s" for the plural ("Founding Bears"/"Members").
-  readonly foundingLabel = computed(() =>
-    this.brand().name.trim().toLowerCase() === 'dinnerbears' ? 'Founding Bear' : 'Founding Member',
-  );
+  // Founding-achievement label, served per community (v2-10).
+  //
+  // This used to compare brand_name against the literal 'dinnerbears' and pick
+  // one of two hardcoded strings. That was a guess standing in for data that did
+  // not exist: the achievement catalogue was global, so there was no
+  // per-community badge to read. Scoping it made the row the community's own, so
+  // the API now reports whatever that row is actually called and a community
+  // that renames its badge sees the new name in the surrounding UI (merch gate,
+  // achievement category headers) rather than one derived from its brand.
+  // Append "s" for the plural.
 
   async init(): Promise<void> {
     try {

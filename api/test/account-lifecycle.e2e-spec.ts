@@ -79,7 +79,7 @@ describe('Account Lifecycle (e2e)', () => {
       expect(deleted!.status).toBe(UserStatus.DELETED);
       expect(deleted!.deletedAt).toBeTruthy();
       expect(deleted!.fullName).toBe('Deleted Member');
-      expect(deleted!.email).toBe(`deleted-${user.id}@deleted.dinnerbears.com`);
+      expect(deleted!.email).toBe(`deleted-${user.id}@deleted.invalid`);
       expect(deleted!.passwordHash).toBeNull();
 
       const hardDeleteAt = deleted!.hardDeleteAt!.getTime();
@@ -149,7 +149,7 @@ describe('Account Lifecycle (e2e)', () => {
         status: UserStatus.DELETED,
         deletedAt: new Date(),
         hardDeleteAt: past,
-        email: `deleted-hard-${Date.now()}@deleted.dinnerbears.com`,
+        email: `deleted-hard-${Date.now()}@deleted.invalid`,
         passwordHash: 'still-set',
       });
 
@@ -157,7 +157,7 @@ describe('Account Lifecycle (e2e)', () => {
 
       const hardDeleted = await prisma.users.findFirst({ where: { id: user.id } });
       expect(hardDeleted!.fullName).toBe('Deleted Member');
-      expect(hardDeleted!.email).toBe(`deleted-${user.id}@deleted.dinnerbears.com`);
+      expect(hardDeleted!.email).toBe(`deleted-${user.id}@deleted.invalid`);
       expect(hardDeleted!.passwordHash).toBeNull();
       expect(hardDeleted!.emailVerifiedAt).toBeNull();
       expect(hardDeleted!.hardDeleteAt).toBeNull();

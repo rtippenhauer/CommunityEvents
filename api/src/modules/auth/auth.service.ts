@@ -105,7 +105,7 @@ export class AuthService {
     if (deleted) {
       await this.prisma.users.update({
         where: { id: deleted.id },
-        data: { email: `deleted-${deleted.id}@deleted.dinnerbears.com` },
+        data: { email: `deleted-${deleted.id}@deleted.invalid` },
       });
     }
   }
@@ -501,7 +501,7 @@ export class AuthService {
                 deletedAt: new Date(),
                 hardDeleteAt,
                 fullName: 'Deleted Member',
-                email: `deleted-${user.id}@deleted.dinnerbears.com`,
+                email: `deleted-${user.id}@deleted.invalid`,
                 passwordHash: null,
                 profilePhotoPath: null,
               },
