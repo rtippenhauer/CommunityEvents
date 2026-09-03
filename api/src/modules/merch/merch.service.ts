@@ -4,7 +4,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { AchievementsService } from '../community/achievements.service';
 import { UpdateMerchConfigDto } from './dto/update-merch-config.dto';
 
-const FOUNDING_BEAR_KEY = 'founding_bear';
+const FOUNDING_MEMBER_KEY = 'founding_member';
 
 export interface MerchLinks {
   storeUrl: string | null;
@@ -24,7 +24,7 @@ export class MerchService {
     if (!config?.foundingBearProductUrl) {
       return { storeUrl, foundingBearProductUrl: null };
     }
-    const hasFoundingBear = await this.achievementsService.hasEarned(userId, FOUNDING_BEAR_KEY);
+    const hasFoundingBear = await this.achievementsService.hasEarned(userId, FOUNDING_MEMBER_KEY);
     return {
       storeUrl,
       foundingBearProductUrl: hasFoundingBear ? config.foundingBearProductUrl : null,

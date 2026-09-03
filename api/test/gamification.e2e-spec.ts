@@ -65,8 +65,8 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
       { key: 'city_hopper_1', name: 'City Hopper', description: 'd', points: 1 },
       { key: 'secret_dinner_1', name: 'Secret Dinner', description: 'd', points: 1 },
       { key: 'login_25', name: 'Familiar Face', description: 'd', points: 10 },
-      { key: 'patriotic_bear', name: 'Patriotic Bear', description: 'd', points: 10, isSecret: true },
-      { key: 'founding_bear', name: 'Founding Bear', description: 'd', points: 0, title: 'Founding Bear' },
+      { key: 'patriotic_2026', name: 'Patriot', description: 'd', points: 10, isSecret: true },
+      { key: 'founding_member', name: 'Founding Member', description: 'd', points: 0, title: 'Founding Member' },
     ] });
   });
 
@@ -200,21 +200,21 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
     });
   });
 
-  describe('Login and Patriotic Bear achievements', () => {
+  describe('Login and Patriot achievements', () => {
     it('grants login_25 once the qualifying login count reaches 25', async () => {
       await achievementsService.checkLoginAchievements(member.id, 25);
       expect(await hasEarned(member.id, 'login_25')).toBe(true);
       expect(await hasEarned(member.id, 'login_50')).toBe(false);
     });
 
-    it('grants patriotic_bear when logging in during the qualifying window', async () => {
-      await achievementsService.checkPatrioticBearAchievement(member.id, new Date('2026-07-05T12:00:00Z'));
-      expect(await hasEarned(member.id, 'patriotic_bear')).toBe(true);
+    it('grants patriotic_2026 when logging in during the qualifying window', async () => {
+      await achievementsService.checkPatriotic2026Achievement(member.id, new Date('2026-07-05T12:00:00Z'));
+      expect(await hasEarned(member.id, 'patriotic_2026')).toBe(true);
     });
 
-    it('does not grant patriotic_bear outside the qualifying window', async () => {
-      await achievementsService.checkPatrioticBearAchievement(member.id, new Date('2026-01-01T12:00:00Z'));
-      expect(await hasEarned(member.id, 'patriotic_bear')).toBe(false);
+    it('does not grant patriotic_2026 outside the qualifying window', async () => {
+      await achievementsService.checkPatriotic2026Achievement(member.id, new Date('2026-01-01T12:00:00Z'));
+      expect(await hasEarned(member.id, 'patriotic_2026')).toBe(false);
     });
   });
 
@@ -355,9 +355,9 @@ describe('Gamification: Achievements, Points, Leaderboard (e2e)', () => {
   });
 
   describe('Admin: backfill founders + recalculate points', () => {
-    it('backfills founding_bear for active members missing it', async () => {
+    it('backfills founding_member for active members missing it', async () => {
       await request(server).post('/api/v1/admin/achievements/backfill-founders').set('Cookie', adminCookie).expect(201);
-      expect(await hasEarned(member.id, 'founding_bear')).toBe(true);
+      expect(await hasEarned(member.id, 'founding_member')).toBe(true);
     });
 
     it('rejects a moderator running the founders backfill (admin-only)', async () => {

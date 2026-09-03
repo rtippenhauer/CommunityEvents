@@ -59,6 +59,11 @@ import { coerceRawRow } from './common/utils/prisma-raw.util';
 import { resolveRootTenantDomain } from './common/utils/tenant-domain.util';
 import { AUTOMATION_ACCOUNT_EMAIL } from './common/utils/service-account.util';
 import { LEGAL_DEFAULT_ROWS } from './common/legal/legal-defaults';
+import { achievementDefaultRows } from './common/achievements/achievement-defaults';
+import {
+  DEFAULT_TERM_DINNER_SINGULAR,
+  DEFAULT_TERM_DINNER_PLURAL,
+} from './common/config/term-defaults';
 import {
   createServiceAccount,
   type SqlExecutor,
@@ -351,6 +356,33 @@ Config:
        VALUES (?, 1, 0, 300, 1000, 0, 0, CURDATE())`,
       tenantRow.id,
     );
+
+    // ---- Achievement catalogue (v2-10) ------------------------------------
+    // Scoped as of v2-10, so it is seeded per community and can no longer live
+    // in seed.ts, which runs before any tenant exists. The rows belong to this
+    // community and its admin can edit them -- the whole point, since the
+    // catalogue used to be one global set carrying DinnerBears' copy that no
+    // other community could override.
+    //
+    // Deliberately placed AFTER the terminology block above: the copy carries
+    // `{{dinner_plural_lower}}` placeholders, and the terms have to be settled
+    // before they are filled. Today that block DELETEs the seeded terminology
+    // so a fresh install falls back to the generic defaults, which is exactly
+    // what these rows should then read.
+    //
+    // `skipDuplicates` rather than a count check, so a re-run adds anything the
+    // catalogue has gained without touching a row this community has edited.
+    // It keys on the (tenant_id, key) unique index.
+    const seededAchievements = await tx.achievements.createMany({
+      data: achievementDefaultRows({
+        dinnerSingularLower: DEFAULT_TERM_DINNER_SINGULAR.toLowerCase(),
+        dinnerPluralLower: DEFAULT_TERM_DINNER_PLURAL.toLowerCase(),
+      }).map((row) => ({ ...row, tenantId: tenantRow.id })),
+      skipDuplicates: true,
+    });
+    if (seededAchievements.count) {
+      console.log(`\nAchievements:\n  • seeded ${seededAchievements.count} achievement(s)`);
+    }
 
     // ---- Service account -------------------------------------------------
     // The root tenant's, so role `automation`. Created before the admin because

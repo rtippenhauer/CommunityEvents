@@ -12,11 +12,11 @@ import { coerceRawRows } from '../../common/utils/prisma-raw.util';
 // the schema automatically.
 const PROGRESS_TYPE_ORDER: string[] = Object.values($Enums.achievements_progress_type);
 
-// Independence Day week — the qualifying window for the Patriotic Bear achievement.
+// Independence Day week — the qualifying window for the Patriot achievement.
 // Starts a day earlier on stage so it can be tested without waiting for July 4.
-const PATRIOTIC_BEAR_START_PROD = new Date('2026-07-04T00:00:00');
-const PATRIOTIC_BEAR_START_STAGE = new Date('2026-07-03T00:00:00');
-const PATRIOTIC_BEAR_END = new Date('2026-07-11T23:59:59.999');
+const PATRIOTIC_2026_START_PROD = new Date('2026-07-04T00:00:00');
+const PATRIOTIC_2026_START_STAGE = new Date('2026-07-03T00:00:00');
+const PATRIOTIC_2026_END = new Date('2026-07-11T23:59:59.999');
 
 // member_achievements rows with their achievement attached -- the shape the
 // entity produced automatically via `eager: true`, now stated explicitly.
@@ -44,19 +44,19 @@ export interface AchievementWithProgress {
 
 @Injectable()
 export class AchievementsService {
-  private readonly patrioticBearStart: Date;
+  private readonly patriotic2026Start: Date;
 
   constructor(
     private readonly prisma: PrismaService,
     configService: ConfigService,
   ) {
-    this.patrioticBearStart = configService.get<string>('IS_STAGE') === 'true'
-      ? PATRIOTIC_BEAR_START_STAGE
-      : PATRIOTIC_BEAR_START_PROD;
+    this.patriotic2026Start = configService.get<string>('IS_STAGE') === 'true'
+      ? PATRIOTIC_2026_START_STAGE
+      : PATRIOTIC_2026_START_PROD;
   }
 
   async hasEarned(userId: number, key: string): Promise<boolean> {
-    const achievement = await this.prisma.achievements.findUnique({ where: { key } });
+    const achievement = await this.prisma.achievements.findFirst({ where: { key } });
     if (!achievement) return false;
     const earned = await this.prisma.member_achievements.findFirst({
       where: { memberId: userId, achievementId: achievement.id },
@@ -65,7 +65,7 @@ export class AchievementsService {
   }
 
   private async grant(userId: number, key: string): Promise<void> {
-    const achievement = await this.prisma.achievements.findUnique({ where: { key } });
+    const achievement = await this.prisma.achievements.findFirst({ where: { key } });
     if (!achievement) return;
     const exists = await this.prisma.member_achievements.findFirst({
       where: { memberId: userId, achievementId: achievement.id },
@@ -186,7 +186,7 @@ export class AchievementsService {
   ];
 
   private async revoke(userId: number, key: string): Promise<void> {
-    const achievement = await this.prisma.achievements.findUnique({ where: { key } });
+    const achievement = await this.prisma.achievements.findFirst({ where: { key } });
     if (!achievement) return;
     await this.prisma.member_achievements.deleteMany({
       where: { memberId: userId, achievementId: achievement.id },
@@ -217,9 +217,9 @@ export class AchievementsService {
     if (qualifyingLoginCount >= 500) await this.grant(userId, 'login_500');
   }
 
-  async checkPatrioticBearAchievement(userId: number, now: Date): Promise<void> {
-    if (now >= this.patrioticBearStart && now <= PATRIOTIC_BEAR_END) {
-      await this.grant(userId, 'patriotic_bear');
+  async checkPatriotic2026Achievement(userId: number, now: Date): Promise<void> {
+    if (now >= this.patriotic2026Start && now <= PATRIOTIC_2026_END) {
+      await this.grant(userId, 'patriotic_2026');
     }
   }
 
@@ -508,7 +508,7 @@ export class AchievementsService {
     title?: string | null;
     isSecret: boolean;
   }): Promise<Achievement> {
-    const existing = await this.prisma.achievements.findUnique({ where: { key: dto.key } });
+    const existing = await this.prisma.achievements.findFirst({ where: { key: dto.key } });
     if (existing) throw new ConflictException(`Key '${dto.key}' already exists`);
     return this.prisma.achievements.create({ data: ({
       key: dto.key,
@@ -612,6 +612,14 @@ export class AchievementsService {
     // could not -- `users` was global -- and this granted the founding
     // achievement to every active member of the *deployment*, stamped with the
     // calling tenant. Now it grants it to this community's members only.
+    //
+    // The `achievements` join needs one for the same reason as of v2-10, when
+    // the catalogue became scoped. Matching on the key alone was correct while
+    // exactly one row in the database held it; now every community has its own
+    // `founding_member`, so an unconstrained join would multiply this INSERT by
+    // the number of communities and grant each member every tenant's founding
+    // achievement id, all stamped with the caller's tenant. Raw SQL is not
+    // routed through the scoping extension, so nothing else would catch it.
     const tenantId = requireTenantId('founder achievement backfill');
 
     const result = await this.prisma.$executeRawUnsafe(
@@ -619,7 +627,7 @@ export class AchievementsService {
       INSERT INTO member_achievements (member_id, achievement_id, earned_at, tenant_id)
       SELECT u.id, a.id, NOW(), ?
       FROM users u
-      JOIN achievements a ON a.\`key\` = 'founding_bear'
+      JOIN achievements a ON a.\`key\` = 'founding_member' AND a.tenant_id = ?
       WHERE u.status = 'active'
         AND u.tenant_id = ?
         AND NOT EXISTS (
@@ -628,6 +636,10 @@ export class AchievementsService {
             AND ma.tenant_id = ?
         )
     `,
+      // One per placeholder, in order: the tenant stamped on the inserted row,
+      // the catalogue row's tenant, the member scan, and the already-granted
+      // probe.
+      tenantId,
       tenantId,
       tenantId,
       tenantId,
@@ -637,7 +649,7 @@ export class AchievementsService {
 
   // One-time correction for a bug (fixed alongside this method, Phase 20) where
   // PointsService.checkInvitePointForInviter destructured the wrong raw-query
-  // key and never actually found an inviter — every successful-invite Bear
+  // key and never actually found an inviter — every successful-invite
   // Point and Connector-tier achievement since Phase 15 launched silently
   // failed to award. Re-derives the same condition the (now-fixed) live trigger
   // checks: an invitee who has attended at least once, whose inviter hasn't

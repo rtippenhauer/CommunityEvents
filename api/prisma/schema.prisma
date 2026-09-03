@@ -57,7 +57,7 @@ datasource db {
 
 model achievements {
   id                 Int                         @id @default(autoincrement()) @db.UnsignedInt
-  key                String                      @unique(map: "uq_achievements_key") @db.VarChar(64)
+  key                String                      @db.VarChar(64)
   name               String                      @db.VarChar(120)
   description        String                      @db.VarChar(500)
   icon               String                      @default("emoji_events") @db.VarChar(255)
@@ -71,8 +71,25 @@ model achievements {
   createdAt          DateTime                    @default(now()) @map("created_at") @db.DateTime(0)
   events             events?                     @relation(fields: [eventId], references: [id], onUpdate: NoAction, map: "fk_achievements_event")
   memberAchievements member_achievements[]
+  tenantId           Int                         @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant             tenants                     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_achievements_tenant")
 
+  /// Scoped in v2-10. The catalogue used to be global reference data seeded
+  /// once, which meant its copy was the same in every community -- and it was
+  /// DinnerBears' copy ("Founding Bear", "Attended 5 DinnerBears dinners"),
+  /// which no community could override because the row was not theirs.
+  ///
+  /// `key` is what code joins on (`founding_bear` in adminBackfillFounders and
+  /// merch.service), so it stays stable per community and only the display
+  /// fields differ. That is why the unique key is (tenant_id, key) rather than
+  /// key alone: every community holds its own row for the same key.
+  ///
+  /// This also resolves an inconsistency -- `event_id` points at `events`,
+  /// which is scoped, so a global row could already reference one community's
+  /// event.
+  @@unique([tenantId, key], map: "uq_achievements_tenant_key")
   @@index([eventId], map: "fk_achievements_event")
+  @@index([tenantId], map: "idx_achievements_tenant")
 }
 
 model announcement_comments {
@@ -758,10 +775,17 @@ model member_achievements {
   tenantId      Int          @default(0) @map("tenant_id") @db.UnsignedInt
   tenant        tenants      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_member_achievements_tenant")
 
-  /// tenantId here is a correctness fix, not tuning (v2-5): `achievements` is a
-  /// global model, so its ids are shared by every tenant, and without the tenant
-  /// column this index means one community granting a member an achievement
-  /// permanently blocks another from doing the same.
+  /// tenantId was a correctness fix when it was added (v2-5): `achievements`
+  /// was a global model, so its ids were shared by every tenant, and without
+  /// the tenant column this index meant one community granting a member an
+  /// achievement permanently blocked another from doing the same.
+  ///
+  /// v2-10 scoped `achievements`, so an achievement id now belongs to exactly
+  /// one community and that collision is no longer reachable — the column is
+  /// redundant here rather than load-bearing. It stays because dropping it
+  /// would rebuild this index and the fk_ma_member foreign key underneath it
+  /// for no behavioural gain, and because it keeps the row self-describing for
+  /// the purge in tenants-admin.service.
   ///
   /// Appended rather than placed first on purpose. Uniqueness does not care
   /// about column order, but MySQL does: `member_id` leads this index and is
@@ -1000,6 +1024,7 @@ model tenants {
   facebookAppId            String?                    @map("facebook_app_id") @db.VarChar(255)
   facebookAppSecret        String?                    @map("facebook_app_secret") @db.Text
   createdAt                DateTime                   @default(now()) @map("created_at") @db.DateTime(0)
+  achievements             achievements[]
   announcement_comments    announcement_comments[]
   announcements            announcements[]
   audit_log                audit_log[]

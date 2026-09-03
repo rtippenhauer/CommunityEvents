@@ -730,7 +730,7 @@ export class AuthService {
     user.lastLoginAt = now;
 
     await this.achievementsService.checkLoginAchievements(user.id, newCount);
-    await this.achievementsService.checkPatrioticBearAchievement(user.id, now);
+    await this.achievementsService.checkPatriotic2026Achievement(user.id, now);
   }
 
   // ── Email / Password ────────────────────────────────────────────────────────

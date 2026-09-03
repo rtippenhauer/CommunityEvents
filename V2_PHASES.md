@@ -1164,9 +1164,19 @@ DinnerBears artwork on every error, and there is no setting that changes it.
 
 **3. Branding seeded *into* new communities, which is the structural miss.**
 `prisma/seed-data/achievements.json` writes "Founding **Bear**" and "Attended 5
-**DinnerBears** dinners" as real rows in every community at creation. Unlike a
-fallback, a community cannot override these -- they are its data, and they are
-already wrong in both communities on stage. v2-6 made branding per-community and
+**DinnerBears** dinners" into the achievement catalogue.
+
+**Correction (2026-09-02):** this section originally said those were "real rows
+in every community at creation" which "a community cannot override -- they are
+its data". That was wrong on both counts. `achievements` was in `GLOBAL_MODELS`,
+so there was **one** catalogue of 50 rows written once by `seed.ts` before any
+tenant exists, shared by every community; only `member_achievements` (the
+awards) was scoped. So the rows were not any community's data, and the reason
+nobody could override them is that they belonged to nobody.
+
+That made the choice the section offered -- interpolate at read time, or go
+generic -- the wrong pair, since neither gives a community its own catalogue.
+Resolved by scoping the model instead (see the v2-10 notes below). v2-6 made branding per-community and
 the seed data never followed. Either the descriptions interpolate the
 community's own terms at read time (as the legal templates already do via
 `getPublicValue`), or they become generic. `term_points` = "Bear Points" is the

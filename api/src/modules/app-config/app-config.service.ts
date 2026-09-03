@@ -15,6 +15,13 @@ import { LEGAL_DEFAULT_ROWS, fillLegalPlaceholders } from '../../common/legal/le
 import { currentTenantId, requireTenantId, runWithTenant } from '../../common/tenant/tenant-store';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { TenantOAuthService } from '../../common/tenant/tenant-oauth.service';
+import {
+  DEFAULT_TERM_LOCATION_SINGULAR,
+  DEFAULT_TERM_LOCATION_PLURAL,
+  DEFAULT_TERM_DINNER_SINGULAR,
+  DEFAULT_TERM_DINNER_PLURAL,
+  DEFAULT_TERM_POINTS,
+} from '../../common/config/term-defaults';
 
 // Only these keys are servable/editable through the config endpoints — keeps
 // this generic key/value table from becoming an accidental back door into
@@ -124,7 +131,7 @@ function isKnownConfigKey(key: string): key is LegalConfigKey | SiteSettingKey {
 
 // Defaults used when a fork's database has no row yet for a given setting
 // (fresh install, or a key added after the fork's database was seeded).
-const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
+export const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   location_privacy_default: 'public',
   event_cadence_weekday: '2', // 0 = Sunday … 6 = Saturday; 2 = Tuesday
   event_cadence_time: '18:30',
@@ -152,11 +159,11 @@ const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   contact_event_email: '',
   // Terminology defaults keep DinnerBears' original wording; a fork overrides
   // these in /admin/settings (e.g. Sons → Location(s)/Meeting(s)/Points).
-  term_location_singular: 'Location',
-  term_location_plural: 'Locations',
-  term_dinner_singular: 'Event',
-  term_dinner_plural: 'Events',
-  term_points: 'Points',
+  term_location_singular: DEFAULT_TERM_LOCATION_SINGULAR,
+  term_location_plural: DEFAULT_TERM_LOCATION_PLURAL,
+  term_dinner_singular: DEFAULT_TERM_DINNER_SINGULAR,
+  term_dinner_plural: DEFAULT_TERM_DINNER_PLURAL,
+  term_points: DEFAULT_TERM_POINTS,
   // Feature toggles default on — an absent row resolves to enabled, so a fork
   // (or DinnerBears) keeps every feature until an admin turns one off.
   feature_ratings: 'true',

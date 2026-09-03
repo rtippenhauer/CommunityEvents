@@ -28,6 +28,7 @@ import { Prisma } from '@prisma/client';
  * refuses to read or write any of these without a tenant in context.
  */
 export const TENANT_SCOPED_MODELS = [
+  'achievements',
   'announcement_comments',
   'app_config',
   'announcements',
@@ -80,9 +81,9 @@ export const TENANT_SCOPED_MODELS = [
  *  2. **Reference data written by `seed.ts`, which runs before any tenant
  *     exists.** The install order is `migrate deploy` -> `seed.js` ->
  *     `bootstrap.js`, and it is bootstrap that creates the root tenant.
- *     `cities`, `avatar`, `achievements`, `email_provider_config` and
- *     `merch_config` are all seeded into a database with zero tenant rows, so
- *     they cannot carry a NOT NULL `tenant_id` without reordering the install.
+ *     `cities`, `avatar` and `merch_config` are all seeded into a database
+ *     with zero tenant rows, so they cannot carry a NOT NULL `tenant_id`
+ *     without reordering the install.
  *
  *     `app_config` and `users` used to be in this group and are not any more:
  *     v2-6 moved the rows that genuinely belong to a community (branding and
@@ -93,7 +94,6 @@ export const TENANT_SCOPED_MODELS = [
  *     same for every community, not configuration of one.
  */
 export const GLOBAL_MODELS = [
-  'achievements',
   'avatar',
   'cities',
   'email_suppressions',
