@@ -113,19 +113,16 @@ export class EventsService {
     eventPluralLower: string;
     logoUrl: string;
   }> {
-    const [brandName, tagline, eventSingular, eventPlural, brandLogoUrl] = await Promise.all([
+    const [brandName, tagline, eventSingular, eventPlural, logoUrl] = await Promise.all([
       this.appConfig.getSiteSetting('brand_name'),
       this.appConfig.getSiteSetting('brand_tagline'),
       this.appConfig.getSiteSetting('term_dinner_singular'),
       this.appConfig.getSiteSetting('term_dinner_plural'),
-      this.appConfig.getSiteSetting('brand_logo_url'),
+      // This community's uploaded logo, else the platform mark (v2-10). The
+      // fallback used to be DinnerBears' /assets/logo.png, so every community
+      // that had not uploaded one mailed out another community's artwork.
+      this.appConfig.absoluteLogoUrl(),
     ]);
-    const appUrl = await this.tenantResolution.baseUrlFor();
-    // brand_logo_url is already an absolute path (/api/uploads/branding/<file>)
-    // once an admin uploads one; empty means no override, so fall back to the
-    // same compiled-in default asset the frontend's BrandConfigService.logoSrc
-    // falls back to when nothing's been uploaded.
-    const logoUrl = `${appUrl}${brandLogoUrl || '/assets/logo.png'}`;
     return {
       brandName,
       tagline,
