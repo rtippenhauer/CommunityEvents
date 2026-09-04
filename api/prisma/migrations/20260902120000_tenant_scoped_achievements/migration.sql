@@ -10,6 +10,15 @@
 -- AchievementsService.grant). Both hold ids that were valid when one catalogue
 -- served everyone. Fanning the catalogue out per tenant without re-pointing
 -- them would leave members' earned badges pointing at another community's rows.
+--
+-- **Statement order matters and is not arbitrary.** The unique index has to be
+-- swapped from (`key`) to (`tenant_id`, `key`) BEFORE the catalogue is copied
+-- per tenant, because the whole point of the copy is that the same `key` now
+-- appears once per community. The first version of this migration did the copy
+-- first and died on `Duplicate entry 'first_dinner' for key
+-- 'achievements.uq_achievements_key'` against any database that had a non-root
+-- tenant -- which the test suite never caught, because it builds an empty
+-- database where the copy selects zero rows and the constraint is never tested.
 
 -- 1. The column, with the same DEFAULT 0 sentinel every other scoped table uses.
 --    The foreign key added at the end is what makes an unscoped write fail at
@@ -26,7 +35,15 @@ UPDATE `achievements` a
   SET a.`tenant_id` = t.`id`
   WHERE a.`tenant_id` = 0;
 
--- 3. Every other community gets its own copy of that catalogue.
+-- 3. Swap the unique key BEFORE copying anything. `key` alone stops being
+--    unique here: every community holds its own row for the same key, which is
+--    exactly what step 4 is about to create. At this point every row still
+--    belongs to the root tenant, so the new compound index is satisfiable.
+DROP INDEX `uq_achievements_key` ON `achievements`;
+CREATE UNIQUE INDEX `uq_achievements_tenant_key` ON `achievements` (`tenant_id`, `key`);
+CREATE INDEX `idx_achievements_tenant` ON `achievements` (`tenant_id`);
+
+-- 4. Every other community gets its own copy of that catalogue.
 --
 --    `event_id` is deliberately NULLed in the copies. It references `events`,
 --    which is tenant-scoped, so carrying the root tenant's event id into
@@ -45,7 +62,7 @@ FROM `achievements` a
   JOIN `tenants` root ON root.`is_root` = 1 AND a.`tenant_id` = root.`id`
   JOIN `tenants` t ON t.`is_root` = 0;
 
--- 4. Re-point earned badges at the granting community's own copy, matched by
+-- 5. Re-point earned badges at the granting community's own copy, matched by
 --    `key` -- which is stable across communities precisely because it is an
 --    identifier and not copy.
 UPDATE `member_achievements` ma
@@ -55,7 +72,7 @@ UPDATE `member_achievements` ma
   SET ma.`achievement_id` = mine.`id`
   WHERE ma.`tenant_id` <> old.`tenant_id`;
 
--- 5. The same for the points ledger. `member_points.reference_id` holds an
+-- 6. The same for the points ledger. `member_points.reference_id` holds an
 --    achievement id when `point_type = 'achievement'`, with no foreign key to
 --    enforce it -- so nothing would have complained had this been missed, and
 --    the leaderboard would have silently credited another community's row.
@@ -66,17 +83,12 @@ UPDATE `member_points` mp
   SET mp.`reference_id` = mine.`id`
   WHERE mp.`point_type` = 'achievement' AND mp.`tenant_id` <> old.`tenant_id`;
 
--- 6. Two keys carried DinnerBears branding in an identifier. They are joined on
+-- 7. Two keys carried DinnerBears branding in an identifier. They are joined on
 --    in code (adminBackfillFounders, merch.service, the splash component), so
---    they are renamed in lockstep with those constants.
+--    they are renamed in lockstep with those constants. Safe under the compound
+--    unique key: each community holds exactly one row per key.
 UPDATE `achievements` SET `key` = 'founding_member' WHERE `key` = 'founding_bear';
 UPDATE `achievements` SET `key` = 'patriotic_2026'  WHERE `key` = 'patriotic_bear';
-
--- 7. `key` alone is no longer unique -- every community holds its own row for
---    the same key -- so the old index is replaced by the compound one.
-DROP INDEX `uq_achievements_key` ON `achievements`;
-CREATE UNIQUE INDEX `uq_achievements_tenant_key` ON `achievements` (`tenant_id`, `key`);
-CREATE INDEX `idx_achievements_tenant` ON `achievements` (`tenant_id`);
 
 -- 8. RESTRICT, matching every other tenant key: deleting a community must fail
 --    loudly if the purge in tenants-admin.service ever stops covering this
