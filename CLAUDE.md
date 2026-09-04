@@ -282,6 +282,28 @@ and follows it. See `V2_PHASES.md`.
   project's own domain, replacing the earlier
   `communityevents.rtippenhauer.com`. Per REQ-TENANT-01.7 this deployment is
   its own root tenant, not a tenant of production.
+- **The stage container is `CommunityEvents-v2-Stage`** on Unraid, defined by
+  `docker/communityevents-v2-stage-unraid.xml`. That template is the answer to
+  "what is it called" and "how do I get a shell" -- both have been asked more
+  than once and neither was written down here.
+
+  The runtime image is **Alpine**: it has `/bin/sh` and `/bin/ash` and **no
+  `bash`**, which is why Unraid's Console button used to open and close with no
+  error -- the template asked for a shell the image does not contain. Fixed to
+  `sh` in `v2-10`; an existing container keeps the old setting until its Shell
+  field is edited or it is re-added from the template. From a terminal:
+  `docker exec -it CommunityEvents-v2-Stage sh`.
+
+  One-off Prisma commands run through the same path the entrypoint uses --
+  `docker exec CommunityEvents-v2-Stage node /app/node_modules/prisma/build/index.js <cmd>`
+  -- rather than `npx`, which does not reliably resolve in that image.
+- **The entrypoint does not fail the container on a failed migration.** It runs
+  `migrate deploy ... || echo "WARNING: Migration failed"`, so Nest starts
+  anyway and a half-migrated database serves traffic. A failed migration blocks
+  every later one until it is resolved, so the symptom surfaces much later as an
+  unrelated-looking 500 -- which is exactly how `v2-10`'s achievements migration
+  reached stage testing. The line to look for on startup is
+  `[entrypoint] Migrations complete.`
 - The full v2 fresh-install sequence has been run against it successfully:
   `prisma migrate deploy` (on container start) -> `seed.js` -> `bootstrap.js`.
   That is the supported install path from `v2-1` onward; the v1-era

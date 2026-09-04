@@ -5,7 +5,10 @@
   <Registry/>
   <Network>bridge</Network>
   <MyIP/>
-  <Shell>bash</Shell>
+  <!-- sh, not bash: the runtime image is Alpine and ships /bin/sh and /bin/ash
+       only. Unraid's Console button runs whatever is named here, so `bash` made
+       it open and close immediately with no error. -->
+  <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support/>
   <Project>https://github.com/rtippenhauer/CommunityEvents</Project>
