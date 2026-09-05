@@ -276,8 +276,12 @@ and follows it. See `V2_PHASES.md`.
   (14 hand-edited raw SQL statements) should ride along with v2-6's stage pass.
 
 **Infra readiness (confirmed by Rob 2026-08-09):**
-- A dedicated `communityevents` database + `communityevents_user` exist on
-  the Unraid MySQL server (192.168.2.241), separate from `dinnerbears`.
+- A dedicated database + `communityevents_user` exist on the Unraid MySQL
+  server (192.168.2.241), separate from `dinnerbears`. **The stage deployment's
+  database is `communityevents_stage`** -- this line said `communityevents`
+  until v2-10, which would have sent a recovery command at the wrong database.
+  Confirm the name from the container's own startup output rather than from
+  here: it prints `Datasource "db": MySQL database "<name>" at <host>`.
 - **Stage now lives at `https://stage.communityeventsproject.com`** — the
   project's own domain, replacing the earlier
   `communityevents.rtippenhauer.com`. Per REQ-TENANT-01.7 this deployment is
