@@ -40,6 +40,7 @@ import { AchievementsService } from '../community/achievements.service';
 import { ConfigService } from '@nestjs/config';
 import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
+import { emailPalette, type EmailPalette } from '../../common/utils/color.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS, eventUid } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 
@@ -112,17 +113,30 @@ export class EventsService {
     eventSingularLower: string;
     eventPluralLower: string;
     logoUrl: string;
+    colors: EmailPalette;
   }> {
-    const [brandName, tagline, eventSingular, eventPlural, logoUrl] = await Promise.all([
-      this.appConfig.getSiteSetting('brand_name'),
-      this.appConfig.getSiteSetting('brand_tagline'),
-      this.appConfig.getSiteSetting('term_dinner_singular'),
-      this.appConfig.getSiteSetting('term_dinner_plural'),
-      // This community's uploaded logo, else the platform mark (v2-10). The
-      // fallback used to be DinnerBears' /assets/logo.png, so every community
-      // that had not uploaded one mailed out another community's artwork.
-      this.appConfig.absoluteLogoUrl(),
-    ]);
+    const [brandName, tagline, eventSingular, eventPlural, logoUrl, primary, background] =
+      await Promise.all([
+        this.appConfig.getSiteSetting('brand_name'),
+        this.appConfig.getSiteSetting('brand_tagline'),
+        this.appConfig.getSiteSetting('term_dinner_singular'),
+        this.appConfig.getSiteSetting('term_dinner_plural'),
+        // This community's uploaded logo, else the platform mark (v2-10). The
+        // fallback used to be DinnerBears' /assets/logo.png, so every community
+        // that had not uploaded one mailed out another community's artwork.
+        this.appConfig.absoluteLogoUrl(),
+        this.appConfig.getSiteSetting('theme_color_primary'),
+        this.appConfig.getSiteSetting('theme_color_background'),
+      ]);
+    // Every colour in these templates used to be a DinnerBears literal, so a
+    // community that had set its own palette still mailed out amber and brown
+    // (v2-10). Email cannot use CSS custom properties -- each value has to be
+    // in the markup at send time -- so the shades are derived here from the
+    // community's own primary, using the same lightness targets
+    // BrandConfigService.applyChrome uses for the app's chrome. An amber
+    // primary therefore reproduces very nearly the palette these templates
+    // were hand-written in.
+    const colors = emailPalette(primary, background);
     return {
       brandName,
       tagline,
@@ -131,6 +145,7 @@ export class EventsService {
       eventSingularLower: eventSingular.toLowerCase(),
       eventPluralLower: eventPlural.toLowerCase(),
       logoUrl,
+      colors,
     };
   }
 
@@ -494,7 +509,7 @@ export class EventsService {
   }
 
   private async sendCancellationEmails(event: EventWithLocation): Promise<void> {
-    const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
+    const { brandName, tagline, eventSingularLower, logoUrl, colors } = await this.getEmailBrand();
     const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
     const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
@@ -503,37 +518,37 @@ export class EventsService {
     const timeDisplay = this.formatEventTimeDisplay(eh, emin);
 
     const reasonBlock = event.cancelledReason
-      ? `<p style="margin:16px 0 0;padding:12px 16px;background:#fff3e0;border-left:3px solid #e65100;border-radius:4px;font-size:0.9rem;color:#444">${event.cancelledReason}</p>`
+      ? `<p style="margin:16px 0 0;padding:12px 16px;background:${colors.surfaceAlt};border-left:3px solid #e65100;border-radius:4px;font-size:0.9rem;color:#444">${event.cancelledReason}</p>`
       : '';
 
     const buildHtml = (recipientName: string) => `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<body style="margin:0;padding:0;background:${colors.pageBg};font-family:'Helvetica Neue',Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
-  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+  <tr><td style="background:${colors.band};padding:20px;text-align:center">
     <img src="${logoUrl}" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
     <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#c62828;line-height:1.2">This event has been cancelled</h1>
-    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:20px">
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.title}</strong>
+    <table role="presentation" width="100%" style="background:${colors.surfaceAlt};border:1px solid ${colors.rule};border-radius:8px;margin-bottom:20px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">🍽️</span><strong>${event.title}</strong>
       </td></tr>
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay}
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay}
       </td></tr>
       <tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span>${event.locationName}
+        <span style="color:${colors.primary};margin-right:8px">🍽️</span>${event.locationName}
       </td></tr>
     </table>
     ${reasonBlock}
     <p style="margin:20px 0 0;font-size:0.88rem;color:#888">We hope to see you at the next ${brandName} ${eventSingularLower}!</p>
   </td></tr>
-  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+  <tr><td style="padding:16px 36px;background:${colors.surfaceAlt};border-top:1px solid ${colors.rule};text-align:center">
     <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
@@ -577,7 +592,7 @@ export class EventsService {
 
   private async sendUpdateEmails(event: EventWithLocation): Promise<void> {
     const appUrl = await this.tenantResolution.baseUrlFor();
-    const { brandName, tagline, logoUrl } = await this.getEmailBrand();
+    const { brandName, tagline, logoUrl, colors } = await this.getEmailBrand();
     const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
     const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
@@ -589,33 +604,33 @@ export class EventsService {
     const buildHtml = (recipientName: string, showAddress: boolean) => `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<body style="margin:0;padding:0;background:${colors.pageBg};font-family:'Helvetica Neue',Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
-  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+  <tr><td style="background:${colors.band};padding:20px;text-align:center">
     <img src="${logoUrl}" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
-    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">Event details have been updated</h1>
-    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.title}</strong>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:${colors.ink};line-height:1.2">Event details have been updated</h1>
+    <table role="presentation" width="100%" style="background:${colors.surfaceAlt};border:1px solid ${colors.rule};border-radius:8px;margin-bottom:24px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">🍽️</span><strong>${event.title}</strong>
       </td></tr>
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay}
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay}
       </td></tr>
       <tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>${event.locationName}${showAddress && event.locationAddress ? ` — ${event.locationAddress}` : ''}
+        <span style="color:${colors.primary};margin-right:8px">📍</span>${event.locationName}${showAddress && event.locationAddress ? ` — ${event.locationAddress}` : ''}
       </td></tr>
     </table>
     <p style="text-align:center;margin:0 0 24px">
-      <a href="${eventUrl}" style="background:#3D1C05;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Updated Event</a>
+      <a href="${eventUrl}" style="background:${colors.primary};color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Updated Event</a>
     </p>
     <p style="margin:0;font-size:0.85rem;color:#888">If you can no longer attend, you can update your RSVP on the event page.</p>
   </td></tr>
-  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+  <tr><td style="padding:16px 36px;background:${colors.surfaceAlt};border-top:1px solid ${colors.rule};text-align:center">
     <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
@@ -784,7 +799,7 @@ export class EventsService {
 
   private async sendPublishInvites(event: EventWithLocation): Promise<void> {
     const appUrl = await this.tenantResolution.baseUrlFor();
-    const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
+    const { brandName, tagline, eventSingularLower, logoUrl, colors } = await this.getEmailBrand();
     // Every recipient here is, by construction, someone who hasn't RSVP'd yet
     // (see the rsvpedIds filter below) — so for a private location, none of
     // them have earned address visibility regardless of role.
@@ -831,33 +846,33 @@ export class EventsService {
       const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<body style="margin:0;padding:0;background:${colors.pageBg};font-family:'Helvetica Neue',Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
-  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+  <tr><td style="background:${colors.band};padding:20px;text-align:center">
     <img src="${logoUrl}" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${member.fullName},</p>
-    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You're invited to ${eventSingularLower}! 🐻</h1>
-    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.locationName}</strong>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:${colors.ink};line-height:1.2">You're invited to ${eventSingularLower}!</h1>
+    <table role="presentation" width="100%" style="background:${colors.surfaceAlt};border:1px solid ${colors.rule};border-radius:8px;margin-bottom:24px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">🍽️</span><strong>${event.locationName}</strong>
       </td></tr>
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay} ET
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay} ET
       </td></tr>
       ${locationAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>${locationAddress}
+        <span style="color:${colors.primary};margin-right:8px">📍</span>${locationAddress}
       </td></tr>` : ''}
     </table>
     <p style="margin:0 0 24px;font-size:0.9rem;color:#555">Open the attached calendar invite to Accept, Maybe, or Decline — your RSVP will update automatically. Or tap the button below to RSVP on the ${brandName} site.</p>
     <p style="text-align:center;margin:0 0 24px">
-      <a href="${eventUrl}" style="background:#3D1C05;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View &amp; RSVP</a>
+      <a href="${eventUrl}" style="background:${colors.primary};color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View &amp; RSVP</a>
     </p>
   </td></tr>
-  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+  <tr><td style="padding:16px 36px;background:${colors.surfaceAlt};border-top:1px solid ${colors.rule};text-align:center">
     <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
@@ -890,7 +905,7 @@ export class EventsService {
     if (!user?.email) return;
 
     const appUrl = await this.tenantResolution.baseUrlFor();
-    const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
+    const { brandName, tagline, eventSingularLower, logoUrl, colors } = await this.getEmailBrand();
     const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
     const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
@@ -902,33 +917,33 @@ export class EventsService {
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<body style="margin:0;padding:0;background:${colors.pageBg};font-family:'Helvetica Neue',Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
-  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+  <tr><td style="background:${colors.band};padding:20px;text-align:center">
     <img src="${logoUrl}" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${user.fullName},</p>
-    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You're going! 🎉</h1>
-    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.locationName}</strong>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:${colors.ink};line-height:1.2">You're going! 🎉</h1>
+    <table role="presentation" width="100%" style="background:${colors.surfaceAlt};border:1px solid ${colors.rule};border-radius:8px;margin-bottom:24px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">🍽️</span><strong>${event.locationName}</strong>
       </td></tr>
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay} ET
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📅</span>${dateDisplay} at ${timeDisplay} ET
       </td></tr>
       ${event.locationAddress ? `<tr><td style="padding:10px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>${event.locationAddress}
+        <span style="color:${colors.primary};margin-right:8px">📍</span>${event.locationAddress}
       </td></tr>` : ''}
     </table>
     <p style="margin:0 0 24px;font-size:0.9rem;color:#555">A calendar invite is attached — open it to add this ${eventSingularLower} to your calendar. You can Accept, Maybe, or Decline directly from the invite.</p>
     <p style="text-align:center;margin:0 0 24px">
-      <a href="${eventUrl}" style="background:#3D1C05;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Event</a>
+      <a href="${eventUrl}" style="background:${colors.primary};color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Event</a>
     </p>
   </td></tr>
-  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+  <tr><td style="padding:16px 36px;background:${colors.surfaceAlt};border-top:1px solid ${colors.rule};text-align:center">
     <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
@@ -1116,6 +1131,7 @@ export class EventsService {
     tagline: string;
     eventSingularLower: string;
     logoUrl: string;
+    colors: EmailPalette;
     inviterName: string | null;
     subject: string;
     eventTitle: string;
@@ -1133,7 +1149,7 @@ export class EventsService {
     icsUrl: string;
   }): string {
     const {
-      appUrl, brandName, tagline, eventSingularLower, logoUrl, inviterName, eventTitle, eventDateDisplay, eventTimeDisplay,
+      appUrl, brandName, tagline, eventSingularLower, logoUrl, colors, inviterName, eventTitle, eventDateDisplay, eventTimeDisplay,
       locationName, locationAddress, locationLat, locationLng,
       photoUrl, description, additionalInfo, manageUrl, googleCalUrl, icsUrl,
     } = params;
@@ -1150,15 +1166,15 @@ export class EventsService {
       : '';
 
     const inviterRow = inviterName
-      ? `<p style="margin:0 0 16px;font-size:1rem;color:#6B4226">🎉 <strong>${inviterName}</strong> invited you to ${eventSingularLower}!</p>`
-      : `<p style="margin:0 0 16px;font-size:1rem;color:#6B4226">🎉 You're on the guest list for a ${brandName} ${eventSingularLower}!</p>`;
+      ? `<p style="margin:0 0 16px;font-size:1rem;color:${colors.inkMuted}">🎉 <strong>${inviterName}</strong> invited you to ${eventSingularLower}!</p>`
+      : `<p style="margin:0 0 16px;font-size:1rem;color:${colors.inkMuted}">🎉 You're on the guest list for a ${brandName} ${eventSingularLower}!</p>`;
 
     const descriptionBlock = description
       ? `<p style="margin:16px 0 0;font-size:0.95rem;color:#444;line-height:1.6">${description}</p>`
       : '';
 
     const additionalInfoBlock = additionalInfo
-      ? `<p style="margin:12px 0 0;font-size:0.88rem;color:#666;line-height:1.5;padding:10px 14px;background:#f5edd8;border-radius:6px">${additionalInfo}</p>`
+      ? `<p style="margin:12px 0 0;font-size:0.88rem;color:#666;line-height:1.5;padding:10px 14px;background:${colors.pageBg};border-radius:6px">${additionalInfo}</p>`
       : '';
 
     const btn = (href: string, label: string, bg: string, fg: string) =>
@@ -1167,13 +1183,13 @@ export class EventsService {
     return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<body style="margin:0;padding:0;background:${colors.pageBg};font-family:'Helvetica Neue',Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
 
   <!-- Header -->
-  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+  <tr><td style="background:${colors.band};padding:20px;text-align:center">
     <img src="${logoUrl}" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
 
@@ -1183,20 +1199,20 @@ export class EventsService {
   <!-- Content -->
   <tr><td style="padding:32px 36px 24px">
     ${inviterRow}
-    <h1 style="margin:0 0 20px;font-size:1.5rem;font-weight:700;color:#3D1C05;line-height:1.2">${eventTitle}</h1>
+    <h1 style="margin:0 0 20px;font-size:1.5rem;font-weight:700;color:${colors.ink};line-height:1.2">${eventTitle}</h1>
 
     <!-- Details card -->
-    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:20px">
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📅</span>
+    <table role="presentation" width="100%" style="background:${colors.surfaceAlt};border:1px solid ${colors.rule};border-radius:8px;margin-bottom:20px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📅</span>
         <strong>${eventDateDisplay}</strong> at ${eventTimeDisplay}
       </td></tr>
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span>${locationName}
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">🍽️</span>${locationName}
       </td></tr>
       <tr><td style="padding:10px 16px;font-size:0.9rem">
-        <span style="color:#C9933A;margin-right:8px">📍</span>
-        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${locationAddress}</a>
+        <span style="color:${colors.primary};margin-right:8px">📍</span>
+        <a href="${mapsUrl}" style="color:${colors.primary};text-decoration:none">${locationAddress}</a>
       </td></tr>
     </table>
 
@@ -1205,15 +1221,15 @@ export class EventsService {
 
     <!-- Manage RSVP button -->
     <div style="text-align:center;margin:28px 0 20px">
-      <a href="${manageUrl}" style="display:inline-block;padding:14px 32px;background:#C9933A;color:#fff;text-decoration:none;border-radius:8px;font-size:1rem;font-weight:700">
+      <a href="${manageUrl}" style="display:inline-block;padding:14px 32px;background:${colors.primary};color:#fff;text-decoration:none;border-radius:8px;font-size:1rem;font-weight:700">
         Manage Your RSVP
       </a>
     </div>
 
     <!-- Calendar -->
-    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-top:20px">
+    <table role="presentation" width="100%" style="background:${colors.surfaceAlt};border:1px solid ${colors.rule};border-radius:8px;margin-top:20px">
       <tr><td style="padding:14px 16px">
-        <p style="margin:0 0 10px;font-size:0.8rem;font-weight:700;color:#3D1C05;text-transform:uppercase;letter-spacing:0.05em">Add to Calendar</p>
+        <p style="margin:0 0 10px;font-size:0.8rem;font-weight:700;color:${colors.ink};text-transform:uppercase;letter-spacing:0.05em">Add to Calendar</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${btn(googleCalUrl, '📅 Google Calendar', '#fff', '#1a73e8')}
           &nbsp;
@@ -1226,7 +1242,7 @@ export class EventsService {
   </td></tr>
 
   <!-- Footer -->
-  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+  <tr><td style="padding:16px 36px;background:${colors.surfaceAlt};border-top:1px solid ${colors.rule};text-align:center">
     <p style="margin:0 0 6px;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
     <p style="margin:0;font-size:0.72rem;color:#bbb">This link is yours — don't share it. It expires when the event starts.</p>
   </td></tr>
@@ -1380,7 +1396,7 @@ export class EventsService {
     // Fire-and-forget — email delivery is best-effort and must not block returning the link
     if (recipientEmail) {
       const appUrl = await this.tenantResolution.baseUrlFor();
-      const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
+      const { brandName, tagline, eventSingularLower, logoUrl, colors } = await this.getEmailBrand();
       const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
       const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
 
@@ -1410,6 +1426,7 @@ export class EventsService {
           tagline,
           eventSingularLower,
           logoUrl,
+          colors,
           inviterName,
           subject: `You're invited to a ${brandName} ${eventSingularLower}!`,
           eventTitle: event.title,
@@ -1479,7 +1496,7 @@ export class EventsService {
     const saved = await this.prisma.event_guest_links.create({ data: linkData });
 
     const appUrl = await this.tenantResolution.baseUrlFor();
-    const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
+    const { brandName, tagline, eventSingularLower, logoUrl, colors } = await this.getEmailBrand();
     const manageUrl = `${appUrl}/rsvp-guest?token=${saved.token}`;
     const icsUrl = `${appUrl}/api/v1/events/guest-ics/${saved.token}`;
 
@@ -1501,6 +1518,7 @@ export class EventsService {
         tagline,
         eventSingularLower,
         logoUrl,
+        colors,
         inviterName: null,
         subject: `You're going to a ${brandName} ${eventSingularLower}!`,
         eventTitle: event.title,
@@ -1638,7 +1656,7 @@ export class EventsService {
 
     const event = link.event;
     const appUrl = await this.tenantResolution.baseUrlFor();
-    const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
+    const { brandName, tagline, eventSingularLower, logoUrl, colors } = await this.getEmailBrand();
     const manageUrl = `${appUrl}/rsvp-guest?token=${link.token}`;
     const icsUrl = `${appUrl}/api/v1/events/guest-ics/${link.token}`;
 
@@ -1666,6 +1684,7 @@ export class EventsService {
         tagline,
         logoUrl,
         eventSingularLower,
+        colors,
         inviterName,
         subject: `You're invited to a ${brandName} ${eventSingularLower}!`,
         eventTitle: event.title,
@@ -1887,7 +1906,7 @@ export class EventsService {
     signupUrl?: string,
   ): Promise<void> {
     const appUrl = await this.tenantResolution.baseUrlFor();
-    const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
+    const { brandName, tagline, eventSingularLower, logoUrl, colors } = await this.getEmailBrand();
     const [ey, em, ed] = toDateString(event.eventDate).split('-').map(Number);
     const [eh, emin] = toTimeString(event.eventTime).split(':').map(Number);
     const dateDisplay = new Date(ey, em - 1, ed).toLocaleDateString('en-US', {
@@ -1906,41 +1925,41 @@ export class EventsService {
     const phone = event.location?.phone ?? null;
     const websiteUrl = event.location?.websiteUrl ?? null;
     const phoneRow = phone
-      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📞</span>
-        <a href="tel:${phone}" style="color:#C9933A;text-decoration:none">${phone}</a>
+      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📞</span>
+        <a href="tel:${phone}" style="color:${colors.primary};text-decoration:none">${phone}</a>
       </td></tr>`
       : '';
     const websiteRow = websiteUrl
-      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🌐</span>
-        <a href="${websiteUrl}" style="color:#C9933A;text-decoration:none">${websiteUrl}</a>
+      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">🌐</span>
+        <a href="${websiteUrl}" style="color:${colors.primary};text-decoration:none">${websiteUrl}</a>
       </td></tr>`
       : '';
 
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<body style="margin:0;padding:0;background:${colors.pageBg};font-family:'Helvetica Neue',Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
-  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+  <tr><td style="background:${colors.band};padding:20px;text-align:center">
     <img src="${logoUrl}" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
-    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">You've been asked to make the ${eventSingularLower} reservation</h1>
-    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.title}</strong>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:${colors.ink};line-height:1.2">You've been asked to make the ${eventSingularLower} reservation</h1>
+    <table role="presentation" width="100%" style="background:${colors.surfaceAlt};border:1px solid ${colors.rule};border-radius:8px;margin-bottom:24px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">🍽️</span><strong>${event.title}</strong>
       </td></tr>
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📅</span><strong>${dateDisplay}</strong> at ${timeDisplay}
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📅</span><strong>${dateDisplay}</strong> at ${timeDisplay}
       </td></tr>
-      <tr><td style="padding:10px 16px;${phone || websiteUrl ? 'border-bottom:1px solid #e8e0d6;' : ''}font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>
-        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${event.locationName} — ${event.locationAddress}</a>
+      <tr><td style="padding:10px 16px;${phone || websiteUrl ? 'border-bottom:1px solid ${colors.rule};' : ''}font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📍</span>
+        <a href="${mapsUrl}" style="color:${colors.primary};text-decoration:none">${event.locationName} — ${event.locationAddress}</a>
       </td></tr>
       ${phoneRow}
       ${websiteRow}
@@ -1954,19 +1973,19 @@ export class EventsService {
       <li>You'll receive a follow-up email <strong>2 hours before the event</strong> with an updated headcount &mdash; please plan to call the venue that day to confirm the final count.</li>
     </ul>
     <p style="text-align:center;margin:0 0 24px">
-      <a href="${ctaUrl}" style="background:#C9933A;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:1rem;display:inline-block">${ctaLabel}</a>
+      <a href="${ctaUrl}" style="background:${colors.primary};color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:1rem;display:inline-block">${ctaLabel}</a>
     </p>
     <p style="margin:0;font-size:0.8rem;color:#aaa;text-align:center">
       If you have questions, reply to this email or contact the event organizer.
     </p>
     ${signupUrl ? `
-    <div style="margin-top:24px;padding:16px;background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;text-align:center">
+    <div style="margin-top:24px;padding:16px;background:${colors.surfaceAlt};border:1px solid ${colors.rule};border-radius:8px;text-align:center">
       <p style="margin:0 0 10px;font-size:0.88rem;color:#555;font-weight:600">New to ${brandName}?</p>
       <p style="margin:0 0 12px;font-size:0.85rem;color:#777">Create your account and you'll be auto-RSVPed to this ${eventSingularLower}.</p>
       <a href="${signupUrl}" style="background:#1E4D8C;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.9rem;display:inline-block">Create My Account</a>
     </div>` : ''}
   </td></tr>
-  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+  <tr><td style="padding:16px 36px;background:${colors.surfaceAlt};border-top:1px solid ${colors.rule};text-align:center">
     <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
@@ -2102,7 +2121,7 @@ export class EventsService {
 
   private async sendSeatsReminderEmail(event: EventWithLocation): Promise<void> {
     const appUrl = await this.tenantResolution.baseUrlFor();
-    const { brandName, tagline, eventSingularLower, logoUrl } = await this.getEmailBrand();
+    const { brandName, tagline, eventSingularLower, logoUrl, colors } = await this.getEmailBrand();
 
     // Resolve recipient
     let recipientEmail: string | null = event.reservationContactEmail;
@@ -2139,46 +2158,46 @@ export class EventsService {
     const rPhone = event.location?.phone ?? null;
     const rWebsite = event.location?.websiteUrl ?? null;
     const rPhoneRow = rPhone
-      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📞</span>
-        <a href="tel:${rPhone}" style="color:#C9933A;text-decoration:none">${rPhone}</a>
+      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📞</span>
+        <a href="tel:${rPhone}" style="color:${colors.primary};text-decoration:none">${rPhone}</a>
       </td></tr>`
       : '';
     const rWebsiteRow = rWebsite
-      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🌐</span>
-        <a href="${rWebsite}" style="color:#C9933A;text-decoration:none">${rWebsite}</a>
+      ? `<tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">🌐</span>
+        <a href="${rWebsite}" style="color:${colors.primary};text-decoration:none">${rWebsite}</a>
       </td></tr>`
       : '';
 
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#F5EDD8;font-family:'Helvetica Neue',Arial,sans-serif">
+<body style="margin:0;padding:0;background:${colors.pageBg};font-family:'Helvetica Neue',Arial,sans-serif">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td align="center" style="padding:24px 16px">
 <table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(61,28,5,0.12)">
-  <tr><td style="background:#3D1C05;padding:20px;text-align:center">
+  <tr><td style="background:${colors.band};padding:20px;text-align:center">
     <img src="${logoUrl}" alt="${brandName}" height="100" style="display:inline-block;height:100px" />
   </td></tr>
   <tr><td style="padding:32px 36px 24px">
     <p style="margin:0 0 8px;font-size:0.95rem;color:#666">Hi ${recipientName},</p>
-    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:#3D1C05;line-height:1.2">Updated headcount for tonight's ${eventSingularLower}</h1>
-    <table role="presentation" width="100%" style="background:#faf7f2;border:1px solid #e8e0d6;border-radius:8px;margin-bottom:24px">
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">🍽️</span><strong>${event.title}</strong>
+    <h1 style="margin:0 0 20px;font-size:1.4rem;font-weight:700;color:${colors.ink};line-height:1.2">Updated headcount for tonight's ${eventSingularLower}</h1>
+    <table role="presentation" width="100%" style="background:${colors.surfaceAlt};border:1px solid ${colors.rule};border-radius:8px;margin-bottom:24px">
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">🍽️</span><strong>${event.title}</strong>
       </td></tr>
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📅</span><strong>${dateDisplay}</strong> at ${timeDisplay}
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📅</span><strong>${dateDisplay}</strong> at ${timeDisplay}
       </td></tr>
-      <tr><td style="padding:10px 16px;border-bottom:1px solid #e8e0d6;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">📍</span>
-        <a href="${mapsUrl}" style="color:#C9933A;text-decoration:none">${event.locationName} — ${event.locationAddress}</a>
+      <tr><td style="padding:10px 16px;border-bottom:1px solid ${colors.rule};font-size:0.9rem;color:#444">
+        <span style="color:${colors.primary};margin-right:8px">📍</span>
+        <a href="${mapsUrl}" style="color:${colors.primary};text-decoration:none">${event.locationName} — ${event.locationAddress}</a>
       </td></tr>
       ${rPhoneRow}
       ${rWebsiteRow}
       <tr><td style="padding:14px 16px;font-size:0.9rem;color:#444">
-        <span style="color:#C9933A;margin-right:8px">👥</span>
+        <span style="color:${colors.primary};margin-right:8px">👥</span>
         Current confirmed count: <strong>${goingCount}</strong> people
         &nbsp;&bull;&nbsp; <strong>Please update the reservation to ${suggestedCount}</strong> to allow for walk-ins
       </td></tr>
@@ -2188,13 +2207,13 @@ export class EventsService {
       to <strong>${suggestedCount} people</strong> (${goingCount} confirmed + 3 for walk-ins).
     </p>
     <p style="text-align:center;margin:0 0 20px">
-      <a href="${appUrl}/events/${event.id}" style="background:#3D1C05;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.9rem;display:inline-block">View Live Attendee List</a>
+      <a href="${appUrl}/events/${event.id}" style="background:${colors.primary};color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.9rem;display:inline-block">View Live Attendee List</a>
     </p>
     <p style="margin:0;font-size:0.8rem;color:#aaa;text-align:center">
       Thank you for coordinating the reservation!
     </p>
   </td></tr>
-  <tr><td style="padding:16px 36px;background:#faf7f2;border-top:1px solid #e8e0d6;text-align:center">
+  <tr><td style="padding:16px 36px;background:${colors.surfaceAlt};border-top:1px solid ${colors.rule};text-align:center">
     <p style="margin:0;font-size:0.78rem;color:#999">${brandName} — ${tagline}</p>
   </td></tr>
 </table>
