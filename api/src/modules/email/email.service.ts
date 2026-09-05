@@ -12,6 +12,7 @@ import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
 import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { AppConfigService } from '../app-config/app-config.service';
+import { emailPalette } from '../../common/utils/color.util';
 
 /**
  * The placeholder every email writes instead of a hard-coded product name.
@@ -139,13 +140,89 @@ export class EmailService {
     const swap = (value: string | null | undefined): string | null | undefined =>
       typeof value === 'string' ? value.replace(BRAND_PLACEHOLDER, brand) : value;
 
+    const swapped = swap(dto.htmlBody);
+
     return {
       ...dto,
       subject: swap(dto.subject) as string,
-      htmlBody: swap(dto.htmlBody),
+      htmlBody: await this.wrapHtmlBody(swapped, brand),
       textBody: swap(dto.textBody),
       templateParams: { brand, ...(dto.templateParams ?? {}) },
     };
+  }
+
+  /**
+   * Gives a bare HTML body the community's own header, ground and footer.
+   *
+   * Only some emails ever had a design. The event templates in
+   * `events.service` build a full document with a logo band; the invite,
+   * password-reset, verification and security-alert bodies were bare fragments
+   * -- an `<h2>` and a couple of paragraphs, rendered by the mail client on
+   * whatever white it defaults to, with no logo and nothing identifying the
+   * community that sent them. That is not DinnerBears branding to replace, it
+   * is branding that was never there, which is why v2-10's earlier passes did
+   * not catch it.
+   *
+   * Wrapping happens here rather than in each caller for the same reason the
+   * brand substitution above does: this runs at enqueue time, inside the
+   * caller's tenant context, so `absoluteLogoUrl()` and the palette resolve to
+   * the community actually sending. The dispatcher cron would resolve whichever
+   * community the engine reached first.
+   *
+   * A body that is already a full document is returned untouched -- wrapping
+   * one would nest `<html>` inside `<body>` and give it two logos.
+   */
+  private async wrapHtmlBody(
+    html: string | null | undefined,
+    brand: string,
+  ): Promise<string | null | undefined> {
+    if (typeof html !== 'string' || !html.trim()) return html;
+    // A character class rather than a word boundary: it reads as plainly and
+    // avoids an escape that is easy to mangle when this file is edited by
+    // anything other than a human -- a stray backspace here silently turned
+    // the guard off and wrapped documents that were already complete.
+    if (/^\s*<(!doctype|html)[\s>]/i.test(html)) return html;
+
+    const [tagline, logoUrl, primary, background] = await Promise.all([
+      this.appConfig.getSiteSetting('brand_tagline'),
+      this.appConfig.absoluteLogoUrl(),
+      this.appConfig.getSiteSetting('theme_color_primary'),
+      this.appConfig.getSiteSetting('theme_color_background'),
+    ]);
+    const c = emailPalette(primary, background);
+    // brand_name and brand_tagline are admin-set and land in an alt attribute
+    // and in body copy. The event templates interpolate them raw; escaping here
+    // costs nothing and stops a stray quote breaking the markup.
+    const esc = (v: string): string =>
+      v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const brandEsc = esc(brand);
+    const taglineEsc = esc((tagline ?? '').trim());
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:${c.pageBg};font-family:'Helvetica Neue',Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td align="center" style="padding:24px 16px">
+<table role="presentation" width="100%" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.12)">
+  <tr><td style="background:${c.band};padding:20px;text-align:center">
+    <img src="${logoUrl}" alt="${brandEsc}" height="100" style="display:inline-block;height:100px" />
+  </td></tr>
+  <tr><td style="padding:32px 36px 24px;color:${c.inkMuted};font-size:0.95rem;line-height:1.6">
+    ${html}
+  </td></tr>
+  ${
+    taglineEsc
+      ? `<tr><td style="padding:16px 36px;background:${c.surfaceAlt};border-top:1px solid ${c.rule};text-align:center">
+    <p style="margin:0;font-size:0.78rem;color:#999">${brandEsc} — ${taglineEsc}</p>
+  </td></tr>`
+      : ''
+  }
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
   }
 
   async queue(input: QueueEmailDto): Promise<EmailQueueRow | null> {

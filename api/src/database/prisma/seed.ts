@@ -18,7 +18,6 @@ function load(table: string): Record<string, unknown>[] {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-const achievements = load('achievements');
 const avatar = load('avatar');
 const cities = load('cities');
 const merchConfig = load('merch_config');
@@ -30,7 +29,7 @@ dotenv.config({ path: path.join(__dirname, '../../../../.env') });
  *
  * v2 starts from a blank database and imports real records from production
  * separately, so this file covers only the rows the application itself
- * assumes exist -- the achievements catalogue, the avatar set, the city list --
+ * assumes exist -- the avatar set, the city list --
  * not user-generated data.
  *
  * **Everything here is tenant-independent, and that is now a hard rule rather
@@ -104,8 +103,12 @@ async function main() {
     }),
   });
 
-  // Ordered by foreign-key dependency: cities before users (users.city_id),
-  // and achievements before anything that references them.
+  // Ordered by foreign-key dependency: cities before users (users.city_id).
+  //
+  // The achievements catalogue used to be seeded here. v2-10 scoped it, so it
+  // belongs to a community and cannot be written before one exists -- it moved
+  // to bootstrap.ts and tenants-admin.service.create, the same move v2-6 made
+  // for the app_config defaults and v2-9 for email_provider_config.
   for (const row of cities) {
     const data = normalize(row);
     await prisma.cities.upsert({
@@ -124,15 +127,6 @@ async function main() {
     });
   }
 
-  for (const row of achievements) {
-    const data = normalize(row);
-    await prisma.achievements.upsert({
-      where: { key: row.key as string },
-      update: data as never,
-      create: data as never,
-    });
-  }
-
   // Single-row config tables with no natural key -- keyed on their fixed id.
   for (const row of merchConfig) {
     const data = normalize(row);
@@ -146,7 +140,6 @@ async function main() {
   const counts = {
     cities: await prisma.cities.count(),
     avatar: await prisma.avatar.count(),
-    achievements: await prisma.achievements.count(),
     merch_config: await prisma.merch_config.count(),
   };
   console.log('Seeded:', counts);

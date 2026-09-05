@@ -49,6 +49,59 @@ describe('White-label runtime config (e2e)', () => {
     return prisma.avatar.create({ data: { path, label } });
   }
 
+  // The brand-image slots had no coverage at all before v2-10 added the fifth
+  // one. These exercise the wiring a new slot needs -- servable key, default,
+  // branding payload field, and registration in BRAND_IMAGE_SLOTS -- rather
+  // than the multipart upload itself, which would write to disk.
+  describe('Error page backdrop slot (v2-10)', () => {
+    it('is absent by default, so the page falls back to the brand colours', async () => {
+      const res = await request(server).get('/api/v1/config/branding').expect(200);
+      // Present as a key but empty: the frontend distinguishes "nothing
+      // uploaded" (draw the gradient) from "not served at all".
+      expect(res.body).toHaveProperty('errorUrl');
+      expect(res.body.errorUrl).toBe('');
+    });
+
+    it('surfaces an uploaded backdrop to unauthenticated visitors', async () => {
+      // Error pages render before sign-in, so this must be public.
+      await request(server)
+        .patch('/api/v1/admin/config/brand_error_url')
+        .set('Cookie', adminCookie)
+        .send({ value: '/api/uploads/branding/backdrop.png' })
+        .expect(200);
+
+      const res = await request(server).get('/api/v1/config/branding').expect(200);
+      expect(res.body.errorUrl).toBe('/api/uploads/branding/backdrop.png');
+      // Ordering guard: the payload builds errorUrl and iconUrl from a
+      // positional Promise.all, so a misaligned insert swaps them silently.
+      expect(res.body.iconUrl).toBe('');
+    });
+
+    it('registers "error" as a brand image slot that can be cleared', async () => {
+      await request(server)
+        .patch('/api/v1/admin/config/brand_error_url')
+        .set('Cookie', adminCookie)
+        .send({ value: '/api/uploads/branding/backdrop.png' })
+        .expect(200);
+
+      // An unregistered slot 400s here, so this is what proves the slot exists.
+      await request(server)
+        .patch('/api/v1/admin/config/branding/image/error/reset')
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      const res = await request(server).get('/api/v1/config/branding').expect(200);
+      expect(res.body.errorUrl).toBe('');
+    });
+
+    it('rejects an unknown slot', async () => {
+      await request(server)
+        .patch('/api/v1/admin/config/branding/image/nonsense/reset')
+        .set('Cookie', adminCookie)
+        .expect(400);
+    });
+  });
+
   describe('GET /config/branding', () => {
     it('is public and surfaces the env-derived per-instance values', async () => {
       const res = await request(server).get('/api/v1/config/branding').expect(200);

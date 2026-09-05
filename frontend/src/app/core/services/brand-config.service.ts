@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
 import { reshade, darkenBy } from '../utils/color.util';
+import { wordmarkDataUri, splashDataUri, monogramDataUri } from '../utils/brand-mark.util';
 
 /** The social sign-ins a community offers. See BrandConfig.authProviders. */
 export interface AuthProviders {
@@ -18,6 +19,12 @@ export interface BrandConfig {
   colorBackground: string;
   logoUrl: string;
   splashUrl: string;
+  /**
+   * Backdrop behind the card on every error page. Empty is a real choice, not a
+   * missing value: with none uploaded the page draws a gradient from this
+   * community's own brand colours, so there is no compiled-in default image.
+   */
+  errorUrl: string;
   iconUrl: string;
   storyUrl: string;
   // Per-instance values that used to be compiled into the frontend bundle
@@ -39,6 +46,17 @@ export interface BrandConfig {
   baseDomain: string;
   /** Whether this community is the root one (REQ-TENANT-01.7). */
   isRoot: boolean;
+  /**
+   * Where a member is told to write for help. Resolved per community by the
+   * API; the pages that surface it used to hardcode support@dinnerbears.com,
+   * which no other community could receive mail at.
+   */
+  supportEmail: string;
+  /**
+   * What this community calls its founding achievement, read from its own
+   * catalogue row rather than guessed from the brand name.
+   */
+  foundingLabel: string;
   /**
    * Whether a human has confirmed this community's Terms and Privacy Policy.
    * Every community is seeded with the platform's templates so its legal pages
@@ -72,13 +90,25 @@ export interface BrandFeatures {
   requireMembership: boolean;
 }
 
-// Compiled-in default assets a fresh fork ships with. Used whenever the
-// matching app_config image URL is empty (no admin upload yet). A fork can
-// override either by uploading in /admin/settings or by swapping these
-// static files in public/ before building.
-const DEFAULT_LOGO = 'assets/logo.png';
-const DEFAULT_SPLASH = 'images/dinnerbears-splash.png';
-const DEFAULT_ICON = 'images/DinnerBearsIcon.png';
+// Default assets for a community that has uploaded none (v2-10). These used to
+// be three checked-in DinnerBears PNGs; they are now drawn at runtime from the
+// community's own name and palette by brand-mark.util.ts.
+//
+// The change is not cosmetic. A compiled-in image is one file for the whole
+// deployment, but what it stands in for is a single community's identity — so
+// every community that had not uploaded a logo wore DinnerBears' bear, and
+// swapping in a CommunityEvents PNG would only have changed whose. A generated
+// mark says the community's own name, which is the only answer that is right
+// for all of them. It also drops ~13MB of PNGs from the bundle.
+//
+// An admin upload still overrides by the same plain string substitution as
+// before: these are URLs, so nothing downstream of `logoSrc` had to change.
+const defaultLogo = (b: BrandConfig): string =>
+  wordmarkDataUri(b.name, { primary: b.colorPrimary, background: b.colorBackground });
+const defaultSplash = (b: BrandConfig): string =>
+  splashDataUri(b.name, b.tagline, { primary: b.colorPrimary, background: b.colorBackground });
+const defaultIcon = (b: BrandConfig): string =>
+  monogramDataUri(b.name, { primary: b.colorPrimary, background: b.colorBackground });
 
 // Mirrors the live styles.scss palette / api-side SITE_SETTING_DEFAULTS —
 // what renders before the branding fetch resolves, and what stays in place
@@ -95,6 +125,7 @@ const DEFAULT_BRAND: BrandConfig = {
   colorBackground: '#FDFAF5',
   logoUrl: '',
   splashUrl: '',
+  errorUrl: '',
   iconUrl: '',
   storyUrl: '',
   // Null/empty until the branding fetch resolves. A network hiccup leaves push
@@ -108,6 +139,12 @@ const DEFAULT_BRAND: BrandConfig = {
   // better than offering a button that cannot work.
   authProviders: { google: false, facebook: false },
   isStage: false,
+  // Empty until branding resolves. The pages that use it hide the mailto rather
+  // than render a broken one, the same way storyImageUrl hides its image.
+  supportEmail: '',
+  // The platform default until branding resolves. Unlike the old brand-name
+  // comparison this is only a placeholder for one request, not a rule.
+  foundingLabel: 'Founding Member',
   appUrl: '',
   baseDomain: '',
   // Defaults false: until branding loads, assume this is NOT the root
@@ -117,8 +154,9 @@ const DEFAULT_BRAND: BrandConfig = {
   // or failed branding fetch should not accuse a community of skipping a review
   // it may well have done.
   legalReviewed: true,
-  // DinnerBears' original wording — the compiled-in default until branding
-  // resolves, mirroring the API's SITE_SETTING_DEFAULTS terms.
+  // The generic platform wording, not DinnerBears' — these mirror the API's
+  // SITE_SETTING_DEFAULTS terms (now term-defaults.ts) and are what shows until
+  // branding resolves. A community renames them in Site Settings.
   terms: {
     locationSingular: 'Location',
     locationPlural: 'Locations',
@@ -161,11 +199,14 @@ export class BrandConfigService {
   // Resolved image sources: the admin-uploaded URL if set, else the
   // compiled-in default. Components bind [src] to these so a fork's uploaded
   // images flow everywhere with no per-component fallback logic.
-  readonly logoSrc = computed(() => this.brand().logoUrl || DEFAULT_LOGO);
-  readonly splashSrc = computed(() => this.brand().splashUrl || DEFAULT_SPLASH);
-  readonly iconSrc = computed(() => this.brand().iconUrl || DEFAULT_ICON);
+  readonly logoSrc = computed(() => this.brand().logoUrl || defaultLogo(this.brand()));
+  readonly splashSrc = computed(() => this.brand().splashUrl || defaultSplash(this.brand()));
+  readonly iconSrc = computed(() => this.brand().iconUrl || defaultIcon(this.brand()));
   // No compiled-in fallback: empty means the home-page story image is hidden.
   readonly storyImageUrl = computed(() => this.brand().storyUrl);
+  // Likewise no fallback image -- an empty value means the error page falls back
+  // to a gradient built from the brand colours rather than to a stock picture.
+  readonly errorImageUrl = computed(() => this.brand().errorUrl);
 
   // Per-instance runtime values (formerly environment.*.ts). Read as signals so
   // callers stay reactive if branding is ever refreshed mid-session.
@@ -178,6 +219,8 @@ export class BrandConfigService {
   readonly appUrl = computed(() => this.brand().appUrl);
   readonly baseDomain = computed(() => this.brand().baseDomain);
   readonly isRoot = computed(() => this.brand().isRoot);
+  readonly supportEmail = computed(() => this.brand().supportEmail);
+  readonly foundingLabel = computed(() => this.brand().foundingLabel);
   readonly legalReviewed = computed(() => this.brand().legalReviewed);
 
   // Configurable terminology (Phase 32). Components bind these instead of
@@ -209,21 +252,23 @@ export class BrandConfigService {
   // column/edit UI visibility.
   readonly requireMembershipEnabled = computed(() => this.features().requireMembership);
 
-  // Founding-achievement label. DinnerBears keeps "Founding Bear"; every fork
-  // reads the generic "Founding Member" — matching the same brand_name rule the
-  // RenameFoundingBearAchievement migration uses server-side, so the surrounding
-  // UI labels (merch, achievement category headers) stay consistent with the
-  // actual badge name. Append "s" for the plural ("Founding Bears"/"Members").
-  readonly foundingLabel = computed(() =>
-    this.brand().name.trim().toLowerCase() === 'dinnerbears' ? 'Founding Bear' : 'Founding Member',
-  );
+  // Founding-achievement label, served per community (v2-10).
+  //
+  // This used to compare brand_name against the literal 'dinnerbears' and pick
+  // one of two hardcoded strings. That was a guess standing in for data that did
+  // not exist: the achievement catalogue was global, so there was no
+  // per-community badge to read. Scoping it made the row the community's own, so
+  // the API now reports whatever that row is actually called and a community
+  // that renames its badge sees the new name in the surrounding UI (merch gate,
+  // achievement category headers) rather than one derived from its brand.
+  // Append "s" for the plural.
 
   async init(): Promise<void> {
     try {
       const config = await firstValueFrom(this.http.get<BrandConfig>('/api/v1/config/branding'));
       this.brand.set(config);
       this.applyColors(config);
-      this.applyFavicon(config.iconUrl || DEFAULT_ICON);
+      this.applyFavicon(config.iconUrl || defaultIcon(config));
       // index.html's static <title> is what search engines/the initial tab
       // title show — this only updates the *live* tab title once Angular
       // has booted. Per-route titles (if ever added) would override this.

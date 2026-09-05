@@ -81,7 +81,7 @@ export class EventsController {
   ): Promise<void> {
     const ics = await this.eventsService.generateIcs(id);
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="dinnerbears-event-${id}.ics"`);
+    res.setHeader('Content-Disposition', `attachment; filename="event-${id}.ics"`);
     res.end(ics);
   }
 
@@ -92,7 +92,7 @@ export class EventsController {
   ): Promise<void> {
     const { ics, eventId } = await this.eventsService.generateGuestIcs(token);
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="dinnerbears-event-${eventId}.ics"`);
+    res.setHeader('Content-Disposition', `attachment; filename="event-${eventId}.ics"`);
     res.end(ics);
   }
 

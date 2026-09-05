@@ -3,6 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AccountService, DeletionStatus } from '../../core/services/account.service';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 
 @Component({
   selector: 'app-account-deletion-status',
@@ -48,10 +49,11 @@ import { AccountService, DeletionStatus } from '../../core/services/account.serv
         </p>
       }
 
-      <p class="contact">
-        Questions? Email us at
-        <a href="mailto:support&#64;dinnerbears.com">support&#64;dinnerbears.com</a>
-      </p>
+      @if (brandConfig.supportEmail(); as support) {
+        <p class="contact">
+          Questions? Email us at <a [href]="'mailto:' + support">{{ support }}</a>
+        </p>
+      }
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
@@ -132,6 +134,8 @@ import { AccountService, DeletionStatus } from '../../core/services/account.serv
   ],
 })
 export class FacebookDeletionComponent implements OnInit {
+  // The community's own support address, not a hardcoded one (v2-10).
+  readonly brandConfig = inject(BrandConfigService);
   private readonly route = inject(ActivatedRoute);
   private readonly accountService = inject(AccountService);
 

@@ -43,7 +43,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
 
           @if (signedInAs(); as signedInEmail) {
             <p class="invite-notice">
-              🐾 You have an invite — but you're already signed in as {{ signedInEmail }}.
+              You have an invite — but you're already signed in as {{ signedInEmail }}.
             </p>
             <p class="invite-help">
               An invite creates a new account, so this one can only be accepted from a signed-out
@@ -61,7 +61,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
           } @else {
             @if (inviteToken()) {
               <p class="invite-notice">
-                🐾 You have an invite — sign in or create an account to claim your seat at the table.
+                You have an invite — sign in or create an account to claim your seat at the table.
               </p>
             }
 

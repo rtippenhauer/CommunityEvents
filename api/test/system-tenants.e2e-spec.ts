@@ -319,7 +319,7 @@ describe('System tenant management (e2e)', () => {
         .set('Cookie', systemAdminCookie)
         .send({
           domain: 'reserved.example.test',
-          adminEmail: 'automation@dinnerbears.internal',
+          adminEmail: 'automation@communityevents.internal',
           adminPassword: 'P@ssw0rd-Test!',
         })
         .expect(400);

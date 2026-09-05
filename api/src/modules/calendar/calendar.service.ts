@@ -5,7 +5,7 @@ import type { Prisma, users as User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EventStatus, RsvpStatus } from '../../database/enums';
 import { asDateString, asTimeString } from '../../common/utils/prisma-date.util';
-import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS } from '../../common/utils/ics.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS, eventUid, parseEventUid } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { AppConfigService } from '../app-config/app-config.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
@@ -173,7 +173,7 @@ export class CalendarService {
   // Stays on APP_URL deliberately: this asks "is this deployment stage", which
   // is a property of the deployment and not of any tenant. It builds no link.
   private appName(brandName: string): string {
-    const url = this.config.get<string>('APP_URL', 'https://dinnerbears.com');
+    const url = this.config.get<string>('APP_URL', 'https://communityeventsproject.com');
     return url.includes('stage') ? `${brandName} - Stage` : brandName;
   }
 
@@ -322,7 +322,7 @@ export class CalendarService {
 
     const lines = [
       'BEGIN:VEVENT',
-      `UID:dinnerbears-event-${event.id}@dinnerbears.com`,
+      `UID:${eventUid(event.id)}`,
       `DTSTAMP:${dtStamp}`,
       `DTSTART:${dtStart}`,
       `DTEND:${dtEnd}`,
@@ -438,7 +438,7 @@ export class CalendarService {
       'CALSCALE:GREGORIAN',
       'METHOD:REQUEST',
       'BEGIN:VEVENT',
-      `UID:dinnerbears-event-${event.id}@dinnerbears.com`,
+      `UID:${eventUid(event.id)}`,
       `DTSTAMP:${dtStamp}`,
       `DTSTART:${dtStart}`,
       `DTEND:${dtEnd}`,
@@ -472,12 +472,11 @@ export class CalendarService {
       return;
     }
 
-    const uidMatch = ical.match(/UID:dinnerbears-event-(\d+)@dinnerbears\.com/i);
-    if (!uidMatch) {
+    const eventId = parseEventUid(ical);
+    if (eventId === null) {
       this.logger.warn('rsvp-reply: unrecognized UID format');
       return;
     }
-    const eventId = parseInt(uidMatch[1], 10);
 
     // Unfold RFC 5545 line continuations then parse ATTENDEE
     const unfolded = ical.replace(/\r?\n[ \t]/g, '');

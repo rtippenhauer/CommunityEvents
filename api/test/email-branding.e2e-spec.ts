@@ -76,12 +76,56 @@ describe('Email branding (e2e)', () => {
 
     const [row] = await queued();
     expect(row.subject).toBe('Verify your Dayton Dinners email');
-    expect(row.htmlBody).toBe(
+    // Containment, not equality: v2-10 wraps a bare body in the community's
+    // shell, so asserting the exact fragment would pin an implementation
+    // detail rather than the substitution this test is about.
+    expect(row.htmlBody).toContain(
       '<h2>Welcome to Dayton Dinners!</h2><p>Ignore if you did not join Dayton Dinners.</p>',
     );
     expect(row.textBody).toBe('Welcome to Dayton Dinners!');
     // Every occurrence, not just the first.
     expect(row.htmlBody).not.toContain('{{brand}}');
+  });
+
+  it("wraps a bare html body in the community's own shell", async () => {
+    await setBrand(TEST_TENANT_ID, 'Dayton Dinners');
+
+    await inTenant(TEST_TENANT_ID, () =>
+      email.queue({
+        toEmail: 'member@example.test',
+        subject: 'Bare body',
+        htmlBody: '<h2>Hello</h2>',
+        bypassSuppression: true,
+      }),
+    );
+
+    const [row] = await queued();
+    // The header the invite, reset and verification emails never had: a logo,
+    // and the community's name in the footer.
+    expect(row.htmlBody).toMatch(/^<!DOCTYPE html>/);
+    expect(row.htmlBody).toContain('<img src=');
+    expect(row.htmlBody).toContain('alt="Dayton Dinners"');
+    expect(row.htmlBody).toContain('<h2>Hello</h2>');
+  });
+
+  it('leaves a body that is already a full document alone', async () => {
+    await setBrand(TEST_TENANT_ID, 'Dayton Dinners');
+    // The event templates build their own document with their own logo band.
+    // Wrapping one would nest <html> inside <body> and show two logos.
+    const full =
+      '<!DOCTYPE html><html lang="en"><body><p>Already built</p></body></html>';
+
+    await inTenant(TEST_TENANT_ID, () =>
+      email.queue({
+        toEmail: 'member@example.test',
+        subject: 'Full document',
+        htmlBody: full,
+        bypassSuppression: true,
+      }),
+    );
+
+    const [row] = await queued();
+    expect(row.htmlBody).toBe(full);
   });
 
   it('gives each community its own name for the same message', async () => {

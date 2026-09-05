@@ -69,19 +69,25 @@ describe('BrandConfigService', () => {
   });
 
   describe('foundingLabel', () => {
-    // DinnerBears keeps its own badge name; every fork gets the generic one.
-    // Matched case- and whitespace-insensitively, mirroring the server-side
-    // RenameFoundingBearAchievement migration.
-    it('is "Founding Bear" for DinnerBears, regardless of casing or padding', () => {
-      service.brand.update((b) => ({ ...b, name: 'DinnerBears' }));
+    // Served per community as of v2-10, read from that community's own
+    // achievement row. It used to be derived by comparing brand_name against
+    // the literal 'dinnerbears', which was a guess standing in for data that
+    // did not exist while the catalogue was global.
+    it('reports whatever this community calls its founding badge', () => {
+      service.brand.update((b) => ({ ...b, foundingLabel: 'Founding Bear' }));
       expect(service.foundingLabel()).toBe('Founding Bear');
 
-      service.brand.update((b) => ({ ...b, name: '  dinnerbears  ' }));
-      expect(service.foundingLabel()).toBe('Founding Bear');
+      service.brand.update((b) => ({ ...b, foundingLabel: 'Charter Member' }));
+      expect(service.foundingLabel()).toBe('Charter Member');
     });
 
-    it('is "Founding Member" for any fork', () => {
-      service.brand.update((b) => ({ ...b, name: 'Sons' }));
+    it('does not derive the label from the brand name', () => {
+      // The old rule returned "Founding Bear" for this name alone.
+      service.brand.update((b) => ({
+        ...b,
+        name: 'DinnerBears',
+        foundingLabel: 'Founding Member',
+      }));
       expect(service.foundingLabel()).toBe('Founding Member');
     });
   });

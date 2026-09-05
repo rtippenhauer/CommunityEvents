@@ -4,6 +4,7 @@ import * as webpush from 'web-push';
 import type { push_subscriptions as PushSubscription } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { UserStatus } from '../../database/enums';
+import { AppConfigService } from '../app-config/app-config.service';
 
 export interface PushPayload {
   title: string;
@@ -18,6 +19,7 @@ export class PushService implements OnModuleInit {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly appConfig: AppConfigService,
     private readonly config: ConfigService,
   ) {}
 
@@ -79,12 +81,26 @@ export class PushService implements OnModuleInit {
       return;
     }
     this.logger.log(`Sending push to ${subs.length} subscription(s): "${payload.title}"`);
+    // This community's logo, else the platform mark (v2-10). Both were
+    // hardcoded to DinnerBears' /assets/logo.png with no per-tenant resolution
+    // at all, so every community's notifications carried another community's
+    // artwork -- unlike the email header, which at least honoured an upload.
+    //
+    // Safe to resolve here because every caller is request-scoped
+    // (announcements and the notifications controller); nothing sends push from
+    // a cron, which would have no tenant in context to read app_config with.
+    //
+    // `badge` is knowingly the same image. Android renders a badge as a flat
+    // monochrome stencil and discards colour, so a full-colour logo becomes a
+    // grey blob -- fixing that needs a dedicated monochrome asset, not a
+    // different resolution.
+    const logoUrl = await this.appConfig.absoluteLogoUrl();
     const body = JSON.stringify({
       notification: {
         title: payload.title,
         body: payload.body,
-        icon: '/assets/logo.png',
-        badge: '/assets/logo.png',
+        icon: logoUrl,
+        badge: logoUrl,
         ...(payload.url && { data: { url: payload.url } }),
       },
     });

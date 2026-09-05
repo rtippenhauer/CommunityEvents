@@ -13,6 +13,8 @@ import { runUnscoped } from '../../common/tenant/tenant-store';
 import { tenantGetsServiceAccount } from '../../database/prisma/service-account.provision';
 import { normalizeTenantDomain } from '../../common/utils/tenant-domain.util';
 import { LEGAL_DEFAULT_ROWS } from '../../common/legal/legal-defaults';
+import { achievementDefaultRows } from '../../common/achievements/achievement-defaults';
+import { SITE_SETTING_DEFAULTS } from '../app-config/app-config.service';
 import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import {
@@ -254,6 +256,25 @@ export class TenantsAdminService {
     await runUnscoped("seeding the new tenant's legal copy", async () => {
       await this.prisma.app_config.createMany({
         data: LEGAL_DEFAULT_ROWS.map((row) => ({ ...row, tenantId: created.id })),
+      });
+    });
+
+    // Its own achievement catalogue (v2-10). Scoped as of this item, so it is
+    // seeded per community rather than once globally by seed.ts -- the same
+    // move v2-6 made for the app_config defaults and v2-9 for
+    // email_provider_config, and for the same reason: seed.ts runs before any
+    // tenant exists, so a row it wrote here would take the tenant_id sentinel
+    // and be rejected by the foreign key.
+    //
+    // The community owns these rows and its admin can edit them, which is the
+    // point: the catalogue used to be one global set carrying DinnerBears'
+    // copy that nobody else could override.
+    await runUnscoped("seeding the new tenant's achievement catalogue", async () => {
+      await this.prisma.achievements.createMany({
+        data: achievementDefaultRows({
+          dinnerSingularLower: SITE_SETTING_DEFAULTS.term_dinner_singular.toLowerCase(),
+          dinnerPluralLower: SITE_SETTING_DEFAULTS.term_dinner_plural.toLowerCase(),
+        }).map((row) => ({ ...row, tenantId: created.id })),
       });
     });
 

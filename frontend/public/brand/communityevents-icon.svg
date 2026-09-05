@@ -1,0 +1,19 @@
+<!--
+  The platform's own mark (v2-10). This is the static counterpart to
+  brand-mark.util.ts's monogramDataUri: index.html, the PWA manifests and any
+  crawler see one file for the whole deployment and cannot know which community
+  a host belongs to, so what they get is CommunityEvents itself. Once the app
+  boots, BrandConfigService.applyFavicon swaps in the resolved community's own
+  generated mark.
+
+  Kept byte-identical in design to the generated one (same radius, same face,
+  same default palette) so the pre-boot icon and the post-boot icon for the
+  root tenant do not visibly flip.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="CommunityEvents">
+  <rect width="64" height="64" rx="14" fill="#C9933A"/>
+  <text x="32" y="33" text-anchor="middle" dominant-baseline="central"
+        font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="27" font-weight="700" fill="#FDFAF5">CE</text>
+</svg>

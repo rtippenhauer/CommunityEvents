@@ -98,6 +98,9 @@ export class InvitesService {
       // good food and great company" — true of DinnerBears, an assertion about
       // a stranger's community anywhere else.
       const tagline = (await this.appConfig.getSiteSetting('brand_tagline')).trim();
+      // The button used to be a hardcoded #1e4d8c, a blue belonging to no
+      // community at all (v2-10).
+      const primary = await this.appConfig.getSiteSetting('theme_color_primary');
       const inviteUrl = `${appUrl}/login?token=${saved.token}`;
       const inviterName = creator.fullName || `A ${brandName} member`;
 
@@ -117,7 +120,7 @@ export class InvitesService {
           <h2>You're invited to ${brandName}!</h2>
           <p><strong>${inviterName}</strong> has invited you to join ${brandName}.</p>
           ${tagline ? `<p style="color:#666">${tagline}</p>` : ''}
-          <p><a href="${inviteUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Accept Invite</a></p>
+          <p><a href="${inviteUrl}" style="background:${primary};color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Accept Invite</a></p>
           <p style="color:#888;font-size:0.85em">This link expires in 48 hours and can only be used by this email address.</p>
         `,
       });

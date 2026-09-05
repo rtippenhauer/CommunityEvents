@@ -1,4 +1,46 @@
-/** Assumed dinner length for calendar entries — DinnerBears doesn't store an explicit end time. */
+/**
+ * The iCalendar UID for an event (v2-10).
+ *
+ * A UID is a calendar entry's stable identity, not decoration: a client that
+ * sees a known event arrive under a new UID treats the old entry as cancelled
+ * and the new one as fresh. So this changed exactly once, when the old
+ * `dinnerbears-event-N@dinnerbears.com` stopped being an acceptable thing for
+ * every community's feed to emit, and it must not change again.
+ *
+ * The domain is the platform's and deliberately NOT the community's own host.
+ * A UID must stay stable for the life of the entry, and a community can change
+ * its domain -- which would silently re-identify every event it ever published.
+ *
+ * It lives here rather than in a service because three places emit a UID
+ * (the subscription feed, the invitation, and the single-event download) and
+ * one parses it back. Holding the format in one place is what keeps the
+ * emitted value and the parser from drifting apart.
+ */
+export function eventUid(eventId: number): string {
+  return `communityevents-event-${eventId}@communityeventsproject.com`;
+}
+
+/**
+ * Event id from an inbound reply's UID, accepting the pre-v2-10 format.
+ *
+ * Both are matched because the two live side by side indefinitely: a member
+ * whose calendar still holds an event published under the old UID replies with
+ * that UID, and dropping it would silently discard their RSVP. Written as two
+ * full alternatives rather than a loose character class, so a combination this
+ * code never emits is not quietly accepted. The legacy branch can only retire
+ * once no client anywhere holds a pre-v2-10 entry, which is not something this
+ * code can observe.
+ */
+export function parseEventUid(ical: string): number | null {
+  const match = ical.match(
+    /UID:(?:communityevents-event-(\d+)@communityeventsproject\.com|dinnerbears-event-(\d+)@dinnerbears\.com)/i,
+  );
+  if (!match) return null;
+  // Exactly one branch matches, so exactly one group is defined.
+  return parseInt(match[1] ?? match[2], 10);
+}
+
+/** Assumed event length for calendar entries — no explicit end time is stored. */
 export const EVENT_DURATION_MS = 2 * 60 * 60 * 1000;
 
 // RFC 5545 §3.1: a CONTENT-LINE may be no longer than 75 octets; continuation

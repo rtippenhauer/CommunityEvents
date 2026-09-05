@@ -318,7 +318,7 @@ export class SplashComponent implements OnDestroy {
   readonly brand = inject(BrandConfigService);
 
   readonly isPatriotic =
-    this.data.item.kind === 'achievement' && this.data.item.achievement.key === 'patriotic_bear';
+    this.data.item.kind === 'achievement' && this.data.item.achievement.key === 'patriotic_2026';
   readonly bursts = signal<Burst[]>([]);
 
   private nextBurstId = 0;

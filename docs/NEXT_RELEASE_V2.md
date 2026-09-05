@@ -424,3 +424,59 @@ credential is a minute's work instead of a guess.
 **The credentials form matches what it will accept.** It offered to save a
 client ID without its secret, which the site then refused, and the explanatory
 text under the field was covered by the Save button.
+
+## A community's own look
+
+**Every community now has its own artwork, and a community that has uploaded
+none no longer borrows somebody else's.** The logo, login image and icon used to
+fall back to a fixed set of pictures belonging to one community, so a brand new
+community wore another group's identity until it uploaded its own. Those
+fallbacks are now drawn from the community's own name and colours — its name in
+the navigation bar, its initials as the browser tab icon — so it looks like
+itself from the first minute.
+
+**Error pages are yours.** The page shown when something goes wrong was a fixed
+photograph that no community could change. It now uses your own colours, and
+there is a new **Error Page Backdrop** slot in Site Settings if you would rather
+supply an image. Leave it empty and you get the colour version.
+
+**The page also tells people where they are.** When someone arrives without an
+invitation it names your community, rather than pointing them at an unrelated
+website.
+
+**Achievements belong to the community that awards them.** Every community used
+to share one list of achievements, with wording nobody but its original author
+could change. Each community now has its own copy that its admins can rename and
+edit, and renaming one leaves every other community untouched. Existing members
+keep every achievement they had earned.
+
+**Support links reach you.** The account deletion and data deletion pages listed
+a fixed contact address that only one community could receive mail at. They now
+show your community's own support address.
+
+## Email that looks like your community
+
+**Every message now carries your colours, not a fixed set.** Emails were built
+in one community's palette regardless of what any other community had chosen, so
+a group that had set its own colours still sent amber and brown. Message
+headers, buttons and backgrounds now follow the colours set in Site Settings,
+and the header matches the navigation bar members already see.
+
+**Emails that had no design now have one.** Invitations, password resets, email
+verification and security alerts were plain unstyled text with nothing on them
+identifying who had sent them. They now carry the same header, logo and footer
+as the rest, so a member can tell at a glance which community wrote to them.
+
+**Your logo reaches email and notifications.** The picture at the top of an
+email and the icon on a push notification were fixed images belonging to one
+community. Both now use whatever that community has uploaded, and a community
+that has uploaded nothing gets the platform's own mark rather than a stranger's.
+
+## Calendar entries
+
+**Calendar events are no longer stamped with an unrelated web address.** The
+identifier attached to every calendar entry named a single community's domain.
+It is now neutral. **One-time effect:** anyone already subscribed to a calendar
+feed will see their existing entries replaced once when they next sync. Replies
+sent from entries saved before the change are still accepted, so nobody's
+response is lost.

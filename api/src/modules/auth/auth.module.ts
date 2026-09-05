@@ -16,9 +16,14 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { EmailModule } from '../email/email.module';
 import { CommunityModule } from '../community/community.module';
 import type { events as EventRow, event_rsvps as EventRsvp, facebook_deletion_requests as FacebookDeletionRequest, login_sessions as LoginSession, oauth_accounts as OAuthAccount, users as User } from '@prisma/client';
+import { AppConfigModule } from '../app-config/app-config.module';
 
 @Module({
   imports: [
+    // AuthService reads this community's primary colour for the buttons in
+    // its password-reset and verification emails (v2-10). AppConfigModule is
+    // not @Global, so without this the app fails to boot.
+    AppConfigModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

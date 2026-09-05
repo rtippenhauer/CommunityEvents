@@ -242,6 +242,50 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
               <div class="image-row">
                 <div class="image-preview splash-preview">
+                  @if (brandConfigService.brand().errorUrl) {
+                    <img [src]="brandConfigService.brand().errorUrl" alt="Error backdrop preview" />
+                  } @else {
+                    <span class="no-image-hint">Brand colours</span>
+                  }
+                </div>
+                <div class="image-controls">
+                  <div class="image-label">
+                    Error Page Backdrop
+                    <span>— behind every error page (your brand colours if none)</span>
+                  </div>
+                  <div class="image-actions">
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="errorInput.click()"
+                      [disabled]="uploadingSlot() === 'error'"
+                    >
+                      <mat-icon>upload</mat-icon>
+                      {{ uploadingSlot() === 'error' ? 'Uploading…' : 'Upload' }}
+                    </button>
+                    @if (brandConfigService.brand().errorUrl) {
+                      <button
+                        mat-button
+                        type="button"
+                        (click)="resetImage('error')"
+                        [disabled]="uploadingSlot() === 'error'"
+                      >
+                        Remove
+                      </button>
+                    }
+                    <input
+                      #errorInput
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      hidden
+                      (change)="onImageSelected('error', $event)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="image-row">
+                <div class="image-preview splash-preview">
                   @if (brandConfigService.brand().storyUrl) {
                     <img [src]="brandConfigService.brand().storyUrl" alt="Story image preview" />
                   } @else {

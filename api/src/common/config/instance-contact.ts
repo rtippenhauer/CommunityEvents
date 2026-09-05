@@ -26,11 +26,11 @@ function bareHost(host: string): string {
 export function baseDomain(config: ConfigService): string {
   const explicit = config.get<string>('BASE_DOMAIN');
   if (explicit && explicit.trim()) return bareHost(explicit);
-  const appUrl = config.get<string>('APP_URL', 'https://dinnerbears.com');
+  const appUrl = config.get<string>('APP_URL', 'https://communityeventsproject.com');
   try {
     return bareHost(new URL(appUrl).hostname);
   } catch {
-    return 'dinnerbears.com';
+    return 'communityeventsproject.com';
   }
 }
 
@@ -45,7 +45,7 @@ export function supportEmail(config: ConfigService): string {
 export function calendarOrganizerEmail(config: ConfigService): string {
   const override = config.get<string>('CALENDAR_ORGANIZER_EMAIL');
   if (override) return override;
-  const appUrl = config.get<string>('APP_URL', 'https://dinnerbears.com');
+  const appUrl = config.get<string>('APP_URL', 'https://communityeventsproject.com');
   const prefix = appUrl.includes('stage') ? 'calendar-stage' : 'calendar';
   return `${prefix}@${baseDomain(config)}`;
 }

@@ -84,7 +84,7 @@ export async function seedServiceAccount(
   return seedUser(prisma, cityId, {
     isServiceAccount: true,
     role: UserRole.AUTOMATION,
-    email: 'automation@dinnerbears.internal',
+    email: 'automation@communityevents.internal',
     fullName: 'Claude Automation',
     ...overrides,
   });

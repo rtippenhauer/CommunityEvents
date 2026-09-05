@@ -41,7 +41,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
                 <input
                   matInput
                   formControlName="storeUrl"
-                  placeholder="https://dinnerbears.printful.me/"
+                  placeholder="https://your-store.printful.me/"
                 />
                 <mat-hint>
                   Shown to every member on the Merch page. Leave blank to close the store — members
@@ -54,7 +54,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
                 <input
                   matInput
                   formControlName="foundingBearProductUrl"
-                  placeholder="https://dinnerbears.printful.me/product/..."
+                  placeholder="https://your-store.printful.me/product/..."
                 />
                 <mat-hint>
                   Only shown to members with the {{ brand.foundingLabel() }} achievement. Use an

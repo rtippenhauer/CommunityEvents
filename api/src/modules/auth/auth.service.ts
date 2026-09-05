@@ -31,6 +31,7 @@ import { ELEVATED_ROLES } from '../../common/utils/roles.util';
 import { AUTOMATION_ACCOUNT_EMAIL } from '../../common/utils/service-account.util';
 import { isStageDeployment } from '../../common/config/deployment.util';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import { AppConfigService } from '../app-config/app-config.service';
 
 export interface SessionContext {
   userAgent?: string;
@@ -73,6 +74,7 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly achievementsService: AchievementsService,
     private readonly tenantResolution: TenantResolutionService,
+    private readonly appConfig: AppConfigService,
   ) {
     this.loginWindowMs = this.configService.get<string>('IS_STAGE') === 'true'
       ? STAGE_LOGIN_WINDOW_MS
@@ -105,7 +107,7 @@ export class AuthService {
     if (deleted) {
       await this.prisma.users.update({
         where: { id: deleted.id },
-        data: { email: `deleted-${deleted.id}@deleted.dinnerbears.com` },
+        data: { email: `deleted-${deleted.id}@deleted.invalid` },
       });
     }
   }
@@ -501,7 +503,7 @@ export class AuthService {
                 deletedAt: new Date(),
                 hardDeleteAt,
                 fullName: 'Deleted Member',
-                email: `deleted-${user.id}@deleted.dinnerbears.com`,
+                email: `deleted-${user.id}@deleted.invalid`,
                 passwordHash: null,
                 profilePhotoPath: null,
               },
@@ -730,7 +732,7 @@ export class AuthService {
     user.lastLoginAt = now;
 
     await this.achievementsService.checkLoginAchievements(user.id, newCount);
-    await this.achievementsService.checkPatrioticBearAchievement(user.id, now);
+    await this.achievementsService.checkPatriotic2026Achievement(user.id, now);
   }
 
   // ── Email / Password ────────────────────────────────────────────────────────
@@ -1028,6 +1030,8 @@ export class AuthService {
     // silently fails.
     const appUrl = await this.tenantResolution.baseUrlFor();
     const resetUrl = `${appUrl}/auth/reset-password?token=${token}`;
+    // Was a hardcoded #1e4d8c, a blue belonging to no community (v2-10).
+    const primary = await this.appConfig.getSiteSetting('theme_color_primary');
 
     await this.emailService.sendNow({
       toEmail: user.email,
@@ -1037,7 +1041,7 @@ export class AuthService {
         <h2>Password reset request</h2>
         <p>Hi ${user.fullName},</p>
         <p>Click the link below to reset your password. This link expires in 1 hour.</p>
-        <p><a href="${resetUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Reset Password</a></p>
+        <p><a href="${resetUrl}" style="background:${primary};color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Reset Password</a></p>
         <p style="color:#888;font-size:0.85em">If you didn't request this, you can safely ignore this email.</p>
       `,
     });
@@ -1119,6 +1123,7 @@ export class AuthService {
     // issued the token.
     const appUrl = await this.tenantResolution.baseUrlFor();
     const verifyUrl = `${appUrl}/auth/verify-email?token=${token}`;
+    const primary = await this.appConfig.getSiteSetting('theme_color_primary');
 
     await this.emailService.sendNow({
       toEmail: user.email,
@@ -1128,7 +1133,7 @@ export class AuthService {
         <h2>Welcome to {{brand}}!</h2>
         <p>Hi ${user.fullName},</p>
         <p>Click below to verify your email and activate your account. This link expires in 48 hours.</p>
-        <p><a href="${verifyUrl}" style="background:#1e4d8c;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Verify Email</a></p>
+        <p><a href="${verifyUrl}" style="background:${primary};color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Verify Email</a></p>
         <p style="color:#888;font-size:0.85em">If you didn't create a {{brand}} account, you can safely ignore this email.</p>
       `,
     });

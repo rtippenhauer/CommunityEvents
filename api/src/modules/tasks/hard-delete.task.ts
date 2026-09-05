@@ -78,7 +78,7 @@ export class HardDeleteTask {
       where: { id: user.id },
       data: {
         fullName: 'Deleted Member',
-        email: `deleted-${user.id}@deleted.dinnerbears.com`,
+        email: `deleted-${user.id}@deleted.invalid`,
         passwordHash: null,
         profilePhotoPath: null,
         emailVerifiedAt: null,
