@@ -413,11 +413,11 @@ interface Member {
         min-height: 20px !important;
       }
       .role-admin {
-        --mat-chip-label-text-color: #fff;
+        --mat-chip-label-text-color: var(--db-on-primary);
         background: var(--db-primary) !important;
       }
       .role-moderator {
-        --mat-chip-label-text-color: #fff;
+        --mat-chip-label-text-color: var(--db-on-primary);
         background: var(--db-primary) !important;
       }
       .chip-banned {
@@ -453,7 +453,7 @@ interface Member {
         font-size: 0.62rem;
         font-weight: 700;
         background: var(--db-primary);
-        color: #fff;
+        color: var(--db-on-primary);
         border-radius: 10px;
         padding: 1px 7px;
         letter-spacing: 0.04em;

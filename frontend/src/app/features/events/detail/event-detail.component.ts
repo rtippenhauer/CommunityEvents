@@ -1294,7 +1294,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         justify-content: center;
         gap: 8px;
         background: linear-gradient(135deg, var(--db-brown-dark) 0%, var(--db-brown-mid) 100%);
-        color: #fff;
+        color: var(--db-on-chrome, #fff);
         font-size: 0.9rem;
         font-weight: 600;
         letter-spacing: 0.02em;
@@ -2203,8 +2203,11 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         display: flex;
         align-items: flex-start;
         gap: 14px;
+        /* The far stop is still a hardcoded blue that does not follow the
+           community's brand — the label colour below is measured against the
+           primary end only. Worth deriving the second stop too. */
         background: linear-gradient(135deg, var(--db-primary) 0%, #2a6bbf 100%);
-        color: #fff;
+        color: var(--db-on-primary);
         border-radius: 12px;
         padding: 14px 16px;
         margin-bottom: 16px;

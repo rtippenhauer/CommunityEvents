@@ -6,6 +6,7 @@ import {
 } from '@angular/common/http/testing';
 import { Title } from '@angular/platform-browser';
 import { BrandConfigService, BrandConfig } from './brand-config.service';
+import { contrastRatio, AA_NORMAL } from '../utils/color.util';
 
 // First frontend spec in the project. Targets BrandConfigService because it is
 // the highest-leverage pure logic in the app: every nav item, route guard and
@@ -163,6 +164,65 @@ describe('BrandConfigService', () => {
 
       expect(service.ratingsEnabled()).toBe(true);
       expect(service.ratingsResidencesEnabled()).toBe(false);
+    });
+  });
+
+  // v2-11. The on- colours used to be pinned to white, which is a defect an
+  // admin can see and cannot fix: the on-colour was never a setting. These
+  // assert the measurement, not a particular hex, so re-tuning the derivation
+  // cannot quietly reintroduce an unreadable pair.
+  describe('applied colours', () => {
+    const applied = (token: string): string =>
+      document.documentElement.style.getPropertyValue(token).trim();
+
+    const load = async (colors: Partial<BrandConfig>): Promise<void> => {
+      const pending = service.init();
+      httpMock
+        .expectOne('/api/v1/config/branding')
+        .flush({ ...service.brand(), ...colors } as BrandConfig);
+      await pending;
+    };
+
+    it('gives a light primary dark text rather than white', async () => {
+      // The case that motivated the item: white on a pale button.
+      await load({ colorPrimary: '#f2d98c', colorAccent: '#f2d98c', colorBackground: '#ffffff' });
+
+      expect(contrastRatio(applied('--db-on-primary'), '#f2d98c')!).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
+      expect(applied('--mat-sys-on-primary')).toBe(applied('--db-on-primary'));
+    });
+
+    it('gives a dark primary white text', async () => {
+      await load({ colorPrimary: '#123456', colorAccent: '#123456', colorBackground: '#ffffff' });
+
+      expect(applied('--db-on-primary')).toBe('#ffffff');
+      expect(contrastRatio(applied('--db-on-primary'), '#123456')!).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
+    });
+
+    it('keeps body ink legible on a dark page background', async () => {
+      // applyChrome prefers a warm brand-tinted ink, which on a dark ground is
+      // exactly the preference that has to give way.
+      await load({ colorPrimary: '#C9933A', colorAccent: '#C9933A', colorBackground: '#1b1205' });
+
+      expect(contrastRatio(applied('--db-text-dark'), '#1b1205')!).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
+      expect(contrastRatio(applied('--db-text-mid'), '#1b1205')!).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
+    });
+
+    it('keeps the warm brand ink when the background allows it', async () => {
+      // The other half of readableOn: measurement is the floor, not the rule.
+      await load({ colorPrimary: '#C9933A', colorAccent: '#C9933A', colorBackground: '#FDFAF5' });
+
+      expect(applied('--db-text-dark')).not.toBe('#000000');
+      expect(contrastRatio(applied('--db-text-dark'), '#FDFAF5')!).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
     });
   });
 });

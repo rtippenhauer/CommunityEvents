@@ -626,7 +626,7 @@ export class EventsService {
       </td></tr>
     </table>
     <p style="text-align:center;margin:0 0 24px">
-      <a href="${eventUrl}" style="background:${colors.primary};color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Updated Event</a>
+      <a href="${eventUrl}" style="background:${colors.primary};color:${colors.onPrimary};padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Updated Event</a>
     </p>
     <p style="margin:0;font-size:0.85rem;color:#888">If you can no longer attend, you can update your RSVP on the event page.</p>
   </td></tr>
@@ -869,7 +869,7 @@ export class EventsService {
     </table>
     <p style="margin:0 0 24px;font-size:0.9rem;color:#555">Open the attached calendar invite to Accept, Maybe, or Decline — your RSVP will update automatically. Or tap the button below to RSVP on the ${brandName} site.</p>
     <p style="text-align:center;margin:0 0 24px">
-      <a href="${eventUrl}" style="background:${colors.primary};color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View &amp; RSVP</a>
+      <a href="${eventUrl}" style="background:${colors.primary};color:${colors.onPrimary};padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View &amp; RSVP</a>
     </p>
   </td></tr>
   <tr><td style="padding:16px 36px;background:${colors.surfaceAlt};border-top:1px solid ${colors.rule};text-align:center">
@@ -940,7 +940,7 @@ export class EventsService {
     </table>
     <p style="margin:0 0 24px;font-size:0.9rem;color:#555">A calendar invite is attached — open it to add this ${eventSingularLower} to your calendar. You can Accept, Maybe, or Decline directly from the invite.</p>
     <p style="text-align:center;margin:0 0 24px">
-      <a href="${eventUrl}" style="background:${colors.primary};color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Event</a>
+      <a href="${eventUrl}" style="background:${colors.primary};color:${colors.onPrimary};padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Event</a>
     </p>
   </td></tr>
   <tr><td style="padding:16px 36px;background:${colors.surfaceAlt};border-top:1px solid ${colors.rule};text-align:center">
@@ -1221,7 +1221,7 @@ export class EventsService {
 
     <!-- Manage RSVP button -->
     <div style="text-align:center;margin:28px 0 20px">
-      <a href="${manageUrl}" style="display:inline-block;padding:14px 32px;background:${colors.primary};color:#fff;text-decoration:none;border-radius:8px;font-size:1rem;font-weight:700">
+      <a href="${manageUrl}" style="display:inline-block;padding:14px 32px;background:${colors.primary};color:${colors.onPrimary};text-decoration:none;border-radius:8px;font-size:1rem;font-weight:700">
         Manage Your RSVP
       </a>
     </div>
@@ -1973,7 +1973,7 @@ export class EventsService {
       <li>You'll receive a follow-up email <strong>2 hours before the event</strong> with an updated headcount &mdash; please plan to call the venue that day to confirm the final count.</li>
     </ul>
     <p style="text-align:center;margin:0 0 24px">
-      <a href="${ctaUrl}" style="background:${colors.primary};color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:1rem;display:inline-block">${ctaLabel}</a>
+      <a href="${ctaUrl}" style="background:${colors.primary};color:${colors.onPrimary};padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:1rem;display:inline-block">${ctaLabel}</a>
     </p>
     <p style="margin:0;font-size:0.8rem;color:#aaa;text-align:center">
       If you have questions, reply to this email or contact the event organizer.
@@ -2207,7 +2207,7 @@ export class EventsService {
       to <strong>${suggestedCount} people</strong> (${goingCount} confirmed + 3 for walk-ins).
     </p>
     <p style="text-align:center;margin:0 0 20px">
-      <a href="${appUrl}/events/${event.id}" style="background:${colors.primary};color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.9rem;display:inline-block">View Live Attendee List</a>
+      <a href="${appUrl}/events/${event.id}" style="background:${colors.primary};color:${colors.onPrimary};padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.9rem;display:inline-block">View Live Attendee List</a>
     </p>
     <p style="margin:0;font-size:0.8rem;color:#aaa;text-align:center">
       Thank you for coordinating the reservation!

@@ -261,7 +261,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
         color: #666;
         &.active {
           background: var(--db-primary);
-          color: #fff;
+          color: var(--db-on-primary);
           border-color: var(--db-primary);
         }
       }

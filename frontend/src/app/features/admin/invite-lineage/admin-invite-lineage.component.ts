@@ -139,11 +139,11 @@ interface FlatRow {
         min-height: 20px !important;
       }
       .role-admin {
-        --mat-chip-label-text-color: #fff;
+        --mat-chip-label-text-color: var(--db-on-primary);
         background: var(--db-primary) !important;
       }
       .role-moderator {
-        --mat-chip-label-text-color: #fff;
+        --mat-chip-label-text-color: var(--db-on-primary);
         background: var(--db-primary) !important;
       }
       .chip-banned {

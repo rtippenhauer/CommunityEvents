@@ -1,6 +1,9 @@
 @use '@angular/material' as mat;
 
-// DinnerBears brand palette — warm amber/gold matching the brand art
+// Seeded default palette — warm amber/gold, the colours this app was built
+// in. These are compiled-in fallbacks for the pre-JS paint only: every
+// --db-* token below is overwritten at runtime by BrandConfigService from
+// the community's own primary/accent/background (v2-10, v2-11).
 // Primary: amber gold #C9933A | Background: warm cream #FDFAF5 | Dark: #3D1C05
 $theme-config: (
   color: (
@@ -48,6 +51,16 @@ html {
   --db-accent-on-dark: #E0B45E; // lightened accent for text on dark chrome (derived at runtime)
   --db-green:       #5DCA98;   // spots available
   --db-red-overlay: rgba(180, 20, 20, 0.75); // cancelled overlay
+
+  // Contrast-computed "on" colours (v2-11). These are the values
+  // BrandConfigService derives for the seeded amber, restated here as
+  // literals so the pre-JS paint matches what the runtime then sets.
+  // White on #C9933A measures 2.72:1 and fails AA, which is why the default
+  // is black and not the white this used to hardcode.
+  --db-on-primary:  #000000;   // text/icons on --db-primary
+  --db-on-accent:   #000000;   // text/icons on --db-accent
+  --db-on-chrome:   #ffffff;   // text/icons on the dark chrome family
+  --db-on-banner:   #ffffff;   // text on the stage banner
   --db-font-display:'Fraunces', serif;
   --db-font-body:   'DM Sans', sans-serif;
 }
@@ -67,12 +80,14 @@ body {
   color: var(--db-text-dark);
 }
 
-// Override Material primary button to match brand amber exactly
+// Override Material primary button to match the brand primary exactly. The
+// label colour follows --db-on-primary rather than being pinned to white, so
+// a community with a light primary gets readable buttons (v2-11).
 .mat-mdc-raised-button.mat-primary,
 .mat-mdc-fab.mat-primary,
 .mat-mdc-mini-fab.mat-primary {
   --mat-button-filled-container-color: var(--db-primary);
-  --mat-button-filled-label-text-color: #fff;
+  --mat-button-filled-label-text-color: var(--db-on-primary, #fff);
 }
 
 .mat-mdc-outlined-button.mat-primary {

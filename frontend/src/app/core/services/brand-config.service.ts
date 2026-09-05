@@ -2,7 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
-import { reshade, darkenBy } from '../utils/color.util';
+import { reshade, darkenBy, onColorFor, readableOn } from '../utils/color.util';
 import { wordmarkDataUri, splashDataUri, monogramDataUri } from '../utils/brand-mark.util';
 
 /** The social sign-ins a community offers. See BrandConfig.authProviders. */
@@ -185,10 +185,12 @@ const DEFAULT_BRAND: BrandConfig = {
 // Loaded once via provideAppInitializer (see app.config.ts), same pattern
 // as AuthService.init(). Colors are applied as CSS custom-property
 // overrides so every component already using var(--db-primary) etc. picks
-// up a fork's theme with no rebuild — see styles.scss for the full
-// variable set this deliberately does NOT touch (derived/hover shades
-// like --db-primary-dark stay fixed; only the three core brand colors are
-// configurable for now). Logo/splash/icon images follow the same pattern:
+// up a fork's theme with no rebuild. The three configured seeds (primary,
+// accent, background) are the input; every other token — hover shades, the
+// dark chrome family, the ink tones and every `on-` colour — is derived
+// from them in applyChrome, with the `on-` colours measured for contrast
+// rather than assumed (v2-11). styles.scss holds the same set as literals
+// for the pre-JS paint only. Logo/splash/icon images follow the same pattern:
 // an admin-uploaded URL overrides the compiled-in default asset.
 @Injectable({ providedIn: 'root' })
 export class BrandConfigService {
@@ -289,25 +291,30 @@ export class BrandConfigService {
 
   private applyColors(config: BrandConfig): void {
     const root = document.documentElement.style;
+    const onPrimary = onColorFor(config.colorPrimary);
+    const onAccent = onColorFor(config.colorAccent);
+
     root.setProperty('--db-primary', config.colorPrimary);
     root.setProperty('--db-amber', config.colorPrimary);
     root.setProperty('--db-accent', config.colorAccent);
     root.setProperty('--db-cream', config.colorBackground);
+    root.setProperty('--db-on-primary', onPrimary);
+    root.setProperty('--db-on-accent', onAccent);
 
     // Angular Material's M3 component styles fall back to these --mat-sys-*
     // system tokens internally (see styles.scss's mat.theme() call) — this
     // is what makes color="primary"/"accent" Material components (buttons,
     // toggles, checkboxes, form-field focus states, etc.) follow the admin's
     // chosen colors too, not just elements hand-styled with var(--db-*).
-    // "on-*" text/icon colors are fixed to white rather than recomputed —
-    // an admin choosing a very light primary/accent color will get low
-    // contrast until per-color contrast computation is built.
+    // "on-*" colors are measured, not assumed (v2-11): whichever of white
+    // or near-black has the higher contrast against the chosen color wins, so
+    // a light primary gets dark text instead of white-on-pale.
     root.setProperty('--mat-sys-primary', config.colorPrimary);
-    root.setProperty('--mat-sys-on-primary', '#ffffff');
+    root.setProperty('--mat-sys-on-primary', onPrimary);
     // Material's M2-compatibility layer maps color="accent" to M3's
     // "tertiary" system color, not "secondary".
     root.setProperty('--mat-sys-tertiary', config.colorAccent);
-    root.setProperty('--mat-sys-on-tertiary', '#ffffff');
+    root.setProperty('--mat-sys-on-tertiary', onAccent);
 
     this.applyChrome(config.colorPrimary, config.colorBackground);
   }
@@ -324,24 +331,37 @@ export class BrandConfigService {
   // rich shade of the brand rather than muddy near-black.
   private applyChrome(primary: string, background: string): void {
     const root = document.documentElement.style;
+
     // Dark brown/chrome family — target lightness, boosted saturation.
+    const brownNav = reshade(primary, 13, 80);
     root.setProperty('--db-brown', reshade(primary, 9, 80));
-    root.setProperty('--db-brown-dark', reshade(primary, 13, 80));
-    root.setProperty('--db-brown-nav', reshade(primary, 13, 80));
+    root.setProperty('--db-brown-dark', brownNav);
+    root.setProperty('--db-brown-nav', brownNav);
     root.setProperty('--db-brown-card', reshade(primary, 16, 80));
     root.setProperty('--db-brown-mid', reshade(primary, 24, 85));
     // Stage banner — a saturated mid-dark shade of the brand.
-    root.setProperty('--db-banner', reshade(primary, 35, 90));
+    const banner = reshade(primary, 35, 90);
+    root.setProperty('--db-banner', banner);
+    root.setProperty('--db-on-banner', onColorFor(banner));
     // Hover shades of the primary (keep the brand's own saturation).
     root.setProperty('--db-primary-dark', reshade(primary, 37));
     root.setProperty('--db-amber-dark', reshade(primary, 37));
-    // Accent for text/marks sitting ON the dark chrome (stats strip, story
-    // section). The raw primary works on light backgrounds, but a *dark* brand
-    // color (e.g. Sons' green) has almost no contrast against its own derived
-    // dark-chrome shade — so use a lightened tint here instead.
-    root.setProperty('--db-accent-on-dark', reshade(primary, 66));
+    // Text and icons sitting ON the dark chrome. Measured against the nav
+    // shade rather than assumed: a very dark primary derives a chrome barely
+    // separable from its own tint, and the tint is what would go unreadable.
+    root.setProperty('--db-on-chrome', onColorFor(brownNav));
+    // Accent for text/marks on the dark chrome (stats strip, story section).
+    // The raw primary works on light backgrounds, but a *dark* brand color
+    // (e.g. Sons' green) has almost no contrast against its own derived dark
+    // chrome — so a lightened tint, and only while that tint stays legible.
+    root.setProperty('--db-accent-on-dark', readableOn(brownNav, reshade(primary, 66), true));
     // Muted secondary-text-on-dark tone: a light, desaturated brand tint.
-    root.setProperty('--db-cream-muted', reshade(primary, 65, 38));
+    root.setProperty('--db-cream-muted', readableOn(brownNav, reshade(primary, 65, 38)));
+    // Ink on the page ground. Warm brand-tinted tones are the preference and
+    // the measured on-color is the floor, so a community keeps its own body
+    // copy colour unless its background makes that copy unreadable.
+    root.setProperty('--db-text-dark', readableOn(background, reshade(primary, 16, 45)));
+    root.setProperty('--db-text-mid', readableOn(background, reshade(primary, 32, 30)));
     // Slightly darker cream, derived from the background (the inset nav band).
     root.setProperty('--db-cream-dark', darkenBy(background, 8));
   }

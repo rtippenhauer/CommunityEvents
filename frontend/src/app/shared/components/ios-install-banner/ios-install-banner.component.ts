@@ -28,7 +28,7 @@ import { MatIconModule } from '@angular/material/icon';
         left: 0;
         right: 0;
         background: var(--db-primary);
-        color: #fff;
+        color: var(--db-on-primary);
         display: flex;
         align-items: center;
         gap: 10px;

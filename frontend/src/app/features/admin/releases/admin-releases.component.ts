@@ -461,7 +461,7 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
         padding: 2px 8px;
         border-radius: 10px;
         background: var(--db-primary);
-        color: white;
+        color: var(--db-on-primary);
       }
       .pub-date {
         font-size: 0.8rem;

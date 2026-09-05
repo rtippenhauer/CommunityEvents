@@ -2,7 +2,7 @@
 
 .stage-banner {
   background: var(--db-banner, #b34a00);
-  color: #fff;
+  color: var(--db-on-banner, #fff);
   text-align: center;
   font-size: 0.72rem;
   font-weight: 700;
@@ -40,7 +40,7 @@
 .stage-badge {
   display: inline-block;
   background: var(--db-banner, #b34a00);
-  color: #fff;
+  color: var(--db-on-banner, #fff);
   font-size: 0.55rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -103,7 +103,7 @@
 
 .app-toolbar {
   background: linear-gradient(135deg, var(--db-brown-nav) 0%, var(--db-brown-card, #4A2208) 100%) !important;
-  color: var(--db-cream) !important;
+  color: var(--db-on-chrome, #fff) !important;
   padding: 0 12px;
   gap: 0;
   min-height: 68px !important;
@@ -111,7 +111,7 @@
   align-items: stretch !important;
   border-top: 12px solid var(--db-brown-dark, #3D1C05) !important;
   border-bottom: 12px solid var(--db-brown-dark, #3D1C05) !important;
-  --mat-icon-button-icon-color: var(--db-cream);
+  --mat-icon-button-icon-color: var(--db-on-chrome, #fff);
 }
 
 .app-logo-link {
@@ -120,7 +120,7 @@
   text-decoration: none;
   flex-shrink: 0;
   margin: 0 12px;
-  color: var(--db-cream);
+  color: var(--db-on-chrome, #fff);
   align-self: center;
 }
 
@@ -145,7 +145,7 @@
   @media (max-width: 959.98px) {
     background: transparent;
     border-radius: 0;
-    --mat-icon-button-icon-color: var(--db-cream);
+    --mat-icon-button-icon-color: var(--db-on-chrome, #fff);
   }
 }
 
@@ -285,7 +285,7 @@
   padding: 28px 16px 20px;
   text-align: center;
   background: var(--db-brown-nav);
-  color: var(--db-cream);
+  color: var(--db-on-chrome, #fff);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -308,7 +308,7 @@
   align-items: center;
   font-size: 0.78rem;
 
-  a { color: var(--db-cream-muted); text-decoration: none; &:hover { color: var(--db-cream); } }
+  a { color: var(--db-cream-muted); text-decoration: none; &:hover { color: var(--db-on-chrome, #fff); } }
   .footer-dot { color: rgba(255,255,255,0.2); }
 }
 

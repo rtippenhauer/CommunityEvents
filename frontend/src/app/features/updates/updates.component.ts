@@ -137,7 +137,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         padding: 3px 10px;
         border-radius: 12px;
         background: var(--db-primary);
-        color: white;
+        color: var(--db-on-primary);
         letter-spacing: 0.05em;
       }
       .release-date {

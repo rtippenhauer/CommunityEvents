@@ -666,11 +666,11 @@ interface AchievementGroup {
         min-height: 22px !important;
       }
       .role-admin {
-        --mat-chip-label-text-color: #fff;
+        --mat-chip-label-text-color: var(--db-on-primary);
         background: var(--db-primary) !important;
       }
       .role-moderator {
-        --mat-chip-label-text-color: #fff;
+        --mat-chip-label-text-color: var(--db-on-primary);
         background: var(--db-primary) !important;
       }
       .chip-banned {
@@ -743,7 +743,7 @@ interface AchievementGroup {
         gap: 8px;
         padding: 12px 16px;
         background: var(--db-primary);
-        color: #fff;
+        color: var(--db-on-primary);
       }
       .ach-group-icon {
         font-size: 1.2rem;
@@ -761,7 +761,7 @@ interface AchievementGroup {
         font-size: 0.7rem;
         font-weight: 700;
         background: var(--db-primary);
-        color: #fff;
+        color: var(--db-on-primary);
         border-radius: 10px;
         padding: 2px 8px;
         white-space: nowrap;
@@ -809,7 +809,7 @@ interface AchievementGroup {
         font-size: 0.68rem;
         font-weight: 700;
         background: var(--db-primary);
-        color: #fff;
+        color: var(--db-on-primary);
         border-radius: 8px;
         padding: 1px 7px;
       }

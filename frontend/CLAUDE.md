@@ -13,6 +13,7 @@
 Primary/Accent: #C9933A (amber gold) — Background: #FDFAF5 (warm white). Defined as CSS custom
 properties in `src/styles.scss` (`--db-primary`, `--db-accent`, `--db-cream`, plus derived
 shades) — always reference `var(--db-*)` in component styles, never a bare hex literal.
+The `styles.scss` literals are the pre-JS paint only; every one is overwritten at runtime.
 
 As of Phase 29 these three core colors (plus app name/tagline) are also admin-editable via
 `/admin/settings`, which overrides the CSS variables at runtime through `BrandConfigService`
@@ -27,11 +28,25 @@ tokens, which shadow runtime overrides) so Material emits its `--mat-sys-*` syst
 which its own M3 component styles already fall back to. `BrandConfigService` sets `--mat-sys-primary`/
 `--mat-sys-tertiary` (Material's M2→M3 compat layer maps `color="accent"` to tertiary, not
 secondary) alongside the `--db-*` vars, so `color="primary"`/`color="accent"` Material components
-(buttons, toggles, checkboxes, form-field focus states) follow admin branding too. `on-primary`/
-`on-tertiary` text color is hardcoded to white rather than contrast-computed — a very light admin-
-chosen color will read poorly until that's built. Hover/derived shades (button hover states, nav
-sidebar) also aren't auto-generated from the 3 configured colors — a very different hue may look
-slightly off there.
+(buttons, toggles, checkboxes, form-field focus states) follow admin branding too.
+
+**Every `on-` colour is measured, not assumed (v2-11).** `onColorFor` in `core/utils/color.util.ts`
+picks whichever of white or black has the higher WCAG contrast against the colour it sits on, and
+`--db-on-primary` / `--db-on-accent` / `--db-on-chrome` / `--db-on-banner` carry the result. This
+used to be pinned to white, which failed on the seeded amber itself: white on `#C9933A` measures
+2.72:1, below AA's 4.5. **Never write a literal `#fff` as text on a `var(--db-*)` background** —
+use the matching `--db-on-*` token, or the community that picks a pale primary gets the same defect
+back one component at a time.
+
+`ON_LIGHT` is pure black on purpose, against the usual advice: swept across the whole HSL cube the
+worst achievable contrast is 4.584:1 with `#000000` and 4.173:1 with a softened `#1a1a1a`, so black
+is the only choice that clears AA for *every* colour an admin can pick. Body copy still gets a warm
+brand-tinted ink via `readableOn`, which prefers a tone and falls back to the measured floor only
+when that tone fails.
+
+Hover and derived shades (the dark chrome family, button hover states, the nav sidebar, the ink
+tones) *are* generated from the three configured colours — `BrandConfigService.applyChrome` derives
+them by absolute lightness target, so a different hue yields the equivalent tones in that hue.
 
 ## Feature Structure
 src/app/

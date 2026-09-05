@@ -449,7 +449,7 @@ interface AdminUser {
         min-height: 20px !important;
       }
       .role-admin {
-        --mat-chip-label-text-color: #fff;
+        --mat-chip-label-text-color: var(--db-on-primary);
         background: var(--db-primary) !important;
       }
       /* Deliberately distinct from admin: this one operates the whole
@@ -468,7 +468,7 @@ interface AdminUser {
         --mat-chip-label-text-color: #757575 !important;
       }
       .role-moderator {
-        --mat-chip-label-text-color: #fff;
+        --mat-chip-label-text-color: var(--db-on-primary);
         background: var(--db-primary) !important;
       }
       .role-member {

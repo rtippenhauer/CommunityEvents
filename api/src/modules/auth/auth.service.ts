@@ -24,6 +24,7 @@ import { EmailService } from '../email/email.service';
 import { EmailTemplate } from '../email/email.constants';
 import { InviteFlavor, InviteType } from '../../database/enums';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
+import { onColorFor } from '../../common/utils/color.util';
 import { AchievementsService } from '../community/achievements.service';
 import { RsvpStatus } from '../../database/enums';
 import type { event_rsvps as EventRsvp } from '@prisma/client';
@@ -1032,6 +1033,7 @@ export class AuthService {
     const resetUrl = `${appUrl}/auth/reset-password?token=${token}`;
     // Was a hardcoded #1e4d8c, a blue belonging to no community (v2-10).
     const primary = await this.appConfig.getSiteSetting('theme_color_primary');
+    const onPrimary = onColorFor(primary);
 
     await this.emailService.sendNow({
       toEmail: user.email,
@@ -1041,7 +1043,7 @@ export class AuthService {
         <h2>Password reset request</h2>
         <p>Hi ${user.fullName},</p>
         <p>Click the link below to reset your password. This link expires in 1 hour.</p>
-        <p><a href="${resetUrl}" style="background:${primary};color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Reset Password</a></p>
+        <p><a href="${resetUrl}" style="background:${primary};color:${onPrimary};padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Reset Password</a></p>
         <p style="color:#888;font-size:0.85em">If you didn't request this, you can safely ignore this email.</p>
       `,
     });
@@ -1124,6 +1126,7 @@ export class AuthService {
     const appUrl = await this.tenantResolution.baseUrlFor();
     const verifyUrl = `${appUrl}/auth/verify-email?token=${token}`;
     const primary = await this.appConfig.getSiteSetting('theme_color_primary');
+    const onPrimary = onColorFor(primary);
 
     await this.emailService.sendNow({
       toEmail: user.email,
@@ -1133,7 +1136,7 @@ export class AuthService {
         <h2>Welcome to {{brand}}!</h2>
         <p>Hi ${user.fullName},</p>
         <p>Click below to verify your email and activate your account. This link expires in 48 hours.</p>
-        <p><a href="${verifyUrl}" style="background:${primary};color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Verify Email</a></p>
+        <p><a href="${verifyUrl}" style="background:${primary};color:${onPrimary};padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;margin:16px 0">Verify Email</a></p>
         <p style="color:#888;font-size:0.85em">If you didn't create a {{brand}} account, you can safely ignore this email.</p>
       `,
     });

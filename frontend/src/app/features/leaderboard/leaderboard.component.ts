@@ -247,7 +247,7 @@ const TYPE_LABELS: Record<string, string> = {
         font-size: 0.65rem;
         font-weight: 700;
         background: var(--db-primary);
-        color: #fff;
+        color: var(--db-on-primary);
         border-radius: 10px;
         padding: 1px 7px;
         letter-spacing: 0.04em;

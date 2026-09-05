@@ -238,7 +238,7 @@ interface CalendarDay {
 
         &.today {
           background: var(--db-amber) !important;
-          color: #fff !important;
+          color: var(--db-on-primary) !important;
           font-weight: 700;
         }
 
