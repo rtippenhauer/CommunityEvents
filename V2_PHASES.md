@@ -1259,6 +1259,59 @@ own everywhere, including in email subjects and bodies. No code path emits a
 dinnerbears.com URL. DinnerBears' own artwork and copy exist only as that
 community's rows and uploads after it migrates.
 
+#### Decided here and still standing: email bodies, not provider templates
+
+Decided with Rob 2026-08-29 at the end of v2-9, and kept here because the
+alternative keeps looking attractive. Every email's HTML is an inline string at
+its call site -- about 15 of them -- and only four of the thirteen names in
+`EmailTemplate` are wired to a `templateId` at all. Brevo with no template id
+falls back to that same `htmlBody`, and `ResendService` has no template concept
+whatsoever and only ever sends it. So the inline HTML is not a degraded path, it
+is **the uniform one**: one string, built once, delivered identically by either
+provider.
+
+Adopting Brevo's template store would improve Brevo only and silently diverge
+from what Resend sends on overflow -- two versions of every email, one of which
+nobody looks at until the day it is the one that goes out. Brevo templates are
+also per-*account*, so communities sharing the deployment key would share them,
+against the per-community branding v2-9 established. The reason to use a
+provider template store is its drag-and-drop designer; nobody here intends to
+open it.
+
+#### Carried over, not done in v2-10
+
+Checked against the tree at the v2-11 branch point, so this is what is actually
+left rather than what the plan predicted:
+
+- **`about_story_html` still holds DinnerBears' copy** -- "One simple act. A
+  lifetime of bear memories.", seeded from `prisma/seed-data/app_config.json`.
+  `bootstrap.ts` blanks `home_hero_html`, `home_howitworks_html` and
+  `brand_story_url`, and deletes the `term_*` rows, but this key is in neither
+  list -- so a fresh install serves it as its own About page. Needs written
+  copy, not a rename.
+- **The footer fabricates a legal entity.** `app.component.html:450` renders
+  `{{ brandConfig.brand().name }}.Com, LLC`, so a community called Dayton Supper
+  Club claims to be "Dayton Supper Club.Com, LLC" -- a company that does not
+  exist. `LEGAL_ENTITY_NAME` exists for exactly this and is not read here.
+- **`BrevoService.getTemplateId` warns about a supported configuration.**
+  `brevo.service.ts:258` logs `No Brevo template ID for <name>` at WARN on every
+  send without one. Template ids are per-community as of v2-9, so a new
+  community has none and this fires for every message it ever sends. Drop it to
+  DEBUG.
+- **`index.html`'s `theme-color` is static and pre-bootstrap**, so it does not
+  follow a runtime branding or palette change. `manifest.webmanifest` was the
+  other half of that problem and is already renamed to CommunityEvents; the
+  `theme-color` question belongs with v2-11, which hits the same limitation.
+
+**The "~93 hardcoded DinnerBears references" figure is retired** -- it counted
+comments and specs. `api/src` holds 37 matches today and every one is either a
+comment recording why something used to be hardcoded, or an identifier that is
+not branding at all: `dinnerbearsUserId` (a column on the Facebook deletion
+queue) and the `dinnerbears-event-N@dinnerbears.com` arm of the ICS UID regex,
+kept so calendar subscriptions created before the rename still resolve. Neither
+should be changed. The frontend's 17 are comments and specs apart from
+`styles.scss`, which v2-11 replaces outright.
+
 ### v2-11 — A real colour system
 
 **Status:** In Progress. Numbered 2026-08-30, immediately after v2-10 because
@@ -1350,96 +1403,15 @@ Note `index.html`'s `theme-color` and the webmanifest are static, pre-bootstrap
 files with no CSS-variable indirection, so they do not follow a runtime change
 -- the same limitation the branding item hits, and worth deciding once for both.
 
-
-**Status:** Not started (deferred) -- **except five commits landed early on the
-v2-7 branch** at Rob's direction, because stage testing kept surfacing them:
-
-- `b219c5e` -- emails carry the community's name. `{{brand}}` is substituted once
-  in `EmailService` at **enqueue** time, not at dispatch: the cron drains every
-  tenant's queue under one `runUnscoped`, so branding read there is whichever
-  community the engine reached first.
-- `dad8b50` -- the settings form defaulted to `DinnerBears`, so the screen for
-  fixing branding was the screen that wrote it back as a stored row.
-- `7da6ace` -- the invite email asserted its recipients "love good food and great
-  company"; it now carries the community's own tagline. Took three more copies of
-  the DinnerBears tagline with it, including the seeded row that made
-  `SITE_SETTING_DEFAULTS` irrelevant.
-- `0dd9e5d` / `8ca6f27` -- platform legal templates seeded per community, filled
-  in on the public read, with a review gate and a restore button. See the
-  Multi-Tenancy section of CLAUDE.md.
-
-Everything below is unchanged apart from those. Still DinnerBears' in
-`prisma/seed-data/app_config.json`, and needing content decisions rather than
-renames: `about_story_html` (the real origin story, named people, dated
-milestones), `home_hero_html`, `home_howitworks_html`, `term_points` = "Bear
-Points", and a leftover `tz_probe` row. Two more found on stage: the footer
-hardcodes `.Com, LLC` after the brand name (`app.component.html:444`), fabricating
-a legal entity for every community -- `LEGAL_ENTITY_NAME` now exists for exactly
-that -- and the invite subject appends `!` to a name that may already end in one.
-`frontend/public/manifest.webmanifest` still names the PWA DinnerBears, and being
-per-deployment rather than per-community it needs a decision about what a single
-deployment serving many communities calls itself.
-
-The per-instance branding already lives in `app_config` and needs no code, but
-the *fallbacks* are still DinnerBears: `SITE_SETTING_DEFAULTS` in
-`app-config.service.ts`, ~93 hardcoded references across `api/src` (most of
-them `dinnerbears.com` in email URLs and fallbacks) and 12 frontend files.
-
-**Not a find-and-replace, and this is the trap.** Branding became per-community
-in v2-6: `app_config` is tenant-scoped, so `brand_name` is whatever each
-community chose. Swapping the literals to "CommunityEvents" would be the same
-mistake one level up -- a community called "Dayton Dinners" would send mail
-saying "Welcome to CommunityEvents!". Every one of these sites has to resolve
-the *tenant's* brand name and interpolate it; only the deployment-wide
-fallbacks become CommunityEvents.
-
-Two consequences follow. Email bodies composed in a `@Cron` sweep must re-enter
-`runWithTenant` to read branding, or they render whichever tenant the engine
-reached first -- the v2-6 trap already documented in CLAUDE.md. And a string
-like `subject: 'Verify your DinnerBears email'` becomes an async lookup, which
-changes the shape of the functions holding it.
-
-**Found on the v2-7 stage pass**, which is how the numbers below got specific:
-a real invite and a real verification email both arrived branded DinnerBears
-from a sender correctly named "Community Events Project". The From identity
-comes from `brevoFromName` and was already configurable; the body copy is
-string literals (`auth.service.ts:1110-1116` among them). Current count is 38
-non-comment references in `api/src` across 14 files and 14 in the frontend
-across 5 -- lower than the ~93 above, which counted comments and `.spec` files.
-
-**Email bodies are part of this, and provider templates are not.** Decided with
-Rob 2026-08-29, at the end of v2-9. Every email's HTML is an inline string at its
-call site -- about 15 of them -- and only four of the thirteen names in
-`EmailTemplate` are wired to a `templateId` at all. Brevo with no template id
-falls back to that same `htmlBody`, and `ResendService` has no template concept
-whatsoever and only ever sends it. So the inline HTML is not a degraded path, it
-is **the uniform one**: one string, built once, delivered identically by either
-provider.
-
-That is the argument against adopting Brevo's template store, which was
-considered and rejected here. It would improve Brevo only and silently diverge
-from what Resend sends on overflow -- two versions of every email, one of which
-nobody looks at until the day it is the one that goes out. Brevo templates are
-also per-*account*, so communities sharing the deployment key would share them,
-against the per-community branding v2-9 established. The reason to use a provider
-template store is its drag-and-drop designer; nobody here intends to open it.
-
-So the branding work covers the bodies themselves. They are plain -- a heading, a
-paragraph, an inline-styled button -- and improving them lands on both providers
-at once, with no per-account state, no template ids to track and no provider API
-call at setup.
-
-**One log line to fix with it:** `BrevoService.getTemplateId` logs
-`No Brevo template ID for <name>` at **WARN** on every send without one. Since
-template ids are per-community as of v2-9, a newly created community has none and
-this fires for every message it ever sends -- describing a supported and now
-preferred configuration as though it were a fault. Drop it to `DEBUG`.
-
-**Definition of done:** a fresh instance with no `app_config` rows presents as
-CommunityEvents; a community that has set its own `brand_name` sees that name
-everywhere including in email subjects and bodies; no code path emits a
-dinnerbears.com URL; and a community that has configured no provider templates
-produces no warnings for it.
+**Definition of done:** a community can pick a preset, or set one or two seed
+colours and get a complete token set derived from them, or override any single
+token -- with overrides surviving a later seed change. Every `on-` colour is
+computed for contrast rather than assumed white, so a light primary is readable
+without an admin having to notice it. No component style references
+`--db-primary`, `--db-accent` or `--db-cream` directly. The admin screen shows a
+live preview, the copyable prompt and the paste-back importer, and warns on any
+pair below 4.5:1 without blocking the save. Success, warning, error and info are
+not editable.
 
 ### v2-12 — OAuth callback on the community's own host
 
