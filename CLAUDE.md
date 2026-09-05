@@ -34,15 +34,55 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-10` — CommunityEvents branding replaces the
-DinnerBears defaults. Reframed 2026-08-30: not "remove DinnerBears" (which has
-no finish line and has felt like an oversight across three items) but
-"CommunityEvents is the platform identity, and every DinnerBears artifact either
-becomes its CommunityEvents equivalent or becomes data owned by the DinnerBears
-community when it migrates". `v2-11` (a real colour system) shares that surface
-and follows it. See `V2_PHASES.md`.
+**Current v2 work item:** `v2-11` — a real colour system. `v2-10` established
+that a community's identity is *data* and left the styling half open: the CSS
+variables are still named `--db-*` and semantically brown (`--db-brown-nav`,
+`--db-cream`), and `applyChrome` pins on-colours to white, so an admin choosing
+a light primary gets poor contrast. Swapping the values is cheap — 390 component
+references all resolve through variables — but renaming them honestly touches
+all 390. The parked Community Events Project brand direction (blue/purple, Inter,
+Lucide, automatic contrast) mostly lands here. See `V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-10` — CommunityEvents branding replaces the DinnerBears defaults**
+  (2026-09-05). The reframe held — nothing needed to keep working as a
+  DinnerBears default — but **two of the three problems were solved by building
+  missing data, not by renaming**. `foundingLabel` compared `brand_name` against
+  the literal `'dinnerbears'` to choose a badge name, and the per-community
+  support address already existed on the API and was simply never served. Both
+  were guesses standing in for data that did not exist; renaming would have
+  preserved the guess in nicer words.
+
+  **The fallback marks are generated, not replacement artwork.** A compiled-in
+  image is one file for the whole deployment, but what it stands in for is one
+  community's identity — so a CommunityEvents PNG would only have changed *whose*
+  artwork an unbranded community wore. `brand-mark.util.ts` draws logo, icon and
+  splash from that community's own name and palette as `data:` URIs, so all ten
+  `[src]` consumers and the upload override were untouched and ~13MB of PNGs left
+  the bundle. **Email needs the opposite answer**: Gmail and Outlook strip SVG
+  and browsers will not reliably render one as a notification icon, so email and
+  push fall back to a raster from `scripts/generate-platform-logo.js` — a
+  deliberate stand-in, replaced by overwriting the PNG.
+
+  **`achievements` is tenant-scoped now** (see the Multi-Tenancy section), and
+  every transactional email derives its colours from the community's own primary
+  via a mirrored `color.util.ts`, with bare bodies wrapped in a shared shell at
+  enqueue time.
+
+  **The migration is the lesson.** It copied the catalogue per tenant *before*
+  dropping the unique index on `key` alone — and copying is precisely what makes
+  a key appear twice — so it died on `Duplicate entry` against any database with
+  a non-root tenant. **The suite could not have caught it**: the e2e harness
+  builds an empty database, so the copy selects zero rows and the constraint is
+  never exercised. That gap is still open, and every remaining v2 item ships
+  migrations. It surfaced an hour after deploy as an unrelated-looking 500
+  because the entrypoint starts Nest even when `migrate deploy` fails.
+
+  Two traps: `AppConfigModule` is not `@Global` like `PrismaModule`, so injecting
+  `AppConfigService` is a **boot** failure `tsc` passes clean; and a `` written
+  through a Python heredoc became a literal backspace (`0x08`), silently
+  disabling the guard against double-wrapping an email — invisible in an editor
+  and in `grep`, found only by the test for the "obvious" case.
 - **`v2-8` — Per-tenant OAuth apps** (2026-09-01, REQ-TENANT-01.9 and
   REQ-TENANT-01.8). Each tenant supplies its own Google and/or Meta credentials
   in the four columns reserved since `v2-3` and encrypted since `v2-7`; this is
@@ -246,7 +286,8 @@ and follows it. See `V2_PHASES.md`.
   exception unwinds to Express's stock HTML error page, so the middleware
   writes its JSON body directly.
 - **`v2-5` — Tenant-scoping Prisma Client Extension** (2026-08-14). `tenant_id`
-  on 27 transactional models, 12 left global. The split is declared once in
+  on 27 transactional models, 12 left global (28 and 11 as of `v2-10`, which
+  scoped `achievements`). The split is declared once in
   `api/src/common/tenant/tenant-scoped-models.ts` and is exhaustive over
   `Prisma.ModelName` at the type level, so a new model that nobody classified
   does not compile. Verified by `test/tenant-isolation.e2e-spec.ts`: two tenants
@@ -523,11 +564,16 @@ authoritative (per REQ-TENANT-01.3).
   by a single init migration — v2 starts from a blank database and imports
   production data separately.
 - **Fresh install is three steps:** `prisma migrate deploy` (automatic on
-  container start) -> `node dist/database/prisma/seed.js` (reference data:
-  achievements, app_config defaults, avatars, cities, automation account) ->
-  `node dist/bootstrap.js` (this operator's city, branding and first admin).
-  Seed before bootstrap: bootstrap edits seeded data, so running it first
-  leaves the DinnerBears bear avatars and terminology in place.
+  container start) -> `node dist/database/prisma/seed.js` (tenant-independent
+  reference data only: avatars, cities, merch config) -> `node dist/bootstrap.js`
+  (this operator's city, branding, first admin, **and the achievement
+  catalogue**). Seed before bootstrap: bootstrap edits seeded data, so running it
+  first leaves the bear avatars and terminology in place.
+
+  The catalogue moved out of `seed.js` in `v2-10` for the reason `app_config`
+  did in `v2-6` and `email_provider_config` in `v2-9`: it is scoped now, and
+  seed runs before any tenant exists, so a row it wrote would take the
+  `tenant_id` sentinel and be rejected by the foreign key.
 - **Prisma 7 specifics:** no `url` in the schema's datasource block — the
   connection string lives in `prisma.config.ts` (derived from the existing
   `DB_*` vars) and the client takes a driver adapter,
@@ -801,6 +847,26 @@ authoritative (per REQ-TENANT-01.3).
   confirmation phrase rather than a boolean for the same reason deleting a
   community makes you retype its domain. `docs/SECRETS.md` is the operator-facing
   version; `docs/TENANT_ONBOARDING.md` covers the provider-side setup.
+- **The achievement catalogue is per-community as of `v2-10`.** `achievements`
+  was global reference data, so every community shared one catalogue — and it
+  held DinnerBears' copy, which nobody else could override because the rows
+  belonged to nobody. It is scoped now, unique on `(tenant_id, key)`, and seeded
+  by `bootstrap.ts` and `tenants-admin.service.create`.
+
+  **`key` is an identifier, not copy.** `founding_member` is joined on in
+  `adminBackfillFounders` and the merch gate, `patriotic_2026` in the splash
+  component; only the display fields differ per community. Raw SQL that joins
+  the catalogue therefore needs its own `tenant_id` predicate — matching on the
+  key alone was correct while exactly one row in the database held it, and now
+  multiplies by the number of communities.
+
+  **A migration that fans a shared table out per tenant must swap the unique
+  index first.** Copying is what makes a key appear twice; doing it while the
+  single-column unique index is still in force dies on `Duplicate entry`. The
+  e2e harness builds an empty database, so that branch selects zero rows and is
+  never exercised — **no migration in this repo is tested against populated
+  data**, which is how it reached stage.
+
 - **Email sending is per-community as of `v2-9`.** `email_provider_config` is
   scoped: its Brevo key, From identity, template ids, webhook token and daily
   counters all belong to a community, resolved with the env credentials as the

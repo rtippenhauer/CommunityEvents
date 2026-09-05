@@ -1114,7 +1114,75 @@ exactly why it is easy to miss. Set them on the deployment, or per community.
 
 ### v2-10 — CommunityEvents branding replaces the DinnerBears defaults
 
-**Status:** In Progress (started 2026-09-01).
+**Status:** Complete (2026-09-05). Ten commits; API unit 286, API e2e 866
+across 43 files, frontend 141, Playwright 3.
+
+**What the item actually turned out to be.** The reframe held: nothing needed to
+keep working as a DinnerBears default. But two of the three problems were solved
+by *building the missing data*, not by renaming anything. `foundingLabel` was
+comparing `brand_name` against the literal `'dinnerbears'` to pick a badge name,
+and the per-community support address already existed on the API and simply was
+never served. Both were guesses standing in for data that did not exist yet;
+scoping the catalogue and extending the branding payload removed the need to
+guess. Renaming would have preserved the guess in nicer words.
+
+**Generated marks, not replacement artwork.** The compiled-in fallback is one
+file for the whole deployment, but what it stands in for is a single community's
+identity -- so shipping a CommunityEvents PNG would only have changed *whose*
+artwork an unbranded community wore. `brand-mark.util.ts` draws the logo, icon
+and splash from that community's own name and palette as `data:` URIs, so all
+ten `[src]` consumers and the upload override were untouched, and ~13MB of PNGs
+left the bundle. Fonts do not load inside an `<img>`-rendered SVG, so the marks
+use a system stack with a fit guard; `brand_name` is admin-controlled and
+XML-escaped.
+
+**Email needed the opposite answer.** Gmail and Outlook strip SVG and browsers
+will not reliably render one as a notification icon, so the generated marks
+cannot reach email or push. Those fall back to a raster
+(`scripts/generate-platform-logo.js`) -- a deliberate stand-in, replaced by
+overwriting the PNG.
+
+**The migration is the part to learn from.** It copied the catalogue per tenant
+*before* dropping the old unique index on `key` alone, and copying is precisely
+what makes a key appear twice -- so it died on `Duplicate entry` against any
+database holding a non-root tenant. **The suite could not have caught it**: the
+e2e harness builds an empty database, so the copy selects zero rows and the
+constraint is never exercised. The branch that mattered is structurally
+unreachable from the tests as they stand, and that gap is still open.
+
+What the half-applied migration left explains every symptom it produced on
+stage: the column added and root rows claimed, then nothing -- so a second
+community had no catalogue, the missing foreign key let `tenants.delete()`
+orphan rows, and the still-live unique index made *creating* a community 500
+inside the achievements seeding, aborting before `email_provider_config`. It
+surfaced an hour later as an unrelated-looking toast because
+`docker/entrypoint.sh` runs `migrate deploy || echo WARNING` and starts Nest
+regardless. Both of those are recorded in CLAUDE.md and neither is fixed.
+
+**Two other traps worth not re-discovering.** `AppConfigModule` is not
+`@Global` the way `PrismaModule` is, so injecting `AppConfigService` into
+`PushService` and `AuthService` needed explicit module imports -- a *boot*
+failure that `tsc` passes clean and only starting the app finds. And a regex
+written into a file through a Python heredoc had `` silently become a literal
+backspace (`0x08`), turning off the guard that stops an already-complete email
+document being wrapped a second time; invisible in an editor and in `grep`, only
+`cat -A` showed it. The test written for the "obvious" case is what caught it.
+
+**Deliberately not done**, each for a stated reason: the 33 bear avatars (a set
+of 33 choices, which the generate-from-name answer does not transfer to), the
+dead `public/backgrounds/` (nothing renders it), `landing.html` (v2-13's), the
+`facebook_deletion_requests.dinnerbears_user_id` column (never user-visible, a
+third migration), a monochrome push badge (Android renders the colour logo as a
+grey blob), and `event-form-dialog`'s "Bear Dinner at " prefix -- which is legacy
+*data* compatibility, since DinnerBears' historical events really do carry those
+titles.
+
+**Parked:** the Community Events Project brand direction (blue/purple, Inter,
+Lucide, contrast automation), held on 2026-09-03 pending design work. The
+palette swap is cheap -- 390 component references all resolve through CSS
+variables -- but the variables are still named `--db-*` and semantically brown,
+and Lucide is 1,052 `mat-icon` usages across 62 files. Most of it belongs to
+v2-11.
 
 **Reframed 2026-08-30 with Rob, and this is the organising idea rather than a
 longer checklist.** The item has read as "remove DinnerBears", which has no
@@ -1193,7 +1261,7 @@ community's rows and uploads after it migrates.
 
 ### v2-11 — A real colour system
 
-**Status:** Not started. Numbered 2026-08-30, immediately after v2-10 because
+**Status:** In Progress. Numbered 2026-08-30, immediately after v2-10 because
 the two share a surface: the branding pass decides what a community *is*, and
 this decides what it *looks like*, and doing them in the other order means
 restyling the same components twice. v2-13's landing page and v2-14's demo
