@@ -206,6 +206,34 @@ export function onColorFor(
 }
 
 /**
+ * The colour to sit on *several* grounds at once -- a gradient's two stops,
+ * say. Maximises the worst contrast rather than the average, because a label
+ * is unreadable wherever it is worst, not on average.
+ *
+ * Measuring against one end only is what made the special-dinner badge look
+ * fine while its icon vanished into the other end.
+ */
+export function onColorForAll(
+  backgrounds: readonly string[],
+  candidates: readonly string[] = [ON_DARK, ON_LIGHT],
+): string {
+  let best = ON_DARK;
+  let bestWorst = -1;
+  for (const candidate of candidates) {
+    let worst = Infinity;
+    for (const background of backgrounds) {
+      const ratio = contrastRatio(candidate, background);
+      if (ratio !== null && ratio < worst) worst = ratio;
+    }
+    if (worst !== Infinity && worst > bestWorst) {
+      best = candidate;
+      bestWorst = worst;
+    }
+  }
+  return best;
+}
+
+/**
  * Prefer `preferred` -- normally a brand-tinted tone -- for text on
  * `background`, falling back to the measured best when it does not reach AA.
  *

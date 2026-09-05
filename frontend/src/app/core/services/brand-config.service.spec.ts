@@ -6,7 +6,7 @@ import {
 } from '@angular/common/http/testing';
 import { Title } from '@angular/platform-browser';
 import { BrandConfigService, BrandConfig } from './brand-config.service';
-import { contrastRatio, AA_NORMAL } from '../utils/color.util';
+import { contrastRatio, AA_NORMAL, AA_LARGE } from '../utils/color.util';
 
 // First frontend spec in the project. Targets BrandConfigService because it is
 // the highest-leverage pure logic in the app: every nav item, route guard and
@@ -213,6 +213,36 @@ describe('BrandConfigService', () => {
       expect(contrastRatio(applied('--db-text-mid'), '#1b1205')!).toBeGreaterThanOrEqual(
         AA_NORMAL,
       );
+    });
+
+    it('labels a primary-to-accent blend legibly at both ends', async () => {
+      // The special-dinner badge is a gradient between the two, so a label
+      // measured against the primary alone can vanish into the accent end.
+      // Two shades of one brand is the case this has to get right.
+      await load({ colorPrimary: '#C9933A', colorAccent: '#E0B45E', colorBackground: '#ffffff' });
+
+      const blend = applied('--db-on-brand-blend');
+      expect(contrastRatio(blend, '#C9933A')!).toBeGreaterThanOrEqual(AA_LARGE);
+      expect(contrastRatio(blend, '#E0B45E')!).toBeGreaterThanOrEqual(AA_LARGE);
+    });
+
+    // A gradient between two *arbitrary* colours often cannot be labelled at
+    // all: with stops either side of the luminance crossover, the best any
+    // colour achieves against both is around 1.4:1. That is a property of the
+    // gradient, not a bug in the derivation, and it is the admin screen's
+    // contrast warning that has to surface it -- v2-11 warns rather than
+    // blocks. What the derivation owes is the *best available*, asserted here,
+    // so a regression that picked the worse candidate would still fail.
+    it('picks the better candidate even when neither can reach AA', async () => {
+      await load({ colorPrimary: '#111111', colorAccent: '#f2d98c', colorBackground: '#ffffff' });
+
+      const blend = applied('--db-on-brand-blend');
+      const worstFor = (fg: string): number =>
+        Math.min(contrastRatio(fg, '#111111')!, contrastRatio(fg, '#f2d98c')!);
+
+      expect(worstFor(blend)).toBeGreaterThanOrEqual(worstFor('#000000'));
+      expect(worstFor(blend)).toBeGreaterThanOrEqual(worstFor('#ffffff'));
+      expect(worstFor(blend)).toBeLessThan(AA_LARGE);
     });
 
     it('keeps the warm brand ink when the background allows it', async () => {

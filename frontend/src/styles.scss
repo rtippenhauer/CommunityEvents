@@ -59,6 +59,7 @@ html {
   // is black and not the white this used to hardcode.
   --db-on-primary:  #000000;   // text/icons on --db-primary
   --db-on-accent:   #000000;   // text/icons on --db-accent
+  --db-on-brand-blend: #000000; // text/icons over a primary->accent blend
   --db-on-chrome:   #ffffff;   // text/icons on the dark chrome family
   --db-on-banner:   #ffffff;   // text on the stage banner
   --db-font-display:'Fraunces', serif;

@@ -2,7 +2,13 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
-import { reshade, darkenBy, onColorFor, readableOn } from '../utils/color.util';
+import {
+  reshade,
+  darkenBy,
+  onColorFor,
+  onColorForAll,
+  readableOn,
+} from '../utils/color.util';
 import { wordmarkDataUri, splashDataUri, monogramDataUri } from '../utils/brand-mark.util';
 
 /** The social sign-ins a community offers. See BrandConfig.authProviders. */
@@ -300,6 +306,13 @@ export class BrandConfigService {
     root.setProperty('--db-cream', config.colorBackground);
     root.setProperty('--db-on-primary', onPrimary);
     root.setProperty('--db-on-accent', onAccent);
+    // For anything painted with primary and accent at once -- a gradient --
+    // measured against both stops, since a label is unreadable wherever it is
+    // worst rather than on average.
+    root.setProperty(
+      '--db-on-brand-blend',
+      onColorForAll([config.colorPrimary, config.colorAccent]),
+    );
 
     // Angular Material's M3 component styles fall back to these --mat-sys-*
     // system tokens internally (see styles.scss's mat.theme() call) — this

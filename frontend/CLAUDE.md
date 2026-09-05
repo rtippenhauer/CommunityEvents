@@ -36,7 +36,13 @@ picks whichever of white or black has the higher WCAG contrast against the colou
 used to be pinned to white, which failed on the seeded amber itself: white on `#C9933A` measures
 2.72:1, below AA's 4.5. **Never write a literal `#fff` as text on a `var(--db-*)` background** —
 use the matching `--db-on-*` token, or the community that picks a pale primary gets the same defect
-back one component at a time.
+back one component at a time. The same goes for surfaces: a literal hex as a *background* is a
+colour belonging to no community. `theme_color_accent` is the per-tenant setting that means "our
+second colour" and is what a two-colour surface should blend toward — it defaults to the primary,
+so a community that has not chosen one gets a flat surface in its own colour rather than a
+stranger's. For a surface painted with both, `--db-on-brand-blend` is the label colour, measured
+against *both* stops via `onColorForAll`: a label is unreadable wherever it is worst, not on
+average.
 
 `ON_LIGHT` is pure black on purpose, against the usual advice: swept across the whole HSL cube the
 worst achievable contrast is 4.584:1 with `#000000` and 4.173:1 with a softened `#1a1a1a`, so black

@@ -7,6 +7,7 @@ import {
   contrastRatio,
   relativeLuminance,
   onColorFor,
+  onColorForAll,
   readableOn,
   meetsAA,
   AA_NORMAL,
@@ -174,5 +175,32 @@ describe('emailPalette onPrimary', () => {
       const p = emailPalette(primary, '#ffffff');
       expect(meetsAA(p.onPrimary, p.primary), primary).toBe(true);
     }
+  });
+});
+
+describe('onColorForAll', () => {
+  it('agrees with onColorFor when every ground is the same', () => {
+    // The seeded case: accent defaults to the primary, so the badge is flat
+    // and the two functions must not disagree about how to label it.
+    expect(onColorForAll(['#C9933A', '#C9933A'])).toBe(onColorFor('#C9933A'));
+  });
+
+  it('maximises the worst ground, not the average', () => {
+    // White wins easily on the dark stop and loses on the pale one. Averaging
+    // would pick white and leave the label invisible at one end of the
+    // gradient; the worst case is what a reader actually hits.
+    const stops = ['#111111', '#f2d98c'];
+    const chosen = onColorForAll(stops);
+    const worst = Math.min(...stops.map((s) => contrastRatio(chosen, s)!));
+    const worstIfWhite = Math.min(...stops.map((s) => contrastRatio(ON_DARK, s)!));
+    expect(worst).toBeGreaterThanOrEqual(worstIfWhite);
+  });
+
+  it('ignores grounds it cannot parse rather than throwing', () => {
+    expect(onColorForAll(['#C9933A', 'not a colour'])).toBe(ON_LIGHT);
+  });
+
+  it('falls back to white when nothing is parseable', () => {
+    expect(onColorForAll(['', 'nope'])).toBe(ON_DARK);
   });
 });

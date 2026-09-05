@@ -2203,17 +2203,21 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         display: flex;
         align-items: flex-start;
         gap: 14px;
-        /* The far stop is still a hardcoded blue that does not follow the
-           community's brand — the label colour below is measured against the
-           primary end only. Worth deriving the second stop too. */
-        background: linear-gradient(135deg, var(--db-primary) 0%, #2a6bbf 100%);
-        color: var(--db-on-primary);
+        /* Both stops are the community's own colours. The far stop was a
+           hardcoded #2a6bbf belonging to no community; theme_color_accent is
+           the per-tenant setting that already meant "our second colour", so a
+           community that has not set one gets a flat badge in its primary
+           rather than a stranger's blue. */
+        background: linear-gradient(135deg, var(--db-primary) 0%, var(--db-accent) 100%);
+        color: var(--db-on-brand-blend);
         border-radius: 12px;
         padding: 14px 16px;
         margin-bottom: 16px;
-        box-shadow: 0 2px 10px rgba(30, 77, 140, 0.25);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
         mat-icon {
-          color: var(--db-primary);
+          /* Was var(--db-primary) -- the same colour as the gradient's own 0%
+             stop, so the icon disappeared into the left end of its badge. */
+          color: var(--db-on-brand-blend);
           font-size: 2rem;
           width: 2rem;
           height: 2rem;
