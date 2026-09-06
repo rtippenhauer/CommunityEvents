@@ -1746,3 +1746,59 @@ accurate counts and writes nothing; re-running against the same target
 tenant is refused rather than duplicating; the same script run against
 the second source database produces an independent second tenant with no
 cross-contamination.
+
+### v2-26 — Dark page backgrounds
+
+**Status:** Not started. Depends on v2-11, which built the token layer this
+needs and then discovered the gap.
+
+**The number is the next one free, not a claim about running order.** v2-25 is
+deliberately sequenced last (the import, per Rob 2026-08-30), so this should
+land before it. Renumbering to say so is no longer cheap — v2-10 is tagged and
+v2-11 carries the number through six commits — so the order is stated here
+instead, the same way v2-9-before-v2-8 was.
+
+**Found on stage during v2-11's testing pass**, from a palette an assistant
+generated: `{"primary":"#00d7e8","accent":"#7048e8","background":"#06101e"}`.
+The derivation handled it correctly — with a dark ground the ink flips to
+near-white and every measured pair passes — and the app then drew white body
+copy on cream cards. The colour system was right and the app could not render
+what it produced.
+
+Three things have to change together, which is why this is its own item rather
+than a fix at the end of v2-11:
+
+- **`styles.scss` compiles `theme-type: light`.** Material's theme type is a
+  build-time choice, so a runtime switch means overriding the emitted tokens
+  rather than re-running the mixin.
+- **Nothing overrides Material's `--mat-sys-surface` family.** v2-11 sets four
+  tokens — primary, on-primary, tertiary, on-tertiary — so every card, dialog,
+  menu and sheet keeps its light surface. The set that actually needs deriving
+  is roughly `surface`, `on-surface`, `surface-variant`, `on-surface-variant`,
+  `surface-container` (and its `-low`/`-lowest`/`-high`/`-highest` variants),
+  `background`, `on-background`, `outline` and `outline-variant`.
+- **27 components hardcode a light background across 145 declarations.** The
+  same class of defect v2-11 fixed for text (`color: #fff` on a brand surface),
+  one level over: a literal light background belongs to no community either.
+  These are the long tail and the reason the estimate is not small.
+
+**Until it lands, a dark background is refused rather than silently broken.**
+`contrastWarnings` emits `kind: 'unsupported'` when white wins as the on-colour
+for `--ce-surface` — the exact condition under which the ink flips and stops
+matching the surfaces, so no lightness threshold is invented — and the LLM
+prompt asks for a light background. The prompt's original wording, drafted in
+this document, said "very light or very dark"; that is what steered the model
+into the broken state, so **the draft prompt earlier in v2-11's section is
+wrong and should not be copied from.**
+
+**Worth deciding as part of it:** whether "dark background" means a community
+choosing dark colours, or a per-visitor dark mode following
+`prefers-color-scheme`. They are different features — the first is one palette
+the community picks, the second is two palettes every community needs — and the
+token layer supports the first far more naturally than the second.
+
+**Definition of done:** a community can set a dark page background and every
+surface follows it — cards, dialogs, menus, form fields and the admin screens
+included — with no literal light background left in a component. The
+`kind: 'unsupported'` warning and its prompt wording are removed in the same
+change, since they exist only to describe this gap.
