@@ -23,9 +23,9 @@ export const PALETTE_PROMPT = `You are helping choose a colour palette for a com
 Constraints:
 - "primary" is used for buttons, links and highlights.
 - "accent" is a second brand colour, used for secondary actions and for surfaces that blend the two. It should be clearly different from "primary" but belong to the same family.
-- "background" is the page background. It should be very light or very dark, not mid-tone.
+- "background" is the page background. It MUST be light — near-white, not mid-tone and not dark.
 - Either white or black text must reach WCAG AA contrast (4.5:1) against "primary", and against "accent".
-- "background" must reach 4.5:1 against a near-black body text colour if it is light, or a near-white one if it is dark.
+- "background" must reach 4.5:1 against a near-black body text colour.
 - Avoid pure #000000 and #FFFFFF.
 - All three must be six-digit hex with a leading #.
 

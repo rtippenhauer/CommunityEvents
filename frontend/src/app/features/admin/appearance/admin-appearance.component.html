@@ -174,7 +174,7 @@
 
       <!-- ── Right: preview and warnings ────────────────────────────────── -->
       <div class="side">
-        <mat-card class="sticky">
+        <mat-card>
           <mat-card-header><mat-card-title>Preview</mat-card-title></mat-card-header>
           <mat-card-content>
             <!-- Scoped to this element: trying a palette must not repaint the
@@ -211,7 +211,7 @@
           <mat-card-header>
             <mat-card-title>
               @if (warnings().length) {
-                {{ warnings().length }} readability warning{{ warnings().length === 1 ? '' : 's' }}
+                {{ warnings().length }} warning{{ warnings().length === 1 ? '' : 's' }}
               } @else {
                 Readability
               }
@@ -221,7 +221,7 @@
             @if (warnings().length) {
               <ul>
                 @for (warning of warnings(); track warning.token + warning.message) {
-                  <li>{{ warning.message }}</li>
+                  <li [class.unsupported]="warning.kind === 'unsupported'">{{ warning.message }}</li>
                 }
               </ul>
               <p class="muted small">

@@ -99,6 +99,25 @@ describe('parseOverrides', () => {
 });
 
 describe('contrastWarnings', () => {
+  // The app cannot render a dark page background yet: Material's surfaces stay
+  // light while the derived ink flips to near-white, so body copy lands
+  // white-on-cream. The palette screen has to say so, because the derivation
+  // itself produces a perfectly self-consistent dark palette.
+  it('flags a dark background as unsupported, not merely low-contrast', () => {
+    const warnings = contrastWarnings(
+      derivePalette({ primary: '#00d7e8', accent: '#7048e8', background: '#06101e' }),
+    );
+    const dark = warnings.find((w) => w.kind === 'unsupported');
+    expect(dark).toBeDefined();
+    expect(dark!.token).toBe('--ce-surface');
+    expect(dark!.message).toContain('not supported yet');
+  });
+
+  it('does not flag a light background', () => {
+    const warnings = contrastWarnings(derivePalette(AMBER));
+    expect(warnings.some((w) => w.kind === 'unsupported')).toBe(false);
+  });
+
   it('is silent on the seeded palette', () => {
     expect(contrastWarnings(derivePalette(AMBER))).toEqual([]);
   });

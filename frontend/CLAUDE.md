@@ -64,8 +64,20 @@ brand-tinted ink via `readableOn`, which prefers a tone and falls back to the me
 when that tone fails.
 
 Hover and derived shades (the dark chrome family, button hover states, the nav sidebar, the ink
-tones) *are* generated from the three configured colours — `BrandConfigService.applyChrome` derives
-them by absolute lightness target, so a different hue yields the equivalent tones in that hue.
+tones) *are* generated from the three configured colours — `core/utils/palette.ts` derives them by
+absolute lightness target, so a different hue yields the equivalent tones in that hue. That module
+is pure and DOM-free, which is what lets the admin screen preview a palette without repainting the
+running app; `BrandConfigService` only writes what it returns.
+
+**A dark page background is NOT supported, and the screen says so.** The derivation handles one
+correctly — the ink flips to near-white and every ratio passes — but the app cannot draw it:
+`styles.scss` compiles `theme-type: light`, nothing overrides Angular Material's `--mat-sys-surface`
+family, and 27 components hardcode a light background across 145 declarations. The result is
+white body copy on cream cards. `contrastWarnings` therefore emits a warning with
+`kind: 'unsupported'` whenever white wins as the on-colour for `--ce-surface`, and the prompt asks
+for a light background rather than "very light or very dark" — the earlier wording steered a model
+straight into the one state the app cannot render. Supporting dark properly means the Material
+surface tokens plus those 145 sites, which is its own piece of work.
 
 ## Feature Structure
 src/app/

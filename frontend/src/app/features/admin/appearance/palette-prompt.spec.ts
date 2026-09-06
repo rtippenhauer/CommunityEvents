@@ -15,6 +15,15 @@ describe('PALETTE_PROMPT', () => {
     expect(PALETTE_PROMPT).toContain('4.5:1');
   });
 
+  // The first version of this prompt said the background could be "very light
+  // or very dark". A model duly returned #06101e, the screen imported it
+  // happily, and the app rendered white text on cream cards -- the prompt was
+  // steering people into the one state the app cannot draw.
+  it('does not invite a dark background, which the app cannot render', () => {
+    expect(PALETTE_PROMPT).not.toContain('very dark');
+    expect(PALETTE_PROMPT).toContain('MUST be light');
+  });
+
   it('leaves a place for the admin to describe their community', () => {
     expect(PALETTE_PROMPT).toContain('The community is:');
   });

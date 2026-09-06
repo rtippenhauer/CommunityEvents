@@ -19,6 +19,7 @@ import {
   onColorForAll,
   readableOn,
   contrastRatio,
+  ON_DARK,
   AA_NORMAL,
   AA_LARGE,
 } from './color.util';
@@ -183,6 +184,12 @@ export function parseOverrides(raw: string | null | undefined): PaletteOverrides
 // unsaveable rather than merely flagged.
 
 export interface ContrastWarning {
+  /**
+   * `contrast` is a measured pair that falls short. `unsupported` is a choice
+   * the app cannot render at all, whatever its ratios say -- a different thing
+   * and worth showing differently.
+   */
+  kind: 'contrast' | 'unsupported';
   /** The token whose colour is at fault, so the screen can point at a field. */
   token: PaletteToken;
   /** Human-readable description of what is unreadable. */
@@ -226,11 +233,33 @@ const CONTRAST_PAIRS: ReadonlyArray<{
  */
 export function contrastWarnings(palette: Palette): ContrastWarning[] {
   const out: ContrastWarning[] = [];
+
+  // A dark page background is not supported yet, and the failure is ugly: the
+  // ink derives correctly as near-white while Angular Material's surfaces stay
+  // light (styles.scss compiles `theme-type: light`, and nothing overrides the
+  // --mat-sys-surface family), so body copy lands white-on-cream. 145 hardcoded
+  // light backgrounds across 27 components say the same thing.
+  //
+  // Detected by asking whether white wins on this ground rather than by a
+  // lightness threshold -- that is exactly the condition under which the
+  // derived ink flips to light and stops matching the surfaces it sits on.
+  if (onColorFor(palette['--ce-surface']) === ON_DARK) {
+    out.push({
+      kind: 'unsupported',
+      token: '--ce-surface',
+      message:
+        'A dark page background is not supported yet — cards and menus stay light, so body text ' +
+        'becomes unreadable. Choose a light background.',
+      ratio: 0,
+      required: AA_NORMAL,
+    });
+  }
   for (const pair of CONTRAST_PAIRS) {
     const required = pair.large ? AA_LARGE : AA_NORMAL;
     const ratio = contrastRatio(palette[pair.fg], palette[pair.bg]);
     if (ratio === null) {
       out.push({
+        kind: 'contrast',
         token: pair.fg,
         message: `${pair.what}: one of these is not a valid colour.`,
         ratio: 0,
@@ -240,6 +269,7 @@ export function contrastWarnings(palette: Palette): ContrastWarning[] {
     }
     if (ratio < required) {
       out.push({
+        kind: 'contrast',
         token: pair.fg,
         message: `${pair.what} is hard to read (${ratio.toFixed(1)}:1, needs ${required}:1).`,
         ratio: Math.round(ratio * 10) / 10,

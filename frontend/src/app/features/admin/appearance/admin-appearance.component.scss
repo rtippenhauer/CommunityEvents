@@ -202,9 +202,17 @@
 }
 
 // ── Preview ────────────────────────────────────────────────────────────────
-.sticky {
-  position: sticky;
-  top: 12px;
+// The whole side column sticks as one unit. Making only the preview card
+// sticky left the warnings card below it in normal flow, so scrolling drew it
+// straight over the top of the preview.
+@media (min-width: 901px) {
+  .side {
+    position: sticky;
+    top: 12px;
+    align-self: start;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+  }
 }
 
 .preview {
@@ -314,6 +322,12 @@
 
   &.has-warnings {
     border-left: 4px solid var(--ce-banner);
+  }
+
+  // "Cannot be rendered" is a different claim from "hard to read", so it does
+  // not look like more of the same.
+  li.unsupported {
+    font-weight: 700;
   }
 
   &.clean {
