@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PALETTE_TOKENS,
+  materialSurfaceTokens,
   derivePalette,
   applyOverrides,
   resolvePalette,
@@ -208,3 +209,45 @@ function hueHex(h: number): string {
       .padStart(2, '0');
   return `#${to(r)}${to(g)}${to(b)}`;
 }
+
+describe('materialSurfaceTokens', () => {
+  // Found on stage: an indigo community got amber-tinted cream cards on a cool
+  // near-white page, because mat.theme() is seeded with mat.$orange-palette and
+  // M3 tints its neutrals with the primary hue. Nothing could configure it.
+  it("puts the community's own ground under Material's surfaces", () => {
+    const indigo = derivePalette({
+      primary: '#4C5BD4',
+      accent: '#6B4BA8',
+      background: '#F7F7FB',
+    });
+    const m = materialSurfaceTokens(indigo);
+    expect(m['--mat-sys-surface']).toBe('#F7F7FB');
+    expect(m['--mat-sys-on-surface']).toBe(indigo['--ce-text']);
+  });
+
+  it('keeps raised containers legible against the ground', () => {
+    const m = materialSurfaceTokens(derivePalette(AMBER));
+    for (const token of ['--mat-sys-surface-container', '--mat-sys-surface-container-high']) {
+      expect(contrastRatio(m['--mat-sys-on-surface'], m[token])!, token).toBeGreaterThanOrEqual(
+        AA_NORMAL,
+      );
+    }
+  });
+
+  it('steps containers away from the ground in both directions', () => {
+    // Material inverts this between themes: a raised surface is darker than a
+    // light page and lighter than a dark one. Stepping one way only makes a
+    // raised card vanish into a dark ground.
+    const lightGround = materialSurfaceTokens(derivePalette(AMBER));
+    const darkGround = materialSurfaceTokens(
+      derivePalette({ primary: '#00d7e8', accent: '#7048e8', background: '#06101e' }),
+    );
+    const lum = (hex: string): number => contrastRatio(hex, '#000000')!;
+    expect(lum(lightGround['--mat-sys-surface-container'])).toBeLessThan(
+      lum(lightGround['--mat-sys-surface']),
+    );
+    expect(lum(darkGround['--mat-sys-surface-container'])).toBeGreaterThan(
+      lum(darkGround['--mat-sys-surface']),
+    );
+  });
+});

@@ -103,7 +103,9 @@ export function derivePalette(seeds: PaletteSeeds): Palette {
     '--ce-on-brand-blend': onColorForAll([primary, accent]),
 
     '--ce-surface': background,
-    '--ce-surface-variant': darkenBy(background, 8),
+    // Steps *away* from the ground rather than always darker: on a dark ground
+    // a darker inset disappears into it.
+    '--ce-surface-variant': darkenBy(background, onColorFor(background) === ON_DARK ? -8 : 8),
     // Ink prefers a warm brand-tinted tone and falls back to the measured
     // floor only where that tone stops being readable on this ground.
     '--ce-text': readableOn(background, reshade(primary, 16, 45)),
@@ -278,4 +280,51 @@ export function contrastWarnings(palette: Palette): ContrastWarning[] {
     }
   }
   return out.sort((a, b) => a.ratio - b.ratio);
+}
+
+
+// ── Angular Material surfaces ──────────────────────────────────────────────
+
+/**
+ * Material's `--mat-sys-*` surface family, derived from the palette.
+ *
+ * Without this every card, menu, dialog and sheet in the app is whatever
+ * `mat.theme()` baked at build time — and `styles.scss` seeds that with
+ * `mat.$orange-palette`, which M3 uses to tint its *neutrals*. So an indigo
+ * community got amber-tinted cream cards on a cool near-white page, with no
+ * setting anywhere that could change them. Found on stage by Rob, who noticed
+ * there was no config value for the colour he was looking at. There wasn't.
+ *
+ * v2-11 previously set four Material tokens (primary/on-primary/tertiary/
+ * on-tertiary), which coloured the *controls* and left the surfaces behind
+ * them alone. This closes that.
+ *
+ * The container ramp steps away from the ground rather than always darker,
+ * because Material's own convention inverts between light and dark themes: a
+ * raised surface is darker than a light page and lighter than a dark one.
+ */
+export function materialSurfaceTokens(palette: Palette): Record<string, string> {
+  const surface = palette['--ce-surface'];
+  const onDarkGround = onColorFor(surface) === ON_DARK;
+  const step = (points: number): string => darkenBy(surface, onDarkGround ? -points : points);
+
+  return {
+    '--mat-sys-background': surface,
+    '--mat-sys-on-background': palette['--ce-text'],
+    '--mat-sys-surface': surface,
+    '--mat-sys-on-surface': palette['--ce-text'],
+    '--mat-sys-surface-bright': step(-2),
+    '--mat-sys-surface-dim': step(6),
+    '--mat-sys-surface-container-lowest': step(-1),
+    '--mat-sys-surface-container-low': step(2),
+    '--mat-sys-surface-container': step(4),
+    '--mat-sys-surface-container-high': step(6),
+    '--mat-sys-surface-container-highest': step(8),
+    '--mat-sys-surface-variant': palette['--ce-surface-variant'],
+    '--mat-sys-on-surface-variant': palette['--ce-text-muted'],
+    // Borders and rules: far enough from the ground to be visible, not so far
+    // they read as text.
+    '--mat-sys-outline': step(35),
+    '--mat-sys-outline-variant': step(14),
+  };
 }

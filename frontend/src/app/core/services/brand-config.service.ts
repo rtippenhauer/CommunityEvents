@@ -2,7 +2,12 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
-import { PALETTE_TOKENS, parseOverrides, resolvePalette } from '../utils/palette';
+import {
+  PALETTE_TOKENS,
+  materialSurfaceTokens,
+  parseOverrides,
+  resolvePalette,
+} from '../utils/palette';
 import { wordmarkDataUri, splashDataUri, monogramDataUri } from '../utils/brand-mark.util';
 
 /** The social sign-ins a community offers. See BrandConfig.authProviders. */
@@ -330,6 +335,13 @@ export class BrandConfigService {
     // "tertiary" system color, not "secondary".
     root.setProperty('--mat-sys-tertiary', palette['--ce-accent']);
     root.setProperty('--mat-sys-on-tertiary', palette['--ce-on-accent']);
+
+    // The surfaces those controls sit on. Without these, cards/menus/dialogs
+    // keep whatever mat.theme() baked from mat.$orange-palette at build time --
+    // amber-tinted cream for every community, configurable by nobody.
+    for (const [token, value] of Object.entries(materialSurfaceTokens(palette))) {
+      root.setProperty(token, value);
+    }
   }
 
   // Swaps the live favicon + apple-touch-icon <link>s. index.html's static
