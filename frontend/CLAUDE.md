@@ -24,8 +24,12 @@ everything else: `--ce-primary-hover`, `--ce-surface-variant`, the chrome family
 `--ce-on-chrome-muted`, `--ce-accent-on-chrome`), and the `--ce-on-*` pair for each. `--ce-success`
 and `--ce-error-overlay` are platform-fixed — red means error, which is not a branding choice.
 
-As of Phase 29 these three core colors (plus app name/tagline) are also admin-editable via
-`/admin/settings`, which overrides the CSS variables at runtime through `BrandConfigService`
+The three seeds (plus app name/tagline) are admin-editable. Name and tagline live in
+`/admin/settings`; the colours moved to their own screen at `/admin/appearance` in v2-11 —
+presets, seeds, per-token overrides, a scoped live preview, the copyable LLM prompt with its
+paste-back importer, and contrast warnings that warn without blocking. Only that screen writes
+`theme_color_*` and `theme_palette_overrides`, so there is one place the palette can change from.
+Both override the CSS variables at runtime through `BrandConfigService`
 (see `core/services/brand-config.service.ts`) — the `styles.scss` values are just the
 compiled-in default a fresh fork starts with. Note that `index.html`'s `theme-color` meta tag
 and `public/manifest.webmanifest` are static, pre-Angular-bootstrap files with no CSS-variable

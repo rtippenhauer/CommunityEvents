@@ -4,6 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { RouterLink } from '@angular/router';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
@@ -24,8 +25,6 @@ const WEEKDAYS = [
   { value: '6', label: 'Saturday' },
 ];
 
-const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
-
 @Component({
   selector: 'app-admin-settings',
   standalone: true,
@@ -35,6 +34,7 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
     MatCardModule,
     MatFormFieldModule,
     MatIconModule,
+    RouterLink,
     MatInputModule,
     MatProgressSpinnerModule,
     MatSelectModule,
@@ -69,62 +69,20 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
                 <mat-hint>Shown on the login page and in the footer.</mat-hint>
               </mat-form-field>
 
-              <div class="color-row">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Primary color</mat-label>
-                  <input matInput formControlName="colorPrimary" placeholder="#C9933A" />
-                  @if (form.controls.colorPrimary.invalid && form.controls.colorPrimary.dirty) {
-                    <mat-error>Enter a 6-digit hex color like #C9933A</mat-error>
-                  }
-                </mat-form-field>
-                <input
-                  type="color"
-                  class="color-swatch"
-                  [value]="swatchValue(form.controls.colorPrimary.value)"
-                  (input)="onSwatchChange('colorPrimary', $event)"
-                  aria-label="Pick primary color"
-                />
-              </div>
-
-              <div class="color-row">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Accent color</mat-label>
-                  <input matInput formControlName="colorAccent" placeholder="#C9933A" />
-                  @if (form.controls.colorAccent.invalid && form.controls.colorAccent.dirty) {
-                    <mat-error>Enter a 6-digit hex color like #C9933A</mat-error>
-                  }
-                </mat-form-field>
-                <input
-                  type="color"
-                  class="color-swatch"
-                  [value]="swatchValue(form.controls.colorAccent.value)"
-                  (input)="onSwatchChange('colorAccent', $event)"
-                  aria-label="Pick accent color"
-                />
-              </div>
-
-              <div class="color-row">
-                <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                  <mat-label>Background color</mat-label>
-                  <input matInput formControlName="colorBackground" placeholder="#FDFAF5" />
-                  @if (form.controls.colorBackground.invalid && form.controls.colorBackground.dirty) {
-                    <mat-error>Enter a 6-digit hex color like #FDFAF5</mat-error>
-                  }
-                </mat-form-field>
-                <input
-                  type="color"
-                  class="color-swatch"
-                  [value]="swatchValue(form.controls.colorBackground.value)"
-                  (input)="onSwatchChange('colorBackground', $event)"
-                  aria-label="Pick background color"
-                />
+              <div class="appearance-link">
+                <div>
+                  <strong>Colours</strong>
+                  <p>
+                    Palettes, per-colour fine-tuning and a live preview now live on their own
+                    screen, with readability checked as you go.
+                  </p>
+                </div>
+                <a mat-stroked-button routerLink="/admin/appearance">
+                  <mat-icon>palette</mat-icon>
+                  Appearance
+                </a>
               </div>
             </form>
-            <p class="cadence-hint">
-              Applies immediately, no rebuild needed. Hover/derived shades (button hover states,
-              nav sidebar) aren't auto-generated from these — a very different hue may look
-              slightly off there until that's built.
-            </p>
 
             <div class="brand-images">
               <h3 class="images-title">Images</h3>
@@ -603,24 +561,22 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
         width: 100%;
         margin-bottom: 12px;
       }
-      .color-row {
+      .appearance-link {
         display: flex;
-        align-items: flex-start;
-        gap: 10px;
-        margin-bottom: 12px;
-        mat-form-field {
-          flex: 1;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px;
+        border: 1px solid var(--ce-surface-variant);
+        border-radius: 10px;
+        margin-bottom: 8px;
+
+        p {
+          margin: 4px 0 0;
+          color: var(--ce-text-muted);
+          font-size: 0.85rem;
+          max-width: 46ch;
         }
-      }
-      .color-swatch {
-        width: 40px;
-        height: 40px;
-        margin-top: 4px;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        padding: 0;
-        cursor: pointer;
-        background: none;
       }
       .avatar-admin-grid {
         display: flex;
@@ -811,9 +767,6 @@ export class AdminSettingsComponent implements OnInit {
     // that reintroduces it.
     brandName: this.fb.control('CommunityEvents'),
     brandTagline: this.fb.control('Good food. Great company.'),
-    colorPrimary: this.fb.control('#C9933A', [Validators.pattern(HEX_COLOR_PATTERN)]),
-    colorAccent: this.fb.control('#C9933A', [Validators.pattern(HEX_COLOR_PATTERN)]),
-    colorBackground: this.fb.control('#FDFAF5', [Validators.pattern(HEX_COLOR_PATTERN)]),
     locationPrivacyDefault: this.fb.control<'public' | 'private'>('public'),
     eventCadenceWeekday: this.fb.control('2'),
     eventCadenceTime: this.fb.control('18:30'),
@@ -844,9 +797,6 @@ export class AdminSettingsComponent implements OnInit {
         this.form.patchValue({
           brandName: byKey.get('brand_name') ?? 'CommunityEvents',
           brandTagline: byKey.get('brand_tagline') ?? 'Good food. Great company.',
-          colorPrimary: byKey.get('theme_color_primary') ?? '#C9933A',
-          colorAccent: byKey.get('theme_color_accent') ?? '#C9933A',
-          colorBackground: byKey.get('theme_color_background') ?? '#FDFAF5',
           locationPrivacyDefault:
             (byKey.get('location_privacy_default') as 'public' | 'private' | undefined) ?? 'public',
           eventCadenceWeekday: byKey.get('event_cadence_weekday') ?? '2',
@@ -882,16 +832,6 @@ export class AdminSettingsComponent implements OnInit {
       next: (list) => this.avatars.set(list),
       error: () => {},
     });
-  }
-
-  swatchValue(hex: string): string {
-    return HEX_COLOR_PATTERN.test(hex) ? hex : '#000000';
-  }
-
-  onSwatchChange(control: 'colorPrimary' | 'colorAccent' | 'colorBackground', event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
-    this.form.controls[control].setValue(value);
-    this.form.controls[control].markAsDirty();
   }
 
   onImageSelected(slot: BrandImageSlot, event: Event): void {
@@ -975,9 +915,6 @@ export class AdminSettingsComponent implements OnInit {
       .updateValues([
         { key: 'brand_name', value: val.brandName },
         { key: 'brand_tagline', value: val.brandTagline },
-        { key: 'theme_color_primary', value: val.colorPrimary },
-        { key: 'theme_color_accent', value: val.colorAccent },
-        { key: 'theme_color_background', value: val.colorBackground },
         { key: 'location_privacy_default', value: val.locationPrivacyDefault },
         { key: 'event_cadence_weekday', value: val.eventCadenceWeekday },
         { key: 'event_cadence_time', value: val.eventCadenceTime },

@@ -20,6 +20,10 @@ export type SiteSettingKey =
   | 'theme_color_primary'
   | 'theme_color_accent'
   | 'theme_color_background'
+  // Per-token colour overrides as JSON, keyed by CSS custom property name
+  // (v2-11). Empty is the normal case: every token derives from the three
+  // seeds above. Written from Admin -> Appearance.
+  | 'theme_palette_overrides'
   | 'brand_logo_url'
   | 'brand_splash_url'
   | 'brand_error_url'

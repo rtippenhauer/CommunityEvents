@@ -127,6 +127,9 @@
             <a mat-list-item routerLink="/admin/settings" (click)="sidenav.close()">
               <mat-icon matListItemIcon>tune</mat-icon> Site Settings
             </a>
+            <a mat-list-item routerLink="/admin/appearance" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>palette</mat-icon> Appearance
+            </a>
           }
 
           <!-- Deployment-level, not community-level: only the system admin sees
@@ -356,6 +359,9 @@
               </a>
               <a mat-menu-item routerLink="/admin/settings">
                 <mat-icon>tune</mat-icon> Site Settings
+              </a>
+              <a mat-menu-item routerLink="/admin/appearance">
+                <mat-icon>palette</mat-icon> Appearance
               </a>
               @if (isSystemAdmin()) {
                 <mat-divider />
