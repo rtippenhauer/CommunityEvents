@@ -2,13 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
-import {
-  reshade,
-  darkenBy,
-  onColorFor,
-  onColorForAll,
-  readableOn,
-} from '../utils/color.util';
+import { PALETTE_TOKENS, parseOverrides, resolvePalette } from '../utils/palette';
 import { wordmarkDataUri, splashDataUri, monogramDataUri } from '../utils/brand-mark.util';
 
 /** The social sign-ins a community offers. See BrandConfig.authProviders. */
@@ -23,6 +17,14 @@ export interface BrandConfig {
   colorPrimary: string;
   colorAccent: string;
   colorBackground: string;
+  /**
+   * Per-token colour overrides, as the raw JSON text stored in `app_config`.
+   * Empty means "derive everything from the three seeds", which is what almost
+   * every community will have. Kept as text rather than a parsed object so the
+   * transport carries exactly what was stored, and `parseOverrides` is the one
+   * place that decides what a malformed blob means (nothing).
+   */
+  paletteOverrides: string;
   logoUrl: string;
   splashUrl: string;
   /**
@@ -129,6 +131,7 @@ const DEFAULT_BRAND: BrandConfig = {
   colorPrimary: '#C9933A',
   colorAccent: '#C9933A',
   colorBackground: '#FDFAF5',
+  paletteOverrides: '',
   logoUrl: '',
   splashUrl: '',
   errorUrl: '',
@@ -192,11 +195,11 @@ const DEFAULT_BRAND: BrandConfig = {
 // as AuthService.init(). Colors are applied as CSS custom-property
 // overrides so every component already using var(--ce-primary) etc. picks
 // up a fork's theme with no rebuild. The three configured seeds (primary,
-// accent, background) are the input; every other token — hover shades, the
-// dark chrome family, the ink tones and every `on-` colour — is derived
-// from them in applyChrome, with the `on-` colours measured for contrast
-// rather than assumed (v2-11). styles.scss holds the same set as literals
-// for the pre-JS paint only. Logo/splash/icon images follow the same pattern:
+// accent, background) are the input and `core/utils/palette.ts` does the
+// derivation, with any per-token overrides laid over the result at read time.
+// This service only writes what that returns — keeping the derivation pure is
+// what lets the admin screen preview a palette without touching the live page.
+// styles.scss holds the same set as literals for the pre-JS paint only. Logo/splash/icon images follow the same pattern:
 // an admin-uploaded URL overrides the compiled-in default asset.
 @Injectable({ providedIn: 'root' })
 export class BrandConfigService {
@@ -297,83 +300,36 @@ export class BrandConfigService {
 
   private applyColors(config: BrandConfig): void {
     const root = document.documentElement.style;
-    const onPrimary = onColorFor(config.colorPrimary);
-    const onAccent = onColorFor(config.colorAccent);
-
-    root.setProperty('--ce-primary', config.colorPrimary);
-    root.setProperty('--ce-accent', config.colorAccent);
-    root.setProperty('--ce-surface', config.colorBackground);
-    root.setProperty('--ce-on-primary', onPrimary);
-    root.setProperty('--ce-on-accent', onAccent);
-    // For anything painted with primary and accent at once -- a gradient --
-    // measured against both stops, since a label is unreadable wherever it is
-    // worst rather than on average.
-    root.setProperty(
-      '--ce-on-brand-blend',
-      onColorForAll([config.colorPrimary, config.colorAccent]),
+    const palette = resolvePalette(
+      {
+        primary: config.colorPrimary,
+        accent: config.colorAccent,
+        background: config.colorBackground,
+      },
+      parseOverrides(config.paletteOverrides),
     );
 
+    for (const token of PALETTE_TOKENS) {
+      root.setProperty(token, palette[token]);
+    }
+
     // Angular Material's M3 component styles fall back to these --mat-sys-*
-    // system tokens internally (see styles.scss's mat.theme() call) — this
-    // is what makes color="primary"/"accent" Material components (buttons,
-    // toggles, checkboxes, form-field focus states, etc.) follow the admin's
-    // chosen colors too, not just elements hand-styled with var(--ce-*).
-    // "on-*" colors are measured, not assumed (v2-11): whichever of white
-    // or near-black has the higher contrast against the chosen color wins, so
-    // a light primary gets dark text instead of white-on-pale.
-    root.setProperty('--mat-sys-primary', config.colorPrimary);
-    root.setProperty('--mat-sys-on-primary', onPrimary);
+    // system tokens internally (see styles.scss's mat.theme() call) — this is
+    // what makes color="primary"/"accent" Material components (buttons,
+    // toggles, checkboxes, form-field focus states) follow the community's
+    // colours too, not just elements hand-styled with var(--ce-*).
+    //
+    // They read from the *resolved* palette, so a per-token override reaches
+    // Material as well. Deriving them from the raw seeds instead would let an
+    // admin override --ce-on-primary and still get the old label colour on
+    // every Material button — the same class of split the token layer exists
+    // to prevent.
+    root.setProperty('--mat-sys-primary', palette['--ce-primary']);
+    root.setProperty('--mat-sys-on-primary', palette['--ce-on-primary']);
     // Material's M2-compatibility layer maps color="accent" to M3's
     // "tertiary" system color, not "secondary".
-    root.setProperty('--mat-sys-tertiary', config.colorAccent);
-    root.setProperty('--mat-sys-on-tertiary', onAccent);
-
-    this.applyChrome(config.colorPrimary, config.colorBackground);
-  }
-
-  // Derive the dark "chrome" palette (toolbar, sidenav, footer, stage banner,
-  // hover shades) from the single configured primary + background, so a fork
-  // gets a coherent dark UI in its own hue instead of DinnerBears' hardcoded
-  // browns. styles.scss keeps the browns as the compiled-in fallback for the
-  // pre-JS paint; these runtime values override them once branding loads.
-  // Absolute target lightness values are chosen to sit near DinnerBears'
-  // original hand-picked browns when primary is the amber default — a
-  // different brand hue (e.g. Sons' green) yields the equivalent dark tones in
-  // that hue. Saturation is forced up for the darkest tones so they read as a
-  // rich shade of the brand rather than muddy near-black.
-  private applyChrome(primary: string, background: string): void {
-    const root = document.documentElement.style;
-
-    // The chrome family — target lightness, boosted saturation.
-    const chrome = reshade(primary, 13, 80);
-    root.setProperty('--ce-chrome-deep', reshade(primary, 9, 80));
-    root.setProperty('--ce-chrome', chrome);
-    root.setProperty('--ce-chrome-raised', reshade(primary, 16, 80));
-    root.setProperty('--ce-chrome-soft', reshade(primary, 24, 85));
-    // Stage banner — a saturated mid-dark shade of the brand.
-    const banner = reshade(primary, 35, 90);
-    root.setProperty('--ce-banner', banner);
-    root.setProperty('--ce-on-banner', onColorFor(banner));
-    // Hover shades of the primary (keep the brand's own saturation).
-    root.setProperty('--ce-primary-hover', reshade(primary, 37));
-    // Text and icons sitting ON the chrome. Measured against the chrome
-    // shade rather than assumed: a very dark primary derives a chrome barely
-    // separable from its own tint, and the tint is what would go unreadable.
-    root.setProperty('--ce-on-chrome', onColorFor(chrome));
-    // Accent for text/marks on the dark chrome (stats strip, story section).
-    // The raw primary works on light backgrounds, but a *dark* brand color
-    // (e.g. Sons' green) has almost no contrast against its own derived dark
-    // chrome — so a lightened tint, and only while that tint stays legible.
-    root.setProperty('--ce-accent-on-chrome', readableOn(chrome, reshade(primary, 66), true));
-    // Muted secondary-text-on-dark tone: a light, desaturated brand tint.
-    root.setProperty('--ce-on-chrome-muted', readableOn(chrome, reshade(primary, 65, 38)));
-    // Ink on the page ground. Warm brand-tinted tones are the preference and
-    // the measured on-color is the floor, so a community keeps its own body
-    // copy colour unless its background makes that copy unreadable.
-    root.setProperty('--ce-text', readableOn(background, reshade(primary, 16, 45)));
-    root.setProperty('--ce-text-muted', readableOn(background, reshade(primary, 32, 30)));
-    // A slightly darker surface, derived from the ground (the inset nav band).
-    root.setProperty('--ce-surface-variant', darkenBy(background, 8));
+    root.setProperty('--mat-sys-tertiary', palette['--ce-accent']);
+    root.setProperty('--mat-sys-on-tertiary', palette['--ce-on-accent']);
   }
 
   // Swaps the live favicon + apple-touch-icon <link>s. index.html's static

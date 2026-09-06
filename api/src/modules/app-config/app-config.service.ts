@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { app_config as AppConfig } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
@@ -56,6 +56,18 @@ export const SITE_SETTING_KEYS = [
   'theme_color_primary',
   'theme_color_accent',
   'theme_color_background',
+  // Per-token colour overrides as a JSON object, keyed by CSS custom property
+  // name (v2-11). Empty is the normal case: everything derives from the three
+  // seeds above. Stored as one row rather than a row per token because the
+  // token set is ours and grows with the code -- a column or key per token
+  // would need a migration every time the palette changes shape.
+  //
+  // Overrides are laid over the derived palette at *read* time, never baked
+  // into the seeds. Flattening them would make a later seed change either
+  // silently discard an override or silently keep a stale one, with no way for
+  // an admin to tell which -- the same reasoning that keeps the legal
+  // templates interpolating on the public read.
+  'theme_palette_overrides',
   'brand_logo_url',
   'brand_splash_url',
   'brand_error_url',
@@ -123,6 +135,34 @@ export interface FeatureFlags {
   requireMembership: boolean;
 }
 
+/**
+ * Reject a palette overrides blob that is not a JSON object.
+ *
+ * The frontend parses this defensively: an unparseable blob resolves to "no
+ * overrides", so a corrupt row can never take a community's colours down. That
+ * is right at read time and wrong at write time -- silently accepting a typo
+ * means an admin saves, sees nothing change, and has no way to learn why. Fail
+ * here, where there is somebody to tell.
+ *
+ * Only structure is checked, never contrast. A low-contrast palette is a
+ * choice the admin screen warns about and still saves (v2-11); rejecting one
+ * here would make that warning a lie.
+ */
+function assertValidConfigValue(key: string, value: string): void {
+  if (key !== 'theme_palette_overrides') return;
+  // Empty is the normal case: every token derives from the three seeds.
+  if (!value.trim()) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new BadRequestException('theme_palette_overrides must be valid JSON');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new BadRequestException('theme_palette_overrides must be a JSON object');
+  }
+}
+
 function isSiteSettingKey(key: string): key is SiteSettingKey {
   return (SITE_SETTING_KEYS as readonly string[]).includes(key);
 }
@@ -155,6 +195,7 @@ export const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   theme_color_primary: '#C9933A',
   theme_color_accent: '#C9933A',
   theme_color_background: '#FDFAF5',
+  theme_palette_overrides: '',
   // Empty = fall back to the frontend's compiled-in default asset. Set to an
   // /api/uploads/branding/... path once an admin uploads a replacement.
   brand_logo_url: '',
@@ -479,6 +520,7 @@ export class AppConfigService {
     colorPrimary: string;
     colorAccent: string;
     colorBackground: string;
+    paletteOverrides: string;
     logoUrl: string;
     splashUrl: string;
     errorUrl: string;
@@ -542,6 +584,7 @@ export class AppConfigService {
       colorPrimary,
       colorAccent,
       colorBackground,
+      paletteOverrides,
       logoUrl,
       splashUrl,
       errorUrl,
@@ -560,6 +603,7 @@ export class AppConfigService {
       this.getSiteSetting('theme_color_primary'),
       this.getSiteSetting('theme_color_accent'),
       this.getSiteSetting('theme_color_background'),
+      this.getSiteSetting('theme_palette_overrides'),
       this.getSiteSetting('brand_logo_url'),
       this.getSiteSetting('brand_splash_url'),
       this.getSiteSetting('brand_error_url'),
@@ -579,6 +623,7 @@ export class AppConfigService {
       colorPrimary,
       colorAccent,
       colorBackground,
+      paletteOverrides,
       logoUrl,
       splashUrl,
       errorUrl,
@@ -636,6 +681,7 @@ export class AppConfigService {
     if (!isKnownConfigKey(key)) {
       throw new NotFoundException('Unknown config key');
     }
+    assertValidConfigValue(key, value);
     // find-or-create then assign becomes one upsert on the unique key.
     //
     // The one place in this file that names the tenant by hand, and the reason
@@ -679,10 +725,11 @@ export class AppConfigService {
     entries: Array<{ key: string; value: string }>,
     userId: number,
   ): Promise<void> {
-    for (const { key } of entries) {
+    for (const { key, value } of entries) {
       if (!isKnownConfigKey(key)) {
         throw new NotFoundException(`Unknown config key: ${key}`);
       }
+      assertValidConfigValue(key, value);
     }
     // Wrapped in a transaction: the admin settings form submits every field
     // at once, and a failure partway through previously left some keys saved
