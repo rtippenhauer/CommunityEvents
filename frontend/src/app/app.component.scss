@@ -1,8 +1,8 @@
 // ── Stage environment indicator ───────────────────────────────────────────────
 
 .stage-banner {
-  background: var(--db-banner, #b34a00);
-  color: var(--db-on-banner, #fff);
+  background: var(--ce-banner, #b34a00);
+  color: var(--ce-on-banner, #fff);
   text-align: center;
   font-size: 0.72rem;
   font-weight: 700;
@@ -39,8 +39,8 @@
 
 .stage-badge {
   display: inline-block;
-  background: var(--db-banner, #b34a00);
-  color: var(--db-on-banner, #fff);
+  background: var(--ce-banner, #b34a00);
+  color: var(--ce-on-banner, #fff);
   font-size: 0.55rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -63,17 +63,17 @@
 
 .app-sidenav {
   width: 260px;
-  background: var(--db-cream);
-  color: var(--db-brown-dark, #3D1C05);
+  background: var(--ce-surface);
+  color: var(--ce-chrome, #3D1C05);
 
   // Override MDC CSS custom properties directly
-  --mat-list-list-item-label-text-color: var(--db-brown-dark, #3D1C05);
-  --mat-list-list-item-leading-icon-color: var(--db-brown-dark, #3D1C05);
-  --mat-list-list-item-hover-label-text-color: var(--db-brown-dark, #3D1C05);
-  --mat-list-list-item-hover-leading-icon-color: var(--db-brown-dark, #3D1C05);
-  --mat-list-list-item-selected-label-text-color: var(--db-brown-nav, #5C2D0A);
-  --mat-list-list-item-selected-leading-icon-color: var(--db-brown-nav, #5C2D0A);
-  --mat-list-list-item-focus-label-text-color: var(--db-brown-nav, #5C2D0A);
+  --mat-list-list-item-label-text-color: var(--ce-chrome, #3D1C05);
+  --mat-list-list-item-leading-icon-color: var(--ce-chrome, #3D1C05);
+  --mat-list-list-item-hover-label-text-color: var(--ce-chrome, #3D1C05);
+  --mat-list-list-item-hover-leading-icon-color: var(--ce-chrome, #3D1C05);
+  --mat-list-list-item-selected-label-text-color: var(--ce-chrome, #5C2D0A);
+  --mat-list-list-item-selected-leading-icon-color: var(--ce-chrome, #5C2D0A);
+  --mat-list-list-item-focus-label-text-color: var(--ce-chrome, #5C2D0A);
   --mat-list-active-indicator-color: rgba(61, 28, 5, 0.08);
 
   .mat-mdc-list-item {
@@ -85,7 +85,7 @@
 
 .sidenav-header {
   padding: 20px 16px 12px;
-  background: var(--db-brown-nav);
+  background: var(--ce-chrome);
   border-bottom: 1px solid rgba(0, 0, 0, 0.15);
 }
 
@@ -102,16 +102,16 @@
 }
 
 .app-toolbar {
-  background: linear-gradient(135deg, var(--db-brown-nav) 0%, var(--db-brown-card, #4A2208) 100%) !important;
-  color: var(--db-on-chrome, #fff) !important;
+  background: linear-gradient(135deg, var(--ce-chrome) 0%, var(--ce-chrome-raised, #4A2208) 100%) !important;
+  color: var(--ce-on-chrome, #fff) !important;
   padding: 0 12px;
   gap: 0;
   min-height: 68px !important;
   height: 68px !important;
   align-items: stretch !important;
-  border-top: 12px solid var(--db-brown-dark, #3D1C05) !important;
-  border-bottom: 12px solid var(--db-brown-dark, #3D1C05) !important;
-  --mat-icon-button-icon-color: var(--db-on-chrome, #fff);
+  border-top: 12px solid var(--ce-chrome, #3D1C05) !important;
+  border-bottom: 12px solid var(--ce-chrome, #3D1C05) !important;
+  --mat-icon-button-icon-color: var(--ce-on-chrome, #fff);
 }
 
 .app-logo-link {
@@ -120,7 +120,7 @@
   text-decoration: none;
   flex-shrink: 0;
   margin: 0 12px;
-  color: var(--db-on-chrome, #fff);
+  color: var(--ce-on-chrome, #fff);
   align-self: center;
 }
 
@@ -136,16 +136,16 @@
   align-items: stretch;
   align-self: stretch;
   flex: 1;
-  background: var(--db-cream-dark, #F5EDD8);
+  background: var(--ce-surface-variant, #F5EDD8);
   border-radius: 10px;
   overflow: hidden;
   // Override icon button color for elements inside the cream band
-  --mat-icon-button-icon-color: var(--db-brown-dark, #3D1C05);
+  --mat-icon-button-icon-color: var(--ce-chrome, #3D1C05);
 
   @media (max-width: 959.98px) {
     background: transparent;
     border-radius: 0;
-    --mat-icon-button-icon-color: var(--db-on-chrome, #fff);
+    --mat-icon-button-icon-color: var(--ce-on-chrome, #fff);
   }
 }
 
@@ -156,9 +156,9 @@
   padding: 0 18px;
   height: 100%;
   font-size: 0.85rem;
-  font-family: var(--db-font-body);
+  font-family: var(--ce-font-body);
   font-weight: 500;
-  color: var(--db-brown-dark, #3D1C05);
+  color: var(--ce-chrome, #3D1C05);
   background: transparent;
   border: none;
   border-radius: 0;
@@ -174,11 +174,11 @@
   &.nav-item-active {
     background: rgba(61, 28, 5, 0.14);
     font-weight: 600;
-    color: var(--db-brown-dark, #3D1C05);
+    color: var(--ce-chrome, #3D1C05);
   }
 
   &.nav-item-admin {
-    color: var(--db-brown-mid, #7B3F00);
+    color: var(--ce-chrome-soft, #7B3F00);
     font-weight: 600;
   }
 }
@@ -195,7 +195,7 @@
   height: 34px;
   border-radius: 50%;
   overflow: hidden;
-  border: 2px solid var(--db-amber);
+  border: 2px solid var(--ce-primary);
   background: none;
   padding: 0;
   flex-shrink: 0;
@@ -215,7 +215,7 @@
 .avatar-initials {
   font-size: 0.78rem;
   font-weight: 700;
-  color: var(--db-amber);
+  color: var(--ce-primary);
   letter-spacing: 0.02em;
 }
 
@@ -224,7 +224,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--db-brown-mid, #7B3F00);
+  color: var(--ce-chrome-soft, #7B3F00);
   padding: 8px 16px 2px;
   opacity: 0.9;
 }
@@ -259,8 +259,8 @@
 
 
 .signin-btn {
-  color: var(--db-amber) !important;
-  border-color: var(--db-amber) !important;
+  color: var(--ce-primary) !important;
+  border-color: var(--ce-primary) !important;
   font-size: 0.85rem;
   height: 32px;
   line-height: 30px;
@@ -274,7 +274,7 @@
   max-width: 1280px;
   width: 100%;
   margin: 0 auto;
-  background-color: var(--db-cream);
+  background-color: var(--ce-surface);
 
   @media (min-width: 768px) { padding: 24px; }
 }
@@ -284,8 +284,8 @@
 .app-footer {
   padding: 28px 16px 20px;
   text-align: center;
-  background: var(--db-brown-nav);
-  color: var(--db-on-chrome, #fff);
+  background: var(--ce-chrome);
+  color: var(--ce-on-chrome, #fff);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -298,8 +298,8 @@
   margin: 0;
   font-size: 0.85rem;
   font-style: italic;
-  color: var(--db-cream-muted);
-  font-family: var(--db-font-display);
+  color: var(--ce-on-chrome-muted);
+  font-family: var(--ce-font-display);
 }
 
 .footer-links {
@@ -308,7 +308,7 @@
   align-items: center;
   font-size: 0.78rem;
 
-  a { color: var(--db-cream-muted); text-decoration: none; &:hover { color: var(--db-on-chrome, #fff); } }
+  a { color: var(--ce-on-chrome-muted); text-decoration: none; &:hover { color: var(--ce-on-chrome, #fff); } }
   .footer-dot { color: rgba(255,255,255,0.2); }
 }
 

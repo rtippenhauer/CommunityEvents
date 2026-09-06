@@ -143,7 +143,7 @@ interface CityRow extends AdminCity {
       .stat-value {
         font-size: 1.5rem;
         font-weight: 700;
-        color: var(--db-primary);
+        color: var(--ce-primary);
       }
       .stat-label {
         font-size: 0.75rem;

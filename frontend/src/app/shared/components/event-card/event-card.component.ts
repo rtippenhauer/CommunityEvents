@@ -128,7 +128,7 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         position: relative;
         height: 160px;
         overflow: hidden;
-        background: linear-gradient(135deg, var(--db-brown-dark) 0%, var(--db-brown-mid) 100%);
+        background: linear-gradient(135deg, var(--ce-chrome) 0%, var(--ce-chrome-soft) 100%);
         &.compact {
           height: 110px;
         }
@@ -169,7 +169,7 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
       }
       .cancelled-overlay {
-        background: var(--db-red-overlay);
+        background: var(--ce-error-overlay);
       }
       .draft-overlay {
         background: rgba(160, 110, 0, 0.68);
@@ -207,7 +207,7 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: var(--db-amber);
+        color: var(--ce-primary);
         margin-bottom: 2px;
       }
 
@@ -220,7 +220,7 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
       .card-location {
         font-size: 0.95rem;
         font-weight: 600;
-        color: var(--db-brown);
+        color: var(--ce-chrome-deep);
         margin-bottom: 0;
         &.muted {
           color: #b00000;

@@ -186,7 +186,7 @@ const TYPE_LABELS: Record<string, string> = {
         }
       }
       .lb-entry--me {
-        outline: 2px solid var(--db-primary);
+        outline: 2px solid var(--ce-primary);
         background: #fffdf6;
       }
       .lb-entry--top3 {
@@ -235,7 +235,7 @@ const TYPE_LABELS: Record<string, string> = {
       }
       .member-title {
         font-size: 0.78rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-style: italic;
       }
       .member-city {
@@ -246,8 +246,8 @@ const TYPE_LABELS: Record<string, string> = {
       .new-badge {
         font-size: 0.65rem;
         font-weight: 700;
-        background: var(--db-primary);
-        color: var(--db-on-primary);
+        background: var(--ce-primary);
+        color: var(--ce-on-primary);
         border-radius: 10px;
         padding: 1px 7px;
         letter-spacing: 0.04em;
@@ -256,13 +256,13 @@ const TYPE_LABELS: Record<string, string> = {
       .points-val {
         font-size: 1.1rem;
         font-weight: 700;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-align: center;
       }
       .top-type-chip {
         font-size: 0.75rem;
         background: #eaf0fa;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         border-radius: 12px;
         padding: 3px 10px;
         font-weight: 600;

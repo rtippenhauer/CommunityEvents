@@ -198,12 +198,12 @@ type DialogStep = 'form' | 'importing' | 'done';
         transition:
           border-color 0.2s,
           background 0.2s;
-        background: var(--db-cream);
+        background: var(--ce-surface);
 
         &:hover,
         &.drag-over {
-          border-color: var(--db-primary);
-          background: var(--db-cream-dark);
+          border-color: var(--ce-primary);
+          background: var(--ce-surface-variant);
         }
 
         &.has-file {
@@ -227,7 +227,7 @@ type DialogStep = 'form' | 'importing' | 'done';
       .drop-label {
         margin: 0 0 4px;
         font-weight: 500;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         font-size: 0.95rem;
         word-break: break-all;
       }
@@ -350,7 +350,7 @@ type DialogStep = 'form' | 'importing' | 'done';
 
       .row-name {
         font-weight: 500;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
 
       .row-reason {

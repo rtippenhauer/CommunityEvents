@@ -11,9 +11,18 @@
 
 ## Theme
 Primary/Accent: #C9933A (amber gold) — Background: #FDFAF5 (warm white). Defined as CSS custom
-properties in `src/styles.scss` (`--db-primary`, `--db-accent`, `--db-cream`, plus derived
-shades) — always reference `var(--db-*)` in component styles, never a bare hex literal.
-The `styles.scss` literals are the pre-JS paint only; every one is overwritten at runtime.
+properties in `src/styles.scss` — always reference `var(--ce-*)` in component styles, never a
+bare hex literal. The `styles.scss` literals are the pre-JS paint only; every one is overwritten
+at runtime.
+
+**Tokens are named for their job, never for the colour they hold (v2-11).** They were `--db-*`
+(DinnerBears) with names like `--db-brown-nav` and `--db-cream`, which stayed brown and cream in
+the source while holding whatever colour a community had chosen — so the source lied to whoever
+read it next. Three seeds an admin configures (`--ce-primary`, `--ce-accent`, `--ce-surface`) feed
+everything else: `--ce-primary-hover`, `--ce-surface-variant`, the chrome family (`--ce-chrome`,
+`-deep`, `-raised`, `-soft`), `--ce-banner`, the ink (`--ce-text`, `--ce-text-muted`,
+`--ce-on-chrome-muted`, `--ce-accent-on-chrome`), and the `--ce-on-*` pair for each. `--ce-success`
+and `--ce-error-overlay` are platform-fixed — red means error, which is not a branding choice.
 
 As of Phase 29 these three core colors (plus app name/tagline) are also admin-editable via
 `/admin/settings`, which overrides the CSS variables at runtime through `BrandConfigService`
@@ -27,20 +36,20 @@ Angular Material components are wired into this too: `styles.scss` uses `mat.the
 tokens, which shadow runtime overrides) so Material emits its `--mat-sys-*` system tokens instead,
 which its own M3 component styles already fall back to. `BrandConfigService` sets `--mat-sys-primary`/
 `--mat-sys-tertiary` (Material's M2→M3 compat layer maps `color="accent"` to tertiary, not
-secondary) alongside the `--db-*` vars, so `color="primary"`/`color="accent"` Material components
+secondary) alongside the `--ce-*` tokens, so `color="primary"`/`color="accent"` Material components
 (buttons, toggles, checkboxes, form-field focus states) follow admin branding too.
 
 **Every `on-` colour is measured, not assumed (v2-11).** `onColorFor` in `core/utils/color.util.ts`
 picks whichever of white or black has the higher WCAG contrast against the colour it sits on, and
-`--db-on-primary` / `--db-on-accent` / `--db-on-chrome` / `--db-on-banner` carry the result. This
+`--ce-on-primary` / `--ce-on-accent` / `--ce-on-chrome` / `--ce-on-banner` carry the result. This
 used to be pinned to white, which failed on the seeded amber itself: white on `#C9933A` measures
-2.72:1, below AA's 4.5. **Never write a literal `#fff` as text on a `var(--db-*)` background** —
-use the matching `--db-on-*` token, or the community that picks a pale primary gets the same defect
+2.72:1, below AA's 4.5. **Never write a literal `#fff` as text on a `var(--ce-*)` background** —
+use the matching `--ce-on-*` token, or the community that picks a pale primary gets the same defect
 back one component at a time. The same goes for surfaces: a literal hex as a *background* is a
 colour belonging to no community. `theme_color_accent` is the per-tenant setting that means "our
 second colour" and is what a two-colour surface should blend toward — it defaults to the primary,
 so a community that has not chosen one gets a flat surface in its own colour rather than a
-stranger's. For a surface painted with both, `--db-on-brand-blend` is the label colour, measured
+stranger's. For a surface painted with both, `--ce-on-brand-blend` is the label colour, measured
 against *both* stops via `onColorForAll`: a label is unreadable wherever it is worst, not on
 average.
 

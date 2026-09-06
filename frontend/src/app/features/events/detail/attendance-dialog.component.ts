@@ -204,7 +204,7 @@ export interface AttendanceDialogData {
       .att-name {
         font-size: 0.95rem;
         font-weight: 500;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         flex: 1;
       }
       .att-out-of-town {
@@ -243,7 +243,7 @@ export interface AttendanceDialogData {
       }
       .walkin-badge {
         background: #fff3e0;
-        color: var(--db-amber-dark, #b8832e);
+        color: var(--ce-primary-hover, #b8832e);
       }
       .guest-badge {
         background: #e3f2fd;

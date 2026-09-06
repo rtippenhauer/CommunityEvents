@@ -597,7 +597,7 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
       }
       .page-title {
         margin: 0;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .full-width {
         width: 100%;
@@ -658,7 +658,7 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
         }
       }
       .avatar-empty {
-        color: var(--db-brown-mid);
+        color: var(--ce-chrome-soft);
         font-size: 0.9rem;
         margin: 4px 0;
       }
@@ -712,7 +712,7 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
         margin: 0 0 12px;
         font-size: 0.95rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .image-row {
         display: flex;
@@ -768,7 +768,7 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
       }
       .image-label {
         font-weight: 500;
-        color: var(--db-text-dark);
+        color: var(--ce-text);
         margin-bottom: 6px;
         span {
           font-weight: 400;

@@ -121,13 +121,13 @@ interface City {
       .guest-banner {
         display: flex;
         align-items: center;
-        background: var(--db-cream-dark);
+        background: var(--ce-surface-variant);
         border: 1px solid #e0d8cc;
         border-radius: 8px;
         padding: 12px 16px;
         margin-bottom: 20px;
         font-size: 0.95rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .page-header {
         display: flex;
@@ -137,7 +137,7 @@ interface City {
         h1 {
           margin: 0;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .cal-sub-bar {

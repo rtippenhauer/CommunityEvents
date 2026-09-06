@@ -194,7 +194,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
         h1 {
           margin: 0;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .section {
@@ -209,7 +209,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
           margin: 0;
           font-size: 1.2rem;
           font-weight: 600;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .badge {
@@ -260,9 +260,9 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
         font-size: 0.83rem;
         color: #666;
         &.active {
-          background: var(--db-primary);
-          color: var(--db-on-primary);
-          border-color: var(--db-primary);
+          background: var(--ce-primary);
+          color: var(--ce-on-primary);
+          border-color: var(--ce-primary);
         }
       }
       .cards-list {
@@ -357,7 +357,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
         align-items: center;
         gap: 4px;
         font-size: 0.82rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-decoration: none;
         &:hover {
           text-decoration: underline;

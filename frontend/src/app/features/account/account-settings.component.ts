@@ -476,7 +476,7 @@ import { hasAdminRights } from '../../core/utils/roles.util';
 
       .page-title {
         font-size: 1.6rem;
-        color: var(--db-brown-dark, #3d2b1f);
+        color: var(--ce-chrome, #3d2b1f);
         margin: 0 0 24px;
       }
 

@@ -270,7 +270,7 @@ const AUDIT_ACTIONS = [
         gap: 1px;
       }
       .user-link {
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-decoration: none;
         font-weight: 500;
         &:hover {

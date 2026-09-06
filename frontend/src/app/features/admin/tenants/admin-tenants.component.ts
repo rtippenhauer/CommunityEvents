@@ -248,7 +248,7 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
       }
       .domain:hover {
         text-decoration: underline;
-        color: var(--db-primary);
+        color: var(--ce-primary);
       }
 
       .stats {

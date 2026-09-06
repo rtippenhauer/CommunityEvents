@@ -82,7 +82,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
       }
       .page-title {
         margin: 0 0 20px;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .full-width {
         width: 100%;

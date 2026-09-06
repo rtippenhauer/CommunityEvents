@@ -187,17 +187,17 @@ describe('BrandConfigService', () => {
       // The case that motivated the item: white on a pale button.
       await load({ colorPrimary: '#f2d98c', colorAccent: '#f2d98c', colorBackground: '#ffffff' });
 
-      expect(contrastRatio(applied('--db-on-primary'), '#f2d98c')!).toBeGreaterThanOrEqual(
+      expect(contrastRatio(applied('--ce-on-primary'), '#f2d98c')!).toBeGreaterThanOrEqual(
         AA_NORMAL,
       );
-      expect(applied('--mat-sys-on-primary')).toBe(applied('--db-on-primary'));
+      expect(applied('--mat-sys-on-primary')).toBe(applied('--ce-on-primary'));
     });
 
     it('gives a dark primary white text', async () => {
       await load({ colorPrimary: '#123456', colorAccent: '#123456', colorBackground: '#ffffff' });
 
-      expect(applied('--db-on-primary')).toBe('#ffffff');
-      expect(contrastRatio(applied('--db-on-primary'), '#123456')!).toBeGreaterThanOrEqual(
+      expect(applied('--ce-on-primary')).toBe('#ffffff');
+      expect(contrastRatio(applied('--ce-on-primary'), '#123456')!).toBeGreaterThanOrEqual(
         AA_NORMAL,
       );
     });
@@ -207,10 +207,10 @@ describe('BrandConfigService', () => {
       // exactly the preference that has to give way.
       await load({ colorPrimary: '#C9933A', colorAccent: '#C9933A', colorBackground: '#1b1205' });
 
-      expect(contrastRatio(applied('--db-text-dark'), '#1b1205')!).toBeGreaterThanOrEqual(
+      expect(contrastRatio(applied('--ce-text'), '#1b1205')!).toBeGreaterThanOrEqual(
         AA_NORMAL,
       );
-      expect(contrastRatio(applied('--db-text-mid'), '#1b1205')!).toBeGreaterThanOrEqual(
+      expect(contrastRatio(applied('--ce-text-muted'), '#1b1205')!).toBeGreaterThanOrEqual(
         AA_NORMAL,
       );
     });
@@ -221,7 +221,7 @@ describe('BrandConfigService', () => {
       // Two shades of one brand is the case this has to get right.
       await load({ colorPrimary: '#C9933A', colorAccent: '#E0B45E', colorBackground: '#ffffff' });
 
-      const blend = applied('--db-on-brand-blend');
+      const blend = applied('--ce-on-brand-blend');
       expect(contrastRatio(blend, '#C9933A')!).toBeGreaterThanOrEqual(AA_LARGE);
       expect(contrastRatio(blend, '#E0B45E')!).toBeGreaterThanOrEqual(AA_LARGE);
     });
@@ -236,7 +236,7 @@ describe('BrandConfigService', () => {
     it('picks the better candidate even when neither can reach AA', async () => {
       await load({ colorPrimary: '#111111', colorAccent: '#f2d98c', colorBackground: '#ffffff' });
 
-      const blend = applied('--db-on-brand-blend');
+      const blend = applied('--ce-on-brand-blend');
       const worstFor = (fg: string): number =>
         Math.min(contrastRatio(fg, '#111111')!, contrastRatio(fg, '#f2d98c')!);
 
@@ -249,8 +249,8 @@ describe('BrandConfigService', () => {
       // The other half of readableOn: measurement is the floor, not the rule.
       await load({ colorPrimary: '#C9933A', colorAccent: '#C9933A', colorBackground: '#FDFAF5' });
 
-      expect(applied('--db-text-dark')).not.toBe('#000000');
-      expect(contrastRatio(applied('--db-text-dark'), '#FDFAF5')!).toBeGreaterThanOrEqual(
+      expect(applied('--ce-text')).not.toBe('#000000');
+      expect(contrastRatio(applied('--ce-text'), '#FDFAF5')!).toBeGreaterThanOrEqual(
         AA_NORMAL,
       );
     });

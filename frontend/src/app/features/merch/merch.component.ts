@@ -73,7 +73,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
         h1 {
           margin: 0 0 20px;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .center {
@@ -90,7 +90,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
         padding: 8px;
       }
       .exclusive-card {
-        border: 2px solid var(--db-primary);
+        border: 2px solid var(--ce-primary);
       }
       .store-icon {
         font-size: 2.5rem;

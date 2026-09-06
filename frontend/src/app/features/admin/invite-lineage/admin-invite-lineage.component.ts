@@ -117,7 +117,7 @@ interface FlatRow {
         flex-shrink: 0;
       }
       .member-name {
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-decoration: none;
         font-weight: 500;
         &:hover {
@@ -130,7 +130,7 @@ interface FlatRow {
         margin-left: auto;
       }
       .child-count {
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-size: 0.78rem;
         font-weight: 600;
       }
@@ -139,12 +139,12 @@ interface FlatRow {
         min-height: 20px !important;
       }
       .role-admin {
-        --mat-chip-label-text-color: var(--db-on-primary);
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       .role-moderator {
-        --mat-chip-label-text-color: var(--db-on-primary);
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       .chip-banned {
         background: #ffccbc !important;

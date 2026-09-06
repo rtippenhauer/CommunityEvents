@@ -215,9 +215,9 @@ export interface ShareInvitesDialogData {
         gap: 6px;
         margin: 0;
         font-size: 1rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         mat-icon {
-          color: var(--db-primary);
+          color: var(--ce-primary);
         }
       }
       .new-link-btn {

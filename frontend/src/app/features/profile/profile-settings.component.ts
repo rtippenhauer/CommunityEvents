@@ -466,7 +466,7 @@ interface AvatarEntry {
         height: 96px;
         font-size: 96px;
         line-height: 96px;
-        color: var(--db-cream-muted, #bbb);
+        color: var(--ce-on-chrome-muted, #bbb);
         display: block;
       }
       .profile-form {
@@ -508,12 +508,12 @@ interface AvatarEntry {
           display: block;
         }
         &:hover {
-          border-color: var(--db-primary);
+          border-color: var(--ce-primary);
           transform: scale(1.04);
         }
         &.selected {
-          border-color: var(--db-primary);
-          box-shadow: 0 0 0 2px var(--db-primary);
+          border-color: var(--ce-primary);
+          box-shadow: 0 0 0 2px var(--ce-primary);
         }
       }
       .avatar-check {

@@ -165,7 +165,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
       .show-all-link {
         background: none;
         border: none;
-        color: var(--db-amber);
+        color: var(--ce-primary);
         cursor: pointer;
         font-size: 0.9rem;
         text-decoration: underline;
@@ -190,7 +190,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
           border-color 0.15s;
         &:hover {
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-          border-color: var(--db-amber);
+          border-color: var(--ce-primary);
         }
         &.already-rated {
           background: #fafafa;

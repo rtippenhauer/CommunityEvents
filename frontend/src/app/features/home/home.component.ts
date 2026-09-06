@@ -137,7 +137,7 @@ interface PublicStats {
     `
       :host {
         display: block;
-        font-family: var(--db-font-body), 'Roboto', sans-serif;
+        font-family: var(--ce-font-body), 'Roboto', sans-serif;
       }
 
       /* HERO */
@@ -157,23 +157,23 @@ interface PublicStats {
         font-weight: 600;
         letter-spacing: 0.15em;
         text-transform: uppercase;
-        color: var(--db-accent);
-        border: 1px solid var(--db-accent);
+        color: var(--ce-accent);
+        border: 1px solid var(--ce-accent);
         padding: 0.3rem 0.8rem;
         border-radius: 2px;
         margin-bottom: 1.25rem;
       }
 
       h1 {
-        font-family: var(--db-font-display);
+        font-family: var(--ce-font-display);
         font-size: clamp(2.2rem, 4vw, 3.4rem);
         font-weight: 600;
         line-height: 1.12;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         margin: 0 0 1.25rem;
         em {
           font-style: italic;
-          color: var(--db-accent);
+          color: var(--ce-accent);
         }
       }
 
@@ -194,21 +194,21 @@ interface PublicStats {
         ::ng-deep {
           h1,
           h2 {
-            font-family: var(--db-font-display);
+            font-family: var(--ce-font-display);
             font-size: clamp(2.2rem, 4vw, 3.4rem);
             font-weight: 600;
             line-height: 1.12;
-            color: var(--db-brown-dark);
+            color: var(--ce-chrome);
             margin: 0 0 1.25rem;
             em {
               font-style: italic;
-              color: var(--db-accent);
+              color: var(--ce-accent);
             }
           }
           h3 {
-            font-family: var(--db-font-display);
+            font-family: var(--ce-font-display);
             font-size: 1.4rem;
-            color: var(--db-brown-dark);
+            color: var(--ce-chrome);
             margin: 0 0 0.75rem;
           }
           p {
@@ -218,7 +218,7 @@ interface PublicStats {
             margin: 0 0 1rem;
           }
           a {
-            color: var(--db-accent);
+            color: var(--ce-accent);
           }
         }
       }
@@ -247,7 +247,7 @@ interface PublicStats {
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.12em;
-        color: var(--db-accent);
+        color: var(--ce-accent);
         margin: 0 0 12px;
       }
 
@@ -281,7 +281,7 @@ interface PublicStats {
         display: inline-block;
         margin-top: 14px;
         font-size: 0.85rem;
-        color: var(--db-accent);
+        color: var(--ce-accent);
         text-decoration: none;
         font-weight: 500;
         &:hover {
@@ -291,7 +291,7 @@ interface PublicStats {
 
       /* STATS STRIP — negative margins break out of app-content padding */
       .stats-strip {
-        background: var(--db-brown-nav);
+        background: var(--ce-chrome);
         padding: 2rem;
         display: flex;
         justify-content: center;
@@ -313,10 +313,10 @@ interface PublicStats {
       }
 
       .stat-number {
-        font-family: var(--db-font-display);
+        font-family: var(--ce-font-display);
         font-size: 2.4rem;
         font-weight: 600;
-        color: var(--db-accent-on-dark, var(--db-amber));
+        color: var(--ce-accent-on-chrome, var(--ce-primary));
         line-height: 1;
       }
 
@@ -325,7 +325,7 @@ interface PublicStats {
         font-weight: 500;
         text-transform: uppercase;
         letter-spacing: 0.12em;
-        color: var(--db-cream-muted);
+        color: var(--ce-on-chrome-muted);
       }
 
       .stat-divider {
@@ -346,16 +346,16 @@ interface PublicStats {
         font-size: 0.72rem;
         letter-spacing: 0.15em;
         text-transform: uppercase;
-        color: var(--db-accent);
+        color: var(--ce-accent);
         font-weight: 600;
         margin-bottom: 0.75rem;
       }
 
       .how h2 {
-        font-family: var(--db-font-display);
+        font-family: var(--ce-font-display);
         font-size: 2rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         margin: 0 0 3rem;
       }
 
@@ -368,23 +368,23 @@ interface PublicStats {
         max-width: 720px;
         ::ng-deep {
           h2 {
-            font-family: var(--db-font-display);
+            font-family: var(--ce-font-display);
             font-size: 2rem;
             font-weight: 600;
-            color: var(--db-brown-dark);
+            color: var(--ce-chrome);
             margin: 0 0 2rem;
           }
           h3 {
             counter-increment: how-step;
-            font-family: var(--db-font-display);
+            font-family: var(--ce-font-display);
             font-size: 1.15rem;
             font-weight: 600;
-            color: var(--db-brown-dark);
+            color: var(--ce-chrome);
             margin: 1.75rem 0 0.35rem;
             &::before {
               content: '0' counter(how-step) '  ';
               font-weight: 900;
-              color: var(--db-accent);
+              color: var(--ce-accent);
               opacity: 0.55;
               margin-right: 0.4rem;
             }
@@ -397,7 +397,7 @@ interface PublicStats {
             padding-left: 2.1rem;
           }
           a {
-            color: var(--db-accent);
+            color: var(--ce-accent);
           }
 
           /* Optional structured grid: if the HTML uses the .steps/.step/.step-num
@@ -413,7 +413,7 @@ interface PublicStats {
             font-size: 3rem;
             font-weight: 900;
             line-height: 1;
-            color: var(--db-accent);
+            color: var(--ce-accent);
             opacity: 0.28;
             margin-bottom: 0.5rem;
           }
@@ -451,7 +451,7 @@ interface PublicStats {
       .step h3 {
         font-size: 1.05rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         margin: 0 0 0.5rem;
       }
       .step p {
@@ -463,7 +463,7 @@ interface PublicStats {
 
       /* OUR STORY — negative margins break out of app-content padding */
       .story-section {
-        background: var(--db-brown-nav);
+        background: var(--ce-chrome);
         padding: 5rem 2rem;
         margin: 0 -16px;
 
@@ -500,7 +500,7 @@ interface PublicStats {
       .map-caption {
         margin-top: 0.75rem;
         font-size: 0.75rem;
-        color: var(--db-cream-muted);
+        color: var(--ce-on-chrome-muted);
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
@@ -510,7 +510,7 @@ interface PublicStats {
            band. The DinnerBears default copy carries .story-* classes (styled
            below); a fork's plain <p>/<h*> from the rich-text editor inherits
            these instead of defaulting to unreadable dark text. */
-        color: var(--db-cream-muted);
+        color: var(--ce-on-chrome-muted);
         line-height: 1.8;
 
         ::ng-deep {
@@ -520,39 +520,39 @@ interface PublicStats {
           h4,
           strong,
           b {
-            color: var(--db-cream);
+            color: var(--ce-surface);
           }
           a {
-            color: var(--db-accent-on-dark, var(--db-amber));
+            color: var(--ce-accent-on-chrome, var(--ce-primary));
           }
         }
 
         ::ng-deep .section-label {
-          color: var(--db-accent-on-dark, var(--db-amber));
+          color: var(--ce-accent-on-chrome, var(--ce-primary));
         }
 
         ::ng-deep .story-headline {
-          font-family: var(--db-font-display);
+          font-family: var(--ce-font-display);
           font-size: 2rem;
           font-weight: 600;
-          color: var(--db-cream);
+          color: var(--ce-surface);
           line-height: 1.2;
           margin: 0.5rem 0 1.25rem;
         }
 
         ::ng-deep .story-p {
           font-size: 0.93rem;
-          color: var(--db-cream-muted);
+          color: var(--ce-on-chrome-muted);
           line-height: 1.8;
           margin: 0 0 1rem;
         }
 
         ::ng-deep .story-quote {
-          border-left: 3px solid var(--db-accent-on-dark, var(--db-amber));
+          border-left: 3px solid var(--ce-accent-on-chrome, var(--ce-primary));
           padding: 0.65rem 1.1rem;
           font-style: italic;
           font-size: 0.92rem;
-          color: var(--db-cream);
+          color: var(--ce-surface);
           background: rgba(255, 255, 255, 0.04);
           border-radius: 0 4px 4px 0;
           margin: 1.25rem 0 1.5rem;
@@ -572,7 +572,7 @@ interface PublicStats {
         }
 
         ::ng-deep .ms-date {
-          color: var(--db-accent-on-dark, var(--db-amber));
+          color: var(--ce-accent-on-chrome, var(--ce-primary));
           font-weight: 600;
           white-space: nowrap;
           width: 105px;
@@ -580,7 +580,7 @@ interface PublicStats {
         }
 
         ::ng-deep .ms-text {
-          color: var(--db-cream-muted);
+          color: var(--ce-on-chrome-muted);
           line-height: 1.4;
         }
       }

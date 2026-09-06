@@ -64,10 +64,10 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
         background-image:
           radial-gradient(
             ellipse 120% 80% at 50% 0%,
-            color-mix(in srgb, var(--db-primary, #c9933a) 18%, transparent),
+            color-mix(in srgb, var(--ce-primary, #c9933a) 18%, transparent),
             transparent 70%
           );
-        background-color: var(--db-cream, #fdfaf5);
+        background-color: var(--ce-surface, #fdfaf5);
         background-size: cover;
         background-position: center;
         background-repeat: no-repeat;
@@ -80,7 +80,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
       .error-card {
         background: #fff;
         border-radius: 16px;
-        border-top: 4px solid var(--db-primary, #c9933a);
+        border-top: 4px solid var(--ce-primary, #c9933a);
         box-shadow: 0 10px 34px rgb(0 0 0 / 9%);
         padding: 36px 28px 32px;
         max-width: 400px;
@@ -103,7 +103,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
         margin: 0;
         font-size: 1.4rem;
         font-weight: 700;
-        color: var(--db-brown-dark, #3d1c05);
+        color: var(--ce-chrome, #3d1c05);
       }
 
       .error-body {
@@ -118,8 +118,8 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
         flex-direction: column;
         align-items: center;
         gap: 2px;
-        background: color-mix(in srgb, var(--db-primary, #c9933a) 10%, #fff);
-        border: 1px solid color-mix(in srgb, var(--db-primary, #c9933a) 28%, #fff);
+        background: color-mix(in srgb, var(--ce-primary, #c9933a) 10%, #fff);
+        border: 1px solid color-mix(in srgb, var(--ce-primary, #c9933a) 28%, #fff);
         border-radius: 8px;
         padding: 10px 20px;
         width: 100%;
@@ -134,7 +134,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
 
       .invited-address {
         font-weight: 600;
-        color: var(--db-brown-dark, #3d1c05);
+        color: var(--ce-chrome, #3d1c05);
         word-break: break-all;
       }
 
@@ -142,7 +142,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
         margin: 0;
         font-size: 0.83rem;
         color: #888;
-        background: var(--db-cream);
+        background: var(--ce-surface);
         border-radius: 6px;
         padding: 10px 14px;
         line-height: 1.5;

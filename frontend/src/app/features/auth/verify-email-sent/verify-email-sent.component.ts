@@ -45,16 +45,16 @@ import { AuthService } from '../../../core/services/auth.service';
         font-size: 56px;
         width: 56px;
         height: 56px;
-        color: var(--db-primary);
+        color: var(--ce-primary);
       }
       h1 {
         margin: 0;
         font-size: 1.6rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       p {
         margin: 0;
-        color: var(--db-text-mid);
+        color: var(--ce-text-muted);
         line-height: 1.6;
       }
       .sub {

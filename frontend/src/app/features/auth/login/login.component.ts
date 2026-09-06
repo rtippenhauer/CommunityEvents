@@ -238,7 +238,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: var(--db-cream);
+        background-color: var(--ce-surface);
         padding: 32px 24px;
 
         @media (max-width: 767px) {
@@ -268,18 +268,18 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
 
       .tagline {
         font-size: 1rem;
-        color: var(--db-text-mid);
+        color: var(--ce-text-muted);
         margin: 0;
         font-style: italic;
       }
 
       .invite-notice {
-        background: var(--db-cream-dark);
-        border-left: 3px solid var(--db-primary);
+        background: var(--ce-surface-variant);
+        border-left: 3px solid var(--ce-primary);
         padding: 10px 14px;
         border-radius: 0 6px 6px 0;
         font-size: 0.875rem;
-        color: var(--db-text-mid);
+        color: var(--ce-text-muted);
         margin: 0;
         width: 100%;
         text-align: left;
@@ -300,7 +300,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
 
       .google-btn {
         background: #fff !important;
-        color: var(--db-text-dark) !important;
+        color: var(--ce-text) !important;
         border: 1px solid #dadce0 !important;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12) !important;
         &:hover {
@@ -364,7 +364,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
 
       .forgot-link {
         font-size: 0.8rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-decoration: none;
         text-align: center;
         &:hover {
@@ -373,7 +373,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
       }
 
       .email-toggle-btn {
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-size: 0.9rem;
       }
 

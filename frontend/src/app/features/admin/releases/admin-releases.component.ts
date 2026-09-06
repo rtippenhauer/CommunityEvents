@@ -238,7 +238,7 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
         h1 {
           margin: 0;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
 
@@ -292,7 +292,7 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
         border: 1px solid rgba(0, 0, 0, 0.23);
         border-radius: 4px;
         &:focus-within {
-          border-color: var(--db-primary);
+          border-color: var(--ce-primary);
           border-width: 2px;
         }
       }
@@ -422,7 +422,7 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
           font-size: 1rem;
           width: 1rem;
           height: 1rem;
-          color: var(--db-primary);
+          color: var(--ce-primary);
           flex-shrink: 0;
           margin-top: 1px;
         }
@@ -460,8 +460,8 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
         font-weight: 800;
         padding: 2px 8px;
         border-radius: 10px;
-        background: var(--db-primary);
-        color: var(--db-on-primary);
+        background: var(--ce-primary);
+        color: var(--ce-on-primary);
       }
       .pub-date {
         font-size: 0.8rem;

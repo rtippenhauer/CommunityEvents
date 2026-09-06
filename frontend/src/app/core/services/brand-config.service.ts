@@ -190,7 +190,7 @@ const DEFAULT_BRAND: BrandConfig = {
 
 // Loaded once via provideAppInitializer (see app.config.ts), same pattern
 // as AuthService.init(). Colors are applied as CSS custom-property
-// overrides so every component already using var(--db-primary) etc. picks
+// overrides so every component already using var(--ce-primary) etc. picks
 // up a fork's theme with no rebuild. The three configured seeds (primary,
 // accent, background) are the input; every other token — hover shades, the
 // dark chrome family, the ink tones and every `on-` colour — is derived
@@ -300,17 +300,16 @@ export class BrandConfigService {
     const onPrimary = onColorFor(config.colorPrimary);
     const onAccent = onColorFor(config.colorAccent);
 
-    root.setProperty('--db-primary', config.colorPrimary);
-    root.setProperty('--db-amber', config.colorPrimary);
-    root.setProperty('--db-accent', config.colorAccent);
-    root.setProperty('--db-cream', config.colorBackground);
-    root.setProperty('--db-on-primary', onPrimary);
-    root.setProperty('--db-on-accent', onAccent);
+    root.setProperty('--ce-primary', config.colorPrimary);
+    root.setProperty('--ce-accent', config.colorAccent);
+    root.setProperty('--ce-surface', config.colorBackground);
+    root.setProperty('--ce-on-primary', onPrimary);
+    root.setProperty('--ce-on-accent', onAccent);
     // For anything painted with primary and accent at once -- a gradient --
     // measured against both stops, since a label is unreadable wherever it is
     // worst rather than on average.
     root.setProperty(
-      '--db-on-brand-blend',
+      '--ce-on-brand-blend',
       onColorForAll([config.colorPrimary, config.colorAccent]),
     );
 
@@ -318,7 +317,7 @@ export class BrandConfigService {
     // system tokens internally (see styles.scss's mat.theme() call) — this
     // is what makes color="primary"/"accent" Material components (buttons,
     // toggles, checkboxes, form-field focus states, etc.) follow the admin's
-    // chosen colors too, not just elements hand-styled with var(--db-*).
+    // chosen colors too, not just elements hand-styled with var(--ce-*).
     // "on-*" colors are measured, not assumed (v2-11): whichever of white
     // or near-black has the higher contrast against the chosen color wins, so
     // a light primary gets dark text instead of white-on-pale.
@@ -345,38 +344,36 @@ export class BrandConfigService {
   private applyChrome(primary: string, background: string): void {
     const root = document.documentElement.style;
 
-    // Dark brown/chrome family — target lightness, boosted saturation.
-    const brownNav = reshade(primary, 13, 80);
-    root.setProperty('--db-brown', reshade(primary, 9, 80));
-    root.setProperty('--db-brown-dark', brownNav);
-    root.setProperty('--db-brown-nav', brownNav);
-    root.setProperty('--db-brown-card', reshade(primary, 16, 80));
-    root.setProperty('--db-brown-mid', reshade(primary, 24, 85));
+    // The chrome family — target lightness, boosted saturation.
+    const chrome = reshade(primary, 13, 80);
+    root.setProperty('--ce-chrome-deep', reshade(primary, 9, 80));
+    root.setProperty('--ce-chrome', chrome);
+    root.setProperty('--ce-chrome-raised', reshade(primary, 16, 80));
+    root.setProperty('--ce-chrome-soft', reshade(primary, 24, 85));
     // Stage banner — a saturated mid-dark shade of the brand.
     const banner = reshade(primary, 35, 90);
-    root.setProperty('--db-banner', banner);
-    root.setProperty('--db-on-banner', onColorFor(banner));
+    root.setProperty('--ce-banner', banner);
+    root.setProperty('--ce-on-banner', onColorFor(banner));
     // Hover shades of the primary (keep the brand's own saturation).
-    root.setProperty('--db-primary-dark', reshade(primary, 37));
-    root.setProperty('--db-amber-dark', reshade(primary, 37));
-    // Text and icons sitting ON the dark chrome. Measured against the nav
+    root.setProperty('--ce-primary-hover', reshade(primary, 37));
+    // Text and icons sitting ON the chrome. Measured against the chrome
     // shade rather than assumed: a very dark primary derives a chrome barely
     // separable from its own tint, and the tint is what would go unreadable.
-    root.setProperty('--db-on-chrome', onColorFor(brownNav));
+    root.setProperty('--ce-on-chrome', onColorFor(chrome));
     // Accent for text/marks on the dark chrome (stats strip, story section).
     // The raw primary works on light backgrounds, but a *dark* brand color
     // (e.g. Sons' green) has almost no contrast against its own derived dark
     // chrome — so a lightened tint, and only while that tint stays legible.
-    root.setProperty('--db-accent-on-dark', readableOn(brownNav, reshade(primary, 66), true));
+    root.setProperty('--ce-accent-on-chrome', readableOn(chrome, reshade(primary, 66), true));
     // Muted secondary-text-on-dark tone: a light, desaturated brand tint.
-    root.setProperty('--db-cream-muted', readableOn(brownNav, reshade(primary, 65, 38)));
+    root.setProperty('--ce-on-chrome-muted', readableOn(chrome, reshade(primary, 65, 38)));
     // Ink on the page ground. Warm brand-tinted tones are the preference and
     // the measured on-color is the floor, so a community keeps its own body
     // copy colour unless its background makes that copy unreadable.
-    root.setProperty('--db-text-dark', readableOn(background, reshade(primary, 16, 45)));
-    root.setProperty('--db-text-mid', readableOn(background, reshade(primary, 32, 30)));
-    // Slightly darker cream, derived from the background (the inset nav band).
-    root.setProperty('--db-cream-dark', darkenBy(background, 8));
+    root.setProperty('--ce-text', readableOn(background, reshade(primary, 16, 45)));
+    root.setProperty('--ce-text-muted', readableOn(background, reshade(primary, 32, 30)));
+    // A slightly darker surface, derived from the ground (the inset nav band).
+    root.setProperty('--ce-surface-variant', darkenBy(background, 8));
   }
 
   // Swaps the live favicon + apple-touch-icon <link>s. index.html's static

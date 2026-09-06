@@ -79,7 +79,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         h1 {
           margin: 0 0 4px;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .subtitle {
@@ -120,7 +120,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         border-radius: 12px;
         padding: 28px;
         box-shadow: 0 2px 8px rgba(61, 28, 5, 0.07);
-        border-left: 4px solid var(--db-primary);
+        border-left: 4px solid var(--ce-primary);
         overflow-wrap: break-word;
         min-width: 0;
       }
@@ -136,8 +136,8 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         font-weight: 800;
         padding: 3px 10px;
         border-radius: 12px;
-        background: var(--db-primary);
-        color: var(--db-on-primary);
+        background: var(--ce-primary);
+        color: var(--ce-on-primary);
         letter-spacing: 0.05em;
       }
       .release-date {
@@ -148,7 +148,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
       .release-title {
         margin: 0 0 16px;
         font-size: 1.25rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
 
       .release-body {
@@ -173,7 +173,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         ::ng-deep h2,
         ::ng-deep h3 {
           margin: 16px 0 8px;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
 
@@ -191,7 +191,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
           font-size: 1rem;
           width: 1rem;
           height: 1rem;
-          color: var(--db-primary);
+          color: var(--ce-primary);
           flex-shrink: 0;
           margin-top: 1px;
         }

@@ -86,7 +86,7 @@ import { AuthService } from '../../../core/services/auth.service';
         .notif-title {
           font-weight: 600;
           font-size: 0.9rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .mark-all-btn {
@@ -108,7 +108,7 @@ import { AuthService } from '../../../core/services/auth.service';
         cursor: pointer;
         border-bottom: 1px solid #f0ebe4;
         &:hover {
-          background: var(--db-cream);
+          background: var(--ce-surface);
         }
         &.unread {
           background: #f5f0e8;
@@ -124,7 +124,7 @@ import { AuthService } from '../../../core/services/auth.service';
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        background: var(--db-primary);
+        background: var(--ce-primary);
       }
       .notif-content {
         flex: 1;
@@ -133,7 +133,7 @@ import { AuthService } from '../../../core/services/auth.service';
       .notif-item-title {
         font-size: 0.85rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         line-height: 1.3;
       }
       .notif-body {
