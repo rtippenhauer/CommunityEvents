@@ -210,6 +210,18 @@ export class AdminAppearanceComponent implements OnInit {
   readonly saving = signal(false);
   readonly pasteError = signal<string | null>(null);
 
+  /**
+   * What the last fix actually did, kept on screen rather than flashed.
+   *
+   * A fix for a blend changes a *seed* and leaves the flagged colour alone --
+   * correctly, since that colour was already the best available. From the
+   * flagged row the only observable effect is the warning disappearing, which
+   * is indistinguishable from a bug that merely suppresses warnings. Rob said
+   * so three times, each time correctly. A four-second snackbar is not enough:
+   * this stays until the palette changes again.
+   */
+  readonly lastFix = signal<{ what: string; before: string; after: string } | null>(null);
+
   readonly form = this.fb.nonNullable.group({
     primary: ['#C9933A', [Validators.required, Validators.pattern(HEX_COLOR_PATTERN)]],
     accent: ['#C9933A', [Validators.required, Validators.pattern(HEX_COLOR_PATTERN)]],
@@ -276,7 +288,12 @@ export class AdminAppearanceComponent implements OnInit {
     });
   }
 
+  private clearLastFix(): void {
+    this.lastFix.set(null);
+  }
+
   applyPreset(key: string): void {
+    this.clearLastFix();
     const preset = this.presets.find((p) => p.key === key);
     if (!preset) return;
 
@@ -318,6 +335,7 @@ export class AdminAppearanceComponent implements OnInit {
   }
 
   onSwatch(control: 'primary' | 'accent' | 'background', event: Event): void {
+    this.clearLastFix();
     const value = (event.target as HTMLInputElement).value;
     this.form.controls[control].setValue(value);
     this.form.controls[control].markAsDirty();
@@ -396,39 +414,31 @@ export class AdminAppearanceComponent implements OnInit {
    * live site without being asked to.
    */
   applyFix(fix: PaletteFix): void {
-    // Say exactly what moved. The suggestion is the *nearest* shade that
-    // works, so it is often a few points of lightness -- correct, and to the
-    // eye indistinguishable from no change at all. Rob applied one on stage
-    // and reported that nothing had happened; the accent had gone from
-    // #7048E8 to #7E5AEA and the worst contrast from 3.78 to 4.54. A message
-    // that just says "Adjusted" leaves an admin unable to tell a working
-    // button from a broken one.
-    const changes: string[] = [];
-
     if (fix.clearOverride) {
-      changes.push(`${this.tokenLabel(fix.clearOverride)} back to automatic`);
+      const before = this.overrides()[fix.clearOverride] ?? '';
+      const after = this.derived()[fix.clearOverride];
       this.clearOverride(fix.clearOverride);
+      this.lastFix.set({
+        what: `${this.tokenInfo[fix.clearOverride].label} back to automatic`,
+        before,
+        after,
+      });
     }
 
     if (fix.seeds) {
-      const before = this.form.getRawValue();
-      for (const [key, value] of Object.entries(fix.seeds)) {
-        const previous = (before as Record<string, string>)[key];
-        if (value && previous && value.toLowerCase() !== previous.toLowerCase()) {
-          changes.push(`${key} ${previous.toUpperCase()} → ${value.toUpperCase()}`);
-        }
-      }
+      const previous = this.form.getRawValue() as Record<string, string>;
+      const [key, value] = Object.entries(fix.seeds)[0] ?? [];
       this.form.patchValue(fix.seeds);
+      if (key && value) {
+        this.lastFix.set({
+          what: `${key.charAt(0).toUpperCase()}${key.slice(1)} colour`,
+          before: previous[key],
+          after: value,
+        });
+      }
     }
 
     this.form.markAsDirty();
-    this.snackBar.open(
-      changes.length
-        ? `${changes.join(', ')}. It is a small change on purpose — the nearest shade that works. Save to apply.`
-        : 'Nothing needed changing.',
-      'OK',
-      { duration: 8000 },
-    );
   }
 
   /** The human name for a token, for messages. Falls back to the token itself. */
@@ -464,6 +474,7 @@ export class AdminAppearanceComponent implements OnInit {
       return;
     }
     this.pasteError.set(null);
+    this.clearLastFix();
     this.form.patchValue(result.seeds);
     this.form.markAsDirty();
     this.overrides.set({});

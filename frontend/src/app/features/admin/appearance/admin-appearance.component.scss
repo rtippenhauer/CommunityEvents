@@ -365,6 +365,53 @@
   }
 }
 
+.last-fix {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ce-surface-variant);
+}
+
+.last-fix-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-weight: 700;
+  color: var(--ce-text);
+
+  mat-icon {
+    color: var(--ce-success);
+    font-size: 1.1rem;
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+}
+
+.last-fix-swatches {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+
+  code {
+    font-size: 0.78rem;
+    color: var(--ce-text);
+  }
+
+  .chip {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid var(--ce-text-muted);
+    flex-shrink: 0;
+  }
+
+  .arrow {
+    color: var(--ce-text-muted);
+  }
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;

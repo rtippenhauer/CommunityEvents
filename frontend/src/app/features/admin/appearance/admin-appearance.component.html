@@ -253,6 +253,30 @@
             } @else {
               <p class="muted">Every colour combination on your site is readable.</p>
             }
+
+            @if (lastFix(); as done) {
+              <!-- Stays put. A fix for a blend changes a seed and leaves the
+                   flagged colour alone, so without this the only visible
+                   effect is a warning disappearing — which looks exactly like
+                   a bug that hides warnings. -->
+              <div class="last-fix">
+                <p class="last-fix-title">
+                  <mat-icon>check_circle</mat-icon>
+                  Changed {{ done.what }}
+                </p>
+                <p class="last-fix-swatches">
+                  <span class="chip" [style.background]="done.before"></span>
+                  <code>{{ done.before | uppercase }}</code>
+                  <span class="arrow">→</span>
+                  <span class="chip" [style.background]="done.after"></span>
+                  <code>{{ done.after | uppercase }}</code>
+                </p>
+                <p class="muted small">
+                  The flagged colour itself was already the best choice, so it did not change —
+                  what changed is the colour behind it. Save to apply.
+                </p>
+              </div>
+            }
           </mat-card-content>
         </mat-card>
 
