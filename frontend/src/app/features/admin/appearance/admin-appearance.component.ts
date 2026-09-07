@@ -84,6 +84,10 @@ const TOKEN_INFO: Record<PaletteToken, { label: string; hint: string }> = {
     label: 'Panel background',
     hint: 'Insets and grouped panels sitting on the page.',
   },
+  '--ce-rule': {
+    label: 'Lines and borders',
+    hint: 'Card outlines, table rules and dividers.',
+  },
   '--ce-text': {
     label: 'Body text',
     hint: 'Ordinary reading text on the page.',
@@ -154,7 +158,7 @@ const TOKEN_GROUPS: readonly TokenGroup[] = [
   {
     label: 'Page',
     hint: 'The ground everything sits on, and the text on it.',
-    tokens: ['--ce-surface', '--ce-surface-variant', '--ce-text', '--ce-text-muted'],
+    tokens: ['--ce-surface', '--ce-surface-variant', '--ce-rule', '--ce-text', '--ce-text-muted'],
   },
   {
     label: 'Nav and footer',

@@ -81,7 +81,7 @@ import { AnnouncementsService, Announcement } from '../../core/services/announce
       .ann-card {
         display: block;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 10px;
         padding: 16px 20px;
         text-decoration: none;

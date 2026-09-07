@@ -308,7 +308,7 @@ interface City {
         cursor: pointer;
         text-align: left;
         &:hover {
-          background: #faf7f2;
+          background: var(--ce-surface-variant);
         }
       }
       .place-result-name {

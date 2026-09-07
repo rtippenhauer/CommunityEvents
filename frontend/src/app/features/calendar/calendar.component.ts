@@ -174,7 +174,7 @@ interface CalendarDay {
         position: sticky;
         top: 80px;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 12px;
         padding: 16px;
         box-shadow: 0 2px 8px rgba(61, 28, 5, 0.07);

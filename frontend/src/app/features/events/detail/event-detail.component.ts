@@ -1468,8 +1468,8 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         gap: 6px;
         padding: 10px 12px;
         margin-bottom: 14px;
-        background: #faf7f2;
-        border: 1px solid #e8e0d6;
+        background: var(--ce-surface-variant);
+        border: 1px solid var(--ce-rule);
         border-radius: 8px;
       }
       .disclaimer-row {
@@ -1594,8 +1594,8 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .guest-panel {
         margin-top: 16px;
         padding: 16px;
-        background: #faf7f2;
-        border: 1px solid #e8e0d6;
+        background: var(--ce-surface-variant);
+        border: 1px solid var(--ce-rule);
         border-radius: 10px;
       }
 
@@ -1634,7 +1634,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         padding: 4px 8px 4px 4px;
         border-radius: 6px;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
       }
 
       .guest-row-icon {
@@ -1711,7 +1711,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .guest-edit-expansion {
         padding: 10px 12px 4px;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-top: none;
         border-radius: 0 0 6px 6px;
         margin-top: -4px;
@@ -1806,7 +1806,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         margin-top: 2px;
       }
       .attendee-avatar-guest {
-        background: #e8e0d6;
+        background: var(--ce-rule);
         .guest-avatar-icon {
           color: #999;
           font-size: 1.2rem;
@@ -1830,7 +1830,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         font-weight: 600;
         padding: 1px 6px;
         border-radius: 8px;
-        background: #f5edd8;
+        background: var(--ce-surface-variant);
         color: var(--ce-chrome-soft);
         align-self: flex-start;
       }
@@ -2071,8 +2071,8 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         align-items: center;
         gap: 10px;
         padding: 10px 14px;
-        background: #faf7f2;
-        border: 1px solid #e8e0d6;
+        background: var(--ce-surface-variant);
+        border: 1px solid var(--ce-rule);
         border-radius: 8px;
         margin-bottom: 12px;
       }
@@ -2152,7 +2152,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .res-member-results {
         display: flex;
         flex-direction: column;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 4px;
         overflow: hidden;
         margin-top: -8px;
@@ -2287,7 +2287,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .discussion-section {
         margin-top: 24px;
         padding-top: 20px;
-        border-top: 1px solid #e8e0d6;
+        border-top: 1px solid var(--ce-rule);
       }
       .no-comments {
         color: #999;
@@ -2308,7 +2308,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .reply-block {
         padding: 10px 0 10px 16px;
-        border-left: 2px solid #e8e0d6;
+        border-left: 2px solid var(--ce-rule);
         margin-top: 8px;
       }
       .replies-list {
@@ -2412,7 +2412,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .new-comment-form {
         padding-top: 16px;
-        border-top: 1px dashed #e8e0d6;
+        border-top: 1px dashed var(--ce-rule);
         margin-top: 8px;
       }
     `,

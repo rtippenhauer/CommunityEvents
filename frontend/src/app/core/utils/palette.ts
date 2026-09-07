@@ -51,6 +51,7 @@ export const PALETTE_TOKENS = [
   '--ce-on-brand-blend',
   '--ce-surface',
   '--ce-surface-variant',
+  '--ce-rule',
   '--ce-text',
   '--ce-text-muted',
   '--ce-chrome',
@@ -109,6 +110,10 @@ export function derivePalette(seeds: PaletteSeeds): Palette {
     // Steps *away* from the ground rather than always darker: on a dark ground
     // a darker inset disappears into it.
     '--ce-surface-variant': darkenBy(background, onColorFor(background) === ON_DARK ? -8 : 8),
+    // Hairlines: card borders, table rules, dividers. Components hardcoded
+    // #e8e0d6 -- a warm tan rule from the amber palette -- for want of this,
+    // which is why every panel on a teal community was outlined in beige.
+    '--ce-rule': darkenBy(background, onColorFor(background) === ON_DARK ? -16 : 14),
     // Ink prefers a warm brand-tinted tone and falls back to the measured
     // floor only where that tone stops being readable on this ground.
     '--ce-text': readableOn(background, reshade(primary, 16, 45)),

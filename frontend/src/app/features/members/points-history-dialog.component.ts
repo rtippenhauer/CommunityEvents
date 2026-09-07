@@ -90,7 +90,7 @@ export interface PointsHistoryDialogData {
         justify-content: space-between;
         margin-top: 10px;
         padding-top: 10px;
-        border-top: 2px solid #e8e0d6;
+        border-top: 2px solid var(--ce-rule);
         font-weight: 700;
         font-size: 0.95rem;
       }

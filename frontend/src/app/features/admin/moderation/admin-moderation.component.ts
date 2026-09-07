@@ -223,7 +223,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
         color: #b71c1c;
       }
       .section-divider {
-        border-top: 1px solid #e8e0d6;
+        border-top: 1px solid var(--ce-rule);
         margin: 32px 0;
         max-width: 760px;
       }
@@ -253,7 +253,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
       }
       .tab-btn {
         padding: 5px 14px;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         background: #fff;
         border-radius: 20px;
         cursor: pointer;
@@ -272,7 +272,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
       }
       .mod-card {
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 10px;
         padding: 14px 18px;
         &.resolved {

@@ -243,7 +243,7 @@ type PageState =
 
       .brand-header {
         width: 100%;
-        background: #3d1c05;
+        background: var(--ce-chrome);
         display: flex;
         justify-content: center;
         padding: 20px 0;
@@ -315,7 +315,7 @@ type PageState =
         gap: 10px;
         margin-bottom: 24px;
         padding: 16px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 10px;
       }
 

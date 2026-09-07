@@ -746,9 +746,9 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .review-item {
         padding: 12px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 8px;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
       }
       .review-header {
         display: flex;
@@ -799,9 +799,9 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         flex-direction: column;
         gap: 12px;
         padding: 16px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 8px;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
       }
       .rating-form-title {
         margin: 0;

@@ -260,7 +260,7 @@ export interface AttendanceDialogData {
       }
       .walkin-form {
         margin-top: 12px;
-        border-top: 1px dashed #e8e0d6;
+        border-top: 1px dashed var(--ce-rule);
         padding-top: 12px;
       }
       .walkin-search-field {

@@ -148,7 +148,7 @@ import { CityService } from '../../../core/services/city.service';
       }
       .form-panel {
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 10px;
         padding: 24px;
         margin-bottom: 24px;
@@ -179,7 +179,7 @@ import { CityService } from '../../../core/services/city.service';
         display: flex;
         align-items: center;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 8px;
         padding: 12px 16px;
         gap: 12px;

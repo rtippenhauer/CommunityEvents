@@ -101,7 +101,7 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         display: flex;
         flex-direction: column;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 10px;
         overflow: hidden;
         cursor: pointer;
@@ -260,7 +260,7 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         height: 24px;
         border-radius: 50%;
         background: #f5deb3;
-        color: #3d1c05;
+        color: var(--ce-text);
         font-size: 0.6rem;
         font-weight: 700;
         display: flex;

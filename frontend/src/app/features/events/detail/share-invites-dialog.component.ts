@@ -232,7 +232,7 @@ export interface ShareInvitesDialogData {
         gap: 10px;
         padding: 12px;
         margin-bottom: 12px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 8px;
       }
       .flavor-toggle {
@@ -266,7 +266,7 @@ export interface ShareInvitesDialogData {
         align-items: center;
         justify-content: space-between;
         padding: 8px 12px;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 8px;
         &.link-revoked {
           opacity: 0.55;

@@ -239,7 +239,7 @@ import { isElevatedRole } from '../../core/utils/roles.util';
         margin-bottom: 24px;
       }
       .comments-section {
-        border-top: 1px solid #e8e0d6;
+        border-top: 1px solid var(--ce-rule);
         padding-top: 24px;
       }
       .comments-title {

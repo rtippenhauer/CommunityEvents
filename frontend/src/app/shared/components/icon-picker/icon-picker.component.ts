@@ -416,7 +416,7 @@ const ICON_NAMES: string[] = [
         gap: 8px;
         margin-top: 6px;
         padding: 10px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 8px;
       }
       .upload-name-field {
@@ -431,7 +431,7 @@ const ICON_NAMES: string[] = [
       .icon-manage-panel {
         margin-top: 6px;
         padding: 10px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 8px;
       }
       .manage-panel-title {
