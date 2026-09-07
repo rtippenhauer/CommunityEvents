@@ -8,10 +8,15 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { toSignal } from '@angular/core/rxjs-interop';
 
+import {
+  ConfirmDialogComponent,
+  type ConfirmDialogData,
+} from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { AppConfigService } from '../../../core/services/app-config.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
 import {
@@ -92,6 +97,7 @@ export class AdminAppearanceComponent implements OnInit {
   private readonly appConfig = inject(AppConfigService);
   private readonly brand = inject(BrandConfigService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   readonly presets = PALETTE_PRESETS;
   readonly tokenGroups = TOKEN_GROUPS;
@@ -171,16 +177,42 @@ export class AdminAppearanceComponent implements OnInit {
   applyPreset(key: string): void {
     const preset = this.presets.find((p) => p.key === key);
     if (!preset) return;
+
+    // Picking a preset is a statement about the whole palette, so it does clear
+    // per-token overrides -- leaving them layered on means the preset does not
+    // look like the swatches that sold it. But discarding an admin's hand-tuned
+    // colours is destructive, and a snackbar *after* the fact is not consent:
+    // Rob hit exactly this on stage, having been told overrides survive a
+    // colour change (they do -- a seed edit keeps them; only a preset, which
+    // replaces all three at once, does not). So ask first.
+    const count = this.overrideCount();
+    if (!count) {
+      this.setPresetSeeds(preset);
+      return;
+    }
+
+    const data: ConfirmDialogData = {
+      title: `Apply ${preset.label}?`,
+      message:
+        `You have ${count} colour${count === 1 ? '' : 's'} fine-tuned by hand. ` +
+        `Applying a preset replaces the whole palette, so ${count === 1 ? 'it' : 'they'} ` +
+        `will go back to being worked out automatically.`,
+      confirmLabel: `Apply ${preset.label}`,
+      confirmColor: 'warn',
+    };
+    this.dialog
+      .open(ConfirmDialogComponent, { data })
+      .afterClosed()
+      .subscribe((confirmed: boolean) => {
+        if (!confirmed) return;
+        this.overrides.set({});
+        this.setPresetSeeds(preset);
+      });
+  }
+
+  private setPresetSeeds(preset: { label: string; seeds: PaletteSeeds }): void {
     this.form.patchValue(preset.seeds);
     this.form.markAsDirty();
-    // Picking a preset is a statement about the whole palette, so it clears
-    // overrides rather than leaving invisible edits layered on a fresh choice.
-    if (this.overrideCount()) {
-      this.overrides.set({});
-      this.snackBar.open(`${preset.label} applied — custom colours cleared`, 'OK', {
-        duration: 4000,
-      });
-    }
   }
 
   onSwatch(control: 'primary' | 'accent' | 'background', event: Event): void {
