@@ -13,6 +13,9 @@
 // in styles.scss.
 
 import {
+  hexToHsl,
+  hslToHex,
+  meetsAA,
   reshade,
   darkenBy,
   onColorFor,
@@ -327,4 +330,104 @@ export function materialSurfaceTokens(palette: Palette): Record<string, string> 
     '--mat-sys-outline': step(35),
     '--mat-sys-outline-variant': step(14),
   };
+}
+
+// ── Suggested fixes ────────────────────────────────────────────────────────
+// A warning that names a problem without naming a remedy asks the admin to
+// work out the colour theory themselves. Worse, the obvious remedy is usually
+// the wrong one: for a failing blend the label colour is already the best
+// available, so the fix is to move a *seed*, which nobody would guess.
+
+export interface PaletteFix {
+  /** Button text. */
+  label: string;
+  /** What applying it will do, in plain words. */
+  description: string;
+  /** Seed values to change, if any. */
+  seeds?: Partial<PaletteSeeds>;
+  /** An override to drop, if that is the remedy instead. */
+  clearOverride?: PaletteToken;
+}
+
+/**
+ * How to fix a warning, or null when there is nothing safe to suggest.
+ *
+ * Two remedies, because there are two causes.
+ *
+ * If the failing colour was set by hand, the fix is to let it go back to being
+ * worked out -- the derivation is contrast-checked and the admin's value is
+ * not. That case is checked first, since an override explains any failure it
+ * is involved in.
+ *
+ * Otherwise the only derived pair that can fail is the blend, and it fails
+ * because the two seeds sit either side of the luminance crossover. Nudging
+ * the accent's lightness toward the primary's is the smallest change that
+ * fixes it while keeping the accent's hue -- so the community keeps its second
+ * colour, in a shade that can carry a label.
+ */
+export function suggestFix(
+  seeds: PaletteSeeds,
+  overrides: PaletteOverrides,
+  warning: ContrastWarning,
+): PaletteFix | null {
+  if (overrides[warning.token] !== undefined) {
+    return {
+      label: 'Use the automatic colour',
+      description: 'Drops your hand-picked value and goes back to the worked-out one.',
+      clearOverride: warning.token,
+    };
+  }
+
+  if (warning.token === '--ce-on-brand-blend') {
+    const adjusted = accentThatCanCarryALabel(seeds);
+    if (adjusted) {
+      return {
+        label: 'Adjust accent',
+        description:
+          `Moves your accent to ${adjusted} — same colour, different shade — so one text ` +
+          'colour is readable across the whole blend.',
+        seeds: { accent: adjusted },
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The nearest shade of the accent that lets one label colour work on both
+ * stops of a primary-to-accent blend, or null if none does.
+ *
+ * Walks the accent's lightness toward the primary's a point at a time and
+ * stops at the first shade that works, so the result is the smallest change
+ * that fixes it rather than a jump to something the admin did not choose.
+ * Hue and saturation are untouched.
+ */
+function accentThatCanCarryALabel(seeds: PaletteSeeds): string | null {
+  const accentHsl = hexToHsl(seeds.accent);
+  if (!accentHsl || !hexToHsl(seeds.primary)) return null;
+
+  const worksWith = (accent: string): boolean => {
+    const on = onColorForAll([seeds.primary, accent]);
+    return meetsAA(on, seeds.primary) && meetsAA(on, accent);
+  };
+
+  // Search outward from the accent's own lightness, nearest first, so the
+  // result is the smallest visible change that works.
+  //
+  // Deliberately not a walk toward the primary's lightness, which was the
+  // first attempt and is wrong: HSL lightness is not luminance, so two colours
+  // can share a lightness and still contrast very differently against the same
+  // label. Matching the primary's L therefore guarantees nothing, and the walk
+  // could run out of range having found nothing while a working shade sat just
+  // the other side of the starting point.
+  for (let offset = 1; offset <= 100; offset++) {
+    for (const direction of [1, -1]) {
+      const l = accentHsl.l + direction * offset;
+      if (l < 0 || l > 100) continue;
+      const candidate = hslToHex({ ...accentHsl, l });
+      if (worksWith(candidate)) return candidate;
+    }
+  }
+  return null;
 }

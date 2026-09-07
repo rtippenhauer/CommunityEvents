@@ -324,6 +324,11 @@
     border-left: 4px solid var(--ce-banner);
   }
 
+  .fix-btn {
+    display: block;
+    margin: 6px 0 2px;
+  }
+
   // "Cannot be rendered" is a different claim from "hard to read", so it does
   // not look like more of the same.
   li.unsupported {

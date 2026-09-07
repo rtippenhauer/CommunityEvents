@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PALETTE_TOKENS,
   materialSurfaceTokens,
+  suggestFix,
   derivePalette,
   applyOverrides,
   resolvePalette,
@@ -9,7 +10,7 @@ import {
   contrastWarnings,
   type PaletteSeeds,
 } from './palette';
-import { contrastRatio, AA_NORMAL } from './color.util';
+import { contrastRatio, hexToHsl, AA_NORMAL } from './color.util';
 
 const AMBER: PaletteSeeds = { primary: '#C9933A', accent: '#C9933A', background: '#FDFAF5' };
 
@@ -249,5 +250,64 @@ describe('materialSurfaceTokens', () => {
     expect(lum(darkGround['--mat-sys-surface-container'])).toBeGreaterThan(
       lum(darkGround['--mat-sys-surface']),
     );
+  });
+});
+
+describe('suggestFix', () => {
+  const blendWarning = (seeds: PaletteSeeds) =>
+    contrastWarnings(derivePalette(seeds)).find((w) => w.token === '--ce-on-brand-blend')!;
+
+  it('moves the accent when a blend cannot carry a label', () => {
+    // Two seeds either side of the luminance crossover: no single text colour
+    // is readable on both, and the label colour is already the best available,
+    // so the only real remedy is a seed.
+    const seeds: PaletteSeeds = {
+      primary: '#00b7c7',
+      accent: '#7048e8',
+      background: '#F4F8FC',
+    };
+    const warning = blendWarning(seeds);
+    expect(warning).toBeDefined();
+
+    const fix = suggestFix(seeds, {}, warning);
+    expect(fix).not.toBeNull();
+    expect(fix!.seeds?.accent).toBeDefined();
+
+    // And it must actually work, not merely look like a change.
+    const fixed = { ...seeds, ...fix!.seeds };
+    expect(
+      contrastWarnings(derivePalette(fixed)).some((w) => w.token === '--ce-on-brand-blend'),
+    ).toBe(false);
+  });
+
+  it('keeps the accent hue — a community keeps its colour, in another shade', () => {
+    const seeds: PaletteSeeds = { primary: '#00b7c7', accent: '#7048e8', background: '#F4F8FC' };
+    const fix = suggestFix(seeds, {}, blendWarning(seeds))!;
+    const before = hexToHsl(seeds.accent)!;
+    const after = hexToHsl(fix.seeds!.accent!)!;
+    expect(Math.abs(after.h - before.h)).toBeLessThanOrEqual(2);
+    expect(after.l).not.toBe(before.l);
+  });
+
+  it('offers to drop a hand-set colour when that is what broke it', () => {
+    // An override explains any failure it is involved in, so it is checked
+    // first: the derivation is contrast-checked and the admin's value is not.
+    const overrides = { '--ce-on-primary': '#ffffff' } as const;
+    const warning = contrastWarnings(resolvePalette(AMBER, overrides)).find(
+      (w) => w.token === '--ce-on-primary',
+    )!;
+    const fix = suggestFix(AMBER, overrides, warning)!;
+    expect(fix.clearOverride).toBe('--ce-on-primary');
+    expect(fix.seeds).toBeUndefined();
+  });
+
+  it('suggests nothing rather than something useless', () => {
+    // A dark background is unsupported, not mis-tuned; there is no colour
+    // nudge that fixes it, and offering one would be a lie.
+    const seeds: PaletteSeeds = { primary: '#00d7e8', accent: '#7048e8', background: '#06101e' };
+    const unsupported = contrastWarnings(derivePalette(seeds)).find(
+      (w) => w.kind === 'unsupported',
+    )!;
+    expect(suggestFix(seeds, {}, unsupported)).toBeNull();
   });
 });

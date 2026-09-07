@@ -25,6 +25,9 @@ import {
   derivePalette,
   parseOverrides,
   resolvePalette,
+  suggestFix,
+  type ContrastWarning,
+  type PaletteFix,
   type PaletteOverrides,
   type PaletteSeeds,
   type PaletteToken,
@@ -253,6 +256,29 @@ export class AdminAppearanceComponent implements OnInit {
 
   warningFor(token: PaletteToken): string | null {
     return this.warnings().find((w) => w.token === token)?.message ?? null;
+  }
+
+  fixFor(warning: ContrastWarning): PaletteFix | null {
+    return suggestFix(this.seeds(), this.overrides(), warning);
+  }
+
+  /**
+   * Apply a suggested fix.
+   *
+   * Deliberately does not save. The admin sees the preview update and decides,
+   * exactly as with every other control on this screen -- a "fix" that wrote
+   * to the database on one click would be the only thing here that changes the
+   * live site without being asked to.
+   */
+  applyFix(fix: PaletteFix): void {
+    if (fix.clearOverride) {
+      this.clearOverride(fix.clearOverride);
+    }
+    if (fix.seeds) {
+      this.form.patchValue(fix.seeds);
+    }
+    this.form.markAsDirty();
+    this.snackBar.open('Adjusted — check the preview, then save', 'OK', { duration: 4000 });
   }
 
   async copyPrompt(): Promise<void> {

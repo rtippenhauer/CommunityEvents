@@ -221,7 +221,21 @@
             @if (warnings().length) {
               <ul>
                 @for (warning of warnings(); track warning.token + warning.message) {
-                  <li [class.unsupported]="warning.kind === 'unsupported'">{{ warning.message }}</li>
+                  <li [class.unsupported]="warning.kind === 'unsupported'">
+                    {{ warning.message }}
+                    @if (fixFor(warning); as fix) {
+                      <button
+                        mat-stroked-button
+                        type="button"
+                        class="fix-btn"
+                        [matTooltip]="fix.description"
+                        (click)="applyFix(fix)"
+                      >
+                        <mat-icon>auto_fix_high</mat-icon>
+                        {{ fix.label }}
+                      </button>
+                    }
+                  </li>
                 }
               </ul>
               <p class="muted small">
