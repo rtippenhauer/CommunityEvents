@@ -89,6 +89,13 @@ interface TextSearchResponse {
     geometry: { location: { lat: number; lng: number } };
   }>;
   status: string;
+  /**
+   * Google's own explanation of a non-OK status, and the only part that says
+   * what to actually fix: "The provided API key is expired", "This API project
+   * is not authorized to use this API", "You must enable Billing". The status
+   * alone is a category, not a diagnosis.
+   */
+  error_message?: string;
 }
 
 export interface PlaceSearchResult {
@@ -629,7 +636,15 @@ export class EnrichmentService {
       // not enabled, OVER_QUERY_LIMIT = billing/quota).
       if (data.status === 'ZERO_RESULTS') return [];
       if (data.status !== 'OK') {
-        this.logger.warn(`[PlaceSearch] Google Places returned ${data.status} for "${q}"`);
+        // Log Google's reason, not just its status. REQUEST_DENIED covers an
+        // expired key, a key restricted to the wrong referrer or IP, the
+        // Places API not enabled on the project, and billing not enabled --
+        // four different fixes behind one word. Same mistake v2-8 made with
+        // `exchange_failed`, which dropped the provider's actual reason.
+        const reason = data.error_message ? ` — ${data.error_message}` : '';
+        this.logger.warn(
+          `[PlaceSearch] Google Places returned ${data.status} for "${q}"${reason}`,
+        );
         return [];
       }
       return data.results.slice(0, 6).map((r) => ({
