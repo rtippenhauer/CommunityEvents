@@ -111,7 +111,7 @@ import { AuthService } from '../../../core/services/auth.service';
           background: var(--ce-surface);
         }
         &.unread {
-          background: #f5f0e8;
+          background: var(--ce-surface-variant);
         }
       }
       .notif-dot-wrap {

@@ -36,7 +36,7 @@ import { TenantState } from '../../core/services/tenant-status.service';
       justify-content: center;
       min-height: 100vh;
       padding: 1.5rem;
-      background: #f7f3ec;
+      background: var(--ce-surface);
       color: #2c2c2c;
       font-family:
         system-ui,

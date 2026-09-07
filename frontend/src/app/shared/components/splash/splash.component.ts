@@ -175,7 +175,7 @@ function buildBurst(id: number): Burst {
         max-height: 80vh;
         overflow-y: auto;
         padding: 24px 20px 20px;
-        background: #fffaf3;
+        background: var(--ce-surface);
         border-radius: 16px;
         box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
       }
@@ -186,7 +186,7 @@ function buildBurst(id: number): Burst {
         display: flex;
         align-items: center;
         justify-content: center;
-        background: radial-gradient(circle, #fff7e6 0%, #f5e3bf 100%);
+        background: radial-gradient(circle, var(--ce-surface-variant) 0%, var(--ce-rule) 100%);
         box-shadow: 0 4px 18px rgba(201, 147, 58, 0.45);
         margin-bottom: 6px;
         flex-shrink: 0;
@@ -207,8 +207,8 @@ function buildBurst(id: number): Burst {
         align-self: flex-end;
         font-size: 0.72rem;
         font-weight: 600;
-        color: #999;
-        background: #f0ebe4;
+        color: var(--ce-text-muted);
+        background: var(--ce-surface-variant);
         padding: 2px 10px;
         border-radius: 999px;
         margin-bottom: -4px;

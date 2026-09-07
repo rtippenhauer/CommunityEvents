@@ -187,7 +187,7 @@ const TYPE_LABELS: Record<string, string> = {
       }
       .lb-entry--me {
         outline: 2px solid var(--ce-primary);
-        background: #fffdf6;
+        background: var(--ce-surface-variant);
       }
       .lb-entry--top3 {
         font-weight: 600;
