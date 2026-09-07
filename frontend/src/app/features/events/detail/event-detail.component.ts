@@ -330,15 +330,19 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
                   </div>
                 </div>
 
-                <!-- Timing & deadline info -->
-                <div class="rsvp-disclaimer">
-                  <div class="disclaimer-row">
-                    <mat-icon class="disc-icon">schedule</mat-icon>
-                    <span
-                      >RSVP deadline: <strong>{{ cutoffTimeLabel() }}</strong> day-of</span
-                    >
+                <!-- Timing & deadline info. Hidden when the event has no
+                     usable time: a deadline we cannot compute is worse than
+                     no deadline shown, since members act on it. -->
+                @if (cutoffTimeLabel()) {
+                  <div class="rsvp-disclaimer">
+                    <div class="disclaimer-row">
+                      <mat-icon class="disc-icon">schedule</mat-icon>
+                      <span
+                        >RSVP deadline: <strong>{{ cutoffTimeLabel() }}</strong> day-of</span
+                      >
+                    </div>
                   </div>
-                </div>
+                }
 
                 <!-- RSVP action for logged-in members -->
                 @if (isLoggedIn()) {
@@ -563,7 +567,13 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
                       @if (!isAdminOrMod() && isPastCutoff()) {
                         <div class="cutoff-banner">
                           <mat-icon>lock_clock</mat-icon>
-                          <span>RSVP closed — deadline was {{ cutoffTimeLabel() }} today</span>
+                          <span>
+                            @if (cutoffTimeLabel()) {
+                              RSVP closed — deadline was {{ cutoffTimeLabel() }} today
+                            } @else {
+                              RSVP closed for today
+                            }
+                          </span>
                         </div>
                       } @else {
                         <div class="rsvp-initial-toggle">
@@ -2189,6 +2199,10 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
+        // Was margin-bottom only, so this sat flush against the Post button
+        // above it. Invisible while the bar was cream on a cream page; the
+        // collision only showed once it became a distinct panel (v2-11).
+        margin-top: 24px;
         margin-bottom: 24px;
         padding: 16px;
         background: var(--ce-surface-variant);
@@ -2574,7 +2588,13 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly cutoffTimeLabel = computed<string>(() => {
     const e = this.event();
     if (!e) return '';
-    const [h, min] = e.eventTime.split(':').map(Number);
+    const [h, min] = (e.eventTime ?? '').split(':').map(Number);
+    // An event with no usable time rendered "12:NaN AM", because every step
+    // below swallows a NaN rather than propagating it: NaN % 12 is falsy so
+    // `|| 12` supplies an hour, and NaN >= 12 is false so the meridiem comes
+    // out AM. The result reads like a real deadline. Empty string instead, and
+    // the callers drop the line entirely.
+    if (!Number.isFinite(h) || !Number.isFinite(min)) return '';
     let cm = h * 60 + min - 150;
     const prevNight = cm < 0;
     if (prevNight) cm += 24 * 60;
