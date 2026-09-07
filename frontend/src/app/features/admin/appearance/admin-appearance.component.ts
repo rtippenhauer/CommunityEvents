@@ -35,6 +35,97 @@ import {
 import { PALETTE_PRESETS, presetForSeeds } from '../../../core/utils/palette-presets';
 import { HEX_COLOR_PATTERN, PALETTE_PROMPT, parsePastedPalette } from './palette-prompt';
 
+/**
+ * What each token is, in English.
+ *
+ * The list used to show the raw custom-property name and a colour chip, which
+ * is unreadable unless you already know the system: Rob read the black chip on
+ * `--ce-on-brand-blend` as "the background is black", when it is the *text*
+ * colour on a badge whose background fades between the two brand colours. The
+ * CSS name is still shown, small, because it is what a support conversation or
+ * a stylesheet will name -- but it is no longer the label.
+ */
+const TOKEN_INFO: Record<PaletteToken, { label: string; hint: string }> = {
+  '--ce-primary': {
+    label: 'Primary colour',
+    hint: 'Buttons, links and highlights.',
+  },
+  '--ce-on-primary': {
+    label: 'Text on primary',
+    hint: 'The words on a primary button. Picked for readability, not chosen.',
+  },
+  '--ce-primary-hover': {
+    label: 'Primary, hovered',
+    hint: 'A primary button while the pointer is over it.',
+  },
+  '--ce-accent': {
+    label: 'Accent colour',
+    hint: 'Your second colour, for secondary buttons and two-colour surfaces.',
+  },
+  '--ce-on-accent': {
+    label: 'Text on accent',
+    hint: 'The words on an accent button.',
+  },
+  '--ce-accent-on-chrome': {
+    label: 'Accent on the nav',
+    hint: 'Accent-coloured headings where they sit on the dark nav or footer.',
+  },
+  '--ce-on-brand-blend': {
+    label: 'Text on a two-colour badge',
+    hint:
+      'The words on the special-event badge, whose background fades from your primary to your ' +
+      'accent. It has to stay readable at both ends of that fade.',
+  },
+  '--ce-surface': {
+    label: 'Page background',
+    hint: 'The ground the whole site sits on.',
+  },
+  '--ce-surface-variant': {
+    label: 'Panel background',
+    hint: 'Insets and grouped panels sitting on the page.',
+  },
+  '--ce-text': {
+    label: 'Body text',
+    hint: 'Ordinary reading text on the page.',
+  },
+  '--ce-text-muted': {
+    label: 'Secondary text',
+    hint: 'Hints, captions and anything less important.',
+  },
+  '--ce-chrome': {
+    label: 'Nav and footer',
+    hint: 'The bar across the top of every page, and the footer.',
+  },
+  '--ce-chrome-deep': {
+    label: 'Nav, darkest shade',
+    hint: 'Edges and the deepest parts of the nav.',
+  },
+  '--ce-chrome-raised': {
+    label: 'Card on the nav',
+    hint: 'A raised panel sitting on the dark nav.',
+  },
+  '--ce-chrome-soft': {
+    label: 'Nav, lightest shade',
+    hint: 'Dividers and the softest parts of the nav.',
+  },
+  '--ce-on-chrome': {
+    label: 'Text on the nav',
+    hint: 'Menu links and footer text.',
+  },
+  '--ce-on-chrome-muted': {
+    label: 'Secondary text on the nav',
+    hint: 'Less important text on the dark nav or footer.',
+  },
+  '--ce-banner': {
+    label: 'Environment banner',
+    hint: 'The stripe reading STAGE ENVIRONMENT. Only ever shown on stage.',
+  },
+  '--ce-on-banner': {
+    label: 'Text on the banner',
+    hint: 'The words inside that stripe.',
+  },
+};
+
 /** Which token each seed field paints, so a fix can be pointed at the right row. */
 const SEED_TOKENS: Record<string, PaletteToken> = {
   primary: '--ce-primary',
@@ -112,6 +203,7 @@ export class AdminAppearanceComponent implements OnInit {
   readonly presets = PALETTE_PRESETS;
   readonly tokenGroups = TOKEN_GROUPS;
   readonly allTokens = PALETTE_TOKENS;
+  readonly tokenInfo = TOKEN_INFO;
   readonly prompt = PALETTE_PROMPT;
 
   readonly loading = signal(true);

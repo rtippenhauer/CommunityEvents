@@ -149,7 +149,11 @@
                   (input)="setOverride(token, $event)"
                   [attr.aria-label]="'Set ' + token"
                 />
-                <code class="token-name">{{ token }}</code>
+                <span class="token-text">
+                  <span class="token-label">{{ tokenInfo[token].label }}</span>
+                  <span class="token-hint">{{ tokenInfo[token].hint }}</span>
+                  <code class="token-name">{{ token }}</code>
+                </span>
                 <span class="token-value">{{ overrideValue(token) }}</span>
                 @if (warningFor(token); as warning) {
                   <mat-icon class="warn-icon" [matTooltip]="warning">warning</mat-icon>
