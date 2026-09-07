@@ -133,19 +133,28 @@ export class EventsController {
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
-  create(@Body() dto: CreateEventDto, @CurrentUser() user: User) {
-    return this.eventsService.create(dto, user.id);
+  async create(@Body() dto: CreateEventDto, @CurrentUser() user: User) {
+    // Same conversion the GETs apply. Without it this ships event_date and
+    // event_time as full ISO timestamps -- "1970-01-01T18:30:00.000Z" for a
+    // 6:30pm event -- and the client stores whatever it is handed.
+    return toEventDateStrings(await this.eventsService.create(dto, user.id));
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
-  update(
+  async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateEventDto,
     @CurrentUser() user: User,
   ) {
-    return this.eventsService.update(id, dto, user.role);
+    // The bug this fixes: publishing sends only { status }, so the stored time
+    // never moved -- but the response came back with an ISO eventTime, the
+    // detail screen set that into its signal, and a 6:30pm event redrew as
+    // 12:30. `secretDinnerResync` is not part of the row, so it is spread back
+    // on after the conversion rather than being dropped.
+    const { secretDinnerResync, ...event } = await this.eventsService.update(id, dto, user.role);
+    return { ...toEventDateStrings(event), secretDinnerResync };
   }
 
   @Delete(':id')
