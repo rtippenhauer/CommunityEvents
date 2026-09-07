@@ -228,6 +228,16 @@ export class AdminAppearanceComponent implements OnInit {
     background: ['#FDFAF5', [Validators.required, Validators.pattern(HEX_COLOR_PATTERN)]],
   });
 
+  /**
+   * The pasted palette, as its own control rather than a template ref.
+   *
+   * It has to be *cleared* once loaded, which a bare `#pasted` reference made
+   * awkward: leaving the text sitting there meant a later "Load palette" could
+   * silently re-apply an old palette over a preset the admin had since chosen.
+   * Reactive Forms is also the house rule for anything the component reads.
+   */
+  readonly pastedControl = this.fb.nonNullable.control('');
+
   /** Live seed values, as a signal, so the preview recomputes on every keystroke. */
   private readonly formValue = toSignal(this.form.valueChanges, {
     initialValue: this.form.getRawValue(),
@@ -467,8 +477,8 @@ export class AdminAppearanceComponent implements OnInit {
    * palette that fails its own brief, and the person who finds out should be
    * the admin looking at a preview, not a member looking at a button.
    */
-  importPasted(raw: string): void {
-    const result = parsePastedPalette(raw);
+  importPasted(): void {
+    const result = parsePastedPalette(this.pastedControl.value);
     if (!result.ok) {
       this.pasteError.set(result.error);
       return;
@@ -476,6 +486,10 @@ export class AdminAppearanceComponent implements OnInit {
     this.pasteError.set(null);
     this.clearLastFix();
     this.form.patchValue(result.seeds);
+    // Emptied on success: its contents are now in the seeds, and text left in
+    // the box is a palette an admin can re-apply by accident over whatever
+    // they picked afterwards.
+    this.pastedControl.setValue('');
     this.form.markAsDirty();
     this.overrides.set({});
     const warnings = contrastWarnings(derivePalette(result.seeds));

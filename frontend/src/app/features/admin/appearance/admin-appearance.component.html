@@ -98,7 +98,7 @@
               <textarea
                 matInput
                 rows="2"
-                #pasted
+                [formControl]="pastedControl"
                 placeholder='{"primary":"#4C5BD4","accent":"#6B4BA8","background":"#F7F7FB"}'
               ></textarea>
               @if (pasteError(); as err) {
@@ -108,7 +108,12 @@
             @if (pasteError(); as err) {
               <p class="paste-error">{{ err }}</p>
             }
-            <button mat-stroked-button type="button" (click)="importPasted(pasted.value)">
+            <button
+              mat-stroked-button
+              type="button"
+              [disabled]="!pastedControl.value.trim()"
+              (click)="importPasted()"
+            >
               <mat-icon>download</mat-icon>
               Load palette
             </button>
