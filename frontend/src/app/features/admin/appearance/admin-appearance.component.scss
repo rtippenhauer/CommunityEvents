@@ -194,6 +194,10 @@
   color: var(--ce-text-muted);
 }
 
+.token-row.flagged {
+  background: color-mix(in srgb, var(--ce-banner) 8%, transparent);
+}
+
 .warn-icon {
   color: var(--ce-banner);
   font-size: 1.1rem;

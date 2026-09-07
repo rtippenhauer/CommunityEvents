@@ -382,10 +382,11 @@ export function suggestFix(
     const adjusted = accentThatCanCarryALabel(seeds);
     if (adjusted) {
       return {
-        label: 'Adjust accent',
+        label: `Adjust accent to ${adjusted.toUpperCase()}`,
         description:
-          `Moves your accent to ${adjusted} — same colour, different shade — so one text ` +
-          'colour is readable across the whole blend.',
+          `Moves your accent from ${seeds.accent.toUpperCase()} to ${adjusted.toUpperCase()} — ` +
+          'the same colour a few points lighter or darker, so one text colour is readable across ' +
+          'the whole blend. Small on purpose: it is the nearest shade that works.',
         seeds: { accent: adjusted },
       };
     }

@@ -35,6 +35,13 @@ import {
 import { PALETTE_PRESETS, presetForSeeds } from '../../../core/utils/palette-presets';
 import { HEX_COLOR_PATTERN, PALETTE_PROMPT, parsePastedPalette } from './palette-prompt';
 
+/** Which token each seed field paints, so a fix can be pointed at the right row. */
+const SEED_TOKENS: Record<string, PaletteToken> = {
+  primary: '--ce-primary',
+  accent: '--ce-accent',
+  background: '--ce-surface',
+};
+
 /** A token grouped for display, so the override list is scannable. */
 interface TokenGroup {
   label: string;
@@ -254,8 +261,34 @@ export class AdminAppearanceComponent implements OnInit {
     this.overrides.set({});
   }
 
+  /**
+   * The warning to show against a token in the fine-tune list.
+   *
+   * A token is flagged if it *fails*, and also if changing it is what fixes
+   * some other token's failure. Those are different tokens for a blend --
+   * `--ce-on-brand-blend` is the pair that falls short, `--ce-accent` is what
+   * moves -- and flagging only the first is what made the fix button look
+   * broken: Rob watched the flagged row, whose value is identical before and
+   * after, while the accent two rows above quietly changed.
+   */
   warningFor(token: PaletteToken): string | null {
-    return this.warnings().find((w) => w.token === token)?.message ?? null;
+    const direct = this.warnings().find((w) => w.token === token);
+    if (direct) {
+      const remedy = suggestFix(this.seeds(), this.overrides(), direct);
+      const elsewhere = remedy?.seeds ? SEED_TOKENS[Object.keys(remedy.seeds)[0]] : undefined;
+      return elsewhere && elsewhere !== token
+        ? `${direct.message} Fixed by changing ${elsewhere}, not this.`
+        : direct.message;
+    }
+
+    for (const warning of this.warnings()) {
+      const fix = suggestFix(this.seeds(), this.overrides(), warning);
+      if (!fix?.seeds) continue;
+      if (Object.keys(fix.seeds).some((key) => SEED_TOKENS[key] === token)) {
+        return `Changing this fixes: ${warning.message}`;
+      }
+    }
+    return null;
   }
 
   fixFor(warning: ContrastWarning): PaletteFix | null {
@@ -271,14 +304,44 @@ export class AdminAppearanceComponent implements OnInit {
    * live site without being asked to.
    */
   applyFix(fix: PaletteFix): void {
+    // Say exactly what moved. The suggestion is the *nearest* shade that
+    // works, so it is often a few points of lightness -- correct, and to the
+    // eye indistinguishable from no change at all. Rob applied one on stage
+    // and reported that nothing had happened; the accent had gone from
+    // #7048E8 to #7E5AEA and the worst contrast from 3.78 to 4.54. A message
+    // that just says "Adjusted" leaves an admin unable to tell a working
+    // button from a broken one.
+    const changes: string[] = [];
+
     if (fix.clearOverride) {
+      changes.push(`${this.tokenLabel(fix.clearOverride)} back to automatic`);
       this.clearOverride(fix.clearOverride);
     }
+
     if (fix.seeds) {
+      const before = this.form.getRawValue();
+      for (const [key, value] of Object.entries(fix.seeds)) {
+        const previous = (before as Record<string, string>)[key];
+        if (value && previous && value.toLowerCase() !== previous.toLowerCase()) {
+          changes.push(`${key} ${previous.toUpperCase()} → ${value.toUpperCase()}`);
+        }
+      }
       this.form.patchValue(fix.seeds);
     }
+
     this.form.markAsDirty();
-    this.snackBar.open('Adjusted — check the preview, then save', 'OK', { duration: 4000 });
+    this.snackBar.open(
+      changes.length
+        ? `${changes.join(', ')}. It is a small change on purpose — the nearest shade that works. Save to apply.`
+        : 'Nothing needed changing.',
+      'OK',
+      { duration: 8000 },
+    );
+  }
+
+  /** The human name for a token, for messages. Falls back to the token itself. */
+  private tokenLabel(token: PaletteToken): string {
+    return token.replace('--ce-', '').replace(/-/g, ' ');
   }
 
   async copyPrompt(): Promise<void> {

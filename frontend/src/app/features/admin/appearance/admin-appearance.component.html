@@ -137,7 +137,11 @@
             <h3 class="group-label">{{ group.label }}</h3>
             <p class="muted small">{{ group.hint }}</p>
             @for (token of group.tokens; track token) {
-              <div class="token-row" [class.overridden]="isOverridden(token)">
+              <div
+                class="token-row"
+                [class.overridden]="isOverridden(token)"
+                [class.flagged]="warningFor(token)"
+              >
                 <input
                   type="color"
                   class="swatch small"
