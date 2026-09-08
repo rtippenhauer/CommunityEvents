@@ -1314,7 +1314,7 @@ should be changed. The frontend's 17 are comments and specs apart from
 
 ### v2-11 — A real colour system
 
-**Status:** In Progress. Numbered 2026-08-30, immediately after v2-10 because
+**Status:** Complete (2026-09-08). Numbered 2026-08-30, immediately after v2-10 because
 the two share a surface: the branding pass decides what a community *is*, and
 this decides what it *looks like*, and doing them in the other order means
 restyling the same components twice. v2-13's landing page and v2-14's demo
@@ -1415,7 +1415,7 @@ not editable.
 
 ### v2-12 — OAuth callback on the community's own host
 
-**Status:** Not started. Depends on v2-8. Design, rationale and the four-case
+**Status:** In Progress. Depends on v2-8. Design, rationale and the four-case
 table live under v2-8's "Deferred to v2-12" note -- they were worked out against
 that item's code and are not repeated here.
 
