@@ -106,7 +106,7 @@ import { AuthService } from '../../../core/services/auth.service';
         font-size: 48px;
         width: 48px;
         height: 48px;
-        color: var(--db-primary);
+        color: var(--ce-primary);
       }
       .success-icon {
         color: #2e7d32;
@@ -114,11 +114,11 @@ import { AuthService } from '../../../core/services/auth.service';
       h1 {
         margin: 0;
         font-size: 1.5rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       p {
         margin: 0;
-        color: var(--db-text-mid);
+        color: var(--ce-text-muted);
       }
       .error {
         color: #c62828;

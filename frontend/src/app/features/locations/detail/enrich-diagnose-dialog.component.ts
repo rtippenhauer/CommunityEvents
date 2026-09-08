@@ -182,7 +182,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.05em;
-          color: var(--db-primary);
+          color: var(--ce-primary);
           margin: 0 0 8px;
           border-bottom: 1px solid #eee;
           padding-bottom: 4px;

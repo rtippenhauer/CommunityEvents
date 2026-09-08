@@ -473,7 +473,7 @@ interface AddForm extends EditForm {
         font-size: 1.4rem;
         width: 1.4rem;
         height: 1.4rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         flex-shrink: 0;
         margin-top: 2px;
       }
@@ -548,7 +548,7 @@ interface AddForm extends EditForm {
         width: 1.1rem;
         height: 1.1rem;
         vertical-align: middle;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         margin-right: 4px;
       }
       .ach-row-icon-img {
@@ -575,7 +575,7 @@ interface AddForm extends EditForm {
       .edit-row td {
         padding: 0;
         background: #f8fbff !important;
-        border-bottom: 2px solid color-mix(in srgb, var(--db-primary) 13%, transparent);
+        border-bottom: 2px solid color-mix(in srgb, var(--ce-primary) 13%, transparent);
       }
       .inline-form {
         padding: 16px;
@@ -595,7 +595,7 @@ interface AddForm extends EditForm {
       .add-tier-title {
         font-size: 0.85rem;
         font-weight: 600;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         margin-bottom: 4px;
       }
       .form-row {

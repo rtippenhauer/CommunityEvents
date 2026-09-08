@@ -1259,9 +1259,62 @@ own everywhere, including in email subjects and bodies. No code path emits a
 dinnerbears.com URL. DinnerBears' own artwork and copy exist only as that
 community's rows and uploads after it migrates.
 
+#### Decided here and still standing: email bodies, not provider templates
+
+Decided with Rob 2026-08-29 at the end of v2-9, and kept here because the
+alternative keeps looking attractive. Every email's HTML is an inline string at
+its call site -- about 15 of them -- and only four of the thirteen names in
+`EmailTemplate` are wired to a `templateId` at all. Brevo with no template id
+falls back to that same `htmlBody`, and `ResendService` has no template concept
+whatsoever and only ever sends it. So the inline HTML is not a degraded path, it
+is **the uniform one**: one string, built once, delivered identically by either
+provider.
+
+Adopting Brevo's template store would improve Brevo only and silently diverge
+from what Resend sends on overflow -- two versions of every email, one of which
+nobody looks at until the day it is the one that goes out. Brevo templates are
+also per-*account*, so communities sharing the deployment key would share them,
+against the per-community branding v2-9 established. The reason to use a
+provider template store is its drag-and-drop designer; nobody here intends to
+open it.
+
+#### Carried over, not done in v2-10
+
+Checked against the tree at the v2-11 branch point, so this is what is actually
+left rather than what the plan predicted:
+
+- **`about_story_html` still holds DinnerBears' copy** -- "One simple act. A
+  lifetime of bear memories.", seeded from `prisma/seed-data/app_config.json`.
+  `bootstrap.ts` blanks `home_hero_html`, `home_howitworks_html` and
+  `brand_story_url`, and deletes the `term_*` rows, but this key is in neither
+  list -- so a fresh install serves it as its own About page. Needs written
+  copy, not a rename.
+- **The footer fabricates a legal entity.** `app.component.html:450` renders
+  `{{ brandConfig.brand().name }}.Com, LLC`, so a community called Dayton Supper
+  Club claims to be "Dayton Supper Club.Com, LLC" -- a company that does not
+  exist. `LEGAL_ENTITY_NAME` exists for exactly this and is not read here.
+- **`BrevoService.getTemplateId` warns about a supported configuration.**
+  `brevo.service.ts:258` logs `No Brevo template ID for <name>` at WARN on every
+  send without one. Template ids are per-community as of v2-9, so a new
+  community has none and this fires for every message it ever sends. Drop it to
+  DEBUG.
+- **`index.html`'s `theme-color` is static and pre-bootstrap**, so it does not
+  follow a runtime branding or palette change. `manifest.webmanifest` was the
+  other half of that problem and is already renamed to CommunityEvents; the
+  `theme-color` question belongs with v2-11, which hits the same limitation.
+
+**The "~93 hardcoded DinnerBears references" figure is retired** -- it counted
+comments and specs. `api/src` holds 37 matches today and every one is either a
+comment recording why something used to be hardcoded, or an identifier that is
+not branding at all: `dinnerbearsUserId` (a column on the Facebook deletion
+queue) and the `dinnerbears-event-N@dinnerbears.com` arm of the ICS UID regex,
+kept so calendar subscriptions created before the rename still resolve. Neither
+should be changed. The frontend's 17 are comments and specs apart from
+`styles.scss`, which v2-11 replaces outright.
+
 ### v2-11 — A real colour system
 
-**Status:** In Progress. Numbered 2026-08-30, immediately after v2-10 because
+**Status:** Complete (2026-09-08). Numbered 2026-08-30, immediately after v2-10 because
 the two share a surface: the branding pass decides what a community *is*, and
 this decides what it *looks like*, and doing them in the other order means
 restyling the same components twice. v2-13's landing page and v2-14's demo
@@ -1350,100 +1403,19 @@ Note `index.html`'s `theme-color` and the webmanifest are static, pre-bootstrap
 files with no CSS-variable indirection, so they do not follow a runtime change
 -- the same limitation the branding item hits, and worth deciding once for both.
 
-
-**Status:** Not started (deferred) -- **except five commits landed early on the
-v2-7 branch** at Rob's direction, because stage testing kept surfacing them:
-
-- `b219c5e` -- emails carry the community's name. `{{brand}}` is substituted once
-  in `EmailService` at **enqueue** time, not at dispatch: the cron drains every
-  tenant's queue under one `runUnscoped`, so branding read there is whichever
-  community the engine reached first.
-- `dad8b50` -- the settings form defaulted to `DinnerBears`, so the screen for
-  fixing branding was the screen that wrote it back as a stored row.
-- `7da6ace` -- the invite email asserted its recipients "love good food and great
-  company"; it now carries the community's own tagline. Took three more copies of
-  the DinnerBears tagline with it, including the seeded row that made
-  `SITE_SETTING_DEFAULTS` irrelevant.
-- `0dd9e5d` / `8ca6f27` -- platform legal templates seeded per community, filled
-  in on the public read, with a review gate and a restore button. See the
-  Multi-Tenancy section of CLAUDE.md.
-
-Everything below is unchanged apart from those. Still DinnerBears' in
-`prisma/seed-data/app_config.json`, and needing content decisions rather than
-renames: `about_story_html` (the real origin story, named people, dated
-milestones), `home_hero_html`, `home_howitworks_html`, `term_points` = "Bear
-Points", and a leftover `tz_probe` row. Two more found on stage: the footer
-hardcodes `.Com, LLC` after the brand name (`app.component.html:444`), fabricating
-a legal entity for every community -- `LEGAL_ENTITY_NAME` now exists for exactly
-that -- and the invite subject appends `!` to a name that may already end in one.
-`frontend/public/manifest.webmanifest` still names the PWA DinnerBears, and being
-per-deployment rather than per-community it needs a decision about what a single
-deployment serving many communities calls itself.
-
-The per-instance branding already lives in `app_config` and needs no code, but
-the *fallbacks* are still DinnerBears: `SITE_SETTING_DEFAULTS` in
-`app-config.service.ts`, ~93 hardcoded references across `api/src` (most of
-them `dinnerbears.com` in email URLs and fallbacks) and 12 frontend files.
-
-**Not a find-and-replace, and this is the trap.** Branding became per-community
-in v2-6: `app_config` is tenant-scoped, so `brand_name` is whatever each
-community chose. Swapping the literals to "CommunityEvents" would be the same
-mistake one level up -- a community called "Dayton Dinners" would send mail
-saying "Welcome to CommunityEvents!". Every one of these sites has to resolve
-the *tenant's* brand name and interpolate it; only the deployment-wide
-fallbacks become CommunityEvents.
-
-Two consequences follow. Email bodies composed in a `@Cron` sweep must re-enter
-`runWithTenant` to read branding, or they render whichever tenant the engine
-reached first -- the v2-6 trap already documented in CLAUDE.md. And a string
-like `subject: 'Verify your DinnerBears email'` becomes an async lookup, which
-changes the shape of the functions holding it.
-
-**Found on the v2-7 stage pass**, which is how the numbers below got specific:
-a real invite and a real verification email both arrived branded DinnerBears
-from a sender correctly named "Community Events Project". The From identity
-comes from `brevoFromName` and was already configurable; the body copy is
-string literals (`auth.service.ts:1110-1116` among them). Current count is 38
-non-comment references in `api/src` across 14 files and 14 in the frontend
-across 5 -- lower than the ~93 above, which counted comments and `.spec` files.
-
-**Email bodies are part of this, and provider templates are not.** Decided with
-Rob 2026-08-29, at the end of v2-9. Every email's HTML is an inline string at its
-call site -- about 15 of them -- and only four of the thirteen names in
-`EmailTemplate` are wired to a `templateId` at all. Brevo with no template id
-falls back to that same `htmlBody`, and `ResendService` has no template concept
-whatsoever and only ever sends it. So the inline HTML is not a degraded path, it
-is **the uniform one**: one string, built once, delivered identically by either
-provider.
-
-That is the argument against adopting Brevo's template store, which was
-considered and rejected here. It would improve Brevo only and silently diverge
-from what Resend sends on overflow -- two versions of every email, one of which
-nobody looks at until the day it is the one that goes out. Brevo templates are
-also per-*account*, so communities sharing the deployment key would share them,
-against the per-community branding v2-9 established. The reason to use a provider
-template store is its drag-and-drop designer; nobody here intends to open it.
-
-So the branding work covers the bodies themselves. They are plain -- a heading, a
-paragraph, an inline-styled button -- and improving them lands on both providers
-at once, with no per-account state, no template ids to track and no provider API
-call at setup.
-
-**One log line to fix with it:** `BrevoService.getTemplateId` logs
-`No Brevo template ID for <name>` at **WARN** on every send without one. Since
-template ids are per-community as of v2-9, a newly created community has none and
-this fires for every message it ever sends -- describing a supported and now
-preferred configuration as though it were a fault. Drop it to `DEBUG`.
-
-**Definition of done:** a fresh instance with no `app_config` rows presents as
-CommunityEvents; a community that has set its own `brand_name` sees that name
-everywhere including in email subjects and bodies; no code path emits a
-dinnerbears.com URL; and a community that has configured no provider templates
-produces no warnings for it.
+**Definition of done:** a community can pick a preset, or set one or two seed
+colours and get a complete token set derived from them, or override any single
+token -- with overrides surviving a later seed change. Every `on-` colour is
+computed for contrast rather than assumed white, so a light primary is readable
+without an admin having to notice it. No component style references
+`--db-primary`, `--db-accent` or `--db-cream` directly. The admin screen shows a
+live preview, the copyable prompt and the paste-back importer, and warns on any
+pair below 4.5:1 without blocking the save. Success, warning, error and info are
+not editable.
 
 ### v2-12 — OAuth callback on the community's own host
 
-**Status:** Not started. Depends on v2-8. Design, rationale and the four-case
+**Status:** In Progress. Depends on v2-8. Design, rationale and the four-case
 table live under v2-8's "Deferred to v2-12" note -- they were worked out against
 that item's code and are not repeated here.
 
@@ -1774,3 +1746,115 @@ accurate counts and writes nothing; re-running against the same target
 tenant is refused rather than duplicating; the same script run against
 the second source database produces an independent second tenant with no
 cross-contamination.
+
+### v2-26 — Dark page backgrounds
+
+**Status:** Not started. Depends on v2-11, which built the token layer this
+needs and then discovered the gap.
+
+**The number is the next one free, not a claim about running order.** v2-25 is
+deliberately sequenced last (the import, per Rob 2026-08-30), so this should
+land before it. Renumbering to say so is no longer cheap — v2-10 is tagged and
+v2-11 carries the number through six commits — so the order is stated here
+instead, the same way v2-9-before-v2-8 was.
+
+**Found on stage during v2-11's testing pass**, from a palette an assistant
+generated: `{"primary":"#00d7e8","accent":"#7048e8","background":"#06101e"}`.
+The derivation handled it correctly — with a dark ground the ink flips to
+near-white and every measured pair passes — and the app then drew white body
+copy on cream cards. The colour system was right and the app could not render
+what it produced.
+
+Three things have to change together, which is why this is its own item rather
+than a fix at the end of v2-11:
+
+- **`styles.scss` compiles `theme-type: light`.** Material's theme type is a
+  build-time choice, so a runtime switch means overriding the emitted tokens
+  rather than re-running the mixin.
+- **Nothing overrides Material's `--mat-sys-surface` family.** v2-11 sets four
+  tokens — primary, on-primary, tertiary, on-tertiary — so every card, dialog,
+  menu and sheet keeps its light surface. The set that actually needs deriving
+  is roughly `surface`, `on-surface`, `surface-variant`, `on-surface-variant`,
+  `surface-container` (and its `-low`/`-lowest`/`-high`/`-highest` variants),
+  `background`, `on-background`, `outline` and `outline-variant`.
+- **27 components hardcode a light background across 145 declarations.** The
+  same class of defect v2-11 fixed for text (`color: #fff` on a brand surface),
+  one level over: a literal light background belongs to no community either.
+  These are the long tail and the reason the estimate is not small.
+
+**Until it lands, a dark background is refused rather than silently broken.**
+`contrastWarnings` emits `kind: 'unsupported'` when white wins as the on-colour
+for `--ce-surface` — the exact condition under which the ink flips and stops
+matching the surfaces, so no lightness threshold is invented — and the LLM
+prompt asks for a light background. The prompt's original wording, drafted in
+this document, said "very light or very dark"; that is what steered the model
+into the broken state, so **the draft prompt earlier in v2-11's section is
+wrong and should not be copied from.**
+
+**Worth deciding as part of it:** whether "dark background" means a community
+choosing dark colours, or a per-visitor dark mode following
+`prefers-color-scheme`. They are different features — the first is one palette
+the community picks, the second is two palettes every community needs — and the
+token layer supports the first far more naturally than the second.
+
+**Definition of done:** a community can set a dark page background and every
+surface follows it — cards, dialogs, menus, form fields and the admin screens
+included — with no literal light background left in a component. The
+`kind: 'unsupported'` warning and its prompt wording are removed in the same
+change, since they exist only to describe this gap.
+
+### v2-27 — One way to send an email
+
+**Status:** Not started. No dependencies; can land whenever. Numbered next-free
+rather than as a running order, like v2-26 — it belongs before v2-25, which is
+deliberately last.
+
+**Rob's question, 2026-09-07:** "Why do we send some emails immediately but
+queue others? Should immediate sends go in the queue too and just start it up,
+so there is only one way to send messages?" Yes, with one prerequisite that
+turns out to be a bug already present.
+
+There are two send paths. `EmailService.sendNow` goes straight to the provider
+and is used in five places — password reset, email verification, the
+account-locked security alert, and two event confirmations — all of them things
+a person is watching a screen waiting for. `EmailService.queue` writes a row
+that `EmailDispatcherService` drains every five minutes, twenty at a time,
+ordered by priority then age, grouped per community so each one's provider
+config and counter are loaded once.
+
+**The duplication has already cost us.** `sendNow` counts its own sends, and
+before v2-9 it did not — password resets and verifications were invisible to
+the daily counter entirely. The dispatcher's counter write is a *delta* rather
+than an absolute purely because a second writer exists; that comment is a long
+apology for having two paths.
+
+**The prerequisite: the dispatcher has no claim step.** It selects rows
+`WHERE status = PENDING`, sends, and only then writes SENT/FAILED. Nothing
+marks a row as in-flight. That is safe only while exactly one dispatcher runs,
+and **that is already not true**: Admin → Send Now calls `dispatchPending` from
+a request, so an admin pressing it while the cron is mid-run can double-send.
+Latent today, routine under any change that dispatches more often.
+
+So the first change is an atomic claim -- `updateMany` from PENDING to a
+SENDING state conditional on the row still being PENDING, then send only what
+was actually claimed. **That is worth doing on its own**, before and
+independently of any unification, because it fixes a live hazard.
+
+**Then unify, but keep the send synchronous for the waiting-user cases.**
+Enqueue-and-return would let a request succeed the moment the row is written,
+so a member is told to check their email before anything has been attempted --
+giving up precisely what `sendNow` exists for. The shape that keeps both: one
+queue, one counting path, one place for branding and suppression, and for a
+reset the request claims and dispatches that single row itself and reports the
+real result.
+
+Ordering needs no change. The queue is `priority ASC, createdAt ASC`, so an
+immediate message at priority 0 goes first rather than queueing behind fifty
+event reminders.
+
+**Definition of done:** one code path writes email, and `sendNow` is either
+gone or a thin wrapper that enqueues at top priority and dispatches its own
+row. Two dispatchers running at once cannot send the same row twice, proven by
+a test that runs them concurrently. The daily counter has a single writer and
+the delta workaround is removed. A password reset still fails loudly in the
+request that asked for it, rather than being accepted and lost.

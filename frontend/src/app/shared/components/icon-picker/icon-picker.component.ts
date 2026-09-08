@@ -369,7 +369,7 @@ const ICON_NAMES: string[] = [
         font-size: 1.6rem;
         width: 1.6rem;
         height: 1.6rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         flex-shrink: 0;
       }
       .icon-preview-img {
@@ -416,7 +416,7 @@ const ICON_NAMES: string[] = [
         gap: 8px;
         margin-top: 6px;
         padding: 10px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 8px;
       }
       .upload-name-field {
@@ -431,7 +431,7 @@ const ICON_NAMES: string[] = [
       .icon-manage-panel {
         margin-top: 6px;
         padding: 10px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 8px;
       }
       .manage-panel-title {

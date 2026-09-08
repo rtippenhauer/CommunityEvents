@@ -480,3 +480,89 @@ It is now neutral. **One-time effect:** anyone already subscribed to a calendar
 feed will see their existing entries replaced once when they next sync. Replies
 sent from entries saved before the change are still accepted, so nobody's
 response is lost.
+
+## Choosing your community's colours
+
+**There is now a colour screen: Admin → Appearance.** Three ways to use it,
+each an escape hatch from the one before.
+
+**Pick a palette.** Seven ready-made colour schemes — Amber, Indigo, Forest,
+Ocean, Plum, Ember and Slate. Every one has been checked for readability, so
+choosing one means never thinking about contrast. Most communities should stop
+here.
+
+**Or choose your own.** Set three colours — a primary for buttons and links, an
+accent as your second colour, and the page background — and everything else is
+worked out from them: hover shades, the navigation bar, the footer, text
+colours, panel backgrounds and borders.
+
+**Or fine-tune any single colour.** Behind an expander, every colour in the
+system is listed with a plain description of where it appears — "Text on
+primary", "Nav and footer", "Panel background" — and can be set by hand. **What
+you set by hand stays set**, even if you change the three main colours later.
+Each has an undo button to put it back to automatic.
+
+**A preview beside it shows the result as you type**, and does not touch the
+site you are looking at. Try a colour, decide against it, navigate away, and
+nothing has changed. Only Save applies it.
+
+### Text is now readable by default
+
+**Text colours are measured, not assumed.** Previously the words on a coloured
+button were always white — so a community choosing a light colour got white
+text on a pale background that nobody could read, with no setting to fix it.
+Every text colour is now measured against what it sits on and chosen for
+legibility.
+
+**This changes the default look.** White on the standard gold measured 2.7 to 1,
+below the accessibility standard of 4.5, so gold buttons now carry dark text
+instead of white. It is a deliberate correction, not a mistake.
+
+**The screen warns you rather than stopping you.** If a combination is hard to
+read, it says so and shows the measurement — and still lets you save, because
+the decision is yours. Where there is a fix, there is a button that applies it
+and then tells you exactly what it changed.
+
+**A dark page background is not supported yet** and the screen says so plainly
+rather than letting you choose one and discover the problem afterwards.
+
+### Not sure what colours to use?
+
+**The screen gives you a prompt to copy.** Paste it into ChatGPT or Claude,
+describe your community in your own words, and paste the answer back. It is
+checked before anything is applied, and previewed before anything is saved.
+
+### Everything follows your colours now
+
+**Cards, menus and dialogs used to ignore your choices.** They took their colour
+from a fixed setting buried in the build, so a community with cool blue colours
+still had warm cream cards and beige menus with nothing anywhere to change them.
+They now follow your background.
+
+**Panels inside pages, too.** Forty-four places across the app named a specific
+cream or brown outright — the guest list on an event, announcement panels, the
+calendar, leaderboard rows, the notification list. All of them now use your
+community's colours.
+
+**The special-event badge uses your own two colours** instead of a fixed blue
+that belonged to no community.
+
+Success, warning and error colours stay fixed. Red means error whatever your
+community's colours are.
+
+### Fixes found while testing
+
+- **Publishing an event no longer changes its time.** An event set for 6:30pm
+  could redisplay as 12:30 immediately after publishing. The saved time was
+  always correct — reloading the page showed it properly — but the screen was
+  briefly showing the wrong one.
+- **The RSVP deadline no longer reads "12:NaN AM"** on an event whose time
+  cannot be read. The line is hidden instead.
+- **A failing restaurant search now says why.** Searching for a new restaurant
+  could fail with nothing useful logged. The message from Google — an expired
+  key, billing not enabled, the wrong permissions — is now recorded, which turns
+  an unexplained failure into an instruction.
+- **The invite form asks for a name before an email**, matching every other form
+  in the app.
+- **The Edit and Cancel buttons on an event no longer sit flush against the
+  comment box** above them.

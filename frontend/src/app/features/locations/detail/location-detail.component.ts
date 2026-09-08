@@ -523,7 +523,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         height: 160px;
         border-radius: 8px;
         overflow: hidden;
-        background: var(--db-cream-dark);
+        background: var(--ce-surface-variant);
         img {
           width: 100%;
           height: 100%;
@@ -557,7 +557,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         margin-bottom: 10px;
         font-size: 0.95rem;
         mat-icon {
-          color: var(--db-primary);
+          color: var(--ce-primary);
           margin-top: 2px;
           flex-shrink: 0;
         }
@@ -570,7 +570,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         }
       }
       .map-link {
-        color: var(--db-primary);
+        color: var(--ce-primary);
       }
       .private-icon {
         font-size: 1rem;
@@ -632,7 +632,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         font-size: 16px;
         width: 16px;
         height: 16px;
-        color: var(--db-primary);
+        color: var(--ce-primary);
       }
       // ── Ratings ────────────────────────────────────────────────────────────
       .ratings-loading {
@@ -652,7 +652,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
           font-size: 1.1rem;
           width: 1.1rem;
           height: 1.1rem;
-          color: var(--db-amber);
+          color: var(--ce-primary);
         }
       }
       .ratings-count {
@@ -682,7 +682,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .overall-score {
         font-size: 2.2rem;
         font-weight: 700;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         line-height: 1;
       }
       .stars-row {
@@ -695,7 +695,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         height: 1.1rem;
         color: #ddd;
         &.star-filled {
-          color: var(--db-amber);
+          color: var(--ce-primary);
         }
       }
       .overall-label {
@@ -731,7 +731,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .breakdown-fill {
         height: 100%;
-        background: var(--db-amber);
+        background: var(--ce-primary);
         border-radius: 3px;
       }
       .breakdown-score {
@@ -746,9 +746,9 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .review-item {
         padding: 12px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 8px;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
       }
       .review-header {
         display: flex;
@@ -766,7 +766,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .review-name {
         font-size: 0.88rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .review-date {
         font-size: 0.75rem;
@@ -779,12 +779,12 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         gap: 2px;
         font-size: 0.9rem;
         font-weight: 700;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         .review-star {
           font-size: 1rem;
           width: 1rem;
           height: 1rem;
-          color: var(--db-amber);
+          color: var(--ce-primary);
         }
       }
       .review-comment {
@@ -799,15 +799,15 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         flex-direction: column;
         gap: 12px;
         padding: 16px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 8px;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
       }
       .rating-form-title {
         margin: 0;
         font-size: 0.88rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         text-transform: uppercase;
         letter-spacing: 0.06em;
       }
@@ -845,7 +845,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
           height: 1.4rem;
           color: #bbb;
           &.star-filled {
-            color: var(--db-amber);
+            color: var(--ce-primary);
           }
         }
       }

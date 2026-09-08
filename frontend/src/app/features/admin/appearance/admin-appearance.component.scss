@@ -1,0 +1,418 @@
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+
+  h1 {
+    margin: 0;
+    font-family: var(--ce-font-display);
+    color: var(--ce-text);
+  }
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  gap: 16px;
+  align-items: start;
+
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.controls,
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.muted {
+  color: var(--ce-text-muted);
+  margin: 0 0 12px;
+
+  &.small {
+    font-size: 0.82rem;
+  }
+}
+
+// ── Presets ────────────────────────────────────────────────────────────────
+.presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.preset {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 2px solid var(--ce-surface-variant);
+  border-radius: 10px;
+  background: var(--ce-surface);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ce-text);
+
+  &:hover {
+    border-color: var(--ce-primary);
+  }
+
+  &.selected {
+    border-color: var(--ce-primary);
+    box-shadow: 0 0 0 2px var(--ce-primary);
+  }
+}
+
+.swatches {
+  display: flex;
+  height: 26px;
+  border-radius: 6px;
+  overflow: hidden;
+
+  span {
+    flex: 1;
+  }
+}
+
+.preset-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.preset-desc {
+  font-size: 0.75rem;
+  color: var(--ce-text-muted);
+  line-height: 1.35;
+}
+
+// ── Seeds ──────────────────────────────────────────────────────────────────
+.seed-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  mat-form-field {
+    flex: 1;
+  }
+}
+
+.swatch {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--ce-surface-variant);
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 6px;
+
+  &.small {
+    width: 30px;
+    height: 30px;
+    margin-top: 0;
+  }
+}
+
+// ── Prompt ─────────────────────────────────────────────────────────────────
+.prompt {
+  background: var(--ce-surface-variant);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0 0 12px;
+  color: var(--ce-text);
+}
+
+.full-width {
+  width: 100%;
+}
+
+.paste {
+  margin-top: 16px;
+}
+
+.paste-error {
+  color: var(--ce-error-overlay);
+  font-size: 0.82rem;
+  margin: 0 0 8px;
+}
+
+// ── Overrides ──────────────────────────────────────────────────────────────
+.advanced {
+  background: var(--ce-surface);
+}
+
+.group-label {
+  margin: 16px 0 2px;
+  font-size: 0.9rem;
+  color: var(--ce-text);
+}
+
+.token-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--ce-surface-variant);
+
+  &.overridden .token-name {
+    font-weight: 700;
+  }
+}
+
+.token-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.token-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ce-text);
+}
+
+.token-hint {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--ce-text-muted);
+}
+
+// Kept, small: it is what a stylesheet or a support conversation will name,
+// but it is not what an admin should have to read to know what a colour does.
+.token-name {
+  font-size: 0.68rem;
+  opacity: 0.6;
+  color: var(--ce-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.token-value {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ce-text-muted);
+}
+
+.token-row.flagged {
+  background: color-mix(in srgb, var(--ce-banner) 8%, transparent);
+}
+
+.warn-icon {
+  color: var(--ce-banner);
+  font-size: 1.1rem;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+// ── Preview ────────────────────────────────────────────────────────────────
+// The whole side column sticks as one unit. Making only the preview card
+// sticky left the warnings card below it in normal flow, so scrolling drew it
+// straight over the top of the preview.
+@media (min-width: 901px) {
+  .side {
+    position: sticky;
+    top: 12px;
+    align-self: start;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+  }
+}
+
+.preview {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--ce-surface-variant);
+  font-size: 0.8rem;
+}
+
+.p-chrome {
+  background: var(--ce-chrome);
+  color: var(--ce-on-chrome);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.p-brand {
+  font-weight: 800;
+  margin-right: auto;
+}
+
+.p-navlink {
+  color: var(--ce-on-chrome);
+
+  &.muted-link {
+    color: var(--ce-on-chrome-muted);
+  }
+}
+
+.p-body {
+  background: var(--ce-surface);
+  padding: 14px 12px;
+}
+
+.p-heading {
+  margin: 0 0 6px;
+  color: var(--ce-text);
+  font-size: 0.95rem;
+}
+
+.p-text {
+  margin: 0 0 6px;
+  color: var(--ce-text);
+  line-height: 1.5;
+}
+
+.p-text-muted {
+  margin: 0 0 10px;
+  color: var(--ce-text-muted);
+}
+
+.p-inset {
+  background: var(--ce-surface-variant);
+  color: var(--ce-text);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+}
+
+.p-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.p-btn {
+  background: var(--ce-primary);
+  color: var(--ce-on-primary);
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-weight: 700;
+
+  &.accent {
+    background: var(--ce-accent);
+    color: var(--ce-on-accent);
+  }
+}
+
+.p-blend {
+  background: linear-gradient(135deg, var(--ce-primary) 0%, var(--ce-accent) 100%);
+  color: var(--ce-on-brand-blend);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-weight: 600;
+}
+
+.p-footer {
+  background: var(--ce-chrome);
+  color: var(--ce-on-chrome-muted);
+  padding: 10px 12px;
+}
+
+// ── Warnings ───────────────────────────────────────────────────────────────
+.warnings {
+  ul {
+    margin: 0 0 10px;
+    padding-left: 18px;
+  }
+
+  li {
+    margin-bottom: 5px;
+    line-height: 1.45;
+    color: var(--ce-text);
+  }
+
+  &.has-warnings {
+    border-left: 4px solid var(--ce-banner);
+  }
+
+  .fix-btn {
+    display: block;
+    margin: 6px 0 2px;
+  }
+
+  // "Cannot be rendered" is a different claim from "hard to read", so it does
+  // not look like more of the same.
+  li.unsupported {
+    font-weight: 700;
+  }
+
+  &.clean {
+    border-left: 4px solid var(--ce-success);
+  }
+}
+
+.last-fix {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ce-surface-variant);
+}
+
+.last-fix-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-weight: 700;
+  color: var(--ce-text);
+
+  mat-icon {
+    color: var(--ce-success);
+    font-size: 1.1rem;
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+}
+
+.last-fix-swatches {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+
+  code {
+    font-size: 0.78rem;
+    color: var(--ce-text);
+  }
+
+  .chip {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid var(--ce-text-muted);
+    flex-shrink: 0;
+  }
+
+  .arrow {
+    color: var(--ce-text-muted);
+  }
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}

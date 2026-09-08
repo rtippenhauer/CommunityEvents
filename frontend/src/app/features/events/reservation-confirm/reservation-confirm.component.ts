@@ -122,7 +122,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
     `
       .confirm-layout {
         min-height: 100vh;
-        background: #f5edd8;
+        background: var(--ce-surface-variant);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -137,7 +137,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
         overflow: hidden;
       }
       .card-header {
-        background: #3d1c05;
+        background: var(--ce-chrome);
         padding: 20px;
         text-align: center;
       }
@@ -156,7 +156,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
           margin: 0;
           font-size: 1.35rem;
           font-weight: 700;
-          color: #3d1c05;
+          color: var(--ce-text);
         }
         p {
           margin: 0;
@@ -186,8 +186,8 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
         max-width: 360px;
       }
       .event-details {
-        background: #faf7f2;
-        border: 1px solid #e8e0d6;
+        background: var(--ce-surface-variant);
+        border: 1px solid var(--ce-rule);
         border-radius: 8px;
         padding: 14px 18px;
         width: 100%;
@@ -204,7 +204,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
         font-size: 0.9rem;
         color: #444;
         mat-icon {
-          color: var(--db-primary);
+          color: var(--ce-primary);
           font-size: 1.1rem;
           width: 1.1rem;
           height: 1.1rem;
@@ -250,7 +250,7 @@ type PageState = 'loading' | 'ready' | 'confirming' | 'confirmed' | 'error';
       .join-heading {
         font-size: 0.95rem;
         font-weight: 700;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         margin: 0;
       }
       .join-sub {

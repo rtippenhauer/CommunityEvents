@@ -13,16 +13,33 @@ export interface Hsl {
 const clamp = (n: number, min: number, max: number): number => Math.min(max, Math.max(min, n));
 
 /** Parse #rgb or #rrggbb (with or without leading #). Returns null if unparseable. */
-export function hexToHsl(hex: string): Hsl | null {
-  let h = hex.trim().replace(/^#/, '');
+/** Normalise `#rgb`, `#rrggbb` or a bare `rrggbb` to six lower-case digits. */
+function normalizeHex(hex: string): string | null {
+  let h = (hex ?? '').trim().replace(/^#/, '');
   if (h.length === 3) {
     h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
   }
-  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+  return /^[0-9a-fA-F]{6}$/.test(h) ? h.toLowerCase() : null;
+}
 
-  const r = parseInt(h.slice(0, 2), 16) / 255;
-  const g = parseInt(h.slice(2, 4), 16) / 255;
-  const b = parseInt(h.slice(4, 6), 16) / 255;
+/** Parse a hex colour to 0..255 channels. Returns null if unparseable. */
+export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const h = normalizeHex(hex);
+  if (!h) return null;
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}
+
+export function hexToHsl(hex: string): Hsl | null {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+
+  const r = rgb.r / 255;
+  const g = rgb.g / 255;
+  const b = rgb.b / 255;
 
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
@@ -91,4 +108,132 @@ export function darkenBy(hex: string, deltaL: number): string {
   const hsl = hexToHsl(hex);
   if (!hsl) return hex;
   return hslToHex({ ...hsl, l: hsl.l - deltaL });
+}
+
+// ── Contrast ───────────────────────────────────────────────────────────────
+// Every `on-` colour in the palette is chosen by measurement rather than
+// assumed. Before v2-11 both `--mat-sys-on-primary` and `--mat-sys-on-tertiary`
+// were pinned to white, so a community picking a light primary got white text
+// on a pale button -- a defect the admin could see but not fix, since the
+// on-colour was not exposed as a setting.
+
+/**
+ * The two candidates every `on-` colour is chosen between.
+ *
+ * `ON_LIGHT` is pure black deliberately, against the usual advice to soften it.
+ * Swept over the whole HSL cube (5 degree hue x 10% saturation x 5% lightness),
+ * the worst achievable contrast is 4.584:1 with `#000000` and 4.173:1 with
+ * `#1a1a1a` -- so black clears AA for *every* colour an admin can pick, while a
+ * softened black leaves 3.7% of the cube with no legible label at all. The
+ * softer value is the nicer default and the worse guarantee, and this is the
+ * one place the guarantee is the point. Body copy still gets a warm brand tone
+ * via `readableOn`; this pair is only the floor beneath it.
+ */
+export const ON_LIGHT = '#000000';
+export const ON_DARK = '#ffffff';
+
+/** WCAG AA thresholds: body text, and large text (>=24px, or >=18.66px bold). */
+export const AA_NORMAL = 4.5;
+export const AA_LARGE = 3;
+
+/**
+ * WCAG 2.1 relative luminance, or null if `hex` is unparseable.
+ *
+ * The channel linearisation and the 0.2126/0.7152/0.0722 weights are the
+ * specification's own. A cheaper approximation (plain HSL lightness, say)
+ * disagrees with the checkers an accessibility complaint gets filed with,
+ * which would make our warnings and the auditor's report contradict.
+ */
+export function relativeLuminance(hex: string): number | null {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return null;
+  const channel = (v: number): number => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(rgb.r) + 0.7152 * channel(rgb.g) + 0.0722 * channel(rgb.b);
+}
+
+/**
+ * Contrast ratio between two colours: 1 for identical, 21 for black on white.
+ * Null if either is unparseable -- a caller must fall back rather than treat
+ * an unreadable pair as passing, which is what returning 0 or 21 would do.
+ */
+export function contrastRatio(a: string, b: string): number | null {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  if (la === null || lb === null) return null;
+  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** Whether `foreground` on `background` reaches AA. Unparseable => false. */
+export function meetsAA(foreground: string, background: string, large = false): boolean {
+  const ratio = contrastRatio(foreground, background);
+  return ratio !== null && ratio >= (large ? AA_LARGE : AA_NORMAL);
+}
+
+/**
+ * The text/icon colour to sit ON `background`: whichever candidate measures
+ * the higher contrast against it.
+ *
+ * Falls back to `ON_DARK` on an unparseable background, matching the old
+ * hardcoded white -- a colour field an admin has typed nonsense into should
+ * render as it always did rather than flipping the whole UI to dark text.
+ */
+export function onColorFor(
+  background: string,
+  candidates: readonly string[] = [ON_DARK, ON_LIGHT],
+): string {
+  let best = ON_DARK;
+  let bestRatio = -1;
+  for (const candidate of candidates) {
+    const ratio = contrastRatio(candidate, background);
+    if (ratio !== null && ratio > bestRatio) {
+      best = candidate;
+      bestRatio = ratio;
+    }
+  }
+  return best;
+}
+
+/**
+ * The colour to sit on *several* grounds at once -- a gradient's two stops,
+ * say. Maximises the worst contrast rather than the average, because a label
+ * is unreadable wherever it is worst, not on average.
+ *
+ * Measuring against one end only is what made the special-dinner badge look
+ * fine while its icon vanished into the other end.
+ */
+export function onColorForAll(
+  backgrounds: readonly string[],
+  candidates: readonly string[] = [ON_DARK, ON_LIGHT],
+): string {
+  let best = ON_DARK;
+  let bestWorst = -1;
+  for (const candidate of candidates) {
+    let worst = Infinity;
+    for (const background of backgrounds) {
+      const ratio = contrastRatio(candidate, background);
+      if (ratio !== null && ratio < worst) worst = ratio;
+    }
+    if (worst !== Infinity && worst > bestWorst) {
+      best = candidate;
+      bestWorst = worst;
+    }
+  }
+  return best;
+}
+
+/**
+ * Prefer `preferred` -- normally a brand-tinted tone -- for text on
+ * `background`, falling back to the measured best when it does not reach AA.
+ *
+ * This is the rule that lets a community keep its own warm ink instead of a
+ * flat near-black, without that preference being able to produce unreadable
+ * text on an unusual ground. Taste where taste is safe, measurement where it
+ * is not.
+ */
+export function readableOn(background: string, preferred: string, large = false): string {
+  return meetsAA(preferred, background, large) ? preferred : onColorFor(background);
 }

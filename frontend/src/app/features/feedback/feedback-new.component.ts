@@ -187,7 +187,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         h1 {
           margin: 0;
           font-size: 1.5rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .back-btn {
@@ -232,7 +232,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         padding: 0;
         transition: border-color 0.15s;
         &:focus-within {
-          border-color: var(--db-primary);
+          border-color: var(--ce-primary);
           border-width: 2px;
         }
         &.quill-error {
@@ -285,7 +285,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         }
         h2 {
           margin: 0 0 8px;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
         p {
           color: #666;

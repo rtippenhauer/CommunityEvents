@@ -1,0 +1,543 @@
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { toSignal } from '@angular/core/rxjs-interop';
+
+import {
+  ConfirmDialogComponent,
+  type ConfirmDialogData,
+} from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { AppConfigService } from '../../../core/services/app-config.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
+import {
+  PALETTE_TOKENS,
+  contrastWarnings,
+  derivePalette,
+  parseOverrides,
+  resolvePalette,
+  suggestFix,
+  type ContrastWarning,
+  type PaletteFix,
+  type PaletteOverrides,
+  type PaletteSeeds,
+  type PaletteToken,
+} from '../../../core/utils/palette';
+import { PALETTE_PRESETS, presetForSeeds } from '../../../core/utils/palette-presets';
+import { HEX_COLOR_PATTERN, PALETTE_PROMPT, parsePastedPalette } from './palette-prompt';
+
+/**
+ * What each token is, in English.
+ *
+ * The list used to show the raw custom-property name and a colour chip, which
+ * is unreadable unless you already know the system: Rob read the black chip on
+ * `--ce-on-brand-blend` as "the background is black", when it is the *text*
+ * colour on a badge whose background fades between the two brand colours. The
+ * CSS name is still shown, small, because it is what a support conversation or
+ * a stylesheet will name -- but it is no longer the label.
+ */
+const TOKEN_INFO: Record<PaletteToken, { label: string; hint: string }> = {
+  '--ce-primary': {
+    label: 'Primary colour',
+    hint: 'Buttons, links and highlights.',
+  },
+  '--ce-on-primary': {
+    label: 'Text on primary',
+    hint: 'The words on a primary button. Picked for readability, not chosen.',
+  },
+  '--ce-primary-hover': {
+    label: 'Primary, hovered',
+    hint: 'A primary button while the pointer is over it.',
+  },
+  '--ce-accent': {
+    label: 'Accent colour',
+    hint: 'Your second colour, for secondary buttons and two-colour surfaces.',
+  },
+  '--ce-on-accent': {
+    label: 'Text on accent',
+    hint: 'The words on an accent button.',
+  },
+  '--ce-accent-on-chrome': {
+    label: 'Accent on the nav',
+    hint: 'Accent-coloured headings where they sit on the dark nav or footer.',
+  },
+  '--ce-on-brand-blend': {
+    label: 'Text on a two-colour badge',
+    hint:
+      'The words on the special-event badge, whose background fades from your primary to your ' +
+      'accent. It has to stay readable at both ends of that fade.',
+  },
+  '--ce-surface': {
+    label: 'Page background',
+    hint: 'The ground the whole site sits on.',
+  },
+  '--ce-surface-variant': {
+    label: 'Panel background',
+    hint: 'Insets and grouped panels sitting on the page.',
+  },
+  '--ce-rule': {
+    label: 'Lines and borders',
+    hint: 'Card outlines, table rules and dividers.',
+  },
+  '--ce-text': {
+    label: 'Body text',
+    hint: 'Ordinary reading text on the page.',
+  },
+  '--ce-text-muted': {
+    label: 'Secondary text',
+    hint: 'Hints, captions and anything less important.',
+  },
+  '--ce-chrome': {
+    label: 'Nav and footer',
+    hint: 'The bar across the top of every page, and the footer.',
+  },
+  '--ce-chrome-deep': {
+    label: 'Nav, darkest shade',
+    hint: 'Edges and the deepest parts of the nav.',
+  },
+  '--ce-chrome-raised': {
+    label: 'Card on the nav',
+    hint: 'A raised panel sitting on the dark nav.',
+  },
+  '--ce-chrome-soft': {
+    label: 'Nav, lightest shade',
+    hint: 'Dividers and the softest parts of the nav.',
+  },
+  '--ce-on-chrome': {
+    label: 'Text on the nav',
+    hint: 'Menu links and footer text.',
+  },
+  '--ce-on-chrome-muted': {
+    label: 'Secondary text on the nav',
+    hint: 'Less important text on the dark nav or footer.',
+  },
+  '--ce-banner': {
+    label: 'Environment banner',
+    hint: 'The stripe reading STAGE ENVIRONMENT. Only ever shown on stage.',
+  },
+  '--ce-on-banner': {
+    label: 'Text on the banner',
+    hint: 'The words inside that stripe.',
+  },
+};
+
+/** Which token each seed field paints, so a fix can be pointed at the right row. */
+const SEED_TOKENS: Record<string, PaletteToken> = {
+  primary: '--ce-primary',
+  accent: '--ce-accent',
+  background: '--ce-surface',
+};
+
+/** A token grouped for display, so the override list is scannable. */
+interface TokenGroup {
+  label: string;
+  hint: string;
+  tokens: readonly PaletteToken[];
+}
+
+const TOKEN_GROUPS: readonly TokenGroup[] = [
+  {
+    label: 'Primary',
+    hint: 'Buttons, links and highlights.',
+    tokens: ['--ce-primary', '--ce-on-primary', '--ce-primary-hover'],
+  },
+  {
+    label: 'Accent',
+    hint: 'Your second colour, and anything painted with both.',
+    tokens: ['--ce-accent', '--ce-on-accent', '--ce-accent-on-chrome', '--ce-on-brand-blend'],
+  },
+  {
+    label: 'Page',
+    hint: 'The ground everything sits on, and the text on it.',
+    tokens: ['--ce-surface', '--ce-surface-variant', '--ce-rule', '--ce-text', '--ce-text-muted'],
+  },
+  {
+    label: 'Nav and footer',
+    hint: 'The dark chrome around the page.',
+    tokens: [
+      '--ce-chrome',
+      '--ce-chrome-deep',
+      '--ce-chrome-raised',
+      '--ce-chrome-soft',
+      '--ce-on-chrome',
+      '--ce-on-chrome-muted',
+    ],
+  },
+  {
+    label: 'Environment banner',
+    hint: 'Only visible on a stage deployment.',
+    tokens: ['--ce-banner', '--ce-on-banner'],
+  },
+];
+
+@Component({
+  selector: 'app-admin-appearance',
+  standalone: true,
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    RouterLink,
+    MatButtonModule,
+    MatCardModule,
+    MatExpansionModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatTooltipModule,
+  ],
+  templateUrl: './admin-appearance.component.html',
+  styleUrl: './admin-appearance.component.scss',
+})
+export class AdminAppearanceComponent implements OnInit {
+  private readonly fb = inject(FormBuilder);
+  private readonly appConfig = inject(AppConfigService);
+  private readonly brand = inject(BrandConfigService);
+  private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
+
+  readonly presets = PALETTE_PRESETS;
+  readonly tokenGroups = TOKEN_GROUPS;
+  readonly allTokens = PALETTE_TOKENS;
+  readonly tokenInfo = TOKEN_INFO;
+  readonly prompt = PALETTE_PROMPT;
+
+  readonly loading = signal(true);
+  readonly saving = signal(false);
+  readonly pasteError = signal<string | null>(null);
+
+  /**
+   * What the last fix actually did, kept on screen rather than flashed.
+   *
+   * A fix for a blend changes a *seed* and leaves the flagged colour alone --
+   * correctly, since that colour was already the best available. From the
+   * flagged row the only observable effect is the warning disappearing, which
+   * is indistinguishable from a bug that merely suppresses warnings. Rob said
+   * so three times, each time correctly. A four-second snackbar is not enough:
+   * this stays until the palette changes again.
+   */
+  readonly lastFix = signal<{ what: string; before: string; after: string } | null>(null);
+
+  readonly form = this.fb.nonNullable.group({
+    primary: ['#C9933A', [Validators.required, Validators.pattern(HEX_COLOR_PATTERN)]],
+    accent: ['#C9933A', [Validators.required, Validators.pattern(HEX_COLOR_PATTERN)]],
+    background: ['#FDFAF5', [Validators.required, Validators.pattern(HEX_COLOR_PATTERN)]],
+  });
+
+  /**
+   * The pasted palette, as its own control rather than a template ref.
+   *
+   * It has to be *cleared* once loaded, which a bare `#pasted` reference made
+   * awkward: leaving the text sitting there meant a later "Load palette" could
+   * silently re-apply an old palette over a preset the admin had since chosen.
+   * Reactive Forms is also the house rule for anything the component reads.
+   */
+  readonly pastedControl = this.fb.nonNullable.control('');
+
+  /** Live seed values, as a signal, so the preview recomputes on every keystroke. */
+  private readonly formValue = toSignal(this.form.valueChanges, {
+    initialValue: this.form.getRawValue(),
+  });
+
+  /** Per-token overrides. Held apart from the form: they are sparse by nature. */
+  readonly overrides = signal<PaletteOverrides>({});
+
+  readonly seeds = computed<PaletteSeeds>(() => {
+    // Read through the signal so this recomputes, but take the authoritative
+    // values from the control — valueChanges emits partials.
+    this.formValue();
+    const v = this.form.getRawValue();
+    return { primary: v.primary, accent: v.accent, background: v.background };
+  });
+
+  /** What the page would look like if saved. One derivation, shared with the app. */
+  readonly palette = computed(() => resolvePalette(this.seeds(), this.overrides()));
+
+  /** The same palette with no overrides — what "reset this token" would give. */
+  readonly derived = computed(() => derivePalette(this.seeds()));
+
+  readonly warnings = computed(() => contrastWarnings(this.palette()));
+
+  readonly activePreset = computed(() => presetForSeeds(this.seeds()));
+
+  readonly overrideCount = computed(() => Object.keys(this.overrides()).length);
+
+  /**
+   * Inline `style` for the preview container.
+   *
+   * Scoped to this element rather than `:root` deliberately — the preview must
+   * not touch the running page. An admin trying a palette should be able to
+   * decide against it and navigate away without having repainted the app they
+   * are still using.
+   */
+  readonly previewStyle = computed(() => {
+    const palette = this.palette();
+    return PALETTE_TOKENS.map((t) => `${t}:${palette[t]}`).join(';');
+  });
+
+  ngOnInit(): void {
+    this.appConfig.getSiteSettings().subscribe({
+      next: (settings) => {
+        const byKey = new Map(settings.map((s) => [s.configKey, s.configValue]));
+        this.form.patchValue({
+          primary: byKey.get('theme_color_primary') || '#C9933A',
+          accent: byKey.get('theme_color_accent') || '#C9933A',
+          background: byKey.get('theme_color_background') || '#FDFAF5',
+        });
+        this.overrides.set(parseOverrides(byKey.get('theme_palette_overrides')));
+        this.loading.set(false);
+      },
+      error: () => {
+        this.snackBar.open('Could not load the current colours', 'OK', { duration: 4000 });
+        this.loading.set(false);
+      },
+    });
+  }
+
+  private clearLastFix(): void {
+    this.lastFix.set(null);
+  }
+
+  applyPreset(key: string): void {
+    this.clearLastFix();
+    const preset = this.presets.find((p) => p.key === key);
+    if (!preset) return;
+
+    // Picking a preset is a statement about the whole palette, so it does clear
+    // per-token overrides -- leaving them layered on means the preset does not
+    // look like the swatches that sold it. But discarding an admin's hand-tuned
+    // colours is destructive, and a snackbar *after* the fact is not consent:
+    // Rob hit exactly this on stage, having been told overrides survive a
+    // colour change (they do -- a seed edit keeps them; only a preset, which
+    // replaces all three at once, does not). So ask first.
+    const count = this.overrideCount();
+    if (!count) {
+      this.setPresetSeeds(preset);
+      return;
+    }
+
+    const data: ConfirmDialogData = {
+      title: `Apply ${preset.label}?`,
+      message:
+        `You have ${count} colour${count === 1 ? '' : 's'} fine-tuned by hand. ` +
+        `Applying a preset replaces the whole palette, so ${count === 1 ? 'it' : 'they'} ` +
+        `will go back to being worked out automatically.`,
+      confirmLabel: `Apply ${preset.label}`,
+      confirmColor: 'warn',
+    };
+    this.dialog
+      .open(ConfirmDialogComponent, { data })
+      .afterClosed()
+      .subscribe((confirmed: boolean) => {
+        if (!confirmed) return;
+        this.overrides.set({});
+        this.setPresetSeeds(preset);
+      });
+  }
+
+  private setPresetSeeds(preset: { label: string; seeds: PaletteSeeds }): void {
+    this.form.patchValue(preset.seeds);
+    this.form.markAsDirty();
+  }
+
+  onSwatch(control: 'primary' | 'accent' | 'background', event: Event): void {
+    this.clearLastFix();
+    const value = (event.target as HTMLInputElement).value;
+    this.form.controls[control].setValue(value);
+    this.form.controls[control].markAsDirty();
+  }
+
+  /** A `<input type="color">` only accepts #rrggbb, so anything else shows as black. */
+  swatchValue(value: string): string {
+    return HEX_COLOR_PATTERN.test(value) ? value : '#000000';
+  }
+
+  overrideValue(token: PaletteToken): string {
+    return this.overrides()[token] ?? this.derived()[token];
+  }
+
+  isOverridden(token: PaletteToken): boolean {
+    return this.overrides()[token] !== undefined;
+  }
+
+  setOverride(token: PaletteToken, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.overrides.update((o) => ({ ...o, [token]: value }));
+  }
+
+  clearOverride(token: PaletteToken): void {
+    this.overrides.update((o) => {
+      const next = { ...o };
+      delete next[token];
+      return next;
+    });
+  }
+
+  clearAllOverrides(): void {
+    this.overrides.set({});
+  }
+
+  /**
+   * The warning to show against a token in the fine-tune list.
+   *
+   * A token is flagged if it *fails*, and also if changing it is what fixes
+   * some other token's failure. Those are different tokens for a blend --
+   * `--ce-on-brand-blend` is the pair that falls short, `--ce-accent` is what
+   * moves -- and flagging only the first is what made the fix button look
+   * broken: Rob watched the flagged row, whose value is identical before and
+   * after, while the accent two rows above quietly changed.
+   */
+  warningFor(token: PaletteToken): string | null {
+    const direct = this.warnings().find((w) => w.token === token);
+    if (direct) {
+      const remedy = suggestFix(this.seeds(), this.overrides(), direct);
+      const elsewhere = remedy?.seeds ? SEED_TOKENS[Object.keys(remedy.seeds)[0]] : undefined;
+      return elsewhere && elsewhere !== token
+        ? `${direct.message} Fixed by changing ${elsewhere}, not this.`
+        : direct.message;
+    }
+
+    for (const warning of this.warnings()) {
+      const fix = suggestFix(this.seeds(), this.overrides(), warning);
+      if (!fix?.seeds) continue;
+      if (Object.keys(fix.seeds).some((key) => SEED_TOKENS[key] === token)) {
+        return `Changing this fixes: ${warning.message}`;
+      }
+    }
+    return null;
+  }
+
+  fixFor(warning: ContrastWarning): PaletteFix | null {
+    return suggestFix(this.seeds(), this.overrides(), warning);
+  }
+
+  /**
+   * Apply a suggested fix.
+   *
+   * Deliberately does not save. The admin sees the preview update and decides,
+   * exactly as with every other control on this screen -- a "fix" that wrote
+   * to the database on one click would be the only thing here that changes the
+   * live site without being asked to.
+   */
+  applyFix(fix: PaletteFix): void {
+    if (fix.clearOverride) {
+      const before = this.overrides()[fix.clearOverride] ?? '';
+      const after = this.derived()[fix.clearOverride];
+      this.clearOverride(fix.clearOverride);
+      this.lastFix.set({
+        what: `${this.tokenInfo[fix.clearOverride].label} back to automatic`,
+        before,
+        after,
+      });
+    }
+
+    if (fix.seeds) {
+      const previous = this.form.getRawValue() as Record<string, string>;
+      const [key, value] = Object.entries(fix.seeds)[0] ?? [];
+      this.form.patchValue(fix.seeds);
+      if (key && value) {
+        this.lastFix.set({
+          what: `${key.charAt(0).toUpperCase()}${key.slice(1)} colour`,
+          before: previous[key],
+          after: value,
+        });
+      }
+    }
+
+    this.form.markAsDirty();
+  }
+
+  /** The human name for a token, for messages. Falls back to the token itself. */
+  private tokenLabel(token: PaletteToken): string {
+    return token.replace('--ce-', '').replace(/-/g, ' ');
+  }
+
+  async copyPrompt(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(this.prompt);
+      this.snackBar.open('Prompt copied', 'OK', { duration: 2500 });
+    } catch {
+      // Clipboard access is refused in plenty of ordinary situations (an
+      // insecure origin, a permissions policy). The prompt is on screen and
+      // selectable, so say that rather than failing silently.
+      this.snackBar.open('Could not copy — select the text and copy it manually', 'OK', {
+        duration: 5000,
+      });
+    }
+  }
+
+  /**
+   * Take a palette pasted back from an LLM.
+   *
+   * Validated here rather than trusted: a model will occasionally return a
+   * palette that fails its own brief, and the person who finds out should be
+   * the admin looking at a preview, not a member looking at a button.
+   */
+  importPasted(): void {
+    const result = parsePastedPalette(this.pastedControl.value);
+    if (!result.ok) {
+      this.pasteError.set(result.error);
+      return;
+    }
+    this.pasteError.set(null);
+    this.clearLastFix();
+    this.form.patchValue(result.seeds);
+    // Emptied on success: its contents are now in the seeds, and text left in
+    // the box is a palette an admin can re-apply by accident over whatever
+    // they picked afterwards.
+    this.pastedControl.setValue('');
+    this.form.markAsDirty();
+    this.overrides.set({});
+    const warnings = contrastWarnings(derivePalette(result.seeds));
+    this.snackBar.open(
+      warnings.length
+        ? `Palette loaded, with ${warnings.length} contrast warning(s) below`
+        : 'Palette loaded — preview it before saving',
+      'OK',
+      { duration: 5000 },
+    );
+  }
+
+  save(): void {
+    if (this.form.invalid) return;
+    this.saving.set(true);
+    const seeds = this.seeds();
+    const overrides = this.overrides();
+    this.appConfig
+      .updateValues([
+        { key: 'theme_color_primary', value: seeds.primary },
+        { key: 'theme_color_accent', value: seeds.accent },
+        { key: 'theme_color_background', value: seeds.background },
+        {
+          key: 'theme_palette_overrides',
+          // Empty string rather than "{}" for the no-overrides case, so the
+          // stored value matches the seeded default and a community that never
+          // touched this screen is indistinguishable from one that reset it.
+          value: Object.keys(overrides).length ? JSON.stringify(overrides) : '',
+        },
+      ])
+      .subscribe({
+        next: () => {
+          this.saving.set(false);
+          this.form.markAsPristine();
+          // Re-fetch branding so the running app repaints immediately. This is
+          // the only point at which the live page changes — everything before
+          // it was a scoped preview.
+          void this.brand.refresh();
+          this.snackBar.open('Colours saved', 'OK', { duration: 3000 });
+        },
+        error: () => {
+          this.saving.set(false);
+          this.snackBar.open('Failed to save colours', 'OK', { duration: 4000 });
+        },
+      });
+  }
+}

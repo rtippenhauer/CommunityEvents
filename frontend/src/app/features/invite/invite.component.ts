@@ -191,13 +191,13 @@ interface Invite {
         h1 {
           margin: 0 0 4px;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
         .header-icon {
           font-size: 2.5rem;
           width: 2.5rem;
           height: 2.5rem;
-          color: var(--db-primary);
+          color: var(--ce-primary);
           margin-top: 4px;
           flex-shrink: 0;
         }

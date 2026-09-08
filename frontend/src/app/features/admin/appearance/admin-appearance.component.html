@@ -1,0 +1,302 @@
+<div class="page">
+  <div class="head">
+    <h1>Appearance</h1>
+    <a mat-button routerLink="/admin/settings">
+      <mat-icon>arrow_back</mat-icon>
+      Site settings
+    </a>
+  </div>
+
+  @if (loading()) {
+    <p class="muted">Loading…</p>
+  } @else {
+    <div class="columns">
+      <!-- ── Left: the controls ─────────────────────────────────────────── -->
+      <div class="controls">
+        <mat-card>
+          <mat-card-header><mat-card-title>1. Pick a palette</mat-card-title></mat-card-header>
+          <mat-card-content>
+            <p class="muted">
+              Most communities stop here. Each of these is checked for readability, so you don't
+              have to think about contrast.
+            </p>
+            <div class="presets">
+              @for (preset of presets; track preset.key) {
+                <button
+                  type="button"
+                  class="preset"
+                  [class.selected]="activePreset()?.key === preset.key"
+                  (click)="applyPreset(preset.key)"
+                  [attr.aria-pressed]="activePreset()?.key === preset.key"
+                >
+                  <span class="swatches">
+                    <span [style.background]="preset.seeds.primary"></span>
+                    <span [style.background]="preset.seeds.accent"></span>
+                    <span [style.background]="preset.seeds.background"></span>
+                  </span>
+                  <span class="preset-name">{{ preset.label }}</span>
+                  <span class="preset-desc">{{ preset.description }}</span>
+                </button>
+              }
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card>
+          <mat-card-header><mat-card-title>2. Or choose your own</mat-card-title></mat-card-header>
+          <mat-card-content>
+            <p class="muted">
+              Everything else — hover shades, the nav, text colours — is worked out from these
+              three, and every text colour is measured for readability rather than assumed.
+            </p>
+            <form [formGroup]="form">
+              @for (seed of [
+                { key: 'primary', label: 'Primary', hint: 'Buttons, links and highlights.' },
+                { key: 'accent', label: 'Accent', hint: 'Your second colour.' },
+                { key: 'background', label: 'Background', hint: 'The page behind everything.' }
+              ]; track seed.key) {
+                <div class="seed-row">
+                  <input
+                    type="color"
+                    class="swatch"
+                    [value]="swatchValue($any(form.controls)[seed.key].value)"
+                    (input)="onSwatch($any(seed.key), $event)"
+                    [attr.aria-label]="'Pick ' + seed.label + ' colour'"
+                  />
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>{{ seed.label }}</mat-label>
+                    <input matInput [formControlName]="seed.key" placeholder="#C9933A" />
+                    <mat-hint>{{ seed.hint }}</mat-hint>
+                    @if ($any(form.controls)[seed.key].invalid && $any(form.controls)[seed.key].dirty) {
+                      <mat-error>Enter a 6-digit hex colour like #C9933A</mat-error>
+                    }
+                  </mat-form-field>
+                </div>
+              }
+            </form>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- ── The prompt round trip ────────────────────────────────────── -->
+        <mat-card>
+          <mat-card-header>
+            <mat-card-title>Not sure? Ask an assistant</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <p class="muted">
+              Copy this into ChatGPT or Claude, describe your community at the end, then paste the
+              answer back below. It's checked before anything is applied.
+            </p>
+            <pre class="prompt">{{ prompt }}</pre>
+            <button mat-stroked-button type="button" (click)="copyPrompt()">
+              <mat-icon>content_copy</mat-icon>
+              Copy prompt
+            </button>
+
+            <mat-form-field appearance="outline" class="full-width paste">
+              <mat-label>Paste the palette here</mat-label>
+              <textarea
+                matInput
+                rows="2"
+                [formControl]="pastedControl"
+                placeholder='{"primary":"#4C5BD4","accent":"#6B4BA8","background":"#F7F7FB"}'
+              ></textarea>
+              @if (pasteError(); as err) {
+                <mat-error>{{ err }}</mat-error>
+              }
+            </mat-form-field>
+            @if (pasteError(); as err) {
+              <p class="paste-error">{{ err }}</p>
+            }
+            <button
+              mat-stroked-button
+              type="button"
+              [disabled]="!pastedControl.value.trim()"
+              (click)="importPasted()"
+            >
+              <mat-icon>download</mat-icon>
+              Load palette
+            </button>
+          </mat-card-content>
+        </mat-card>
+
+        <!-- ── Tier three: per-token overrides ──────────────────────────── -->
+        <mat-expansion-panel class="advanced">
+          <mat-expansion-panel-header>
+            <mat-panel-title>Fine-tune individual colours</mat-panel-title>
+            <mat-panel-description>
+              @if (overrideCount()) {
+                {{ overrideCount() }} customised
+              } @else {
+                All worked out automatically
+              }
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+
+          <p class="muted">
+            Anything you set here stays set, even if you change the three colours above later.
+            Clear one to go back to the worked-out value.
+          </p>
+
+          @for (group of tokenGroups; track group.label) {
+            <h3 class="group-label">{{ group.label }}</h3>
+            <p class="muted small">{{ group.hint }}</p>
+            @for (token of group.tokens; track token) {
+              <div
+                class="token-row"
+                [class.overridden]="isOverridden(token)"
+                [class.flagged]="warningFor(token)"
+              >
+                <input
+                  type="color"
+                  class="swatch small"
+                  [value]="swatchValue(overrideValue(token))"
+                  (input)="setOverride(token, $event)"
+                  [attr.aria-label]="'Set ' + token"
+                />
+                <span class="token-text">
+                  <span class="token-label">{{ tokenInfo[token].label }}</span>
+                  <span class="token-hint">{{ tokenInfo[token].hint }}</span>
+                  <code class="token-name">{{ token }}</code>
+                </span>
+                <span class="token-value">{{ overrideValue(token) }}</span>
+                @if (warningFor(token); as warning) {
+                  <mat-icon class="warn-icon" [matTooltip]="warning">warning</mat-icon>
+                }
+                @if (isOverridden(token)) {
+                  <button
+                    mat-icon-button
+                    type="button"
+                    (click)="clearOverride(token)"
+                    matTooltip="Back to the worked-out colour"
+                  >
+                    <mat-icon>undo</mat-icon>
+                  </button>
+                }
+              </div>
+            }
+          }
+
+          @if (overrideCount()) {
+            <button mat-stroked-button type="button" (click)="clearAllOverrides()">
+              Reset all to automatic
+            </button>
+          }
+        </mat-expansion-panel>
+      </div>
+
+      <!-- ── Right: preview and warnings ────────────────────────────────── -->
+      <div class="side">
+        <mat-card>
+          <mat-card-header><mat-card-title>Preview</mat-card-title></mat-card-header>
+          <mat-card-content>
+            <!-- Scoped to this element: trying a palette must not repaint the
+                 app the admin is still using. -->
+            <div class="preview" [attr.style]="previewStyle()">
+              <div class="p-chrome">
+                <span class="p-brand">Your community</span>
+                <span class="p-navlink">Events</span>
+                <span class="p-navlink muted-link">Members</span>
+              </div>
+              <div class="p-body">
+                <h4 class="p-heading">Thursday dinner</h4>
+                <p class="p-text">
+                  Body copy sits on the page background. This is what most of your site looks like.
+                </p>
+                <p class="p-text-muted">Secondary text, for hints and captions.</p>
+                <div class="p-inset">A panel inset, for grouped content.</div>
+                <div class="p-actions">
+                  <span class="p-btn">Primary action</span>
+                  <span class="p-btn accent">Accent</span>
+                </div>
+                <div class="p-blend">A surface blending both brand colours</div>
+              </div>
+              <div class="p-footer"><span>Footer text</span></div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card
+          class="warnings"
+          [class.clean]="!warnings().length"
+          [class.has-warnings]="warnings().length"
+        >
+          <mat-card-header>
+            <mat-card-title>
+              @if (warnings().length) {
+                {{ warnings().length }} warning{{ warnings().length === 1 ? '' : 's' }}
+              } @else {
+                Readability
+              }
+            </mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            @if (warnings().length) {
+              <ul>
+                @for (warning of warnings(); track warning.token + warning.message) {
+                  <li [class.unsupported]="warning.kind === 'unsupported'">
+                    {{ warning.message }}
+                    @if (fixFor(warning); as fix) {
+                      <button
+                        mat-stroked-button
+                        type="button"
+                        class="fix-btn"
+                        [matTooltip]="fix.description"
+                        (click)="applyFix(fix)"
+                      >
+                        <mat-icon>auto_fix_high</mat-icon>
+                        {{ fix.label }}
+                      </button>
+                    }
+                  </li>
+                }
+              </ul>
+              <p class="muted small">
+                You can still save. These are shown so the decision is yours rather than something
+                your members discover.
+              </p>
+            } @else {
+              <p class="muted">Every colour combination on your site is readable.</p>
+            }
+
+            @if (lastFix(); as done) {
+              <!-- Stays put. A fix for a blend changes a seed and leaves the
+                   flagged colour alone, so without this the only visible
+                   effect is a warning disappearing — which looks exactly like
+                   a bug that hides warnings. -->
+              <div class="last-fix">
+                <p class="last-fix-title">
+                  <mat-icon>check_circle</mat-icon>
+                  Changed {{ done.what }}
+                </p>
+                <p class="last-fix-swatches">
+                  <span class="chip" [style.background]="done.before"></span>
+                  <code>{{ done.before | uppercase }}</code>
+                  <span class="arrow">→</span>
+                  <span class="chip" [style.background]="done.after"></span>
+                  <code>{{ done.after | uppercase }}</code>
+                </p>
+                <p class="muted small">
+                  The flagged colour itself was already the best choice, so it did not change —
+                  what changed is the colour behind it. Save to apply.
+                </p>
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+
+        <div class="actions">
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            [disabled]="form.invalid || saving()"
+            (click)="save()"
+          >
+            {{ saving() ? 'Saving…' : 'Save colours' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

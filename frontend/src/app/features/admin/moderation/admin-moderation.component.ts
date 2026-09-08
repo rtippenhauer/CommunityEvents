@@ -194,7 +194,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
         h1 {
           margin: 0;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .section {
@@ -209,7 +209,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
           margin: 0;
           font-size: 1.2rem;
           font-weight: 600;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .badge {
@@ -223,7 +223,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
         color: #b71c1c;
       }
       .section-divider {
-        border-top: 1px solid #e8e0d6;
+        border-top: 1px solid var(--ce-rule);
         margin: 32px 0;
         max-width: 760px;
       }
@@ -253,16 +253,16 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
       }
       .tab-btn {
         padding: 5px 14px;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         background: #fff;
         border-radius: 20px;
         cursor: pointer;
         font-size: 0.83rem;
         color: #666;
         &.active {
-          background: var(--db-primary);
-          color: #fff;
-          border-color: var(--db-primary);
+          background: var(--ce-primary);
+          color: var(--ce-on-primary);
+          border-color: var(--ce-primary);
         }
       }
       .cards-list {
@@ -272,7 +272,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
       }
       .mod-card {
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 10px;
         padding: 14px 18px;
         &.resolved {
@@ -357,7 +357,7 @@ const CONTENT_TYPE_LABELS: Record<string, string> = {
         align-items: center;
         gap: 4px;
         font-size: 0.82rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-decoration: none;
         &:hover {
           text-decoration: underline;

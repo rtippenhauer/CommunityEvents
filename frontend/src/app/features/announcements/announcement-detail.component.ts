@@ -185,7 +185,7 @@ import { isElevatedRole } from '../../core/utils/roles.util';
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-size: 0.85rem;
         text-decoration: none;
         margin-bottom: 20px;
@@ -205,7 +205,7 @@ import { isElevatedRole } from '../../core/utils/roles.util';
       .ann-date {
         font-size: 0.75rem;
         font-weight: 700;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-transform: uppercase;
         letter-spacing: 0.05em;
       }
@@ -217,7 +217,7 @@ import { isElevatedRole } from '../../core/utils/roles.util';
         margin: 0 0 8px;
         font-size: 1.6rem;
         font-weight: 700;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         line-height: 1.2;
       }
       .ann-author {
@@ -235,17 +235,17 @@ import { isElevatedRole } from '../../core/utils/roles.util';
       .ann-body {
         font-size: 0.95rem;
         line-height: 1.7;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         margin-bottom: 24px;
       }
       .comments-section {
-        border-top: 1px solid #e8e0d6;
+        border-top: 1px solid var(--ce-rule);
         padding-top: 24px;
       }
       .comments-title {
         font-size: 1.1rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         margin: 0 0 16px;
       }
       .comment-count {
@@ -272,7 +272,7 @@ import { isElevatedRole } from '../../core/utils/roles.util';
         gap: 12px;
       }
       .comment {
-        background: var(--db-cream);
+        background: var(--ce-surface);
         border-radius: 8px;
         padding: 12px 14px;
       }
@@ -285,7 +285,7 @@ import { isElevatedRole } from '../../core/utils/roles.util';
       .comment-author {
         font-weight: 600;
         font-size: 0.85rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .comment-time {
         font-size: 0.72rem;

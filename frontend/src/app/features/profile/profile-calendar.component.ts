@@ -196,7 +196,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
       .page-title {
         font-size: 1.5rem;
         font-weight: 700;
-        color: var(--db-brown-dark, #3d2b1f);
+        color: var(--ce-chrome, #3d2b1f);
         margin: 0 0 8px;
       }
       .page-subtitle {

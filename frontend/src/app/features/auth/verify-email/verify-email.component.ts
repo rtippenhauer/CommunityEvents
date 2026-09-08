@@ -54,11 +54,11 @@ import { AuthService } from '../../../core/services/auth.service';
       h1 {
         margin: 0;
         font-size: 1.6rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       p {
         margin: 0;
-        color: var(--db-text-mid);
+        color: var(--ce-text-muted);
       }
     `,
   ],

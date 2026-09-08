@@ -666,12 +666,12 @@ interface AchievementGroup {
         min-height: 22px !important;
       }
       .role-admin {
-        --mat-chip-label-text-color: #fff;
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       .role-moderator {
-        --mat-chip-label-text-color: #fff;
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       .chip-banned {
         background: #ffccbc !important;
@@ -742,8 +742,8 @@ interface AchievementGroup {
         align-items: center;
         gap: 8px;
         padding: 12px 16px;
-        background: var(--db-primary);
-        color: #fff;
+        background: var(--ce-primary);
+        color: var(--ce-on-primary);
       }
       .ach-group-icon {
         font-size: 1.2rem;
@@ -760,8 +760,8 @@ interface AchievementGroup {
       .ach-complete-badge {
         font-size: 0.7rem;
         font-weight: 700;
-        background: var(--db-primary);
-        color: #fff;
+        background: var(--ce-primary);
+        color: var(--ce-on-primary);
         border-radius: 10px;
         padding: 2px 8px;
         white-space: nowrap;
@@ -779,7 +779,7 @@ interface AchievementGroup {
         }
       }
       .ach-icon {
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-size: 1.5rem;
         width: 1.5rem;
         height: 1.5rem;
@@ -808,8 +808,8 @@ interface AchievementGroup {
       .ach-title-badge {
         font-size: 0.68rem;
         font-weight: 700;
-        background: var(--db-primary);
-        color: #fff;
+        background: var(--ce-primary);
+        color: var(--ce-on-primary);
         border-radius: 8px;
         padding: 1px 7px;
       }
@@ -854,7 +854,7 @@ interface AchievementGroup {
       }
       .ach-next-title-hint {
         font-size: 0.7rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-weight: 600;
       }
       .ach-next-desc {

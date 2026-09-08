@@ -200,7 +200,7 @@ const COMPLETED_STATUSES = new Set(['shipped', 'wont_fix', 'closed']);
         h1 {
           margin: 0 0 4px;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .subtitle {
@@ -247,7 +247,7 @@ const COMPLETED_STATUSES = new Set(['shipped', 'wont_fix', 'closed']);
       }
       .active-sort {
         font-weight: 700;
-        color: var(--db-primary);
+        color: var(--ce-primary);
       }
 
       .center {

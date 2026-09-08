@@ -394,10 +394,10 @@ interface AdminUser {
       }
       .name-link {
         font-weight: 500;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         text-decoration: none;
         &:hover {
-          color: var(--db-amber);
+          color: var(--ce-primary);
           text-decoration: underline;
         }
       }
@@ -449,8 +449,8 @@ interface AdminUser {
         min-height: 20px !important;
       }
       .role-admin {
-        --mat-chip-label-text-color: #fff;
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       /* Deliberately distinct from admin: this one operates the whole
          deployment, and the badge should not read as "just another admin". */
@@ -460,7 +460,7 @@ interface AdminUser {
       }
       .role-automation {
         background: #e1e8f0 !important;
-        --mat-chip-label-text-color: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-primary) !important;
       }
       /* Holds no privileges at all — greyed out rather than coloured. */
       .role-disabled {
@@ -468,8 +468,8 @@ interface AdminUser {
         --mat-chip-label-text-color: #757575 !important;
       }
       .role-moderator {
-        --mat-chip-label-text-color: #fff;
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       .role-member {
         background: #e0e0e0 !important;
@@ -480,7 +480,7 @@ interface AdminUser {
       }
       .role-invited {
         background: #e1e8f0 !important;
-        --mat-chip-label-text-color: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-primary) !important;
       }
       .status-active {
         background: #c8e6c9 !important;
@@ -532,7 +532,7 @@ interface AdminUser {
       }
       .name-pending {
         font-weight: 500;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .email-active {
         background: #c8e6c9 !important;

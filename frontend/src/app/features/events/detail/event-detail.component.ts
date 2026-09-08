@@ -330,15 +330,19 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
                   </div>
                 </div>
 
-                <!-- Timing & deadline info -->
-                <div class="rsvp-disclaimer">
-                  <div class="disclaimer-row">
-                    <mat-icon class="disc-icon">schedule</mat-icon>
-                    <span
-                      >RSVP deadline: <strong>{{ cutoffTimeLabel() }}</strong> day-of</span
-                    >
+                <!-- Timing & deadline info. Hidden when the event has no
+                     usable time: a deadline we cannot compute is worse than
+                     no deadline shown, since members act on it. -->
+                @if (cutoffTimeLabel()) {
+                  <div class="rsvp-disclaimer">
+                    <div class="disclaimer-row">
+                      <mat-icon class="disc-icon">schedule</mat-icon>
+                      <span
+                        >RSVP deadline: <strong>{{ cutoffTimeLabel() }}</strong> day-of</span
+                      >
+                    </div>
                   </div>
-                </div>
+                }
 
                 <!-- RSVP action for logged-in members -->
                 @if (isLoggedIn()) {
@@ -563,7 +567,13 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
                       @if (!isAdminOrMod() && isPastCutoff()) {
                         <div class="cutoff-banner">
                           <mat-icon>lock_clock</mat-icon>
-                          <span>RSVP closed — deadline was {{ cutoffTimeLabel() }} today</span>
+                          <span>
+                            @if (cutoffTimeLabel()) {
+                              RSVP closed — deadline was {{ cutoffTimeLabel() }} today
+                            } @else {
+                              RSVP closed for today
+                            }
+                          </span>
                         </div>
                       } @else {
                         <div class="rsvp-initial-toggle">
@@ -1293,8 +1303,8 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         align-items: center;
         justify-content: center;
         gap: 8px;
-        background: linear-gradient(135deg, var(--db-brown-dark) 0%, var(--db-brown-mid) 100%);
-        color: #fff;
+        background: linear-gradient(135deg, var(--ce-chrome) 0%, var(--ce-chrome-soft) 100%);
+        color: var(--ce-on-chrome, #fff);
         font-size: 0.9rem;
         font-weight: 600;
         letter-spacing: 0.02em;
@@ -1332,13 +1342,13 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         margin: 0 0 12px;
         font-size: 2rem;
         font-weight: 700;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         line-height: 1.2;
       }
       .admin-menu-btn {
         flex-shrink: 0;
         margin-top: -4px;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .event-datetime {
         display: flex;
@@ -1346,11 +1356,11 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         flex-wrap: wrap;
         gap: 8px;
         font-size: 1.05rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-weight: 500;
         margin-bottom: 20px;
         mat-icon {
-          color: var(--db-primary);
+          color: var(--ce-primary);
         }
       }
       .cal-add-btn {
@@ -1361,8 +1371,8 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         line-height: 26px !important;
         font-size: 0.75rem !important;
         padding: 0 10px !important;
-        color: var(--db-primary) !important;
-        border-color: var(--db-primary) !important;
+        color: var(--ce-primary) !important;
+        border-color: var(--ce-primary) !important;
         mat-icon {
           font-size: 0.9rem;
           width: 0.9rem;
@@ -1396,11 +1406,11 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .info-value {
         font-size: 0.95rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         margin-top: 2px;
       }
       .map-link {
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-decoration: none;
         &:hover {
           text-decoration: underline;
@@ -1422,7 +1432,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         margin-bottom: 24px;
         h3 {
           margin: 0 0 8px;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .description {
@@ -1454,13 +1464,13 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         margin-bottom: 16px;
         h3 {
           margin: 0;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .seat-count {
         font-size: 0.85rem;
         font-weight: 600;
-        color: var(--db-primary);
+        color: var(--ce-primary);
       }
       .rsvp-disclaimer {
         display: flex;
@@ -1468,8 +1478,8 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         gap: 6px;
         padding: 10px 12px;
         margin-bottom: 14px;
-        background: #faf7f2;
-        border: 1px solid #e8e0d6;
+        background: var(--ce-surface-variant);
+        border: 1px solid var(--ce-rule);
         border-radius: 8px;
       }
       .disclaimer-row {
@@ -1483,7 +1493,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         font-size: 0.95rem;
         width: 0.95rem;
         height: 0.95rem;
-        color: var(--db-amber);
+        color: var(--ce-primary);
         flex-shrink: 0;
       }
       .cutoff-banner {
@@ -1594,8 +1604,8 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .guest-panel {
         margin-top: 16px;
         padding: 16px;
-        background: #faf7f2;
-        border: 1px solid #e8e0d6;
+        background: var(--ce-surface-variant);
+        border: 1px solid var(--ce-rule);
         border-radius: 10px;
       }
 
@@ -1607,7 +1617,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
 
       .guest-panel-icon {
-        color: var(--db-amber);
+        color: var(--ce-primary);
         font-size: 1.2rem;
         width: 1.2rem;
         height: 1.2rem;
@@ -1616,7 +1626,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .guest-panel-title {
         font-size: 0.85rem;
         font-weight: 700;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         text-transform: uppercase;
         letter-spacing: 0.06em;
       }
@@ -1634,7 +1644,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         padding: 4px 8px 4px 4px;
         border-radius: 6px;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
       }
 
       .guest-row-icon {
@@ -1648,7 +1658,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .guest-compact-name {
         flex: 1;
         font-size: 0.9rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         &.unnamed {
           color: #aaa;
           font-style: italic;
@@ -1667,7 +1677,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
 
       .copy-link-btn {
-        color: var(--db-amber) !important;
+        color: var(--ce-primary) !important;
       }
       .edit-guest-btn {
         color: #888 !important;
@@ -1697,7 +1707,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         border-radius: 10px;
         white-space: nowrap;
         background: #fff3e0;
-        color: var(--db-amber-dark);
+        color: var(--ce-primary-hover);
         &.used {
           background: #e8f5e9;
           color: #2e7d32;
@@ -1711,7 +1721,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .guest-edit-expansion {
         padding: 10px 12px 4px;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-top: none;
         border-radius: 0 0 6px 6px;
         margin-top: -4px;
@@ -1763,7 +1773,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         border-radius: 50%;
         overflow: hidden;
         flex-shrink: 0;
-        background: var(--db-primary);
+        background: var(--ce-primary);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1786,7 +1796,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .attendee-name {
         font-size: 0.95rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .attendee-guests {
         font-size: 0.8rem;
@@ -1806,7 +1816,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         margin-top: 2px;
       }
       .attendee-avatar-guest {
-        background: #e8e0d6;
+        background: var(--ce-rule);
         .guest-avatar-icon {
           color: #999;
           font-size: 1.2rem;
@@ -1830,8 +1840,8 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         font-weight: 600;
         padding: 1px 6px;
         border-radius: 8px;
-        background: #f5edd8;
-        color: var(--db-brown-mid);
+        background: var(--ce-surface-variant);
+        color: var(--ce-chrome-soft);
         align-self: flex-start;
       }
 
@@ -1846,7 +1856,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .maybe-count {
         font-size: 0.78rem;
         font-weight: 600;
-        color: var(--db-amber-dark, #e65100);
+        color: var(--ce-primary-hover, #e65100);
         background: #fff3e0;
         padding: 2px 8px;
         border-radius: 10px;
@@ -2034,14 +2044,14 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         margin: 0;
         font-size: 0.85rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         text-transform: uppercase;
         letter-spacing: 0.06em;
         mat-icon {
           font-size: 1rem;
           width: 1rem;
           height: 1rem;
-          color: var(--db-amber);
+          color: var(--ce-primary);
         }
       }
 
@@ -2071,14 +2081,14 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         align-items: center;
         gap: 10px;
         padding: 10px 14px;
-        background: #faf7f2;
-        border: 1px solid #e8e0d6;
+        background: var(--ce-surface-variant);
+        border: 1px solid var(--ce-rule);
         border-radius: 8px;
         margin-bottom: 12px;
       }
 
       .res-person-icon {
-        color: var(--db-amber);
+        color: var(--ce-primary);
         font-size: 1.3rem;
         width: 1.3rem;
         height: 1.3rem;
@@ -2095,7 +2105,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .res-person-name {
         font-size: 0.95rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .res-person-email {
         font-size: 0.78rem;
@@ -2152,7 +2162,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .res-member-results {
         display: flex;
         flex-direction: column;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 4px;
         overflow: hidden;
         margin-top: -8px;
@@ -2189,9 +2199,13 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
+        // Was margin-bottom only, so this sat flush against the Post button
+        // above it. Invisible while the bar was cream on a cream page; the
+        // collision only showed once it became a distinct panel (v2-11).
+        margin-top: 24px;
         margin-bottom: 24px;
         padding: 16px;
-        background: var(--db-cream-dark);
+        background: var(--ce-surface-variant);
         border-radius: 8px;
       }
       .back-row {
@@ -2203,14 +2217,21 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         display: flex;
         align-items: flex-start;
         gap: 14px;
-        background: linear-gradient(135deg, var(--db-primary) 0%, #2a6bbf 100%);
-        color: #fff;
+        /* Both stops are the community's own colours. The far stop was a
+           hardcoded #2a6bbf belonging to no community; theme_color_accent is
+           the per-tenant setting that already meant "our second colour", so a
+           community that has not set one gets a flat badge in its primary
+           rather than a stranger's blue. */
+        background: linear-gradient(135deg, var(--ce-primary) 0%, var(--ce-accent) 100%);
+        color: var(--ce-on-brand-blend);
         border-radius: 12px;
         padding: 14px 16px;
         margin-bottom: 16px;
-        box-shadow: 0 2px 10px rgba(30, 77, 140, 0.25);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
         mat-icon {
-          color: var(--db-primary);
+          /* Was var(--ce-primary) -- the same colour as the gradient's own 0%
+             stop, so the icon disappeared into the left end of its badge. */
+          color: var(--ce-on-brand-blend);
           font-size: 2rem;
           width: 2rem;
           height: 2rem;
@@ -2249,7 +2270,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .special-dinner-title {
         font-size: 0.78rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-weight: 600;
         font-style: italic;
       }
@@ -2269,7 +2290,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         gap: 8px;
         font-size: 1rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         margin: 0 0 16px;
         mat-icon {
           font-size: 1.1rem;
@@ -2280,7 +2301,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .discussion-section {
         margin-top: 24px;
         padding-top: 20px;
-        border-top: 1px solid #e8e0d6;
+        border-top: 1px solid var(--ce-rule);
       }
       .no-comments {
         color: #999;
@@ -2301,7 +2322,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .reply-block {
         padding: 10px 0 10px 16px;
-        border-left: 2px solid #e8e0d6;
+        border-left: 2px solid var(--ce-rule);
         margin-top: 8px;
       }
       .replies-list {
@@ -2318,7 +2339,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       .comment-author {
         font-weight: 600;
         font-size: 0.88rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .comment-time {
         font-size: 0.78rem;
@@ -2342,7 +2363,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         }
         color: #bbb !important;
         &:hover {
-          color: var(--db-brown-dark) !important;
+          color: var(--ce-chrome) !important;
         }
       }
       .comment-delete-btn {
@@ -2405,7 +2426,7 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
       }
       .new-comment-form {
         padding-top: 16px;
-        border-top: 1px dashed #e8e0d6;
+        border-top: 1px dashed var(--ce-rule);
         margin-top: 8px;
       }
     `,
@@ -2567,7 +2588,13 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
   readonly cutoffTimeLabel = computed<string>(() => {
     const e = this.event();
     if (!e) return '';
-    const [h, min] = e.eventTime.split(':').map(Number);
+    const [h, min] = (e.eventTime ?? '').split(':').map(Number);
+    // An event with no usable time rendered "12:NaN AM", because every step
+    // below swallows a NaN rather than propagating it: NaN % 12 is falsy so
+    // `|| 12` supplies an hour, and NaN >= 12 is false so the meridiem comes
+    // out AM. The result reads like a real deadline. Empty string instead, and
+    // the callers drop the line entirely.
+    if (!Number.isFinite(h) || !Number.isFinite(min)) return '';
     let cm = h * 60 + min - 150;
     const prevNight = cm < 0;
     if (prevNight) cm += 24 * 60;

@@ -190,7 +190,7 @@ const TYPE_LABELS: Record<string, string> = {
       .ach-title-badge {
         font-size: 0.75rem;
         background: #eaf0fa;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         border-radius: 10px;
         padding: 2px 8px;
       }

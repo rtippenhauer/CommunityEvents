@@ -141,15 +141,15 @@ interface CalendarDay {
         flex-wrap: wrap;
         gap: 12px;
         padding: 0 0 24px;
-        border-bottom: 1px solid var(--db-cream-dark);
+        border-bottom: 1px solid var(--ce-surface-variant);
         margin-bottom: 28px;
       }
 
       .page-title {
-        font-family: var(--db-font-display);
+        font-family: var(--ce-font-display);
         font-size: 1.8rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         margin: 0 0 4px;
       }
 
@@ -174,7 +174,7 @@ interface CalendarDay {
         position: sticky;
         top: 80px;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 12px;
         padding: 16px;
         box-shadow: 0 2px 8px rgba(61, 28, 5, 0.07);
@@ -190,7 +190,7 @@ interface CalendarDay {
       .cal-month-label {
         font-weight: 700;
         font-size: 0.92rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         letter-spacing: 0.01em;
       }
 
@@ -229,27 +229,27 @@ interface CalendarDay {
         &.day {
           cursor: pointer;
           font-weight: 500;
-          color: var(--db-text-dark);
+          color: var(--ce-text);
           transition: background 0.12s;
           &:hover {
-            background: var(--db-cream-dark);
+            background: var(--ce-surface-variant);
           }
         }
 
         &.today {
-          background: var(--db-amber) !important;
-          color: #fff !important;
+          background: var(--ce-primary) !important;
+          color: var(--ce-on-primary) !important;
           font-weight: 700;
         }
 
         &.has-event:not(.today) {
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
           font-weight: 700;
         }
 
         &.selected:not(.today) {
-          background: var(--db-cream-dark);
-          outline: 2px solid var(--db-amber);
+          background: var(--ce-surface-variant);
+          outline: 2px solid var(--ce-primary);
           outline-offset: -2px;
         }
 
@@ -264,13 +264,13 @@ interface CalendarDay {
         width: 4px;
         height: 4px;
         border-radius: 50%;
-        background: var(--db-amber);
+        background: var(--ce-primary);
       }
 
       .today-btn {
         width: 100%;
         font-size: 0.78rem;
-        color: var(--db-amber) !important;
+        color: var(--ce-primary) !important;
       }
 
       .my-only-check {

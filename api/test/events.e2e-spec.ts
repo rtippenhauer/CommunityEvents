@@ -109,6 +109,51 @@ describe('Events CRUD (e2e)', () => {
       expect(res.body.eventDate).toBe('2027-01-05');
       expect(res.body.eventTime).toBe('18:30:00');
     });
+
+    // The GET assertions above passed while POST and PATCH shipped ISO
+    // timestamps, because every one of them created a row and then *fetched*
+    // it. The write responses are what the client actually stores after a save
+    // or a publish, and they were never looked at.
+    //
+    // The symptom: publishing sends only { status }, so the stored time never
+    // moved -- but the response carried "1970-01-01T18:30:00.000Z", the detail
+    // screen set that into its signal, and a 6:30pm event redrew as 12:30.
+    // Splitting that string on ':' also yields Number('1970-01-01T18') = NaN,
+    // which is where "RSVP deadline: 12:NaN AM" came from.
+    it('returns date strings from the CREATE response, not just from a later GET', async () => {
+      const res = await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload({ eventDate: '2027-02-09', eventTime: '18:30' }))
+        .expect(201);
+
+      expect(res.body.eventDate).toBe('2027-02-09');
+      expect(res.body.eventTime).toBe('18:30:00');
+    });
+
+    it('returns date strings from the UPDATE response, and publishing does not move the time', async () => {
+      const created = await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload({ eventDate: '2027-02-16', eventTime: '18:30' }))
+        .expect(201);
+
+      const published = await request(server)
+        .patch(`/api/v1/events/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .send({ status: 'published' })
+        .expect(200);
+
+      expect(published.body.eventTime).toBe('18:30:00');
+      expect(published.body.eventDate).toBe('2027-02-16');
+      // And the stored value is untouched, which it always was -- the defect
+      // was entirely in what the write response handed back.
+      const after = await request(server)
+        .get(`/api/v1/events/${created.body.id}`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(after.body.eventTime).toBe('18:30:00');
+    });
   });
 
   describe('POST /events (create)', () => {

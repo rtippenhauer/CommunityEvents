@@ -275,7 +275,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
       .brand-tagline {
         margin: 8px 0 0;
         font-style: italic;
-        color: var(--db-text-mid);
+        color: var(--ce-text-muted);
         font-size: 0.9rem;
       }
 
@@ -316,7 +316,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
         gap: 6px;
         margin: 0;
         font-weight: 600;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-size: 0.95rem;
 
         .label-icon {
@@ -330,7 +330,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
         margin: 0;
         font-size: 1.4rem;
         font-weight: 700;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         line-height: 1.3;
       }
 
@@ -345,7 +345,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
         align-items: flex-start;
         gap: 8px;
         font-size: 0.9rem;
-        color: var(--db-text-mid);
+        color: var(--ce-text-muted);
 
         mat-icon {
           font-size: 18px;
@@ -353,7 +353,7 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
           height: 18px;
           flex-shrink: 0;
           margin-top: 2px;
-          color: var(--db-accent);
+          color: var(--ce-accent);
         }
       }
 
@@ -453,14 +453,14 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
       }
 
       .email-toggle-btn {
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-size: 0.9rem;
       }
 
       .expires-note {
         margin: 0;
         font-size: 0.78rem;
-        color: var(--db-text-mid);
+        color: var(--ce-text-muted);
         text-align: center;
       }
 
@@ -481,12 +481,12 @@ type PageState = 'loading' | 'ready' | 'invalid' | 'expired' | 'full' | 'revoked
         h2 {
           margin: 0 0 12px;
           font-size: 1.25rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
 
         p {
           margin: 0;
-          color: var(--db-text-mid);
+          color: var(--ce-text-muted);
           font-size: 0.9rem;
         }
 

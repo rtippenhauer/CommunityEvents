@@ -138,7 +138,7 @@ import { CityService } from '../../../core/services/city.service';
         h1 {
           margin: 0;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .center {
@@ -148,7 +148,7 @@ import { CityService } from '../../../core/services/city.service';
       }
       .form-panel {
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 10px;
         padding: 24px;
         margin-bottom: 24px;
@@ -158,7 +158,7 @@ import { CityService } from '../../../core/services/city.service';
         margin: 0 0 16px;
         font-size: 1.1rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .full-width {
         width: 100%;
@@ -179,7 +179,7 @@ import { CityService } from '../../../core/services/city.service';
         display: flex;
         align-items: center;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 8px;
         padding: 12px 16px;
         gap: 12px;
@@ -215,7 +215,7 @@ import { CityService } from '../../../core/services/city.service';
       .ann-row-title {
         font-size: 0.95rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;

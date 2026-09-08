@@ -312,7 +312,7 @@ interface Member {
         cursor: zoom-in;
         transition: box-shadow 0.15s;
         &:hover {
-          box-shadow: 0 0 0 3px var(--db-amber);
+          box-shadow: 0 0 0 3px var(--ce-primary);
         }
         img {
           width: 100%;
@@ -413,12 +413,12 @@ interface Member {
         min-height: 20px !important;
       }
       .role-admin {
-        --mat-chip-label-text-color: #fff;
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       .role-moderator {
-        --mat-chip-label-text-color: #fff;
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       .chip-banned {
         background: #ffccbc !important;
@@ -452,8 +452,8 @@ interface Member {
       .new-badge {
         font-size: 0.62rem;
         font-weight: 700;
-        background: var(--db-primary);
-        color: #fff;
+        background: var(--ce-primary);
+        color: var(--ce-on-primary);
         border-radius: 10px;
         padding: 1px 7px;
         letter-spacing: 0.04em;
@@ -461,7 +461,7 @@ interface Member {
       }
       .member-title {
         font-size: 0.72rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-style: italic;
       }
       .provider-badges {

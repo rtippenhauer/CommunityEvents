@@ -59,7 +59,7 @@ import { AnnouncementsService, Announcement } from '../../core/services/announce
         h1 {
           margin: 0;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .center {
@@ -81,7 +81,7 @@ import { AnnouncementsService, Announcement } from '../../core/services/announce
       .ann-card {
         display: block;
         background: #fff;
-        border: 1px solid #e8e0d6;
+        border: 1px solid var(--ce-rule);
         border-radius: 10px;
         padding: 16px 20px;
         text-decoration: none;
@@ -103,7 +103,7 @@ import { AnnouncementsService, Announcement } from '../../core/services/announce
       .ann-date {
         font-size: 0.75rem;
         font-weight: 600;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-transform: uppercase;
         letter-spacing: 0.05em;
       }
@@ -119,7 +119,7 @@ import { AnnouncementsService, Announcement } from '../../core/services/announce
         margin: 0 0 8px;
         font-size: 1.05rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .ann-author {
         display: flex;

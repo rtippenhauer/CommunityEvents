@@ -78,7 +78,7 @@ export interface PointsHistoryDialogData {
         white-space: nowrap;
       }
       .ph-achievement {
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .ph-points {
         font-weight: 600;
@@ -90,7 +90,7 @@ export interface PointsHistoryDialogData {
         justify-content: space-between;
         margin-top: 10px;
         padding-top: 10px;
-        border-top: 2px solid #e8e0d6;
+        border-top: 2px solid var(--ce-rule);
         font-weight: 700;
         font-size: 0.95rem;
       }

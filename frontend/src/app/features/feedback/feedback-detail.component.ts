@@ -222,7 +222,7 @@ import { isElevatedRole } from '../../core/utils/roles.util';
       .item-title {
         margin: 0 0 8px;
         font-size: 1.5rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         line-height: 1.3;
       }
       .item-meta {
@@ -383,7 +383,7 @@ import { isElevatedRole } from '../../core/utils/roles.util';
         border: 1px solid rgba(0, 0, 0, 0.23);
         border-radius: 4px;
         &:focus-within {
-          border-color: var(--db-primary);
+          border-color: var(--ce-primary);
           border-width: 2px;
         }
       }

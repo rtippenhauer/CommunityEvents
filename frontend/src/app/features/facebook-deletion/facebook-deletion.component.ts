@@ -85,7 +85,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
 
       h1 {
         font-size: 1.75rem;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
         margin: 0 0 12px;
       }
       .lead {
@@ -128,7 +128,7 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
       }
 
       .contact a {
-        color: var(--db-primary);
+        color: var(--ce-primary);
       }
     `,
   ],

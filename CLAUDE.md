@@ -34,16 +34,56 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-11` — a real colour system. `v2-10` established
-that a community's identity is *data* and left the styling half open: the CSS
-variables are still named `--db-*` and semantically brown (`--db-brown-nav`,
-`--db-cream`), and `applyChrome` pins on-colours to white, so an admin choosing
-a light primary gets poor contrast. Swapping the values is cheap — 390 component
-references all resolve through variables — but renaming them honestly touches
-all 390. The parked Community Events Project brand direction (blue/purple, Inter,
-Lucide, automatic contrast) mostly lands here. See `V2_PHASES.md`.
+**Current v2 work item:** `v2-12` — the OAuth callback on a community's own
+host, the follow-on `v2-8` deferred with its four-case table worked out. See
+`V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-11` — A real colour system** (2026-09-08). Three seeds an admin sets
+  (`--ce-primary`, `--ce-accent`, `--ce-surface`) feed every other token;
+  overrides are laid on at *read* time so a later seed change cannot silently
+  discard or staleize them. `core/utils/palette.ts` is pure and DOM-free, which
+  is the whole reason a live preview is possible — the derivation used to write
+  straight to `document.documentElement.style`, so previewing meant mutating the
+  running page.
+
+  **Every `on-` colour is measured.** They were pinned to white, which failed on
+  the seeded amber itself: white on `#C9933A` is 2.72:1. `ON_LIGHT` is pure
+  black deliberately — swept over the whole HSL cube the worst achievable
+  contrast is 4.584:1 with black and 4.173:1 with a softened `#1a1a1a`, so only
+  black clears AA for *every* colour an admin can pick. A spec sweeps the cube
+  so it cannot be quietly re-softened.
+
+  **The tokens are named for their job now**, not their colour: 445 references
+  across 66 files went from `--db-*` (brown, cream, amber, whatever the source
+  said while holding a community's blue) to `--ce-*`, and three duplicate
+  aliases died with the rename.
+
+  **Two surface bugs found only on stage, and both are the same shape.**
+  `mat.theme()` is seeded with `mat.$orange-palette` and M3 tints its *neutrals*
+  from that, so every card and menu was amber cream for every community with
+  nothing able to change it — `materialSurfaceTokens` now derives the whole
+  `--mat-sys-surface` family. Then 44 declarations across 16 components named a
+  cream or brown outright, below where any theme token reaches. Mapping those
+  had to be property-aware: `#3d1c05` as a background is the nav, as a colour it
+  is body ink.
+
+  **Enumerating known-bad values only finds what you already knew.** The first
+  sweep took a list of twelve exact hexes; components had drifted to
+  near-neighbours (`#fffaf3` is not `#fdfaf5`) that looked identical on screen
+  and matched nothing. Detection is by *colour* now — light in every channel and
+  warmer than it is cool — which found the announcement splash and three more.
+
+  **A dark page background is refused, not supported** — see `v2-26`. The
+  derivation handles one correctly and the app cannot draw it.
+
+  Rob's stage testing found six defects no test caught, plus three unrelated
+  ones. The load-bearing one: **`POST /events` and `PATCH /events/:id` returned
+  ISO timestamps** where the GETs return date strings, so publishing an event
+  redrew 6:30pm as 12:30 and `cutoffTimeLabel` rendered `12:NaN AM`. Exactly the
+  trap `prisma-date.util.ts` warns about in its own doc comment. The existing
+  wire-format tests missed it because every one created a row and then *fetched*
+  it — asserting the GET, never the write response a client actually stores.
 - **`v2-10` — CommunityEvents branding replaces the DinnerBears defaults**
   (2026-09-05). The reframe held — nothing needed to keep working as a
   DinnerBears default — but **two of the three problems were solved by building
@@ -500,6 +540,20 @@ frontend work unless/until a future requirements doc says otherwise.
 - **Functional route guards** — use `CanActivateFn`
 - **Lazy-loaded routes** — each feature is a lazy route group
 - **Angular Material** — use Mat components wherever one exists
+- **Never write a colour literal in a component** (v2-11) — use a `--ce-*`
+  token. A hex in a component is a colour belonging to no community, and it
+  sits below where any theme setting reaches: 44 such declarations survived
+  two branding items precisely because nothing could see them. The tokens are
+  named for their job (`--ce-chrome` is the nav, `--ce-rule` is a hairline),
+  never for the colour they hold. Text on a coloured surface uses the matching
+  `--ce-on-*`, which is measured for contrast rather than assumed white.
+  Success and error tints are the deliberate exception — red means error
+  whatever a community has chosen — as are third-party brand colours.
+- **`core/utils/palette.ts` is the only place colours are derived, and it is
+  pure** — no DOM. `BrandConfigService` writes what it returns and the admin
+  preview renders the same thing, so what an admin previews is by construction
+  what they get. A derivation that touches `document` cannot be previewed
+  without mutating the page being previewed on.
 
 ## NestJS Conventions (STRICT)
 - **One module per feature** — AuthModule, UsersModule, RestaurantsModule, etc.

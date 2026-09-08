@@ -122,7 +122,7 @@ const cardCache = new Map<number, MemberCardData>();
       .card-name {
         font-weight: 600;
         font-size: 0.9rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-decoration: none;
         white-space: nowrap;
         overflow: hidden;
@@ -139,7 +139,7 @@ const cardCache = new Map<number, MemberCardData>();
         overflow: hidden;
         text-overflow: ellipsis;
         &:hover {
-          color: var(--db-primary);
+          color: var(--ce-primary);
           text-decoration: underline;
         }
       }
@@ -170,12 +170,12 @@ const cardCache = new Map<number, MemberCardData>();
         min-height: 18px !important;
       }
       .role-admin {
-        --mat-chip-label-text-color: #fff;
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       .role-moderator {
-        --mat-chip-label-text-color: #fff;
-        background: var(--db-primary) !important;
+        --mat-chip-label-text-color: var(--ce-on-primary);
+        background: var(--ce-primary) !important;
       }
       .chip-banned {
         background: #ffccbc !important;

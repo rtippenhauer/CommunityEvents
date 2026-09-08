@@ -234,7 +234,7 @@ type PageState =
     `
       .guest-rsvp-page {
         min-height: 100vh;
-        background: var(--db-cream);
+        background: var(--ce-surface);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -243,7 +243,7 @@ type PageState =
 
       .brand-header {
         width: 100%;
-        background: #3d1c05;
+        background: var(--ce-chrome);
         display: flex;
         justify-content: center;
         padding: 20px 0;
@@ -295,7 +295,7 @@ type PageState =
       }
 
       .invite-icon {
-        color: var(--db-amber);
+        color: var(--ce-primary);
         font-size: 1.2rem;
         width: 1.2rem;
         height: 1.2rem;
@@ -304,7 +304,7 @@ type PageState =
       .event-title {
         font-size: 1.5rem;
         font-weight: 700;
-        color: var(--db-brown-dark, #3d1c05);
+        color: var(--ce-chrome, #3d1c05);
         margin: 0 0 20px;
         line-height: 1.25;
       }
@@ -315,7 +315,7 @@ type PageState =
         gap: 10px;
         margin-bottom: 24px;
         padding: 16px;
-        background: #faf7f2;
+        background: var(--ce-surface-variant);
         border-radius: 10px;
       }
 
@@ -336,7 +336,7 @@ type PageState =
       }
 
       .address-link {
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-decoration: none;
         &:hover {
           text-decoration: underline;
@@ -384,7 +384,7 @@ type PageState =
         h2 {
           margin: 0;
           font-size: 1.4rem;
-          color: var(--db-brown-dark, #3d1c05);
+          color: var(--ce-chrome, #3d1c05);
         }
         p {
           margin: 4px 0 0;

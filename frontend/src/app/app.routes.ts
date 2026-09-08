@@ -308,6 +308,14 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    path: 'admin/appearance',
+    loadComponent: () =>
+      import('./features/admin/appearance/admin-appearance.component').then(
+        (m) => m.AdminAppearanceComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/settings',
     loadComponent: () =>
       import('./features/admin/settings/admin-settings.component').then(

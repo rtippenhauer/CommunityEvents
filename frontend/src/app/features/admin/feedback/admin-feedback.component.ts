@@ -274,7 +274,7 @@ import {
         h1 {
           margin: 0;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .header-actions {
@@ -534,7 +534,7 @@ import {
         border-radius: 4px;
         margin-bottom: 8px;
         &:focus-within {
-          border-color: var(--db-primary);
+          border-color: var(--ce-primary);
         }
       }
       .note-quill {

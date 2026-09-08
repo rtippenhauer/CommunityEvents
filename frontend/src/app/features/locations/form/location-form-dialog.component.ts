@@ -308,13 +308,13 @@ interface City {
         cursor: pointer;
         text-align: left;
         &:hover {
-          background: #faf7f2;
+          background: var(--ce-surface-variant);
         }
       }
       .place-result-name {
         font-size: 0.9rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .place-result-addr {
         font-size: 0.78rem;
@@ -375,7 +375,7 @@ interface City {
       .saved-name {
         font-size: 1.4rem;
         font-weight: 700;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .saved-address {
         display: flex;
@@ -415,7 +415,7 @@ interface City {
         }
       }
       .saved-link {
-        color: var(--db-primary);
+        color: var(--ce-primary);
         text-decoration: none;
         &:hover {
           text-decoration: underline;

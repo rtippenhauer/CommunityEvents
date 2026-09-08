@@ -168,7 +168,7 @@ interface City {
         h1 {
           margin: 0;
           font-size: 1.75rem;
-          color: var(--db-brown-dark);
+          color: var(--ce-chrome);
         }
       }
       .header-actions {
@@ -217,7 +217,7 @@ interface City {
       .card-photo {
         height: 180px;
         overflow: hidden;
-        background: var(--db-cream-dark);
+        background: var(--ce-surface-variant);
         img {
           width: 100%;
           height: 100%;
@@ -239,12 +239,12 @@ interface City {
         margin: 0 0 4px;
         font-size: 1.1rem;
         font-weight: 600;
-        color: var(--db-brown-dark);
+        color: var(--ce-chrome);
       }
       .location-city {
         margin: 0 0 4px;
         font-size: 0.8rem;
-        color: var(--db-primary);
+        color: var(--ce-primary);
         font-weight: 500;
       }
       .location-address {

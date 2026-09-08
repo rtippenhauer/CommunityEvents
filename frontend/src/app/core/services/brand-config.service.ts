@@ -2,7 +2,12 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
-import { reshade, darkenBy } from '../utils/color.util';
+import {
+  PALETTE_TOKENS,
+  materialSurfaceTokens,
+  parseOverrides,
+  resolvePalette,
+} from '../utils/palette';
 import { wordmarkDataUri, splashDataUri, monogramDataUri } from '../utils/brand-mark.util';
 
 /** The social sign-ins a community offers. See BrandConfig.authProviders. */
@@ -17,6 +22,14 @@ export interface BrandConfig {
   colorPrimary: string;
   colorAccent: string;
   colorBackground: string;
+  /**
+   * Per-token colour overrides, as the raw JSON text stored in `app_config`.
+   * Empty means "derive everything from the three seeds", which is what almost
+   * every community will have. Kept as text rather than a parsed object so the
+   * transport carries exactly what was stored, and `parseOverrides` is the one
+   * place that decides what a malformed blob means (nothing).
+   */
+  paletteOverrides: string;
   logoUrl: string;
   splashUrl: string;
   /**
@@ -123,6 +136,7 @@ const DEFAULT_BRAND: BrandConfig = {
   colorPrimary: '#C9933A',
   colorAccent: '#C9933A',
   colorBackground: '#FDFAF5',
+  paletteOverrides: '',
   logoUrl: '',
   splashUrl: '',
   errorUrl: '',
@@ -184,11 +198,13 @@ const DEFAULT_BRAND: BrandConfig = {
 
 // Loaded once via provideAppInitializer (see app.config.ts), same pattern
 // as AuthService.init(). Colors are applied as CSS custom-property
-// overrides so every component already using var(--db-primary) etc. picks
-// up a fork's theme with no rebuild — see styles.scss for the full
-// variable set this deliberately does NOT touch (derived/hover shades
-// like --db-primary-dark stay fixed; only the three core brand colors are
-// configurable for now). Logo/splash/icon images follow the same pattern:
+// overrides so every component already using var(--ce-primary) etc. picks
+// up a fork's theme with no rebuild. The three configured seeds (primary,
+// accent, background) are the input and `core/utils/palette.ts` does the
+// derivation, with any per-token overrides laid over the result at read time.
+// This service only writes what that returns — keeping the derivation pure is
+// what lets the admin screen preview a palette without touching the live page.
+// styles.scss holds the same set as literals for the pre-JS paint only. Logo/splash/icon images follow the same pattern:
 // an admin-uploaded URL overrides the compiled-in default asset.
 @Injectable({ providedIn: 'root' })
 export class BrandConfigService {
@@ -289,61 +305,43 @@ export class BrandConfigService {
 
   private applyColors(config: BrandConfig): void {
     const root = document.documentElement.style;
-    root.setProperty('--db-primary', config.colorPrimary);
-    root.setProperty('--db-amber', config.colorPrimary);
-    root.setProperty('--db-accent', config.colorAccent);
-    root.setProperty('--db-cream', config.colorBackground);
+    const palette = resolvePalette(
+      {
+        primary: config.colorPrimary,
+        accent: config.colorAccent,
+        background: config.colorBackground,
+      },
+      parseOverrides(config.paletteOverrides),
+    );
+
+    for (const token of PALETTE_TOKENS) {
+      root.setProperty(token, palette[token]);
+    }
 
     // Angular Material's M3 component styles fall back to these --mat-sys-*
-    // system tokens internally (see styles.scss's mat.theme() call) — this
-    // is what makes color="primary"/"accent" Material components (buttons,
-    // toggles, checkboxes, form-field focus states, etc.) follow the admin's
-    // chosen colors too, not just elements hand-styled with var(--db-*).
-    // "on-*" text/icon colors are fixed to white rather than recomputed —
-    // an admin choosing a very light primary/accent color will get low
-    // contrast until per-color contrast computation is built.
-    root.setProperty('--mat-sys-primary', config.colorPrimary);
-    root.setProperty('--mat-sys-on-primary', '#ffffff');
+    // system tokens internally (see styles.scss's mat.theme() call) — this is
+    // what makes color="primary"/"accent" Material components (buttons,
+    // toggles, checkboxes, form-field focus states) follow the community's
+    // colours too, not just elements hand-styled with var(--ce-*).
+    //
+    // They read from the *resolved* palette, so a per-token override reaches
+    // Material as well. Deriving them from the raw seeds instead would let an
+    // admin override --ce-on-primary and still get the old label colour on
+    // every Material button — the same class of split the token layer exists
+    // to prevent.
+    root.setProperty('--mat-sys-primary', palette['--ce-primary']);
+    root.setProperty('--mat-sys-on-primary', palette['--ce-on-primary']);
     // Material's M2-compatibility layer maps color="accent" to M3's
     // "tertiary" system color, not "secondary".
-    root.setProperty('--mat-sys-tertiary', config.colorAccent);
-    root.setProperty('--mat-sys-on-tertiary', '#ffffff');
+    root.setProperty('--mat-sys-tertiary', palette['--ce-accent']);
+    root.setProperty('--mat-sys-on-tertiary', palette['--ce-on-accent']);
 
-    this.applyChrome(config.colorPrimary, config.colorBackground);
-  }
-
-  // Derive the dark "chrome" palette (toolbar, sidenav, footer, stage banner,
-  // hover shades) from the single configured primary + background, so a fork
-  // gets a coherent dark UI in its own hue instead of DinnerBears' hardcoded
-  // browns. styles.scss keeps the browns as the compiled-in fallback for the
-  // pre-JS paint; these runtime values override them once branding loads.
-  // Absolute target lightness values are chosen to sit near DinnerBears'
-  // original hand-picked browns when primary is the amber default — a
-  // different brand hue (e.g. Sons' green) yields the equivalent dark tones in
-  // that hue. Saturation is forced up for the darkest tones so they read as a
-  // rich shade of the brand rather than muddy near-black.
-  private applyChrome(primary: string, background: string): void {
-    const root = document.documentElement.style;
-    // Dark brown/chrome family — target lightness, boosted saturation.
-    root.setProperty('--db-brown', reshade(primary, 9, 80));
-    root.setProperty('--db-brown-dark', reshade(primary, 13, 80));
-    root.setProperty('--db-brown-nav', reshade(primary, 13, 80));
-    root.setProperty('--db-brown-card', reshade(primary, 16, 80));
-    root.setProperty('--db-brown-mid', reshade(primary, 24, 85));
-    // Stage banner — a saturated mid-dark shade of the brand.
-    root.setProperty('--db-banner', reshade(primary, 35, 90));
-    // Hover shades of the primary (keep the brand's own saturation).
-    root.setProperty('--db-primary-dark', reshade(primary, 37));
-    root.setProperty('--db-amber-dark', reshade(primary, 37));
-    // Accent for text/marks sitting ON the dark chrome (stats strip, story
-    // section). The raw primary works on light backgrounds, but a *dark* brand
-    // color (e.g. Sons' green) has almost no contrast against its own derived
-    // dark-chrome shade — so use a lightened tint here instead.
-    root.setProperty('--db-accent-on-dark', reshade(primary, 66));
-    // Muted secondary-text-on-dark tone: a light, desaturated brand tint.
-    root.setProperty('--db-cream-muted', reshade(primary, 65, 38));
-    // Slightly darker cream, derived from the background (the inset nav band).
-    root.setProperty('--db-cream-dark', darkenBy(background, 8));
+    // The surfaces those controls sit on. Without these, cards/menus/dialogs
+    // keep whatever mat.theme() baked from mat.$orange-palette at build time --
+    // amber-tinted cream for every community, configurable by nobody.
+    for (const [token, value] of Object.entries(materialSurfaceTokens(palette))) {
+      root.setProperty(token, value);
+    }
   }
 
   // Swaps the live favicon + apple-touch-icon <link>s. index.html's static
