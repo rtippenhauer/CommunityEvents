@@ -90,14 +90,16 @@ interface Invite {
             </mat-form-field>
 
             @if (form.value.type === 'member') {
+              <!-- Name before email, matching the guest fields on an event.
+                   The two screens asked for the same pair in opposite orders. -->
+              <mat-form-field appearance="outline">
+                <mat-label>Invitee Name (optional)</mat-label>
+                <input matInput formControlName="boundToName" />
+              </mat-form-field>
               <mat-form-field appearance="outline">
                 <mat-label>Invitee Email</mat-label>
                 <input matInput formControlName="boundToEmail" type="email" />
                 <mat-hint>This link will only work for this email address</mat-hint>
-              </mat-form-field>
-              <mat-form-field appearance="outline">
-                <mat-label>Invitee Name (optional)</mat-label>
-                <input matInput formControlName="boundToName" />
               </mat-form-field>
             }
 

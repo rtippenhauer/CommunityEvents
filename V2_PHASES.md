@@ -1802,3 +1802,59 @@ surface follows it — cards, dialogs, menus, form fields and the admin screens
 included — with no literal light background left in a component. The
 `kind: 'unsupported'` warning and its prompt wording are removed in the same
 change, since they exist only to describe this gap.
+
+### v2-27 — One way to send an email
+
+**Status:** Not started. No dependencies; can land whenever. Numbered next-free
+rather than as a running order, like v2-26 — it belongs before v2-25, which is
+deliberately last.
+
+**Rob's question, 2026-09-07:** "Why do we send some emails immediately but
+queue others? Should immediate sends go in the queue too and just start it up,
+so there is only one way to send messages?" Yes, with one prerequisite that
+turns out to be a bug already present.
+
+There are two send paths. `EmailService.sendNow` goes straight to the provider
+and is used in five places — password reset, email verification, the
+account-locked security alert, and two event confirmations — all of them things
+a person is watching a screen waiting for. `EmailService.queue` writes a row
+that `EmailDispatcherService` drains every five minutes, twenty at a time,
+ordered by priority then age, grouped per community so each one's provider
+config and counter are loaded once.
+
+**The duplication has already cost us.** `sendNow` counts its own sends, and
+before v2-9 it did not — password resets and verifications were invisible to
+the daily counter entirely. The dispatcher's counter write is a *delta* rather
+than an absolute purely because a second writer exists; that comment is a long
+apology for having two paths.
+
+**The prerequisite: the dispatcher has no claim step.** It selects rows
+`WHERE status = PENDING`, sends, and only then writes SENT/FAILED. Nothing
+marks a row as in-flight. That is safe only while exactly one dispatcher runs,
+and **that is already not true**: Admin → Send Now calls `dispatchPending` from
+a request, so an admin pressing it while the cron is mid-run can double-send.
+Latent today, routine under any change that dispatches more often.
+
+So the first change is an atomic claim -- `updateMany` from PENDING to a
+SENDING state conditional on the row still being PENDING, then send only what
+was actually claimed. **That is worth doing on its own**, before and
+independently of any unification, because it fixes a live hazard.
+
+**Then unify, but keep the send synchronous for the waiting-user cases.**
+Enqueue-and-return would let a request succeed the moment the row is written,
+so a member is told to check their email before anything has been attempted --
+giving up precisely what `sendNow` exists for. The shape that keeps both: one
+queue, one counting path, one place for branding and suppression, and for a
+reset the request claims and dispatches that single row itself and reports the
+real result.
+
+Ordering needs no change. The queue is `priority ASC, createdAt ASC`, so an
+immediate message at priority 0 goes first rather than queueing behind fifty
+event reminders.
+
+**Definition of done:** one code path writes email, and `sendNow` is either
+gone or a thin wrapper that enqueues at top priority and dispatches its own
+row. Two dispatchers running at once cannot send the same row twice, proven by
+a test that runs them concurrently. The daily counter has a single writer and
+the delta workaround is removed. A password reset still fails loudly in the
+request that asked for it, rather than being accepted and lost.
