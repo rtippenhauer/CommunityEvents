@@ -1522,6 +1522,25 @@ own-domain community with no Brevo key. `stage.rtippenhauer.com` has its own
 key, so that path is covered by inspection only. It is a refusal message rather
 than behaviour, which is why that was acceptable.
 
+**Landed on this branch but belonging elsewhere: the footer named a company
+that does not exist.** `app.component.html` built its copyright line as
+`{{ brand().name }}.Com, LLC` -- correct for exactly one community, since
+"DinnerBears" + ".Com, LLC" was v1's real legal entity, and a manufactured
+company for every other. Worse, it disagreed with that same community's own
+Terms, which have always been filled from `LEGAL_ENTITY_NAME`.
+
+Third instance of the shape v2-10 named: **the data existed and was simply
+never served.** `fillLegalCopy` had resolved this value since v2-10 --
+deployment-wide env, falling back to the community's own name -- but only into
+Terms and Privacy HTML, never into the branding payload. The fix serves
+`legalEntity` beside `foundingLabel` and `supportEmail`, which arrived the same
+way and for the same reason, and both sides now resolve it identically so the
+footer and the Terms page cannot name two different companies.
+
+Spotted by Rob reading the stage footer, not by any test -- and nothing could
+have caught it, since a hardcoded suffix in a template is exactly as valid as a
+correct one. There is a test now.
+
 **Two behaviour changes that are not in the definition of done** and need
 testing anyway: the root tenant now signs in with no handoff row (its callback
 always landed on its own host), and `baseUrlFor` was refactored to cache the

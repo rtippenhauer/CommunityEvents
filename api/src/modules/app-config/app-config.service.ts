@@ -563,6 +563,8 @@ export class AppConfigService {
      * already servable from /config/:key.
      */
     legalReviewed: boolean;
+    /** Who operates the deployment, for the copyright line. See the value below. */
+    legalEntity: string;
     /** This community's support address, not a deployment-wide one (v2-10). */
     supportEmail: string;
     /** What this community calls its founding badge (v2-10). */
@@ -662,6 +664,18 @@ export class AppConfigService {
       // that renames the badge sees the new name in the surrounding UI (merch
       // gate, achievement headers) instead of a name derived from its brand.
       foundingLabel: await this.foundingAchievementLabel(),
+      // Who operates this deployment, for the copyright line. Served rather
+      // than derived: the footer used to render `<brand name>.Com, LLC`, which
+      // was correct for exactly one community and manufactured a company that
+      // does not exist for every other -- and it disagreed with this community's
+      // own Terms, which have always been filled from this same value. Same
+      // shape as foundingLabel and supportEmail above: the data existed, it was
+      // just never sent.
+      //
+      // Deployment-wide (LEGAL_ENTITY_NAME), falling back to the community's own
+      // name -- see fillLegalCopy, which resolves it identically so the footer
+      // and the Terms page cannot name two different companies.
+      legalEntity: this.config.get<string>('LEGAL_ENTITY_NAME')?.trim() || name,
       legalReviewed: legalReviewedAt.trim().length > 0,
       // The requesting tenant's own canonical URL, not the deployment's. Every
       // other field in this payload is per-tenant (app_config is scoped now), so
