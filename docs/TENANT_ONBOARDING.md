@@ -68,18 +68,37 @@ the deployment's env var. Blank means inherit.
 
 ## 3. A Brevo account
 
-### One account per community, or one shared — both work (v2-9)
+### One account per community, or one shared — which you get depends on the domain
 
 `email_provider_config` is per-community as of v2-9: a community can hold its
-own Brevo key, sending identity and daily quota. A community that sets none
-falls back to the deployment's env vars exactly as before, so sharing one
-account across several communities is still a supported setup, not a leftover.
+own Brevo key, sending identity and daily quota.
+
+**Whether it may fall back to the deployment's account depends on whose domain
+it is on (v2-12):**
+
+| The community is on | Falls back to the deployment's Brevo account |
+| --- | --- |
+| a subdomain of this deployment | yes — sets nothing and it just sends |
+| its own domain | **no — it must set its own key** |
+
+Same rule as Google sign-in, and for the same reason. A community at
+`dayton.<deployment host>` visibly *is* this platform, so mail from the
+deployment's address describes it accurately. A community on its own domain
+presents as its own entity, where it does not — and its Brevo account would be
+the one that has verified its sending domain in any case.
+
+> **A community on its own domain cannot send anything until its key is set.**
+> Not reduced — inert. Registration is invite-gated, and invitations, address
+> verification and password resets are all mail, so there is no way to join it
+> or get back into it. Admin → Email says so in place of the usual "falls back
+> to the env var" hint. Set the key as part of creating such a community, not
+> afterwards.
 
 One account authenticates **many sending domains**, so a second Brevo account is
 not needed just to send from a second domain — and Brevo's terms limit a user to
-one account without prior authorization. Reach for a second account when a
-community should own its own billing, quota and reputation, not when it merely
-has its own domain.
+one account without prior authorization. But a community on its own domain needs
+its own **key** regardless, which in practice means either its own account or a
+key issued from yours.
 
 ### The API key: no expiry, but it is not permanent either
 
@@ -362,26 +381,43 @@ Provider-side setup, which is the same whoever ends up holding the credentials:
    need verification, which takes time — start it early.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**,
    type **Web application**.
-4. **Authorized redirect URI**: this deployment's own callback, which is **not
-   the community's host**:
+4. **Authorized redirect URI**: there are two answers, and which one applies
+   depends on whose domain the community is on. **Copy it from Admin → Sign-in
+   Providers**, which shows the one that applies to that community with a copy
+   button, rather than typing either from here. It must match exactly: scheme,
+   host, path, no trailing slash. A mismatch gives `redirect_uri_mismatch`,
+   which is at least an honest error.
+
+   **A community on a subdomain of this deployment** registers the deployment's
+   own callback, which is **not** the community's host:
 
    ```
    https://<deployment host>/api/v1/auth/google/callback
    ```
 
-   The exact value is shown, with a copy button, at **Admin → Sign-in
-   Providers** — copy it from there rather than typing it. It must match
-   exactly: scheme, host, path, no trailing slash. A mismatch gives
-   `redirect_uri_mismatch`, which is at least an honest error.
-
    Pasting the community's own address here is the commonest way to get this
    wrong, and it looks so reasonable that it is worth saying why it is not: a
    provider will not accept a wildcard for subdomains, so one redirect URI per
    community would mean editing Google's console before any new community could
-   offer sign-in — and a community that brings its own domain could not verify
-   it as an authorized domain on this project's consent screen at all. Every
-   callback therefore lands on the one host and is handed back to the community
-   that started it (REQ-TENANT-01.8).
+   offer sign-in. One URI already registered covers every client in the project,
+   so a new community here needs no console interaction at all. The callback
+   lands on that one host and is handed back to the community that started it
+   (REQ-TENANT-01.8).
+
+   **A community on its own domain** registers its own host instead:
+
+   ```
+   https://<the community's domain>/api/v1/auth/google/callback
+   ```
+
+   This is not a preference — it is the only URI that will work. Adding an
+   authorized redirect URI requires verifying the domain in Search Console, so
+   this community's operator cannot register the deployment's URI on their own
+   project, and this deployment cannot register theirs on its. Which is also why
+   **a community on its own domain must run its own Google project**: it cannot
+   use this deployment's, so if it will not create one, it offers email/password
+   only (REQ-TENANT-01.9). Its callback arrives on its own host, so no handoff is
+   needed and the session cookie is set directly (v2-12).
 5. Copy the **Client ID** and **Client secret**.
 6. In the community, sign in as an admin and go to **Admin → Sign-in
    Providers**. Paste both values under Google and save. The secret is stored

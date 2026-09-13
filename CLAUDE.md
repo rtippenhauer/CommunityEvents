@@ -35,8 +35,8 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 ## V2 Rewrite Status
 
 **Current v2 work item:** `v2-12` — the OAuth callback on a community's own
-host, the follow-on `v2-8` deferred with its four-case table worked out. See
-`V2_PHASES.md`.
+host, the follow-on `v2-8` deferred with its four-case table worked out.
+Implementation is complete; the stage pass is outstanding. See `V2_PHASES.md`.
 
 **Completed v2 items:**
 - **`v2-11` — A real colour system** (2026-09-08). Three seeds an admin sets
@@ -668,6 +668,29 @@ authoritative (per REQ-TENANT-01.3).
   signed-in user's *linked* accounts, a different question.
   `TenantOAuthService.offeredProviders()` selects only `googleClientId` and
   `facebookAppId` — never the secrets — so answering it decrypts nothing.
+- **Whose domain a community is on decides its fallbacks, and it is derived,
+  never stored** (`isOnDeploymentDomain` in `tenant-domain.util.ts`, reached
+  through `TenantResolutionService.isOnDeploymentDomain(tenantId)`). A community
+  on a subdomain of this deployment may fall back to the deployment's Google app
+  and its Brevo/Resend credentials; a community on its own domain may not, and
+  must bring its own. One predicate answers three questions -- which Google
+  redirect URI applies, whether the OAuth callback needs the handoff hop, and
+  whether the deployment's email credentials may be used -- so a stored flag
+  would be a fourth answer that could disagree with the domain. The suffix match
+  carries a dot: `notcommunityeventsproject.com` is a domain somebody else can
+  register.
+
+  **The root tenant is answered by `is_root`, not by the string compare** -- it
+  *is* the deployment, and a drifted `APP_URL` must not stop the operator's own
+  community sending mail.
+
+  The rule generalises REQ-TENANT-01.9's consent argument rather than replacing
+  it: signing members in through the platform's app, or mailing them from the
+  platform's address, is accurate for a community that visibly *is* the platform
+  and misleading for one that presents as its own entity. **The fallback has
+  three copies** -- `BrevoService.getEffectiveConfig`, `ResendService`, and
+  `BrevoWebhookService.register`, which holds its own `|| env` line; a new one
+  must be gated too.
 - **The OAuth callback runs on one fixed host and hands the session back.**
   `state` is signed and carries the originating tenant; the callback writes a
   single-use `oauth_handoffs` row and redirects to that tenant's own host to
@@ -675,6 +698,17 @@ authoritative (per REQ-TENANT-01.3).
   **before** any error branch (a cancelled sign-in still has to know where to
   return), and the callback resolves a user belonging to a tenant other than the
   host's, so it runs inside an explicit `runWithTenant`.
+
+  **As of `v2-12` the handoff is conditional, and the condition is where the
+  callback landed** -- `req.tenant?.id === state.tenantId`, never a flag saying
+  what kind of community this is. Matching means the cookie can be set here
+  directly and no handoff row is written; not matching means it leaves as a
+  ticket. Used as the branch, this is also the "check the state against
+  `req.tenant`" the design asked for, so the host is never trusted alone: an
+  unexpected landing falls back to the handoff, which works from anywhere.
+  `GoogleOAuthService.callbackUrl` is per-tenant for the same reason and
+  **must return the same value on both legs** -- Google matches `redirect_uri`
+  at the token exchange too, and a mismatch names neither side.
 - Exactly one tenant has `is_root = true`; its admin is the system admin. This
   is a **database constraint**, not a convention: `root_marker` is `true` on the
   root and NULL elsewhere, and its unique index rejects a second root (MySQL has
@@ -921,6 +955,15 @@ authoritative (per REQ-TENANT-01.3).
   never exercised — **no migration in this repo is tested against populated
   data**, which is how it reached stage.
 
+- **A community on its own domain has no email fallback (`v2-12`), and that is
+  fatal in a way the OAuth equivalent is not.** No Google credentials still
+  leaves email/password working; no Brevo key leaves a community nobody can
+  join, since registration is invite-gated and invitations, address verification
+  and password resets are all mail. For now this is a warning on Admin → Email
+  (`mayUseDeploymentCredentials` in the config payload) and nothing more —
+  decided with Rob 2026-09-08, because an operator creating a community by hand
+  may not have the key at that moment. It becomes a hard gate when self-service
+  lands; recorded against `v2-15`.
 - **Email sending is per-community as of `v2-9`.** `email_provider_config` is
   scoped: its Brevo key, From identity, template ids, webhook token and daily
   counters all belong to a community, resolved with the env credentials as the

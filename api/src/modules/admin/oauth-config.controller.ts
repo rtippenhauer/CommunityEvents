@@ -7,6 +7,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import { TenantOAuthService } from '../../common/tenant/tenant-oauth.service';
 import { UserRole } from '../../database/enums';
 import { UpdateOAuthProviderDto } from './dto/update-oauth-provider.dto';
 import type { users as User } from '@prisma/client';
@@ -33,12 +35,21 @@ interface OAuthConfigView {
   google: OAuthProviderView;
   facebook: OAuthProviderView;
   /**
-   * The one redirect URI to register with the provider, identical for every
-   * community on this deployment (REQ-TENANT-01.8). Returned rather than
-   * documented because the commonest way to fail this setup is to paste the
-   * community's own host, which the provider will then reject.
+   * The redirect URI **this** community's operator has to register
+   * (REQ-TENANT-01.8, per-community since v2-12). Returned rather than
+   * documented because it is no longer the same for everyone and there is no
+   * way to tell by looking: a community on a subdomain of this deployment
+   * registers the deployment's one URI, and a community on its own domain
+   * registers its own host. Pasting the other one is the commonest way to fail
+   * this setup, and the provider rejects it with an error that names neither.
    */
   googleRedirectUri: string;
+  /**
+   * Whether this community is on a subdomain of the deployment, which is what
+   * decides the URI above -- shown so an admin can see *why* they were given
+   * the one they were given, rather than having to trust it.
+   */
+  onDeploymentDomain: boolean;
 }
 
 /**
@@ -61,6 +72,8 @@ export class OAuthConfigController {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    private readonly tenantResolution: TenantResolutionService,
+    private readonly tenantOAuth: TenantOAuthService,
   ) {}
 
   private tenantId(req: Request): number {
@@ -81,6 +94,14 @@ export class OAuthConfigController {
       },
     });
 
+    // Taken from the one place that decides it, not derived again here.
+    // An admin screen showing a different URI from the one the flow uses would
+    // be worse than showing none -- it would send somebody to Google's console
+    // to register a value guaranteed to mismatch.
+    const tenantId = this.tenantId(req);
+    const googleRedirectUri = await this.tenantOAuth.googleRedirectUri(tenantId);
+    const onDeploymentDomain = await this.tenantResolution.isOnDeploymentDomain(tenantId);
+
     const view = (clientId?: string | null, secret?: string | null): OAuthProviderView => ({
       clientId: clientId ?? null,
       secretSet: !!secret,
@@ -90,7 +111,8 @@ export class OAuthConfigController {
     return {
       google: view(tenant?.googleClientId, tenant?.googleClientSecret),
       facebook: view(tenant?.facebookAppId, tenant?.facebookAppSecret),
-      googleRedirectUri: `${this.config.getOrThrow<string>('APP_URL')}/api/v1/auth/google/callback`,
+      googleRedirectUri,
+      onDeploymentDomain,
     };
   }
 

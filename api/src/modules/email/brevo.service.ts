@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import type { email_provider_config as EmailProviderConfig } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailTemplateName } from './email.constants';
+import { requireTenantId } from '../../common/tenant/tenant-store';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
 export interface EmailAttachment {
   content: string;
@@ -113,6 +115,7 @@ export class BrevoService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly tenantResolution: TenantResolutionService,
   ) {}
 
   /**
@@ -125,10 +128,33 @@ export class BrevoService {
    */
   private async getEffectiveConfig(): Promise<{ apiKey: string; fromEmail: string; fromName: string }> {
     const db = await this.prisma.email_provider_config.findFirst();
+
+    // Whether this community may fall back to the deployment's own account
+    // (v2-12). A community on a subdomain of this deployment may: it visibly
+    // *is* the platform, so a From address on the deployment's mail domain
+    // describes it accurately. A community on its own domain may not -- mail
+    // from `noreply@communityeventsproject.com` for a community branded as
+    // something else describes nobody, and the same asymmetry that gives OAuth
+    // no platform fallback applies here for the same reason.
+    //
+    // The three values move together, always. Falling back to the key without
+    // the From identity would send on an account that has not verified the
+    // sender domain, which the provider rejects; falling back to the identity
+    // without the key would not send at all.
+    const tenantId = requireTenantId('resolving this community for email sending');
+    const mayFallBack = await this.tenantResolution.isOnDeploymentDomain(tenantId);
+    const env = mayFallBack
+      ? {
+          apiKey: this.config.get<string>('BREVO_API_KEY', ''),
+          fromEmail: this.config.get<string>('BREVO_FROM_EMAIL', 'noreply@communityeventsproject.com'),
+          fromName: this.config.get<string>('BREVO_FROM_NAME', 'CommunityEvents'),
+        }
+      : { apiKey: '', fromEmail: '', fromName: '' };
+
     return {
-      apiKey: db?.brevoApiKey || this.config.get<string>('BREVO_API_KEY', ''),
-      fromEmail: db?.brevoFromEmail || this.config.get<string>('BREVO_FROM_EMAIL', 'noreply@communityeventsproject.com'),
-      fromName: db?.brevoFromName || this.config.get<string>('BREVO_FROM_NAME', 'CommunityEvents'),
+      apiKey: db?.brevoApiKey || env.apiKey,
+      fromEmail: db?.brevoFromEmail || env.fromEmail,
+      fromName: db?.brevoFromName || env.fromName,
     };
   }
 
@@ -143,8 +169,16 @@ export class BrevoService {
   }
 
   async isConfigured(): Promise<boolean> {
-    const { apiKey } = await this.getEffectiveConfig();
-    return apiKey.length > 0;
+    const { apiKey, fromEmail } = await this.getEffectiveConfig();
+
+    // The From address counts as configuration, not decoration (v2-12). It only
+    // ever comes up for a community on its own domain: everywhere else the env
+    // default fills it in. That community brings its own key and therefore its
+    // own sender identity -- its Brevo account has not verified this
+    // deployment's domain -- so a key with no From beside it cannot send, and
+    // saying so here marks the message BLOCKED with a reason instead of
+    // attempting a send the provider rejects for a reason nobody reads.
+    return apiKey.length > 0 && fromEmail.length > 0;
   }
 
   /**

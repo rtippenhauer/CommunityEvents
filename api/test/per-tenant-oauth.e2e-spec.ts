@@ -150,6 +150,78 @@ describe('Per-tenant OAuth (e2e)', () => {
     });
   });
 
+  /**
+   * Whose redirect URI each community registers, and gets sent to (v2-12).
+   *
+   * Tenant A is this deployment's root tenant, so it is on the deployment's own
+   * domain and uses the single registered URI. Tenant B lives on a domain of
+   * its own, so its operator registers -- and the flow must use -- its own host.
+   */
+  describe('which redirect URI a community uses', () => {
+    const APP_URL = 'http://localhost:8081';
+    const DEPLOYMENT_URI = `${APP_URL}/api/v1/auth/google/callback`;
+    const B_OWN_URI = `http://${TENANT_B_DOMAIN}/api/v1/auth/google/callback`;
+
+    /** Gives tenant B its own Google app, as configureGoogleOnA does for A. */
+    async function configureGoogleOnB(): Promise<void> {
+      await request(app.getHttpServer())
+        .put('/api/v1/admin/oauth/google')
+        .set('Host', TENANT_B_DOMAIN)
+        .set('Cookie', cookieB)
+        .send({ clientId: 'tenant-b-client-id', clientSecret: 'tenant-b-secret' })
+        .expect(200);
+      tenants.clearCache();
+    }
+
+    it('sends a community on the deployment domain to the one registered URI', async () => {
+      await configureGoogleOnA();
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/google')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .expect(302);
+
+      expect(new URL(res.headers.location).searchParams.get('redirect_uri')).toBe(
+        DEPLOYMENT_URI,
+      );
+    });
+
+    it('sends a community on its own domain to its own host', async () => {
+      await configureGoogleOnB();
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/google')
+        .set('Host', TENANT_B_DOMAIN)
+        .expect(302);
+
+      expect(new URL(res.headers.location).searchParams.get('redirect_uri')).toBe(B_OWN_URI);
+    });
+
+    it('tells each admin screen the URI that community actually has to register', async () => {
+      await configureGoogleOnA();
+      await configureGoogleOnB();
+
+      const onA = await request(app.getHttpServer())
+        .get('/api/v1/admin/oauth')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .expect(200);
+
+      const onB = await request(app.getHttpServer())
+        .get('/api/v1/admin/oauth')
+        .set('Host', TENANT_B_DOMAIN)
+        .set('Cookie', cookieB)
+        .expect(200);
+
+      // The screen and the flow must agree: an admin shown one URI while the
+      // flow sends another gets a redirect_uri_mismatch naming neither.
+      expect(onA.body.googleRedirectUri).toBe(DEPLOYMENT_URI);
+      expect(onA.body.onDeploymentDomain).toBe(true);
+      expect(onB.body.googleRedirectUri).toBe(B_OWN_URI);
+      expect(onB.body.onDeploymentDomain).toBe(false);
+    });
+  });
+
   describe('the callback', () => {
     it('refuses a state that did not come from us', async () => {
       const res = await request(app.getHttpServer())

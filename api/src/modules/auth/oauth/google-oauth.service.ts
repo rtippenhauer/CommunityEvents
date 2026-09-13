@@ -83,18 +83,6 @@ export class GoogleOAuthService {
   ) {}
 
   /**
-   * The single registered redirect URI (REQ-TENANT-01.8).
-   *
-   * Deliberately `APP_URL` and not `baseUrlFor()`: every community's callback
-   * terminates on this one host, which is the whole reason a new community does
-   * not require an operator to edit Google's console before its members can log
-   * in. This is one of the three places `APP_URL` legitimately survives v2-6.
-   */
-  private callbackUrl(): string {
-    return `${this.config.getOrThrow<string>('APP_URL')}/api/v1/auth/google/callback`;
-  }
-
-  /**
    * Where to send a member who pressed "Continue with Google" on `tenantId`.
    *
    * Throws `provider_not_offered` when the community has registered no app --
@@ -117,7 +105,7 @@ export class GoogleOAuthService {
       this.config.getOrThrow<string>('JWT_SECRET'),
     );
 
-    const outcome = await this.run(credentials, req, { state });
+    const outcome = await this.run(credentials, tenantId, req, { state });
     if (outcome.type !== 'redirect') {
       throw new GoogleOAuthError('exchange_failed', `Expected a redirect, got ${outcome.type}`);
     }
@@ -169,7 +157,7 @@ export class GoogleOAuthService {
 
     let outcome: Awaited<ReturnType<GoogleOAuthService['run']>>;
     try {
-      outcome = await this.run(credentials, req, {});
+      outcome = await this.run(credentials, state.tenantId, req, {});
     } catch (err) {
       // Where a wrong client secret lands: passport-oauth2 reports the token
       // endpoint's refusal through error(), wrapping the provider's own body in
@@ -205,8 +193,9 @@ export class GoogleOAuthService {
    * indirection -- and it keeps the outcome a value this service can act on
    * rather than a response somebody else already wrote.
    */
-  private run(
+  private async run(
     credentials: { clientId: string; clientSecret: string },
+    tenantId: number,
     req: Request,
     options: Record<string, unknown>,
   ): Promise<
@@ -214,12 +203,18 @@ export class GoogleOAuthService {
     | { type: 'success'; profile: Profile }
     | { type: 'failure'; detail: string }
   > {
+    // Resolved before the executor, not inside it: this is the one await in
+    // here, and both legs must reach the same value -- see
+    // TenantOAuthService.googleRedirectUri, which is where that value is
+    // decided for both of them and for the admin screen.
+    const callbackURL = await this.tenantOAuth.googleRedirectUri(tenantId);
+
     return new Promise((resolve, reject) => {
       const strategy = new Strategy(
         {
           clientID: credentials.clientId,
           clientSecret: credentials.clientSecret,
-          callbackURL: this.callbackUrl(),
+          callbackURL,
           scope: ['email', 'profile'],
         },
         // Identity work deliberately does not happen here -- see the class

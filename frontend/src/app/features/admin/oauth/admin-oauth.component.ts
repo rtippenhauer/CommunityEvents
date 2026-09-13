@@ -71,12 +71,23 @@ type Provider = 'google' | 'facebook';
           </mat-card-header>
 
           <mat-card-content>
-            <p class="redirect-hint">
-              In the Google Cloud console, add this exact URL as an authorised redirect URI. It
-              is the same for every community on this deployment, and it is not this
-              community's own address — that is deliberate, and pasting this one is the step
-              people most often get wrong.
-            </p>
+            @if (config()?.onDeploymentDomain) {
+              <p class="redirect-hint">
+                In the Google Cloud console, add this exact URL as an authorised redirect URI.
+                Because this community is on a subdomain of this deployment, it is
+                <strong>not</strong> this community's own address — that is deliberate, and
+                pasting this community's address instead is the step people most often get
+                wrong.
+              </p>
+            } @else {
+              <p class="redirect-hint">
+                In the Google Cloud console, add this exact URL as an authorised redirect URI.
+                Because this community is on its own domain, the callback arrives here rather
+                than on the deployment's address, and this is the only URI that will work.
+                Adding it requires a Google project you own — a community on its own domain
+                cannot use this deployment's.
+              </p>
+            }
             <div class="redirect-uri">
               <code>{{ config()?.googleRedirectUri }}</code>
               <button mat-icon-button type="button" (click)="copyRedirect()" aria-label="Copy redirect URI">

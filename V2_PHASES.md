@@ -1415,7 +1415,7 @@ not editable.
 
 ### v2-12 — OAuth callback on the community's own host
 
-**Status:** In Progress. Depends on v2-8. Design, rationale and the four-case
+**Status:** In Progress (implementation complete; stage pass outstanding). Depends on v2-8. Design, rationale and the four-case
 table live under v2-8's "Deferred to v2-12" note -- they were worked out against
 that item's code and are not repeated here.
 
@@ -1436,6 +1436,97 @@ field that could otherwise point anywhere.
 sign-in with no handoff row written; a community not flagged is unchanged; both
 are exercised on stage; and the admin screen shows whichever redirect URI that
 community's operator actually has to register.
+
+#### What was built (2026-09-08)
+
+**There is no flag.** The design above called for a boolean on `tenants`; it is
+derived instead, from the tenant's `domain` against this deployment's own
+(`isOnDeploymentDomain` in `tenant-domain.util.ts`). What settled it was Rob
+extending the rule to email: a community on a subdomain of this deployment may
+fall back to the deployment's credentials, one on its own domain may not, for
+Google and Brevo alike. That is the same question the callback host asks, so
+storing it would have created a second answer that could disagree with the
+domain -- and the two disagreeing is precisely a
+`redirect_uri_mismatch` nobody can read. A community's domain is now the only
+thing that has to be right.
+
+**The rule generalises the reason REQ-TENANT-01.9 gave.** "No platform-wide
+fallback app" was justified by consent: signing members in through the
+platform's app makes the platform the party they granted consent to. That
+argument holds only where the community presents as its own entity. At
+`dayton.communityeventsproject.com` a consent screen naming the platform is
+accurate, and so is a From address on the deployment's mail domain; at
+`dinnerbears.com` neither is. So the fallback was never wrong in principle --
+it was wrong when the host disagreed with it. It also costs nothing to enforce
+for OAuth, because it is already physically true: an authorised redirect URI
+needs Search Console ownership of the domain, which is row 4 of v2-8's table.
+
+**The root tenant is answered by `is_root`, not by comparing strings.** It *is*
+the deployment. The comparison usually agrees -- `bootstrap.ts` writes the root
+domain from the same env value and overwrites it on every run -- but "usually"
+is the wrong guarantee for the tenant that owns the deployment: a drifted
+`APP_URL` would otherwise stop the operator's own community sending mail and
+tell its admin to register a redirect URI nobody registered. Found by the test
+fixtures, where `APP_URL` is `localhost:8081` and the root tenant's domain is
+`127.0.0.1`.
+
+**The callback branches on where it landed, not on what kind of community it
+is.** `req.tenant?.id === state.tenantId` decides whether the cookie can be set
+here or has to leave as a handoff ticket. This is the check the design note
+asked for anyway ("check the signed state's tenant against `req.tenant` rather
+than trusting the host alone"), and using it as the branch means the host is
+never trusted on its own: a callback arriving somewhere unexpected falls back to
+the handoff, which works from anywhere, rather than setting a cookie on a host
+with no claim to it. No `if (flagged)` appears in the callback at all.
+
+**A side effect worth knowing on stage: the root tenant now signs in without a
+handoff.** Its callback has always landed on its own host, so it matches and
+takes the direct path -- one fewer `oauth_handoffs` row and one fewer round
+trip. It is the most-used sign-in on stage and its behaviour changed, so it
+needs testing even though nothing about it was the point of this item.
+
+**The fallback had three copies, not one.** Gating `BrevoService` alone would
+have missed `ResendService` (the overflow provider -- the rule would have held
+only until the first busy day) and `BrevoWebhookService.register`, which has its
+own `config.brevoApiKey || env` line. The webhook one matters most: registering
+a webhook on the deployment's Brevo account for a community that does not send
+on it would point that account's bounce callbacks at a community with no claim
+to them.
+
+**Deferred deliberately: OAuth and email degrade differently, and only email is
+fatal.** No Google credentials still leaves email/password working. No email
+credentials leave a community that cannot be joined at all -- registration is
+invite-gated, and invitations, verification and password resets are all mail.
+Decided with Rob 2026-09-08 to warn now and gate at creation once self-service
+lands; recorded against v2-15.
+
+**Known gap: the handoff branch ships verified by unit tests alone** (decided
+with Rob 2026-09-13). No test can complete a token exchange with Google, so e2e
+covers which `redirect_uri` each leg sends (`per-tenant-oauth`) and
+`POST /auth/handoff` in isolation, but never the callback *choosing* to mint a
+ticket. Stage cannot cover it either: it runs exactly two communities --
+`stage.communityeventsproject.com` (root) and `stage.rtippenhauer.com` (its own
+domain) -- and after this item **both take the direct path**, so the branch that
+did not change is the one nobody runs.
+
+Closing it needs a third tenant on a subdomain of the deployment, which costs a
+DNS record and a proxy host with a cert; the Google side is free, since a
+subdomain community's redirect URI is the one already registered and the root
+tenant's own client id and secret can simply be pasted in. Judged not worth the
+host setup for a branch this item left alone. **Recorded rather than implied**,
+the way v2-5 recorded its deferred stage pass -- the failure mode is discovering
+much later that nobody ever ran it.
+
+**Also unreachable on stage:** the webhook registration refusal for an
+own-domain community with no Brevo key. `stage.rtippenhauer.com` has its own
+key, so that path is covered by inspection only. It is a refusal message rather
+than behaviour, which is why that was acceptable.
+
+**Two behaviour changes that are not in the definition of done** and need
+testing anyway: the root tenant now signs in with no handoff row (its callback
+always landed on its own host), and `baseUrlFor` was refactored to cache the
+domain rather than the URL -- which feeds every link that leaves the app, the
+exact surface v2-6 broke.
 
 ### v2-13 — Root tenant landing page
 **Status:** Not started (deferred). Depends on v2-3 and v2-4.
@@ -1495,6 +1586,23 @@ mode is a half-configured instance where login silently does not work.
 Google login, Facebook login, email delivery and correct DNS without editing
 env vars by hand, with the wizard telling the operator what to do in each
 third-party console.
+
+**Carried in from v2-12: a community on its own domain must not be creatable
+without email credentials.** v2-12 made the deployment's Brevo account
+unavailable to a community on its own domain, and OAuth and email degrade
+differently under that rule: no Google credentials still leaves email/password
+working, while no email credentials leave a community that literally cannot be
+joined -- registration is invite-gated, and invitations, address verification
+and password resets are all mail. For now that is a warning on Admin -> Email
+and nothing more (decided with Rob 2026-09-08): an operator creating a
+community by hand may not have the Brevo key at that moment, and the tenant
+dialog refusing to proceed would be worse than a warning they can act on.
+
+Self-service is what changes it. The moment somebody other than the operator
+can create a community, nobody is watching that warning, so this becomes a hard
+gate: either the create flow requires the credentials for an own-domain
+community, or the community is created suspended and cannot be activated until
+they are set. Decide which when the flow is built -- both were on the table.
 
 ### v2-16 — Operator handbook
 **Status:** Not started (deferred).
