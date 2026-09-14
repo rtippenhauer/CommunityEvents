@@ -94,14 +94,18 @@ export class GoogleOAuthService {
     req: Request,
     tenantId: number,
     inviteToken?: string,
+    linkUserId?: number,
   ): Promise<string> {
     const credentials = await this.tenantOAuth.googleCredentials(tenantId);
     if (!credentials) {
       throw new GoogleOAuthError('provider_not_offered');
     }
 
+    // `linkUserId` marks this as a *connect* from Account Settings rather than
+    // a sign-in. It goes in the signed state because the callback has no
+    // session it can trust -- see OAuthState.linkUserId.
     const state = encodeOAuthState(
-      { tenantId, inviteToken },
+      { tenantId, inviteToken, linkUserId },
       this.config.getOrThrow<string>('JWT_SECRET'),
     );
 

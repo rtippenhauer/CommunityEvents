@@ -89,3 +89,59 @@ describe('oauth state', () => {
     expect(decodeOAuthState(signLocally({ t: 1, n: 'nonce' }), SECRET)).toBeNull();
   });
 });
+
+/**
+ * The linking flow's user id (the Account Settings "Connect" button).
+ *
+ * It rides in the state for the same reason the tenant does: the callback has
+ * no session it can trust, so the only trustworthy statement of *who* asked to
+ * connect a provider is the one signed before leaving for Google. A link
+ * request that took the user id from the query string would let anyone attach
+ * their own Google account to somebody else's user.
+ */
+describe('linkUserId', () => {
+  const SECRET = 'test-secret-for-state-signing';
+
+  it('round-trips when present', () => {
+    const state = decodeOAuthState(
+      encodeOAuthState({ tenantId: 3, linkUserId: 42 }, SECRET),
+      SECRET,
+    );
+    expect(state).toMatchObject({ tenantId: 3, linkUserId: 42 });
+  });
+
+  it('is absent on an ordinary sign-in, which must never link', () => {
+    const state = decodeOAuthState(encodeOAuthState({ tenantId: 3 }, SECRET), SECRET);
+    expect(state?.linkUserId).toBeUndefined();
+  });
+
+  it('rejects a payload edited to name another user', () => {
+    // The attack the signature exists to stop, one field over from the tenant:
+    // flipping this id attaches the attacker's Google account to that user.
+    const encoded = encodeOAuthState({ tenantId: 3, linkUserId: 42 }, SECRET);
+    const [body, signature] = encoded.split('.');
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    payload.u = 1;
+    const forged = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+
+    expect(decodeOAuthState(`${forged}.${signature}`, SECRET)).toBeNull();
+  });
+
+  it('ignores an id that is not a positive integer, even correctly signed', () => {
+    // Signature-verified, so these are our *own* payloads -- a stale format or
+    // a bug on the minting side, not an attacker. The point is that neither
+    // reaches a database write naming user -1. `encodeOAuthState` writes
+    // whatever truthy value it is handed, so these mint for real rather than
+    // being hand-forged, and the decoder is what has to refuse them.
+    for (const bad of [-1, 1.5]) {
+      const encoded = encodeOAuthState({ tenantId: 3, linkUserId: bad }, SECRET);
+      expect(decodeOAuthState(encoded, SECRET)).toMatchObject({ tenantId: 3 });
+      expect(decodeOAuthState(encoded, SECRET)?.linkUserId).toBeUndefined();
+    }
+  });
+
+  it('treats a zero id as no link at all, rather than as user zero', () => {
+    const encoded = encodeOAuthState({ tenantId: 3, linkUserId: 0 }, SECRET);
+    expect(decodeOAuthState(encoded, SECRET)?.linkUserId).toBeUndefined();
+  });
+});

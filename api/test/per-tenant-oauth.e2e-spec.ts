@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { TenantResolutionService } from '../src/common/tenant/tenant-resolution.service';
@@ -7,7 +8,7 @@ import { OAuthProvider, UserRole } from '../src/database/enums';
 import { createTestApp, truncateAllTables, TEST_TENANT_DOMAIN } from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
 import { OAuthHandoffService } from '../src/modules/auth/oauth/oauth-handoff.service';
-import { encodeOAuthState } from '../src/modules/auth/oauth/oauth-state.util';
+import { decodeOAuthState, encodeOAuthState } from '../src/modules/auth/oauth/oauth-state.util';
 import { TEST_TENANT_ID } from './setup-env';
 import type { users as User } from '@prisma/client';
 
@@ -262,6 +263,82 @@ describe('Per-tenant OAuth (e2e)', () => {
 
       expect(res.headers.location).toContain(TENANT_B_DOMAIN);
       expect(res.headers.location).toContain('reason=consent_denied');
+    });
+  });
+
+  /**
+   * Connecting Google from Account Settings.
+   *
+   * The button pointed at `GET /auth/google` -- the sign-in start -- which
+   * since v2-8 refuses with `provider_not_linked` whenever the address already
+   * has an account. That is every account that would ever press Connect, so
+   * linking was impossible: to connect Google you had to already have Google
+   * connected. What a test can reach here is the *start* of the flow; the
+   * attach itself needs a real token exchange and is covered on stage.
+   */
+  describe('connecting Google to an existing account', () => {
+    it('refuses to start for somebody who is not signed in', async () => {
+      // The whole reason this route is separate from the sign-in start: the
+      // account being linked to comes from the session, so there has to be one.
+      await configureGoogleOnA();
+
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/google/link')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .expect(401);
+    });
+
+    it('sends a signed-in member to their own community Google app', async () => {
+      await configureGoogleOnA();
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/google/link')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .expect(302);
+
+      const location = new URL(res.headers.location);
+      expect(location.host).toBe('accounts.google.com');
+      expect(location.searchParams.get('client_id')).toBe(GOOGLE_A.clientId);
+    });
+
+    it('carries the signed-in user in the state, which a sign-in does not', async () => {
+      await configureGoogleOnA();
+
+      const linking = await request(app.getHttpServer())
+        .get('/api/v1/auth/google/link')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .expect(302);
+
+      const signingIn = await request(app.getHttpServer())
+        .get('/api/v1/auth/google')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .expect(302);
+
+      const secret = app.get(ConfigService).getOrThrow<string>('JWT_SECRET');
+      const stateOf = (res: { headers: Record<string, string> }) =>
+        decodeOAuthState(
+          new URL(res.headers.location).searchParams.get('state') ?? undefined,
+          secret,
+        );
+
+      // The link flow names the member; the sign-in flow must not, or an
+      // ordinary login would attach a provider as a side effect.
+      expect(stateOf(linking)).toMatchObject({ tenantId: TEST_TENANT_ID, linkUserId: adminA.id });
+      expect(stateOf(signingIn)?.linkUserId).toBeUndefined();
+    });
+
+    it('still refuses to start where the community offers no Google app', async () => {
+      // Being signed in does not conjure credentials -- same rule the sign-in
+      // start follows, and for the same reason.
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/google/link')
+        .set('Host', TENANT_B_DOMAIN)
+        .set('Cookie', cookieB)
+        .expect(302);
+
+      expect(res.headers.location).toContain('reason=provider_not_offered');
     });
   });
 

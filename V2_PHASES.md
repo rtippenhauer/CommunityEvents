@@ -1541,6 +1541,38 @@ Spotted by Rob reading the stage footer, not by any test -- and nothing could
 have caught it, since a hardcoded suffix in a template is exactly as valid as a
 correct one. There is a test now.
 
+**Also landed on this branch: Google could not be connected at all, and had
+not been since v2-8.** Account Settings' **Connect** button pointed at
+`GET /auth/google` -- the *sign-in* start. Since v2-8 that path refuses with
+`provider_not_linked` whenever the address already has an account, which is
+every account that would ever press Connect. To connect Google you had to
+already have Google connected.
+
+**v2-8 fixed the policy and removed the affordance without noticing.** Google
+linking had worked as a side effect: `findOrCreateGoogleUser` auto-linked on a
+matching email. Removing that was right -- it could not tell a deliberate
+Disconnect from a half-finished signup, which made Disconnect decorative -- but
+Facebook has a real `POST /auth/facebook/link`, guarded, taking the user from
+the session, and Google had no counterpart. So the item aligned the two
+providers' *refusals* while leaving them with opposite *affordances*, which is
+the same asymmetry it set out to remove, one level up.
+
+The fix mirrors Facebook: a guarded `GET /auth/google/link` establishes who is
+asking from the session -- the only place there is one -- and carries the id
+through the provider round trip in the **signed** state (`linkUserId`), since
+the callback has no session it can trust. A link request that read the user id
+from a query parameter would let anyone attach their own Google account to
+somebody else's user, which is why it sits beside the tenant id under the same
+HMAC and gets the same positive-integer validation. `linkGoogle` then mirrors
+`linkFacebook` exactly, conflict check and audit entry included, and
+deliberately does **not** require the Google address to match the account's --
+`linkFacebook` never has, and a rule applying to one provider and not the other
+is what this whole item is about.
+
+Found by Rob pressing Connect on stage. **No test could have caught it**: every
+piece worked in isolation, and nothing asserted that the button reached a route
+which could succeed.
+
 **Two behaviour changes that are not in the definition of done** and need
 testing anyway: the root tenant now signs in with no handoff row (its callback
 always landed on its own host), and `baseUrlFor` was refactored to cache the

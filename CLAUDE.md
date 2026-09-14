@@ -662,6 +662,22 @@ authoritative (per REQ-TENANT-01.3).
   platform's own OAuth apps"). Live as of `v2-8`: the deployment-wide
   `GOOGLE_CLIENT_*`/`FACEBOOK_APP_*` env vars are **gone**, not kept as a
   fallback, so there is no configuration that can reintroduce one.
+- **Connecting a provider is a different route from signing in with one, and
+  it is guarded.** `GET /auth/google/link` and `POST /auth/facebook/link`
+  establish who is asking from the session, because that is the only place a
+  trustworthy answer exists — the callback lands with no usable session (host-
+  only, and on a different host entirely for a community on the deployment's
+  domain). Google carries the user id through the round trip in the **signed**
+  `state` (`linkUserId`), never a query parameter, or anyone could attach their
+  own Google account to somebody else's user.
+
+  The reason this is a rule and not a detail: Google linking used to work as a
+  *side effect* of `findOrCreateGoogleUser` auto-linking on a matching email,
+  `v2-8` removed that correctly, and the Connect button was left pointing at the
+  sign-in start — which refuses whenever the address already has an account,
+  i.e. always. Aligning two providers' refusals while leaving their affordances
+  opposite is the same asymmetry in a new place. Linking never creates a user
+  and never requires the provider's address to match the account's.
 - **Which providers a tenant offers is answered by `GET /auth/methods`** —
   unauthenticated and tenant-resolved, since the login page has no session yet.
   `GET /auth/providers` cannot do it: it is `JwtAuthGuard`ed and reports the

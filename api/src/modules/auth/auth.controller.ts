@@ -188,6 +188,48 @@ export class AuthController {
   }
 
   /**
+   * Starts a Google **connect** from Account Settings, for a member who is
+   * already signed in.
+   *
+   * Separate from `GET /auth/google` and guarded, which is the whole point:
+   * linking is an action taken from inside an authenticated session, and the
+   * user it applies to has to be established *here*, where there is a session
+   * to read it from. By the time the provider redirects back there is no
+   * trustworthy session on the callback host, so the id travels in the signed
+   * state (see OAuthState.linkUserId) rather than being re-derived there.
+   *
+   * The button used to point at `GET /auth/google` -- an ordinary sign-in --
+   * which since v2-8 refuses with `provider_not_linked` whenever the address
+   * already has an account. That is every account that would ever press
+   * Connect, so the affordance could not work at all.
+   */
+  @Get('google/link')
+  @UseGuards(JwtAuthGuard)
+  async googleLink(
+    @Req() req: Request,
+    @Res() res: Response,
+    @CurrentUser() user: User,
+  ): Promise<void> {
+    const tenant = req.tenant;
+    if (!tenant) {
+      await this.authErrorRedirect(res, 'provider_not_offered');
+      return;
+    }
+
+    try {
+      res.redirect(
+        await this.googleOAuth.authorizationUrl(req, tenant.id, undefined, user.id),
+      );
+    } catch (err) {
+      const reason = err instanceof GoogleOAuthError ? err.reason : 'exchange_failed';
+      if (!(err instanceof GoogleOAuthError)) {
+        this.logger.error(`Could not start Google linking: ${(err as Error).message}`);
+      }
+      await this.authErrorRedirect(res, reason, tenant.id);
+    }
+  }
+
+  /**
    * Google's callback (REQ-TENANT-01.8, extended by v2-12).
    *
    * **The signed `state` is the only thing that knows which community this is**,
@@ -253,6 +295,33 @@ export class AuthController {
     const email = profile.emails?.[0]?.value;
     if (!email) {
       await this.authErrorRedirect(res, 'no_email', state.tenantId);
+      return;
+    }
+
+    // A connect from Account Settings, not a sign-in. Handled before anything
+    // that resolves an identity: this flow must never create a user, and the
+    // member already has a session on their own host -- so there is nothing to
+    // hand off either way, and the only thing to do is attach the provider and
+    // send them back to the screen they pressed the button on.
+    if (state.linkUserId) {
+      const linkBase = await this.tenantResolution.baseUrlFor(state.tenantId);
+      try {
+        await runWithTenant(state.tenantId, () =>
+          this.authService.linkGoogle(state.linkUserId!, profile.id, email),
+        );
+      } catch (err) {
+        // The commonest failure by far is this Google account already being
+        // attached to somebody else in this community, which is a conflict
+        // rather than a fault -- reported on the settings screen, where the
+        // member can see which account is connected.
+        const conflict = err instanceof ConflictException;
+        if (!conflict) {
+          this.logger.error(`Google linking failed: ${(err as Error).message}`);
+        }
+        res.redirect(`${linkBase}/account/settings?linked=google&error=${conflict ? 'taken' : 'failed'}`);
+        return;
+      }
+      res.redirect(`${linkBase}/account/settings?linked=google`);
       return;
     }
 
