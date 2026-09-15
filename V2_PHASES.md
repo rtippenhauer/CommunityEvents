@@ -1822,7 +1822,30 @@ around.
 
 `cities` currently has no `tenant_id` at all — the one model the v2-6
 scoping pass never touched — and its `subdomain` column is globally
-unique, so two tenants today would collide on city names. Per Rob
+unique, so two tenants today would collide on city names.
+
+> **This is a live cross-tenant write hole, not only a design gap** (found by
+> Rob on stage 2026-09-14, during the v2-12 pass; left open deliberately, since
+> fixing it properly is this item). `CitiesAdminController` is `@Roles(ADMIN)`
+> over a global table with no tenant filter, so **any** community's admin can
+> today list every community's cities, `PATCH` any of them by id to rename or
+> deactivate one another community depends on, and claim a `subdomain` globally
+> because the unique index spans the table. Exactly the shape v2-9 was created
+> to fix — `/admin/email` was `@Roles(ADMIN)` over a global row — and the same
+> class as the `member_achievements` key v2-5 fixed, where one community's award
+> blocked another's.
+>
+> Tolerable only while every community on a deployment belongs to the operator,
+> which is true of stage today and stops being true the moment anyone else runs
+> one. **If this item slips past self-service, restrict the controller to the
+> root tenant in the meantime** — that was the considered stopgap and it costs
+> almost nothing.
+>
+> Smaller, same screen: the city dialog composes its subdomain hint from
+> `brandConfig.baseDomain()`, which is the community's **mail** domain, to build
+> what is meant to be a web host — the two things CLAUDE.md says must never be
+> derived from each other. Not worth fixing separately because this item removes
+> subdomain-as-host entirely. Per Rob
 (revised 2026-08-31, extended 2026-09-01): **Facebook groups are dropped
 entirely** — first the per-city relation, then group ids altogether, so
 the table, its module and `invites.facebook_group_id` all go. Meta's API
