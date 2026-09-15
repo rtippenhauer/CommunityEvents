@@ -158,11 +158,31 @@ export class BrevoService {
     };
   }
 
+  /**
+   * The numeric template to send, or 0 for "compose the HTML ourselves".
+   *
+   * **A template id belongs to the account that holds the key, not to the
+   * deployment.** It is a number in one Brevo account's own library, so handing
+   * it to a different account addresses whatever happens to have that id there,
+   * or nothing -- which Brevo rejects. The env ids therefore apply only to a
+   * community actually sending on the deployment's key; a community that brought
+   * its own key and has not set its own ids falls through to the raw-HTML body,
+   * which is plain but correct and goes out.
+   *
+   * Same principle as the daily allowance in `getAccountQuota`: what belongs to
+   * the account travels with the key, not with the deployment. Inheriting this
+   * one is worse than inheriting the key, because nothing about it looks wrong
+   * until the provider refuses the send.
+   */
   private async getTemplateId(templateName: EmailTemplateName): Promise<number> {
     const db = await this.prisma.email_provider_config.findFirst();
     const dbKey = TEMPLATE_DB_KEY[templateName];
     const dbValue = db ? (db[dbKey] as number | null) : null;
     if (dbValue && dbValue > 0) return dbValue;
+
+    // Sending on this community's own account: the deployment's ids name
+    // templates it cannot see.
+    if (db?.brevoApiKey) return 0;
 
     const envKey = TEMPLATE_ENV_KEY[templateName];
     return parseInt(this.config.get<string>(envKey, '0'), 10);

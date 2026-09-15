@@ -1573,6 +1573,29 @@ Found by Rob pressing Connect on stage. **No test could have caught it**: every
 piece worked in isolation, and nothing asserted that the button reached a route
 which could succeed.
 
+**Also landed here: a Brevo template id belongs to the account, not to the
+deployment.** `getTemplateId` fell back to `BREVO_TEMPLATE_*` whatever key was
+in use, so a community sending on its **own** Brevo account was handed a number
+from the *deployment's* template library -- which over there names a different
+template or nothing, and Brevo refuses the send.
+
+**Worse than inheriting the key, because nothing looks wrong until it fails.**
+An inherited key is at least a working credential; an inherited id is a valid
+number pointing into somebody else's library. The rule is the one v2-9 already
+established for the daily allowance and stated as "a provider's allowance
+belongs to the ACCOUNT, not the community" -- a template id belongs there too.
+Env ids now apply only where the community is actually sending on the
+deployment's key; otherwise an unset id falls through to the raw-HTML body,
+which is plain and goes out.
+
+Found on stage, and the diagnosis came from a contrast no test would have
+produced: on one community, at one moment, on one key and one verified sender,
+`invite` sent on its first attempt while `provider_disconnected` failed twice.
+`BREVO_TEMPLATE_INVITE` was unset (so it took the HTML fallback) and
+`BREVO_TEMPLATE_PROVIDER_DISCONNECTED` was set, which left the template as the
+only variable. Latent since v2-9 and only reachable once a community had a key
+of its own.
+
 **Two behaviour changes that are not in the definition of done** and need
 testing anyway: the root tenant now signs in with no handoff row (its callback
 always landed on its own host), and `baseUrlFor` was refactored to cache the

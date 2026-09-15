@@ -1001,6 +1001,17 @@ authoritative (per REQ-TENANT-01.3).
   gates sending. Both must allow a message. Only a `free` plan reports a daily
   figure — a prepaid balance has no daily cap, and treating it as one would stop
   sending at an imaginary line.
+- **A Brevo template id belongs to the ACCOUNT too, exactly like the allowance
+  above.** It is a number in one account's own template library, so `getTemplateId`
+  falls back to `BREVO_TEMPLATE_*` **only** where the community is sending on the
+  deployment's key. A community with its own key and no ids of its own falls
+  through to the raw-HTML body — plain, but it sends. Handing it the deployment's
+  id would address a different template over there, or none, and Brevo refuses
+  the send. Worse than inheriting a key, because an inherited id is a *valid
+  number* pointing into somebody else's library and nothing looks wrong until the
+  provider says no (`v2-12`; latent since `v2-9`, reachable only once a community
+  had its own key). An id set at Admin → Email must come from that community's
+  library.
 - **`EMAIL_QUOTA_TIMEZONE` is the operator's calendar day, not the provider's.**
   It was built to mirror the provider's reset, which turned out to be
   unknowable: `GET /v3/account` has no timezone field, and separate accounts can
