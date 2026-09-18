@@ -34,11 +34,51 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-12` — the OAuth callback on a community's own
-host, the follow-on `v2-8` deferred with its four-case table worked out.
-Implementation is complete; the stage pass is outstanding. See `V2_PHASES.md`.
+**Current v2 work item:** `v2-13` — the root tenant's public landing page, the
+marketing front door at `www.communityeventsproject.com` explaining the project
+and linking to the demo. See `V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-12` — OAuth callback on a community's own host** (2026-09-18,
+  REQ-TENANT-01.8). A community that owns its domain registers its own redirect
+  URI, so the callback lands on the right host, the tenant resolves from the
+  Host header, and the cookie is set directly — no `oauth_handoffs` hop.
+  Communities on a subdomain keep the single registered URI and the handoff,
+  because their operator cannot register a redirect URI on a domain they do not
+  own.
+
+  **There is no flag, and that is the item's real shape.** The design called for
+  a boolean on `tenants`; Rob extended the rule to email — a community on a
+  subdomain of this deployment may fall back to the deployment's credentials,
+  one on its own domain may not, for Google and Brevo alike — and that is the
+  same question the callback host asks. A stored flag would be a second answer
+  free to disagree with the domain, and the two disagreeing is a
+  `redirect_uri_mismatch` naming neither value. See the Multi-Tenancy section.
+
+  **The callback branches on where it landed**, `req.tenant?.id ===
+  state.tenantId`, never on what kind of community it is — which is also the
+  "check the state against `req.tenant`" the design asked for, so the host is
+  never trusted alone.
+
+  **Five defects, every one found by Rob on stage and none catchable by the
+  suite.** Google's Connect button had no working path at all since `v2-8`,
+  which removed the auto-link that had been the only linking mechanism while
+  leaving the button pointing at the sign-in start — it refuses whenever the
+  address already has an account, i.e. always. The footer built its copyright
+  line by appending a fixed suffix to a community's name, naming a company that
+  does not exist and disagreeing with that community's own Terms. Brevo template
+  ids crossed accounts, latent since `v2-9` and reachable only once a community
+  had its own key — which is the configuration this item made ordinary.
+  Credential fields accepted anything, and a password manager filled an email
+  address into a client id; the admin screen then discarded the API's
+  explanation, the same shape `v2-8` fixed in `exchange_failed`. And
+  `CitiesAdminController` is `@Roles(ADMIN)` over a global table — left open
+  deliberately, recorded against `v2-24`.
+
+  **Known gap:** the callback's handoff branch ships verified by unit tests
+  alone. Stage runs two communities and after this item both take the direct
+  path, so the branch that did not change is the one nobody runs. Recorded in
+  `V2_PHASES.md` rather than implied, with the third-tenant route written down.
 - **`v2-11` — A real colour system** (2026-09-08). Three seeds an admin sets
   (`--ce-primary`, `--ce-accent`, `--ce-surface`) feed every other token;
   overrides are laid on at *read* time so a later seed change cannot silently

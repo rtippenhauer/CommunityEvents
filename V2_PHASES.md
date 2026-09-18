@@ -1415,7 +1415,7 @@ not editable.
 
 ### v2-12 — OAuth callback on the community's own host
 
-**Status:** In Progress (implementation complete; stage pass outstanding). Depends on v2-8. Design, rationale and the four-case
+**Status:** Complete (2026-09-18). Depends on v2-8. Design, rationale and the four-case
 table live under v2-8's "Deferred to v2-12" note -- they were worked out against
 that item's code and are not repeated here.
 
@@ -1603,7 +1603,7 @@ domain rather than the URL -- which feeds every link that leaves the app, the
 exact surface v2-6 broke.
 
 ### v2-13 — Root tenant landing page
-**Status:** Not started (deferred). Depends on v2-3 and v2-4.
+**Status:** In Progress. Depends on v2-3 and v2-4.
 
 Public marketing page served by the root tenant, explaining the project and
 linking to the demo. `frontend/public/landing.html` is the v1-era placeholder
