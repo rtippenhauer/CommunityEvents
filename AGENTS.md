@@ -27,7 +27,7 @@ dinnerbears/
 ├── .vscode/                   ← VS Code settings
 ├── docs/                      ← Requirements, schema, setup guides
 ├── frontend/                  ← Angular 19 app
-│   └── public/                ← Static placeholder site (landing, privacy, terms)
+│   └── public/                ← Static assets; the landing page is an Angular route (v2-13)
 ├── api/                       ← NestJS API
 └── docker/                    ← Docker Compose and NGINX config
 ```

@@ -1,0 +1,61 @@
+<main class="landing">
+  <section class="hero">
+    <p class="eyebrow">{{ brandName() }}</p>
+    <h1>Group events that actually happen.</h1>
+    <p class="lead">
+      A place to run recurring get-togethers for a real community — who is coming, where it
+      is, and whose turn it is to pick somewhere. Built for the person who has been
+      organising it in a group chat.
+    </p>
+    <div class="hero-actions">
+      @if (demoUrl()) {
+        <a mat-raised-button class="cta" [href]="demoUrl()">
+          <mat-icon>open_in_new</mat-icon> Try the demo
+        </a>
+      }
+      <a mat-stroked-button class="cta-secondary" (click)="scrollToHow()">
+        <mat-icon>arrow_downward</mat-icon> How it works
+      </a>
+    </div>
+  </section>
+
+  <section class="features" id="how">
+    <h2>What a community gets</h2>
+    <div class="grid">
+      @for (feature of features; track feature.title) {
+        <article class="feature">
+          <mat-icon aria-hidden="true">{{ feature.icon }}</mat-icon>
+          <h3>{{ feature.title }}</h3>
+          <p>{{ feature.body }}</p>
+        </article>
+      }
+    </div>
+  </section>
+
+  <section class="own">
+    <h2>Your community, your site</h2>
+    <p class="lead">
+      Every community runs on its own address with its own name, colours, wording and
+      artwork. Its members, events and history belong to it and are visible to nobody else.
+      A community can bring its own domain, its own sign-in and its own email account, or
+      use the ones this deployment provides.
+    </p>
+  </section>
+
+  <section class="closing">
+    <h2>Have a look around</h2>
+    <p class="lead">
+      The demo is a working community with events, members and a leaderboard already in it.
+      Sign up there and you land as an admin, so you see the organiser's side rather than
+      just the visitor's.
+    </p>
+    @if (demoUrl()) {
+      <a mat-raised-button class="cta" [href]="demoUrl()">
+        <mat-icon>open_in_new</mat-icon> Try the demo
+      </a>
+    }
+    <p class="fineprint">
+      Already a member of a community here? <a routerLink="/login">Sign in</a>.
+    </p>
+  </section>
+</main>

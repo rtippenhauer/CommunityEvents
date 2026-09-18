@@ -34,11 +34,49 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-13` — the root tenant's public landing page, the
-marketing front door at `www.communityeventsproject.com` explaining the project
-and linking to the demo. See `V2_PHASES.md`.
+**Current v2 work item:** `v2-14` — the demo tenant: a community anyone can try,
+where self-registration grants admin *of that tenant only*, wiped and re-seeded
+on a schedule, saying so on the page. See `V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-13` — The root tenant's public landing page** (2026-09-18). The
+  marketing front door at `www.communityeventsproject.com`. **`/` is answered by
+  two components now**, chosen at match time: `rootLandingGuard` takes the
+  landing page only for a signed-out visitor on the root tenant.
+
+  **Root is the database's `is_root`**, read off the branding payload — not an
+  nginx `server_name` for the marketing host, which would be a second answer to
+  "which tenant is root", free to disagree with the column that decides it, the
+  way v2-12's stored flag would have been. **Signed-out** because a member of
+  the root community has a home page; on stage that community is the operator's
+  own test data, and everywhere it is at least the system admin.
+
+  `canMatch`, not `canActivate` — a declined `canActivate` cancels the
+  navigation, where a declined `canMatch` falls through to the next route, which
+  is what lets one path render two components. Reading auth and branding
+  synchronously is safe **only** because both `init()`s are
+  `provideAppInitializer` promises, so no route is matched until they resolve.
+
+  **The demo's address is derived, never written down** — `demo.` on the
+  deployment's own domain, so stage and production each get their own. That is
+  also what keeps it a *subdomain* of the deployment domain, so
+  `isOnDeploymentDomain` is true and the demo inherits the deployment's Brevo and
+  Google credentials; a demo beside the deployment rather than under it is an
+  invite-gated community with no mail, which is one nobody can join.
+
+  **`robots.txt` is written by the entrypoint**, not checked in: one image serves
+  stage and production, so a static file would be identical on both and wrong on
+  one. `Disallow: /` when `IS_STAGE=true`. Before this it did not exist and
+  `try_files` fell through, so `/robots.txt` answered 200 with the SPA's HTML.
+  Per-tenant indexing and link-preview metadata are `v2-28` — and the trap
+  recorded there is that setting them from branding at runtime, the way `<title>`
+  works, is invisible to every link-preview crawler, since Slack, Facebook,
+  LinkedIn and iMessage fetch raw HTML and never run a script.
+
+  **Stage found no code defects** — the first item where it didn't. It cost an
+  afternoon of infrastructure instead, recorded against `v2-14`: Cloudflare's
+  Universal SSL wildcard covers one label, so `demo.stage.…` has no edge
+  certificate and must be grey-clouded, while production needs none of it.
 - **`v2-12` — OAuth callback on a community's own host** (2026-09-18,
   REQ-TENANT-01.8). A community that owns its domain registers its own redirect
   URI, so the callback lands on the right host, the tenant resolves from the
@@ -563,7 +601,7 @@ CommunityEvents/
 ├── .vscode/                   ← VS Code settings
 ├── docs/                      ← Requirements (incl. REQ-TENANT-01.md), schema, setup guides
 ├── frontend/                  ← Angular app (inherited v1 code, pre-v2)
-│   └── public/                ← Static assets and legacy placeholder pages
+│   └── public/                ← Static assets (v1 `landing.html` removed in v2-13)
 ├── api/                       ← NestJS API (inherited v1 code, pre-v2)
 ├── docker/                    ← Docker Compose and NGINX config
 ├── e2e/                       ← Playwright browser e2e (root-level: spans both workspaces)

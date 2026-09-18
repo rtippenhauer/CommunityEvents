@@ -1,0 +1,141 @@
+// Every colour here is a --ce-* token (v2-11): this page is the one surface a
+// visitor sees before they have any relationship with the deployment, so it
+// has to wear the operator's palette rather than a set of literals belonging
+// to nobody.
+
+.landing {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+  font-family: var(--ce-font-body);
+  color: var(--ce-text);
+}
+
+section {
+  padding: 4rem 0;
+  border-bottom: 1px solid var(--ce-rule);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--ce-font-display);
+  color: var(--ce-text);
+  margin: 0;
+  line-height: 1.15;
+}
+
+h1 {
+  font-size: clamp(2.25rem, 6vw, 3.75rem);
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  margin-bottom: 1rem;
+}
+
+.eyebrow {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ce-primary);
+}
+
+.lead {
+  max-width: 42rem;
+  margin: 1.25rem 0 0;
+  font-size: clamp(1rem, 2.5vw, 1.1875rem);
+  line-height: 1.6;
+  color: var(--ce-text-muted);
+}
+
+.hero {
+  padding-top: 5rem;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.cta,
+.cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+// mat-raised-button's own palette is the Material theme's; this page sets the
+// brand colour explicitly so the CTA matches the community's primary rather
+// than whatever M3 derived for the default palette.
+.cta {
+  background: var(--ce-primary);
+  color: var(--ce-on-primary);
+
+  &:hover {
+    background: var(--ce-primary-hover);
+  }
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.feature {
+  padding: 1.5rem;
+  border: 1px solid var(--ce-rule);
+  border-radius: 0.75rem;
+  background: var(--ce-surface-variant);
+
+  mat-icon {
+    color: var(--ce-primary);
+    margin-bottom: 0.75rem;
+  }
+
+  h3 {
+    font-size: 1.125rem;
+    margin-bottom: 0.5rem;
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--ce-text-muted);
+  }
+}
+
+.closing {
+  text-align: center;
+
+  .lead {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .cta {
+    margin-top: 2rem;
+  }
+}
+
+.fineprint {
+  margin: 1.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--ce-text-muted);
+
+  a {
+    color: var(--ce-primary);
+  }
+}

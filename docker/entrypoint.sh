@@ -42,6 +42,30 @@ node /app/dist/deploy-provision.js || true
 # the app itself runs as, below) can still write into them.
 chmod -R 777 /app/uploads 2>/dev/null || true
 
+# robots.txt, written at start rather than baked into the image.
+#
+# One image serves both stage and production, so a checked-in static file would
+# be identical on both and wrong on one of them: stage must not be indexed (it
+# is a public host serving test data, and stage outranking production on
+# duplicate content is a well-earned classic), while production's marketing
+# front door exists to be found.
+#
+# Deployment-wide, and deliberately not per-tenant. A private community almost
+# certainly wants noindex and the demo tenant definitely does, but robots.txt is
+# per-host and one file cannot answer for several tenants — that needs the API
+# to serve it per resolved tenant, which is v2-28 along with the description and
+# Open Graph metadata. This only settles the stage/production question, which is
+# the half that is wrong right now.
+#
+# Without this the file does not exist at all: nginx's `try_files` falls through
+# to index.html, so /robots.txt answers 200 with the SPA's HTML.
+if [ "$IS_STAGE" = "true" ]; then
+  echo "[entrypoint] Stage deployment — telling crawlers to stay out."
+  printf 'User-agent: *\nDisallow: /\n' > /usr/share/nginx/html/robots.txt
+else
+  printf 'User-agent: *\nAllow: /\n' > /usr/share/nginx/html/robots.txt
+fi
+
 # Run nginx and NestJS side by side (no process manager — supervisor pulled in
 # python3/setuptools purely to run two commands, which kept surfacing unrelated
 # CVEs in image scans). NestJS drops to the unprivileged nestjs user via su-exec.

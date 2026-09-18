@@ -8,6 +8,7 @@ import { adminGuard } from './admin.guard';
 import { moderatorGuard } from './moderator.guard';
 import { systemAdminGuard } from './system-admin.guard';
 import { unsavedChangesGuard, HasUnsavedChanges } from './unsaved-changes.guard';
+import { rootLandingGuard } from './root-landing.guard';
 import { AuthService } from '../services/auth.service';
 import { BrandConfigService } from '../services/brand-config.service';
 
@@ -243,4 +244,46 @@ describe('route guards', () => {
       expect(run(true)).toBe(true);
     });
   });
+
+  // v2-13. Unlike its neighbours this one does not gate access to anything —
+  // both outcomes render a page the visitor is allowed to see. It chooses
+  // *which* component answers `/`, so what matters is that it is false in
+  // every case but the one it is for.
+  describe('rootLandingGuard', () => {
+    function setup(isRoot: boolean, isLoggedIn: boolean) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          { provide: AuthService, useValue: { isLoggedIn: () => isLoggedIn } },
+          { provide: BrandConfigService, useValue: { isRoot: () => isRoot } },
+        ],
+      });
+    }
+
+    function run(): boolean | UrlTree {
+      return runGuard(rootLandingGuard as () => boolean | UrlTree);
+    }
+
+    it('shows the landing page to a signed-out visitor on the root tenant', () => {
+      setup(true, false);
+      expect(run()).toBe(true);
+    });
+
+    it('leaves a signed-in member of the root tenant on the member home page', () => {
+      setup(true, true);
+      expect(run()).toBe(false);
+    });
+
+    it('never shows the landing page on a community tenant', () => {
+      setup(false, false);
+      expect(run()).toBe(false);
+    });
+
+    it('never shows it to a signed-in member of a community tenant either', () => {
+      setup(false, true);
+      expect(run()).toBe(false);
+    });
+  });
+
 });

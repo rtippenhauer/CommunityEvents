@@ -616,3 +616,37 @@ invitations, address verifications or password resets can be sent at all.
   back at the field. It is now refused as you save, with a message saying what
   the value should look like. Extra spaces pasted along with a credential are
   trimmed rather than stored.
+
+## A front door for the project itself
+
+**The project now has a public landing page.** Visiting the main
+CommunityEvents address — rather than any particular community's — now explains
+what the project is and what a community gets from it: events with a seat limit
+and a cutoff, a shared list of venues, an invite-only roster, points and
+achievements, a subscribable calendar feed, and reminders by email and push.
+Previously that address showed the same members' home page every community
+shows, which assumed you already belonged to one.
+
+It is shown only to visitors who are not signed in. If you have an account on
+that address, signing in takes you to your usual home page exactly as before.
+Every other community is untouched — their own addresses still open straight to
+their members' home page, signed in or not.
+
+The page carries a link through to the demo community, so someone can look
+around a working community before asking to join one.
+
+**It wears the operator's own name and colours**, read from that community's
+settings rather than written into the software, so an operator who renames their
+deployment or changes its palette sees the front page follow along.
+
+## Search engines
+
+**Test and staging deployments are no longer offered to search engines.** A
+stage instance is a public web address serving trial data, and until now nothing
+told crawlers to leave it alone — so it could be indexed and shown in search
+results alongside the real site. Staging deployments now decline crawling;
+production deployments are unaffected and remain indexable.
+
+Per-community control over search listings — whether a given community appears
+in search results at all, and the description and preview text shown when
+someone shares its address — is a separate piece of work still to come.
