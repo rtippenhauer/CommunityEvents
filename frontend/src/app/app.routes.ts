@@ -6,8 +6,22 @@ import { moderatorGuard } from './core/guards/moderator.guard';
 import { validatedMemberGuard } from './core/guards/validated-member.guard';
 import { unsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import { featureGuard } from './core/guards/feature.guard';
+import { rootLandingGuard } from './core/guards/root-landing.guard';
 
 export const routes: Routes = [
+  // Two components answer `/`, and the order is the rule: the landing page is
+  // offered first and `canMatch` declines it for everyone but a signed-out
+  // visitor on the root tenant, who is the only person it is for. `canMatch`
+  // rather than `canActivate` because a declined `canActivate` cancels the
+  // navigation, while a declined `canMatch` falls through to the next route —
+  // which is how one path renders two different components.
+  {
+    path: '',
+    pathMatch: 'full',
+    canMatch: [rootLandingGuard],
+    loadComponent: () =>
+      import('./features/landing/landing.component').then((m) => m.LandingComponent),
+  },
   {
     path: '',
     pathMatch: 'full',
