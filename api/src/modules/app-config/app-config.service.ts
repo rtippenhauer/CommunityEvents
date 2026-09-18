@@ -468,6 +468,23 @@ export class AppConfigService {
     return tenant?.isRoot ?? false;
   }
 
+  /**
+   * Whether the community being served is the demo (v2-14).
+   *
+   * Reads the resolved tenant's own row, like `servingRootTenant` above. Not
+   * derived from the host: see the `is_demo` column for why this question and
+   * "whose domain is this" take opposite answers.
+   */
+  private async servingDemoTenant(): Promise<boolean> {
+    const tenantId = currentTenantId();
+    if (!tenantId) return false;
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { isDemo: true },
+    });
+    return tenant?.isDemo ?? false;
+  }
+
   /** The tenant's own mail domain, or null when it has not set one. */
   private async ownMailDomain(tenantId?: number): Promise<string | null> {
     const own = await this.tenantSetting('mail_domain', tenantId);
@@ -552,6 +569,20 @@ export class AppConfigService {
      * an option that always fails is worse than no option.
      */
     isRoot: boolean;
+    /**
+     * Whether the community being served is the demo (v2-14).
+     *
+     * Drives the standing notice in the app shell saying the data here is
+     * temporary, and the "create a demo account" affordance on the sign-in page.
+     * The notice is part of the feature rather than decoration: a visitor who
+     * self-registers here becomes an admin and may well start entering real
+     * events for a real group, and without a visible warning the nightly reset
+     * destroys work they had no reason to think was disposable.
+     *
+     * Public, like every other field here, and unavoidably so -- it is a fact
+     * about a community that announces itself on every page of that community.
+     */
+    isDemo: boolean;
     /**
      * Whether a human has confirmed this community's Terms and Privacy Policy.
      *
@@ -648,6 +679,7 @@ export class AppConfigService {
       authProviders: await this.tenantOAuth.offeredProviders(),
       isStage: this.config.get<string>('IS_STAGE') === 'true',
       isRoot: await this.servingRootTenant(),
+      isDemo: await this.servingDemoTenant(),
       // The community's own support address (v2-10). Two member-facing pages
       // -- account deletion and the Facebook data-deletion callback -- told
       // people to email support@dinnerbears.com, a hardcoded address belonging

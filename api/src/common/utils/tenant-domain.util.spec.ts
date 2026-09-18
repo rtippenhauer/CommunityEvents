@@ -1,4 +1,5 @@
 import {
+  demoDomainFor,
   isOnDeploymentDomain,
   normalizeTenantDomain,
   resolveRootTenantDomain,
@@ -202,5 +203,58 @@ describe('isOnDeploymentDomain', () => {
     // that describes nobody.
     expect(isOnDeploymentDomain('dayton.communityeventsproject.com', '')).toBe(false);
     expect(isOnDeploymentDomain('', DEPLOYMENT)).toBe(false);
+  });
+});
+
+/**
+ * Where the demo lives (v2-14).
+ *
+ * The property that actually matters is the last test here: whatever this
+ * returns has to satisfy `isOnDeploymentDomain` against the deployment it was
+ * derived from. That is what lets the demo inherit the deployment's Brevo
+ * credentials and Google redirect URI, and a demo that cannot send mail is a
+ * community nobody can join.
+ */
+describe('demoDomainFor', () => {
+  it('prefixes the deployment domain, so stage and production each get their own', () => {
+    expect(demoDomainFor('communityeventsproject.com')).toBe('demo.communityeventsproject.com');
+    expect(demoDomainFor('stage.communityeventsproject.com')).toBe(
+      'demo.stage.communityeventsproject.com',
+    );
+  });
+
+  it('accepts a URL or a bare host, and normalises www away', () => {
+    expect(demoDomainFor('https://www.communityeventsproject.com/')).toBe(
+      'demo.communityeventsproject.com',
+    );
+    expect(demoDomainFor('COMMUNITYEVENTSPROJECT.COM:8081')).toBe(
+      'demo.communityeventsproject.com',
+    );
+  });
+
+  it('is idempotent, so re-deriving from the demo host does not nest it', () => {
+    expect(demoDomainFor('demo.communityeventsproject.com')).toBe(
+      'demo.communityeventsproject.com',
+    );
+  });
+
+  it('does not mistake a domain merely starting with "demo" for the demo host', () => {
+    expect(demoDomainFor('demonstration.com')).toBe('demo.demonstration.com');
+  });
+
+  it('has no address when the deployment has none', () => {
+    expect(demoDomainFor('')).toBe('');
+  });
+
+  // The load-bearing property. Prefixing keeps the demo a *subdomain* of the
+  // deployment, which is what `isOnDeploymentDomain` answers true for.
+  it('always lands on the deployment domain', () => {
+    for (const deployment of [
+      'communityeventsproject.com',
+      'stage.communityeventsproject.com',
+      'example.org',
+    ]) {
+      expect(isOnDeploymentDomain(demoDomainFor(deployment), deployment)).toBe(true);
+    }
   });
 });

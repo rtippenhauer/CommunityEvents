@@ -4,6 +4,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import { LoginComponent } from './login.component';
 import { AuthService, CurrentUser } from '../../../core/services/auth.service';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 
 // An invite link lands here, so this page decides whether an invite is honoured
 // or thrown away. The signed-in case is the one that broke: the browser already
@@ -84,5 +85,65 @@ describe('LoginComponent', () => {
     expect(navigate).not.toHaveBeenCalled();
     expect(text).toContain('claim your seat at the table');
     expect(text).not.toContain('already signed in');
+  });
+
+  /**
+   * The demo's signup affordance (v2-14).
+   *
+   * Everywhere else this page decides "sign in" versus "create an account" by
+   * whether an invite token is in the URL. The demo has no token by definition,
+   * so without an explicit way in, the one community whose whole point is open
+   * registration would be the one community with no visible way to register.
+   */
+  describe('on the demo community', () => {
+    const asDemo = (isDemo: boolean): void => {
+      const brand = TestBed.inject(BrandConfigService);
+      brand.brand.set({ ...brand.brand(), isDemo });
+    };
+
+    it('offers to create an account with no invite', () => {
+      TestBed.overrideProvider(ActivatedRoute, {
+        useValue: { snapshot: { queryParamMap: convertToParamMap({}) } },
+      });
+      asDemo(true);
+      fixture = TestBed.createComponent(LoginComponent);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.offersDemoSignup()).toBe(true);
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+        'Create a demo account',
+      );
+    });
+
+    // The affordance is what makes an invite-less registration reachable, so it
+    // must not appear anywhere the API would refuse one.
+    it('offers nothing of the kind on an ordinary community', () => {
+      asDemo(false);
+      fixture = TestBed.createComponent(LoginComponent);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.offersDemoSignup()).toBe(false);
+      expect((fixture.nativeElement as HTMLElement).textContent).not.toContain(
+        'Create a demo account',
+      );
+    });
+
+    // One form, two ways of arriving at it. If the toggle rendered a different
+    // form from the invite path, the name and confirm-password fields would be
+    // missing on exactly the community where every visitor is a new account.
+    it('renders the same signup form the invite path renders', () => {
+      asDemo(true);
+      fixture = TestBed.createComponent(LoginComponent);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.registering()).toBe(false);
+      fixture.componentInstance.toggleDemoSignup();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.registering()).toBe(true);
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+        'admin of this demo community',
+      );
+    });
   });
 });

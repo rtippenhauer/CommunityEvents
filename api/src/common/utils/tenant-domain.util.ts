@@ -129,3 +129,44 @@ export function isOnDeploymentDomain(tenantDomain: string, deploymentDomain: str
   // register.
   return tenant === deployment || tenant.endsWith(`.${deployment}`);
 }
+
+/**
+ * The label the demo community lives under, on every deployment (v2-14).
+ *
+ * Mirrored in `frontend/src/app/features/landing/landing.component.ts`, which
+ * needs it to link to the demo from the marketing page — a page served to
+ * visitors who have no tenant and so cannot be told the answer by the API.
+ * Same mirroring the roles and colour utilities carry, and for the same reason:
+ * one of the two consumers has no way to ask the other.
+ */
+export const DEMO_SUBDOMAIN = 'demo';
+
+/**
+ * Where the demo community lives, derived from the deployment's own domain
+ * rather than configured.
+ *
+ * `demo.` prefixed to this deployment's domain, so stage and production each
+ * get their own without either being told about the other:
+ * `demo.communityeventsproject.com` and `demo.stage.communityeventsproject.com`.
+ *
+ * The form matters beyond the spelling. Prefixing keeps the demo a *subdomain*
+ * of the deployment domain, so `isOnDeploymentDomain` is true for it and it
+ * inherits this deployment's Brevo credentials and Google redirect URI. A demo
+ * sitting beside the deployment rather than under it would be a community on
+ * its own domain, which under v2-12's rule has no mail — and a community with
+ * no mail is one nobody can join.
+ *
+ * This is the address the *landing page links to* and the address
+ * `provision-demo.ts` creates the tenant at. It is not what decides whether a
+ * community IS the demo — `tenants.is_demo` is, for the reasons recorded on
+ * that column.
+ */
+export function demoDomainFor(deploymentUrlOrDomain: string): string {
+  const deployment = normalizeTenantDomain(deploymentUrlOrDomain);
+  if (!deployment) return '';
+  // Already the demo host: prefixing again would produce demo.demo.<domain>.
+  // The dot is part of the test, so a deployment at `demonstration.com` is not
+  // mistaken for one already under the demo label.
+  if (deployment.startsWith(`${DEMO_SUBDOMAIN}.`)) return deployment;
+  return `${DEMO_SUBDOMAIN}.${deployment}`;
+}

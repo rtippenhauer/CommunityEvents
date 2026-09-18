@@ -32,6 +32,7 @@ import { ELEVATED_ROLES } from '../../common/utils/roles.util';
 import { AUTOMATION_ACCOUNT_EMAIL } from '../../common/utils/service-account.util';
 import { isStageDeployment } from '../../common/config/deployment.util';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import { currentTenantId } from '../../common/tenant/tenant-store';
 import { AppConfigService } from '../app-config/app-config.service';
 
 export interface SessionContext {
@@ -101,6 +102,37 @@ export class AuthService {
     return first.id;
   }
 
+  /**
+   * Whether an invite-less signup is allowed here, and lands as an admin (v2-14).
+   *
+   * This is the demo community's whole carve-out, and it is deliberately ONE
+   * predicate consulted by all three registration paths — email/password, Google
+   * and Facebook. Written out separately in each, the three would be three
+   * chances to widen the rule by accident, and the thing being widened is
+   * "a stranger becomes an admin".
+   *
+   * Two independent conditions have to hold, and they are checked here rather
+   * than trusted from anywhere upstream:
+   *
+   *  - the community being registered on carries `is_demo`. Not the host, not a
+   *    header, not a field on the request: the resolved tenant's own row.
+   *  - it is not the root tenant. `chk_tenant_demo_not_root` already makes that
+   *    unrepresentable in the database, so this is the second of two locks on
+   *    the same door — the consequence of being wrong is admin over the
+   *    deployment's own community, which is the system admin's.
+   *
+   * With no tenant in context the answer is false. That is not a
+   * belt-and-braces flourish: an invite-less signup reaching this with no
+   * resolved community is a bug, and granting admin would be the worst possible
+   * response to one.
+   */
+  private async demoSelfRegistrationAllowed(): Promise<boolean> {
+    const tenantId = currentTenantId();
+    if (!tenantId) return false;
+    if (!(await this.tenantResolution.isDemoTenant(tenantId))) return false;
+    return !(await this.tenantResolution.isRootTenant(tenantId));
+  }
+
   private async releaseDeletedEmail(email: string): Promise<void> {
     const deleted = await this.prisma.users.findFirst({
       where: { email, status: UserStatus.DELETED },
@@ -161,7 +193,15 @@ export class AuthService {
     const isAdminBootstrap =
       !!adminEmail && email.toLowerCase() === adminEmail.toLowerCase();
 
-    if (!inviteToken && !isAdminBootstrap) {
+    // Same demo carve-out the email/password path takes (v2-14), and through the
+    // same predicate so the two cannot drift. A provider is only offered on the
+    // demo at all if the demo tenant carries credentials; this is here so that
+    // when it does, signing in with Google lands where signing up with a password
+    // lands, rather than on a `no_invite` refusal nobody would connect to the
+    // demo's open registration.
+    const demoSignup = !inviteToken && (await this.demoSelfRegistrationAllowed());
+
+    if (!inviteToken && !isAdminBootstrap && !demoSignup) {
       throw new AuthFlowError('no_invite');
     }
 
@@ -193,7 +233,12 @@ export class AuthService {
       emailStatus: EmailStatus.ACTIVE,
       emailVerifiedAt: new Date(),
       cityId,
-      role: isAdminBootstrap ? UserRole.ADMIN : (isNonValidatedInvite ? UserRole.NON_VALIDATED : UserRole.MEMBER),
+      role:
+        isAdminBootstrap || demoSignup
+          ? UserRole.ADMIN
+          : isNonValidatedInvite
+            ? UserRole.NON_VALIDATED
+            : UserRole.MEMBER,
       status: UserStatus.ACTIVE,
       profilePhotoPath: profilePhoto ?? null,
       inviteId: invite?.id ?? null,
@@ -288,18 +333,23 @@ export class AuthService {
       }
     }
 
-    if (!inviteToken) throw new AuthFlowError('no_invite');
+    // The demo carve-out (v2-14), through the same predicate as the other two
+    // registration paths -- see `demoSelfRegistrationAllowed`.
+    const demoSignup = !inviteToken && (await this.demoSelfRegistrationAllowed());
+    if (!inviteToken && !demoSignup) throw new AuthFlowError('no_invite');
 
     let invite = null;
-    try {
-      invite = await this.invitesService.validate(inviteToken, email ?? '');
-    } catch (err) {
-      if (err instanceof AuthFlowError) throw err;
-      if (err instanceof NotFoundException) throw new AuthFlowError('invalid_invite');
-      const msg: string = (err as Error).message ?? '';
-      if (msg.includes('expired')) throw new AuthFlowError('invite_expired');
-      if (msg.includes('already been used') || msg.includes('revoked')) throw new AuthFlowError('invite_used');
-      throw new AuthFlowError('invalid_invite');
+    if (inviteToken) {
+      try {
+        invite = await this.invitesService.validate(inviteToken, email ?? '');
+      } catch (err) {
+        if (err instanceof AuthFlowError) throw err;
+        if (err instanceof NotFoundException) throw new AuthFlowError('invalid_invite');
+        const msg: string = (err as Error).message ?? '';
+        if (msg.includes('expired')) throw new AuthFlowError('invite_expired');
+        if (msg.includes('already been used') || msg.includes('revoked')) throw new AuthFlowError('invite_used');
+        throw new AuthFlowError('invalid_invite');
+      }
     }
 
     const cityId = await this.resolveCityId(subdomainCityId);
@@ -316,7 +366,11 @@ export class AuthService {
       emailStatus: email ? EmailStatus.ACTIVE : EmailStatus.PENDING,
       emailVerifiedAt: email ? new Date() : undefined,
       cityId,
-      role: isFbNonValidated ? UserRole.NON_VALIDATED : UserRole.MEMBER,
+      role: demoSignup
+        ? UserRole.ADMIN
+        : isFbNonValidated
+          ? UserRole.NON_VALIDATED
+          : UserRole.MEMBER,
       status: UserStatus.ACTIVE,
       profilePhotoPath: profilePhoto ?? null,
       inviteId: invite?.id ?? null,
@@ -783,12 +837,12 @@ export class AuthService {
   // ── Email / Password ────────────────────────────────────────────────────────
 
   async registerWithPassword(
-    inviteToken: string,
+    inviteToken: string | undefined,
     fullName: string,
     email: string,
     password: string,
     subdomainCityId?: number,
-  ): Promise<User> {
+  ): Promise<{ user: User; demoSignup: boolean }> {
     const lowerEmail = email.toLowerCase();
 
     const existing = await this.prisma.users.findFirst({
@@ -798,16 +852,25 @@ export class AuthService {
       throw new ConflictException('email_taken');
     }
 
+    // The demo's open door (v2-14). An invite-less registration is allowed only
+    // where `demoSelfRegistrationAllowed` says so, and everywhere else it is the
+    // same `no_invite` refusal the OAuth paths give -- the token used to be
+    // mandatory at the DTO, and this is what replaces that guarantee.
+    const demoSignup = !inviteToken && (await this.demoSelfRegistrationAllowed());
+    if (!inviteToken && !demoSignup) throw new AuthFlowError('no_invite');
+
     let invite = null;
-    try {
-      invite = await this.invitesService.validate(inviteToken, lowerEmail);
-    } catch (err) {
-      if (err instanceof AuthFlowError) throw err;
-      if (err instanceof NotFoundException) throw new AuthFlowError('invalid_invite');
-      const msg: string = (err as Error).message ?? '';
-      if (msg.includes('expired')) throw new AuthFlowError('invite_expired');
-      if (msg.includes('already been used') || msg.includes('revoked')) throw new AuthFlowError('invite_used');
-      throw new AuthFlowError('invalid_invite');
+    if (inviteToken) {
+      try {
+        invite = await this.invitesService.validate(inviteToken, lowerEmail);
+      } catch (err) {
+        if (err instanceof AuthFlowError) throw err;
+        if (err instanceof NotFoundException) throw new AuthFlowError('invalid_invite');
+        const msg: string = (err as Error).message ?? '';
+        if (msg.includes('expired')) throw new AuthFlowError('invite_expired');
+        if (msg.includes('already been used') || msg.includes('revoked')) throw new AuthFlowError('invite_used');
+        throw new AuthFlowError('invalid_invite');
+      }
     }
 
     if (existing?.status === UserStatus.DELETED) {
@@ -829,11 +892,27 @@ export class AuthService {
       fullName,
       email: lowerEmail,
       passwordHash,
-      emailStatus: EmailStatus.PENDING,
-      emailVerificationToken: verificationToken,
-      emailVerificationExpiresAt: verificationExpires,
+      // The demo skips address verification, and that is a decision rather than
+      // a shortcut. Verification exists to prove an address belongs to the person
+      // claiming it; on the demo the thing it would protect is admin over a
+      // community that holds nothing real and is erased nightly, so it buys
+      // nothing — while the mailbox round-trip it costs is where a "try it now"
+      // visitor gives up. It also makes the demo independent of mail working at
+      // all, which the rest of the deployment is not.
+      emailStatus: demoSignup ? EmailStatus.ACTIVE : EmailStatus.PENDING,
+      emailVerifiedAt: demoSignup ? new Date() : null,
+      emailVerificationToken: demoSignup ? null : verificationToken,
+      emailVerificationExpiresAt: demoSignup ? null : verificationExpires,
       cityId,
-      role: isNonValidatedInvite ? UserRole.NON_VALIDATED : UserRole.MEMBER,
+      // Admin of THIS community and nothing else. The role is per-user and users
+      // are tenant-scoped (v2-6), so it reaches exactly as far as the tenant row
+      // the registration resolved against. `system_admin` is not assignable here
+      // by any path — `admin.service.setRole` refuses it and so does this.
+      role: demoSignup
+        ? UserRole.ADMIN
+        : isNonValidatedInvite
+          ? UserRole.NON_VALIDATED
+          : UserRole.MEMBER,
       status: UserStatus.ACTIVE,
       inviteId: invite?.id ?? null,
       invitedBy: invite?.createdBy ?? null,
@@ -841,7 +920,7 @@ export class AuthService {
     } });
 
     const saved = user;
-    await this.invitesService.redeem(invite, saved);
+    if (invite) await this.invitesService.redeem(invite, saved);
     if (invite?.type === InviteType.EVENT_INVITE && invite.eventId) {
       const exists = await this.prisma.event_rsvps.findFirst({
         where: { userId: saved.id, eventId: invite.eventId },
@@ -853,9 +932,26 @@ export class AuthService {
       }
       await this.backfillReservationIfMatch(saved, invite.eventId);
     }
-    await this.sendVerificationEmail(saved, verificationToken);
+    if (!demoSignup) await this.sendVerificationEmail(saved, verificationToken);
 
-    return saved;
+    await this.auditService.log({
+      userId: saved.id,
+      action: 'user.register',
+      entityType: 'user',
+      entityId: saved.id,
+      // Demo signups are audited like any other, which matters more here than
+      // elsewhere: this is the one path that hands out an admin role without a
+      // human approving it, and the audit row is scoped to the demo, so it is
+      // erased by the same nightly reset that erases what it describes.
+      metadata: { provider: 'password', demoSignup, inviteType: invite?.type ?? null },
+    });
+
+    // `demoSignup` goes back to the controller because it decides what happens
+    // next, and the controller cannot infer it: an ordinary registration ends at
+    // "check your email", a demo one ends signed in. Returning the flag rather
+    // than having the controller re-derive it from the saved row keeps the answer
+    // in the one place that actually decided it.
+    return { user: saved, demoSignup };
   }
 
   // If the new user's email matches an event's outside-contact reservation, promote them

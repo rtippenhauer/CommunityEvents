@@ -4,6 +4,14 @@
 @if (isStage) {
   <div class="stage-banner">⚠ STAGE ENVIRONMENT — Not production</div>
 }
+@if (isDemo()) {
+  <div class="demo-banner" role="status">
+    <strong>This is the demo.</strong>
+    Anyone can sign up here and everyone who does becomes an admin. Everything in this community —
+    events, members, photos, settings — is erased and rebuilt every night, so please don't keep
+    anything here you would mind losing.
+  </div>
+}
 @if (needsLegalReview()) {
   <div class="legal-review-banner">
     <span>

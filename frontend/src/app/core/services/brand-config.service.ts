@@ -70,6 +70,17 @@ export interface BrandConfig {
   /** Whether this community is the root one (REQ-TENANT-01.7). */
   isRoot: boolean;
   /**
+   * Whether this community is the demo (v2-14), where anyone may sign up, they
+   * land as an admin of it, and everything is wiped nightly.
+   *
+   * Drives the standing notice in the shell and the sign-up affordance on the
+   * login page. The notice is the reason this is in the payload at all: a
+   * visitor who registers here becomes an admin and may start entering real
+   * events for a real group, and the reset would then destroy work they had no
+   * reason to think was disposable.
+   */
+  isDemo: boolean;
+  /**
    * Where a member is told to write for help. Resolved per community by the
    * API; the pages that surface it used to hardcode support@dinnerbears.com,
    * which no other community could receive mail at.
@@ -174,6 +185,11 @@ const DEFAULT_BRAND: BrandConfig = {
   // Defaults false: until branding loads, assume this is NOT the root
   // community, so nothing root-only is offered on a guess.
   isRoot: false,
+  // Defaults false for the opposite reason to legalReviewed below: this one
+  // unlocks an invite-less sign-up affordance, so a slow or failed branding
+  // fetch must not offer it. The API refuses that registration anyway -- the
+  // flag here only decides what is shown.
+  isDemo: false,
   // Defaults true, unlike isRoot: this one drives a warning banner, and a slow
   // or failed branding fetch should not accuse a community of skipping a review
   // it may well have done.
@@ -249,6 +265,7 @@ export class BrandConfigService {
   readonly appUrl = computed(() => this.brand().appUrl);
   readonly baseDomain = computed(() => this.brand().baseDomain);
   readonly isRoot = computed(() => this.brand().isRoot);
+  readonly isDemo = computed(() => this.brand().isDemo);
   readonly supportEmail = computed(() => this.brand().supportEmail);
   readonly foundingLabel = computed(() => this.brand().foundingLabel);
   readonly legalReviewed = computed(() => this.brand().legalReviewed);

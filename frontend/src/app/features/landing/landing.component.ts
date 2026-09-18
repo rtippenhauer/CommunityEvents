@@ -4,7 +4,17 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { BrandConfigService } from '../../core/services/brand-config.service';
 
-/** The subdomain the demo tenant (v2-14) is created at, on any deployment. */
+/**
+ * The subdomain the demo tenant (v2-14) is created at, on any deployment.
+ *
+ * Mirrored by `DEMO_SUBDOMAIN` / `demoDomainFor` in the API's
+ * `common/utils/tenant-domain.util.ts`, which is what `provision-demo.ts`
+ * actually creates the tenant at. The two must agree or this page links to a
+ * host no tenant answers on — the same mirroring `roles.util.ts` and
+ * `color.util.ts` carry, and for the same reason: this page is served to
+ * visitors of the root community, so it cannot ask the API where a community
+ * that may not exist yet would live.
+ */
 export const DEMO_SUBDOMAIN = 'demo';
 
 /**

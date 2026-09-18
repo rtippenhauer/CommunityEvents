@@ -17,6 +17,28 @@
 // Sits under the stage banner when both are up. Deliberately quieter than the
 // stage one: it is a to-do for this community's admins, not a warning about
 // which deployment you are looking at.
+/**
+ * The demo's standing notice (v2-14).
+ *
+ * Uses the environment-banner tokens rather than colours of its own: they are
+ * the pair that already exists for "this whole deployment is not what you think
+ * it is", and `--ce-on-banner` is contrast-measured against `--ce-banner` by
+ * palette.ts for every colour an admin can pick -- including whatever a demo
+ * visitor sets, since they are an admin of it and the branding screen is theirs.
+ */
+.demo-banner {
+  background: var(--ce-banner);
+  color: var(--ce-on-banner);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  padding: 8px 16px;
+  text-align: center;
+
+  strong {
+    font-weight: 700;
+  }
+}
+
 .legal-review-banner {
   display: flex;
   flex-wrap: wrap;

@@ -22,10 +22,7 @@ import {
   AUTOMATION_ACCOUNT_NAME,
 } from '../../common/utils/service-account.util';
 import { AuditService } from '../audit/audit.service';
-import {
-  TENANT_SCOPED_MODELS,
-  type TenantScopedModel,
-} from '../../common/tenant/tenant-scoped-models';
+import { purgeTenantRows } from '../../common/tenant/tenant-purge';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { DeleteTenantDto } from './dto/delete-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -402,11 +399,17 @@ export class TenantsAdminService {
    * silently lost its filter (an unextended transaction client, say) would do
    * exactly that. The filter is written where it can be read.
    *
-   * Order does not matter: every foreign key among the scoped tables is
-   * ON DELETE CASCADE, so deleting a parent takes its children and deleting a
-   * child first is equally fine. Only the `tenant_id` keys are RESTRICT, which
-   * is what makes the final `tenants.delete()` a safety net -- if this list ever
-   * misses a table, that call fails loudly instead of leaving orphans.
+   * **Order matters, and this comment used to say it did not** -- "every foreign
+   * key among the scoped tables is ON DELETE CASCADE". Most are; three are not,
+   * and this loop would have failed on any community whose invites had ever been
+   * redeemed. The walk lives in `tenant-purge.ts` now, shared with v2-14's demo
+   * reset, and that file records which keys and why. Found while building the
+   * reset, not by a delete going wrong: nothing had deleted a populated
+   * community yet.
+   *
+   * Only the `tenant_id` keys are RESTRICT, which is what makes the final
+   * `tenants.delete()` a safety net -- if the model list ever misses a table,
+   * that call fails loudly instead of leaving orphans.
    */
   async remove(
     id: number,
@@ -434,7 +437,7 @@ export class TenantsAdminService {
       );
     }
 
-    const deleted: Record<string, number> = {};
+    let deleted: Record<string, number> = {};
     await runUnscoped(`deleting tenant ${existing.domain} and all of its data`, async () => {
       // One transaction, so a failure part-way leaves the community intact
       // rather than half-erased. The timeout is raised well past Prisma's 5s
@@ -442,14 +445,7 @@ export class TenantsAdminService {
       // history, and it runs once in that community's lifetime.
       await this.prisma.$transaction(
         async (tx) => {
-          const delegates = tx as unknown as Record<
-            TenantScopedModel,
-            { deleteMany(args: { where: { tenantId: number } }): Promise<{ count: number }> }
-          >;
-          for (const model of TENANT_SCOPED_MODELS) {
-            const { count } = await delegates[model].deleteMany({ where: { tenantId: id } });
-            if (count > 0) deleted[model] = count;
-          }
+          deleted = await purgeTenantRows(tx, id);
           await (tx as unknown as {
             tenants: { delete(args: { where: { id: number } }): Promise<unknown> };
           }).tenants.delete({ where: { id } });

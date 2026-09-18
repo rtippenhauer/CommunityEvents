@@ -991,6 +991,30 @@ model tenants {
   /// convention.
   rootMarker               Boolean?                   @unique(map: "uq_tenant_single_root") @map("root_marker")
   status                   tenants_status             @default(active)
+  /// The demo community (v2-14): a tenant anyone may try, where signing up
+  /// grants admin **of this tenant only** and everything is wiped and re-seeded
+  /// on a nightly schedule.
+  ///
+  /// Stored rather than derived from the domain, which is the opposite of the
+  /// call v2-12 made for `isOnDeploymentDomain` -- and deliberately so, because
+  /// this is not the same kind of question. The demo's *address* is derived
+  /// (`demoDomainFor`, so the landing page can link to it before the row
+  /// exists); this column is a **capability grant**: may a stranger become an
+  /// admin here, and may this community's data be destroyed on a timer. A
+  /// derived answer would mean that editing a community's domain to
+  /// `demo.<deployment>` silently hands strangers admin over it and schedules
+  /// its deletion -- an escalation triggered by an unrelated action.
+  ///
+  /// Nothing over HTTP can set it. The only writer is `provision-demo.ts`, so
+  /// the escalation has no network surface at all; `tenants-admin.service`
+  /// creates communities with it unset and never updates it.
+  ///
+  /// It can never be true on the root tenant: `chk_tenant_demo_not_root`
+  /// rejects that combination in the database, for the same reason
+  /// `root_marker` is an index rather than a convention -- the consequence of
+  /// being wrong is that self-registration grants admin over the deployment
+  /// itself.
+  isDemo                   Boolean                    @default(false) @map("is_demo")
   /// Reserved (REQ-TENANT-01.1). Every tenant shares one database today; the
   /// column exists so a future dedicated-database option does not need a
   /// migration on a live table.

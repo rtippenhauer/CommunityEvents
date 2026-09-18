@@ -180,6 +180,17 @@ export class AppComponent {
     () => this.isAdmin() && !this.brandConfig.legalReviewed(),
   );
 
+  /**
+   * The demo's standing notice (v2-14).
+   *
+   * Deliberately NOT gated on being signed in, on a role, or on being
+   * dismissable. Everyone who signs up on the demo is an admin of it, so there
+   * is no audience here who does not need to know; and the person most in danger
+   * of losing work is the one who has been using it long enough to have stopped
+   * reading the chrome, which is exactly who a dismissable notice stops warning.
+   */
+  readonly isDemo = computed<boolean>(() => this.brandConfig.isDemo());
+
   // Deployment operator rather than community admin. Gates the tenant registry
   // link only; the API enforces it again and additionally requires the root
   // host, which the browser cannot check.

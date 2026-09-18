@@ -481,6 +481,59 @@ With DNS and mail in place:
    set them under **Admin → API Keys**. Leaving them unset inherits the
    deployment's, which is usually what you want.
 
+## 7. The demo community
+
+The demo is not created this way, and deliberately cannot be. It is a community
+anyone may try: **signing up on it makes you an admin of it**, and everything in
+it is erased and rebuilt every night. Both properties are granted by
+`tenants.is_demo`, and nothing reachable over HTTP can set that column — the
+community admin screens create communities with it unset and never touch it, so
+the "a stranger becomes an admin" grant has no network surface at all. Turning an
+existing community into the demo is not an operation that exists.
+
+Its address is **derived, not chosen**: `demo.` on this deployment's own domain,
+so `demo.communityeventsproject.com` in production and
+`demo.stage.communityeventsproject.com` on stage. That shape is load-bearing
+rather than cosmetic. It keeps the demo a *subdomain* of the deployment, so it
+inherits the deployment's Brevo credentials and Google redirect URI under the
+rule in §3; a demo sitting *beside* the deployment would be a community on its
+own domain, which may not use the deployment's mail — and a community with no
+mail is one nobody can join.
+
+To create or re-seed it, from inside the container:
+
+```sh
+ALLOW_DEMO_PROVISION=<database name> node /app/dist/provision-demo.js
+```
+
+Re-running it against an existing demo **erases everything in it**, which is the
+same thing the nightly reset does. It refuses outright if a community that is not
+the demo already holds that address.
+
+### DNS: stage needs one thing production does not
+
+Cloudflare's Universal SSL wildcard covers **one label**.
+`*.communityeventsproject.com` covers `stage.` but not `demo.stage.`, so the edge
+has no certificate for the stage demo host and aborts the handshake — which
+Chrome reports as `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`, sending you to look at
+protocol and cipher settings rather than at the certificate.
+
+- **Stage:** the `demo.stage.` record must be **grey-clouded** (DNS only) and
+  served directly by NGINX Proxy Manager, which holds a Let's Encrypt certificate
+  for it — Let's Encrypt has no wildcard depth limit. Advanced Certificate Manager
+  (paid) is the alternative if the record has to stay proxied.
+- **Production:** nothing special. `demo.<apex>` is a single label and the
+  existing wildcard already covers it.
+
+### What the reset does and does not touch
+
+It empties that community and seeds it again: members, venues, past and upcoming
+events, attendance, ratings, plus the rows every community needs to work (legal
+copy, achievement catalogue, email provider row). It runs at **04:00 UTC**, and
+touches nothing outside the demo. Seeded members are on `.invalid` addresses,
+which cannot be delivered to — the demo sends real mail on the deployment's
+account, and a seeded address at a real domain would mail a stranger nightly.
+
 ## Checklist
 
 ```
