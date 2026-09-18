@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Put, Req, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -24,6 +24,42 @@ import type { users as User } from '@prisma/client';
  * re-exporting it at the HTTP edge would undo the column encryption at the last
  * hop, putting it in an access log, a proxy buffer and a browser cache.
  */
+/**
+ * Refuses a client id that cannot be one, at save time.
+ *
+ * **What this catches is a password manager**, which is how it was found: asked
+ * to fill a form with a secret field, Dashlane put the operator's email address
+ * in the id beside it. Both fields already carry `autocomplete="off"` and
+ * managers routinely ignore it, so the browser cannot be relied on to prevent
+ * this -- and the value is only wrong in a way the provider can see. Google
+ * answers `invalid_client` at the *authorize* step, three screens away, on a
+ * page carrying none of our wording; Meta is no better. An admin then has a
+ * broken sign-in and no reason to suspect the field they did not type in.
+ *
+ * Deliberately a *shape* check and not a strict format. The rules below are the
+ * parts that have been stable for as long as either provider has existed -- a
+ * Google client id ends in `.apps.googleusercontent.com`, a Meta app id is
+ * digits -- so they reject an address, a secret (`GOCSPX-...`) and a truncated
+ * paste, while staying out of the way of whatever either provider issues next.
+ * Guessing harder here would mean refusing a credential that works.
+ */
+const GOOGLE_CLIENT_ID_SUFFIX = '.apps.googleusercontent.com';
+
+function assertClientIdShape(provider: 'google' | 'facebook', clientId: string): void {
+  if (provider === 'google' && !clientId.endsWith(GOOGLE_CLIENT_ID_SUFFIX)) {
+    throw new BadRequestException(
+      `That does not look like a Google client ID -- they end in "${GOOGLE_CLIENT_ID_SUFFIX}". ` +
+        'Check the field was not autofilled with an email address or the client secret.',
+    );
+  }
+  if (provider === 'facebook' && !/^\d+$/.test(clientId)) {
+    throw new BadRequestException(
+      'That does not look like a Meta app ID -- they are digits only. ' +
+        'Check the field was not autofilled with an email address or the app secret.',
+    );
+  }
+}
+
 interface OAuthProviderView {
   clientId: string | null;
   secretSet: boolean;
@@ -163,6 +199,7 @@ export class OAuthConfigController {
   ): Promise<OAuthConfigView> {
     const tenantId = this.tenantId(req);
     const clearing = !dto.clientId;
+    if (!clearing) assertClientIdShape(provider, dto.clientId!);
 
     const data =
       provider === 'google'

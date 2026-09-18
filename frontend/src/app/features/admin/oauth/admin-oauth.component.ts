@@ -372,11 +372,19 @@ export class AdminOAuthComponent implements OnInit {
         this.saving.set(null);
         this.snackBar.open(message, 'Dismiss', { duration: 4000 });
       },
-      error: () => {
+      // The API's own message wins where there is one, because the save path
+      // rejects a credential that cannot be one and says what shape it expected
+      // -- wording an admin needs precisely when the value was autofilled and
+      // they have no reason to suspect the field. Discarding it for a generic
+      // line is the same mistake v2-8 fixed in `exchange_failed`: the real
+      // reason existed and was thrown away one layer above where it was raised.
+      error: (err: { error?: { message?: string } }) => {
         this.saving.set(null);
-        this.snackBar.open('Could not save. Check the values and try again.', 'Dismiss', {
-          duration: 5000,
-        });
+        this.snackBar.open(
+          err?.error?.message ?? 'Could not save. Check the values and try again.',
+          'Dismiss',
+          { duration: 8000 },
+        );
       },
     });
   }
