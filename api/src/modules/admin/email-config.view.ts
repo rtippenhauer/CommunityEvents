@@ -34,17 +34,32 @@ export type EmailConfigView = Omit<
   readonly resendApiKeySet: boolean;
   /** Whether Brevo currently holds a webhook pointing at this community. */
   readonly webhookRegistered: boolean;
+  /**
+   * Whether this community may send on the deployment's own provider account
+   * when it has set no key of its own (v2-12).
+   *
+   * True for a community on a subdomain of this deployment, false for one on
+   * its own domain. The screen needs it to say anything true about an empty
+   * key field: for the first kind that field means "inheriting the
+   * deployment's account", and for the second it means "this community cannot
+   * send mail at all", which are opposite messages.
+   */
+  readonly mayUseDeploymentCredentials: boolean;
 };
 
 /**
  * What a community that has never configured email looks like.
  *
- * Its settings are real even with no row: it sends on the deployment's env
- * credentials, against these limits, having sent nothing of its own. Returning
- * this rather than `null` is not cosmetic — the admin screen renders nothing at
- * all without a config, so a community with no row got a permanent spinner on
- * the one screen that could have created it. The row is still written on first
- * save, not on read; a GET must not write.
+ * Its settings are real even with no row: against these limits, having sent
+ * nothing of its own, and — if it is on a subdomain of this deployment — on the
+ * deployment's env credentials. A community on its own domain has no such
+ * fallback as of v2-12 and genuinely cannot send until it sets a key, which is
+ * what `mayUseDeploymentCredentials` exists to let the screen say.
+ *
+ * Returning this rather than `null` is not cosmetic — the admin screen renders
+ * nothing at all without a config, so a community with no row got a permanent
+ * spinner on the one screen that could have created it. The row is still
+ * written on first save, not on read; a GET must not write.
  *
  * `id: 0` says "not persisted yet". Nothing keys off it, and a real row's id is
  * never 0.
@@ -127,13 +142,18 @@ export function effectiveEmailConfigView(
   config: EmailProviderConfig | null,
   tenantId: number,
   timeZone: string,
+  mayUseDeploymentCredentials: boolean,
 ): EmailConfigView {
   return toEmailConfigView(
     config ? rollForwardWindow(config, timeZone) : unconfigured(tenantId, timeZone),
+    mayUseDeploymentCredentials,
   );
 }
 
-export function toEmailConfigView(config: EmailProviderConfig): EmailConfigView {
+export function toEmailConfigView(
+  config: EmailProviderConfig,
+  mayUseDeploymentCredentials: boolean,
+): EmailConfigView {
   const {
     brevoApiKey,
     resendApiKey,
@@ -152,6 +172,7 @@ export function toEmailConfigView(config: EmailProviderConfig): EmailConfigView 
     // The id is Brevo's, not a secret — it is left out because the screen has
     // no use for it, and "is it registered" is the question it asks.
     webhookRegistered: Boolean(webhookId),
+    mayUseDeploymentCredentials,
   };
 }
 

@@ -121,6 +121,23 @@ describe('White-label runtime config (e2e)', () => {
       expect(res.body.colorPrimary).toMatch(/^#[0-9a-fA-F]{6}$/);
       expect(typeof res.body.name).toBe('string');
     });
+
+    // The footer's copyright line used to be built in the template as
+    // `<brand name>.Com, LLC`. That was true for exactly one community and
+    // named a company that does not exist for every other -- and it disagreed
+    // with the same community's Terms, which have always been filled from
+    // LEGAL_ENTITY_NAME. Serving it is what lets the two agree.
+    it('serves who operates the deployment, for the copyright line', async () => {
+      const res = await request(server).get('/api/v1/config/branding').expect(200);
+
+      expect(typeof res.body.legalEntity).toBe('string');
+      expect(res.body.legalEntity.length).toBeGreaterThan(0);
+      // Unset in the test env, so it falls back to the community's own name --
+      // the same fallback fillLegalCopy applies, which is the point.
+      expect(res.body.legalEntity).toBe(res.body.name);
+      // The manufactured suffix must not come back in any form.
+      expect(res.body.legalEntity).not.toContain('.Com');
+    });
   });
 
   describe('Avatars', () => {

@@ -453,7 +453,7 @@
         <span class="footer-dot">&middot;</span>
         <a routerLink="/terms">Terms</a>
       </div>
-      <p class="footer-copy">&copy; {{ currentYear }} {{ brandConfig.brand().name }}.Com, LLC</p>
+      <p class="footer-copy">&copy; {{ currentYear }} {{ brandConfig.brand().legalEntity }}</p>
       @if (healthService.health(); as health) {
         <p class="footer-version">
           v{{ health.version }} &middot; {{ health.gitCommit.slice(0, 7) }}

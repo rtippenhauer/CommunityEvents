@@ -19,8 +19,15 @@ export interface OAuthProviderConfig {
 export interface OAuthConfig {
   google: OAuthProviderConfig;
   facebook: OAuthProviderConfig;
-  /** The one redirect URI to register, identical for every community here. */
+  /**
+   * The redirect URI *this* community's operator has to register. No longer the
+   * same for everyone (v2-12): a community on a subdomain of this deployment
+   * registers the deployment's one URI, and a community on its own domain
+   * registers its own host.
+   */
   googleRedirectUri: string;
+  /** Which of those two this community is, so the screen can explain why. */
+  onDeploymentDomain: boolean;
 }
 
 /** Sending no `clientId` switches the provider off. */

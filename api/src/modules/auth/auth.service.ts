@@ -420,6 +420,50 @@ export class AuthService {
     };
   }
 
+  /**
+   * Attaches a Google account to a user who is already signed in.
+   *
+   * The counterpart to `linkFacebook`, and it did not exist until now -- which
+   * is why Account Settings' **Connect** button could never work. Google
+   * linking used to happen as a side effect of `findOrCreateGoogleUser`
+   * auto-linking on a matching email; v2-8 removed that, correctly (it could
+   * not tell a deliberate Disconnect from a half-finished signup, which made
+   * Disconnect decorative), but nothing replaced the affordance. So the button
+   * started an ordinary sign-in, which then refused with `provider_not_linked`
+   * precisely because the account it was trying to connect to already existed.
+   *
+   * **The email is deliberately not required to match the account's.** People
+   * hold several Google addresses and connect whichever they sign in with;
+   * `linkFacebook` has never compared them either, and a rule applying to one
+   * provider and not the other is the asymmetry v2-8 set out to remove.
+   */
+  async linkGoogle(userId: number, googleId: string, email: string | null): Promise<void> {
+    const alreadyLinked = await this.prisma.oauth_accounts.findFirst({
+      where: { provider: OAuthProvider.GOOGLE, providerId: googleId },
+    });
+    if (alreadyLinked) {
+      // Already ours: pressing Connect twice, or a double-submitted callback.
+      if (alreadyLinked.userId === userId) return;
+      throw new ConflictException('This Google account is already linked to another user');
+    }
+
+    await this.prisma.oauth_accounts.create({
+      data: {
+        userId,
+        provider: OAuthProvider.GOOGLE,
+        providerId: googleId,
+        email: email ? email.toLowerCase() : null,
+      },
+    });
+
+    await this.auditService.log({
+      userId,
+      action: 'user.link_google',
+      entityType: 'user',
+      entityId: userId,
+    });
+  }
+
   async disconnectProvider(userId: number, provider: OAuthProvider): Promise<void> {
     const user = await this.prisma.users.findUniqueOrThrow({ where: { id: userId } });
     const accounts = await this.prisma.oauth_accounts.findMany({ where: { userId } });

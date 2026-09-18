@@ -1,4 +1,8 @@
-import { normalizeTenantDomain, resolveRootTenantDomain } from './tenant-domain.util';
+import {
+  isOnDeploymentDomain,
+  normalizeTenantDomain,
+  resolveRootTenantDomain,
+} from './tenant-domain.util';
 
 /**
  * The whole point of this function is that `www.<domain>` and `<domain>` can
@@ -140,5 +144,63 @@ describe('resolveRootTenantDomain', () => {
 
   it('returns empty when neither is set, for the caller to reject', () => {
     expect(resolveRootTenantDomain({})).toBe('');
+  });
+});
+
+describe('isOnDeploymentDomain', () => {
+  const DEPLOYMENT = 'communityeventsproject.com';
+
+  it('treats a subdomain of the deployment as on the deployment domain', () => {
+    expect(isOnDeploymentDomain('dayton.communityeventsproject.com', DEPLOYMENT)).toBe(true);
+    expect(isOnDeploymentDomain('cincinnati.communityeventsproject.com', DEPLOYMENT)).toBe(true);
+  });
+
+  it('treats the deployment domain itself as on it — the root tenant IS the deployment', () => {
+    expect(isOnDeploymentDomain(DEPLOYMENT, DEPLOYMENT)).toBe(true);
+  });
+
+  it('treats a community on its own domain as not on the deployment domain', () => {
+    expect(isOnDeploymentDomain('dinnerbears.com', DEPLOYMENT)).toBe(false);
+  });
+
+  it('does not match a domain that merely ends with the deployment domain', () => {
+    // The whole reason the suffix check carries a dot. Anyone can register
+    // these, and matching one would hand a stranger's domain the deployment's
+    // Google app and its email credentials.
+    expect(isOnDeploymentDomain('notcommunityeventsproject.com', DEPLOYMENT)).toBe(false);
+    expect(isOnDeploymentDomain('evil-communityeventsproject.com', DEPLOYMENT)).toBe(false);
+  });
+
+  it('matches a deeper subdomain, not just one level', () => {
+    expect(isOnDeploymentDomain('a.b.communityeventsproject.com', DEPLOYMENT)).toBe(true);
+  });
+
+  it('does not treat the deployment as being on a tenant subdomain (the check has a direction)', () => {
+    expect(isOnDeploymentDomain(DEPLOYMENT, 'dayton.communityeventsproject.com')).toBe(false);
+  });
+
+  it('normalises both sides, so a Host header and a stored domain agree', () => {
+    expect(isOnDeploymentDomain('WWW.Dayton.CommunityEventsProject.com', DEPLOYMENT)).toBe(true);
+    expect(isOnDeploymentDomain('dayton.communityeventsproject.com:8081', DEPLOYMENT)).toBe(true);
+    expect(
+      isOnDeploymentDomain('dayton.communityeventsproject.com', 'https://www.communityeventsproject.com/'),
+    ).toBe(true);
+  });
+
+  it('is scoped to its own deployment: a stage tenant is not on production', () => {
+    // Stage is its own root tenant (REQ-TENANT-01.7), so its communities sit
+    // under stage.communityeventsproject.com and are subdomains of stage --
+    // but production must not regard them as its own.
+    const STAGE = 'stage.communityeventsproject.com';
+    expect(isOnDeploymentDomain('dayton.stage.communityeventsproject.com', STAGE)).toBe(true);
+    expect(isOnDeploymentDomain('dayton.communityeventsproject.com', STAGE)).toBe(false);
+  });
+
+  it('returns false when either side is empty', () => {
+    // The no-fallback side deliberately: a deployment that has lost its own
+    // domain stops sending mail loudly rather than mailing from an address
+    // that describes nobody.
+    expect(isOnDeploymentDomain('dayton.communityeventsproject.com', '')).toBe(false);
+    expect(isOnDeploymentDomain('', DEPLOYMENT)).toBe(false);
   });
 });

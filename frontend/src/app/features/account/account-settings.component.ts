@@ -1,6 +1,6 @@
 import { Component, OnInit, signal, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   NonNullableFormBuilder,
   ReactiveFormsModule,
@@ -660,6 +660,7 @@ export class AccountSettingsComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   readonly providers = signal<ConnectedProviders | null>(null);
   readonly loading = signal(true);
@@ -714,11 +715,36 @@ export class AccountSettingsComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    this.reportGoogleLinkResult();
     this.loadProviders();
     const facebookAppId = this.brandConfig.facebookAppId();
     if (facebookAppId) {
       this.loadFbSdk(facebookAppId);
     }
+  }
+
+  /**
+   * Reports the outcome of a Google connect, which returns here by redirect.
+   *
+   * Facebook says its piece inline because its link is an XHR from this page.
+   * Google leaves for the provider and comes back, so the only way to carry the
+   * result is the query string -- and it is stripped immediately afterwards, so
+   * a refresh does not re-announce a connection that happened minutes ago.
+   */
+  private reportGoogleLinkResult(): void {
+    const params = this.route.snapshot.queryParamMap;
+    if (params.get('linked') !== 'google') return;
+
+    const error = params.get('error');
+    const message =
+      error === 'taken'
+        ? 'That Google account is already connected to another member here.'
+        : error
+          ? 'Could not connect Google. Please try again.'
+          : 'Google account connected!';
+
+    this.snackBar.open(message, 'OK', { duration: error ? 5000 : 3000 });
+    history.replaceState(null, '', window.location.pathname);
   }
 
   private loadProviders(): void {
@@ -772,8 +798,16 @@ export class AccountSettingsComponent implements OnInit {
     }
   }
 
+  /**
+   * Connecting is not signing in, and pointing this at `/auth/google` was the
+   * bug: that route is the sign-in start, and since v2-8 it refuses whenever
+   * the address already has an account -- which is every account that would
+   * press Connect. `/auth/google/link` is guarded, so the server takes the user
+   * from the session rather than from anything the browser could choose, and
+   * carries it through the provider round trip in the signed state.
+   */
   connectGoogle(): void {
-    window.location.href = '/api/v1/auth/google';
+    window.location.href = '/api/v1/auth/google/link';
   }
 
   connectFacebook(): void {

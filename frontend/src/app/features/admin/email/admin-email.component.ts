@@ -78,6 +78,12 @@ interface EmailConfig {
   // (v2-7). An empty key field therefore means "leave the stored key alone",
   // not "clear it"; clearing is the explicit Remove button.
   brevoApiKeySet: boolean;
+  /**
+   * Whether this community may send on the deployment's own Brevo account when
+   * it has set no key (v2-12). False for a community on its own domain, where
+   * an empty key field means "cannot send at all" rather than "inheriting".
+   */
+  mayUseDeploymentCredentials: boolean;
   // Deliverability callbacks. The token itself never reaches the browser --
   // it is minted server-side, handed to Brevo through their API and stored
   // encrypted, so the screen only ever learns whether one is registered.
@@ -229,6 +235,16 @@ interface EmailConfig {
               <mat-panel-description>API key, sender address</mat-panel-description>
             </mat-expansion-panel-header>
             <form [formGroup]="brevoForm" (ngSubmit)="saveBrevo()" class="creds-form">
+              @if (cannotSend()) {
+                <p class="webhook-state failed">
+                  <mat-icon>error_outline</mat-icon>
+                  This community is on its own domain, so it does not send on this
+                  deployment's Brevo account — it needs a key of its own. Until one is set
+                  here, nothing can be mailed: no invitations, no address verifications and
+                  no password resets, which between them are the only ways to join this
+                  community or get back into it.
+                </p>
+              }
               <mat-form-field appearance="outline" class="full-width">
                 <mat-label>API Key</mat-label>
                 <input matInput formControlName="brevoApiKey" type="password" autocomplete="off" />
@@ -238,8 +254,10 @@ interface EmailConfig {
                     @if (config()?.brevoApiKeySetAt) {
                       Set {{ config()!.brevoApiKeySetAt | date: 'MMM d, y' }}.
                     }
-                  } @else {
+                  } @else if (config()?.mayUseDeploymentCredentials) {
                     Not set; falls back to the BREVO_API_KEY env var.
+                  } @else {
+                    Required — this community has no deployment account to fall back on.
                   }
                 </mat-hint>
               </mat-form-field>
@@ -821,6 +839,20 @@ export class AdminEmailComponent implements OnInit {
     if (!since) return false;
     return Date.now() - new Date(since).getTime() > 60 * 24 * 60 * 60 * 1000;
   });
+  /**
+   * Whether this community can send no mail at all (v2-12).
+   *
+   * True only for a community on its own domain with no key of its own: it has
+   * no deployment account to fall back on. Distinct from "no key set", which is
+   * an ordinary, working state for a community on a subdomain of this
+   * deployment -- the whole reason the API reports which kind this is rather
+   * than letting the screen guess from an empty field.
+   */
+  readonly cannotSend = computed<boolean>(() => {
+    const cfg = this.config();
+    return !!cfg && !cfg.brevoApiKeySet && !cfg.mayUseDeploymentCredentials;
+  });
+
   readonly failedCount = computed(() => this.queue().filter((e) => e.status === 'failed').length);
   readonly expandedRowId = signal<number | null>(null);
 

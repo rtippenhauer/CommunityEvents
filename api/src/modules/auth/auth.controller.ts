@@ -188,19 +188,77 @@ export class AuthController {
   }
 
   /**
-   * Google's one registered callback, for every community (REQ-TENANT-01.8).
+   * Starts a Google **connect** from Account Settings, for a member who is
+   * already signed in.
    *
-   * Three things are true here at once and each one is a trap:
+   * Separate from `GET /auth/google` and guarded, which is the whole point:
+   * linking is an action taken from inside an authenticated session, and the
+   * user it applies to has to be established *here*, where there is a session
+   * to read it from. By the time the provider redirects back there is no
+   * trustworthy session on the callback host, so the id travels in the signed
+   * state (see OAuthState.linkUserId) rather than being re-derived there.
    *
-   *  - **The Host header is this host**, never the community the member started
-   *    on, so `req.tenant` resolves to the root tenant and is the wrong answer
-   *    to every question below.
-   *  - **The signed `state` is the only thing that knows** which community this
-   *    is, which is why it is verified before a credential is loaded or a user
-   *    is looked up.
-   *  - **The session cookie cannot be set here.** It is host-only, so a cookie
-   *    written on this host never reaches the community's own. The login leaves
-   *    as a single-use ticket instead.
+   * The button used to point at `GET /auth/google` -- an ordinary sign-in --
+   * which since v2-8 refuses with `provider_not_linked` whenever the address
+   * already has an account. That is every account that would ever press
+   * Connect, so the affordance could not work at all.
+   */
+  @Get('google/link')
+  @UseGuards(JwtAuthGuard)
+  async googleLink(
+    @Req() req: Request,
+    @Res() res: Response,
+    @CurrentUser() user: User,
+  ): Promise<void> {
+    const tenant = req.tenant;
+    if (!tenant) {
+      await this.authErrorRedirect(res, 'provider_not_offered');
+      return;
+    }
+
+    try {
+      res.redirect(
+        await this.googleOAuth.authorizationUrl(req, tenant.id, undefined, user.id),
+      );
+    } catch (err) {
+      const reason = err instanceof GoogleOAuthError ? err.reason : 'exchange_failed';
+      if (!(err instanceof GoogleOAuthError)) {
+        this.logger.error(`Could not start Google linking: ${(err as Error).message}`);
+      }
+      await this.authErrorRedirect(res, reason, tenant.id);
+    }
+  }
+
+  /**
+   * Google's callback (REQ-TENANT-01.8, extended by v2-12).
+   *
+   * **The signed `state` is the only thing that knows which community this is**,
+   * which is why it is verified before a credential is loaded or a user is
+   * looked up. The Host header cannot answer it: for a community on a subdomain
+   * of this deployment the callback lands on the deployment's one registered
+   * host, so `req.tenant` is the root tenant and is the wrong answer to every
+   * question below.
+   *
+   * **Where it lands decides whether a handoff is needed, and nothing else
+   * does.** The session cookie is host-only (REQ-TENANT-01.7), so it can only
+   * be set here when this host already belongs to the community the flow
+   * started on:
+   *
+   *  - `req.tenant` matches the state -- a community on its own domain, which
+   *    registered its own redirect URI, and the root tenant signing in on its
+   *    own host. The cookie is set directly and no `oauth_handoffs` row is
+   *    written.
+   *  - It does not match -- the callback terminated on the deployment's host
+   *    for a community living elsewhere. The login leaves as a single-use
+   *    ticket, redeemed on the community's own host.
+   *
+   * Comparing the two is deliberately the branch rather than an `if` on which
+   * kind of community this is: it is the check v2-8's design note asked for
+   * anyway ("check the signed state's tenant against `req.tenant` rather than
+   * trusting the host alone"), and used this way the host is never trusted on
+   * its own -- a callback that arrives somewhere unexpected falls back to the
+   * handoff, which works from anywhere, instead of setting a cookie on a host
+   * that has no business holding one.
    */
   @Get('google/callback')
   async googleCallback(@Req() req: Request, @Res() res: Response): Promise<void> {
@@ -240,6 +298,38 @@ export class AuthController {
       return;
     }
 
+    // A connect from Account Settings, not a sign-in. Handled before anything
+    // that resolves an identity: this flow must never create a user, and the
+    // member already has a session on their own host -- so there is nothing to
+    // hand off either way, and the only thing to do is attach the provider and
+    // send them back to the screen they pressed the button on.
+    if (state.linkUserId) {
+      const linkBase = await this.tenantResolution.baseUrlFor(state.tenantId);
+      try {
+        await runWithTenant(state.tenantId, () =>
+          this.authService.linkGoogle(state.linkUserId!, profile.id, email),
+        );
+      } catch (err) {
+        // The commonest failure by far is this Google account already being
+        // attached to somebody else in this community, which is a conflict
+        // rather than a fault -- reported on the settings screen, where the
+        // member can see which account is connected.
+        const conflict = err instanceof ConflictException;
+        if (!conflict) {
+          this.logger.error(`Google linking failed: ${(err as Error).message}`);
+        }
+        res.redirect(`${linkBase}/account/settings?linked=google&error=${conflict ? 'taken' : 'failed'}`);
+        return;
+      }
+      res.redirect(`${linkBase}/account/settings?linked=google`);
+      return;
+    }
+
+    // Did the callback land on the host the flow started on? See the class
+    // comment: this, and only this, decides whether the session can be handed
+    // over directly.
+    const landedOnItsOwnHost = req.tenant?.id === state.tenantId;
+
     // Everything from here belongs to the community the flow started on, not to
     // the host it landed on. `users` and `oauth_accounts` are scoped and the
     // same address is a different person in each community (REQ-TENANT-01.5),
@@ -249,9 +339,9 @@ export class AuthController {
     // The callback awaits inside runWithTenant rather than returning its
     // promise: Prisma's promises are lazy, and handing one back would build the
     // query in the context and run it outside.
-    let handoffToken: string;
+    let outcome: { direct: true; accessToken: string } | { direct: false; handoffToken: string };
     try {
-      handoffToken = await runWithTenant(state.tenantId, async () => {
+      outcome = await runWithTenant(state.tenantId, async () => {
         const user = await this.authService.findOrCreateGoogleUser(
           profile.id,
           email,
@@ -260,7 +350,18 @@ export class AuthController {
           profile.photos?.[0]?.value ?? null,
           await this.cityForTenant(state.tenantId),
         );
-        return await this.handoffService.issue(user.id);
+
+        // `login_sessions` is scoped, so issuing tokens belongs inside this
+        // context as much as finding the user does -- even on the direct path,
+        // where the ambient tenant happens to be the same one.
+        if (landedOnItsOwnHost) {
+          const { accessToken } = await this.authService.issueTokens(user, {
+            userAgent: req.headers['user-agent'],
+            ipAddress: req.ip,
+          });
+          return { direct: true as const, accessToken };
+        }
+        return { direct: false as const, handoffToken: await this.handoffService.issue(user.id) };
       });
     } catch (err) {
       if (err instanceof AuthFlowError) {
@@ -273,7 +374,26 @@ export class AuthController {
     }
 
     const baseUrl = await this.tenantResolution.baseUrlFor(state.tenantId);
-    const params = new URLSearchParams({ handoff: handoffToken });
+
+    if (outcome.direct) {
+      this.clearStaleAccessTokenCookies(res);
+      res.cookie(ACCESS_TOKEN_COOKIE, outcome.accessToken, this.accessTokenCookieOptions());
+
+      // Both paths land on the same page, which is what keeps the frontend
+      // free of a second flow: with no `handoff` parameter the callback
+      // component just waits for the app to load the current user, and the
+      // cookie set above is what makes that succeed.
+      //
+      // The redirect the browser follows from here is the tail of a chain that
+      // began cross-site at Google, so a `SameSite=strict` cookie is not
+      // attached to it. That costs nothing: the page it loads is the SPA shell,
+      // and the `/auth/me` call the app makes once running is same-site and
+      // does carry it.
+      res.redirect(`${baseUrl}/auth/callback`);
+      return;
+    }
+
+    const params = new URLSearchParams({ handoff: outcome.handoffToken });
     res.redirect(`${baseUrl}/auth/callback?${params.toString()}`);
   }
 

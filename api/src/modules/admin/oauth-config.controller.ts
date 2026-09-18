@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Put, Req, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -7,6 +7,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import { TenantOAuthService } from '../../common/tenant/tenant-oauth.service';
 import { UserRole } from '../../database/enums';
 import { UpdateOAuthProviderDto } from './dto/update-oauth-provider.dto';
 import type { users as User } from '@prisma/client';
@@ -22,6 +24,42 @@ import type { users as User } from '@prisma/client';
  * re-exporting it at the HTTP edge would undo the column encryption at the last
  * hop, putting it in an access log, a proxy buffer and a browser cache.
  */
+/**
+ * Refuses a client id that cannot be one, at save time.
+ *
+ * **What this catches is a password manager**, which is how it was found: asked
+ * to fill a form with a secret field, Dashlane put the operator's email address
+ * in the id beside it. Both fields already carry `autocomplete="off"` and
+ * managers routinely ignore it, so the browser cannot be relied on to prevent
+ * this -- and the value is only wrong in a way the provider can see. Google
+ * answers `invalid_client` at the *authorize* step, three screens away, on a
+ * page carrying none of our wording; Meta is no better. An admin then has a
+ * broken sign-in and no reason to suspect the field they did not type in.
+ *
+ * Deliberately a *shape* check and not a strict format. The rules below are the
+ * parts that have been stable for as long as either provider has existed -- a
+ * Google client id ends in `.apps.googleusercontent.com`, a Meta app id is
+ * digits -- so they reject an address, a secret (`GOCSPX-...`) and a truncated
+ * paste, while staying out of the way of whatever either provider issues next.
+ * Guessing harder here would mean refusing a credential that works.
+ */
+const GOOGLE_CLIENT_ID_SUFFIX = '.apps.googleusercontent.com';
+
+function assertClientIdShape(provider: 'google' | 'facebook', clientId: string): void {
+  if (provider === 'google' && !clientId.endsWith(GOOGLE_CLIENT_ID_SUFFIX)) {
+    throw new BadRequestException(
+      `That does not look like a Google client ID -- they end in "${GOOGLE_CLIENT_ID_SUFFIX}". ` +
+        'Check the field was not autofilled with an email address or the client secret.',
+    );
+  }
+  if (provider === 'facebook' && !/^\d+$/.test(clientId)) {
+    throw new BadRequestException(
+      'That does not look like a Meta app ID -- they are digits only. ' +
+        'Check the field was not autofilled with an email address or the app secret.',
+    );
+  }
+}
+
 interface OAuthProviderView {
   clientId: string | null;
   secretSet: boolean;
@@ -33,12 +71,21 @@ interface OAuthConfigView {
   google: OAuthProviderView;
   facebook: OAuthProviderView;
   /**
-   * The one redirect URI to register with the provider, identical for every
-   * community on this deployment (REQ-TENANT-01.8). Returned rather than
-   * documented because the commonest way to fail this setup is to paste the
-   * community's own host, which the provider will then reject.
+   * The redirect URI **this** community's operator has to register
+   * (REQ-TENANT-01.8, per-community since v2-12). Returned rather than
+   * documented because it is no longer the same for everyone and there is no
+   * way to tell by looking: a community on a subdomain of this deployment
+   * registers the deployment's one URI, and a community on its own domain
+   * registers its own host. Pasting the other one is the commonest way to fail
+   * this setup, and the provider rejects it with an error that names neither.
    */
   googleRedirectUri: string;
+  /**
+   * Whether this community is on a subdomain of the deployment, which is what
+   * decides the URI above -- shown so an admin can see *why* they were given
+   * the one they were given, rather than having to trust it.
+   */
+  onDeploymentDomain: boolean;
 }
 
 /**
@@ -61,6 +108,8 @@ export class OAuthConfigController {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    private readonly tenantResolution: TenantResolutionService,
+    private readonly tenantOAuth: TenantOAuthService,
   ) {}
 
   private tenantId(req: Request): number {
@@ -81,6 +130,14 @@ export class OAuthConfigController {
       },
     });
 
+    // Taken from the one place that decides it, not derived again here.
+    // An admin screen showing a different URI from the one the flow uses would
+    // be worse than showing none -- it would send somebody to Google's console
+    // to register a value guaranteed to mismatch.
+    const tenantId = this.tenantId(req);
+    const googleRedirectUri = await this.tenantOAuth.googleRedirectUri(tenantId);
+    const onDeploymentDomain = await this.tenantResolution.isOnDeploymentDomain(tenantId);
+
     const view = (clientId?: string | null, secret?: string | null): OAuthProviderView => ({
       clientId: clientId ?? null,
       secretSet: !!secret,
@@ -90,7 +147,8 @@ export class OAuthConfigController {
     return {
       google: view(tenant?.googleClientId, tenant?.googleClientSecret),
       facebook: view(tenant?.facebookAppId, tenant?.facebookAppSecret),
-      googleRedirectUri: `${this.config.getOrThrow<string>('APP_URL')}/api/v1/auth/google/callback`,
+      googleRedirectUri,
+      onDeploymentDomain,
     };
   }
 
@@ -141,6 +199,7 @@ export class OAuthConfigController {
   ): Promise<OAuthConfigView> {
     const tenantId = this.tenantId(req);
     const clearing = !dto.clientId;
+    if (!clearing) assertClientIdShape(provider, dto.clientId!);
 
     const data =
       provider === 'google'

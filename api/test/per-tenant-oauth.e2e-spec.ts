@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { TenantResolutionService } from '../src/common/tenant/tenant-resolution.service';
@@ -7,7 +8,7 @@ import { OAuthProvider, UserRole } from '../src/database/enums';
 import { createTestApp, truncateAllTables, TEST_TENANT_DOMAIN } from './utils/test-app';
 import { seedCity, seedUser, loginAs } from './utils/seed';
 import { OAuthHandoffService } from '../src/modules/auth/oauth/oauth-handoff.service';
-import { encodeOAuthState } from '../src/modules/auth/oauth/oauth-state.util';
+import { decodeOAuthState, encodeOAuthState } from '../src/modules/auth/oauth/oauth-state.util';
 import { TEST_TENANT_ID } from './setup-env';
 import type { users as User } from '@prisma/client';
 
@@ -37,7 +38,13 @@ describe('Per-tenant OAuth (e2e)', () => {
   const TENANT_B_ID = 2;
   const TENANT_B_DOMAIN = 'second-community.test';
 
-  const GOOGLE_A = { clientId: 'tenant-a-client-id', clientSecret: 'tenant-a-secret' };
+  // Shaped like a real Google credential: the save path refuses anything that
+  // could not be one, so a fixture that is not shaped like one tests a rejection
+  // rather than the behaviour it is named for.
+  const GOOGLE_A = {
+    clientId: '111111111111-tenanta.apps.googleusercontent.com',
+    clientSecret: 'tenant-a-secret',
+  };
 
   let adminA: User;
   let adminB: User;
@@ -150,6 +157,81 @@ describe('Per-tenant OAuth (e2e)', () => {
     });
   });
 
+  /**
+   * Whose redirect URI each community registers, and gets sent to (v2-12).
+   *
+   * Tenant A is this deployment's root tenant, so it is on the deployment's own
+   * domain and uses the single registered URI. Tenant B lives on a domain of
+   * its own, so its operator registers -- and the flow must use -- its own host.
+   */
+  describe('which redirect URI a community uses', () => {
+    const APP_URL = 'http://localhost:8081';
+    const DEPLOYMENT_URI = `${APP_URL}/api/v1/auth/google/callback`;
+    const B_OWN_URI = `http://${TENANT_B_DOMAIN}/api/v1/auth/google/callback`;
+
+    /** Gives tenant B its own Google app, as configureGoogleOnA does for A. */
+    async function configureGoogleOnB(): Promise<void> {
+      await request(app.getHttpServer())
+        .put('/api/v1/admin/oauth/google')
+        .set('Host', TENANT_B_DOMAIN)
+        .set('Cookie', cookieB)
+        .send({
+          clientId: '222222222222-tenantb.apps.googleusercontent.com',
+          clientSecret: 'tenant-b-secret',
+        })
+        .expect(200);
+      tenants.clearCache();
+    }
+
+    it('sends a community on the deployment domain to the one registered URI', async () => {
+      await configureGoogleOnA();
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/google')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .expect(302);
+
+      expect(new URL(res.headers.location).searchParams.get('redirect_uri')).toBe(
+        DEPLOYMENT_URI,
+      );
+    });
+
+    it('sends a community on its own domain to its own host', async () => {
+      await configureGoogleOnB();
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/google')
+        .set('Host', TENANT_B_DOMAIN)
+        .expect(302);
+
+      expect(new URL(res.headers.location).searchParams.get('redirect_uri')).toBe(B_OWN_URI);
+    });
+
+    it('tells each admin screen the URI that community actually has to register', async () => {
+      await configureGoogleOnA();
+      await configureGoogleOnB();
+
+      const onA = await request(app.getHttpServer())
+        .get('/api/v1/admin/oauth')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .expect(200);
+
+      const onB = await request(app.getHttpServer())
+        .get('/api/v1/admin/oauth')
+        .set('Host', TENANT_B_DOMAIN)
+        .set('Cookie', cookieB)
+        .expect(200);
+
+      // The screen and the flow must agree: an admin shown one URI while the
+      // flow sends another gets a redirect_uri_mismatch naming neither.
+      expect(onA.body.googleRedirectUri).toBe(DEPLOYMENT_URI);
+      expect(onA.body.onDeploymentDomain).toBe(true);
+      expect(onB.body.googleRedirectUri).toBe(B_OWN_URI);
+      expect(onB.body.onDeploymentDomain).toBe(false);
+    });
+  });
+
   describe('the callback', () => {
     it('refuses a state that did not come from us', async () => {
       const res = await request(app.getHttpServer())
@@ -190,6 +272,82 @@ describe('Per-tenant OAuth (e2e)', () => {
 
       expect(res.headers.location).toContain(TENANT_B_DOMAIN);
       expect(res.headers.location).toContain('reason=consent_denied');
+    });
+  });
+
+  /**
+   * Connecting Google from Account Settings.
+   *
+   * The button pointed at `GET /auth/google` -- the sign-in start -- which
+   * since v2-8 refuses with `provider_not_linked` whenever the address already
+   * has an account. That is every account that would ever press Connect, so
+   * linking was impossible: to connect Google you had to already have Google
+   * connected. What a test can reach here is the *start* of the flow; the
+   * attach itself needs a real token exchange and is covered on stage.
+   */
+  describe('connecting Google to an existing account', () => {
+    it('refuses to start for somebody who is not signed in', async () => {
+      // The whole reason this route is separate from the sign-in start: the
+      // account being linked to comes from the session, so there has to be one.
+      await configureGoogleOnA();
+
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/google/link')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .expect(401);
+    });
+
+    it('sends a signed-in member to their own community Google app', async () => {
+      await configureGoogleOnA();
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/google/link')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .expect(302);
+
+      const location = new URL(res.headers.location);
+      expect(location.host).toBe('accounts.google.com');
+      expect(location.searchParams.get('client_id')).toBe(GOOGLE_A.clientId);
+    });
+
+    it('carries the signed-in user in the state, which a sign-in does not', async () => {
+      await configureGoogleOnA();
+
+      const linking = await request(app.getHttpServer())
+        .get('/api/v1/auth/google/link')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .expect(302);
+
+      const signingIn = await request(app.getHttpServer())
+        .get('/api/v1/auth/google')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .expect(302);
+
+      const secret = app.get(ConfigService).getOrThrow<string>('JWT_SECRET');
+      const stateOf = (res: { headers: Record<string, string> }) =>
+        decodeOAuthState(
+          new URL(res.headers.location).searchParams.get('state') ?? undefined,
+          secret,
+        );
+
+      // The link flow names the member; the sign-in flow must not, or an
+      // ordinary login would attach a provider as a side effect.
+      expect(stateOf(linking)).toMatchObject({ tenantId: TEST_TENANT_ID, linkUserId: adminA.id });
+      expect(stateOf(signingIn)?.linkUserId).toBeUndefined();
+    });
+
+    it('still refuses to start where the community offers no Google app', async () => {
+      // Being signed in does not conjure credentials -- same rule the sign-in
+      // start follows, and for the same reason.
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/auth/google/link')
+        .set('Host', TENANT_B_DOMAIN)
+        .set('Cookie', cookieB)
+        .expect(302);
+
+      expect(res.headers.location).toContain('reason=provider_not_offered');
     });
   });
 
@@ -285,7 +443,7 @@ describe('Per-tenant OAuth (e2e)', () => {
         .put('/api/v1/admin/oauth/google')
         .set('Host', TENANT_B_DOMAIN)
         .set('Cookie', cookieB)
-        .send({ clientId: 'b-id', clientSecret: 'b-secret' })
+        .send({ clientId: '333333333333-b.apps.googleusercontent.com', clientSecret: 'b-secret' })
         .expect(200);
 
       const a = await request(app.getHttpServer())
@@ -315,6 +473,92 @@ describe('Per-tenant OAuth (e2e)', () => {
     // box is ambiguous between keeping one and forgetting one, and the failure
     // that produces lands at the token exchange after consent. Stage found the
     // UI claiming otherwise -- the API had always refused it.
+    /**
+     * What a password manager does to this form.
+     *
+     * Found on stage: asked to fill a form with a secret field, Dashlane put
+     * the operator's email address in the id beside it. Both inputs already
+     * carry `autocomplete="off"` and managers ignore it, so the only place this
+     * can be caught is here -- and uncaught it surfaces as Google's
+     * `invalid_client` on a page carrying none of our wording, long after the
+     * admin left the screen they would need to fix.
+     */
+    it('refuses a client id a password manager filled with an email address', async () => {
+      await configureGoogleOnA();
+
+      const res = await request(app.getHttpServer())
+        .put('/api/v1/admin/oauth/google')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .send({ clientId: 'someone@example.com', clientSecret: 'a-secret' })
+        .expect(400);
+
+      // The message has to name the shape, since the admin did not type the
+      // value and has no reason to suspect the field.
+      expect(res.body.message).toContain('.apps.googleusercontent.com');
+    });
+
+    it('refuses a client secret pasted into the client id field', async () => {
+      await configureGoogleOnA();
+
+      await request(app.getHttpServer())
+        .put('/api/v1/admin/oauth/google')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .send({ clientId: 'GOCSPX-abcdefghijklmnop', clientSecret: 'a-secret' })
+        .expect(400);
+    });
+
+    it('refuses a Meta app id that is not digits', async () => {
+      // Same rule, other provider -- the asymmetry between the two is where
+      // this codebase keeps finding bugs.
+      await request(app.getHttpServer())
+        .put('/api/v1/admin/oauth/facebook')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .send({ clientId: 'someone@example.com', clientSecret: 'a-secret' })
+        .expect(400);
+    });
+
+    it('leaves the stored credential alone when it refuses one', async () => {
+      await configureGoogleOnA();
+
+      await request(app.getHttpServer())
+        .put('/api/v1/admin/oauth/google')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .send({ clientId: 'someone@example.com', clientSecret: 'a-secret' })
+        .expect(400);
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/admin/oauth')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .expect(200);
+      expect(res.body.google.clientId).toBe(GOOGLE_A.clientId);
+    });
+
+    it('trims a pasted credential rather than sending the whitespace on', async () => {
+      // A trailing newline survives a copy out of a provider console, is
+      // invisible in the field, and fails at the provider as invalid_client.
+      await request(app.getHttpServer())
+        .put('/api/v1/admin/oauth/google')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .send({
+          clientId: `  ${GOOGLE_A.clientId}\n`,
+          clientSecret: '  a-secret  ',
+        })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/admin/oauth')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', cookieA)
+        .expect(200);
+      expect(res.body.google.clientId).toBe(GOOGLE_A.clientId);
+    });
+
     it('refuses a client id with no secret beside it, and changes nothing', async () => {
       await configureGoogleOnA();
 
@@ -322,7 +566,7 @@ describe('Per-tenant OAuth (e2e)', () => {
         .put('/api/v1/admin/oauth/google')
         .set('Host', TEST_TENANT_DOMAIN)
         .set('Cookie', cookieA)
-        .send({ clientId: 'rotated-client-id' })
+        .send({ clientId: '444444444444-rotated.apps.googleusercontent.com' })
         .expect(400);
 
       const res = await request(app.getHttpServer())

@@ -76,3 +76,56 @@ export function resolveRootTenantDomain(env: {
   const source = env.ROOT_TENANT_URL?.trim() || env.APP_URL?.trim() || '';
   return normalizeTenantDomain(source);
 }
+
+/**
+ * Whether a community lives on this deployment's own domain, rather than on a
+ * domain it brought itself.
+ *
+ * This one predicate decides three separate things (v2-12), which is the reason
+ * it is derived from the domain rather than stored as a flag on `tenants`:
+ *
+ *  - **which Google redirect URI applies** -- the deployment's single
+ *    registered one, or the community's own host;
+ *  - **whether the OAuth callback needs the `oauth_handoffs` hop** -- it does
+ *    only when the callback lands somewhere other than the community's host;
+ *  - **whether the deployment's email credentials may be fallen back on.**
+ *
+ * All three answer the same underlying question -- *whose* domain is this? --
+ * and a stored boolean would be a fourth answer that could disagree with the
+ * other three. Deriving it means a community's domain is the only thing that
+ * has to be right.
+ *
+ * The rule (decided with Rob 2026-09-08) is that a community on a subdomain of
+ * this deployment visibly *is* the platform: a Google consent screen naming the
+ * platform is accurate there, and so is a From address on the deployment's mail
+ * domain. A community on its own domain presents as its own entity, where
+ * neither is -- which is what REQ-TENANT-01.9's "no platform-wide fallback app"
+ * was really reaching for. It also matches what is physically possible: adding
+ * an authorised redirect URI needs Search Console ownership of the domain, so
+ * a community on its own domain could not use this deployment's Google project
+ * even if policy allowed it (v2-8's four-case table, row 4).
+ *
+ * The root tenant itself counts as on the deployment domain -- it *is* the
+ * deployment domain.
+ *
+ * Both arguments are normalised here rather than at the call sites, so a caller
+ * that passes a raw Host header or a full URL gets the same answer as one that
+ * passes a stored `domain` column.
+ *
+ * An empty deployment domain returns false -- "own domain", the no-fallback
+ * side. It is unreachable in practice (APP_URL is read with `getOrThrow`), and
+ * it is the deliberate direction: a deployment that has lost its own domain
+ * stops sending mail loudly, rather than quietly mailing every community from
+ * an address that no longer describes anyone.
+ */
+export function isOnDeploymentDomain(tenantDomain: string, deploymentDomain: string): boolean {
+  const tenant = normalizeTenantDomain(tenantDomain);
+  const deployment = normalizeTenantDomain(deploymentDomain);
+  if (!tenant || !deployment) return false;
+
+  // The suffix match carries the dot deliberately. Comparing with `endsWith`
+  // on the bare domain would make `notcommunityeventsproject.com` a subdomain
+  // of `communityeventsproject.com`, which is a domain somebody else can
+  // register.
+  return tenant === deployment || tenant.endsWith(`.${deployment}`);
+}

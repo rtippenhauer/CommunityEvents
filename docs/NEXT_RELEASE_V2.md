@@ -566,3 +566,53 @@ community's colours are.
   in the app.
 - **The Edit and Cancel buttons on an event no longer sit flush against the
   comment box** above them.
+
+## A community on its own web address
+
+**Signing in with Google now happens on your own address.** A community that
+uses its own domain — rather than an address under the platform's — now
+completes a Google sign-in entirely on its own site. Previously every sign-in
+made a brief detour through the platform's address before returning, which
+worked but meant members saw a host that wasn't their community's in the middle
+of signing in. That detour is gone for communities on their own domain.
+
+Communities on a platform address are unchanged, and they should be: that
+detour is what lets a new community offer Google sign-in with no setup at all.
+
+**Which address to register is shown to you.** The setup screen tells you the
+exact callback address to give Google for *your* community, with a copy button.
+It is no longer the same for everyone, and there is no way to tell by looking —
+so it is shown rather than described.
+
+**A community on its own domain sends its own email.** If your community has
+its own web address, it now uses its own email account rather than the
+platform's. Mail from an address that doesn't match your community was
+confusing at best, and your own provider account is the one that has verified
+your sending domain in any case. Communities on a platform address continue to
+send on the platform's account, exactly as before.
+
+If your community is on its own domain and hasn't set up an email provider yet,
+the email settings screen now says so plainly — because until it's set up, no
+invitations, address verifications or password resets can be sent at all.
+
+### Fixes found while testing
+
+- **Connecting a Google account works again.** The "Connect" button in Account
+  Settings could not succeed: it started an ordinary sign-in, which refuses when
+  you already have an account. So connecting Google required already having
+  Google connected. It now links properly to the account you are signed in to.
+- **The footer names the right company.** It was built by adding a fixed suffix
+  to a community's name, which produced a company that does not exist for every
+  community but one — and disagreed with that community's own Terms page. Both
+  now name the same operator.
+- **Email templates come from the right account.** A community using its own
+  email provider could have some messages silently fail to send, because they
+  referred to a template in the platform's account rather than its own. Those
+  messages now send.
+- **A mistyped sign-in credential is caught when you save it.** Password
+  managers sometimes fill the wrong value into these fields — an email address
+  where a client ID belongs. That used to be accepted, and only surfaced later
+  as a sign-in failure on the provider's own error page, with nothing pointing
+  back at the field. It is now refused as you save, with a message saying what
+  the value should look like. Extra spaces pasted along with a credential are
+  trimmed rather than stored.

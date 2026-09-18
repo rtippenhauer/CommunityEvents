@@ -19,6 +19,7 @@ import { EmailDispatcherService } from '../email/email-dispatcher.service';
 import { BrevoWebhookService } from '../email/brevo-webhook.service';
 import { BrevoService } from '../email/brevo.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -50,6 +51,7 @@ export class AdminController {
     private readonly brevo: BrevoService,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly tenantResolution: TenantResolutionService,
   ) {}
 
   @Get('users')
@@ -191,10 +193,12 @@ export class AdminController {
     // requireTenantId rather than the request object, for the same reason raw
     // SQL and the app_config upserts use it: it throws where there is no tenant
     // instead of inventing one.
+    const tenantId = requireTenantId('email config read');
     return effectiveEmailConfigView(
       config,
-      requireTenantId('email config read'),
+      tenantId,
       this.quotaTimeZone(),
+      await this.tenantResolution.isOnDeploymentDomain(tenantId),
     );
   }
 
@@ -249,7 +253,10 @@ export class AdminController {
       const created = await this.prisma.email_provider_config.create({
         data: { ...newEmailProviderConfig(), ...body },
       });
-      return toEmailConfigView(rollForwardWindow(created, this.quotaTimeZone()));
+      return toEmailConfigView(
+        rollForwardWindow(created, this.quotaTimeZone()),
+        await this.mayUseDeploymentCredentials(),
+      );
     }
     // Patch from the DTO rather than mutating the loaded row and saving it
     // back, so only the fields the request actually sent are written. That is
@@ -271,10 +278,29 @@ export class AdminController {
     if (keyChanged) {
       await this.brevoWebhook.register({ newToken: true });
       const refreshed = await this.prisma.email_provider_config.findFirst();
-      if (refreshed) return toEmailConfigView(rollForwardWindow(refreshed, this.quotaTimeZone()));
+      if (refreshed) {
+        return toEmailConfigView(
+          rollForwardWindow(refreshed, this.quotaTimeZone()),
+          await this.mayUseDeploymentCredentials(),
+        );
+      }
     }
 
-    return toEmailConfigView(rollForwardWindow(updated, this.quotaTimeZone()));
+    return toEmailConfigView(
+      rollForwardWindow(updated, this.quotaTimeZone()),
+      await this.mayUseDeploymentCredentials(),
+    );
+  }
+
+  /**
+   * Whether this community may fall back to the deployment's provider account
+   * (v2-12). Asked on every write path too, not just the read, so the screen
+   * that comes back from a save says the same thing as the one loaded fresh.
+   */
+  private mayUseDeploymentCredentials(): Promise<boolean> {
+    return this.tenantResolution.isOnDeploymentDomain(
+      requireTenantId('email config fallback check'),
+    );
   }
 
   /**

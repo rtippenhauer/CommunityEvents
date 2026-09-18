@@ -34,11 +34,51 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-12` — the OAuth callback on a community's own
-host, the follow-on `v2-8` deferred with its four-case table worked out. See
-`V2_PHASES.md`.
+**Current v2 work item:** `v2-13` — the root tenant's public landing page, the
+marketing front door at `www.communityeventsproject.com` explaining the project
+and linking to the demo. See `V2_PHASES.md`.
 
 **Completed v2 items:**
+- **`v2-12` — OAuth callback on a community's own host** (2026-09-18,
+  REQ-TENANT-01.8). A community that owns its domain registers its own redirect
+  URI, so the callback lands on the right host, the tenant resolves from the
+  Host header, and the cookie is set directly — no `oauth_handoffs` hop.
+  Communities on a subdomain keep the single registered URI and the handoff,
+  because their operator cannot register a redirect URI on a domain they do not
+  own.
+
+  **There is no flag, and that is the item's real shape.** The design called for
+  a boolean on `tenants`; Rob extended the rule to email — a community on a
+  subdomain of this deployment may fall back to the deployment's credentials,
+  one on its own domain may not, for Google and Brevo alike — and that is the
+  same question the callback host asks. A stored flag would be a second answer
+  free to disagree with the domain, and the two disagreeing is a
+  `redirect_uri_mismatch` naming neither value. See the Multi-Tenancy section.
+
+  **The callback branches on where it landed**, `req.tenant?.id ===
+  state.tenantId`, never on what kind of community it is — which is also the
+  "check the state against `req.tenant`" the design asked for, so the host is
+  never trusted alone.
+
+  **Five defects, every one found by Rob on stage and none catchable by the
+  suite.** Google's Connect button had no working path at all since `v2-8`,
+  which removed the auto-link that had been the only linking mechanism while
+  leaving the button pointing at the sign-in start — it refuses whenever the
+  address already has an account, i.e. always. The footer built its copyright
+  line by appending a fixed suffix to a community's name, naming a company that
+  does not exist and disagreeing with that community's own Terms. Brevo template
+  ids crossed accounts, latent since `v2-9` and reachable only once a community
+  had its own key — which is the configuration this item made ordinary.
+  Credential fields accepted anything, and a password manager filled an email
+  address into a client id; the admin screen then discarded the API's
+  explanation, the same shape `v2-8` fixed in `exchange_failed`. And
+  `CitiesAdminController` is `@Roles(ADMIN)` over a global table — left open
+  deliberately, recorded against `v2-24`.
+
+  **Known gap:** the callback's handoff branch ships verified by unit tests
+  alone. Stage runs two communities and after this item both take the direct
+  path, so the branch that did not change is the one nobody runs. Recorded in
+  `V2_PHASES.md` rather than implied, with the third-tenant route written down.
 - **`v2-11` — A real colour system** (2026-09-08). Three seeds an admin sets
   (`--ce-primary`, `--ce-accent`, `--ce-surface`) feed every other token;
   overrides are laid on at *read* time so a later seed change cannot silently
@@ -662,12 +702,51 @@ authoritative (per REQ-TENANT-01.3).
   platform's own OAuth apps"). Live as of `v2-8`: the deployment-wide
   `GOOGLE_CLIENT_*`/`FACEBOOK_APP_*` env vars are **gone**, not kept as a
   fallback, so there is no configuration that can reintroduce one.
+- **Connecting a provider is a different route from signing in with one, and
+  it is guarded.** `GET /auth/google/link` and `POST /auth/facebook/link`
+  establish who is asking from the session, because that is the only place a
+  trustworthy answer exists — the callback lands with no usable session (host-
+  only, and on a different host entirely for a community on the deployment's
+  domain). Google carries the user id through the round trip in the **signed**
+  `state` (`linkUserId`), never a query parameter, or anyone could attach their
+  own Google account to somebody else's user.
+
+  The reason this is a rule and not a detail: Google linking used to work as a
+  *side effect* of `findOrCreateGoogleUser` auto-linking on a matching email,
+  `v2-8` removed that correctly, and the Connect button was left pointing at the
+  sign-in start — which refuses whenever the address already has an account,
+  i.e. always. Aligning two providers' refusals while leaving their affordances
+  opposite is the same asymmetry in a new place. Linking never creates a user
+  and never requires the provider's address to match the account's.
 - **Which providers a tenant offers is answered by `GET /auth/methods`** —
   unauthenticated and tenant-resolved, since the login page has no session yet.
   `GET /auth/providers` cannot do it: it is `JwtAuthGuard`ed and reports the
   signed-in user's *linked* accounts, a different question.
   `TenantOAuthService.offeredProviders()` selects only `googleClientId` and
   `facebookAppId` — never the secrets — so answering it decrypts nothing.
+- **Whose domain a community is on decides its fallbacks, and it is derived,
+  never stored** (`isOnDeploymentDomain` in `tenant-domain.util.ts`, reached
+  through `TenantResolutionService.isOnDeploymentDomain(tenantId)`). A community
+  on a subdomain of this deployment may fall back to the deployment's Google app
+  and its Brevo/Resend credentials; a community on its own domain may not, and
+  must bring its own. One predicate answers three questions -- which Google
+  redirect URI applies, whether the OAuth callback needs the handoff hop, and
+  whether the deployment's email credentials may be used -- so a stored flag
+  would be a fourth answer that could disagree with the domain. The suffix match
+  carries a dot: `notcommunityeventsproject.com` is a domain somebody else can
+  register.
+
+  **The root tenant is answered by `is_root`, not by the string compare** -- it
+  *is* the deployment, and a drifted `APP_URL` must not stop the operator's own
+  community sending mail.
+
+  The rule generalises REQ-TENANT-01.9's consent argument rather than replacing
+  it: signing members in through the platform's app, or mailing them from the
+  platform's address, is accurate for a community that visibly *is* the platform
+  and misleading for one that presents as its own entity. **The fallback has
+  three copies** -- `BrevoService.getEffectiveConfig`, `ResendService`, and
+  `BrevoWebhookService.register`, which holds its own `|| env` line; a new one
+  must be gated too.
 - **The OAuth callback runs on one fixed host and hands the session back.**
   `state` is signed and carries the originating tenant; the callback writes a
   single-use `oauth_handoffs` row and redirects to that tenant's own host to
@@ -675,6 +754,17 @@ authoritative (per REQ-TENANT-01.3).
   **before** any error branch (a cancelled sign-in still has to know where to
   return), and the callback resolves a user belonging to a tenant other than the
   host's, so it runs inside an explicit `runWithTenant`.
+
+  **As of `v2-12` the handoff is conditional, and the condition is where the
+  callback landed** -- `req.tenant?.id === state.tenantId`, never a flag saying
+  what kind of community this is. Matching means the cookie can be set here
+  directly and no handoff row is written; not matching means it leaves as a
+  ticket. Used as the branch, this is also the "check the state against
+  `req.tenant`" the design asked for, so the host is never trusted alone: an
+  unexpected landing falls back to the handoff, which works from anywhere.
+  `GoogleOAuthService.callbackUrl` is per-tenant for the same reason and
+  **must return the same value on both legs** -- Google matches `redirect_uri`
+  at the token exchange too, and a mismatch names neither side.
 - Exactly one tenant has `is_root = true`; its admin is the system admin. This
   is a **database constraint**, not a convention: `root_marker` is `true` on the
   root and NULL elsewhere, and its unique index rejects a second root (MySQL has
@@ -921,6 +1011,15 @@ authoritative (per REQ-TENANT-01.3).
   never exercised — **no migration in this repo is tested against populated
   data**, which is how it reached stage.
 
+- **A community on its own domain has no email fallback (`v2-12`), and that is
+  fatal in a way the OAuth equivalent is not.** No Google credentials still
+  leaves email/password working; no Brevo key leaves a community nobody can
+  join, since registration is invite-gated and invitations, address verification
+  and password resets are all mail. For now this is a warning on Admin → Email
+  (`mayUseDeploymentCredentials` in the config payload) and nothing more —
+  decided with Rob 2026-09-08, because an operator creating a community by hand
+  may not have the key at that moment. It becomes a hard gate when self-service
+  lands; recorded against `v2-15`.
 - **Email sending is per-community as of `v2-9`.** `email_provider_config` is
   scoped: its Brevo key, From identity, template ids, webhook token and daily
   counters all belong to a community, resolved with the env credentials as the
@@ -942,6 +1041,17 @@ authoritative (per REQ-TENANT-01.3).
   gates sending. Both must allow a message. Only a `free` plan reports a daily
   figure — a prepaid balance has no daily cap, and treating it as one would stop
   sending at an imaginary line.
+- **A Brevo template id belongs to the ACCOUNT too, exactly like the allowance
+  above.** It is a number in one account's own template library, so `getTemplateId`
+  falls back to `BREVO_TEMPLATE_*` **only** where the community is sending on the
+  deployment's key. A community with its own key and no ids of its own falls
+  through to the raw-HTML body — plain, but it sends. Handing it the deployment's
+  id would address a different template over there, or none, and Brevo refuses
+  the send. Worse than inheriting a key, because an inherited id is a *valid
+  number* pointing into somebody else's library and nothing looks wrong until the
+  provider says no (`v2-12`; latent since `v2-9`, reachable only once a community
+  had its own key). An id set at Admin → Email must come from that community's
+  library.
 - **`EMAIL_QUOTA_TIMEZONE` is the operator's calendar day, not the provider's.**
   It was built to mirror the provider's reset, which turned out to be
   unknowable: `GET /v3/account` has no timezone field, and separate accounts can

@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { normalizeTenantDomain } from '../utils/tenant-domain.util';
+import {
+  isOnDeploymentDomain as domainIsOnDeployment,
+  normalizeTenantDomain,
+  resolveRootTenantDomain,
+} from '../utils/tenant-domain.util';
 import { currentTenantId } from './tenant-store';
 import { TenantContext } from './tenant-context';
 
@@ -43,8 +47,15 @@ const MAX_ENTRIES = 500;
 export class TenantResolutionService {
   private readonly logger = new Logger(TenantResolutionService.name);
   private readonly cache = new Map<string, CacheEntry>();
-  /** tenant id -> base URL, for building links into a tenant. See baseUrlFor. */
-  private readonly baseUrlCache = new Map<number, { url: string; expiresAt: number }>();
+  /**
+   * tenant id -> that tenant's own domain. Feeds both baseUrlFor (which turns
+   * it into a URL) and isOnDeploymentDomain (which compares it against this
+   * deployment's), so the two cannot disagree about where a community lives.
+   */
+  private readonly domainCache = new Map<
+    number,
+    { domain: string; isRoot: boolean; expiresAt: number }
+  >();
   private readonly ttlMs: number;
 
   constructor(
@@ -77,7 +88,7 @@ export class TenantResolutionService {
    */
   clearCache(): void {
     this.cache.clear();
-    this.baseUrlCache.clear();
+    this.domainCache.clear();
   }
 
   /**
@@ -117,14 +128,8 @@ export class TenantResolutionService {
       return appUrl;
     }
 
-    const cached = this.baseUrlCache.get(id);
-    if (cached && cached.expiresAt > Date.now()) return cached.url;
-
-    const tenant = await this.prisma.tenants.findUnique({
-      where: { id },
-      select: { domain: true },
-    });
-    if (!tenant) {
+    const domain = await this.domainFor(id);
+    if (!domain) {
       this.logger.error(`No tenant ${id} when building a URL; falling back to APP_URL.`);
       return appUrl;
     }
@@ -136,9 +141,87 @@ export class TenantResolutionService {
       // APP_URL misconfigured; https is the safe assumption for a real link.
     }
 
-    const url = `${protocol}//${tenant.domain}`;
-    this.baseUrlCache.set(id, { url, expiresAt: Date.now() + this.ttlMs });
-    return url;
+    return `${protocol}//${domain}`;
+  }
+
+  /**
+   * A tenant's own domain, cached on the same short TTL as resolution.
+   *
+   * Null when no such tenant exists. Callers decide what that means -- it is a
+   * broken reference rather than a normal outcome, and the callers here want
+   * different fallbacks.
+   */
+  async domainFor(tenantId: number): Promise<string | null> {
+    return (await this.identityFor(tenantId))?.domain ?? null;
+  }
+
+  /**
+   * A tenant's domain and whether it is the root, cached together because the
+   * two callers below need one each and neither is worth a second query.
+   */
+  private async identityFor(
+    tenantId: number,
+  ): Promise<{ domain: string; isRoot: boolean } | null> {
+    const cached = this.domainCache.get(tenantId);
+    if (cached && cached.expiresAt > Date.now()) return cached;
+
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { domain: true, isRoot: true },
+    });
+    if (!tenant) return null;
+
+    this.domainCache.set(tenantId, {
+      domain: tenant.domain,
+      isRoot: tenant.isRoot,
+      expiresAt: Date.now() + this.ttlMs,
+    });
+    return tenant;
+  }
+
+  /**
+   * Whether this community lives on the deployment's own domain (v2-12).
+   *
+   * The single question behind which Google redirect URI applies, whether the
+   * OAuth callback needs the handoff hop, and whether the deployment's email
+   * credentials may be fallen back on. See `domainIsOnDeployment` for why it is
+   * derived from the domain rather than stored as a flag on `tenants`.
+   *
+   * The deployment's own domain comes from `resolveRootTenantDomain` -- env,
+   * the same source `bootstrap.ts` writes the root tenant's `domain` column
+   * from, rather than a query for the `is_root` row. That is what makes this
+   * answerable without a second lookup, and the two agree by construction:
+   * bootstrap writes that column from this value and overwrites it on every run.
+   *
+   * An unknown tenant is false -- the no-fallback side, matching the predicate.
+   */
+  async isOnDeploymentDomain(tenantId: number): Promise<boolean> {
+    const tenant = await this.identityFor(tenantId);
+    if (!tenant) {
+      this.logger.error(
+        `No tenant ${tenantId} when asking whose domain it is; treating it as ` +
+          'bringing its own, which withholds the credentials of this deployment.',
+      );
+      return false;
+    }
+
+    // The root tenant is the deployment, so it is answered by `is_root` rather
+    // than by comparing strings. The comparison would usually agree -- bootstrap
+    // writes this column from the same env value -- but "usually" is the wrong
+    // guarantee for the tenant that owns the deployment: if the two ever drift,
+    // a string compare quietly stops the operator's own community sending mail
+    // and tells its admin to register a redirect URI nobody registered.
+    if (tenant.isRoot) return true;
+
+    return domainIsOnDeployment(tenant.domain, this.deploymentDomain());
+  }
+
+  /** This deployment's own domain, bare and normalised. */
+  private deploymentDomain(): string {
+    return resolveRootTenantDomain({
+      ROOT_TENANT_URL: this.config.get<string>('ROOT_TENANT_URL'),
+      APP_URL: this.config.get<string>('APP_URL'),
+    });
   }
 
   private async lookup(domain: string): Promise<TenantResolution> {

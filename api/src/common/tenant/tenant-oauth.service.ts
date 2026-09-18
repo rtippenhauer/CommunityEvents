@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { currentTenantId } from './tenant-store';
+import { TenantResolutionService } from './tenant-resolution.service';
 
 /** One provider's app credentials, as registered by a community's operator. */
 export interface OAuthCredentials {
@@ -39,7 +41,46 @@ export interface OfferedProviders {
 export class TenantOAuthService {
   private readonly logger = new Logger(TenantOAuthService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+    private readonly resolution: TenantResolutionService,
+  ) {}
+
+  /**
+   * Where Google sends a community's members back to (v2-12).
+   *
+   * Two answers, decided by whose domain the community is on and never by a
+   * stored setting:
+   *
+   *  - **On a subdomain of this deployment:** the single registered URI on
+   *    `APP_URL`. One URI covers every client in the deployment's Google
+   *    project, which is why a new community here needs no console interaction
+   *    at all. One of the three places `APP_URL` legitimately survives v2-6.
+   *  - **On its own domain:** that community's own host, which its operator
+   *    registered in their own Google project. Adding an authorised redirect
+   *    URI requires Search Console ownership of the domain, so this is the only
+   *    URI they can register -- and the deployment's is one they cannot.
+   *
+   * **Three callers must agree on this string**, which is the whole reason it
+   * lives in one place: both OAuth legs (Google matches `redirect_uri` at the
+   * token exchange as well as at the authorization redirect, and a mismatch is
+   * reported without naming either value), and the admin screen that tells the
+   * operator which URI to register. A screen that disagreed with the flow would
+   * send somebody to Google's console to enter a value guaranteed to fail.
+   *
+   * It lives here rather than in `GoogleOAuthService` for the same reason the
+   * rest of this class does: `AdminModule` needs it, and `AuthModule` exports
+   * only `AuthService` -- reaching into the auth graph from an admin screen to
+   * read one string is a module dependency in the wrong direction. `TenantModule`
+   * is `@Global`, so every caller already has this.
+   */
+  async googleRedirectUri(tenantId: number): Promise<string> {
+    const base = (await this.resolution.isOnDeploymentDomain(tenantId))
+      ? this.config.getOrThrow<string>('APP_URL')
+      : await this.resolution.baseUrlFor(tenantId);
+    return `${base}/api/v1/auth/google/callback`;
+  }
 
   /**
    * Which providers this community offers, for the login page.

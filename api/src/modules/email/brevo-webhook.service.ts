@@ -85,9 +85,21 @@ export class BrevoWebhookService {
     const config = await this.prisma.email_provider_config.findFirst();
     if (!config) return { ok: false, error: 'This community has no email configuration yet.' };
 
-    const apiKey = config.brevoApiKey || this.config.get<string>('BREVO_API_KEY', '');
+    // The same fallback rule the send path applies (v2-12), and it matters more
+    // here than there: registering a webhook on the deployment's Brevo account
+    // for a community that does not send on it would point that account's
+    // bounce callbacks at a community with no claim to them.
+    const mayFallBack = await this.tenantResolution.isOnDeploymentDomain(config.tenantId);
+    const apiKey =
+      config.brevoApiKey || (mayFallBack ? this.config.get<string>('BREVO_API_KEY', '') : '');
     if (!apiKey) {
-      return { ok: false, error: 'No Brevo API key is set for this community.' };
+      return {
+        ok: false,
+        error: mayFallBack
+          ? 'No Brevo API key is set for this community.'
+          : 'This community is on its own domain, so it needs its own Brevo API key ' +
+            'before a webhook can be registered.',
+      };
     }
 
     const url = `${await this.tenantResolution.baseUrlFor(config.tenantId)}/api/v1/email/webhook/brevo`;

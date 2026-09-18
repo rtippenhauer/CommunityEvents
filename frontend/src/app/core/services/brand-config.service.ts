@@ -57,6 +57,16 @@ export interface BrandConfig {
   isStage: boolean;
   appUrl: string;
   baseDomain: string;
+  /**
+   * Who operates this deployment, for the footer's copyright line.
+   *
+   * Served rather than derived. The footer used to render
+   * `{{ brand().name }}.Com, LLC`, which was true for exactly one community and
+   * invented a company for every other -- and it disagreed with the same
+   * community's Terms, which are filled from this value. Deployment-wide
+   * (`LEGAL_ENTITY_NAME`), falling back to the community's own name.
+   */
+  legalEntity: string;
   /** Whether this community is the root one (REQ-TENANT-01.7). */
   isRoot: boolean;
   /**
@@ -168,6 +178,10 @@ const DEFAULT_BRAND: BrandConfig = {
   // or failed branding fetch should not accuse a community of skipping a review
   // it may well have done.
   legalReviewed: true,
+  // Matches `name` above, which is what the API falls back to when
+  // LEGAL_ENTITY_NAME is unset -- so the footer reads the same before and after
+  // branding resolves rather than flickering between two companies.
+  legalEntity: 'CommunityEvents',
   // The generic platform wording, not DinnerBears' — these mirror the API's
   // SITE_SETTING_DEFAULTS terms (now term-defaults.ts) and are what shows until
   // branding resolves. A community renames them in Site Settings.

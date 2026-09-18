@@ -55,12 +55,29 @@ interface StatePayload {
   e: number;
   /** Random, so two states minted in the same second are not byte-identical. */
   n: string;
+  /**
+   * The already-signed-in user this flow is *linking* a provider to, rather
+   * than logging in. Absent on an ordinary sign-in.
+   */
+  u?: number;
 }
 
 /** What a caller gets back from a state that verified. */
 export interface OAuthState {
   tenantId: number;
   inviteToken?: string;
+  /**
+   * Set when the member started this flow from Account Settings to **connect**
+   * Google to an account they are already signed in to, rather than to sign in.
+   *
+   * It rides in the signed state for the same reason the tenant does: the
+   * callback lands with no session cookie it can trust (host-only, and on the
+   * fixed-callback path a different host entirely), so the only trustworthy
+   * statement of who asked is the one we signed before leaving. A link request
+   * that took the user id from a query parameter would let anyone attach their
+   * own Google account to somebody else's user.
+   */
+  linkUserId?: number;
 }
 
 function stateKey(jwtSecret: string): Buffer {
@@ -87,6 +104,7 @@ export function encodeOAuthState(
     n: randomBytes(9).toString('base64url'),
   };
   if (state.inviteToken) payload.i = state.inviteToken;
+  if (state.linkUserId) payload.u = state.linkUserId;
 
   const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
   return `${body}.${sign(body, jwtSecret)}`;
@@ -132,8 +150,16 @@ export function decodeOAuthState(
   if (typeof payload.t !== 'number' || !Number.isInteger(payload.t) || payload.t <= 0) return null;
   if (typeof payload.e !== 'number' || payload.e <= nowSeconds) return null;
 
+  // Same validation the tenant id gets, and for a related reason: this one
+  // names the account a provider is about to be attached to.
+  const linkUserId =
+    typeof payload.u === 'number' && Number.isInteger(payload.u) && payload.u > 0
+      ? payload.u
+      : undefined;
+
   return {
     tenantId: payload.t,
     inviteToken: typeof payload.i === 'string' && payload.i ? payload.i : undefined,
+    linkUserId,
   };
 }
