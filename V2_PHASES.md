@@ -1603,17 +1603,106 @@ domain rather than the URL -- which feeds every link that leaves the app, the
 exact surface v2-6 broke.
 
 ### v2-13 — Root tenant landing page
-**Status:** In Progress. Depends on v2-3 and v2-4.
+**Status:** Complete (2026-09-18). Depended on v2-3 and v2-4.
 
 Public marketing page served by the root tenant, explaining the project and
-linking to the demo. `frontend/public/landing.html` is the v1-era placeholder
-and is the obvious starting point.
+linking to the demo.
+
+**`/` is answered by two components now**, chosen at match time.
+`rootLandingGuard` takes the landing page only for a signed-out visitor on the
+root tenant, and both halves are load-bearing. **Root is answered by the
+branding payload's `isRoot`**, which the API reads off the resolved tenant row
+-- so it is the database's `is_root` column. The obvious alternative was an
+nginx `server_name` for the marketing host, wrong the way v2-12's stored flag
+was wrong: a second answer to "which tenant is root", free to disagree with the
+column that decides it. And **signed-out**, because a member of the root
+community has a home page -- on stage that community is the operator's own test
+data, and everywhere it is at least the system admin.
+
+`canMatch`, not `canActivate`: a declined `canActivate` cancels the navigation,
+where a declined `canMatch` falls through to the next route, which is what lets
+one path render two components. Reading auth and branding synchronously is safe
+only because both `init()`s are `provideAppInitializer` promises, so no route is
+matched until they resolve -- a guard running earlier would read the
+`isRoot: false` default, pick the member home page, and never be re-evaluated.
+
+**The demo URL is derived, not written down.** A literal
+`https://demo.communityeventsproject.com` is a deployment-specific value
+compiled into the bundle, and one image serves both stage and production. It is
+built from the root tenant's own URL instead, which also decides something more
+useful than the spelling: `demo.` on the *deployment's own domain* is a
+subdomain of it, so `isOnDeploymentDomain` is true and the demo inherits the
+deployment's Brevo and Google credentials. A demo at
+`demo.communityeventsproject.com` created against the stage deployment would be
+a sibling, treated as bringing its own domain, and an invite-gated community
+with no mail is one nobody can join.
+
+**`robots.txt` is written by the entrypoint**, not checked in: one image serves
+stage and production, so a static file would be identical on both and wrong on
+one. `Disallow: /` when `IS_STAGE=true`, permissive otherwise. Before this the
+file did not exist and nginx's `try_files` fell through, so `/robots.txt`
+answered 200 with the SPA's HTML. Per-tenant indexing and link-preview metadata
+are v2-28.
+
+`frontend/public/landing.html` was deleted -- 727 lines of v1 DinnerBears
+marketing wired to nothing, listed as this item's in the v2-10 notes.
 
 **Definition of done:** `www.communityeventsproject.com` and the apex both
 serve the landing page and resolve to the same root tenant row.
 
+**Half of that is not verifiable on stage, and that is recorded rather than
+implied.** The apex/`www.` equivalence is already enforced and tested by
+`normalizeTenantDomain` (v2-3/v2-4) at every level -- unit, service, HTTP Host
+header, and the database unique index -- but stage's root tenant is
+`stage.communityeventsproject.com`, so the DNS half only proves out against the
+production domain at cutover.
+
+**Stage found nothing in the code.** What it did cost was an afternoon of
+infrastructure, all of it recorded in v2-14 below, plus two false alarms worth
+naming because both will recur: a `/robots.txt` that kept 404ing was the
+browser's cache of the pre-deploy HTML response (nginx sets no `Cache-Control`
+on `location /`, so a stale 200 sticks under heuristic freshness), and
+"the calendar items disappeared" was the item working as designed -- the root
+tenant's signed-out front page is no longer the members' home page, and stage
+had no upcoming events anyway.
+
+**Logged, not fixed:** the app shell still offers **Events** to a signed-out
+visitor, so the marketing front door links somewhere a visitor cannot go. It is
+the existing shell's gating rather than anything this item changed, and the root
+tenant arguably wants a trimmed nav.
+
 ### v2-14 — Demo tenant
-**Status:** Not started (deferred). Depends on v2-3, v2-4 and v2-10.
+**Status:** In Progress. Depends on v2-3, v2-4 and v2-10.
+
+**Where the demo lives is already decided, and the hosting is not free of
+traps** (worked out on stage during v2-13). The address is derived, not
+configured: `demo.` prefixed to the deployment's own domain, so
+`demo.communityeventsproject.com` in production and
+`demo.stage.communityeventsproject.com` on stage. That form is what keeps it a
+*subdomain* of the deployment domain, so `isOnDeploymentDomain` is true and it
+inherits the deployment's Brevo and Google credentials rather than needing its
+own.
+
+Three things cost an afternoon and will cost it again otherwise:
+
+- **Cloudflare's Universal SSL wildcard covers one label only.**
+  `*.communityeventsproject.com` covers `stage.` but not
+  `demo.stage.`, so the edge has no certificate for the stage demo host and
+  aborts the TLS handshake. Chrome reports this as
+  `ERR_SSL_VERSION_OR_CIPHER_MISMATCH` / "unsupported protocol", which sends you
+  looking at protocol and cipher settings instead of at the certificate.
+- **So the stage demo host must be grey-clouded** (DNS only) and served directly
+  by NGINX Proxy Manager, which holds a Let's Encrypt certificate for it --
+  Let's Encrypt has no wildcard depth limit. This is the same arrangement
+  `dayton.stage.dinnerbears.com` has been running under. Advanced Certificate
+  Manager (paid) is the alternative if the record must stay proxied. The origin
+  IP is already public via the dinnerbears record, so grey-clouding costs
+  nothing new.
+- **Production needs none of this.** `demo.communityeventsproject.com` is a
+  single label under the apex and the existing wildcard already covers it.
+
+A tenant created by hand at that address is a *plain* invite-only community, not
+the demo -- everything below is what makes it one.
 
 A tenant anyone can try. Two properties that need care:
 
