@@ -2063,3 +2063,66 @@ row. Two dispatchers running at once cannot send the same row twice, proven by
 a test that runs them concurrently. The daily counter has a single writer and
 the delta workaround is removed. A password reset still fails loudly in the
 request that asked for it, rather than being accepted and lost.
+
+### v2-28 — Search indexing and link-preview metadata, per tenant
+
+**Status:** Not started. No dependencies; can land whenever. Numbered next-free
+rather than as a running order, like v2-26 and v2-27.
+
+**Rob's call, 2026-09-18**, while reviewing v2-13: there should be a tenant
+setting for search indexing metadata. Right and larger than it first looks —
+the deployment has no `robots.txt` at all, no `<meta name="description">`, and
+no Open Graph or Twitter card anywhere. `<title>` is the only head tag branding
+drives (`BrandConfigService.init`).
+
+It is three things wearing one label.
+
+**1. Indexing control, where the per-tenant answers genuinely differ.** The
+root/marketing tenant exists to be found. A private members' community almost
+certainly wants `noindex` — its login page in a search result serves nobody. The
+demo tenant (v2-14) definitely does: it is wiped nightly and is duplicate
+content besides. This is the half that is missing entirely, and the half with a
+privacy flavour rather than a marketing one.
+
+**2. Descriptive metadata**, which is the part the setting is obviously *for*:
+description, Open Graph, Twitter card — what renders when somebody pastes a
+community's URL into Slack or iMessage. Per-tenant content, and the ordinary
+`app_config` + branding-payload shape, resolved most-specific-first with a
+deployment default, exactly like the contact addresses in v2-6.
+
+**3. Delivery, which is the whole difficulty and the reason this is its own
+item.** The obvious implementation is to mirror what `<title>` already does and
+set it from branding at runtime. **That does not work, and it fails in a way
+that looks like working.** Google executes JavaScript; the link-preview crawlers
+do not. Slack, Facebook, LinkedIn, iMessage and Twitter fetch raw HTML and never
+run a script, so Open Graph written into the DOM by Angular is invisible to
+every one of them — which is the main thing anybody wants this feature for. It
+would be verifiable in DevTools and broken everywhere it counts. And
+`robots.txt` cannot be done in Angular at all: it is a separate file fetched
+before any page.
+
+So the real work is server-side, resolved per `Host`:
+
+- **`robots.txt` as an API route** — cheap, and it is the half with the privacy
+  flavour. Needs an nginx `location` ahead of the SPA `try_files`, since nginx
+  serves the webroot directly today.
+- **Per-tenant `index.html`** — the expensive half. nginx serves it statically
+  (`try_files $uri $uri/ /index.html`), so making the head vary per tenant means
+  routing HTML through the API, nginx SSI, or Angular SSR. Three real options and
+  the item should pick one deliberately; SSR in particular is a much larger
+  change than the feature asking for it.
+
+**Already landed against this, in v2-13:** the entrypoint writes a
+deployment-wide `robots.txt` at container start, `Disallow: /` when
+`IS_STAGE=true` and permissive otherwise. That settles only the stage/production
+question — one file cannot answer for several tenants on several hosts — and is
+what this item replaces with a per-tenant answer. It was worth doing early
+because stage is a public host serving test data and was crawlable, and because
+without the file `/robots.txt` answered 200 with the SPA's HTML.
+
+**Definition of done:** a community's admin can set its description and social
+preview text and choose whether it is indexed; the values are served in the HTML
+a crawler receives without executing JavaScript, verified by fetching the page
+with scripting disabled rather than by reading DevTools; `robots.txt` answers
+per tenant; stage stays `Disallow: /` however an individual tenant is
+configured.

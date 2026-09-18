@@ -1,19 +1,22 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
-import { LandingComponent, DEMO_URL } from './landing.component';
+import { LandingComponent, demoUrlFor } from './landing.component';
 import { BrandConfigService } from '../../core/services/brand-config.service';
 
 describe('LandingComponent', () => {
   let fixture: ComponentFixture<LandingComponent>;
 
-  function setup(brandName = 'CommunityEvents') {
+  function setup(brandName = 'CommunityEvents', appUrl = 'https://communityeventsproject.com') {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [LandingComponent],
       providers: [
         provideRouter([]),
-        { provide: BrandConfigService, useValue: { brand: signal({ name: brandName }) } },
+        {
+          provide: BrandConfigService,
+          useValue: { brand: signal({ name: brandName }), appUrl: () => appUrl },
+        },
       ],
     });
     fixture = TestBed.createComponent(LandingComponent);
@@ -43,15 +46,60 @@ describe('LandingComponent', () => {
     const links: HTMLAnchorElement[] = Array.from(
       fixture.nativeElement.querySelectorAll('a[href^="http"]'),
     );
-    expect(links.length).toBeGreaterThan(0);
+    expect(links.length).toBe(2);
     for (const link of links) {
-      expect(link.getAttribute('href')).toBe(DEMO_URL);
+      expect(link.getAttribute('href')).toBe('https://demo.communityeventsproject.com');
     }
+  });
+
+  // The demo lives on whichever deployment is serving this page, which is what
+  // keeps it a *subdomain* of the deployment domain and so able to inherit the
+  // deployment's Brevo and Google credentials.
+  it('derives the demo from the deployment actually serving the page', () => {
+    setup('CommunityEvents', 'https://stage.communityeventsproject.com');
+    const link = fixture.nativeElement.querySelector('a[href^="http"]');
+    expect(link.getAttribute('href')).toBe('https://demo.stage.communityeventsproject.com');
+  });
+
+  // Rendering `href=""` would be a button that silently reloads the page.
+  it('hides the call to action rather than linking nowhere', () => {
+    setup('CommunityEvents', '');
+    expect(fixture.nativeElement.querySelectorAll('a[href^="http"]').length).toBe(0);
+    // The page itself still renders — only the link is withheld.
+    expect(fixture.nativeElement.textContent).toContain('What a community gets');
   });
 
   it('renders every feature card', () => {
     setup();
     const cards = fixture.nativeElement.querySelectorAll('.feature');
     expect(cards.length).toBe(6);
+  });
+
+  describe('demoUrlFor', () => {
+    it('puts the demo on a subdomain of the deployment domain', () => {
+      expect(demoUrlFor('https://communityeventsproject.com')).toBe(
+        'https://demo.communityeventsproject.com',
+      );
+      expect(demoUrlFor('https://stage.communityeventsproject.com')).toBe(
+        'https://demo.stage.communityeventsproject.com',
+      );
+    });
+
+    // The root tenant's domain is stored bare, but nothing guarantees a caller
+    // hands one over that way -- and `demo.www.x` is a host nobody registered.
+    it('does not build the demo under a www. host', () => {
+      expect(demoUrlFor('https://www.communityeventsproject.com')).toBe(
+        'https://demo.communityeventsproject.com',
+      );
+    });
+
+    it('keeps the scheme and port of the deployment it is derived from', () => {
+      expect(demoUrlFor('http://localhost:8081')).toBe('http://demo.localhost:8081');
+    });
+
+    it('returns nothing for a URL it cannot parse', () => {
+      expect(demoUrlFor('')).toBe('');
+      expect(demoUrlFor('not a url')).toBe('');
+    });
   });
 });

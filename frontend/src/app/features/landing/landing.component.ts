@@ -4,16 +4,40 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { BrandConfigService } from '../../core/services/brand-config.service';
 
+/** The subdomain the demo tenant (v2-14) is created at, on any deployment. */
+export const DEMO_SUBDOMAIN = 'demo';
+
 /**
- * Where the public demo lives (v2-14).
+ * The demo's address, derived from the root tenant's own URL rather than
+ * written down (v2-13).
  *
- * One constant rather than the address repeated through the copy, because
- * v2-14 is what makes it resolve: the demo tenant does not exist yet, so this
- * is the address it will be created at, not one that answers today. Kept as
- * the final URL rather than a placeholder — a placeholder has to be found and
- * changed, and this simply starts working when the tenant is created.
+ * A literal `https://demo.communityeventsproject.com` would be a
+ * deployment-specific value compiled into the bundle — the thing v2-6 spent an
+ * item moving out of code — and one image serves both stage and production, so
+ * it would be wrong on one of them by construction.
+ *
+ * Deriving it also decides something more useful than the spelling. `demo.` on
+ * the *deployment's own domain* is a subdomain of it, so `isOnDeploymentDomain`
+ * is true and the demo inherits this deployment's Brevo and Google credentials.
+ * A demo at `demo.communityeventsproject.com` created against the stage
+ * deployment (`stage.communityeventsproject.com`) would be a sibling, not a
+ * subdomain — treated as a community bringing its own domain, which withholds
+ * both, and an invite-gated community with no mail is one nobody can join.
+ *
+ * Returns '' for a URL it cannot parse, and the page hides the link rather
+ * than rendering a broken one — the same thing `supportEmail` does with its
+ * mailto.
  */
-export const DEMO_URL = 'https://demo.communityeventsproject.com';
+export function demoUrlFor(rootUrl: string): string {
+  try {
+    const url = new URL(rootUrl);
+    // The root tenant's domain is stored bare, but a caller's URL need not be.
+    url.hostname = `${DEMO_SUBDOMAIN}.${url.hostname.replace(/^www\./, '')}`;
+    return url.origin;
+  } catch {
+    return '';
+  }
+}
 
 /**
  * The root tenant's public landing page (v2-13) — the marketing front door at
@@ -43,7 +67,12 @@ export const DEMO_URL = 'https://demo.communityeventsproject.com';
 export class LandingComponent {
   private readonly brandConfig = inject(BrandConfigService);
 
-  readonly demoUrl = DEMO_URL;
+  /**
+   * Derived from this tenant's own URL. Safe to read as a plain computed: the
+   * page only renders on the root tenant, whose URL *is* the deployment's, and
+   * branding has resolved before any route is matched.
+   */
+  readonly demoUrl = computed(() => demoUrlFor(this.brandConfig.appUrl()));
 
   /**
    * The root tenant's own configured name. This page is the platform's front

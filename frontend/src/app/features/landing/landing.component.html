@@ -8,9 +8,11 @@
       organising it in a group chat.
     </p>
     <div class="hero-actions">
-      <a mat-raised-button class="cta" [href]="demoUrl">
-        <mat-icon>open_in_new</mat-icon> Try the demo
-      </a>
+      @if (demoUrl()) {
+        <a mat-raised-button class="cta" [href]="demoUrl()">
+          <mat-icon>open_in_new</mat-icon> Try the demo
+        </a>
+      }
       <a mat-stroked-button class="cta-secondary" (click)="scrollToHow()">
         <mat-icon>arrow_downward</mat-icon> How it works
       </a>
@@ -47,9 +49,11 @@
       Sign up there and you land as an admin, so you see the organiser's side rather than
       just the visitor's.
     </p>
-    <a mat-raised-button class="cta" [href]="demoUrl">
-      <mat-icon>open_in_new</mat-icon> Try the demo
-    </a>
+    @if (demoUrl()) {
+      <a mat-raised-button class="cta" [href]="demoUrl()">
+        <mat-icon>open_in_new</mat-icon> Try the demo
+      </a>
+    }
     <p class="fineprint">
       Already a member of a community here? <a routerLink="/login">Sign in</a>.
     </p>
