@@ -522,8 +522,16 @@ protocol and cipher settings rather than at the certificate.
   served directly by NGINX Proxy Manager, which holds a Let's Encrypt certificate
   for it — Let's Encrypt has no wildcard depth limit. Advanced Certificate Manager
   (paid) is the alternative if the record has to stay proxied.
-- **Production:** nothing special. `demo.<apex>` is a single label and the
-  existing wildcard already covers it.
+  **Already done on the current stage deployment** (set up during v2-13):
+  `demo.stage.communityeventsproject.com` resolves to the origin directly, TLS
+  verifies, and `/api/v1/health` answers `"tenant":"unrecognized"` — which is the
+  correct reading for a host whose tenant row has not been created yet.
+- **Production:** nothing special, and this is confirmed rather than assumed.
+  `demo.<apex>` is a single label, Universal SSL's `*.<apex>` covers it, and a
+  request to `demo.communityeventsproject.com` today completes its TLS handshake
+  against the edge cleanly. (It then answers Cloudflare's 525, because the
+  *origin* leg has nothing serving it — there is no v2 production deployment yet.
+  That is the Cloudflare→origin hop, not the certificate.)
 
 ### What the reset does and does not touch
 
