@@ -9,6 +9,7 @@ import {
   resolvePalette,
 } from '../utils/palette';
 import { wordmarkDataUri, splashDataUri, monogramDataUri } from '../utils/brand-mark.util';
+import { reshade } from '../utils/color.util';
 
 /** The social sign-ins a community offers. See BrandConfig.authProviders. */
 export interface AuthProviders {
@@ -140,6 +141,25 @@ export interface BrandFeatures {
 // before: these are URLs, so nothing downstream of `logoSrc` had to change.
 const defaultLogo = (b: BrandConfig): string =>
   wordmarkDataUri(b.name, { primary: b.colorPrimary, background: b.colorBackground });
+/**
+ * The same wordmark, inked for the dark chrome it is about to be drawn on
+ * (v2-14).
+ *
+ * The toolbar, the sidenav and the footer are all `--ce-chrome`, and the plain
+ * wordmark's near-black ink vanished against it on any community without an
+ * uploaded logo. `reshade(primary, 13, 80)` is exactly how palette.ts derives
+ * `--ce-chrome`, so the mark measures itself against the real background rather
+ * than a guess at it.
+ *
+ * An uploaded logo is used unchanged in both places: it is the community's own
+ * artwork and not ours to recolour.
+ */
+const defaultLogoOnChrome = (b: BrandConfig): string =>
+  wordmarkDataUri(
+    b.name,
+    { primary: b.colorPrimary, background: b.colorBackground },
+    reshade(b.colorPrimary, 13, 80),
+  );
 const defaultSplash = (b: BrandConfig): string =>
   splashDataUri(b.name, b.tagline, { primary: b.colorPrimary, background: b.colorBackground });
 const defaultIcon = (b: BrandConfig): string =>
@@ -247,6 +267,10 @@ export class BrandConfigService {
   // compiled-in default. Components bind [src] to these so a fork's uploaded
   // images flow everywhere with no per-component fallback logic.
   readonly logoSrc = computed(() => this.brand().logoUrl || defaultLogo(this.brand()));
+  /** For the toolbar, sidenav and footer. See defaultLogoOnChrome. */
+  readonly logoOnChromeSrc = computed(
+    () => this.brand().logoUrl || defaultLogoOnChrome(this.brand()),
+  );
   readonly splashSrc = computed(() => this.brand().splashUrl || defaultSplash(this.brand()));
   readonly iconSrc = computed(() => this.brand().iconUrl || defaultIcon(this.brand()));
   // No compiled-in fallback: empty means the home-page story image is hidden.

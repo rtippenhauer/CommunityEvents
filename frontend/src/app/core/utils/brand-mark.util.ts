@@ -17,7 +17,7 @@
 // These are deliberately dependency-free and pure so they can be unit-tested
 // without a DOM, matching color.util.ts next door.
 
-import { reshade } from './color.util';
+import { readableOn, reshade } from './color.util';
 
 /**
  * Fonts do NOT load inside an SVG rendered through <img> -- it is an isolated
@@ -122,7 +122,25 @@ export interface MarkColors {
  * renders proportional to its content instead of padding short names with dead
  * space.
  */
-export function wordmarkDataUri(name: string, colors: MarkColors): string {
+/**
+ * `ground` is the colour this mark will actually sit on, and it is required
+ * rather than assumed (v2-14).
+ *
+ * The ink used to be a fixed near-black shade of the brand, commented "ink on
+ * the light ground" -- but `logoSrc` renders in five places and **three of them
+ * are the dark chrome**: the toolbar, the sidenav and the footer. So on every
+ * community without an uploaded logo, the generated wordmark drew the
+ * community's own name in near-black on `--ce-chrome` and it was invisible.
+ *
+ * Nobody saw it for an item and a half because every community that existed had
+ * uploaded a logo, so the fallback never rendered in the nav. v2-14's demo is
+ * the first community in the system with no uploads, which is what surfaced it.
+ *
+ * Measured rather than assumed, per v2-11: the brand-dark ink is *preferred*,
+ * and `readableOn` keeps it only where it actually clears AA against this
+ * ground, substituting a readable tone where it does not.
+ */
+export function wordmarkDataUri(name: string, colors: MarkColors, ground?: string): string {
   const label = escapeXml(name.trim() || 'CommunityEvents');
   const initials = escapeXml(brandInitials(name));
 
@@ -136,9 +154,10 @@ export function wordmarkDataUri(name: string, colors: MarkColors): string {
   const fit = fitText(label, nameBox, nameSize);
   const width = tile + gap + nameBox;
 
-  // Ink on the light ground: the brand hue taken to near-black, so it reads as
-  // a dark shade of the brand rather than a generic grey.
-  const ink = reshade(colors.primary, 16, 45);
+  // The brand hue taken to near-black reads as a dark shade of the brand rather
+  // than a generic grey, so it stays the preference -- but only where it is
+  // legible on the ground this mark is being drawn on.
+  const ink = readableOn(ground ?? colors.background, reshade(colors.primary, 16, 45));
 
   return svgDataUri(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width.toFixed(1)} ${H}"

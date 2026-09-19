@@ -14,31 +14,48 @@
   z-index: 1001;
 }
 
-// Sits under the stage banner when both are up. Deliberately quieter than the
-// stage one: it is a to-do for this community's admins, not a warning about
-// which deployment you are looking at.
 /**
  * The demo's standing notice (v2-14).
  *
- * Uses the environment-banner tokens rather than colours of its own: they are
- * the pair that already exists for "this whole deployment is not what you think
- * it is", and `--ce-on-banner` is contrast-measured against `--ce-banner` by
- * palette.ts for every colour an admin can pick -- including whatever a demo
- * visitor sets, since they are an admin of it and the branding screen is theirs.
+ * **Deliberately not the `--ce-banner` pair**, which it used to be. Those are
+ * the stage-environment colours, and on a stage deployment the two stacked into
+ * a single indistinguishable orange slab -- found on the first stage look. The
+ * tokens were the right *contrast* choice and the wrong *identity* choice: two
+ * notices saying different things have to look like two notices.
+ *
+ * So this is a quieter band between the stage bar and the chrome, tied to the
+ * warning family by a `--ce-banner` top rule rather than by a full field of it.
+ * Quiet is affordable here because the notice is permanent, carries a bold
+ * date, and is the only banner on production, where there is no stage bar above
+ * it to compete with.
+ *
+ * Capped and centred rather than edge-to-edge: a single sentence stretched
+ * across a wide monitor is a line the eye does not track.
  */
 .demo-banner {
-  background: var(--ce-banner);
-  color: var(--ce-on-banner);
-  font-size: 0.8rem;
-  line-height: 1.45;
-  padding: 8px 16px;
+  background: var(--ce-surface-variant);
+  color: var(--ce-text);
+  border-top: 3px solid var(--ce-banner);
+  border-bottom: 1px solid var(--ce-rule);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  padding: 10px 16px;
   text-align: center;
+  // The text, not the band -- the background still spans the page.
+  > span {
+    display: block;
+    max-width: 78ch;
+    margin: 0 auto;
+  }
 
   strong {
     font-weight: 700;
   }
 }
 
+// Sits under the stage banner when both are up. Deliberately quieter than the
+// stage one: it is a to-do for this community's admins, not a warning about
+// which deployment you are looking at.
 .legal-review-banner {
   display: flex;
   flex-wrap: wrap;

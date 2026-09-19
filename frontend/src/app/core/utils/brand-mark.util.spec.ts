@@ -7,6 +7,7 @@ import {
   monogramDataUri,
   splashDataUri,
 } from './brand-mark.util';
+import { contrastRatio, reshade } from './color.util';
 
 const COLORS = { primary: '#C9933A', background: '#FDFAF5' };
 
@@ -142,5 +143,74 @@ describe('generated marks', () => {
     const withTagline = decode(splashDataUri('Dayton Supper Club', 'Hello', COLORS));
     const count = (s: string) => (s.match(/<text/g) ?? []).length;
     expect(count(without)).toBe(count(withTagline) - 1);
+  });
+});
+
+/**
+ * The wordmark has to be legible where it is actually drawn (v2-14).
+ *
+ * `logoSrc` renders in five places and three are the dark chrome — the
+ * toolbar, the sidenav and the footer. The generated wordmark inked itself
+ * near-black for "the light ground" and was therefore invisible in all three
+ * on any community without an uploaded logo. It went unnoticed for an item and
+ * a half because every community that existed had uploaded one; v2-14's demo,
+ * the first with no uploads, is what surfaced it.
+ *
+ * Swept over the hue circle rather than checked at one colour, because a
+ * community picks its own primary and the failure was hue-independent.
+ */
+describe('wordmark legibility on the ground it is drawn on', () => {
+  /** How palette.ts derives --ce-chrome, so this measures the real background. */
+  const chromeFor = (primary: string): string => reshade(primary, 13, 80);
+
+  /** A spread of hues at a fixed saturation and lightness. */
+  function hslHex(h: number, s: number, l: number): string {
+    const a = (s / 100) * Math.min(l / 100, 1 - l / 100);
+    const f = (n: number): string => {
+      const k = (n + h / 30) % 12;
+      const v = l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+      return Math.round(255 * v).toString(16).padStart(2, '0');
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+  }
+
+  const seeds = Array.from({ length: 24 }, (_, i) => hslHex(i * 15, 60, 50));
+
+  /** The name text is the second <text> node; the first is the tile monogram. */
+  function nameInk(svg: string): string {
+    const doc = parse(svg);
+    const texts = Array.from(doc.querySelectorAll('text'));
+    return texts[texts.length - 1].getAttribute('fill') ?? '';
+  }
+
+  it('is readable on the chrome for every hue a community might pick', () => {
+    const failures: string[] = [];
+    for (const primary of seeds) {
+      const ground = chromeFor(primary);
+      const ink = nameInk(decode(wordmarkDataUri('Riverside Community Events', { primary, background: '#FDFAF5' }, ground)));
+      const ratio = contrastRatio(ink, ground) ?? 0;
+      // 3:1, the AA threshold for large text — the wordmark renders at 26px
+      // and bold, which is comfortably "large" by WCAG's definition.
+      if (ratio < 3) failures.push(`${primary} on ${ground}: ${ratio.toFixed(2)}:1`);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('is still readable on the light surface, which was never broken', () => {
+    const failures: string[] = [];
+    for (const primary of seeds) {
+      const ink = nameInk(decode(wordmarkDataUri('Riverside Community Events', { primary, background: '#FDFAF5' })));
+      const ratio = contrastRatio(ink, '#FDFAF5') ?? 0;
+      if (ratio < 3) failures.push(`${primary}: ${ratio.toFixed(2)}:1`);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  // The regression itself, named: the old fixed ink against the chrome.
+  it('proves the old fixed ink really was unreadable there', () => {
+    const primary = '#C9933A';
+    const ground = chromeFor(primary);
+    const oldInk = reshade(primary, 16, 45);
+    expect(contrastRatio(oldInk, ground) ?? 0).toBeLessThan(3);
   });
 });
