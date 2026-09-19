@@ -7,7 +7,7 @@ import type {
   notification_preferences as NotificationPreferences,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
+import { EmailProvider, EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
 import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
 import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
@@ -328,6 +328,7 @@ export class EmailService {
         attachments: dto.attachments,
       });
       await this.countImmediateSend();
+      await this.recordImmediateSend(dto);
       // The account allowance we hold is now one send out of date. Dropping it
       // rather than re-reading it is what keeps this off the critical path: a
       // password reset is something a person is waiting on, and clearing a map
@@ -384,6 +385,53 @@ export class EmailService {
     } catch (err) {
       // Never let bookkeeping fail the send it is describing.
       this.logger.warn(`Could not record an immediate send: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Writes an already-sent message into `email_queue` so the admin log shows it.
+   *
+   * **`email_queue` is the record of what a community sent, not just of what is
+   * waiting to go** -- but `sendNow` talks to the provider directly and, until
+   * this, wrote a row only when the send *failed* and fell back to the queue. So
+   * every successful immediate send was invisible: password resets, address
+   * verification, the lockout alert, two event mails, and v2-14's demo
+   * confirmation. An operator reading the log saw a community that had
+   * apparently never sent anything of consequence.
+   *
+   * Exactly the shape of the bug v2-9 fixed one layer over, where `sendNow`
+   * bypassed `brevoSentToday` and resets went uncounted. The counter was fixed
+   * then; nobody checked the log. Found by Rob on stage looking for the demo's
+   * confirmation mail.
+   *
+   * The row is written with status `sent`, which the dispatcher ignores -- it
+   * selects `PENDING` only -- so this records history without queuing work.
+   *
+   * Failures here are swallowed for the same reason `countImmediateSend`
+   * swallows its own: the message has already gone, and losing its log entry is
+   * much better than throwing on a caller who believes the send succeeded.
+   */
+  private async recordImmediateSend(dto: QueueEmailDto): Promise<void> {
+    try {
+      await this.prisma.email_queue.create({
+        data: {
+          toEmail: dto.toEmail,
+          toName: dto.toName ?? null,
+          subject: dto.subject,
+          templateId: dto.templateId ?? null,
+          templateParams: (dto.templateParams as Prisma.InputJsonValue) ?? Prisma.DbNull,
+          htmlBody: dto.htmlBody ?? null,
+          textBody: dto.textBody ?? null,
+          priority: dto.priority ?? 5,
+          status: EmailQueueStatus.SENT,
+          provider: EmailProvider.BREVO,
+          attempts: 1,
+          lastAttemptAt: new Date(),
+          sentAt: new Date(),
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Could not log an immediate send: ${(err as Error).message}`);
     }
   }
 

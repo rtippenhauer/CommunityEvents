@@ -249,7 +249,31 @@ export class DemoService {
     this.tenantResolution.clearCache();
     this.logger.log(`Demo ${domain} created for ${request.email}, expires ${expiresAt.toISOString()}`);
 
-    return { url: `${this.scheme()}//${domain}`, expiresAt };
+    const url = `${this.scheme()}//${domain}`;
+
+    // The second mail: where the demo actually lives.
+    //
+    // Not a duplicate of the confirmation. That one proved the address; this
+    // one is the only durable copy of a hostname nobody can reconstruct --
+    // `demo-a1b2c3d4.<domain>` is deliberately unguessable so that nobody
+    // treats it as their own permanent site, and the price of that is that
+    // losing the tab loses the demo. The page says "bookmark this"; this makes
+    // it true whether or not they did.
+    //
+    // Awaited but never allowed to fail the request: the community exists and
+    // the page is about to show the link. A mail outage should not turn a
+    // successful provision into an error.
+    try {
+      await this.sendReadyNotice(request.email, request.fullName, url, expiresAt);
+    } catch (err) {
+      this.logger.warn(
+        `Demo ${domain} was created but its "ready" email failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
+    return { url, expiresAt };
   }
 
   /**
@@ -578,6 +602,70 @@ export class DemoService {
           `Here is the link to set up your demo community. It works once, and within ` +
           `${DEMO_REQUEST_LIFETIME_HOURS} hours:\n\n${link}\n\n` +
           `Your demo is your own and is deleted ${DEMO_LIFETIME_DAYS} days after you create it.\n`,
+      });
+    });
+  }
+
+  /**
+   * "Your demo is ready, here is where it lives."
+   *
+   * Sent as the deployment from the ROOT tenant's context, exactly like the
+   * confirmation -- and necessarily so, because the community it is about
+   * cannot send mail at all (`EmailService.sendingIsBlocked`). A demo mailing
+   * its own owner would be the one exception to that rule, and carving out an
+   * exception is worse than sending as the platform, which is honestly who is
+   * writing.
+   */
+  private async sendReadyNotice(
+    email: string,
+    fullName: string,
+    url: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    const root = await runUnscoped(
+      'finding the root tenant to send as',
+      async () =>
+        await this.prisma.tenants.findFirst({
+          where: { rootMarker: true },
+          select: { id: true },
+        }),
+    );
+    if (!root) {
+      this.logger.error('No root tenant, so no demo ready notice can be sent.');
+      return;
+    }
+
+    const when = expiresAt.toUTCString().slice(0, 16);
+
+    await runWithTenant(root.id, async () => {
+      await this.email.sendNow({
+        toEmail: email,
+        toName: fullName,
+        subject: 'Your {{brand}} demo is ready',
+        htmlBody:
+          `<p>Hello ${escapeHtml(fullName)},</p>` +
+          `<p>Your demo community is set up and waiting:</p>` +
+          `<p><a href="${url}">${escapeHtml(url)}</a></p>` +
+          `<p>Sign in with this email address and the password you chose. Keep this message — ` +
+          `the address is generated, so it is not one you will remember.</p>` +
+          `<p>It is deleted on <strong>${when}</strong>, along with everything in it, and sooner ` +
+          `if nobody signs in for a couple of days.</p>`,
+        textBody:
+          `Hello ${fullName},
+
+` +
+          `Your demo community is set up and waiting:
+
+${url}
+
+` +
+          `Sign in with this email address and the password you chose. Keep this message — the ` +
+          `address is generated, so it is not one you will remember.
+
+` +
+          `It is deleted on ${when}, along with everything in it, and sooner if nobody signs in ` +
+          `for a couple of days.
+`,
       });
     });
   }

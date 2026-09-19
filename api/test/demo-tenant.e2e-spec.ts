@@ -10,6 +10,7 @@ import {
   MAX_LIVE_DEMOS_PER_IP,
 } from '../src/modules/demo/demo.service';
 import { EmailService } from '../src/modules/email/email.service';
+import { BrevoService } from '../src/modules/email/brevo.service';
 import { TenantsAdminService } from '../src/modules/system/tenants-admin.service';
 import { UserRole } from '../src/database/enums';
 import { createTestApp, truncateAllTables, resetThrottler, TEST_TENANT_DOMAIN } from './utils/test-app';
@@ -474,6 +475,65 @@ describe('Demo tenants (e2e)', () => {
 
       expect(result.requests).toBe(1);
       expect(await unscoped('counting', () => prisma.demo_requests.count())).toBe(0);
+    });
+  });
+
+  /**
+   * Two emails, and they do different jobs: the first proves the address, the
+   * second is the only durable copy of a hostname nobody can reconstruct.
+   */
+  describe('the "your demo is ready" email', () => {
+    it('is sent, and carries the demo URL', async () => {
+      await askForDemo('visitor@example.test');
+      const before = await unscoped('counting mail before', () => prisma.email_queue.count());
+
+      const res = await confirm(await tokenFor('visitor@example.test'));
+      const url = res.body.url as string;
+
+      const mail = await unscoped('reading the mail log', () =>
+        prisma.email_queue.findMany({ orderBy: { id: 'desc' } }),
+      );
+      expect(mail.length).toBeGreaterThan(before);
+
+      const ready = mail.find((m) => m.subject.includes('ready'));
+      expect(ready, 'no "ready" email was sent').toBeTruthy();
+      expect(ready!.toEmail).toBe('visitor@example.test');
+      expect(`${ready!.htmlBody}${ready!.textBody}`).toContain(url);
+    });
+
+    // It is about a community that cannot send mail, so it must be sent as the
+    // platform from the root tenant -- not from the demo, which EmailService
+    // refuses outright.
+    it('is sent by the root tenant, not by the demo', async () => {
+      await askForDemo('visitor@example.test');
+      await confirm(await tokenFor('visitor@example.test'));
+
+      const ready = await unscoped('finding the ready mail', () =>
+        prisma.email_queue.findFirst({ where: { subject: { contains: 'ready' } } }),
+      );
+      expect(ready?.tenantId).toBe(TEST_TENANT_ID);
+    });
+
+    // The community exists and the page is about to show the link, so a mail
+    // failure must not turn a successful provision into an error.
+    it('does not fail the provision when the mail cannot be sent', async () => {
+      const brevo = app.get(BrevoService);
+      const original = (brevo as unknown as { send: unknown }).send;
+      (brevo as unknown as { send: () => Promise<void> }).send = async () => {
+        throw new Error('provider down');
+      };
+
+      await askForDemo('unlucky@example.test');
+      const res = await confirm(await tokenFor('unlucky@example.test'));
+
+      expect(res.status).toBe(200);
+      expect(
+        await unscoped('the demo still exists', () =>
+          prisma.tenants.count({ where: { isDemo: true } }),
+        ),
+      ).toBe(1);
+
+      (brevo as unknown as { send: unknown }).send = original;
     });
   });
 
