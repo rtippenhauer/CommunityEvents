@@ -27,6 +27,14 @@
  * Deliberately abstract: no text, no attempt at a photograph. A recognisable
  * drawing of a restaurant done badly looks worse than a composition that is
  * plainly decorative, and abstraction is honest about being a stand-in.
+ *
+ * ## This is the fallback now
+ *
+ * The five seeded venues have real (AI-generated) photographs as of this item,
+ * shipped as static assets — see `venuePhotoPath`. This generator stays as the
+ * answer for a venue with no such file: without it, a missing or renamed asset
+ * would put a broken-image icon on the demo's front page, which is worse than
+ * the plain panel it replaced.
  */
 import { hexToHsl, hslToHex, reshade } from '../utils/color.util';
 
@@ -128,4 +136,31 @@ export function venueArtSvg(slug: string, primary = DEMO_COLOR_PRIMARY): string 
   <rect x="0" y="${H - 46}" width="${W}" height="3" fill="${glow}" opacity="0.4"/>
   ${plates.join('')}
 </svg>`;
+}
+
+/**
+ * Where a seeded venue's photograph lives, if it has one.
+ *
+ * Served as a static asset rather than generated, because these are actual
+ * images and there is nothing to derive them from. They sit under the
+ * frontend's `public/` and are therefore the same for every demo, which is
+ * right: the venues are a fixed fiction, not per-community data.
+ *
+ * `VENUES_WITH_PHOTOS` is the authority on which files exist. The seed asks
+ * this rather than assuming, so a venue added to the seed without artwork
+ * falls back to the generated panel instead of pointing at a file that is not
+ * there. A spec keeps this list and the files on disk in step.
+ */
+export const VENUES_WITH_PHOTOS = [
+  'the-copper-kettle',
+  'miriam-and-sons',
+  'northside-noodle-house',
+  'pearl-and-rye',
+  'the-long-room',
+] as const;
+
+export function venuePhotoPath(slug: string): string | null {
+  return (VENUES_WITH_PHOTOS as readonly string[]).includes(slug)
+    ? `/venues/${slug}.webp`
+    : null;
 }

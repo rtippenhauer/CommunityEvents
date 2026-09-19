@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { VENUE_SLUG_PATTERN, venueArtSvg, venueSlug } from './demo-venue-art';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  VENUES_WITH_PHOTOS,
+  VENUE_SLUG_PATTERN,
+  venueArtSvg,
+  venuePhotoPath,
+  venueSlug,
+} from './demo-venue-art';
 
 /**
  * Generated cover art for the demo's venues (v2-14).
@@ -68,5 +76,44 @@ describe('venue art', () => {
         venueArtSvg('pearl-and-rye', '#8F2E4A'),
       );
     });
+  });
+});
+
+/**
+ * The seeded venues have real photographs; the generated art is the fallback.
+ *
+ * These two must agree or the demo's front page shows a broken-image icon,
+ * which is worse than the plain panel the photographs replaced. The list is
+ * checked against the files actually on disk, so renaming or dropping an asset
+ * fails here rather than on stage.
+ */
+describe('venue photographs', () => {
+  const PUBLIC_VENUES = join(__dirname, '../../../../frontend/public/venues');
+
+  it('ships a file for every venue the list claims has one', () => {
+    const missing = VENUES_WITH_PHOTOS.filter(
+      (slug) => !existsSync(join(PUBLIC_VENUES, `${slug}.webp`)),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it('claims a photo for every venue the demo actually seeds', () => {
+    const seeded = [
+      'The Copper Kettle',
+      'Miriam and Sons',
+      'Northside Noodle House',
+      'Pearl and Rye',
+      'The Long Room',
+    ].map(venueSlug);
+
+    // Not a hard requirement -- a venue without a photo degrades to the
+    // generated panel on purpose -- but a *silent* gap is how the demo ends up
+    // half illustrated, so it is asserted rather than left to be noticed.
+    expect([...VENUES_WITH_PHOTOS].sort()).toEqual([...seeded].sort());
+  });
+
+  it('gives a served path for a known venue and nothing for an unknown one', () => {
+    expect(venuePhotoPath('the-long-room')).toBe('/venues/the-long-room.webp');
+    expect(venuePhotoPath('a-venue-with-no-picture')).toBeNull();
   });
 });
