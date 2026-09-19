@@ -5,19 +5,23 @@ import {
   ForbiddenException,
   Get,
   HttpCode,
+  NotFoundException,
+  Param,
+  Res,
   Post,
   Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../database/enums';
 import { DemoService, DemoRequestResult } from './demo.service';
 import { RequestDemoDto } from './dto/request-demo.dto';
+import { VENUE_SLUG_PATTERN, venueArtSvg } from '../../common/demo/demo-venue-art';
 
 /**
  * Asking for a demo community, and confirming it (v2-14).
@@ -64,6 +68,29 @@ export class DemoController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async confirm(@Query('token') token: string): Promise<{ url: string; expiresAt: Date }> {
     return this.demoService.confirmDemo(token ?? '');
+  }
+
+  /**
+   * Cover art for a demo venue (v2-14).
+   *
+   * Public and unauthenticated, because the event cards it appears on are shown
+   * to signed-out visitors. It leaks nothing: the response is a pure function
+   * of the slug in the URL, reads nothing, and is identical for everyone.
+   *
+   * `@Res` because this returns an image rather than JSON, which is the one
+   * thing the global serializer cannot do for us. Cached hard -- the art for a
+   * given slug never changes, so re-fetching it on every card is pure waste.
+   */
+  @Get('venue-art/:slug')
+  venueArt(@Param('slug') slug: string, @Res() res: Response): void {
+    // Validated rather than trusted: the slug is interpolated into a hash and
+    // nothing else, but an unbounded path segment reaching a generator is the
+    // kind of thing that becomes a problem later.
+    if (!VENUE_SLUG_PATTERN.test(slug ?? '')) throw new NotFoundException();
+
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    res.send(venueArtSvg(slug));
   }
 
   /**
