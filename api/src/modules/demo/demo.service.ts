@@ -15,8 +15,22 @@ import { EmailService } from '../email/email.service';
 const BCRYPT_ROUNDS = 12;
 
 /**
- * How long a confirmed demo lives. A confirmation link is acted on in minutes
- * or not at all, so an unconfirmed request lapses far sooner.
+ * How long a confirmed demo lives.
+ *
+ * **Seven days is a consequence of the demo being one visitor's own, not a
+ * number picked on its own** (decided with Rob 2026-09-18). Retention here
+ * trades against blast radius: on a shared demo anyone can delete the events or
+ * rename the community, so whatever one visitor breaks is what every later
+ * visitor sees, and the cadence has to be a single day to bound it. Per-visitor
+ * isolation removes that entirely -- nobody else can see your demo, so nobody
+ * else is harmed by what you do to it -- which is what buys the week.
+ *
+ * So the two move together. Anything that reintroduces sharing has to bring the
+ * lifetime back down to a day with it; a shared demo kept for a week is the one
+ * combination that was explicitly rejected.
+ *
+ * A confirmation link, by contrast, is acted on in minutes or not at all, so an
+ * unconfirmed request lapses far sooner.
  */
 export const DEMO_LIFETIME_DAYS = 7;
 export const DEMO_REQUEST_LIFETIME_HOURS = 24;
