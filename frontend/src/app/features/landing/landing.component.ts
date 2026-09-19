@@ -5,51 +5,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { BrandConfigService } from '../../core/services/brand-config.service';
 
 /**
- * The subdomain the demo tenant (v2-14) is created at, on any deployment.
- *
- * Mirrored by `DEMO_SUBDOMAIN` / `demoDomainFor` in the API's
- * `common/utils/tenant-domain.util.ts`, which is what `provision-demo.ts`
- * actually creates the tenant at. The two must agree or this page links to a
- * host no tenant answers on — the same mirroring `roles.util.ts` and
- * `color.util.ts` carry, and for the same reason: this page is served to
- * visitors of the root community, so it cannot ask the API where a community
- * that may not exist yet would live.
- */
-export const DEMO_SUBDOMAIN = 'demo';
-
-/**
- * The demo's address, derived from the root tenant's own URL rather than
- * written down (v2-13).
- *
- * A literal `https://demo.communityeventsproject.com` would be a
- * deployment-specific value compiled into the bundle — the thing v2-6 spent an
- * item moving out of code — and one image serves both stage and production, so
- * it would be wrong on one of them by construction.
- *
- * Deriving it also decides something more useful than the spelling. `demo.` on
- * the *deployment's own domain* is a subdomain of it, so `isOnDeploymentDomain`
- * is true and the demo inherits this deployment's Brevo and Google credentials.
- * A demo at `demo.communityeventsproject.com` created against the stage
- * deployment (`stage.communityeventsproject.com`) would be a sibling, not a
- * subdomain — treated as a community bringing its own domain, which withholds
- * both, and an invite-gated community with no mail is one nobody can join.
- *
- * Returns '' for a URL it cannot parse, and the page hides the link rather
- * than rendering a broken one — the same thing `supportEmail` does with its
- * mailto.
- */
-export function demoUrlFor(rootUrl: string): string {
-  try {
-    const url = new URL(rootUrl);
-    // The root tenant's domain is stored bare, but a caller's URL need not be.
-    url.hostname = `${DEMO_SUBDOMAIN}.${url.hostname.replace(/^www\./, '')}`;
-    return url.origin;
-  } catch {
-    return '';
-  }
-}
-
-/**
  * The root tenant's public landing page (v2-13) — the marketing front door at
  * www.communityeventsproject.com, explaining what the project is and sending
  * visitors to the demo.
@@ -76,13 +31,6 @@ export function demoUrlFor(rootUrl: string): string {
 })
 export class LandingComponent {
   private readonly brandConfig = inject(BrandConfigService);
-
-  /**
-   * Derived from this tenant's own URL. Safe to read as a plain computed: the
-   * page only renders on the root tenant, whose URL *is* the deployment's, and
-   * branding has resolved before any route is matched.
-   */
-  readonly demoUrl = computed(() => demoUrlFor(this.brandConfig.appUrl()));
 
   /**
    * The root tenant's own configured name. This page is the platform's front

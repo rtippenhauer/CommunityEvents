@@ -591,16 +591,14 @@ export class AuthController {
   async register(
     @Body() dto: RegisterDto,
     @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<{ message: string; signedIn: boolean }> {
+  ): Promise<{ message: string }> {
     const subdomain = req.headers['x-subdomain'];
     const city = await this.citiesService.findBySubdomainOrNull(
       typeof subdomain === 'string' ? subdomain : undefined,
     );
 
-    let result;
     try {
-      result = await this.authService.registerWithPassword(
+      await this.authService.registerWithPassword(
         dto.inviteToken,
         dto.fullName,
         dto.email,
@@ -610,11 +608,6 @@ export class AuthController {
     } catch (err) {
       if (err instanceof AuthFlowError) {
         const reason = err.reason;
-        // Registering with no invite on a community that is not the demo. A 401
-        // rather than a 400, matching what the OAuth paths answer for the same
-        // refusal -- the frontend reads `reason`, not the status, but the two
-        // paths disagreeing about a single refusal is how they drift.
-        if (reason === 'no_invite') throw new UnauthorizedException({ message: 'No invite', reason });
         if (reason === 'invite_expired') throw new BadRequestException({ message: 'Invite expired', reason });
         if (reason === 'invite_used') throw new BadRequestException({ message: 'Invite used', reason });
         if (reason === 'invite_email_mismatch') throw new BadRequestException({ message: 'Invite email mismatch', reason });
@@ -622,28 +615,7 @@ export class AuthController {
       }
       throw err;
     }
-
-    // A demo signup ends signed in (v2-14). It has no address to verify -- the
-    // account was created verified, deliberately -- so the alternative is sending
-    // a visitor to a "check your email" page for mail that will never arrive.
-    if (result.demoSignup) {
-      const { accessToken } = await this.authService.issueTokens(result.user, {
-        userAgent: req.headers['user-agent'],
-        ipAddress: req.ip,
-      });
-      this.clearStaleAccessTokenCookies(res);
-      (res as unknown as { cookie: (...args: unknown[]) => void }).cookie(
-        'access_token',
-        accessToken,
-        this.accessTokenCookieOptions(),
-      );
-      return { message: 'Welcome to the demo.', signedIn: true };
-    }
-
-    return {
-      message: 'Registration successful. Check your email to verify your account.',
-      signedIn: false,
-    };
+    return { message: 'Registration successful. Check your email to verify your account.' };
   }
 
   @Post('automation-login')

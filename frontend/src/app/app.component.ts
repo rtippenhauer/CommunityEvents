@@ -184,12 +184,31 @@ export class AppComponent {
    * The demo's standing notice (v2-14).
    *
    * Deliberately NOT gated on being signed in, on a role, or on being
-   * dismissable. Everyone who signs up on the demo is an admin of it, so there
-   * is no audience here who does not need to know; and the person most in danger
-   * of losing work is the one who has been using it long enough to have stopped
-   * reading the chrome, which is exactly who a dismissable notice stops warning.
+   * dismissable. The person most in danger of losing work is the one who has
+   * used their demo long enough to stop reading the chrome, which is exactly
+   * who a dismissable notice stops warning.
    */
   readonly isDemo = computed<boolean>(() => this.brandConfig.isDemo());
+
+  /**
+   * When this demo is deleted, as a date a person can act on.
+   *
+   * "Temporary" is ignorable; "deleted on Friday 26 September" is not. Falls
+   * back to null rather than to vague wording -- the template drops the clause
+   * entirely rather than saying something softer, because a softer warning here
+   * is worse than a shorter one.
+   */
+  readonly demoExpiresLabel = computed<string | null>(() => {
+    const iso = this.brandConfig.demoExpiresAt();
+    if (!iso) return null;
+    const when = new Date(iso);
+    if (Number.isNaN(when.getTime())) return null;
+    return when.toLocaleDateString(undefined, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    });
+  });
 
   // Deployment operator rather than community admin. Gates the tenant registry
   // link only; the API enforces it again and additionally requires the root

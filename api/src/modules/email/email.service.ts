@@ -12,6 +12,7 @@ import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
 import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { AppConfigService } from '../app-config/app-config.service';
+import { currentTenantId } from '../../common/tenant/tenant-store';
 import { emailPalette } from '../../common/utils/color.util';
 
 /**
@@ -225,7 +226,43 @@ export class EmailService {
 </html>`;
   }
 
+  /**
+   * Whether the community this send belongs to is a demo, which may not mail
+   * anyone (v2-14).
+   *
+   * **Omitting a demo's provider config would not have stopped it.** v2-9 made
+   * the deployment's Brevo credentials the fallback for any community that has
+   * none of its own, and a demo lives on a subdomain of the deployment, so
+   * `isOnDeploymentDomain` is true for it and it inherits them. A blank config
+   * therefore means "send on the operator's account", which is precisely the
+   * outcome to prevent: anyone can create a demo, so anyone could mail arbitrary
+   * addresses from the deployment's sending domain and spend its reputation.
+   *
+   * So the block is an explicit refusal keyed on the column, at the two entry
+   * points every send passes through. The one mail a demo *causes* -- its
+   * confirmation link -- is composed and sent in the ROOT tenant's context by
+   * DemoService, which is why that one is unaffected by this.
+   *
+   * Reads the column directly rather than through TenantResolutionService to
+   * avoid a module cycle; the query is on the send path, but a send already
+   * costs a provider round trip.
+   */
+  private async sendingIsBlocked(recipient: string): Promise<boolean> {
+    const tenantId = currentTenantId();
+    if (!tenantId) return false;
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { isDemo: true },
+    });
+    if (!tenant?.isDemo) return false;
+    this.logger.warn(
+      `Refusing to send to ${recipient}: this is a demo community, which cannot send mail.`,
+    );
+    return true;
+  }
+
   async queue(input: QueueEmailDto): Promise<EmailQueueRow | null> {
+    if (await this.sendingIsBlocked(input.toEmail)) return null;
     const dto = await this.applyBranding(input);
 
     if (!dto.bypassSuppression) {
@@ -273,6 +310,9 @@ export class EmailService {
   }
 
   async sendNow(input: QueueEmailDto): Promise<void> {
+    // Blocked before branding, so a demo community never reaches the provider
+    // even on the path that bypasses the queue. See sendingIsBlocked.
+    if (await this.sendingIsBlocked(input.toEmail)) return;
     // Branded before the attempt, so the queued copy on failure carries the
     // same text the immediate send would have. queue() substitutes again and
     // finds nothing left to replace, which is the intended no-op.

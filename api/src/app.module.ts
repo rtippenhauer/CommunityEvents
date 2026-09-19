@@ -23,6 +23,7 @@ import { EventsModule } from './modules/events/events.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { SystemModule } from './modules/system/system.module';
 import { StatsModule } from './modules/stats/stats.module';
+import { DemoModule } from './modules/demo/demo.module';
 import { EmailModule } from './modules/email/email.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { ReleasesModule } from './modules/releases/releases.module';
@@ -62,6 +63,7 @@ import { AvatarsModule } from './modules/avatars/avatars.module';
     AdminModule,
     SystemModule,
     StatsModule,
+    DemoModule,
     EmailModule,
     FeedbackModule,
     ReleasesModule,

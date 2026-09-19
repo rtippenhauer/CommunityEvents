@@ -469,20 +469,26 @@ export class AppConfigService {
   }
 
   /**
-   * Whether the community being served is the demo (v2-14).
+   * Whether the community being served is an ephemeral demo, and when it goes
+   * (v2-14).
    *
-   * Reads the resolved tenant's own row, like `servingRootTenant` above. Not
-   * derived from the host: see the `is_demo` column for why this question and
-   * "whose domain is this" take opposite answers.
+   * Both come off one read of the resolved tenant's own row, like
+   * `servingRootTenant` above. Not derived from the host: a demo's address is
+   * generated and a community is a demo because its row says so.
+   *
+   * The expiry is serialised as an ISO string rather than a Date because this
+   * payload is JSON on the wire either way, and saying so here stops the
+   * frontend having to guess which it received.
    */
-  private async servingDemoTenant(): Promise<boolean> {
+  private async servingDemoTenant(): Promise<{ isDemo: boolean; demoExpiresAt: string | null }> {
     const tenantId = currentTenantId();
-    if (!tenantId) return false;
+    if (!tenantId) return { isDemo: false, demoExpiresAt: null };
     const tenant = await this.prisma.tenants.findUnique({
       where: { id: tenantId },
-      select: { isDemo: true },
+      select: { isDemo: true, demoExpiresAt: true },
     });
-    return tenant?.isDemo ?? false;
+    if (!tenant?.isDemo) return { isDemo: false, demoExpiresAt: null };
+    return { isDemo: true, demoExpiresAt: tenant.demoExpiresAt?.toISOString() ?? null };
   }
 
   /** The tenant's own mail domain, or null when it has not set one. */
@@ -570,19 +576,21 @@ export class AppConfigService {
      */
     isRoot: boolean;
     /**
-     * Whether the community being served is the demo (v2-14).
+     * Whether the community being served is an ephemeral demo (v2-14), and when
+     * it will be deleted.
      *
-     * Drives the standing notice in the app shell saying the data here is
-     * temporary, and the "create a demo account" affordance on the sign-in page.
-     * The notice is part of the feature rather than decoration: a visitor who
-     * self-registers here becomes an admin and may well start entering real
-     * events for a real group, and without a visible warning the nightly reset
-     * destroys work they had no reason to think was disposable.
+     * Together these drive the standing notice in the app shell. The notice is
+     * part of the feature rather than decoration: the visitor is an admin of
+     * this community and may well start entering real events for a real group,
+     * and without a visible warning its deletion destroys work they had no
+     * reason to think was disposable. The date is what makes it actionable --
+     * "temporary" is ignorable, "deleted on Friday" is not.
      *
-     * Public, like every other field here, and unavoidably so -- it is a fact
+     * Public, like every other field here, and unavoidably so: it is a fact
      * about a community that announces itself on every page of that community.
      */
     isDemo: boolean;
+    demoExpiresAt: string | null;
     /**
      * Whether a human has confirmed this community's Terms and Privacy Policy.
      *
@@ -679,7 +687,7 @@ export class AppConfigService {
       authProviders: await this.tenantOAuth.offeredProviders(),
       isStage: this.config.get<string>('IS_STAGE') === 'true',
       isRoot: await this.servingRootTenant(),
-      isDemo: await this.servingDemoTenant(),
+      ...(await this.servingDemoTenant()),
       // The community's own support address (v2-10). Two member-facing pages
       // -- account deletion and the Facebook data-deletion callback -- told
       // people to email support@dinnerbears.com, a hardcoded address belonging

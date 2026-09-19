@@ -1,36 +1,22 @@
 /**
- * What the demo community contains, and how it gets back to containing exactly
- * that (v2-14).
+ * What a demo community contains (v2-14).
  *
- * The demo is a tenant anyone may try: signing up there grants admin **of that
- * tenant only**, and because a demo admin can delete anything, the community is
- * wiped and re-seeded on a nightly schedule rather than left to accumulate
- * whatever visitors do to it.
+ * One demo is provisioned per visitor who asks for one and confirms their
+ * address, and it is deleted outright seven days later -- so this seeds a fresh
+ * community and never wipes one. Deletion is `DemoService.deleteExpired`, which
+ * removes the tenant row itself through the shared `purgeTenantRows`.
  *
- * **Provisioning and resetting are the same code path.** `provision-demo.ts`
- * creates the tenant row and then calls `resetDemoTenant`; the nightly cron
- * calls `resetDemoTenant`. That is deliberate: if the two were separate, the
- * demo a visitor sees on day one and the demo they see after the first reset
- * could drift apart, and the drift would only ever be discovered by somebody
- * comparing two screenshots a day apart.
- *
- * **Tenancy.** Every write here names `tenantId` explicitly, because this runs
- * from two places that both sit outside the scoping extension's normal path: a
- * standalone script with its own bare `PrismaClient`, and a `@Cron` sweep that
- * enters `runUnscoped` (it has to — it is finding and rewriting one community's
- * rows while no request is in flight). Under a waiver the extension injects
- * nothing, so an unnamed `tenantId` takes the sentinel `DEFAULT 0` and is
- * rejected by the foreign key.
+ * **Tenancy.** Every write names `tenantId` explicitly. The caller is inside a
+ * `runUnscoped` waiver -- it is writing into a community that no request is
+ * scoped to -- and under a waiver the extension injects nothing, so an unnamed
+ * `tenantId` takes the sentinel `DEFAULT 0` and is rejected by the foreign key.
  */
 import type { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { LEGAL_DEFAULT_ROWS } from '../../common/legal/legal-defaults';
 import { achievementDefaultRows } from '../../common/achievements/achievement-defaults';
-import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
-import { purgeTenantRows } from '../../common/tenant/tenant-purge';
 import { createServiceAccount, tenantGetsServiceAccount } from './service-account.provision';
 
-/** Matches AuthService.register, so these hashes verify like any other. */
 const BCRYPT_COST = 12;
 
 /**
@@ -38,9 +24,10 @@ const BCRYPT_COST = 12;
  * script and shown nowhere else.
  *
  * It is not a secret in any meaningful sense — the accounts it opens live in a
- * community that is erased nightly and holds nothing real — but it is also not
- * advertised on the page, because a visitor signing in as "Ada Whitfield"
- * instead of registering would skip the one flow the demo exists to show.
+ * community that belongs to one visitor, holds nothing real, and is deleted
+ * within the week. It is not advertised on the page either: the visitor is
+ * already an admin of their own demo and has no reason to sign in as one of the
+ * fictional members.
  */
 export const DEMO_MEMBER_PASSWORD = 'DemoP@ssw0rd!';
 
@@ -87,67 +74,32 @@ export interface DemoSeedSummary {
   upcomingEvents: number;
   attended: number;
   ratings: number;
-  /** Rows removed by the wipe, by model. Empty on a freshly provisioned tenant. */
-  wiped: Record<string, number>;
 }
 
 /**
- * Erases everything in the demo community and seeds it again.
+ * Fills a freshly created demo community.
  *
- * The tenant row itself survives — this is a reset, not a delete, and the row
- * carries `is_demo`, the domain visitors are on right now, and the id every
- * later reset looks up.
+ * Two groups of rows, and only the second is demo content. The first is what
+ * `TenantsAdminService.create` writes for any new community -- legal copy, the
+ * achievement catalogue, a service account where one is warranted -- because a
+ * demo is an ordinary community in every respect except that it expires and
+ * cannot send mail.
  *
- * The wipe itself is `purgeTenantRows`, shared with `TenantsAdminService.remove`
- * — the two differ only in whether the `tenants` row survives, and having two
- * copies of a walk whose ORDER is load-bearing is how one of them ends up
- * quietly wrong. See that file for which foreign keys make it load-bearing.
+ * **No `email_provider_config` row, deliberately.** A demo may not mail anyone;
+ * `EmailService.sendingIsBlocked` is what enforces that, since leaving the
+ * config blank would have had the opposite effect -- v2-9 falls back to the
+ * deployment's credentials for a community that has none of its own.
  */
-export async function resetDemoTenant(
+export async function seedDemoTenant(
   prisma: PrismaClient,
   tenantId: number,
   opts: { isRoot?: boolean } = {},
 ): Promise<DemoSeedSummary> {
-  const wiped = await wipeDemoTenant(prisma, tenantId);
-  const summary = await seedDemoTenant(prisma, tenantId, opts);
-  return { ...summary, wiped };
-}
-
-async function wipeDemoTenant(
-  prisma: PrismaClient,
-  tenantId: number,
-): Promise<Record<string, number>> {
-  // One transaction, so a failure part-way leaves the demo intact rather than
-  // half-erased — a half-erased demo is worse than a stale one, because it is
-  // still serving and now inconsistent. The timeout is raised past Prisma's 5s
-  // default for the same reason the purge raises it.
-  return await prisma.$transaction(
-    async (tx) => await purgeTenantRows(tx, tenantId),
-    { timeout: 120_000, maxWait: 15_000 },
-  );
-}
-
-/**
- * Everything a community needs in order to work, then everything the demo needs
- * in order to be worth looking at.
- *
- * The first group is not demo content — it is what `TenantsAdminService.create`
- * writes for any new community (legal copy, the achievement catalogue, an email
- * provider row, a service account where one is warranted). The wipe above
- * removes those too, since they are scoped rows like any other, so the reset has
- * to put them back or the demo comes up with blank Terms and no badges.
- */
-async function seedDemoTenant(
-  prisma: PrismaClient,
-  tenantId: number,
-  opts: { isRoot?: boolean },
-): Promise<Omit<DemoSeedSummary, 'wiped'>> {
   const cityId = await resolveCityId(prisma);
 
   await seedSettings(prisma, tenantId);
   await seedLegal(prisma, tenantId);
   await seedAchievements(prisma, tenantId);
-  await seedEmailConfig(prisma, tenantId);
 
   if (tenantGetsServiceAccount(opts.isRoot ?? false)) {
     await createServiceAccount(prisma, tenantId, cityId);
@@ -181,12 +133,11 @@ async function seedDemoTenant(
  * The demo's own branding, plus one row that is there to *suppress* something.
  *
  * `legal_reviewed_at` is normally empty until a human confirms the seeded Terms,
- * and until then every admin of that community sees a banner asking them to. On
- * the demo every visitor is an admin, so that banner would greet all of them
- * with a task that belongs to nobody and cannot meaningfully be done — the demo
- * is erased nightly and has no members to protect. It is stamped as reviewed at
- * seed time so the only standing notice on the demo is the one that matters:
- * that the data is temporary.
+ * and until then the community's admin sees a banner asking them to. The demo's
+ * admin is a visitor evaluating the product, so that banner would hand them a
+ * compliance chore for a community with no members to protect that is deleted
+ * within the week. Stamped at seed time, so the only standing notice on a demo
+ * is the one that matters: when it disappears.
  */
 async function seedSettings(prisma: PrismaClient, tenantId: number): Promise<void> {
   const rows = [
@@ -219,16 +170,6 @@ async function seedAchievements(prisma: PrismaClient, tenantId: number): Promise
   });
 }
 
-async function seedEmailConfig(prisma: PrismaClient, tenantId: number): Promise<void> {
-  // No credential of its own: the demo lives on `demo.<deployment domain>`, so
-  // `isOnDeploymentDomain` is true for it and it sends on the deployment's Brevo
-  // account. That is the whole reason the address is derived as a subdomain
-  // rather than configured — see `demoDomainFor`.
-  await prisma.email_provider_config.create({
-    data: { tenantId, ...newEmailProviderConfig() },
-  });
-}
-
 /**
  * `users.city_id` is required and cities are seeded before any tenant exists, so
  * there is always one. Picked by id rather than by name: the demo does not care
@@ -246,10 +187,10 @@ async function resolveCityId(prisma: PrismaClient): Promise<number> {
  * The seeded members.
  *
  * Their addresses are on `.invalid`, which RFC 2606 reserves and which therefore
- * cannot be delivered to. That is the point: the demo sends real mail on the
- * deployment's Brevo account, and seeded members generate notifications like any
- * other member — a seeded address at a real domain would mail a stranger nightly
- * and spend the deployment's allowance doing it.
+ * cannot be delivered to. Belt and braces: a demo cannot send mail at all
+ * (`EmailService.sendingIsBlocked`), but seeded members generate notifications
+ * like any other member, and a fixture that would mail a real stranger if one
+ * guard were ever lifted is not a fixture worth keeping.
  */
 async function seedMembers(
   prisma: PrismaClient,
@@ -257,8 +198,8 @@ async function seedMembers(
   cityId: number,
 ): Promise<{ id: number; fullName: string }[]> {
   // Hashed once. bcrypt at cost 12 is deliberately slow and every seeded member
-  // shares this password, so hashing per member would add seconds to a job that
-  // runs nightly, for nothing.
+  // shares this password, so hashing per member would add seconds to the
+  // provisioning step a visitor is waiting on.
   const passwordHash = await bcrypt.hash(DEMO_MEMBER_PASSWORD, BCRYPT_COST);
 
   const members: { id: number; fullName: string }[] = [];

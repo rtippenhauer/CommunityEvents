@@ -65,16 +65,6 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
               </p>
             }
 
-            <!-- The demo's open door (v2-14). Says what signing up here gets you
-                 and what it costs, because both are unusual: admin of the whole
-                 community, and everything gone by morning. -->
-            @if (offersDemoSignup() && demoSignup()) {
-              <p class="invite-notice">
-                Creating a demo account makes you an <strong>admin of this demo community</strong>,
-                so you can try everything. It is wiped and rebuilt every night.
-              </p>
-            }
-
             <!-- OAuth buttons. A community offers a provider only where it has
                  registered its own app (REQ-TENANT-01.9); one with neither gets
                  email/password, which is always available. -->
@@ -133,7 +123,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
             <!-- Email / password form -->
             @if (showEmailForm() || noSocialSignIn()) {
               <form [formGroup]="form" (ngSubmit)="submitEmailForm()" class="email-form">
-                @if (registering()) {
+                @if (inviteToken()) {
                   <mat-form-field appearance="outline" class="full-width">
                     <mat-label>Full name</mat-label>
                     <input matInput formControlName="fullName" autocomplete="name" />
@@ -151,7 +141,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
                     matInput
                     formControlName="password"
                     [type]="showPassword() ? 'text' : 'password'"
-                    [autocomplete]="registering() ? 'new-password' : 'current-password'"
+                    [autocomplete]="inviteToken() ? 'new-password' : 'current-password'"
                   />
                   <button
                     mat-icon-button
@@ -163,7 +153,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
                   </button>
                 </mat-form-field>
 
-                @if (registering()) {
+                @if (inviteToken()) {
                   <mat-form-field appearance="outline" class="full-width">
                     <mat-label>Confirm password</mat-label>
                     <input
@@ -189,23 +179,12 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
                   @if (submitting()) {
                     <mat-spinner diameter="20" />
                   } @else {
-                    {{ registering() ? 'Create account' : 'Sign in' }}
+                    {{ inviteToken() ? 'Create account' : 'Sign in' }}
                   }
                 </button>
 
-                @if (!registering()) {
+                @if (!inviteToken()) {
                   <a routerLink="/auth/forgot-password" class="forgot-link">Forgot password?</a>
-                }
-
-                @if (offersDemoSignup()) {
-                  <button
-                    mat-button
-                    type="button"
-                    class="demo-toggle-btn"
-                    (click)="toggleDemoSignup()"
-                  >
-                    {{ demoSignup() ? 'I already have an account' : 'New here? Create a demo account' }}
-                  </button>
                 }
               </form>
             } @else if (!noSocialSignIn()) {
@@ -215,7 +194,7 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
                    member and the only way in this community has. -->
               <button mat-button class="email-toggle-btn" (click)="showEmailForm.set(true)">
                 <mat-icon>mail</mat-icon>
-                {{ registering() ? 'Sign up with email' : 'Sign in with email' }}
+                {{ inviteToken() ? 'Sign up with email' : 'Sign in with email' }}
               </button>
             }
 
@@ -418,21 +397,6 @@ export class LoginComponent implements OnInit {
   readonly inviteToken = signal<string | null>(null);
   readonly fbReady = signal(false);
   readonly fbStatus = signal<'connected' | 'not_authorized' | 'unknown'>('unknown');
-  /**
-   * Whether the visitor has chosen to sign up on the demo (v2-14).
-   *
-   * The page decides between "sign in" and "create an account" by the presence
-   * of an invite token, which the demo by definition does not have -- its whole
-   * point is that nobody needs one. So the demo gets an explicit toggle instead,
-   * and `registering` below is what the form actually branches on, so the two
-   * ways of arriving at a signup form cannot render different forms.
-   */
-  readonly demoSignup = signal(false);
-  readonly registering = computed(() => !!this.inviteToken() || this.demoSignup());
-  /** Offer the demo signup only where the API would actually accept it. */
-  readonly offersDemoSignup = computed(
-    () => this.brandConfig.isDemo() && !this.inviteToken(),
-  );
   readonly showEmailForm = signal(false);
   /**
    * True when this community has registered no OAuth app at all, so
@@ -560,25 +524,13 @@ export class LoginComponent implements OnInit {
     });
   }
 
-  /**
-   * Switches the one form between signing in and signing up on the demo.
-   *
-   * Clears the error rather than carrying it across: "Invalid email or password"
-   * left standing over a signup form describes a submission that no longer
-   * exists.
-   */
-  toggleDemoSignup(): void {
-    this.demoSignup.set(!this.demoSignup());
-    this.formError.set(null);
-  }
-
   submitEmailForm(): void {
     this.formError.set(null);
     const { fullName, email, password, confirmPassword } = this.form.getRawValue();
     const token = this.inviteToken();
 
-    if (this.registering()) {
-      // Registration — with an invite, or on the demo without one.
+    if (token) {
+      // Registration
       if (!fullName.trim()) {
         this.formError.set('Please enter your name.');
         return;
@@ -589,17 +541,8 @@ export class LoginComponent implements OnInit {
       }
 
       this.submitting.set(true);
-      this.authService
-        .registerWithPassword(token ?? undefined, fullName.trim(), email, password)
-        .subscribe({
-        next: (res) => {
-          // A demo signup is already signed in — the account was created
-          // verified, so there is no mail to wait for and the verification page
-          // would be a dead end.
-          if (res.signedIn) {
-            void this.router.navigate(['/']);
-            return;
-          }
+      this.authService.registerWithPassword(token, fullName.trim(), email, password).subscribe({
+        next: () => {
           void this.router.navigate(['/auth/verify-email-sent'], { queryParams: { email } });
         },
         error: (err) => {
@@ -613,14 +556,9 @@ export class LoginComponent implements OnInit {
             this.formError.set('This invite link has already been used.');
           else if (reason === 'invite_email_mismatch')
             this.formError.set('This invite was sent to a different email address.');
-          // Only reachable if this community stopped being the demo between the
-          // page loading and the form being submitted -- a reset does not do
-          // that, but a system admin clearing the flag would.
-          else if (reason === 'no_invite')
-            this.formError.set('This community is invite-only. Ask a member for an invite.');
           else this.formError.set('Registration failed. Please try again.');
         },
-        });
+      });
     } else {
       // Login
       this.submitting.set(true);

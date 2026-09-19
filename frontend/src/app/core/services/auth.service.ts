@@ -107,38 +107,8 @@ export class AuthService {
       .subscribe();
   }
 
-  /**
-   * `inviteToken` is optional as of v2-14: the demo community allows
-   * invite-less registration, and the API refuses it everywhere else with
-   * `no_invite`. A demo registration comes back `signedIn: true` and the cookie
-   * is already set, which is why this refreshes the current user rather than
-   * leaving the caller to route to a verification page that would never be
-   * reached.
-   */
-  registerWithPassword(
-    inviteToken: string | undefined,
-    fullName: string,
-    email: string,
-    password: string,
-  ): Observable<{ message: string; signedIn: boolean }> {
-    return this.http
-      .post<{ message: string; signedIn: boolean }>('/api/v1/auth/register', {
-        inviteToken,
-        fullName,
-        email,
-        password,
-      })
-      .pipe(
-        tap((res) => {
-          if (!res.signedIn) return;
-          void firstValueFrom(
-            this.http.get<CurrentUser>('/api/v1/auth/me').pipe(
-              tap((user) => this.currentUser.set(user)),
-              catchError(() => of(null)),
-            ),
-          );
-        }),
-      );
+  registerWithPassword(inviteToken: string, fullName: string, email: string, password: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>('/api/v1/auth/register', { inviteToken, fullName, email, password });
   }
 
   loginWithPassword(email: string, password: string): Observable<{ previousLastLoginAt: string | null; failedAttemptsSinceLastLogin?: number }> {

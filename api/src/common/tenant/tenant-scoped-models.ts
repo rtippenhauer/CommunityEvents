@@ -96,6 +96,8 @@ export const TENANT_SCOPED_MODELS = [
 export const GLOBAL_MODELS = [
   'avatar',
   'cities',
+  // Written before the tenant it will create exists -- see the model comment.
+  'demo_requests',
   'email_suppressions',
   'facebook_deletion_requests',
   'merch_config',

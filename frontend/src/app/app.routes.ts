@@ -28,6 +28,19 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/home/home.component').then((m) => m.HomeComponent),
   },
+  // Both public and both on the root tenant's host (v2-14): the demo they
+  // concern does not have a host until it has been created.
+  {
+    path: 'demo',
+    pathMatch: 'full',
+    loadComponent: () =>
+      import('./features/demo/demo-start.component').then((m) => m.DemoStartComponent),
+  },
+  {
+    path: 'demo/confirm',
+    loadComponent: () =>
+      import('./features/demo/demo-confirm.component').then((m) => m.DemoConfirmComponent),
+  },
   {
     path: 'login',
     loadComponent: () =>

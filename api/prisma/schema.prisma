@@ -286,6 +286,57 @@ model custom_icons {
 /// then, which meant one Brevo key, one daily counter and one From identity for
 /// every community on the deployment -- and any community's admin able to
 /// rewrite all three.
+/// A request for a demo community, held between "I asked for one" and "I clicked
+/// the link in my email" (v2-14).
+///
+/// **Global, not tenant-scoped, and necessarily so**: the row exists precisely
+/// while the tenant it will create does not. Same reason `email_suppressions`
+/// and `facebook_deletion_requests` are global -- there is no tenant to scope it
+/// to at the moment it is written.
+///
+/// The row **outlives confirmation** rather than being consumed and deleted,
+/// because `ipAddress` is what enforces the per-IP cap on *live* demos. It is
+/// deleted with the demo it created, so an address and an IP are retained only
+/// as long as the community they provisioned.
+model demo_requests {
+  id           Int       @id @default(autoincrement()) @db.UnsignedInt
+  /// Where the confirmation link is sent, and the address the demo's first admin
+  /// is created with. Not unique: a previous demo of theirs may have expired,
+  /// and one person is allowed another (subject to the per-IP cap).
+  email        String    @db.VarChar(255)
+  fullName     String    @map("full_name") @db.VarChar(200)
+  /// Hashed at request time, so the confirmation step has no password to carry
+  /// in a URL and nothing here is reversible if the table leaks.
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  /// Stored in the clear, matching `invites.token` and
+  /// `users.email_verification_token`. Consistency with the two existing
+  /// single-use link tokens is worth more here than a lone hashed one that the
+  /// next person to touch this has to notice is different.
+  token        String    @unique(map: "uq_demo_request_token") @db.VarChar(64)
+  /// Retained for abuse control only -- it is what makes "two live demos per
+  /// IP" answerable -- and deleted along with the demo. Kept here rather than on
+  /// `tenants` so the community registry holds no personal data.
+  ipAddress    String?   @map("ip_address") @db.VarChar(64)
+  /// NULL until confirmed; afterwards the demo this request created.
+  ///
+  /// Deliberately NOT called `tenantId`. That name means "the tenant this row
+  /// belongs to" everywhere else in this schema and is what the scoping
+  /// extension keys on -- this is the opposite, a forward reference to a tenant
+  /// this row produced. `tenant-scoped-models.spec.ts` rejects a global model
+  /// carrying a `tenantId`, which caught the original spelling.
+  createdTenantId Int?   @unique(map: "uq_demo_request_tenant") @map("created_tenant_id") @db.UnsignedInt
+  confirmedAt  DateTime? @map("confirmed_at") @db.DateTime(0)
+  /// When the unconfirmed request lapses. Short -- a confirmation link is acted
+  /// on in minutes or not at all -- so an abandoned request stops counting
+  /// against the caps quickly.
+  expiresAt    DateTime  @map("expires_at") @db.DateTime(0)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdTenant tenants? @relation(fields: [createdTenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_demo_request_tenant")
+
+  @@index([expiresAt], map: "idx_demo_request_expires")
+  @@index([ipAddress], map: "idx_demo_request_ip")
+}
+
 model email_provider_config {
   id                        Int      @id @default(autoincrement()) @db.UnsignedInt
   brevoEnabled              Boolean  @default(true) @map("brevo_enabled")
@@ -991,30 +1042,37 @@ model tenants {
   /// convention.
   rootMarker               Boolean?                   @unique(map: "uq_tenant_single_root") @map("root_marker")
   status                   tenants_status             @default(active)
-  /// The demo community (v2-14): a tenant anyone may try, where signing up
-  /// grants admin **of this tenant only** and everything is wiped and re-seeded
-  /// on a nightly schedule.
+  /// An ephemeral demo community (v2-14).
   ///
-  /// Stored rather than derived from the domain, which is the opposite of the
-  /// call v2-12 made for `isOnDeploymentDomain` -- and deliberately so, because
-  /// this is not the same kind of question. The demo's *address* is derived
-  /// (`demoDomainFor`, so the landing page can link to it before the row
-  /// exists); this column is a **capability grant**: may a stranger become an
-  /// admin here, and may this community's data be destroyed on a timer. A
-  /// derived answer would mean that editing a community's domain to
-  /// `demo.<deployment>` silently hands strangers admin over it and schedules
-  /// its deletion -- an escalation triggered by an unrelated action.
+  /// One is provisioned per visitor who asks for a demo and confirms their
+  /// address, at a generated host, and it is **deleted outright** when
+  /// `demoExpiresAt` passes. Nothing is shared between two visitors' demos.
   ///
-  /// Nothing over HTTP can set it. The only writer is `provision-demo.ts`, so
-  /// the escalation has no network surface at all; `tenants-admin.service`
-  /// creates communities with it unset and never updates it.
+  /// The per-visitor shape is a privacy decision, not a convenience one. An
+  /// earlier draft of this item had a single shared demo where self-registration
+  /// granted admin; but `admin.service` hands an admin every user's email, their
+  /// linked OAuth account addresses, the address each invite was bound to, and a
+  /// search box that matches on them. On a shared demo that is a searchable
+  /// directory of strangers' real email addresses, handed to the next stranger.
   ///
-  /// It can never be true on the root tenant: `chk_tenant_demo_not_root`
-  /// rejects that combination in the database, for the same reason
-  /// `root_marker` is an index rather than a convention -- the consequence of
-  /// being wrong is that self-registration grants admin over the deployment
-  /// itself.
+  /// It also removes a privilege escalation rather than guarding one. There is
+  /// no "signing up here makes you an admin" rule anywhere in the auth paths:
+  /// the visitor who requests the demo becomes its first admin at creation time,
+  /// exactly as `tenants-admin.service.create` does for any other community.
+  ///
+  /// Two things key on this column beyond the expiry sweep: a demo may never
+  /// send mail (see `email.service` -- omitting its provider config is NOT
+  /// enough, because a community with no key of its own falls back to the
+  /// deployment's), and it is never the root tenant, which
+  /// `chk_tenant_demo_not_root` enforces in the database for the same reason
+  /// `root_marker` is an index rather than a convention.
   isDemo                   Boolean                    @default(false) @map("is_demo")
+  /// When this demo is deleted, or NULL on a community that is not a demo.
+  ///
+  /// Set at creation to seven days out. The sweep runs daily rather than weekly
+  /// so a demo lives seven days rather than up to fourteen -- the expiry is the
+  /// promise, the sweep frequency is just how often it is honoured.
+  demoExpiresAt            DateTime?                  @map("demo_expires_at") @db.DateTime(0)
   /// Reserved (REQ-TENANT-01.1). Every tenant shares one database today; the
   /// column exists so a future dedicated-database option does not need a
   /// migration on a live table.
@@ -1081,6 +1139,7 @@ model tenants {
   users                    users[]
   tenant_secrets           tenant_secrets[]
   email_provider_config    email_provider_config?
+  demo_request             demo_requests?
 
   @@index([status], map: "idx_tenant_status")
 }

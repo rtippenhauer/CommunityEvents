@@ -6,10 +6,14 @@
 }
 @if (isDemo()) {
   <div class="demo-banner" role="status">
-    <strong>This is the demo.</strong>
-    Anyone can sign up here and everyone who does becomes an admin. Everything in this community —
-    events, members, photos, settings — is erased and rebuilt every night, so please don't keep
-    anything here you would mind losing.
+    <strong>This is a demo community.</strong>
+    It is yours alone and nobody else can see it. Everything in it
+    @if (demoExpiresLabel(); as expires) {
+      is deleted on <strong>{{ expires }}</strong>,
+    } @else {
+      is deleted within a week,
+    }
+    so please don't keep anything here you would mind losing.
   </div>
 }
 @if (needsLegalReview()) {

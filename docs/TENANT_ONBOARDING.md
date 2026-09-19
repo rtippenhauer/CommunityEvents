@@ -481,68 +481,57 @@ With DNS and mail in place:
    set them under **Admin → API Keys**. Leaving them unset inherits the
    deployment's, which is usually what you want.
 
-## 7. The demo community
+## 7. Demo communities
 
-The demo is not created this way, and deliberately cannot be. It is a community
-anyone may try: **signing up on it makes you an admin of it**, and everything in
-it is erased and rebuilt every night. Both properties are granted by
-`tenants.is_demo`, and nothing reachable over HTTP can set that column — the
-community admin screens create communities with it unset and never touch it, so
-the "a stranger becomes an admin" grant has no network surface at all. Turning an
-existing community into the demo is not an operation that exists.
+Demos are not created this way, and deliberately cannot be. A visitor asks for
+one on the marketing site, confirms their address, and gets **their own
+community** with themselves as its administrator — deleted seven days later.
+Nothing is shared between two visitors' demos.
 
-Its address is **derived, not chosen**: `demo.` on this deployment's own domain,
-so `demo.communityeventsproject.com` in production and
-`demo.stage.communityeventsproject.com` on stage. That shape is load-bearing
-rather than cosmetic. It keeps the demo a *subdomain* of the deployment, so it
-inherits the deployment's Brevo credentials and Google redirect URI under the
-rule in §3; a demo sitting *beside* the deployment would be a community on its
-own domain, which may not use the deployment's mail — and a community with no
-mail is one nobody can join.
+**That is a privacy decision, not a convenience one.** An earlier design had a
+single shared demo where signing up granted admin. But an admin can see every
+user's email address, their linked Google/Facebook addresses, the address each
+invite was bound to, and can search on them — so a shared demo would have handed
+each visitor a searchable directory of the previous visitors' real addresses.
 
-To create or re-seed it, from inside the container:
+### What an operator has to do
 
-```sh
-ALLOW_DEMO_PROVISION=<database name> node /app/dist/provision-demo.js
-```
+Nothing, per demo. There is no provisioning command and no DNS work: the host is
+generated (`demo-<8 hex>.<your domain>`), which is a **single label** under the
+deployment domain, so the existing Universal SSL wildcard already covers it in
+production and the `*.stage.` wildcard covers it on stage.
 
-Re-running it against an existing demo **erases everything in it**, which is the
-same thing the nightly reset does. It refuses outright if a community that is not
-the demo already holds that address.
+The one thing worth knowing is where the limits are, because they are
+deliberately low and an operator hitting them will want to know why:
 
-### DNS: stage needs one thing production does not
+| Limit | Value | Where |
+| --- | --- | --- |
+| Live demos, total | 10 | `MAX_LIVE_DEMOS` |
+| Live demos per IP | 2 | `MAX_LIVE_DEMOS_PER_IP` |
+| Demo lifetime | 7 days | `DEMO_LIFETIME_DAYS` |
+| Unconfirmed request lifetime | 24 hours | `DEMO_REQUEST_LIFETIME_HOURS` |
 
-Cloudflare's Universal SSL wildcard covers **one label**.
-`*.communityeventsproject.com` covers `stage.` but not `demo.stage.`, so the edge
-has no certificate for the stage demo host and aborts the handshake — which
-Chrome reports as `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`, sending you to look at
-protocol and cipher settings rather than at the certificate.
+All four are in `api/src/modules/demo/demo.service.ts`. Ten is not a capacity
+limit — a demo is a few dozen rows — it is a blast-radius limit on a door open to
+anyone. The expiry sweep runs daily at 09:00 UTC; daily rather than weekly so a
+demo lives seven days rather than up to fourteen.
 
-- **Stage:** the `demo.stage.` record must be **grey-clouded** (DNS only) and
-  served directly by NGINX Proxy Manager, which holds a Let's Encrypt certificate
-  for it — Let's Encrypt has no wildcard depth limit. Advanced Certificate Manager
-  (paid) is the alternative if the record has to stay proxied.
-  **Already done on the current stage deployment** (set up during v2-13):
-  `demo.stage.communityeventsproject.com` resolves to the origin directly, TLS
-  verifies, and `/api/v1/health` answers `"tenant":"unrecognized"` — which is the
-  correct reading for a host whose tenant row has not been created yet.
-- **Production:** nothing special, and this is confirmed rather than assumed.
-  `demo.<apex>` is a single label, Universal SSL's `*.<apex>` covers it, and a
-  request to `demo.communityeventsproject.com` today completes its TLS handshake
-  against the edge cleanly. (It then answers Cloudflare's 525, because the
-  *origin* leg has nothing serving it — there is no v2 production deployment yet.
-  That is the Cloudflare→origin hop, not the certificate.)
+### A demo cannot send email, and that took explicit work
 
-### What the reset does and does not touch
+Leaving a demo without its own Brevo credentials would have had the *opposite*
+effect: a community with no key of its own falls back to the deployment's, and a
+demo is a subdomain of the deployment. Since anyone can create a demo, that
+fallback would have let anyone mail arbitrary addresses from your sending domain.
+So `EmailService` refuses outright for any community with `is_demo` set.
 
-It empties that community and seeds it again: members, venues, past and upcoming
-events, attendance, ratings, plus the rows every community needs to work (legal
-copy, achievement catalogue, email provider row). It runs at **04:00 UTC**, and
-touches nothing outside the demo. Seeded members are on `.invalid` addresses,
-which cannot be delivered to — the demo sends real mail on the deployment's
-account, and a seeded address at a real domain would mail a stranger nightly.
+The one message a demo causes — its confirmation link — is composed and sent in
+the **root tenant's** context, as the platform rather than as the demo.
 
-## Checklist
+Two consequences worth knowing before somebody reports them as bugs: a demo admin
+who forgets their password cannot reset it (they ask for a new demo), and invites
+sent from inside a demo generate a link but deliver no mail.
+
+## Checklist## Checklist
 
 ```
 [ ] A/CNAME for the web host resolves
@@ -556,3 +545,6 @@ account, and a seeded address at a real domain would mail a stranger nightly.
 [ ] Client ID + secret saved at Admin -> Sign-in Providers (if wanted)
 [ ] Community created with a first admin; sign-in confirmed at its own host
 ```
+
+Demo communities need none of the above — no DNS, no certificate, no Brevo
+account. See section 7.

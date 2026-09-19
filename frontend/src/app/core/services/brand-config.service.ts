@@ -70,16 +70,17 @@ export interface BrandConfig {
   /** Whether this community is the root one (REQ-TENANT-01.7). */
   isRoot: boolean;
   /**
-   * Whether this community is the demo (v2-14), where anyone may sign up, they
-   * land as an admin of it, and everything is wiped nightly.
+   * Whether this community is an ephemeral demo (v2-14), and when it is deleted.
    *
-   * Drives the standing notice in the shell and the sign-up affordance on the
-   * login page. The notice is the reason this is in the payload at all: a
-   * visitor who registers here becomes an admin and may start entering real
-   * events for a real group, and the reset would then destroy work they had no
-   * reason to think was disposable.
+   * Drives the standing notice in the shell. The notice is the reason these are
+   * in the payload at all: the visitor is an admin here and may start entering
+   * real events for a real group, and deletion would then destroy work they had
+   * no reason to think was disposable. The date is what makes the warning
+   * actionable rather than ignorable.
    */
   isDemo: boolean;
+  /** ISO timestamp, or null on any community that is not a demo. */
+  demoExpiresAt: string | null;
   /**
    * Where a member is told to write for help. Resolved per community by the
    * API; the pages that surface it used to hardcode support@dinnerbears.com,
@@ -185,11 +186,11 @@ const DEFAULT_BRAND: BrandConfig = {
   // Defaults false: until branding loads, assume this is NOT the root
   // community, so nothing root-only is offered on a guess.
   isRoot: false,
-  // Defaults false for the opposite reason to legalReviewed below: this one
-  // unlocks an invite-less sign-up affordance, so a slow or failed branding
-  // fetch must not offer it. The API refuses that registration anyway -- the
-  // flag here only decides what is shown.
+  // Defaults false: until branding resolves, do not tell somebody their
+  // community is about to be deleted. A demo says so a moment later; a real
+  // community never wrongly says it at all.
   isDemo: false,
+  demoExpiresAt: null,
   // Defaults true, unlike isRoot: this one drives a warning banner, and a slow
   // or failed branding fetch should not accuse a community of skipping a review
   // it may well have done.
@@ -266,6 +267,7 @@ export class BrandConfigService {
   readonly baseDomain = computed(() => this.brand().baseDomain);
   readonly isRoot = computed(() => this.brand().isRoot);
   readonly isDemo = computed(() => this.brand().isDemo);
+  readonly demoExpiresAt = computed(() => this.brand().demoExpiresAt);
   readonly supportEmail = computed(() => this.brand().supportEmail);
   readonly foundingLabel = computed(() => this.brand().foundingLabel);
   readonly legalReviewed = computed(() => this.brand().legalReviewed);

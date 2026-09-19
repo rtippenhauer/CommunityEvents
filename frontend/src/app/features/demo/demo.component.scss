@@ -1,0 +1,65 @@
+/**
+ * Shared by both demo pages (v2-14).
+ *
+ * No colour literals: every value is a `--ce-*` token, so these pages wear the
+ * root tenant's palette like every other surface. The warning uses the
+ * environment-banner pair rather than a hardcoded amber, since
+ * `--ce-on-banner` is contrast-measured against `--ce-banner` by palette.ts for
+ * every colour an operator can choose. `--ce-error-overlay` is the error tint
+ * the token set actually defines -- a deliberate exception to per-community
+ * colour, since red means error whatever a community has picked.
+ */
+.demo-page {
+  display: flex;
+  justify-content: center;
+  padding: 48px 16px;
+}
+
+.demo-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--ce-surface);
+  color: var(--ce-text);
+  border: 1px solid var(--ce-rule);
+  border-radius: 10px;
+  padding: 28px;
+
+  h1 {
+    margin: 0 0 12px;
+    font-size: 1.5rem;
+  }
+
+  p {
+    line-height: 1.55;
+    margin: 0 0 16px;
+  }
+}
+
+.quiet {
+  opacity: 0.75;
+  font-size: 0.9rem;
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--ce-banner);
+  color: var(--ce-on-banner);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+
+  mat-icon {
+    flex: none;
+  }
+}
+
+.full-width {
+  width: 100%;
+}
+
+.form-error {
+  color: var(--ce-error-overlay);
+  font-size: 0.9rem;
+}
