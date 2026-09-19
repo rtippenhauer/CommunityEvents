@@ -8,6 +8,14 @@ export interface AdminTenant {
   domain: string;
   isRoot: boolean;
   status: 'active' | 'suspended';
+  /**
+   * An ephemeral demo, and when it is deleted (v2-14). Served so this list can
+   * tell demos apart from real communities -- they want opposite handling, and
+   * a hex-named demo row is otherwise indistinguishable from somebody's
+   * members.
+   */
+  isDemo: boolean;
+  demoExpiresAt: string | null;
   dbMode: string;
   createdAt: string;
   eventCount: number;

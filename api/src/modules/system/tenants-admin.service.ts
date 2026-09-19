@@ -47,6 +47,16 @@ export interface TenantRow {
    */
   mailDomain: string;
   memberCount: number;
+  /**
+   * Whether this row is an ephemeral demo, and when it goes (v2-14).
+   *
+   * Served so the operator's community list can tell them apart. Without it,
+   * up to ten hex-named demos sit among the real communities looking exactly
+   * like them -- and the two want opposite handling, since one is disposable
+   * and the other is somebody's members.
+   */
+  isDemo: boolean;
+  demoExpiresAt: Date | null;
 }
 
 /**
@@ -127,6 +137,8 @@ export class TenantsAdminService {
       locationCount: locationsByTenant.get(t.id) ?? 0,
       memberCount: membersByTenant.get(t.id) ?? 0,
       mailDomain: mailByTenant.get(t.id) ?? '',
+      isDemo: t.isDemo,
+      demoExpiresAt: t.demoExpiresAt,
     }));
   }
 
@@ -425,16 +437,37 @@ export class TenantsAdminService {
       );
     }
 
-    if (existing.status !== 'suspended') {
-      throw new BadRequestException(
-        'Suspend this community first. Deleting is permanent, so taking it offline is a separate step.',
-      );
-    }
+    // Two of the three gates are waived for a demo, and only for a demo
+    // (v2-14).
+    //
+    // They exist because deleting a community destroys real members' data
+    // irreversibly, and neither premise holds here: a demo belongs to one
+    // visitor evaluating the product, holds nothing but generated fixtures and
+    // whatever they typed into it, and **deletes itself within the week
+    // regardless**. Making an operator suspend it and then retype a random hex
+    // hostname is friction that protects nothing.
+    //
+    // The first gate is NOT waived: `isRoot` is checked above and
+    // `chk_tenant_demo_not_root` makes the combination unrepresentable anyway.
+    //
+    // What makes this safe to branch on is that `is_demo` has exactly one
+    // writer -- `DemoService.confirmDemo`, at creation. `create` here never
+    // sets it and `update` never touches it, so no real community can drift
+    // into being one-click deletable. A spec asserts the full gauntlet still
+    // applies to a non-demo community, because the danger of this branch is
+    // not that it is wrong for demos but that it might leak past them.
+    if (!existing.isDemo) {
+      if (existing.status !== 'suspended') {
+        throw new BadRequestException(
+          'Suspend this community first. Deleting is permanent, so taking it offline is a separate step.',
+        );
+      }
 
-    if (normalizeTenantDomain(dto.confirmDomain ?? '') !== existing.domain) {
-      throw new BadRequestException(
-        `Type ${existing.domain} exactly to confirm you are deleting that community.`,
-      );
+      if (normalizeTenantDomain(dto.confirmDomain ?? '') !== existing.domain) {
+        throw new BadRequestException(
+          `Type ${existing.domain} exactly to confirm you are deleting that community.`,
+        );
+      }
     }
 
     let deleted: Record<string, number> = {};

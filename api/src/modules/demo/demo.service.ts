@@ -381,6 +381,62 @@ export class DemoService {
   }
 
   /**
+   * Whether this community is a demo. Used by the controller to gate the
+   * self-delete route before it reaches the service, which checks again.
+   */
+  async isDemoHost(tenantId: number): Promise<boolean> {
+    return this.tenantResolution.isDemoTenant(tenantId);
+  }
+
+  /**
+   * Deletes one demo on the spot, at its own admin's request (v2-14).
+   *
+   * The owner's counterpart to the expiry sweep. Without it somebody who is
+   * finished with their demo has no way to say so: their data sits for the rest
+   * of the week, and their slot stays spent against the per-IP cap, so they
+   * cannot start a fresh one either.
+   *
+   * **The caller's own tenant, never an id they name.** `tenantId` comes from
+   * the resolved host, so this cannot be pointed at another community even by
+   * an admin who knows another demo's id -- which matters because every demo
+   * visitor is an admin of something. The controller additionally requires
+   * `is_demo`, so an admin of a real community cannot reach it at all.
+   */
+  async deleteOwnDemo(tenantId: number): Promise<void> {
+    const tenant = await runUnscoped(
+      'confirming the community asking to be deleted is a demo',
+      async () =>
+        await this.prisma.tenants.findUnique({
+          where: { id: tenantId },
+          select: { id: true, domain: true, isDemo: true, isRoot: true },
+        }),
+    );
+
+    if (!tenant) throw new NotFoundException('No such community');
+    // Both re-checked here rather than trusted from the controller: this is the
+    // one path where a request deletes the very community serving it, and the
+    // guard that got us here lives in a different file.
+    if (!tenant.isDemo || tenant.isRoot) {
+      throw new BadRequestException('Only a demo community can be deleted this way.');
+    }
+
+    await runUnscoped(`a demo admin deleting ${tenant.domain}`, async () => {
+      await this.prisma.$transaction(
+        async (tx) => {
+          await purgeTenantRows(tx, tenant.id);
+          await (tx as unknown as {
+            tenants: { delete(args: { where: { id: number } }): Promise<unknown> };
+          }).tenants.delete({ where: { id: tenant.id } });
+        },
+        { timeout: 120_000, maxWait: 15_000 },
+      );
+    });
+
+    this.tenantResolution.clearCache();
+    this.logger.log(`Demo ${tenant.domain} deleted early by its own admin.`);
+  }
+
+  /**
    * Both caps, checked together because both refuse the same way.
    *
    * The per-IP cap counts *live demos* rather than requests, which is why

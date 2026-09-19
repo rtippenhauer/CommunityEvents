@@ -30,6 +30,16 @@ export class DemoService {
     });
   }
 
+  /**
+   * The demo's own admin deleting it early (v2-14).
+   *
+   * Runs against the demo's own host and takes no id: the API acts on whatever
+   * community is serving the request, so this cannot be pointed elsewhere.
+   */
+  deleteOwnDemo(): Observable<void> {
+    return this.http.delete<void>('/api/v1/demo/self');
+  }
+
   confirmDemo(token: string): Observable<DemoConfirmResponse> {
     return this.http.get<DemoConfirmResponse>(
       `/api/v1/demo/confirm?token=${encodeURIComponent(token)}`,

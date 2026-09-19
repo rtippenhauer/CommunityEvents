@@ -1,6 +1,21 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  HttpCode,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { UserRole } from '../../database/enums';
 import { DemoService, DemoRequestResult } from './demo.service';
 import { RequestDemoDto } from './dto/request-demo.dto';
 
@@ -49,5 +64,30 @@ export class DemoController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   async confirm(@Query('token') token: string): Promise<{ url: string; expiresAt: Date }> {
     return this.demoService.confirmDemo(token ?? '');
+  }
+
+  /**
+   * A demo's own admin deleting it early (v2-14).
+   *
+   * Unlike the two routes above this runs on the **demo's** host, not the root
+   * tenant's -- it acts on the community serving the request, which is also why
+   * it takes no id. Authenticated and admin-gated like any destructive admin
+   * action, plus an `is_demo` check here and again in the service.
+   *
+   * The `is_demo` check is the load-bearing one: every demo visitor is an admin
+   * of something, so `@Roles(ADMIN)` alone would let an admin of a real
+   * community delete it in one unconfirmed call. That community's admins keep
+   * the deliberately awkward suspend-then-retype-the-domain path instead.
+   */
+  @Delete('self')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(204)
+  async deleteOwn(@Req() req: Request): Promise<void> {
+    if (!req.tenant?.id) throw new ForbiddenException('No community resolved for this request.');
+    if (!(await this.demoService.isDemoHost(req.tenant.id))) {
+      throw new ForbiddenException('This is not a demo community.');
+    }
+    await this.demoService.deleteOwnDemo(req.tenant.id);
   }
 }

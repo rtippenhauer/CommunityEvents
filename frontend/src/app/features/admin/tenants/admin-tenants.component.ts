@@ -89,6 +89,9 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
                   @if (tenant.status === 'suspended') {
                     <mat-chip class="chip-suspended">Suspended</mat-chip>
                   }
+                  @if (tenant.isDemo) {
+                    <mat-chip class="chip-demo">{{ demoLabel(tenant) }}</mat-chip>
+                  }
                 </div>
                 <a class="domain" [href]="'https://' + tenant.domain" target="_blank" rel="noopener">
                   {{ tenant.domain }}
@@ -131,7 +134,10 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
                      active community, so offering it here would only produce an
                      error. The slot is held open either way so the row's
                      controls do not shift position between communities. -->
-                @if (!tenant.isRoot && tenant.status === 'suspended') {
+                <!-- A demo needs no suspend-first: it is disposable by
+                     construction and deletes itself within the week, so the
+                     API waives that gate for demos only. -->
+                @if (!tenant.isRoot && (tenant.isDemo || tenant.status === 'suspended')) {
                   <button
                     mat-icon-button
                     class="delete-btn"
@@ -307,6 +313,9 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
       .chip-suspended {
         background: #ffe0b2 !important;
       }
+      .chip-demo {
+        background: #d7ccef !important;
+      }
 
       .single-note {
         margin: 16px 0 0;
@@ -376,6 +385,20 @@ export class AdminTenantsComponent implements OnInit {
       .open(TenantUsersDialogComponent, { data: { tenant } })
       .afterClosed()
       .subscribe(() => this.load());
+  }
+
+  /**
+   * "Demo - expires 26 Sep", or just "Demo" if the date is missing.
+   *
+   * The date is the useful half: an operator looking at ten hex-named rows
+   * wants to know which are about to clear themselves and which they might
+   * actually want to remove now.
+   */
+  demoLabel(tenant: AdminTenant): string {
+    if (!tenant.demoExpiresAt) return 'Demo';
+    const when = new Date(tenant.demoExpiresAt);
+    if (Number.isNaN(when.getTime())) return 'Demo';
+    return `Demo — expires ${when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
   }
 
   openDelete(tenant: AdminTenant): void {

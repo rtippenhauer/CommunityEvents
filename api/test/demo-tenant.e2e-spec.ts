@@ -10,6 +10,7 @@ import {
   MAX_LIVE_DEMOS_PER_IP,
 } from '../src/modules/demo/demo.service';
 import { EmailService } from '../src/modules/email/email.service';
+import { TenantsAdminService } from '../src/modules/system/tenants-admin.service';
 import { UserRole } from '../src/database/enums';
 import { createTestApp, truncateAllTables, resetThrottler, TEST_TENANT_DOMAIN } from './utils/test-app';
 import { seedCity } from './utils/seed';
@@ -493,6 +494,83 @@ describe('Demo tenants (e2e)', () => {
       expect(demoBranding.body.demoExpiresAt).toBeTruthy();
       expect(rootBranding.body.isDemo).toBe(false);
       expect(rootBranding.body.demoExpiresAt).toBeNull();
+    });
+  });
+
+  describe('deleting a demo early', () => {
+    /**
+     * The operator's gate is relaxed for demos only (v2-14). The danger of that
+     * branch is not that it is wrong for demos -- it is that it might leak past
+     * them -- so the test that matters most is the one below it.
+     */
+    it('lets a system admin delete a demo without suspending or retyping', async () => {
+      await askForDemo('visitor@example.test');
+      await confirm(await tokenFor('visitor@example.test'));
+      const demo = await unscoped('finding the demo', () =>
+        prisma.tenants.findFirstOrThrow({ where: { isDemo: true } }),
+      );
+      expect(demo.status).toBe('active');
+
+      await app.get(TenantsAdminService).remove(demo.id, {} as never, 1);
+
+      expect(
+        await unscoped('confirming it went', () =>
+          prisma.tenants.findUnique({ where: { id: demo.id } }),
+        ),
+      ).toBeNull();
+    });
+
+    // The leak check. A real community keeps every gate.
+    it('still makes a real community suspend first and retype its domain', async () => {
+      const real = await unscoped('seeding an ordinary community', () =>
+        prisma.tenants.create({ data: { slug: 'real', domain: 'real-community.test' } }),
+      );
+      const admin = app.get(TenantsAdminService);
+
+      await expect(admin.remove(real.id, {} as never, 1)).rejects.toThrow(/Suspend this community/);
+
+      await unscoped('suspending it', () =>
+        prisma.tenants.update({ where: { id: real.id }, data: { status: 'suspended' } }),
+      );
+      await expect(admin.remove(real.id, {} as never, 1)).rejects.toThrow(/Type real-community/);
+
+      // And with the domain, it goes.
+      await admin.remove(real.id, { confirmDomain: 'real-community.test' } as never, 1);
+      expect(
+        await unscoped('confirming', () => prisma.tenants.findUnique({ where: { id: real.id } })),
+      ).toBeNull();
+    });
+
+    it("lets a demo's own admin delete it, and frees the slot", async () => {
+      await askForDemo('owner@example.test');
+      await confirm(await tokenFor('owner@example.test'));
+      const demo = await unscoped('finding the demo', () =>
+        prisma.tenants.findFirstOrThrow({ where: { isDemo: true } }),
+      );
+
+      await demoService.deleteOwnDemo(demo.id);
+
+      const [gone, requests] = await unscoped('checking', async () =>
+        await Promise.all([
+          prisma.tenants.findUnique({ where: { id: demo.id } }),
+          prisma.demo_requests.count(),
+        ]),
+      );
+      expect(gone).toBeNull();
+      // The request row carries their address and IP and goes with the demo,
+      // which is also what frees their per-IP slot.
+      expect(requests).toBe(0);
+    });
+
+    // The guard that matters: every demo visitor is an admin of something, so
+    // without this an admin of a real community could delete it in one call.
+    it('refuses to delete a community that is not a demo', async () => {
+      await expect(demoService.deleteOwnDemo(TEST_TENANT_ID)).rejects.toThrow(/only a demo/i);
+      expect(
+        await unscoped('root survives', () =>
+          prisma.tenants.findUnique({ where: { id: TEST_TENANT_ID } }),
+        ),
+      ).not.toBeNull();
     });
   });
 
