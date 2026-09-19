@@ -57,6 +57,17 @@ export interface TenantRow {
    */
   isDemo: boolean;
   demoExpiresAt: Date | null;
+  /**
+   * The most recent sign-in by a real person in this community, or null if
+   * nobody ever has.
+   *
+   * A proxy for "is this place actually in use", which is the question behind
+   * both an abandoned demo and a real community quietly going dormant. Logins
+   * rather than any-activity because a login is the one event that always
+   * means a person was here -- and it is the same signal the demo idle sweep
+   * reclaims on, so the screen and the sweep cannot disagree about who is idle.
+   */
+  lastActiveAt: Date | null;
 }
 
 /**
@@ -108,9 +119,14 @@ export class TenantsAdminService {
           // Real people only: the service account exists in every community and
           // counting it would make an empty community look like it has one
           // member. Same rule the member directory and leaderboard follow.
+          // `_max.lastLoginAt` rides along on the count that was already being
+          // made -- "when was this community last used" costs nothing extra.
+          // Service accounts are excluded from both for the same reason: an
+          // automated sign-in is not somebody using the place.
           this.prisma.users.groupBy({
             by: ['tenantId'],
             _count: { _all: true },
+            _max: { lastLoginAt: true },
             where: { isServiceAccount: false },
           }),
           this.prisma.app_config.findMany({
@@ -123,6 +139,7 @@ export class TenantsAdminService {
     const eventsByTenant = new Map(events.map((r) => [r.tenantId, r._count._all]));
     const locationsByTenant = new Map(locations.map((r) => [r.tenantId, r._count._all]));
     const membersByTenant = new Map(members.map((r) => [r.tenantId, r._count._all]));
+    const lastActiveByTenant = new Map(members.map((r) => [r.tenantId, r._max.lastLoginAt]));
     const mailByTenant = new Map(mailRows.map((r) => [r.tenantId, r.configValue]));
 
     return tenants.map((t) => ({
@@ -139,6 +156,7 @@ export class TenantsAdminService {
       mailDomain: mailByTenant.get(t.id) ?? '',
       isDemo: t.isDemo,
       demoExpiresAt: t.demoExpiresAt,
+      lastActiveAt: lastActiveByTenant.get(t.id) ?? null,
     }));
   }
 

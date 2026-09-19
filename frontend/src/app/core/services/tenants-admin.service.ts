@@ -16,6 +16,11 @@ export interface AdminTenant {
    */
   isDemo: boolean;
   demoExpiresAt: string | null;
+  /**
+   * The most recent sign-in by a real person here, or null if nobody ever has.
+   * A proxy for whether the place is actually in use.
+   */
+  lastActiveAt: string | null;
   dbMode: string;
   createdAt: string;
   eventCount: number;

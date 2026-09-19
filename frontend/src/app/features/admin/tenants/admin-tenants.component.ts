@@ -1,9 +1,12 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AdminTenant, TenantsAdminService } from '../../../core/services/tenants-admin.service';
@@ -46,6 +49,9 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
     MatIconModule,
     MatProgressSpinnerModule,
     MatChipsModule,
+    MatButtonToggleModule,
+    MatFormFieldModule,
+    MatSelectModule,
     MatTooltipModule,
     MatSnackBarModule,
   ],
@@ -67,6 +73,34 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
       @if (loading()) {
         <div class="loading"><mat-spinner diameter="36" /></div>
       } @else {
+        <!-- Only offered once there is something to sift. A filter above a
+             list of two communities is furniture. -->
+        @if (tenants().length > 2) {
+          <div class="list-controls">
+            <mat-button-toggle-group
+              [value]="filter()"
+              (change)="filter.set($event.value)"
+              aria-label="Which communities to show"
+              hideSingleSelectionIndicator
+            >
+              <mat-button-toggle value="all">All ({{ tenants().length }})</mat-button-toggle>
+              <mat-button-toggle value="real">
+                Communities ({{ realCount() }})
+              </mat-button-toggle>
+              <mat-button-toggle value="demo">Demos ({{ demoCount() }})</mat-button-toggle>
+            </mat-button-toggle-group>
+
+            <mat-form-field appearance="outline" subscriptSizing="dynamic" class="sort-field">
+              <mat-label>Sort by</mat-label>
+              <mat-select [value]="sort()" (selectionChange)="sort.set($event.value)">
+                <mat-option value="default">Name</mat-option>
+                <mat-option value="expires">Expires soonest</mat-option>
+                <mat-option value="lastUsed">Last used</mat-option>
+              </mat-select>
+            </mat-form-field>
+          </div>
+        }
+
         <!-- A list, not a grid of cards. The row is what a community actually
              is here: one name, one domain, three numbers and three actions.
              Cards forced all of that into a fixed-width column, and the third
@@ -74,7 +108,7 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
              every community except the last, where it landed underneath the
              next card and looked like it was missing. -->
         <div class="tenant-list" role="list">
-          @for (tenant of tenants(); track tenant.id) {
+          @for (tenant of visibleTenants(); track tenant.id) {
             <div
               class="tenant-row"
               role="listitem"
@@ -96,6 +130,9 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
                 <a class="domain" [href]="'https://' + tenant.domain" target="_blank" rel="noopener">
                   {{ tenant.domain }}
                 </a>
+                <!-- Shown always, not only when sorting by it: a sort control
+                     that orders by something invisible looks broken. -->
+                <span class="last-used">{{ lastUsedLabel(tenant) }}</span>
               </div>
 
               <div class="stats">
@@ -161,6 +198,10 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
             </div>
           }
         </div>
+
+        @if (visibleTenants().length === 0) {
+          <p class="single-note">No communities match that filter.</p>
+        }
 
         @if (tenants().length === 1) {
           <p class="single-note">
@@ -316,6 +357,21 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
       .chip-demo {
         background: #d7ccef !important;
       }
+      .list-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .sort-field {
+        min-width: 190px;
+      }
+      .last-used {
+        font-size: 12px;
+        opacity: 0.7;
+      }
 
       .single-note {
         margin: 16px 0 0;
@@ -350,6 +406,72 @@ export class AdminTenantsComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly tenants = signal<AdminTenant[]>([]);
+
+  /**
+   * Which communities to show, and in what order.
+   *
+   * Both are view state and deliberately not persisted: an operator opening
+   * this screen wants the whole registry, not whatever they were last looking
+   * at. A remembered filter that hides half the communities is how somebody
+   * concludes a community has been deleted.
+   */
+  readonly filter = signal<'all' | 'real' | 'demo'>('all');
+  readonly sort = signal<'default' | 'expires' | 'lastUsed'>('default');
+
+  readonly demoCount = computed(() => this.tenants().filter((t) => t.isDemo).length);
+  readonly realCount = computed(() => this.tenants().filter((t) => !t.isDemo).length);
+
+  /**
+   * The list as filtered and sorted, which is what the template renders.
+   *
+   * Sorting is done here rather than by re-querying: the registry is a handful
+   * of rows, already in memory, and a round trip per sort change would make the
+   * control feel broken.
+   *
+   * **Missing values sort last in both orders, never first.** A community with
+   * no expiry is not "expiring soonest" and one nobody has signed into is not
+   * "most recently used" -- and the null case is the common one here, since
+   * only demos expire at all.
+   */
+  readonly visibleTenants = computed<AdminTenant[]>(() => {
+    const filter = this.filter();
+    const rows = this.tenants().filter((t) =>
+      filter === 'all' ? true : filter === 'demo' ? t.isDemo : !t.isDemo,
+    );
+
+    const byMissingLast = (a: string | null, b: string | null, newestFirst: boolean): number => {
+      if (!a && !b) return 0;
+      if (!a) return 1;
+      if (!b) return -1;
+      const delta = new Date(a).getTime() - new Date(b).getTime();
+      return newestFirst ? -delta : delta;
+    };
+
+    switch (this.sort()) {
+      case 'expires':
+        return [...rows].sort((a, b) => byMissingLast(a.demoExpiresAt, b.demoExpiresAt, false));
+      case 'lastUsed':
+        return [...rows].sort((a, b) => byMissingLast(a.lastActiveAt, b.lastActiveAt, true));
+      default:
+        // The API's own order: root first, then by slug. Left alone rather than
+        // re-sorted, so "Name" means exactly what the unsorted list showed.
+        return rows;
+    }
+  });
+
+  /**
+   * "3 days ago", or "Never". Relative because the question this answers is
+   * "is anyone using this", and a date makes the reader do the subtraction.
+   */
+  lastUsedLabel(tenant: AdminTenant): string {
+    if (!tenant.lastActiveAt) return 'Never signed in';
+    const when = new Date(tenant.lastActiveAt).getTime();
+    if (Number.isNaN(when)) return 'Never signed in';
+    const days = Math.floor((Date.now() - when) / 86_400_000);
+    if (days <= 0) return 'Active today';
+    if (days === 1) return 'Active yesterday';
+    return `Active ${days} days ago`;
+  }
   readonly loading = signal(true);
 
   ngOnInit(): void {
