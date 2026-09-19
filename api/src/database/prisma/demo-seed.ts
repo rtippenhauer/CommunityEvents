@@ -16,6 +16,7 @@ import * as bcrypt from 'bcrypt';
 import { LEGAL_DEFAULT_ROWS } from '../../common/legal/legal-defaults';
 import { achievementDefaultRows } from '../../common/achievements/achievement-defaults';
 import { createServiceAccount, tenantGetsServiceAccount } from './service-account.provision';
+import { demoIconDataUri, demoLogoDataUri } from '../../common/demo/demo-brand';
 
 const BCRYPT_COST = 12;
 
@@ -42,6 +43,23 @@ export const DEMO_MEMBER_PASSWORD = 'DemoP@ssw0rd!';
  */
 const DEMO_BRAND_NAME = 'Riverside Community Events';
 const DEMO_BRAND_TAGLINE = 'Good food. Great company. Every week.';
+
+/**
+ * The demo's own colours, rather than the platform defaults.
+ *
+ * A community that has picked its colours is what a real one looks like; the
+ * defaults are what an unconfigured install looks like, and the demo exists to
+ * answer "what would this look like for my group". A river blue also puts the
+ * whole palette on a hue nothing else here uses, which is a standing check on
+ * v2-11's derivation and on v2-14's measured wordmark ink -- both were only
+ * ever seen against the seeded amber before.
+ *
+ * Light background deliberately: v2-11 refuses a dark page ground (see v2-26),
+ * so a demo seeded with one would be seeding a state the app cannot draw.
+ */
+const DEMO_COLOR_PRIMARY = '#2E7D8F';
+const DEMO_COLOR_ACCENT = '#E0A458';
+const DEMO_COLOR_BACKGROUND = '#F7FAFB';
 
 const MEMBER_NAMES = [
   'Ada Whitfield', 'Bruno Castellanos', 'Camille Okonjo', 'Dmitri Halloran',
@@ -143,6 +161,26 @@ async function seedSettings(prisma: PrismaClient, tenantId: number): Promise<voi
   const rows = [
     { configKey: 'brand_name', configValue: DEMO_BRAND_NAME, description: 'Demo community name' },
     { configKey: 'brand_tagline', configValue: DEMO_BRAND_TAGLINE, description: 'Demo tagline' },
+    { configKey: 'theme_color_primary', configValue: DEMO_COLOR_PRIMARY, description: 'Demo primary' },
+    { configKey: 'theme_color_accent', configValue: DEMO_COLOR_ACCENT, description: 'Demo accent' },
+    {
+      configKey: 'theme_color_background',
+      configValue: DEMO_COLOR_BACKGROUND,
+      description: 'Demo page ground',
+    },
+    // Artwork rather than the generated fallback. The demo is a named fiction,
+    // so it gets a drawn identity like any real community would -- see
+    // demo-brand.ts for why the mark carries its own background.
+    {
+      configKey: 'brand_logo_url',
+      configValue: demoLogoDataUri(DEMO_BRAND_NAME, DEMO_COLOR_PRIMARY),
+      description: 'Demo lockup',
+    },
+    {
+      configKey: 'brand_icon_url',
+      configValue: demoIconDataUri(DEMO_COLOR_PRIMARY),
+      description: 'Demo square mark',
+    },
     {
       configKey: 'legal_reviewed_at',
       configValue: new Date().toISOString(),
