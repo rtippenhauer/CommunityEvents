@@ -88,7 +88,7 @@ export interface TenantDeleteDialogData {
         mat-raised-button
         class="danger-btn"
         (click)="remove()"
-        [disabled]="(!data.tenant.isDemo && !matches()) || deleting"
+        [disabled]="!canDelete() || deleting"
       >
         @if (deleting) {
           <mat-spinner diameter="20" />
@@ -159,8 +159,23 @@ export class TenantDeleteDialogComponent {
     return typed === this.data.tenant.domain.toLowerCase();
   }
 
+  /**
+   * Whether the delete may proceed -- the ONE place that rule lives.
+   *
+   * It used to be written twice: once in the button's `[disabled]` and once as
+   * an early return in `remove()`. When demos stopped needing the typed
+   * confirmation, only the first was updated, so the button enabled itself and
+   * the handler silently bailed -- a Delete button that did nothing at all,
+   * with no error to explain it. Found on stage.
+   *
+   * Both callers read this now, so the two cannot disagree again.
+   */
+  canDelete(): boolean {
+    return this.data.tenant.isDemo || this.matches();
+  }
+
   remove(): void {
-    if (!this.matches()) return;
+    if (!this.canDelete()) return;
     this.deleting = true;
 
     this.tenantsAdminService.remove(this.data.tenant.id, this.confirmation.value.trim()).subscribe({
