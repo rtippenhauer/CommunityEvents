@@ -14,9 +14,10 @@ import { DemoService } from '../demo/demo.service';
  * squarely in the evening for the audience most likely to be trying the product,
  * and deleting somebody's demo mid-session is the worst possible moment for it.
  *
- * The work itself is `DemoService.deleteExpired`, which also clears lapsed
- * unconfirmed requests; it lives there rather than here so the caps, the
- * creation and the deletion of a demo are all in one place.
+ * The work itself is `DemoService.deleteExpired`, which also reclaims demos
+ * nobody has signed into for two days and clears lapsed unconfirmed requests;
+ * it lives there rather than here so the caps, the creation and the deletion of
+ * a demo are all in one place.
  */
 @Injectable()
 export class DemoExpiryTask {
@@ -31,9 +32,12 @@ export class DemoExpiryTask {
   async runDemoExpiry(): Promise<void> {
     // No runUnscoped here: deleteExpired takes its own waivers per step, which
     // keeps each one's reason next to the query it covers.
-    const { demos, requests } = await this.demoService.deleteExpired();
+    const { demos, idle, requests } = await this.demoService.deleteExpired();
     if (demos > 0 || requests > 0) {
-      this.logger.log(`Demo sweep: deleted ${demos} expired demo(s), ${requests} lapsed request(s).`);
+      this.logger.log(
+        `Demo sweep: deleted ${demos} demo(s) (${idle} of them idle rather than expired), ` +
+          `${requests} lapsed request(s).`,
+      );
     }
   }
 }

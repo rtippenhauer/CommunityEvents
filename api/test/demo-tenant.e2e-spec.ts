@@ -3,7 +3,12 @@ import request from 'supertest';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { TenantResolutionService } from '../src/common/tenant/tenant-resolution.service';
 import { runUnscoped, runWithTenant } from '../src/common/tenant/tenant-store';
-import { DemoService, MAX_LIVE_DEMOS, MAX_LIVE_DEMOS_PER_IP } from '../src/modules/demo/demo.service';
+import {
+  DemoService,
+  DEMO_IDLE_HOURS,
+  MAX_LIVE_DEMOS,
+  MAX_LIVE_DEMOS_PER_IP,
+} from '../src/modules/demo/demo.service';
 import { EmailService } from '../src/modules/email/email.service';
 import { UserRole } from '../src/database/enums';
 import { createTestApp, truncateAllTables, resetThrottler, TEST_TENANT_DOMAIN } from './utils/test-app';
@@ -333,6 +338,80 @@ describe('Demo tenants (e2e)', () => {
 
       const result = await demoService.deleteExpired();
       expect(result.demos).toBe(1);
+    });
+
+    /**
+     * Idle reclaim. The caps protect against abuse; this protects against
+     * indifference, which is commoner -- ten people who look once and never
+     * return would otherwise hold the pool shut for a week.
+     */
+    it(`reclaims a demo nobody has signed into for ${DEMO_IDLE_HOURS} hours`, async () => {
+      await askForDemo('abandoner@example.test');
+      await confirm(await tokenFor('abandoner@example.test'));
+      const demo = await unscoped('finding the demo', () =>
+        prisma.tenants.findFirstOrThrow({ where: { isDemo: true } }),
+      );
+      // Created three days ago and never signed into.
+      await unscoped('ageing the demo without any login', () =>
+        prisma.tenants.update({
+          where: { id: demo.id },
+          data: { createdAt: new Date(Date.now() - 72 * 60 * 60 * 1000) },
+        }),
+      );
+
+      const result = await demoService.deleteExpired();
+
+      expect(result.idle).toBe(1);
+      expect(result.demos).toBe(1);
+      expect(
+        await unscoped('confirming it went', () =>
+          prisma.tenants.findUnique({ where: { id: demo.id } }),
+        ),
+      ).toBeNull();
+    });
+
+    // A demo whose owner signed in recently is in use, whatever its age --
+    // reclaiming it would delete somebody's work mid-evaluation, which is the
+    // exact failure the seven-day lifetime exists to avoid.
+    it('leaves a demo alone while somebody is still using it', async () => {
+      await askForDemo('active@example.test');
+      await confirm(await tokenFor('active@example.test'));
+      const demo = await unscoped('finding the demo', () =>
+        prisma.tenants.findFirstOrThrow({ where: { isDemo: true } }),
+      );
+      await unscoped('an old demo whose owner signed in an hour ago', async () => {
+        await prisma.tenants.update({
+          where: { id: demo.id },
+          data: { createdAt: new Date(Date.now() - 72 * 60 * 60 * 1000) },
+        });
+        await prisma.users.updateMany({
+          where: { email: 'active@example.test' },
+          data: { lastLoginAt: new Date(Date.now() - 60 * 60 * 1000) },
+        });
+      });
+
+      const result = await demoService.deleteExpired();
+
+      expect(result.idle).toBe(0);
+      expect(
+        await unscoped('confirming it survived', () =>
+          prisma.tenants.findUnique({ where: { id: demo.id } }),
+        ),
+      ).not.toBeNull();
+    });
+
+    // A demo confirmed minutes ago has no login yet, which must not read as
+    // "idle forever" -- its owner is still on the welcome page.
+    it('does not reclaim a brand-new demo that has not been signed into yet', async () => {
+      await askForDemo('justmade@example.test');
+      await confirm(await tokenFor('justmade@example.test'));
+
+      const result = await demoService.deleteExpired();
+
+      expect(result.idle).toBe(0);
+      expect(
+        await unscoped('counting demos', () => prisma.tenants.count({ where: { isDemo: true } })),
+      ).toBe(1);
     });
 
     it('clears lapsed unconfirmed requests so they stop holding slots', async () => {

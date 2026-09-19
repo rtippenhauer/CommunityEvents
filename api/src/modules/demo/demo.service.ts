@@ -36,6 +36,24 @@ export const DEMO_LIFETIME_DAYS = 7;
 export const DEMO_REQUEST_LIFETIME_HOURS = 24;
 
 /**
+ * How long a demo may sit untouched before its slot is taken back.
+ *
+ * The caps protect against abuse; this protects against indifference, which is
+ * the commoner failure. Most people who ask for a demo look at it for ten
+ * minutes and never return, and with ten slots and a seven-day lifetime it
+ * takes only ten such visitors to close the demo to everyone else for a week.
+ * Reclaiming the abandoned ones is what keeps the pool available without
+ * shortening the week for anybody actually using theirs.
+ *
+ * Idle is measured from the last **login**, falling back to when the demo was
+ * created -- so a demo whose owner has not signed in yet is judged on its age,
+ * not treated as infinitely idle. The sweep runs daily, so in practice a demo
+ * is reclaimed somewhere between 48 and 72 hours of silence; the guarantee is
+ * "not before 48 hours", which is the direction that matters.
+ */
+export const DEMO_IDLE_HOURS = 48;
+
+/**
  * The caps, set with Rob 2026-09-18.
  *
  * Deliberately small. Ten live demos is not a capacity limit -- each is a few
@@ -242,7 +260,9 @@ export class DemoService {
    * visitor invited somebody: several foreign keys onto `users` are restrictive,
    * and a redeemed invite used to break a straight walk of the model list.
    */
-  async deleteExpired(now = new Date()): Promise<{ demos: number; requests: number }> {
+  async deleteExpired(
+    now = new Date(),
+  ): Promise<{ demos: number; idle: number; requests: number }> {
     const expired = await runUnscoped('finding demos past their expiry', async () =>
       await this.prisma.tenants.findMany({
         where: { isDemo: true, demoExpiresAt: { lt: now } },
@@ -250,8 +270,11 @@ export class DemoService {
       }),
     );
 
+    const idle = await this.findIdleDemos(now, new Set(expired.map((d) => d.id)));
+    const doomed = [...expired, ...idle];
+
     let demos = 0;
-    for (const demo of expired) {
+    for (const demo of doomed) {
       // Unreachable while chk_tenant_demo_not_root exists. If it is ever
       // missing -- a database restored from a pre-v2-14 dump -- refusing is the
       // only safe answer: the alternative is deleting the deployment's own
@@ -279,7 +302,7 @@ export class DemoService {
           );
         });
         demos += 1;
-        this.logger.log(`Deleted expired demo ${demo.domain}`);
+        this.logger.log(`Deleted demo ${demo.domain}`);
       } catch (err) {
         // Per demo, so one failure does not strand the rest.
         this.logger.error(
@@ -297,7 +320,64 @@ export class DemoService {
     );
 
     if (demos > 0 || requests > 0) this.tenantResolution.clearCache();
-    return { demos, requests };
+    // `demos` counts everything deleted; `idle` says how many of those went for
+    // want of use rather than age. Separated because they mean different
+    // things operationally -- a rising idle count is people trying the product
+    // and not coming back, which is worth noticing.
+    return { demos, idle: idle.length, requests };
+  }
+
+  /**
+   * Demos nobody has signed into for `DEMO_IDLE_HOURS`.
+   *
+   * Activity is the most recent login by a real person in that community. The
+   * seeded members never log in, so their rows contribute nothing; what moves
+   * this is the visitor whose demo it is.
+   *
+   * A demo with no login at all is judged on its **creation time** rather than
+   * treated as idle forever -- otherwise a demo confirmed two minutes ago, whose
+   * owner is still reading the welcome page, would be reclaimed by the next
+   * sweep before they ever signed in.
+   *
+   * `alreadyDoomed` keeps a demo that is both expired and idle from being
+   * deleted twice, which would log a spurious failure on the second attempt.
+   */
+  private async findIdleDemos(
+    now: Date,
+    alreadyDoomed: Set<number>,
+  ): Promise<{ id: number; domain: string; isRoot: boolean }[]> {
+    const cutoff = new Date(now.getTime() - DEMO_IDLE_HOURS * 60 * 60 * 1000);
+
+    const [live, lastLogins] = await runUnscoped(
+      'finding idle demos across every community',
+      async () =>
+        await Promise.all([
+          this.prisma.tenants.findMany({
+            where: { isDemo: true },
+            select: { id: true, domain: true, isRoot: true, createdAt: true },
+          }),
+          // One grouped query rather than one per demo. Service accounts are
+          // excluded for the same reason the member directory excludes them:
+          // they are not a person whose visit means anything.
+          this.prisma.users.groupBy({
+            by: ['tenantId'],
+            _max: { lastLoginAt: true },
+            where: { isServiceAccount: false },
+          }),
+        ]),
+    );
+
+    const lastLoginByTenant = new Map(
+      lastLogins.map((row) => [row.tenantId, row._max.lastLoginAt]),
+    );
+
+    return live
+      .filter((demo) => {
+        if (alreadyDoomed.has(demo.id)) return false;
+        const lastSeen = lastLoginByTenant.get(demo.id) ?? demo.createdAt;
+        return lastSeen.getTime() < cutoff.getTime();
+      })
+      .map(({ id, domain, isRoot }) => ({ id, domain, isRoot }));
   }
 
   /**
