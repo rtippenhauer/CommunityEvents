@@ -195,6 +195,52 @@ describe('Demo tenants (e2e)', () => {
       expect(fromThatIp).toBe(MAX_LIVE_DEMOS_PER_IP);
     });
 
+    /**
+     * The regression: a cap of N must actually allow N, not N-1.
+     *
+     * `withinCaps` counted the very request being confirmed -- so with two
+     * allowed per IP, the second confirmation saw its own pending row plus the
+     * first live demo and refused itself. Found on stage; the effective caps
+     * were one demo per IP and nine in the pool.
+     */
+    it(`allows a full ${MAX_LIVE_DEMOS_PER_IP} demos from one IP`, async () => {
+      const ip = '10.0.0.7';
+      for (let i = 0; i < MAX_LIVE_DEMOS_PER_IP; i += 1) {
+        await demoService.requestDemo(
+          `visitor${i}@example.test`,
+          `visitor${i}@example.test`,
+          'V1sitorPassw0rd!',
+          ip,
+        );
+        const token = await tokenFor(`visitor${i}@example.test`);
+        const res = await confirm(token);
+        expect(res.status, `confirmation ${i + 1} of ${MAX_LIVE_DEMOS_PER_IP}`).toBe(200);
+      }
+
+      expect(
+        await unscoped('counting live demos', () =>
+          prisma.tenants.count({ where: { isDemo: true } }),
+        ),
+      ).toBe(MAX_LIVE_DEMOS_PER_IP);
+    });
+
+    // And the cap still bites at N+1 -- fixing the off-by-one must not have
+    // simply removed the limit.
+    it('still refuses one more from that IP', async () => {
+      const ip = '10.0.0.8';
+      for (let i = 0; i < MAX_LIVE_DEMOS_PER_IP; i += 1) {
+        await demoService.requestDemo(`f${i}@example.test`, `f${i}@example.test`, 'V1sitorPassw0rd!', ip);
+        await confirm(await tokenFor(`f${i}@example.test`));
+      }
+
+      // Refused at request time now, so no row is even written for it.
+      await demoService.requestDemo('extra@example.test', 'extra@example.test', 'V1sitorPassw0rd!', ip);
+      const extra = await unscoped('looking for a row that should not exist', () =>
+        prisma.demo_requests.findFirst({ where: { email: 'extra@example.test' } }),
+      );
+      expect(extra).toBeNull();
+    });
+
     // Requests are cheap and confirmations arrive whenever somebody opens their
     // mail, so the cap has to hold at confirmation too -- otherwise a backlog
     // of requests made while the pool was empty all confirm into a full one.

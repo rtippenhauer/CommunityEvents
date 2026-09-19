@@ -114,7 +114,15 @@ export class DemoConfirmComponent implements OnInit {
           this.error.set('This link has already been used. Your demo was created the first time.');
         } else if (reason === 'expired') {
           this.error.set('This link has expired. Links last 24 hours.');
-        } else if (reason === 'pool_full' || reason === 'ip_limit') {
+        } else if (reason === 'ip_limit') {
+          // Distinguished from pool_full deliberately. It leaks nothing at this
+          // point -- they hold a valid token, so this is a fact about their own
+          // demos, not about the pool -- and the remedy is completely
+          // different: wait for your own to expire, not for someone else's.
+          this.error.set(
+            'You already have the maximum number of demos running. Each one is deleted a week after it is created.',
+          );
+        } else if (reason === 'pool_full') {
           this.error.set(
             'There are no demo slots free right now. Demos are deleted after a week, so please try again later.',
           );

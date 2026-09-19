@@ -187,7 +187,7 @@ export class DemoService {
       throw new BadRequestException({ message: 'Link expired', reason: 'expired' });
     }
 
-    const allowed = await this.withinCaps(request.ipAddress ?? undefined);
+    const allowed = await this.withinCaps(request.ipAddress ?? undefined, request.id);
     if (!allowed.ok) {
       throw new BadRequestException({ message: 'No demo slots free', reason: allowed.reason });
     }
@@ -389,12 +389,30 @@ export class DemoService {
    */
   private async withinCaps(
     ipAddress: string | undefined,
+    excludeRequestId?: number,
   ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    // `excludeRequestId` is the request being confirmed, and leaving it out is
+    // the whole correctness of this at confirmation time.
+    //
+    // The question both caps ask is "would letting this through put us over?",
+    // so what has to be counted is everything OTHER than the thing being
+    // decided. At request time there is nothing to exclude -- the row does not
+    // exist yet and we are about to add one. At confirmation the row already
+    // exists as pending and is merely changing state, so counting it is
+    // counting it twice.
+    //
+    // Found on stage the first time Rob confirmed a second demo: with a cap of
+    // two per IP, his one live demo plus the pending row being confirmed made
+    // two, and the confirmation refused itself. The effective caps were
+    // MAX - 1 at confirmation -- one demo per IP, nine in the pool.
+    const notThisOne = excludeRequestId ? { id: { not: excludeRequestId } } : {};
+    const now = new Date();
+
     const [live, pending] = await runUnscoped('counting demos against the caps', async () =>
       await Promise.all([
         this.prisma.tenants.count({ where: { isDemo: true } }),
         this.prisma.demo_requests.count({
-          where: { createdTenantId: null, expiresAt: { gt: new Date() } },
+          where: { createdTenantId: null, expiresAt: { gt: now }, ...notThisOne },
         }),
       ]),
     );
@@ -411,7 +429,8 @@ export class DemoService {
           await this.prisma.demo_requests.count({
             where: {
               ipAddress,
-              OR: [{ createdTenantId: { not: null } }, { expiresAt: { gt: new Date() } }],
+              OR: [{ createdTenantId: { not: null } }, { expiresAt: { gt: now } }],
+              ...notThisOne,
             },
           }),
       );
