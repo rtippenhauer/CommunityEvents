@@ -1671,65 +1671,101 @@ visitor, so the marketing front door links somewhere a visitor cannot go. It is
 the existing shell's gating rather than anything this item changed, and the root
 tenant arguably wants a trimmed nav.
 
-### v2-14 — Demo tenant
+### v2-14 — Demo communities
 **Status:** In Progress. Depends on v2-3, v2-4 and v2-10.
 
-**Where the demo lives is already decided, and the hosting is not free of
-traps** (worked out on stage during v2-13). The address is derived, not
-configured: `demo.` prefixed to the deployment's own domain, so
-`demo.communityeventsproject.com` in production and
-`demo.stage.communityeventsproject.com` on stage. That form is what keeps it a
-*subdomain* of the deployment domain, so `isOnDeploymentDomain` is true and it
-inherits the deployment's Brevo and Google credentials rather than needing its
-own.
+**Retitled and respecified 2026-09-18, mid-item.** This was "Demo tenant": one
+shared community anyone could sign up to, where self-registration granted admin
+and the whole thing was wiped and re-seeded nightly. That design was built, and
+then Rob found what was wrong with it — see "Why it is not one shared demo"
+below. The number is unchanged because the number is the running order and this
+is still the fourteenth item; what changed is the item.
 
-Three things cost an afternoon and will cost it again otherwise:
+**One demo per visitor.** Somebody asks for a demo on the root tenant's
+marketing page, confirms their address by email, and gets their *own* community
+at a generated host with themselves as its first admin. It is deleted seven days
+later. Nothing is shared between two visitors' demos.
 
-- **Cloudflare's Universal SSL wildcard covers one label only.**
-  `*.communityeventsproject.com` covers `stage.` but not
-  `demo.stage.`, so the edge has no certificate for the stage demo host and
-  aborts the TLS handshake. Chrome reports this as
-  `ERR_SSL_VERSION_OR_CIPHER_MISMATCH` / "unsupported protocol", which sends you
-  looking at protocol and cipher settings instead of at the certificate.
-- **So the stage demo host must be grey-clouded** (DNS only) and served directly
-  by NGINX Proxy Manager, which holds a Let's Encrypt certificate for it --
-  Let's Encrypt has no wildcard depth limit. This is the same arrangement
-  `dayton.stage.dinnerbears.com` has been running under. Advanced Certificate
-  Manager (paid) is the alternative if the record must stay proxied. The origin
-  IP is already public via the dinnerbears record, so grey-clouding costs
-  nothing new.
-- **Production needs none of this.** `demo.communityeventsproject.com` is a
-  single label under the apex and the existing wildcard already covers it.
+#### Why it is not one shared demo
 
-A tenant created by hand at that address is a *plain* invite-only community, not
-the demo -- everything below is what makes it one.
+Every visitor to a shared demo would be an admin of it, and `admin.service`
+hands an admin every user's email address, their linked Google/Facebook account
+addresses, the address each invite was bound to, and a search box that matches
+on them. So the seventh visitor would get a searchable directory of the previous
+six visitors' real email addresses. The original spec said "self-registration
+grants tenant admin" without working through what admin exposes.
 
-A tenant anyone can try. Two properties that need care:
+**Per-visitor also deletes a privilege escalation rather than guarding one.**
+The shared design needed a carve-out in all three registration paths saying "a
+stranger who signs up here becomes an admin" — the most dangerous code in the
+item, which is why it was backed by a database CHECK constraint. In this design
+that code does not exist: the requester becomes the first admin at creation
+time, exactly as `TenantsAdminService.create` does for any other community.
+`is_demo` now grants nothing at all; it marks a community ephemeral, blocks it
+from sending mail, and is what the sweep looks for.
 
-- **Self-registration grants tenant admin.** Anyone signing up on the demo
-  becomes an admin *of the demo tenant only*. This is a deliberate carve-out of
-  the normal invite-gated flow, and it is a privilege-escalation bug the moment
-  it applies to any other tenant — so it has to be a property of the tenant
-  row, checked against the resolved tenant, and impossible to enable on the
-  root tenant.
-- **Scheduled reset — nightly, weekly at the very least.** Demo admins can
-  delete things, so the tenant is wiped and re-seeded on a timer rather than
-  left to accumulate whatever visitors do to it. Nightly is the target;
-  weekly is the floor. The demo seed is a third seed path, distinct from
-  `prisma/seed.ts` (reference data every install needs) and `bootstrap.js`
-  (one-time instance provisioning).
-- **Say so on the page.** A persistent notice on the demo tenant that
-  everything there is temporary and wiped on a schedule. Someone who
-  self-registers becomes an admin and may well start entering real events for
-  a real group; without a visible warning the reset destroys work they had no
-  reason to think was disposable. The notice is part of the feature, not
-  decoration.
+#### The rules, decided with Rob 2026-09-18
 
-**Definition of done:** a visitor can self-register on the demo, land as an
-admin of that tenant with generated members/locations/events/leaderboard
-present, sees a standing notice that the data is temporary, and the tenant
-returns to its seeded state on schedule. The same self-registration on any
-other tenant still yields an ordinary member.
+- **Caps: 2 live demos per IP, 10 in total.** Not a capacity limit — a demo is a
+  few dozen rows — a blast-radius limit on a door open to anyone. Re-checked at
+  confirmation as well as at request, since a backlog built while the pool was
+  empty would otherwise all confirm into a full one.
+- **Seven-day lifetime, and that follows from being per-visitor.** Retention
+  trades against blast radius: a *shared* demo has to reset daily, because
+  whatever one visitor breaks is what every later visitor sees. Isolation
+  removes that, which is what buys the week. The two move together — anything
+  reintroducing sharing has to bring the lifetime back to a day.
+- **Idle reclaim at 48 hours.** The caps guard against abuse; this guards
+  against indifference, which is commoner. Ten people who look once and never
+  return would otherwise hold the pool shut for a week.
+- **Confirmation gates creation.** Nothing is created until the link is
+  followed, so unconfirmed requests cannot squat slots.
+- **A demo cannot send mail — and omitting its config would have done the
+  opposite.** v2-9 falls back to the deployment's Brevo credentials for a
+  community with no key of its own, and a demo is a subdomain of the deployment,
+  so a blank config means "send on the operator's account" from a community
+  anyone can create. `EmailService` refuses outright on `is_demo`, at both entry
+  points. The one mail a demo causes — its confirmation link — is sent in the
+  **root** tenant's context, as the platform.
+- **Generated hosts, never chosen.** `demo-<8 hex>.<deployment domain>`. A
+  chosen name gets treated as property, and somebody would be rightly annoyed
+  when `smithfamily.` vanished on day seven. A single label under the deployment
+  domain also means production's existing Universal SSL wildcard already covers
+  it.
+- **Say so on the page.** A standing notice in the app shell naming the date the
+  community is deleted. Not dismissable and not role-gated: the person most in
+  danger of losing work is the one who has used it long enough to stop reading
+  the chrome. "Deleted on Friday" is actionable where "temporary" is ignorable.
+
+#### Hosting
+
+The original section's Cloudflare findings still hold and are now confirmed
+against the live zone (2026-09-18): the active Universal cert pack is exactly
+`["communityeventsproject.com", "*.communityeventsproject.com"]`, and Cloudflare
+documents that a wildcard certificate covers **one** subdomain level. So:
+
+- **Production** needs nothing. `demo-<hex>.communityeventsproject.com` is a
+  single label and the existing wildcard covers it, proxied.
+- **Stage** hosts are `demo-<hex>.stage.communityeventsproject.com`, two levels
+  deep and covered by no edge certificate — Chrome reports that as
+  `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`, which sends you looking at ciphers
+  rather than at the certificate. A `*.stage.communityeventsproject.com` A
+  record was created grey-clouded (DNS only) for this; **NGINX Proxy Manager
+  needs a Let's Encrypt wildcard for it, issued by DNS-01** (a wildcard cannot
+  use an HTTP challenge), which needs a Cloudflare API token scoped to
+  Zone:DNS:Edit on that zone. Advanced Certificate Manager is the paid
+  alternative if the record must stay proxied.
+
+**That certificate is a prerequisite for stage testing**, not a convenience:
+every demo is a new hostname, so unlike the old fixed `demo.stage.` host there
+is nothing to issue a per-host certificate for in advance.
+
+**Definition of done:** a visitor can request a demo from the marketing page,
+confirm by email, and land in their own community as its admin with generated
+members/locations/events/leaderboard present; the community announces the date
+it will be deleted; it is deleted on that date, or sooner if nobody signs into
+it for 48 hours; the caps hold at both request and confirmation; and no mail can
+be sent from inside a demo.
 
 ### v2-15 — Operator setup wizard / everything configurable from the site
 **Status:** Not started (deferred). Depends on v2-6.

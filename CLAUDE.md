@@ -34,9 +34,14 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-14` — the demo tenant: a community anyone can try,
-where self-registration grants admin *of that tenant only*, wiped and re-seeded
-on a schedule, saying so on the page. See `V2_PHASES.md`.
+**Current v2 work item:** `v2-14` — demo communities: one **per visitor**, asked
+for on the marketing page and confirmed by email, at a generated host, with the
+requester as its admin, deleted after seven days or 48 idle hours. Retitled
+mid-item from "the demo tenant" (one shared community, self-registration
+granting admin, wiped nightly) — a shared demo would have shown each visitor the
+previous visitors' email addresses, since an admin can see them. Per-visitor
+also removed the privilege escalation instead of guarding it: no registration
+path promotes anyone now. See `V2_PHASES.md`.
 
 **Completed v2 items:**
 - **`v2-13` — The root tenant's public landing page** (2026-09-18). The
