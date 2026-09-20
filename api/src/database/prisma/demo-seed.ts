@@ -21,6 +21,10 @@ import {
   DEMO_COLOR_ACCENT,
   DEMO_COLOR_BACKGROUND,
   DEMO_COLOR_PRIMARY,
+  DEMO_ERROR_IMAGE,
+  DEMO_SPLASH_IMAGE,
+  DEMO_STORY_HTML,
+  DEMO_STORY_IMAGE,
   venuePhotoPath,
   venueSlug,
 } from '../../common/demo/demo-venue-art';
@@ -184,6 +188,15 @@ async function seedSettings(prisma: PrismaClient, tenantId: number): Promise<voi
       configValue: demoIconDataUri(DEMO_COLOR_PRIMARY),
       description: 'Demo square mark',
     },
+    // Photographs where a photograph beats a drawing: the story image, the
+    // sign-in splash and the backdrop behind an error card.
+    { configKey: 'brand_story_url', configValue: DEMO_STORY_IMAGE, description: 'Demo story image' },
+    { configKey: 'brand_splash_url', configValue: DEMO_SPLASH_IMAGE, description: 'Demo splash' },
+    { configKey: 'brand_error_url', configValue: DEMO_ERROR_IMAGE, description: 'Demo error backdrop' },
+    // An empty story section is one of the clearest tells that a site is a
+    // shell, and what a visitor is here to evaluate is what a real community's
+    // page looks like.
+    { configKey: 'about_story_html', configValue: DEMO_STORY_HTML, description: 'Demo story copy' },
     {
       configKey: 'legal_reviewed_at',
       configValue: new Date().toISOString(),

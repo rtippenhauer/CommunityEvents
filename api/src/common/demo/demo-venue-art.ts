@@ -164,3 +164,38 @@ export function venuePhotoPath(slug: string): string | null {
     ? `/venues/${slug}.webp`
     : null;
 }
+
+/**
+ * The demo's photographic branding: the Our Story image, the sign-in splash and
+ * the error-page backdrop (v2-14).
+ *
+ * Shipped as static assets beside the venue photographs, and pointed at from
+ * `app_config` exactly as an admin's own uploads would be. This is not the
+ * thing v2-10 removed: those were compiled-in *defaults*, one file standing in
+ * for every community's identity and therefore always wrong. These belong to
+ * one named fiction, and a demo visitor can replace any of them from Site
+ * Settings like any other community.
+ *
+ * The generated marks in `demo-brand.ts` stay for the logo and icon, where
+ * drawn artwork beats a photograph; these three are the places a photograph is
+ * plainly better.
+ */
+export const DEMO_STORY_IMAGE = '/demo-brand/story.webp';
+export const DEMO_SPLASH_IMAGE = '/demo-brand/login.webp';
+export const DEMO_ERROR_IMAGE = '/demo-brand/error.webp';
+
+/**
+ * The demo community's "Our Story", written by Rob.
+ *
+ * Seeded as copy rather than left blank because an empty story section is one
+ * of the clearest tells that a site is a shell -- and the thing a visitor is
+ * evaluating is what a *real* community's page looks like. Carries its own
+ * heading: `home.component` renders this straight into the section with no
+ * title of its own.
+ */
+export const DEMO_STORY_HTML = `<h2>Our Story</h2>
+<p class="story-lede">Good people. Good places. A reason to get together.</p>
+<p>Riverside Community Events started with a simple idea: it shouldn't be difficult to spend time with the people around you.</p>
+<p>A few Riverside neighbors began meeting for dinner every few weeks. There was no organization, no membership committee and definitely no master plan. Someone would suggest a local restaurant, a date would get picked, and whoever was free would show up.</p>
+<p>The dinners became a tradition. Friends invited friends. Dinner occasionally became brunch, trivia night, a concert, a walk along the river, a neighborhood festival or an afternoon volunteering together.</p>
+<p>Somewhere along the way, the group became a community.</p>`;

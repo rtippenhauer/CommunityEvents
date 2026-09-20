@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  DEMO_ERROR_IMAGE,
+  DEMO_SPLASH_IMAGE,
+  DEMO_STORY_HTML,
+  DEMO_STORY_IMAGE,
   VENUES_WITH_PHOTOS,
   VENUE_SLUG_PATTERN,
   venueArtSvg,
@@ -115,5 +119,40 @@ describe('venue photographs', () => {
   it('gives a served path for a known venue and nothing for an unknown one', () => {
     expect(venuePhotoPath('the-long-room')).toBe('/venues/the-long-room.webp');
     expect(venuePhotoPath('a-venue-with-no-picture')).toBeNull();
+  });
+});
+
+/**
+ * The demo's photographic branding and its story copy.
+ *
+ * Same failure mode as the venue photographs: a path pointing at a file that
+ * is not shipped puts a broken image on the demo's front page, and nothing
+ * else would catch a rename.
+ */
+describe('demo branding assets', () => {
+  const PUBLIC_DIR = join(__dirname, '../../../../frontend/public');
+
+  it.each([
+    ['story', DEMO_STORY_IMAGE],
+    ['splash', DEMO_SPLASH_IMAGE],
+    ['error backdrop', DEMO_ERROR_IMAGE],
+  ])('ships the %s image it points at', (_label, path) => {
+    expect(path.startsWith('/')).toBe(true);
+    expect(existsSync(join(PUBLIC_DIR, path.replace(/^\//, '')))).toBe(true);
+  });
+
+  describe('the story copy', () => {
+    // home.component renders this straight into the section with no title of
+    // its own, so the copy has to bring one or the page shows body text under
+    // nothing.
+    it('carries its own heading', () => {
+      expect(DEMO_STORY_HTML).toContain('<h2>');
+    });
+
+    it('is real copy rather than a placeholder', () => {
+      expect(DEMO_STORY_HTML).toContain('Riverside');
+      expect(DEMO_STORY_HTML.length).toBeGreaterThan(400);
+      expect(DEMO_STORY_HTML.toLowerCase()).not.toContain('lorem');
+    });
   });
 });
