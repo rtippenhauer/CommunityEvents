@@ -318,6 +318,54 @@ const WEEKDAYS = [
                 </div>
               </div>
 
+              <div class="image-row">
+                <div class="image-preview splash-preview">
+                  @if (brandConfigService.brand().heroUrl) {
+                    <img [src]="brandConfigService.brand().heroUrl" alt="Hero image preview" />
+                  } @else {
+                    <span class="no-image-hint">None</span>
+                  }
+                </div>
+                <div class="image-controls">
+                  <div class="image-label">
+                    Hero Background
+                    <span>— behind the home page welcome (plain background if none)</span>
+                  </div>
+                  <div class="image-actions">
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="heroInput.click()"
+                      [disabled]="uploadingSlot() === 'hero'"
+                    >
+                      <mat-icon>upload</mat-icon>
+                      {{ uploadingSlot() === 'hero' ? 'Uploading…' : 'Upload' }}
+                    </button>
+                    @if (brandConfigService.brand().heroUrl) {
+                      <button
+                        mat-button
+                        type="button"
+                        (click)="resetImage('hero')"
+                        [disabled]="uploadingSlot() === 'hero'"
+                      >
+                        Remove
+                      </button>
+                    }
+                    <input
+                      #heroInput
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      hidden
+                      (change)="onImageSelected('hero', $event)"
+                    />
+                  </div>
+                </div>
+                <p class="hero-note">
+                  A wide photograph works best. Your page colours are laid over it so the text
+                  stays readable, so a busy or very bright image is fine.
+                </p>
+              </div>
+
               <p class="cadence-hint">
                 Uploads apply immediately (max 5&nbsp;MB; PNG, JPEG, WebP, or GIF). The installed-PWA
                 icon comes from a static manifest and still needs a file swap + rebuild to change.
@@ -908,7 +956,8 @@ export class AdminSettingsComponent implements OnInit {
     this.uploadingSlot.set(slot);
     // The logo sits on the dark nav/footer, so strip a solid background box to
     // transparent before uploading (no-op fallback if it can't be processed).
-    // Other slots (splash/icon/story) render on light surfaces — upload as-is.
+    // Other slots (splash/icon/story/hero) render on light surfaces, or under a
+    // scrim in the community's own surface colour — upload as-is.
     const prepared: Promise<File> =
       slot === 'logo' ? stripLogoBackground(file) : Promise.resolve(file);
     void prepared.then((uploadFile) => {

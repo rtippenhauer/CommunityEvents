@@ -73,6 +73,7 @@ export const SITE_SETTING_KEYS = [
   'brand_error_url',
   'brand_icon_url',
   'brand_story_url',
+  'brand_hero_url',
   // Contact identity, per community (REQ-TENANT-01.4). Empty means "inherit the
   // deployment default", which is the matching env var or, failing that, a
   // derivation from the mail domain -- so an existing install behaves exactly
@@ -211,6 +212,10 @@ export const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   // migration seeds DinnerBears' existing map here; a fresh fork's bootstrap
   // clears it so a new instance shows just the story copy until it uploads one.
   brand_story_url: '',
+  // The photograph behind the home-page hero. Empty is the default and means
+  // no image at all -- the hero keeps the plain surface it has always had, so
+  // every existing community looks exactly as it did.
+  brand_hero_url: '',
   // All four empty on purpose -- see the key list above. A non-empty default
   // here would silently override the env var every install already has set.
   mail_domain: '',
@@ -549,6 +554,14 @@ export class AppConfigService {
     errorUrl: string;
     iconUrl: string;
     storyUrl: string;
+    /**
+     * The photograph behind the home-page hero, or '' for none.
+     *
+     * A community's own upload like every other brand image. Empty is the
+     * common case and means the hero renders exactly as it did before this
+     * existed -- a background is an addition, never a requirement.
+     */
+    heroUrl: string;
     vapidPublicKey: string | null;
     facebookAppId: string | null;
     /**
@@ -631,6 +644,7 @@ export class AppConfigService {
       errorUrl,
       iconUrl,
       storyUrl,
+      heroUrl,
       locationSingular,
       locationPlural,
       dinnerSingular,
@@ -650,6 +664,7 @@ export class AppConfigService {
       this.getSiteSetting('brand_error_url'),
       this.getSiteSetting('brand_icon_url'),
       this.getSiteSetting('brand_story_url'),
+      this.getSiteSetting('brand_hero_url'),
       this.getSiteSetting('term_location_singular'),
       this.getSiteSetting('term_location_plural'),
       this.getSiteSetting('term_dinner_singular'),
@@ -670,6 +685,7 @@ export class AppConfigService {
       errorUrl,
       iconUrl,
       storyUrl,
+      heroUrl,
       terms: {
         locationSingular,
         locationPlural,

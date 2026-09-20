@@ -37,6 +37,7 @@ const BRAND_IMAGE_SLOTS: Record<
   | 'brand_error_url'
   | 'brand_icon_url'
   | 'brand_story_url'
+  | 'brand_hero_url'
 > = {
   logo: 'brand_logo_url',
   splash: 'brand_splash_url',
@@ -46,6 +47,9 @@ const BRAND_IMAGE_SLOTS: Record<
   error: 'brand_error_url',
   icon: 'brand_icon_url',
   story: 'brand_story_url',
+  // The photograph behind the home-page hero (v2-14). Optional everywhere:
+  // unset, the hero renders on the plain surface exactly as before.
+  hero: 'brand_hero_url',
 };
 
 const brandImageStorage = diskStorage({

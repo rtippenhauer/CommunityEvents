@@ -79,6 +79,13 @@ export interface BrandConfig {
    * no reason to think was disposable. The date is what makes the warning
    * actionable rather than ignorable.
    */
+  /**
+   * The photograph behind the home-page hero, or '' for none.
+   *
+   * Optional everywhere and empty by default: unset, the hero renders on the
+   * plain surface exactly as it always has.
+   */
+  heroUrl: string;
   isDemo: boolean;
   /** ISO timestamp, or null on any community that is not a demo. */
   demoExpiresAt: string | null;
@@ -209,6 +216,7 @@ const DEFAULT_BRAND: BrandConfig = {
   // Defaults false: until branding resolves, do not tell somebody their
   // community is about to be deleted. A demo says so a moment later; a real
   // community never wrongly says it at all.
+  heroUrl: '',
   isDemo: false,
   demoExpiresAt: null,
   // Defaults true, unlike isRoot: this one drives a warning banner, and a slow
@@ -290,6 +298,8 @@ export class BrandConfigService {
   readonly appUrl = computed(() => this.brand().appUrl);
   readonly baseDomain = computed(() => this.brand().baseDomain);
   readonly isRoot = computed(() => this.brand().isRoot);
+  /** '' when this community has not set one, which is the common case. */
+  readonly heroImageUrl = computed(() => this.brand().heroUrl);
   readonly isDemo = computed(() => this.brand().isDemo);
   readonly demoExpiresAt = computed(() => this.brand().demoExpiresAt);
   readonly supportEmail = computed(() => this.brand().supportEmail);

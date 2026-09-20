@@ -50,7 +50,7 @@ export type SiteSettingKey =
   // and Privacy Policy; empty means never. Written from Admin -> Legal.
   | 'legal_reviewed_at';
 
-export type BrandImageSlot = 'logo' | 'splash' | 'error' | 'icon' | 'story';
+export type BrandImageSlot = 'logo' | 'splash' | 'error' | 'icon' | 'story' | 'hero';
 
 export interface LegalConfigItem {
   configKey: LegalConfigKey;

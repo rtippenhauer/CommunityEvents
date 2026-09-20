@@ -183,6 +183,7 @@ export function venuePhotoPath(slug: string): string | null {
 export const DEMO_STORY_IMAGE = '/demo-brand/story.webp';
 export const DEMO_SPLASH_IMAGE = '/demo-brand/login.webp';
 export const DEMO_ERROR_IMAGE = '/demo-brand/error.webp';
+export const DEMO_HERO_IMAGE = '/demo-brand/hero.webp';
 
 /**
  * The demo community's "Our Story", written by Rob.

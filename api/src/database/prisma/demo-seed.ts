@@ -22,6 +22,7 @@ import {
   DEMO_COLOR_BACKGROUND,
   DEMO_COLOR_PRIMARY,
   DEMO_ERROR_IMAGE,
+  DEMO_HERO_IMAGE,
   DEMO_SPLASH_IMAGE,
   DEMO_STORY_HTML,
   DEMO_STORY_IMAGE,
@@ -193,6 +194,7 @@ async function seedSettings(prisma: PrismaClient, tenantId: number): Promise<voi
     { configKey: 'brand_story_url', configValue: DEMO_STORY_IMAGE, description: 'Demo story image' },
     { configKey: 'brand_splash_url', configValue: DEMO_SPLASH_IMAGE, description: 'Demo splash' },
     { configKey: 'brand_error_url', configValue: DEMO_ERROR_IMAGE, description: 'Demo error backdrop' },
+    { configKey: 'brand_hero_url', configValue: DEMO_HERO_IMAGE, description: 'Demo hero background' },
     // An empty story section is one of the clearest tells that a site is a
     // shell, and what a visitor is here to evaluate is what a real community's
     // page looks like.

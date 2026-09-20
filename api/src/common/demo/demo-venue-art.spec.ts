@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   DEMO_ERROR_IMAGE,
+  DEMO_HERO_IMAGE,
   DEMO_SPLASH_IMAGE,
   DEMO_STORY_HTML,
   DEMO_STORY_IMAGE,
@@ -136,6 +137,7 @@ describe('demo branding assets', () => {
     ['story', DEMO_STORY_IMAGE],
     ['splash', DEMO_SPLASH_IMAGE],
     ['error backdrop', DEMO_ERROR_IMAGE],
+    ['hero background', DEMO_HERO_IMAGE],
   ])('ships the %s image it points at', (_label, path) => {
     expect(path.startsWith('/')).toBe(true);
     expect(existsSync(join(PUBLIC_DIR, path.replace(/^\//, '')))).toBe(true);
