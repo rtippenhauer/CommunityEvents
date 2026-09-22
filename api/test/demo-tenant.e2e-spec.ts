@@ -243,6 +243,26 @@ describe('Demo tenants (e2e)', () => {
       expect(extra).toBeNull();
     });
 
+    // The two spellings Node uses for one IPv4 client. Counted separately, the
+    // cap silently doubles for anyone whose requests land on different sockets.
+    it('treats a mapped and a bare IPv4 address as the same client', async () => {
+      await demoService.requestDemo('a@example.test', 'a@example.test', 'V1sitorPassw0rd!', '::ffff:203.0.113.9');
+      await demoService.requestDemo('b@example.test', 'b@example.test', 'V1sitorPassw0rd!', '203.0.113.9');
+      // A third from the same client, spelled either way, is over the cap.
+      await demoService.requestDemo('c@example.test', 'c@example.test', 'V1sitorPassw0rd!', '::ffff:203.0.113.9');
+
+      const rows = await unscoped('counting that client', () =>
+        prisma.demo_requests.findMany({ where: { ipAddress: '203.0.113.9' } }),
+      );
+      expect(rows).toHaveLength(MAX_LIVE_DEMOS_PER_IP);
+      // And stored in one spelling, so the cap query can find them.
+      expect(
+        await unscoped('no mapped spelling survives', () =>
+          prisma.demo_requests.count({ where: { ipAddress: '::ffff:203.0.113.9' } }),
+        ),
+      ).toBe(0);
+    });
+
     // Requests are cheap and confirmations arrive whenever somebody opens their
     // mail, so the cap has to hold at confirmation too -- otherwise a backlog
     // of requests made while the pool was empty all confirm into a full one.

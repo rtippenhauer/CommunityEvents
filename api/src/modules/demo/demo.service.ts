@@ -62,6 +62,22 @@ export const DEMO_IDLE_HOURS = 48;
 export const MAX_LIVE_DEMOS = 10;
 export const MAX_LIVE_DEMOS_PER_IP = 2;
 
+/**
+ * One spelling per client, so the per-IP cap counts what it thinks it counts.
+ *
+ * Node reports an IPv4 client on a dual-stack socket as `::ffff:203.0.113.4`
+ * and the same client elsewhere as `203.0.113.4`. Stored as-is, those are two
+ * different addresses and the cap is quietly doubled for anyone whose requests
+ * land on different sockets. Lower-cased for the same reason: IPv6 is
+ * hex and case-insensitive, and `where: { ipAddress }` is not.
+ */
+export function normalizeIp(ip: string | undefined): string | undefined {
+  if (!ip) return undefined;
+  const trimmed = ip.trim().toLowerCase();
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(trimmed);
+  return mapped ? mapped[1] : trimmed;
+}
+
 export interface DemoRequestResult {
   /** Always the same message, whatever happened. See requestDemo. */
   message: string;
@@ -119,10 +135,11 @@ export class DemoService {
       message: 'Check your email for a link to your demo community.',
     };
     const lowerEmail = email.toLowerCase().trim();
+    const clientIp = normalizeIp(ipAddress);
 
-    const allowed = await this.withinCaps(ipAddress);
+    const allowed = await this.withinCaps(clientIp);
     if (!allowed.ok) {
-      this.logger.warn(`Demo request from ${ipAddress ?? 'unknown IP'} refused: ${allowed.reason}`);
+      this.logger.warn(`Demo request from ${clientIp ?? 'unknown IP'} refused: ${allowed.reason}`);
       return reply;
     }
 
@@ -154,7 +171,7 @@ export class DemoService {
             fullName: fullName.trim(),
             passwordHash,
             token,
-            ipAddress,
+            ipAddress: clientIp,
             expiresAt,
           },
         }),
@@ -187,7 +204,10 @@ export class DemoService {
       throw new BadRequestException({ message: 'Link expired', reason: 'expired' });
     }
 
-    const allowed = await this.withinCaps(request.ipAddress ?? undefined, request.id);
+    const allowed = await this.withinCaps(
+      normalizeIp(request.ipAddress ?? undefined),
+      request.id,
+    );
     if (!allowed.ok) {
       throw new BadRequestException({ message: 'No demo slots free', reason: allowed.reason });
     }
