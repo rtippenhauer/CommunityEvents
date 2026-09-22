@@ -63,19 +63,79 @@ export const MAX_LIVE_DEMOS = 10;
 export const MAX_LIVE_DEMOS_PER_IP = 2;
 
 /**
- * One spelling per client, so the per-IP cap counts what it thinks it counts.
+ * The address the per-IP cap counts against -- one bucket per client, not one
+ * per connection.
  *
- * Node reports an IPv4 client on a dual-stack socket as `::ffff:203.0.113.4`
- * and the same client elsewhere as `203.0.113.4`. Stored as-is, those are two
- * different addresses and the cap is quietly doubled for anyone whose requests
- * land on different sockets. Lower-cased for the same reason: IPv6 is
- * hex and case-insensitive, and `where: { ipAddress }` is not.
+ * Two problems, and they have to be solved together or the cap does not bind:
+ *
+ * **IPv4-mapped IPv6.** Node reports an IPv4 client on a dual-stack socket as
+ * `::ffff:203.0.113.4` and the same client elsewhere as `203.0.113.4`. Stored
+ * as-is those are two addresses, and the cap silently doubles for anyone whose
+ * requests land on different sockets. Unwrapped to the bare form.
+ *
+ * **IPv6 privacy extensions.** A modern client does not have *an* IPv6
+ * address; it has a rotating supply of them from its /64, changing as often as
+ * hourly. Counting the full address means an IPv6 visitor gets a fresh
+ * allowance whenever their host portion rolls over -- which is to say the cap
+ * does not apply to most home connections at all. So an IPv6 address is
+ * bucketed by its **routing prefix** -- the first 64 bits, which is what a
+ * customer is actually allocated, rather than the host portion that rotates.
+ *
+ * That has the side benefit of storing less: the /64 identifies a subscriber
+ * line rather than a device, and an abuse counter has no need for the latter.
+ *
+ * It cannot unify a dual-stack client that arrives over IPv4 one time and IPv6
+ * the next -- those genuinely are different addresses with nothing in common.
+ * Such a visitor gets two allowances, and the total pool cap is what bounds
+ * that, as it bounds spoofing.
  */
 export function normalizeIp(ip: string | undefined): string | undefined {
   if (!ip) return undefined;
   const trimmed = ip.trim().toLowerCase();
+  if (!trimmed) return undefined;
+
+  // `::ffff:203.0.113.4` is an IPv4 client wearing an IPv6 socket.
   const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(trimmed);
-  return mapped ? mapped[1] : trimmed;
+  if (mapped) return mapped[1];
+
+  // No colon at all: IPv4, or something unrecognised we pass through rather
+  // than mangle.
+  if (!trimmed.includes(':')) return trimmed;
+
+  return ipv6Prefix(trimmed) ?? trimmed;
+}
+
+/**
+ * The /64 of an IPv6 address, written as `a:b:c:d::`.
+ *
+ * Expands `::` first: `2600:2b00::1` is four leading groups of
+ * `2600, 2b00, 0, 0`, and taking the first four written groups without
+ * expanding would read it as `2600, 2b00, 1` and bucket it with something
+ * else entirely. Returns null for anything that does not parse, so the caller
+ * falls back to the address as given rather than inventing a bucket.
+ */
+function ipv6Prefix(address: string): string | null {
+  const zoneless = address.split('%')[0];
+  const halves = zoneless.split('::');
+  if (halves.length > 2) return null;
+
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  if (head.some((g) => !/^[0-9a-f]{0,4}$/.test(g))) return null;
+  if (tail.some((g) => !/^[0-9a-f]{0,4}$/.test(g))) return null;
+
+  let groups: string[];
+  if (halves.length === 2) {
+    const fill = 8 - head.length - tail.length;
+    if (fill < 0) return null;
+    groups = [...head, ...Array<string>(fill).fill('0'), ...tail];
+  } else {
+    if (head.length !== 8) return null;
+    groups = head;
+  }
+
+  const prefix = groups.slice(0, 4).map((g) => (g === '' ? '0' : g.replace(/^0+(?=.)/, '')));
+  return `${prefix.join(':')}::`;
 }
 
 export interface DemoRequestResult {

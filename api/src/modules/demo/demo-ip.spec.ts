@@ -27,10 +27,12 @@ describe('normalizeIp', () => {
     expect(normalizeIp('::ffff:74.115.41.25')).toBe(normalizeIp('74.115.41.25'));
   });
 
-  it('leaves a real IPv6 address alone, lower-cased', () => {
-    // Not mapped IPv4, so nothing to unwrap -- but `where: { ipAddress }` is
-    // case-sensitive where IPv6 hex is not.
-    expect(normalizeIp('2001:DB8::1')).toBe('2001:db8::1');
+  it('lower-cases, since IPv6 hex is case-insensitive and the query is not', () => {
+    // `where: { ipAddress }` compares exactly, so two spellings of one address
+    // would be two buckets. (The prefix bucketing below is what turns this
+    // into `2001:db8:0:0::` rather than leaving the host portion on.)
+    expect(normalizeIp('2001:DB8::1')).toBe(normalizeIp('2001:db8::1'));
+    expect(normalizeIp('2001:DB8::1')).toBe('2001:db8:0:0::');
   });
 
   it('leaves a plain IPv4 address alone', () => {
@@ -48,9 +50,53 @@ describe('normalizeIp', () => {
     expect(normalizeIp('')).toBeUndefined();
   });
 
-  // Only the mapped form is unwrapped: `::ffff:` in front of something that is
-  // not dotted-quad is a genuine IPv6 address and must not be truncated.
-  it('does not mangle an address that merely starts with the mapped prefix', () => {
-    expect(normalizeIp('::ffff:0:203.0.113.4')).toBe('::ffff:0:203.0.113.4');
+  describe('IPv6, which rotates', () => {
+    /**
+     * A modern client does not have *an* IPv6 address -- privacy extensions
+     * hand it a fresh one from its allocation as often as hourly. Counting the
+     * full address means the cap resets whenever the host portion rolls over,
+     * which is to say it does not apply to most home connections. Bucketing by
+     * the routing prefix is what makes it bind.
+     */
+    it('buckets rotating addresses from one allocation together', () => {
+      // Rob's real address, and what privacy extensions would make of it an
+      // hour later.
+      const now = '2600:2b00:945e:9000:4493:648f:ebe2:248d';
+      const later = '2600:2b00:945e:9000:1111:2222:3333:4444';
+
+      expect(normalizeIp(now)).toBe(normalizeIp(later));
+      expect(normalizeIp(now)).toBe('2600:2b00:945e:9000::');
+    });
+
+    it('keeps genuinely different allocations apart', () => {
+      expect(normalizeIp('2600:2b00:945e:9000::1')).not.toBe(
+        normalizeIp('2600:2b00:945e:9001::1'),
+      );
+    });
+
+    /**
+     * The compression trap: `2600:2b00::1` is 2600, 2b00, 0, 0, ... , 1. Taking
+     * the first four groups as written would read it as 2600, 2b00, 1 and
+     * bucket it with something else entirely.
+     */
+    it('expands :: before taking the prefix', () => {
+      expect(normalizeIp('2600:2b00::1')).toBe('2600:2b00:0:0::');
+      expect(normalizeIp('::1')).toBe('0:0:0:0::');
+    });
+
+    it('strips a zone index', () => {
+      expect(normalizeIp('fe80::1%eth0')).toBe('fe80:0:0:0::');
+    });
+
+    it('is stable however the same prefix is written', () => {
+      expect(normalizeIp('2600:2b00:0000:0000:1:2:3:4')).toBe(normalizeIp('2600:2b00::1:2:3:4'));
+    });
+
+    // Anything unparseable is passed through rather than bucketed into an
+    // invented prefix that could collide with a real one.
+    it('passes a malformed address through untouched', () => {
+      expect(normalizeIp('not::an::address')).toBe('not::an::address');
+      expect(normalizeIp('2600:zzzz::1')).toBe('2600:zzzz::1');
+    });
   });
 });
