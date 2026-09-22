@@ -77,6 +77,30 @@ export interface CreateTenantPayload {
 export type UpdateTenantPayload = Partial<CreateTenantPayload>;
 
 /**
+ * Somebody who asked for a demo and has not set it up (v2-14).
+ *
+ * The half of the demo pool that is otherwise invisible: an unconfirmed
+ * request creates no community, so it appears on no list, while still holding
+ * a slot until its link lapses.
+ */
+export interface PendingDemoRequest {
+  id: number;
+  fullName: string;
+  email: string;
+  /** The bucket the caps counted — an IPv6 client is stored as its /64. */
+  ipAddress: string | null;
+  requestedAt: string;
+  expiresAt: string;
+  /** `awaiting` while the link still works; `lapsed` once it does not. */
+  status: 'awaiting' | 'lapsed';
+}
+
+export interface DemoRequestList {
+  capacity: { live: number; awaiting: number; max: number };
+  requests: PendingDemoRequest[];
+}
+
+/**
  * The tenant registry (REQ-TENANT-01.7).
  *
  * `system/` rather than `admin/`: these routes act on the whole deployment and
@@ -89,6 +113,12 @@ export type UpdateTenantPayload = Partial<CreateTenantPayload>;
 export class TenantsAdminService {
   private readonly http = inject(HttpClient);
   private readonly base = '/api/v1/system/tenants';
+  /**
+   * Beside the tenant registry rather than under it, matching the API: a
+   * request that has not been confirmed has no tenant, which is the whole
+   * thing being reported.
+   */
+  private readonly demoRequests = '/api/v1/system/demo-requests';
 
   getAll(): Observable<AdminTenant[]> {
     return this.http.get<AdminTenant[]>(this.base);
@@ -113,6 +143,22 @@ export class TenantsAdminService {
     return this.http.delete<{ id: number; domain: string }>(`${this.base}/${id}`, {
       body: { confirmDomain },
     });
+  }
+
+  // ── Demo requests that produced no community ─────────────────────────────
+
+  getDemoRequests(): Observable<DemoRequestList> {
+    return this.http.get<DemoRequestList>(this.demoRequests);
+  }
+
+  /**
+   * Withdraws an unconfirmed request, freeing its slot.
+   *
+   * No retyped confirmation here, unlike deleting a community: this destroys
+   * one row and an unused link, and the person can simply ask again.
+   */
+  cancelDemoRequest(id: number): Observable<PendingDemoRequest> {
+    return this.http.delete<PendingDemoRequest>(`${this.demoRequests}/${id}`);
   }
 
   // ── People inside one community ──────────────────────────────────────────

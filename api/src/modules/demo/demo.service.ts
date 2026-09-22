@@ -36,6 +36,42 @@ export const DEMO_LIFETIME_DAYS = 7;
 export const DEMO_REQUEST_LIFETIME_HOURS = 24;
 
 /**
+ * How long an unconfirmed request is **kept**, as opposed to how long its link
+ * works.
+ *
+ * Two different questions that used to share one answer. `expiresAt` is when
+ * the link stops working and the row stops counting against the caps -- short
+ * on purpose, so somebody who never clicks does not hold a slot. But the row
+ * was deleted at that same moment, which meant "who asked for a demo and never
+ * set it up" was answerable for at most a day, and in practice not at all,
+ * since the sweep runs daily and usually found nothing left to look at.
+ *
+ * Keeping the row for the same week a demo itself lives makes that question
+ * answerable on the operator's Communities screen. It costs nothing against the
+ * caps -- a lapsed request is already excluded from every count -- and it is
+ * bounded rather than indefinite, which matters because the row holds somebody's
+ * name, address and IP for a demo that does not exist.
+ */
+export const DEMO_REQUEST_RETENTION_DAYS = 7;
+
+/**
+ * How many live demos one **address** may hold.
+ *
+ * One, and it is not a second opinion about the per-IP cap -- it is the only
+ * cap that survives a client changing networks. A dual-stack visitor arriving
+ * over IPv4 once and IPv6 the next presents two addresses with nothing in
+ * common, and no amount of normalising joins them (see `normalizeIp`); so does
+ * anyone on a phone that drops to cellular. The email address is the one thing
+ * they carry between those, so it is what makes the cap bind for an ordinary
+ * person rather than only for one who stays on one connection.
+ *
+ * It is not proof against a determined abuser, who can simply use another
+ * address -- the per-IP and pool caps are what bound that. The three answer
+ * different failures and all three are cheap.
+ */
+export const MAX_LIVE_DEMOS_PER_EMAIL = 1;
+
+/**
  * How long a demo may sit untouched before its slot is taken back.
  *
  * The caps protect against abuse; this protects against indifference, which is
@@ -144,6 +180,45 @@ export interface DemoRequestResult {
 }
 
 /**
+ * Somebody who asked for a demo and has not set it up (v2-14).
+ *
+ * The operator's view of a request that has produced no community. Confirmed
+ * requests are deliberately absent: the community they made is already on the
+ * Communities list beside them, and listing both would show the same demo
+ * twice under two names.
+ */
+export interface PendingDemoRequest {
+  id: number;
+  fullName: string;
+  email: string;
+  /**
+   * The bucket the caps counted, not necessarily the address as it arrived --
+   * an IPv6 client is stored as its /64. Shown because it is the answer to
+   * "why was this person refused", which is the commonest question this screen
+   * gets opened for.
+   */
+  ipAddress: string | null;
+  requestedAt: Date;
+  expiresAt: Date;
+  /**
+   * `awaiting` while the link still works, `lapsed` once it does not.
+   *
+   * The distinction is the whole point of the screen. An awaiting request is
+   * holding a slot and may still become a demo; a lapsed one is a person who
+   * asked and never came back, which is the thing worth knowing and the thing
+   * that used to be deleted before anyone could see it.
+   */
+  status: 'awaiting' | 'lapsed';
+}
+
+/** How much of the demo pool is spoken for, and by what. */
+export interface DemoCapacity {
+  live: number;
+  awaiting: number;
+  max: number;
+}
+
+/**
  * Ephemeral per-visitor demo communities (v2-14).
  *
  * A visitor asks for a demo, confirms by email, and gets their own community at
@@ -197,24 +272,9 @@ export class DemoService {
     const lowerEmail = email.toLowerCase().trim();
     const clientIp = normalizeIp(ipAddress);
 
-    const allowed = await this.withinCaps(clientIp);
+    const allowed = await this.withinCaps(clientIp, lowerEmail);
     if (!allowed.ok) {
       this.logger.warn(`Demo request from ${clientIp ?? 'unknown IP'} refused: ${allowed.reason}`);
-      return reply;
-    }
-
-    // `demo_requests` is global, so every read and write of it is waived
-    // explicitly: there is no tenant to scope it to, which is the whole reason
-    // the model is global.
-    const existing = await runUnscoped(
-      'demo requests belong to no tenant',
-      async () =>
-        await this.prisma.demo_requests.findFirst({
-          where: { email: lowerEmail, createdTenantId: { not: null } },
-        }),
-    );
-    if (existing) {
-      this.logger.warn(`Demo request for ${lowerEmail} refused: that address already has a demo.`);
       return reply;
     }
 
@@ -266,6 +326,7 @@ export class DemoService {
 
     const allowed = await this.withinCaps(
       normalizeIp(request.ipAddress ?? undefined),
+      request.email,
       request.id,
     );
     if (!allowed.ok) {
@@ -415,11 +476,20 @@ export class DemoService {
       }
     }
 
+    // Kept past their expiry, then deleted. The link stopped working at
+    // `expiresAt` and the row stopped counting against the caps there too; what
+    // the extra week buys is the operator being able to see that somebody asked
+    // and never followed through, which is otherwise invisible. Bounded rather
+    // than indefinite: the row holds a name, an address and an IP belonging to
+    // a demo that does not exist.
+    const retentionCutoff = new Date(
+      now.getTime() - DEMO_REQUEST_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+    );
     const { count: requests } = await runUnscoped(
-      'clearing lapsed demo requests',
+      'clearing demo requests that were never confirmed',
       async () =>
         await this.prisma.demo_requests.deleteMany({
-          where: { createdTenantId: null, expiresAt: { lt: now } },
+          where: { createdTenantId: null, createdAt: { lt: retentionCutoff } },
         }),
     );
 
@@ -541,14 +611,133 @@ export class DemoService {
   }
 
   /**
-   * Both caps, checked together because both refuse the same way.
+   * Who asked for a demo and never set it up, for the system admin (v2-14).
    *
-   * The per-IP cap counts *live demos* rather than requests, which is why
-   * `demo_requests` keeps its row after confirmation: the IP is the only link
-   * between a person and the communities they have standing.
+   * The gap this closes: a request that is never confirmed creates nothing, so
+   * it appears nowhere -- not in the Communities list, which shows tenants, and
+   * not in the mail log, which shows a confirmation that went out and stops
+   * there. The operator could see that four slots were gone and had no way to
+   * see who was holding them, or whether anybody had tried and failed.
+   *
+   * Confirmed requests are excluded because the community they produced is
+   * already on the list beside this one. Ordered newest first: the recent ones
+   * are the ones someone might still act on.
+   */
+  async listPendingRequests(): Promise<{
+    capacity: DemoCapacity;
+    requests: PendingDemoRequest[];
+  }> {
+    const now = new Date();
+
+    const [live, rows] = await runUnscoped(
+      'the system admin reviewing demo requests across the deployment',
+      async () =>
+        await Promise.all([
+          this.prisma.tenants.count({ where: { isDemo: true } }),
+          this.prisma.demo_requests.findMany({
+            where: { createdTenantId: null },
+            orderBy: { createdAt: 'desc' },
+            // Never the password hash or the token. The hash is nobody's
+            // business, and the token is a live credential -- serving it would
+            // let anyone who could read this screen set up somebody else's demo
+            // with a password only that person knows.
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              ipAddress: true,
+              createdAt: true,
+              expiresAt: true,
+            },
+          }),
+        ]),
+    );
+
+    const requests: PendingDemoRequest[] = rows.map((r) => ({
+      id: r.id,
+      fullName: r.fullName,
+      email: r.email,
+      ipAddress: r.ipAddress,
+      requestedAt: r.createdAt,
+      expiresAt: r.expiresAt,
+      status: r.expiresAt.getTime() > now.getTime() ? 'awaiting' : 'lapsed',
+    }));
+
+    return {
+      capacity: {
+        live,
+        awaiting: requests.filter((r) => r.status === 'awaiting').length,
+        max: MAX_LIVE_DEMOS,
+      },
+      requests,
+    };
+  }
+
+  /**
+   * Withdraws one unconfirmed request, freeing its slot (v2-14).
+   *
+   * The action that makes the list above worth more than a report. A pool full
+   * of requests nobody clicked closes the demo to everyone for a day, and the
+   * sweep that would clear them runs once a day -- so without this the
+   * operator's only recourse is to wait, or to edit the database.
+   *
+   * **Refuses a confirmed request** rather than deleting it. The row is what
+   * ties an address and an IP to a live demo, so removing it would hand that
+   * person's caps back while their community still stands; deleting the
+   * community is the way to do that, and it takes this row with it by cascade.
+   */
+  async cancelRequest(id: number): Promise<PendingDemoRequest> {
+    const row = await runUnscoped(
+      'the system admin withdrawing a demo request',
+      async () => await this.prisma.demo_requests.findUnique({ where: { id } }),
+    );
+    if (!row) throw new NotFoundException('No such demo request');
+    if (row.createdTenantId) {
+      throw new BadRequestException(
+        'That request already created a demo. Delete the community instead.',
+      );
+    }
+
+    await runUnscoped(
+      'the system admin withdrawing a demo request',
+      async () => await this.prisma.demo_requests.delete({ where: { id } }),
+    );
+    this.logger.log(`Demo request from ${row.email} withdrawn by the system admin.`);
+
+    return {
+      id: row.id,
+      fullName: row.fullName,
+      email: row.email,
+      ipAddress: row.ipAddress,
+      requestedAt: row.createdAt,
+      expiresAt: row.expiresAt,
+      status: row.expiresAt.getTime() > Date.now() ? 'awaiting' : 'lapsed',
+    };
+  }
+
+  /**
+   * All three caps, checked together because all three refuse the same way.
+   *
+   * The per-IP and per-email caps count *live demos and unlapsed requests*
+   * rather than tenants, which is why `demo_requests` keeps its row after
+   * confirmation: it is the only link between a person and the communities they
+   * have standing.
+   *
+   * **The email cap is what makes the per-IP cap survive a change of network.**
+   * An IPv4 and an IPv6 address for the same client have nothing in common, so
+   * a dual-stack visitor -- or anyone whose phone drops to cellular -- presents
+   * as two clients and gets two allowances. The address they type is the one
+   * identifier that crosses that, so it carries a cap of its own.
+   *
+   * It also closes a race the old placement could not. The email was checked in
+   * `requestDemo` only, and only against demos that already existed, so two
+   * requests from one address could both sit pending and both confirm. Checked
+   * here it is re-asked at confirmation like the other two, counting pending
+   * requests as well as live demos.
    */
   private async withinCaps(
     ipAddress: string | undefined,
+    email: string,
     excludeRequestId?: number,
   ): Promise<{ ok: true } | { ok: false; reason: string }> {
     // `excludeRequestId` is the request being confirmed, and leaving it out is
@@ -582,17 +771,27 @@ export class DemoService {
     // slots.
     if (live + pending >= MAX_LIVE_DEMOS) return { ok: false, reason: 'pool_full' };
 
+    // "Standing" is the same shape for both of the next two counts: a request
+    // that produced a demo, or one whose link has not lapsed yet. A lapsed
+    // request counts for nothing, which is what lets somebody who never clicked
+    // ask again.
+    const standing = {
+      OR: [{ createdTenantId: { not: null } }, { expiresAt: { gt: now } }],
+      ...notThisOne,
+    };
+
+    const fromThisEmail = await runUnscoped(
+      'counting this address against the per-email cap',
+      async () =>
+        await this.prisma.demo_requests.count({ where: { email, ...standing } }),
+    );
+    if (fromThisEmail >= MAX_LIVE_DEMOS_PER_EMAIL) return { ok: false, reason: 'email_limit' };
+
     if (ipAddress) {
       const fromThisIp = await runUnscoped(
         'counting this address against the per-IP cap',
         async () =>
-          await this.prisma.demo_requests.count({
-            where: {
-              ipAddress,
-              OR: [{ createdTenantId: { not: null } }, { expiresAt: { gt: now } }],
-              ...notThisOne,
-            },
-          }),
+          await this.prisma.demo_requests.count({ where: { ipAddress, ...standing } }),
       );
       if (fromThisIp >= MAX_LIVE_DEMOS_PER_IP) return { ok: false, reason: 'ip_limit' };
     }

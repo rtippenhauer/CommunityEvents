@@ -6,6 +6,7 @@ import { runUnscoped, runWithTenant } from '../src/common/tenant/tenant-store';
 import {
   DemoService,
   DEMO_IDLE_HOURS,
+  DEMO_REQUEST_RETENTION_DAYS,
   MAX_LIVE_DEMOS,
   MAX_LIVE_DEMOS_PER_IP,
 } from '../src/modules/demo/demo.service';
@@ -288,6 +289,207 @@ describe('Demo tenants (e2e)', () => {
       expect(res.status).toBe(400);
       expect(res.body.reason).toBe('pool_full');
     });
+
+    /**
+     * The per-email cap, which is what makes the per-IP cap survive a change of
+     * network.
+     *
+     * An IPv4 and an IPv6 address for one client have nothing in common, so a
+     * dual-stack visitor gets two IP allowances and nothing can join them. The
+     * address they type is the one identifier that crosses that.
+     */
+    describe('per address', () => {
+      it('gives one address one demo, however the request arrives', async () => {
+        await demoService.requestDemo('Dual Stack', 'dual@example.test', 'V1sitorPassw0rd!', '198.51.100.7');
+        await confirm(await tokenFor('dual@example.test'));
+
+        // Same person, same address, an IPv6 connection this time -- a
+        // different bucket as far as the IP cap can tell.
+        await demoService.requestDemo(
+          'Dual Stack',
+          'dual@example.test',
+          'V1sitorPassw0rd!',
+          '2600:2b00:945e:9000:4493:648f:ebe2:248d',
+        );
+
+        const rows = await unscoped('counting that address', () =>
+          prisma.demo_requests.count({ where: { email: 'dual@example.test' } }),
+        );
+        expect(rows).toBe(1);
+      });
+
+      /**
+       * The race the old placement could not close: the email was checked in
+       * `requestDemo` only, and only against demos that already existed, so two
+       * requests from one address could both sit pending and both confirm.
+       */
+      it('refuses a second pending request from the same address', async () => {
+        await demoService.requestDemo('Eager', 'eager@example.test', 'V1sitorPassw0rd!', '198.51.100.8');
+        await demoService.requestDemo('Eager', 'eager@example.test', 'V1sitorPassw0rd!', '198.51.100.9');
+
+        expect(
+          await unscoped('counting that address', () =>
+            prisma.demo_requests.count({ where: { email: 'eager@example.test' } }),
+          ),
+        ).toBe(1);
+      });
+
+      // Case is not an identity: two spellings of one mailbox must not be two
+      // allowances. Requests are stored lower-cased, so the cap query finds
+      // them both.
+      it('treats two spellings of one address as one', async () => {
+        await demoService.requestDemo('Shouty', 'Mixed.Case@Example.Test', 'V1sitorPassw0rd!', '198.51.100.10');
+        await demoService.requestDemo('Shouty', 'mixed.case@example.test', 'V1sitorPassw0rd!', '198.51.100.11');
+
+        expect(await unscoped('counting', () => prisma.demo_requests.count())).toBe(1);
+      });
+
+      // A request nobody ever confirmed frees the address again: it holds no
+      // slot, so refusing them would be punishing somebody for a link they
+      // never clicked.
+      it('lets an address try again once its link has lapsed', async () => {
+        await demoService.requestDemo('Second Thoughts', 'retry@example.test', 'V1sitorPassw0rd!', '198.51.100.12');
+        await unscoped('lapsing the link', () =>
+          prisma.demo_requests.updateMany({
+            where: { createdTenantId: null },
+            data: { expiresAt: new Date(Date.now() - 1000) },
+          }),
+        );
+
+        await demoService.requestDemo('Second Thoughts', 'retry@example.test', 'V1sitorPassw0rd!', '198.51.100.12');
+
+        expect(
+          await unscoped('counting', () =>
+            prisma.demo_requests.count({
+              where: { email: 'retry@example.test', expiresAt: { gt: new Date() } },
+            }),
+          ),
+        ).toBe(1);
+      });
+
+      // Re-checked at confirmation like the other two caps, not trusted from
+      // request time.
+      it('refuses at confirmation if the address gained a demo meanwhile', async () => {
+        await demoService.requestDemo('Twice', 'twice@example.test', 'V1sitorPassw0rd!', '198.51.100.13');
+        const token = await tokenFor('twice@example.test');
+
+        // A demo appears for that address behind their back -- the shape a
+        // second pending request would have had before the cap moved.
+        await unscoped('creating a rival demo for the same address', async () => {
+          const rival = await prisma.tenants.create({
+            data: {
+              slug: 'rival',
+              domain: 'rival.example.test',
+              isDemo: true,
+              demoExpiresAt: new Date(Date.now() + 86_400_000),
+            },
+          });
+          await prisma.demo_requests.create({
+            data: {
+              email: 'twice@example.test',
+              fullName: 'Twice',
+              passwordHash: 'x',
+              token: 'rival-token',
+              expiresAt: new Date(Date.now() + 86_400_000),
+              createdTenantId: rival.id,
+              confirmedAt: new Date(),
+            },
+          });
+        });
+
+        const res = await confirm(token);
+        expect(res.status).toBe(400);
+        expect(res.body.reason).toBe('email_limit');
+      });
+    });
+  });
+
+  /**
+   * Who asked for a demo and never set it up (v2-14).
+   *
+   * The gap: an unconfirmed request creates nothing, so it appeared on no
+   * screen while still holding a slot. The operator could see four slots gone
+   * and had no way to see who held them.
+   */
+  describe('the operator view of pending requests', () => {
+    it('lists a request that has not been confirmed', async () => {
+      await askForDemo('waiting@example.test');
+
+      const { capacity, requests } = await demoService.listPendingRequests();
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0].email).toBe('waiting@example.test');
+      expect(requests[0].status).toBe('awaiting');
+      expect(capacity).toEqual({ live: 0, awaiting: 1, max: MAX_LIVE_DEMOS });
+    });
+
+    // The community it produced is already on the Communities list; showing
+    // the request too would show one demo twice under two names.
+    it('drops a request once it has become a community', async () => {
+      await askForDemo('done@example.test');
+      await confirm(await tokenFor('done@example.test'));
+
+      const { capacity, requests } = await demoService.listPendingRequests();
+
+      expect(requests).toHaveLength(0);
+      expect(capacity.live).toBe(1);
+    });
+
+    /**
+     * The token is a live credential: serving it would let anyone who can read
+     * this screen set up somebody else's demo, on an address they do not own,
+     * with a password only that person knows.
+     */
+    it('never serves the token or the password hash', async () => {
+      await askForDemo('secret@example.test');
+
+      const { requests } = await demoService.listPendingRequests();
+
+      expect(Object.keys(requests[0])).not.toContain('token');
+      expect(Object.keys(requests[0])).not.toContain('passwordHash');
+      expect(JSON.stringify(requests[0])).not.toContain('V1sitorPassw0rd');
+    });
+
+    it('withdraws a request and frees its slot', async () => {
+      await askForDemo('withdrawn@example.test');
+
+      await demoService.cancelRequest(
+        (await demoService.listPendingRequests()).requests[0].id,
+      );
+
+      const after = await demoService.listPendingRequests();
+      expect(after.requests).toHaveLength(0);
+      expect(after.capacity.awaiting).toBe(0);
+      // And the address may ask again, which is the point of freeing it.
+      await demoService.requestDemo('Again', 'withdrawn@example.test', 'V1sitorPassw0rd!', '198.51.100.20');
+      expect((await demoService.listPendingRequests()).requests).toHaveLength(1);
+    });
+
+    /**
+     * The row is what ties an address and an IP to a live demo, so deleting it
+     * would hand the caps back while the community still stands. Deleting the
+     * community is the way to do that, and it takes this row by cascade.
+     */
+    it('refuses to withdraw a request that already made a demo', async () => {
+      await askForDemo('built@example.test');
+      await confirm(await tokenFor('built@example.test'));
+      const row = await unscoped('finding the confirmed request', () =>
+        prisma.demo_requests.findFirst({ where: { createdTenantId: { not: null } } }),
+      );
+
+      await expect(demoService.cancelRequest(row!.id)).rejects.toThrow();
+      expect(await unscoped('counting', () => prisma.demo_requests.count())).toBe(1);
+    });
+
+    // The route is system-admin only: it lists real names, addresses and IPs
+    // belonging to people who are not members of any community here.
+    it('is refused to an anonymous caller', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/system/demo-requests')
+        .set('Host', TEST_TENANT_DOMAIN);
+
+      expect(res.status).toBe(401);
+    });
   });
 
   describe('a demo cannot send mail', () => {
@@ -482,9 +684,16 @@ describe('Demo tenants (e2e)', () => {
       ).toBe(1);
     });
 
-    it('clears lapsed unconfirmed requests so they stop holding slots', async () => {
+    /**
+     * A lapsed request stops holding a slot at `expiresAt` but is KEPT, so the
+     * operator can see that somebody asked and never followed through. Deleting
+     * it at expiry -- which is what this used to do -- made that unanswerable:
+     * the sweep runs daily and the link lives a day, so in practice there was
+     * never anything left to look at.
+     */
+    it('keeps a lapsed request, but stops it holding a slot', async () => {
       await askForDemo('abandoned@example.test');
-      await unscoped('ageing the request', () =>
+      await unscoped('lapsing the link', () =>
         prisma.demo_requests.updateMany({
           where: { createdTenantId: null },
           data: { expiresAt: new Date(Date.now() - 1000) },
@@ -493,8 +702,54 @@ describe('Demo tenants (e2e)', () => {
 
       const result = await demoService.deleteExpired();
 
+      expect(result.requests).toBe(0);
+      expect(await unscoped('counting', () => prisma.demo_requests.count())).toBe(1);
+
+      // Still visible to the operator, and marked as what it is.
+      const { capacity, requests } = await demoService.listPendingRequests();
+      expect(requests).toHaveLength(1);
+      expect(requests[0].status).toBe('lapsed');
+      // And counted against nothing: the slot is genuinely free again.
+      expect(capacity.awaiting).toBe(0);
+    });
+
+    it(`deletes an unconfirmed request after ${DEMO_REQUEST_RETENTION_DAYS} days`, async () => {
+      await askForDemo('longgone@example.test');
+      await unscoped('ageing the request past its retention', () =>
+        prisma.demo_requests.updateMany({
+          where: { createdTenantId: null },
+          data: {
+            createdAt: new Date(
+              Date.now() - (DEMO_REQUEST_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000,
+            ),
+            expiresAt: new Date(Date.now() - 1000),
+          },
+        }),
+      );
+
+      const result = await demoService.deleteExpired();
+
       expect(result.requests).toBe(1);
       expect(await unscoped('counting', () => prisma.demo_requests.count())).toBe(0);
+    });
+
+    // The retention sweep must never touch a request that produced a live
+    // demo: that row is what ties an address and an IP to the community, and
+    // removing it hands the caps back while the demo still stands.
+    it('leaves a confirmed request alone however old it is', async () => {
+      await askForDemo('settled@example.test');
+      await confirm(await tokenFor('settled@example.test'));
+      await unscoped('ageing it well past retention', () =>
+        prisma.demo_requests.updateMany({
+          where: { createdTenantId: { not: null } },
+          data: { createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) },
+        }),
+      );
+
+      const result = await demoService.deleteExpired();
+
+      expect(result.requests).toBe(0);
+      expect(await unscoped('counting', () => prisma.demo_requests.count())).toBe(1);
     });
   });
 

@@ -9,13 +9,22 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { AdminTenant, TenantsAdminService } from '../../../core/services/tenants-admin.service';
+import {
+  AdminTenant,
+  DemoRequestList,
+  PendingDemoRequest,
+  TenantsAdminService,
+} from '../../../core/services/tenants-admin.service';
 import {
   TenantFormDialogComponent,
   TenantFormDialogData,
 } from './tenant-form-dialog.component';
 import { TenantDeleteDialogComponent } from './tenant-delete-dialog.component';
 import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+} from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 
 /**
  * The tenant registry, for the system admin (REQ-TENANT-01.7).
@@ -209,6 +218,60 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
             deployment — but its domain still needs DNS and a reverse-proxy entry pointing here.
           </p>
         }
+
+        <!-- Only where demos are actually in play. On a deployment nobody has
+             asked for one this is furniture explaining a feature that is not
+             being used. -->
+        @if (demoRequests().length > 0 || demoCount() > 0) {
+          <section class="demo-requests">
+            <h3>Demo requests</h3>
+            <p class="subtitle">
+              People who asked for a demo. A request creates nothing until its link is followed, so
+              these hold a slot without appearing above.
+              <strong
+                >{{ capacity().live + capacity().awaiting }} of {{ capacity().max }} slots in
+                use</strong
+              >
+              — {{ capacity().live }} set up, {{ capacity().awaiting }} awaiting confirmation.
+            </p>
+
+            @if (demoRequests().length === 0) {
+              <p class="single-note">No requests are outstanding.</p>
+            } @else {
+              <div class="request-list" role="list">
+                @for (req of demoRequests(); track req.id) {
+                  <div class="request-row" role="listitem" [class.lapsed]="req.status === 'lapsed'">
+                    <div class="identity">
+                      <div class="name-line">
+                        <span class="slug">{{ req.fullName }}</span>
+                        <mat-chip
+                          [class.chip-awaiting]="req.status === 'awaiting'"
+                          [class.chip-lapsed]="req.status === 'lapsed'"
+                        >
+                          {{ req.status === 'awaiting' ? 'Awaiting confirmation' : 'Never confirmed' }}
+                        </mat-chip>
+                      </div>
+                      <span class="domain">{{ req.email }}</span>
+                      <span class="last-used">{{ requestLabel(req) }}</span>
+                    </div>
+
+                    <div class="actions">
+                      <button
+                        mat-icon-button
+                        class="delete-btn"
+                        (click)="cancelRequest(req)"
+                        [attr.aria-label]="'Withdraw the demo request from ' + req.email"
+                        matTooltip="Withdraw this request and free its slot"
+                      >
+                        <mat-icon>delete_forever</mat-icon>
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </section>
+        }
       }
     </div>
   `,
@@ -380,6 +443,61 @@ import { TenantUsersDialogComponent } from './tenant-users-dialog.component';
         color: rgba(0, 0, 0, 0.6);
       }
 
+      /* Deliberately the same row shape as a community above, because it is
+         the same kind of thing at an earlier stage -- somebody who will have a
+         demo, or who was going to. Set apart by a heading and a lighter ground
+         rather than by a different layout, so the eye does not have to learn a
+         second list. */
+      .demo-requests {
+        margin-top: 28px;
+      }
+      .demo-requests h3 {
+        margin: 0;
+        font-size: 15px;
+      }
+      .demo-requests .subtitle {
+        margin: 4px 0 12px;
+      }
+      .request-list {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--ce-rule);
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--ce-surface);
+      }
+      .request-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--ce-rule);
+      }
+      .request-row:last-child {
+        border-bottom: none;
+      }
+      /* A request nobody acted on is history, not work: recessed so the
+         awaiting ones -- the only ones still holding a slot -- read first. */
+      .request-row.lapsed {
+        background: var(--ce-surface-variant);
+      }
+      .request-row.lapsed .slug,
+      .request-row.lapsed .domain {
+        color: var(--ce-text-muted);
+      }
+      .chip-awaiting,
+      .chip-lapsed {
+        font-size: 11px !important;
+        min-height: 22px !important;
+        padding: 0 8px !important;
+      }
+      .chip-awaiting {
+        background: #d7ccef !important;
+      }
+      .chip-lapsed {
+        background: #e4e4e4 !important;
+      }
+
       @media (max-width: 700px) {
         .tenants-header {
           flex-direction: column;
@@ -406,6 +524,16 @@ export class AdminTenantsComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly tenants = signal<AdminTenant[]>([]);
+
+  /**
+   * Demo requests that produced no community, and how full the pool is.
+   *
+   * Loaded alongside the registry rather than behind a tab: the question these
+   * answer -- "why are there no slots free" -- is asked while looking at the
+   * list of demos, and a second click away is a screen nobody finds.
+   */
+  readonly demoRequests = signal<PendingDemoRequest[]>([]);
+  readonly capacity = signal<DemoRequestList['capacity']>({ live: 0, awaiting: 0, max: 0 });
 
   /**
    * Which communities to show, and in what order.
@@ -490,6 +618,26 @@ export class AdminTenantsComponent implements OnInit {
         this.snackBar.open('Could not load communities', 'OK', { duration: 5000 });
       },
     });
+    this.loadDemoRequests();
+  }
+
+  /**
+   * Fetched separately and failing quietly.
+   *
+   * The registry is the screen; the demo requests are a footnote to it. A
+   * failure here leaves the section unrendered rather than blanking the list
+   * of communities or raising a second error toast beside the first.
+   */
+  private loadDemoRequests(): void {
+    this.tenantsAdminService.getDemoRequests().subscribe({
+      next: (res) => {
+        this.demoRequests.set(res.requests);
+        this.capacity.set(res.capacity);
+      },
+      error: () => {
+        this.demoRequests.set([]);
+      },
+    });
   }
 
   openCreate(): void {
@@ -521,6 +669,67 @@ export class AdminTenantsComponent implements OnInit {
     const when = new Date(tenant.demoExpiresAt);
     if (Number.isNaN(when.getTime())) return 'Demo';
     return `Demo — expires ${when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
+  }
+
+  /**
+   * "Asked 2 hours ago — link expires in 22 hours", or "— link expired".
+   *
+   * Both halves matter and they are different questions. When they asked says
+   * whether this is somebody currently trying to get in; whether the link is
+   * still good says whether the request is holding a slot.
+   */
+  requestLabel(req: PendingDemoRequest): string {
+    const asked = new Date(req.requestedAt).getTime();
+    const when = Number.isNaN(asked) ? 'Requested' : `Asked ${this.ago(asked)}`;
+    if (req.status === 'lapsed') return `${when} — link expired`;
+
+    const left = new Date(req.expiresAt).getTime() - Date.now();
+    if (Number.isNaN(left)) return when;
+    const hours = Math.max(1, Math.round(left / 3_600_000));
+    return `${when} — link expires in ${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+
+  /** Relative and coarse: this is a "roughly when", not a timestamp. */
+  private ago(at: number): string {
+    const minutes = Math.floor((Date.now() - at) / 60_000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    const days = Math.floor(hours / 24);
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+  }
+
+  /**
+   * Withdraws one request, freeing its slot.
+   *
+   * Confirmed, but not behind a retyped anything: what goes is a row and an
+   * unused link, and the person can ask again. Reloads everything afterwards
+   * because the slot count on both sections moves.
+   */
+  cancelRequest(req: PendingDemoRequest): void {
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        data: {
+          title: 'Withdraw this demo request?',
+          message:
+            `${req.email} asked for a demo and has not set it up. Withdrawing frees the slot ` +
+            `and stops their link working. They can ask again.`,
+          confirmLabel: 'Withdraw',
+          confirmColor: 'warn',
+        } satisfies ConfirmDialogData,
+      })
+      .afterClosed()
+      .subscribe((confirmed?: boolean) => {
+        if (!confirmed) return;
+        this.tenantsAdminService.cancelDemoRequest(req.id).subscribe({
+          next: () => {
+            this.snackBar.open('Demo request withdrawn', 'OK', { duration: 4000 });
+            this.load();
+          },
+          error: () => this.snackBar.open('Could not withdraw that request', 'OK', { duration: 5000 }),
+        });
+      });
   }
 
   openDelete(tenant: AdminTenant): void {

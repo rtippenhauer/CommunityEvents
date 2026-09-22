@@ -3,7 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { AdminTenantsComponent } from './admin-tenants.component';
-import { AdminTenant } from '../../../core/services/tenants-admin.service';
+import {
+  AdminTenant,
+  PendingDemoRequest,
+} from '../../../core/services/tenants-admin.service';
 
 /**
  * Filtering and ordering the community registry (v2-14).
@@ -122,6 +125,71 @@ describe('AdminTenantsComponent list controls', () => {
       expect(component.lastUsedLabel(tenant({ lastActiveAt: day(0) }))).toBe('Active today');
       expect(component.lastUsedLabel(tenant({ lastActiveAt: day(-1) }))).toBe('Active yesterday');
       expect(component.lastUsedLabel(tenant({ lastActiveAt: day(-9) }))).toBe('Active 9 days ago');
+    });
+  });
+
+  /**
+   * Demo requests that produced no community (v2-14).
+   *
+   * The label carries two different facts and the operator needs both: when
+   * somebody asked says whether this is a person currently trying to get in,
+   * and whether the link still works says whether the request is holding a
+   * slot.
+   */
+  describe('requestLabel', () => {
+    const hour = 3_600_000;
+    const req = (over: Partial<PendingDemoRequest>): PendingDemoRequest => ({
+      id: 1,
+      fullName: 'Casual Visitor',
+      email: 'visitor@example.test',
+      ipAddress: '203.0.113.4',
+      requestedAt: new Date(Date.now() - 2 * hour).toISOString(),
+      expiresAt: new Date(Date.now() + 22 * hour).toISOString(),
+      status: 'awaiting',
+      ...over,
+    });
+
+    it('says when they asked and how long the link has left', () => {
+      expect(component.requestLabel(req({}))).toBe('Asked 2 hours ago — link expires in 22 hours');
+    });
+
+    it('says the link is gone rather than counting down past zero', () => {
+      const label = component.requestLabel(
+        req({ status: 'lapsed', expiresAt: new Date(Date.now() - hour).toISOString() }),
+      );
+      expect(label).toBe('Asked 2 hours ago — link expired');
+    });
+
+    // Minutes and days, because a request made four minutes ago and one made
+    // four days ago mean opposite things and "0 hours" says neither.
+    it('scales the unit to the age', () => {
+      expect(component.requestLabel(req({ requestedAt: new Date().toISOString() }))).toContain(
+        'just now',
+      );
+      expect(
+        component.requestLabel(
+          req({ requestedAt: new Date(Date.now() - 4 * 60_000).toISOString() }),
+        ),
+      ).toContain('4 minutes ago');
+      expect(
+        component.requestLabel(
+          req({
+            requestedAt: new Date(Date.now() - 4 * 24 * hour).toISOString(),
+            status: 'lapsed',
+          }),
+        ),
+      ).toContain('4 days ago');
+    });
+
+    it('does not say "1 hours"', () => {
+      expect(
+        component.requestLabel(
+          req({
+            requestedAt: new Date(Date.now() - hour).toISOString(),
+            expiresAt: new Date(Date.now() + hour).toISOString(),
+          }),
+        ),
+      ).toBe('Asked 1 hour ago — link expires in 1 hour');
     });
   });
 });
