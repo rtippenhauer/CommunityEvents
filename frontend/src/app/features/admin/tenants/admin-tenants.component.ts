@@ -252,7 +252,17 @@ import {
                         </mat-chip>
                       </div>
                       <span class="domain">{{ req.email }}</span>
-                      <span class="last-used">{{ requestLabel(req) }}</span>
+                      <span class="last-used">
+                        {{ requestLabel(req) }}
+                        <!-- The bucket the caps actually counted, not the
+                             address as it arrived: an IPv6 client is stored as
+                             its /64, because privacy extensions rotate the host
+                             half hourly. Shown because "why was this person
+                             refused" is the commonest reason to open this. -->
+                        <span class="client-ip" [matTooltip]="ipTooltip(req)">{{
+                          ipLabel(req)
+                        }}</span>
+                      </span>
                     </div>
 
                     <div class="actions">
@@ -497,6 +507,18 @@ import {
       .chip-lapsed {
         background: #e4e4e4 !important;
       }
+      /* Monospace and set off by a separator: an address is read character by
+         character when two are being compared, which is the whole reason it is
+         on screen. */
+      .client-ip {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11.5px;
+        color: var(--ce-text-muted);
+      }
+      .client-ip::before {
+        content: '·';
+        margin: 0 5px;
+      }
 
       @media (max-width: 700px) {
         .tenants-header {
@@ -687,6 +709,35 @@ export class AdminTenantsComponent implements OnInit {
     if (Number.isNaN(left)) return when;
     const hours = Math.max(1, Math.round(left / 3_600_000));
     return `${when} — link expires in ${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+
+  /**
+   * The address the caps counted this request under.
+   *
+   * Not always the address the request arrived from, and the difference is
+   * worth being honest about on screen: an IPv6 client is stored as its /64,
+   * because privacy extensions hand it a fresh host portion as often as hourly
+   * and counting the whole address would mean the cap never binds. What is
+   * shown is therefore the bucket, which is what an operator comparing two
+   * refusals needs.
+   *
+   * A missing address is said plainly rather than left blank — blank reads as
+   * a rendering fault, and "no address recorded" is a real state: a request
+   * that reached the API with no usable client IP is counted against the pool
+   * cap only.
+   */
+  ipLabel(req: PendingDemoRequest): string {
+    if (!req.ipAddress) return 'no address recorded';
+    return req.ipAddress.endsWith('::') ? `${req.ipAddress}/64` : req.ipAddress;
+  }
+
+  ipTooltip(req: PendingDemoRequest): string {
+    if (!req.ipAddress) {
+      return 'This request arrived with no usable client address, so only the total pool cap applied to it.';
+    }
+    return req.ipAddress.endsWith('::')
+      ? 'The IPv6 allocation this request came from. Addresses within it rotate, so the cap counts the /64 rather than the single address.'
+      : 'The address this request came from, as the per-IP cap counted it.';
   }
 
   /** Relative and coarse: this is a "roughly when", not a timestamp. */

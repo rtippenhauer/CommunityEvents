@@ -181,6 +181,31 @@ describe('AdminTenantsComponent list controls', () => {
       ).toContain('4 days ago');
     });
 
+    /**
+     * The address is on screen so two refusals can be compared, which means
+     * what is shown has to be the bucket the cap counted -- an IPv6 client is
+     * stored as its /64 -- rather than something that looks like a single
+     * address and is not.
+     */
+    describe('ipLabel', () => {
+      it('shows an IPv4 address as it was counted', () => {
+        expect(component.ipLabel(req({ ipAddress: '74.115.41.25' }))).toBe('74.115.41.25');
+      });
+
+      it('marks an IPv6 bucket as the prefix it is', () => {
+        expect(component.ipLabel(req({ ipAddress: '2600:2b00:945e:9000::' }))).toBe(
+          '2600:2b00:945e:9000::/64',
+        );
+      });
+
+      // Blank reads as a rendering fault; this is a real state, and it changes
+      // which caps applied.
+      it('says so when no address was recorded', () => {
+        expect(component.ipLabel(req({ ipAddress: null }))).toBe('no address recorded');
+        expect(component.ipTooltip(req({ ipAddress: null }))).toContain('pool cap');
+      });
+    });
+
     it('does not say "1 hours"', () => {
       expect(
         component.requestLabel(
