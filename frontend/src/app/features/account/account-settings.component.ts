@@ -736,12 +736,19 @@ export class AccountSettingsComponent implements OnInit {
     if (params.get('linked') !== 'google') return;
 
     const error = params.get('error');
+    // `mismatch` and `no_email` are refusals the member can act on, so they say
+    // what to do instead of "please try again" — a Google account may only be
+    // connected to the account with the same email address.
     const message =
       error === 'taken'
         ? 'That Google account is already connected to another member here.'
-        : error
-          ? 'Could not connect Google. Please try again.'
-          : 'Google account connected!';
+        : error === 'mismatch'
+          ? 'That Google account uses a different email address than this account. Connect the Google account with the same address.'
+          : error === 'no_email'
+            ? 'Google did not share an email address, so it cannot be connected to this account.'
+            : error
+              ? 'Could not connect Google. Please try again.'
+              : 'Google account connected!';
 
     this.snackBar.open(message, 'OK', { duration: error ? 5000 : 3000 });
     history.replaceState(null, '', window.location.pathname);

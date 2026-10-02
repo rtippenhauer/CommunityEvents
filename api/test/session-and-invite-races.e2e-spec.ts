@@ -4,6 +4,7 @@ import { createTestApp, truncateAllTables, resetThrottler, TEST_TENANT_DOMAIN } 
 import { seedCity, seedUser, loginAs } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { AuthService } from '../src/modules/auth/auth.service';
+import { EmailService } from '../src/modules/email/email.service';
 import { InvitesService } from '../src/modules/invites/invites.service';
 import { runUnscoped } from '../src/common/tenant/tenant-store';
 import { InviteType, UserRole } from '../src/database/enums';
@@ -255,6 +256,177 @@ describe('Session revocation and invite races (e2e)', () => {
       expect(after!.useCount).toBe(2);
       // Never marked spent, because there is no limit to reach.
       expect(after!.redeemedAt).toBeNull();
+    });
+  });
+
+  /**
+   * A provider account may only be attached to the account with the same email
+   * address (Rob, 2026-10-02).
+   *
+   * Linking compared nothing before this: the provider's address was stored and
+   * never checked against `users.email`. Since sign-in resolves on `providerId`
+   * alone with no password in the path, a link is a second permanent credential
+   * — so anyone holding a session could attach their own Google account and keep
+   * access through a password reset. Rob found it by asking whether a reset
+   * actually evicts somebody who authenticated before it.
+   */
+  describe('linking a provider requires a matching address', () => {
+    const PROVIDER_ID = 'google-abc-123';
+
+    it('allows a link when the addresses match', async () => {
+      const user = await seedUser(prisma, city.id, { email: 'same@example.test' });
+
+      await authService.linkGoogle(user.id, PROVIDER_ID, 'same@example.test');
+
+      const link = await unscoped('reading the link', () =>
+        prisma.oauth_accounts.findFirst({ where: { userId: user.id } }),
+      );
+      expect(link).not.toBeNull();
+      expect(link!.providerId).toBe(PROVIDER_ID);
+    });
+
+    it('is case- and whitespace-insensitive about the match', async () => {
+      const user = await seedUser(prisma, city.id, { email: 'casing@example.test' });
+
+      await authService.linkGoogle(user.id, PROVIDER_ID, '  Casing@Example.Test  ');
+
+      expect(
+        await unscoped('counting links', () =>
+          prisma.oauth_accounts.count({ where: { userId: user.id } }),
+        ),
+      ).toBe(1);
+    });
+
+    /**
+     * The attack this closes, end to end: the attacker holds the password, so
+     * they hold a session, and the one thing they must not be able to do is
+     * leave a credential of their own behind.
+     */
+    it('refuses a provider account on a different address', async () => {
+      const victim = await seedUser(prisma, city.id, { email: 'victim@example.test' });
+
+      await expect(
+        authService.linkGoogle(victim.id, 'attacker-google-id', 'attacker@evil.test'),
+      ).rejects.toMatchObject({ response: { reason: 'provider_email_mismatch' } });
+
+      expect(
+        await unscoped('counting links', () =>
+          prisma.oauth_accounts.count({ where: { userId: victim.id } }),
+        ),
+      ).toBe(0);
+    });
+
+    /**
+     * Fails closed. Facebook does not always return an address, and "nothing to
+     * compare" must not read as "allowed" — that is exactly where somebody would
+     * aim by dropping the email scope.
+     */
+    it('refuses when the provider shared no address at all', async () => {
+      const user = await seedUser(prisma, city.id, { email: 'noemail@example.test' });
+
+      await expect(
+        authService.linkFacebook(user.id, 'fb-id-1', null, null),
+      ).rejects.toMatchObject({ response: { reason: 'provider_email_missing' } });
+
+      expect(
+        await unscoped('counting links', () =>
+          prisma.oauth_accounts.count({ where: { userId: user.id } }),
+        ),
+      ).toBe(0);
+    });
+
+    // Facebook follows the same rule as Google. The codebase has twice had to
+    // fix an asymmetry where one provider enforced something the other did not.
+    it('applies to Facebook as well', async () => {
+      const user = await seedUser(prisma, city.id, { email: 'fb@example.test' });
+
+      await expect(
+        authService.linkFacebook(user.id, 'fb-id-2', 'other@example.test', null),
+      ).rejects.toMatchObject({ response: { reason: 'provider_email_mismatch' } });
+
+      await authService.linkFacebook(user.id, 'fb-id-2', 'fb@example.test', null);
+      expect(
+        await unscoped('counting links', () =>
+          prisma.oauth_accounts.count({ where: { userId: user.id } }),
+        ),
+      ).toBe(1);
+    });
+
+    // The pre-existing guard still works and is still reported differently: a
+    // provider account already attached elsewhere is a conflict, not a mismatch.
+    it('still refuses a provider account attached to somebody else', async () => {
+      const first = await seedUser(prisma, city.id, { email: 'first@example.test' });
+      const second = await seedUser(prisma, city.id, { email: 'second@example.test' });
+
+      await authService.linkGoogle(first.id, 'shared-google-id', 'first@example.test');
+
+      await expect(
+        authService.linkGoogle(second.id, 'shared-google-id', 'second@example.test'),
+      ).rejects.toThrow(/already linked/i);
+    });
+  });
+
+  /**
+   * A password change now says so by email (Rob, 2026-10-02).
+   *
+   * A reset is self-announcing — the member asked for it and the link arrived in
+   * their own mailbox — but a change involved no mail at all, so somebody whose
+   * password was changed by a person holding their session had no signal
+   * whatsoever. This notice is the only one that reaches an address the person
+   * making the change may not control.
+   */
+  describe('a password change is announced by email', () => {
+    const changePassword = async (email: string) => {
+      const user = await seedUser(prisma, city.id, {
+        email,
+        passwordHash: await bcrypt.hash('OldPassw0rd!x', 12),
+      });
+      await authService.changePassword(user.id, 'OldPassw0rd!x', 'NewPassw0rd!x');
+      return user;
+    };
+
+    it('mails the account owner', async () => {
+      const user = await changePassword('notify@example.test');
+
+      const mail = await unscoped('reading the mail log', () =>
+        prisma.email_queue.findMany({ where: { toEmail: user.email } }),
+      );
+      expect(mail).toHaveLength(1);
+      expect(mail[0].subject).toMatch(/password was changed/i);
+    });
+
+    // The notice has to carry the way out, because the member reading it may be
+    // the one person who did not make the change.
+    it('tells them how to take the account back', async () => {
+      await changePassword('recover@example.test');
+
+      const mail = await unscoped('reading the mail log', () =>
+        prisma.email_queue.findFirst({ where: { toEmail: 'recover@example.test' } }),
+      );
+      expect(mail!.htmlBody).toContain('/auth/forgot-password');
+    });
+
+    // A failed send must not fail the change: the password is already updated
+    // and the other sessions already revoked.
+    it('still changes the password if the notice cannot be sent', async () => {
+      const user = await seedUser(prisma, city.id, {
+        email: 'mailfail@example.test',
+        passwordHash: await bcrypt.hash('OldPassw0rd!x', 12),
+      });
+      const email = app.get(EmailService);
+      const original = email.sendNow.bind(email);
+      (email as unknown as { sendNow: () => Promise<void> }).sendNow = async () => {
+        throw new Error('provider down');
+      };
+
+      await authService.changePassword(user.id, 'OldPassw0rd!x', 'NewPassw0rd!x');
+
+      (email as unknown as { sendNow: typeof original }).sendNow = original;
+
+      const after = await unscoped('reading the user', () =>
+        prisma.users.findUnique({ where: { id: user.id } }),
+      );
+      expect(await bcrypt.compare('NewPassw0rd!x', after!.passwordHash!)).toBe(true);
     });
   });
 });
