@@ -14,6 +14,74 @@ import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-da
 import { AppConfigService } from '../app-config/app-config.service';
 import { currentTenantId } from '../../common/tenant/tenant-store';
 import { emailPalette } from '../../common/utils/color.util';
+import { EmailLogQueryDto } from './dto/email-log-query.dto';
+
+/**
+ * One row of the email log (v2-31).
+ *
+ * Everything the list renders, and nothing it does not: `htmlBody`, `textBody`
+ * and `templateParams` are absent on purpose, because they are most of the
+ * table's bytes and none of its searchable surface. `EmailLogContent` carries
+ * them for the single row somebody expands.
+ */
+export type EmailLogRow = Omit<
+  EmailQueueRow,
+  'htmlBody' | 'textBody' | 'templateParams' | 'tenantId'
+>;
+
+export interface EmailLogPage {
+  rows: EmailLogRow[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  /**
+   * How many messages this community holds in each status, **ignoring the
+   * filters and the page**.
+   *
+   * Needed because the screen's "Retry failed" button and its counts used to be
+   * derived from the loaded rows, which was correct only while every row was
+   * loaded. Under pagination that silently becomes "failed on this page",
+   * so a second page of failures would report none and the button would
+   * disappear with work still outstanding.
+   */
+  counts: Record<string, number>;
+}
+
+export interface EmailLogContent {
+  id: number;
+  templateParams: Prisma.JsonValue | null;
+  htmlBody: string | null;
+  textBody: string | null;
+}
+
+/**
+ * Widens a bare `YYYY-MM-DD` to the end of that same UTC day, so an inclusive
+ * `to` date includes the day it names.
+ *
+ * Without this, `to=2026-10-02` parses as that day's midnight and excludes
+ * everything sent during it — a filter that looks like it works while quietly
+ * dropping the most recent day, which is the day somebody filtering by date is
+ * usually asking about.
+ *
+ * **UTC throughout, and the UI does not rely on it.** `setUTCHours` to match
+ * how `new Date('YYYY-MM-DD')` parsed it; reading the string as UTC and then
+ * setting local hours would shift the bound by the server's offset, which is
+ * the bug this comment replaced. The admin screen sends full ISO instants from
+ * its date picker, converted from the viewer's own midnight, so the only caller
+ * that sees the date-only rule is a human querying by hand.
+ *
+ * Deliberately **not** `quotaDayStart`. That names the instant a *provider's*
+ * allowance resets, which is a different question from which messages a reader
+ * wants to see — borrowing it would make this screen a second, disagreeing
+ * answer to "when does a day begin".
+ */
+function endOfDayIfDateOnly(value: string): Date {
+  const parsed = new Date(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return parsed;
+  parsed.setUTCHours(23, 59, 59, 999);
+  return parsed;
+}
 
 /**
  * The placeholder every email writes instead of a hard-coded product name.
@@ -435,11 +503,147 @@ export class EmailService {
     }
   }
 
-  async getQueue(limit = 100): Promise<EmailQueueRow[]> {
-    return this.prisma.email_queue.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: limit,
+  /**
+   * The email log: everything this community has sent or tried to (v2-31).
+   *
+   * Replaces `getQueue`, which was `findMany({ orderBy: createdAt desc, take:
+   * 100 })` — every status, which was right, but a hard cap of a hundred rows
+   * with no search, which meant "did this member get their invite" stopped
+   * being answerable after a day or two of real volume. That is the only
+   * question this screen exists to answer.
+   *
+   * **Bodies and template params are deliberately not selected.** `html_body`
+   * is LongText, so sending it for every row made the list heavy in proportion
+   * to the mail rather than to the page, and nothing on the list renders it.
+   * `getLogEntry` fetches them for the one row somebody expands. `hasContent`
+   * is computed here so the UI can say whether expanding will show anything
+   * without fetching it first.
+   *
+   * Pagination is offset-based rather than cursor-based: the screen has numbered
+   * pages and a "jump to the end" affordance, which a cursor cannot express, and
+   * the index added in this item makes the offset scan cheap enough at the
+   * volumes a single community reaches.
+   */
+  async getLog(query: EmailLogQueryDto): Promise<EmailLogPage> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 50;
+
+    const where = this.buildLogWhere(query);
+
+    // Counted in the same round trip. The total is what draws the paginator,
+    // and fetching it separately would let the two disagree about a log that is
+    // being written to while it is read.
+    const [rows, total, byStatus] = await Promise.all([
+      this.prisma.email_queue.findMany({
+        where,
+        // `id` is not decoration -- it is what makes paging correct.
+        //
+        // `created_at` is DATETIME(0), so it has whole-second precision, and a
+        // fan-out writes one row per member inside a single second: an event
+        // reminder to eighty people is eighty rows sharing a timestamp. Ordering
+        // by that column alone leaves those ties in whatever order the engine
+        // chooses, and an unstable order under OFFSET/LIMIT does not merely look
+        // untidy -- a row can appear on two consecutive pages while another is
+        // skipped entirely, so scanning the log after a bulk send silently
+        // misses messages.
+        //
+        // `id` is unique and monotonic with insertion, so it makes the order
+        // total. It costs nothing: InnoDB carries the primary key in every
+        // secondary index, so `(tenant_id, created_at)` already sorts by id
+        // within a timestamp.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          toEmail: true,
+          toName: true,
+          subject: true,
+          templateId: true,
+          status: true,
+          provider: true,
+          attempts: true,
+          priority: true,
+          lastAttemptAt: true,
+          errorMessage: true,
+          brevoStatus: true,
+          sendAfter: true,
+          sentAt: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.email_queue.count({ where }),
+      // Unfiltered on purpose -- see `counts`. One grouped query, so it costs a
+      // single index scan rather than one count per status.
+      this.prisma.email_queue.groupBy({ by: ['status'], _count: { _all: true } }),
+    ]);
+
+    // No `hasContent` flag. Prisma cannot select "is this LongText column
+    // non-empty" without reading it, and the honest alternatives were guessing
+    // from `templateId` or sending the bodies after all. The detail fetch says
+    // what is there, and the screen already has an empty state for a message
+    // whose content was never stored -- a provider-template send stores none.
+    return {
+      rows,
+      total,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(total / limit)),
+      // Every status present as a key, including the ones with no rows, so the
+      // screen can render "0 failed" rather than having to treat a missing key
+      // as zero at each use.
+      counts: Object.fromEntries([
+        ...Object.values(EmailQueueStatus).map((status) => [status, 0]),
+        ...byStatus.map((group) => [group.status, group._count._all]),
+      ]) as Record<string, number>,
+    };
+  }
+
+  /**
+   * The heavy half of one log entry, fetched when a row is expanded.
+   *
+   * Separate from the list for the reason above: these three columns are most
+   * of the table's bytes and none of its searchable surface. Scoped like every
+   * other read here, so one community cannot fetch another's message by id --
+   * the extension adds the predicate, and a wrong id reads as absent.
+   */
+  async getLogEntry(id: number): Promise<EmailLogContent | null> {
+    const row = await this.prisma.email_queue.findFirst({
+      where: { id },
+      select: { id: true, templateParams: true, htmlBody: true, textBody: true },
     });
+    return row ?? null;
+  }
+
+  /**
+   * Shared by the page and its count, so the two cannot drift apart and report
+   * a total that does not match the rows.
+   */
+  private buildLogWhere(query: EmailLogQueryDto): Prisma.email_queueWhereInput {
+    const where: Prisma.email_queueWhereInput = {};
+
+    if (query.status) where.status = query.status as EmailQueueStatus;
+
+    if (query.q) {
+      // The three fields somebody actually remembers. MySQL's collation is
+      // case-insensitive, so no `mode: 'insensitive'` is needed -- and asking
+      // for it on MySQL is an error rather than a no-op.
+      where.OR = [
+        { toEmail: { contains: query.q } },
+        { toName: { contains: query.q } },
+        { subject: { contains: query.q } },
+      ];
+    }
+
+    const createdAt: Prisma.DateTimeFilter = {};
+    if (query.from) createdAt.gte = new Date(query.from);
+    // A bare `YYYY-MM-DD` parses as midnight, so an inclusive end date has to
+    // reach the end of that day -- otherwise "to: today" returns nothing sent
+    // today, which reads as a broken filter rather than an off-by-one.
+    if (query.to) createdAt.lte = endOfDayIfDateOnly(query.to);
+    if (createdAt.gte || createdAt.lte) where.createdAt = createdAt;
+
+    return where;
   }
 
   async cancelEmail(id: number): Promise<void> {
