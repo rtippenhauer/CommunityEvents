@@ -9,6 +9,7 @@ import {
   resolvePalette,
 } from '../utils/palette';
 import { wordmarkDataUri, splashDataUri, monogramDataUri } from '../utils/brand-mark.util';
+import { reshade } from '../utils/color.util';
 
 /** The social sign-ins a community offers. See BrandConfig.authProviders. */
 export interface AuthProviders {
@@ -70,6 +71,25 @@ export interface BrandConfig {
   /** Whether this community is the root one (REQ-TENANT-01.7). */
   isRoot: boolean;
   /**
+   * Whether this community is an ephemeral demo (v2-14), and when it is deleted.
+   *
+   * Drives the standing notice in the shell. The notice is the reason these are
+   * in the payload at all: the visitor is an admin here and may start entering
+   * real events for a real group, and deletion would then destroy work they had
+   * no reason to think was disposable. The date is what makes the warning
+   * actionable rather than ignorable.
+   */
+  /**
+   * The photograph behind the home-page hero, or '' for none.
+   *
+   * Optional everywhere and empty by default: unset, the hero renders on the
+   * plain surface exactly as it always has.
+   */
+  heroUrl: string;
+  isDemo: boolean;
+  /** ISO timestamp, or null on any community that is not a demo. */
+  demoExpiresAt: string | null;
+  /**
    * Where a member is told to write for help. Resolved per community by the
    * API; the pages that surface it used to hardcode support@dinnerbears.com,
    * which no other community could receive mail at.
@@ -128,6 +148,25 @@ export interface BrandFeatures {
 // before: these are URLs, so nothing downstream of `logoSrc` had to change.
 const defaultLogo = (b: BrandConfig): string =>
   wordmarkDataUri(b.name, { primary: b.colorPrimary, background: b.colorBackground });
+/**
+ * The same wordmark, inked for the dark chrome it is about to be drawn on
+ * (v2-14).
+ *
+ * The toolbar, the sidenav and the footer are all `--ce-chrome`, and the plain
+ * wordmark's near-black ink vanished against it on any community without an
+ * uploaded logo. `reshade(primary, 13, 80)` is exactly how palette.ts derives
+ * `--ce-chrome`, so the mark measures itself against the real background rather
+ * than a guess at it.
+ *
+ * An uploaded logo is used unchanged in both places: it is the community's own
+ * artwork and not ours to recolour.
+ */
+const defaultLogoOnChrome = (b: BrandConfig): string =>
+  wordmarkDataUri(
+    b.name,
+    { primary: b.colorPrimary, background: b.colorBackground },
+    reshade(b.colorPrimary, 13, 80),
+  );
 const defaultSplash = (b: BrandConfig): string =>
   splashDataUri(b.name, b.tagline, { primary: b.colorPrimary, background: b.colorBackground });
 const defaultIcon = (b: BrandConfig): string =>
@@ -174,6 +213,12 @@ const DEFAULT_BRAND: BrandConfig = {
   // Defaults false: until branding loads, assume this is NOT the root
   // community, so nothing root-only is offered on a guess.
   isRoot: false,
+  // Defaults false: until branding resolves, do not tell somebody their
+  // community is about to be deleted. A demo says so a moment later; a real
+  // community never wrongly says it at all.
+  heroUrl: '',
+  isDemo: false,
+  demoExpiresAt: null,
   // Defaults true, unlike isRoot: this one drives a warning banner, and a slow
   // or failed branding fetch should not accuse a community of skipping a review
   // it may well have done.
@@ -230,6 +275,10 @@ export class BrandConfigService {
   // compiled-in default. Components bind [src] to these so a fork's uploaded
   // images flow everywhere with no per-component fallback logic.
   readonly logoSrc = computed(() => this.brand().logoUrl || defaultLogo(this.brand()));
+  /** For the toolbar, sidenav and footer. See defaultLogoOnChrome. */
+  readonly logoOnChromeSrc = computed(
+    () => this.brand().logoUrl || defaultLogoOnChrome(this.brand()),
+  );
   readonly splashSrc = computed(() => this.brand().splashUrl || defaultSplash(this.brand()));
   readonly iconSrc = computed(() => this.brand().iconUrl || defaultIcon(this.brand()));
   // No compiled-in fallback: empty means the home-page story image is hidden.
@@ -249,6 +298,10 @@ export class BrandConfigService {
   readonly appUrl = computed(() => this.brand().appUrl);
   readonly baseDomain = computed(() => this.brand().baseDomain);
   readonly isRoot = computed(() => this.brand().isRoot);
+  /** '' when this community has not set one, which is the common case. */
+  readonly heroImageUrl = computed(() => this.brand().heroUrl);
+  readonly isDemo = computed(() => this.brand().isDemo);
+  readonly demoExpiresAt = computed(() => this.brand().demoExpiresAt);
   readonly supportEmail = computed(() => this.brand().supportEmail);
   readonly foundingLabel = computed(() => this.brand().foundingLabel);
   readonly legalReviewed = computed(() => this.brand().legalReviewed);

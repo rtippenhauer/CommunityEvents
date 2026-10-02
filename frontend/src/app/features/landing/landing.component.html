@@ -8,11 +8,9 @@
       organising it in a group chat.
     </p>
     <div class="hero-actions">
-      @if (demoUrl()) {
-        <a mat-raised-button class="cta" [href]="demoUrl()">
-          <mat-icon>open_in_new</mat-icon> Try the demo
-        </a>
-      }
+      <a mat-raised-button class="cta" routerLink="/demo">
+        <mat-icon>rocket_launch</mat-icon> Try it free
+      </a>
       <a mat-stroked-button class="cta-secondary" (click)="scrollToHow()">
         <mat-icon>arrow_downward</mat-icon> How it works
       </a>
@@ -45,15 +43,13 @@
   <section class="closing">
     <h2>Have a look around</h2>
     <p class="lead">
-      The demo is a working community with events, members and a leaderboard already in it.
-      Sign up there and you land as an admin, so you see the organiser's side rather than
-      just the visitor's.
+      You get your own community, with events, members and a leaderboard already in it, and
+      you are its administrator — so you see the organiser's side rather than just the
+      visitor's. It is yours for a week.
     </p>
-    @if (demoUrl()) {
-      <a mat-raised-button class="cta" [href]="demoUrl()">
-        <mat-icon>open_in_new</mat-icon> Try the demo
-      </a>
-    }
+    <a mat-raised-button class="cta" routerLink="/demo">
+      <mat-icon>rocket_launch</mat-icon> Try it free
+    </a>
     <p class="fineprint">
       Already a member of a community here? <a routerLink="/login">Sign in</a>.
     </p>

@@ -34,11 +34,76 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-14` — the demo tenant: a community anyone can try,
-where self-registration grants admin *of that tenant only*, wiped and re-seeded
-on a schedule, saying so on the page. See `V2_PHASES.md`.
+**Current v2 work item:** `v2-31` — a real email log: the admin email screen
+caps at 100 rows with no search, so "did this member get their invite" stops
+being answerable within a couple of days at DinnerBears' volume. Paginate,
+search by recipient and subject, filter by status and date, and decide how long
+a sent row and its rendered body are kept.
+
+**The running order is no longer the numbers** — see `docs/CUTOVER_PLAN.md` and
+V2_PHASES.md's "Running order". The critical path to a live DinnerBears is the
+dispatcher claim fix, `v2-29` (port v1's Phase 39), `v2-24` (cities) and `v2-25`
+(the import), plus a production deployment that does not exist yet. `v2-31` is
+not on that path but was pulled forward by Rob on 2026-10-02.
 
 **Completed v2 items:**
+- **`v2-14` — Demo communities** (2026-10-02). One demo **per visitor**, asked
+  for on the marketing page and confirmed by email, at a generated host, with
+  the requester as its first admin, deleted after seven days or 48 idle hours.
+
+  **Retitled mid-item.** It was "the demo tenant" — one shared community,
+  self-registration granting admin, wiped nightly — and that design was built
+  before Rob found what was wrong with it: `admin.service` hands an admin every
+  member's email address, their linked OAuth addresses and a search box over
+  them, so the seventh visitor to a shared demo would have had a searchable
+  directory of the previous six visitors' real addresses.
+
+  **Per-visitor deleted a privilege escalation rather than guarding one.** The
+  shared design needed a carve-out in all three registration paths saying a
+  stranger who signs up here becomes an admin. No registration path promotes
+  anyone now; the requester is made admin at creation time, exactly as
+  `TenantsAdminService.create` does for any other community.
+
+  **Retention and isolation move together** (decided with Rob 2026-09-18): on a
+  shared demo anyone can break what every later visitor sees, so the cadence has
+  to be a day; isolation is what buys the week. Anything reintroducing sharing
+  brings the day back with it.
+
+  **A demo cannot send mail, and omitting its provider config would not have
+  achieved that** — v2-9 falls back to the deployment's Brevo credentials for a
+  community with none of its own, and a demo is on a subdomain of the
+  deployment, so the fallback would have let anyone create a community that
+  mails arbitrary addresses from the operator's sending domain.
+  `EmailService.sendingIsBlocked()` refuses on `is_demo` instead.
+
+  **Three caps, answering three different failures.** Ten live demos and two per
+  IP (Rob, 2026-09-18), plus one per email address. The last is not a second
+  opinion about the IP cap — it is the only one that survives a client changing
+  network, since an IPv4 and an IPv6 address for one person have nothing in
+  common. IPv6 is bucketed by its **/64**, because privacy extensions rotate the
+  host half as often as hourly and counting the full address means the cap never
+  binds. Caps are re-checked at confirmation, excluding the row being confirmed
+  — counting it made the effective caps N-1, which refused Rob's second demo on
+  stage.
+
+  **`purgeTenantRows` came out of this item and fixed a latent v2-6 defect.**
+  Several foreign keys onto `users` are restrictive, so a demo whose visitor had
+  redeemed an invite broke a straight walk of the model list. It walks
+  `TENANT_SCOPED_MODELS` with explicit `tenantId` filters and pre-clears the
+  columns that would otherwise block, and tenant deletion now shares it — so a
+  new scoped model is swept by both paths with no extra work.
+
+  **Stage found six things the suite could not.** The nav wordmark measured
+  1.05:1 live (a v2-10 defect the demo exposed); the cap off-by-one above; a
+  Delete button that did nothing, from a duplicated CSS rule; immediate sends
+  absent from the email log entirely, which turned out to be the same shape as
+  the counter bug v2-9 fixed one layer over; and `trust proxy` unset, so every
+  request in the deployment reported `::ffff:127.0.0.1` — making the per-IP cap a
+  deployment-wide cap of two and the rate limiter one shared bucket.
+
+  Also landed: an operator view of demo requests that never became communities
+  (previously invisible while still holding a slot), and demo/real filtering plus
+  expiry and last-used sorting on the Communities list.
 - **`v2-13` — The root tenant's public landing page** (2026-09-18). The
   marketing front door at `www.communityeventsproject.com`. **`/` is answered by
   two components now**, chosen at match time: `rootLandingGuard` takes the

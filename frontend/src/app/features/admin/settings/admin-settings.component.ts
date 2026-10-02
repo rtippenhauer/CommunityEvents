@@ -1,10 +1,11 @@
-import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { RouterLink } from '@angular/router';
+import { DemoService } from '../../../core/services/demo.service';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
@@ -44,6 +45,38 @@ const WEEKDAYS = [
   template: `
     <div class="settings-admin-container">
       <h2 class="page-title">Site Settings</h2>
+
+      <!-- Demo communities only (v2-14). The owner's counterpart to the expiry
+           sweep: without it, somebody finished with their demo has no way to
+           say so, their data sits for the rest of the week, and their slot
+           stays spent against the per-IP cap so they cannot start a fresh
+           one. -->
+      @if (brandConfigService.isDemo()) {
+        <mat-card class="demo-card">
+          <mat-card-header>
+            <mat-card-title>This demo community</mat-card-title>
+          </mat-card-header>
+          <mat-card-content>
+            <p>
+              It is deleted automatically
+              @if (demoExpiresLabel(); as expires) {
+                on <strong>{{ expires }}</strong>.
+              } @else {
+                within a week.
+              }
+              Deleting it now removes everything in it immediately and frees the slot so you can
+              start another.
+            </p>
+            <button mat-stroked-button class="demo-delete" (click)="deleteDemo()" [disabled]="deletingDemo()">
+              @if (deletingDemo()) {
+                <mat-spinner diameter="18" />
+              } @else {
+                Delete this demo now
+              }
+            </button>
+          </mat-card-content>
+        </mat-card>
+      }
 
       @if (loading()) {
         <div class="center"><mat-spinner /></div>
@@ -283,6 +316,54 @@ const WEEKDAYS = [
                     />
                   </div>
                 </div>
+              </div>
+
+              <div class="image-row">
+                <div class="image-preview splash-preview">
+                  @if (brandConfigService.brand().heroUrl) {
+                    <img [src]="brandConfigService.brand().heroUrl" alt="Hero image preview" />
+                  } @else {
+                    <span class="no-image-hint">None</span>
+                  }
+                </div>
+                <div class="image-controls">
+                  <div class="image-label">
+                    Hero Background
+                    <span>— behind the home page welcome (plain background if none)</span>
+                  </div>
+                  <div class="image-actions">
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="heroInput.click()"
+                      [disabled]="uploadingSlot() === 'hero'"
+                    >
+                      <mat-icon>upload</mat-icon>
+                      {{ uploadingSlot() === 'hero' ? 'Uploading…' : 'Upload' }}
+                    </button>
+                    @if (brandConfigService.brand().heroUrl) {
+                      <button
+                        mat-button
+                        type="button"
+                        (click)="resetImage('hero')"
+                        [disabled]="uploadingSlot() === 'hero'"
+                      >
+                        Remove
+                      </button>
+                    }
+                    <input
+                      #heroInput
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      hidden
+                      (change)="onImageSelected('hero', $event)"
+                    />
+                  </div>
+                </div>
+                <p class="hero-note">
+                  A wide photograph works best. Your page colours are laid over it so the text
+                  stays readable, so a busy or very bright image is fine.
+                </p>
               </div>
 
               <p class="cadence-hint">
@@ -752,13 +833,47 @@ export class AdminSettingsComponent implements OnInit {
   private readonly avatarsService = inject(AvatarsService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly fb = inject(NonNullableFormBuilder);
+  private readonly demoService = inject(DemoService);
 
   readonly loading = signal(true);
   readonly saving = signal(false);
+  readonly deletingDemo = signal(false);
   readonly uploadingSlot = signal<BrandImageSlot | null>(null);
   readonly avatars = signal<Avatar[]>([]);
   readonly uploadingAvatar = signal(false);
   readonly weekdays = WEEKDAYS;
+
+  /** The date this demo goes, for the card above. See BrandConfigService. */
+  readonly demoExpiresLabel = computed<string | null>(() => {
+    const iso = this.brandConfigService.demoExpiresAt();
+    if (!iso) return null;
+    const when = new Date(iso);
+    if (Number.isNaN(when.getTime())) return null;
+    return when.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  });
+
+  /**
+   * Deletes this demo and sends the visitor back to the marketing site.
+   *
+   * Navigating away is not optional tidying: the community serving this page
+   * has just ceased to exist, so every subsequent request from it would 404
+   * with TENANT_NOT_FOUND. The root tenant's host is the only place left to go.
+   */
+  deleteDemo(): void {
+    if (!confirm('Delete this demo and everything in it? This cannot be undone.')) return;
+    this.deletingDemo.set(true);
+    this.demoService.deleteOwnDemo().subscribe({
+      next: () => {
+        window.location.href = this.brandConfigService.appUrl() || '/';
+      },
+      error: () => {
+        this.deletingDemo.set(false);
+        this.snackBar.open('Could not delete this demo. Please try again.', 'Dismiss', {
+          duration: 6000,
+        });
+      },
+    });
+  }
 
   readonly form = this.fb.group({
     // Must match SITE_SETTING_DEFAULTS.brand_name on the API. When these
@@ -841,7 +956,8 @@ export class AdminSettingsComponent implements OnInit {
     this.uploadingSlot.set(slot);
     // The logo sits on the dark nav/footer, so strip a solid background box to
     // transparent before uploading (no-op fallback if it can't be processed).
-    // Other slots (splash/icon/story) render on light surfaces — upload as-is.
+    // Other slots (splash/icon/story/hero) render on light surfaces, or under a
+    // scrim in the community's own surface colour — upload as-is.
     const prepared: Promise<File> =
       slot === 'logo' ? stripLogoBackground(file) : Promise.resolve(file);
     void prepared.then((uploadFile) => {

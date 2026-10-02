@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
@@ -7,7 +7,9 @@ import {
   isTenantScopedModel,
   TENANT_ID_FIELD,
   TENANT_SCOPED_MODELS,
+  type TenantScopedModel,
 } from './tenant-scoped-models';
+import { PURGE_PRECLEARED_COLUMNS } from './tenant-purge';
 
 /**
  * Keeps the classification in tenant-scoped-models.ts honest against the schema
@@ -67,6 +69,67 @@ describe('tenant model classification', () => {
     });
 
     expect(nullable).toEqual([]);
+  });
+
+  /**
+   * The list's ORDER is load-bearing, which nothing about its name suggests.
+   *
+   * Two places erase a whole community by walking it — `TenantsAdminService.remove`
+   * (v2-6) and v2-14's demo reset, sharing `purgeTenantRows`. Most foreign keys
+   * among the scoped tables are ON DELETE CASCADE, so the walk can delete a
+   * parent and take its children. The restrictive ones (NO ACTION, which MySQL
+   * checks immediately) cannot: if the table a column points AT is deleted
+   * first, that delete hits rows still referencing it and fails with error 1451.
+   *
+   * So for every restrictive scoped→scoped key, the referenced table must be
+   * deleted *after* the referencing one — or the column must be nulled before
+   * the walk starts, which is what `PURGE_PRECLEARED_COLUMNS` is for and the
+   * only available answer for a self-reference.
+   *
+   * Derived from the migrations rather than hardcoded, so a future restrictive
+   * key pointing the wrong way fails here instead of failing an operator's
+   * delete on a community they cannot get back.
+   */
+  it('can delete a community without tripping a restrictive foreign key', () => {
+    const migrations = join(__dirname, '../../../prisma/migrations');
+    const sql = readdirSync(migrations, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => readFileSync(join(migrations, entry.name, 'migration.sql'), 'utf8'))
+      .join('\n');
+
+    const pattern =
+      /ALTER TABLE `(\w+)` ADD CONSTRAINT `\w+` FOREIGN KEY \(`(\w+)`\) REFERENCES `(\w+)`\(`\w+`\) ON DELETE (NO ACTION|RESTRICT)/g;
+    const isScoped = (table: string): table is TenantScopedModel =>
+      (TENANT_SCOPED_MODELS as readonly string[]).includes(table);
+
+    // snake_case in SQL, camelCase in the Prisma client the purge calls.
+    const camel = (column: string): string =>
+      column.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+
+    const unsatisfied: string[] = [];
+    for (const [, table, column, referenced] of sql.matchAll(pattern)) {
+      if (!isScoped(table) || !isScoped(referenced)) continue;
+      if (TENANT_SCOPED_MODELS.indexOf(referenced) > TENANT_SCOPED_MODELS.indexOf(table)) continue;
+      if (PURGE_PRECLEARED_COLUMNS[table]?.includes(camel(column))) continue;
+      unsatisfied.push(`${table}.${column} -> ${referenced}`);
+    }
+
+    expect(unsatisfied).toEqual([]);
+  });
+
+  /**
+   * The other direction: nothing is pre-cleared that does not need to be.
+   *
+   * Nulling a column that no longer blocks the walk is a silent data change on
+   * the way to a delete — harmless while the rows are about to vanish, and
+   * exactly the kind of leftover that gets copied into a routine that does not
+   * delete afterwards.
+   */
+  it('pre-clears only columns that actually block the walk', () => {
+    for (const [model, columns] of Object.entries(PURGE_PRECLEARED_COLUMNS)) {
+      expect(isTenantScopedModel(model)).toBe(true);
+      expect(columns.length).toBeGreaterThan(0);
+    }
   });
 
   describe('isTenantScopedModel', () => {

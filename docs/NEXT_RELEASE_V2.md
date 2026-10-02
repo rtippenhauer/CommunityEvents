@@ -650,3 +650,80 @@ production deployments are unaffected and remain indexable.
 Per-community control over search listings — whether a given community appears
 in search results at all, and the description and preview text shown when
 someone shares its address — is a separate piece of work still to come.
+
+## Try a community of your own
+
+**Anyone can now ask for a demo community and get their own private one.** From
+the project's front page, give your name, an email address and a password; a
+confirmation link arrives by email, and following it builds a complete working
+community with you as its administrator.
+
+It is genuinely your own. Nobody else can see it, and you see nobody else's — so
+you can rename things, delete things, invite people, change the colours and
+generally find out what breaks without any of it touching another visitor.
+Earlier plans for a single shared demo were dropped for exactly this reason: an
+administrator can see every member's email address, so a shared demo would have
+shown each visitor the previous visitors' real addresses.
+
+**It arrives with a community already in it**, rather than as an empty shell.
+"Riverside Community Events" comes with its own logo and colours, a written Our
+Story, five venues with photographs, scheduled and past events, members, RSVPs,
+attendance history and ratings — so the pages look like a community in use,
+which is the thing worth evaluating.
+
+**Its address is generated and unguessable**, something like
+`demo-a1b2c3d4.…`, and that is deliberate: a demo is temporary, and an address
+you chose would start to feel like property. The "your demo is ready" email is
+the durable copy of it, so keep that message — losing the tab otherwise loses
+the demo.
+
+**It is deleted after seven days**, and sooner if nobody signs in for a couple
+of days, along with everything in it. Don't keep anything there you would mind
+losing. If you finish early, an administrator of a demo can delete it
+immediately from the admin screens, which also frees the slot for somebody else.
+
+**A demo cannot send email.** It will not mail your members, your invitees or
+anybody else, whatever you do in it — the one exception being the two messages
+the project itself sends you: the confirmation link and the address it created.
+
+A few demos run at a time, so the door occasionally says to come back later.
+Confirming the email is what reserves one, so an unopened link does not hold a
+slot for long.
+
+## Operator screens
+
+**The Communities list tells demos and real communities apart.** Demos are
+labelled with the date they disappear, and the list can be filtered to one kind
+or the other and sorted by what expires soonest or what was used most recently.
+Every community now shows when somebody last signed in, which is the quickest
+way to spot one going quiet.
+
+**Demo communities can be deleted outright without being suspended first.** A
+real community still has to be suspended and have its address retyped before it
+can be deleted — that protects somebody's members. A demo deletes itself within
+the week regardless, so the extra step bought nothing.
+
+**There is now a list of people who asked for a demo and never set it up.** A
+request creates nothing until its link is followed, so these were previously
+invisible while still holding a place in the queue. Each shows when it was
+asked, how long the link has left or that it has expired, and the address it
+came from; any of them can be withdrawn to free the place immediately rather
+than waiting for the daily cleanup. The list also says how much of the demo
+capacity is in use and what it is in use for.
+
+## Email
+
+**Messages sent immediately are now recorded in the email log.** Password
+resets, address verification, the account-locked security alert and two event
+notifications are sent straight away rather than queued, and until now the log
+only recorded them when they *failed* — so a message that arrived perfectly was
+invisible on the screen meant to show what a community had sent. They are now
+written to the log as sent, and the sending dispatcher does not pick them up a
+second time.
+
+## Behind the scenes
+
+**The application now reads visitors' real network addresses.** Behind the
+reverse proxy every request appeared to come from the proxy itself, which made
+the per-visitor rate limits act as one shared limit for the whole deployment
+rather than per person. Rate limiting is now per visitor as intended.

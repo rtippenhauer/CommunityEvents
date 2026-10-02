@@ -36,6 +36,40 @@ async function bootstrap(): Promise<void> {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  /**
+   * Trust the reverse proxy, so `req.ip` is the visitor rather than NGINX.
+   *
+   * This deployment always sits behind NGINX Proxy Manager, and for
+   * Cloudflare-proxied hosts behind Cloudflare as well. Without this Express
+   * reports the nearest hop, which meant **every request in the system looked
+   * like it came from `::ffff:127.0.0.1`** -- one address shared by every
+   * visitor on earth.
+   *
+   * Two things key on the client address and both were silently
+   * deployment-wide rather than per-visitor:
+   *
+   *  - **Rate limiting.** The throttler buckets by IP, so the 5/min on
+   *    `/auth/login` and `/auth/register` was five attempts for *everyone
+   *    combined*. One person fumbling a password locked out the rest.
+   *  - **The demo per-IP cap (v2-14).** Two demos per address became two demos
+   *    for the whole deployment, which is how Rob's office request was refused
+   *    for an address he had never used. Found that way.
+   *
+   * `true` takes the left-most entry of `X-Forwarded-For`, which is the real
+   * client for both shapes this deployment serves: Cloudflare sets it to the
+   * originating address on proxied hosts, and NGINX sets it from the socket on
+   * the grey-clouded ones.
+   *
+   * **It is spoofable, and that is an accepted trade.** A client can prepend
+   * its own `X-Forwarded-For` and claim any address. What that buys is a
+   * reset rate-limit bucket and more than two demos -- and the demo pool is
+   * bounded by `MAX_LIVE_DEMOS` regardless, which is the limit that actually
+   * protects anything. Pinning this to the proxy's real address instead would
+   * mean maintaining Cloudflare's published ranges, for a guarantee neither
+   * consumer needs.
+   */
+  app.set('trust proxy', true);
+
   app.set('query parser', 'extended');
   app.setGlobalPrefix('api/v1');
   app.use(cookieParser());

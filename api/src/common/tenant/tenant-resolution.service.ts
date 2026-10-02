@@ -54,7 +54,7 @@ export class TenantResolutionService {
    */
   private readonly domainCache = new Map<
     number,
-    { domain: string; isRoot: boolean; expiresAt: number }
+    { domain: string; isRoot: boolean; isDemo: boolean; expiresAt: number }
   >();
   private readonly ttlMs: number;
 
@@ -156,24 +156,54 @@ export class TenantResolutionService {
   }
 
   /**
-   * A tenant's domain and whether it is the root, cached together because the
-   * two callers below need one each and neither is worth a second query.
+   * Whether this community is the demo (v2-14), where signing up grants admin of
+   * that tenant and everything is wiped nightly.
+   *
+   * Read from `tenants.is_demo` rather than derived from the host, unlike
+   * `isOnDeploymentDomain` above -- see that column's comment for why the two
+   * questions take opposite answers. It comes off the same cached row as the
+   * domain, so the registration path pays no extra query for asking.
+   *
+   * An unknown tenant is false: every caller is deciding whether to grant
+   * something, and the safe answer to "I cannot find this community" is no.
+   */
+  async isDemoTenant(tenantId: number): Promise<boolean> {
+    return (await this.identityFor(tenantId))?.isDemo ?? false;
+  }
+
+  /**
+   * Whether this community is the deployment's own root tenant.
+   *
+   * Off the same cached row as everything else here. Exists so a caller that has
+   * a tenant id and no request can ask without a query of its own -- the branding
+   * payload reads `isRoot` from a request, but the registration path is deciding
+   * whether to grant admin and wants the row, not the host.
+   */
+  async isRootTenant(tenantId: number): Promise<boolean> {
+    return (await this.identityFor(tenantId))?.isRoot ?? false;
+  }
+
+  /**
+   * A tenant's domain, whether it is the root, and whether it is the demo,
+   * cached together because each caller below needs one of the three and none is
+   * worth a second query.
    */
   private async identityFor(
     tenantId: number,
-  ): Promise<{ domain: string; isRoot: boolean } | null> {
+  ): Promise<{ domain: string; isRoot: boolean; isDemo: boolean } | null> {
     const cached = this.domainCache.get(tenantId);
     if (cached && cached.expiresAt > Date.now()) return cached;
 
     const tenant = await this.prisma.tenants.findUnique({
       where: { id: tenantId },
-      select: { domain: true, isRoot: true },
+      select: { domain: true, isRoot: true, isDemo: true },
     });
     if (!tenant) return null;
 
     this.domainCache.set(tenantId, {
       domain: tenant.domain,
       isRoot: tenant.isRoot,
+      isDemo: tenant.isDemo,
       expiresAt: Date.now() + this.ttlMs,
     });
     return tenant;

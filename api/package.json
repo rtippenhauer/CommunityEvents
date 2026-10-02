@@ -18,6 +18,7 @@
     "bootstrap": "ts-node -r tsconfig-paths/register src/bootstrap.ts",
     "seed:test-data": "ts-node -r tsconfig-paths/register src/database/prisma/seed-test-data.ts",
     "provision-tenant": "ts-node -r tsconfig-paths/register src/provision-tenant.ts",
+    "provision-demo": "ts-node -r tsconfig-paths/register src/provision-demo.ts",
     "secrets:rewrap": "ts-node -r tsconfig-paths/register src/rewrap-secrets.ts",
     "secrets:reset": "ts-node -r tsconfig-paths/register src/reset-secrets.ts",
     "test": "vitest run",

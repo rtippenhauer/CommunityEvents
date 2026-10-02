@@ -31,7 +31,16 @@ interface PublicStats {
   ],
   template: `
     <!-- Hero -->
-    <section class="hero">
+    <section class="hero" [class.has-hero-image]="brandConfig.heroImageUrl()">
+      <!-- The community's own photograph, when it has set one (v2-14).
+           An <img> rather than a CSS background so the path goes through the
+           same [src] binding every other brand image uses -- an inline
+           background-image would put a url() through Angular's style
+           sanitiser for no benefit. Decorative, so it is hidden from
+           assistive tech: the hero's meaning is entirely in the copy. -->
+      @if (brandConfig.heroImageUrl(); as heroImage) {
+        <img class="hero-bg" [src]="heroImage" alt="" aria-hidden="true" />
+      }
       <div class="hero-text">
         @if (hasContent(heroContent())) {
           <div class="hero-copy" [innerHTML]="heroHtml()"></div>
@@ -149,6 +158,98 @@ interface PublicStats {
         padding: 2rem 0 4rem;
         max-width: 1100px;
         margin: 0 auto;
+      }
+
+      /**
+       * The optional hero photograph (v2-14).
+       *
+       * **The scrim is how the light-or-dark-text question is avoided rather
+       * than answered.** Text over an arbitrary photograph has no measurable
+       * contrast -- the same image is bright sky in one corner and dark water
+       * in another, so neither a light nor a dark ink is safe, and picking one
+       * per image means analysing uploads and still being wrong on the
+       * half-and-half ones.
+       *
+       * Instead the photograph never touches the text. A scrim in the
+       * community's OWN --ce-surface sits between them, so the copy is on
+       * exactly the colour palette.ts already measures --ce-text against
+       * (v2-11). Every existing token stays valid and nothing has to switch.
+       *
+       * The gradient runs left to right: near-opaque behind the copy, opening
+       * up toward the events column so the picture is actually visible. That
+       * is also the composition of the mockup this came from.
+       *
+       * color-mix rather than a new rgba token: it keeps the scrim expressed
+       * in terms of the one colour it must match, so a community that changes
+       * its surface gets a scrim that follows. A browser too old to parse it
+       * drops the rule and shows the photograph unscrimmed -- degraded, but no
+       * worse than having no scrim at all.
+       */
+      .hero.has-hero-image {
+        position: relative;
+        max-width: none;
+        padding: 3rem clamp(1rem, 6vw, 5rem) 4.5rem;
+        border-radius: 0;
+        overflow: hidden;
+
+        /* Put the columns back on the same measure the unscrimmed hero uses,
+           now that the section itself runs full width for the photograph. */
+        > .hero-text,
+        > .hero-events {
+          position: relative;
+          z-index: 2;
+          max-width: 550px;
+          justify-self: center;
+          width: 100%;
+        }
+
+        &::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          /* Two layers: the horizontal scrim that carries the text, and a
+             short fade to the page colour along the bottom edge. Without the
+             second the photograph stops dead against the next section, which
+             reads as a mistake rather than as a banner. */
+          background:
+            linear-gradient(
+              to bottom,
+              transparent 60%,
+              color-mix(in srgb, var(--ce-surface) 70%, transparent) 88%,
+              var(--ce-surface) 100%
+            ),
+            linear-gradient(
+              to right,
+              color-mix(in srgb, var(--ce-surface) 92%, transparent) 0%,
+              color-mix(in srgb, var(--ce-surface) 86%, transparent) 40%,
+              color-mix(in srgb, var(--ce-surface) 58%, transparent) 100%
+            );
+        }
+      }
+
+      .hero-bg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        z-index: 0;
+      }
+
+      /* Stacked on a narrow screen, where the copy sits over the middle of the
+         photograph rather than its left edge -- so the gradient has to run down
+         instead of across or the headline ends up on the open part. */
+      @media (max-width: 860px) {
+        .hero.has-hero-image::after {
+          background: linear-gradient(
+            to bottom,
+            color-mix(in srgb, var(--ce-surface) 95%, transparent) 0%,
+            color-mix(in srgb, var(--ce-surface) 90%, transparent) 55%,
+            color-mix(in srgb, var(--ce-surface) 70%, transparent) 100%
+          );
+        }
       }
 
       .eyebrow {

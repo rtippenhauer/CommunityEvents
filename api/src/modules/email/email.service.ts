@@ -7,11 +7,12 @@ import type {
   notification_preferences as NotificationPreferences,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
+import { EmailProvider, EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
 import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
 import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { AppConfigService } from '../app-config/app-config.service';
+import { currentTenantId } from '../../common/tenant/tenant-store';
 import { emailPalette } from '../../common/utils/color.util';
 
 /**
@@ -225,7 +226,43 @@ export class EmailService {
 </html>`;
   }
 
+  /**
+   * Whether the community this send belongs to is a demo, which may not mail
+   * anyone (v2-14).
+   *
+   * **Omitting a demo's provider config would not have stopped it.** v2-9 made
+   * the deployment's Brevo credentials the fallback for any community that has
+   * none of its own, and a demo lives on a subdomain of the deployment, so
+   * `isOnDeploymentDomain` is true for it and it inherits them. A blank config
+   * therefore means "send on the operator's account", which is precisely the
+   * outcome to prevent: anyone can create a demo, so anyone could mail arbitrary
+   * addresses from the deployment's sending domain and spend its reputation.
+   *
+   * So the block is an explicit refusal keyed on the column, at the two entry
+   * points every send passes through. The one mail a demo *causes* -- its
+   * confirmation link -- is composed and sent in the ROOT tenant's context by
+   * DemoService, which is why that one is unaffected by this.
+   *
+   * Reads the column directly rather than through TenantResolutionService to
+   * avoid a module cycle; the query is on the send path, but a send already
+   * costs a provider round trip.
+   */
+  private async sendingIsBlocked(recipient: string): Promise<boolean> {
+    const tenantId = currentTenantId();
+    if (!tenantId) return false;
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { isDemo: true },
+    });
+    if (!tenant?.isDemo) return false;
+    this.logger.warn(
+      `Refusing to send to ${recipient}: this is a demo community, which cannot send mail.`,
+    );
+    return true;
+  }
+
   async queue(input: QueueEmailDto): Promise<EmailQueueRow | null> {
+    if (await this.sendingIsBlocked(input.toEmail)) return null;
     const dto = await this.applyBranding(input);
 
     if (!dto.bypassSuppression) {
@@ -273,6 +310,9 @@ export class EmailService {
   }
 
   async sendNow(input: QueueEmailDto): Promise<void> {
+    // Blocked before branding, so a demo community never reaches the provider
+    // even on the path that bypasses the queue. See sendingIsBlocked.
+    if (await this.sendingIsBlocked(input.toEmail)) return;
     // Branded before the attempt, so the queued copy on failure carries the
     // same text the immediate send would have. queue() substitutes again and
     // finds nothing left to replace, which is the intended no-op.
@@ -288,6 +328,7 @@ export class EmailService {
         attachments: dto.attachments,
       });
       await this.countImmediateSend();
+      await this.recordImmediateSend(dto);
       // The account allowance we hold is now one send out of date. Dropping it
       // rather than re-reading it is what keeps this off the critical path: a
       // password reset is something a person is waiting on, and clearing a map
@@ -344,6 +385,53 @@ export class EmailService {
     } catch (err) {
       // Never let bookkeeping fail the send it is describing.
       this.logger.warn(`Could not record an immediate send: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Writes an already-sent message into `email_queue` so the admin log shows it.
+   *
+   * **`email_queue` is the record of what a community sent, not just of what is
+   * waiting to go** -- but `sendNow` talks to the provider directly and, until
+   * this, wrote a row only when the send *failed* and fell back to the queue. So
+   * every successful immediate send was invisible: password resets, address
+   * verification, the lockout alert, two event mails, and v2-14's demo
+   * confirmation. An operator reading the log saw a community that had
+   * apparently never sent anything of consequence.
+   *
+   * Exactly the shape of the bug v2-9 fixed one layer over, where `sendNow`
+   * bypassed `brevoSentToday` and resets went uncounted. The counter was fixed
+   * then; nobody checked the log. Found by Rob on stage looking for the demo's
+   * confirmation mail.
+   *
+   * The row is written with status `sent`, which the dispatcher ignores -- it
+   * selects `PENDING` only -- so this records history without queuing work.
+   *
+   * Failures here are swallowed for the same reason `countImmediateSend`
+   * swallows its own: the message has already gone, and losing its log entry is
+   * much better than throwing on a caller who believes the send succeeded.
+   */
+  private async recordImmediateSend(dto: QueueEmailDto): Promise<void> {
+    try {
+      await this.prisma.email_queue.create({
+        data: {
+          toEmail: dto.toEmail,
+          toName: dto.toName ?? null,
+          subject: dto.subject,
+          templateId: dto.templateId ?? null,
+          templateParams: (dto.templateParams as Prisma.InputJsonValue) ?? Prisma.DbNull,
+          htmlBody: dto.htmlBody ?? null,
+          textBody: dto.textBody ?? null,
+          priority: dto.priority ?? 5,
+          status: EmailQueueStatus.SENT,
+          provider: EmailProvider.BREVO,
+          attempts: 1,
+          lastAttemptAt: new Date(),
+          sentAt: new Date(),
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Could not log an immediate send: ${(err as Error).message}`);
     }
   }
 

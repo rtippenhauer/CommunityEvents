@@ -22,10 +22,7 @@ import {
   AUTOMATION_ACCOUNT_NAME,
 } from '../../common/utils/service-account.util';
 import { AuditService } from '../audit/audit.service';
-import {
-  TENANT_SCOPED_MODELS,
-  type TenantScopedModel,
-} from '../../common/tenant/tenant-scoped-models';
+import { purgeTenantRows } from '../../common/tenant/tenant-purge';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { DeleteTenantDto } from './dto/delete-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -50,6 +47,27 @@ export interface TenantRow {
    */
   mailDomain: string;
   memberCount: number;
+  /**
+   * Whether this row is an ephemeral demo, and when it goes (v2-14).
+   *
+   * Served so the operator's community list can tell them apart. Without it,
+   * up to ten hex-named demos sit among the real communities looking exactly
+   * like them -- and the two want opposite handling, since one is disposable
+   * and the other is somebody's members.
+   */
+  isDemo: boolean;
+  demoExpiresAt: Date | null;
+  /**
+   * The most recent sign-in by a real person in this community, or null if
+   * nobody ever has.
+   *
+   * A proxy for "is this place actually in use", which is the question behind
+   * both an abandoned demo and a real community quietly going dormant. Logins
+   * rather than any-activity because a login is the one event that always
+   * means a person was here -- and it is the same signal the demo idle sweep
+   * reclaims on, so the screen and the sweep cannot disagree about who is idle.
+   */
+  lastActiveAt: Date | null;
 }
 
 /**
@@ -101,9 +119,14 @@ export class TenantsAdminService {
           // Real people only: the service account exists in every community and
           // counting it would make an empty community look like it has one
           // member. Same rule the member directory and leaderboard follow.
+          // `_max.lastLoginAt` rides along on the count that was already being
+          // made -- "when was this community last used" costs nothing extra.
+          // Service accounts are excluded from both for the same reason: an
+          // automated sign-in is not somebody using the place.
           this.prisma.users.groupBy({
             by: ['tenantId'],
             _count: { _all: true },
+            _max: { lastLoginAt: true },
             where: { isServiceAccount: false },
           }),
           this.prisma.app_config.findMany({
@@ -116,6 +139,7 @@ export class TenantsAdminService {
     const eventsByTenant = new Map(events.map((r) => [r.tenantId, r._count._all]));
     const locationsByTenant = new Map(locations.map((r) => [r.tenantId, r._count._all]));
     const membersByTenant = new Map(members.map((r) => [r.tenantId, r._count._all]));
+    const lastActiveByTenant = new Map(members.map((r) => [r.tenantId, r._max.lastLoginAt]));
     const mailByTenant = new Map(mailRows.map((r) => [r.tenantId, r.configValue]));
 
     return tenants.map((t) => ({
@@ -130,6 +154,9 @@ export class TenantsAdminService {
       locationCount: locationsByTenant.get(t.id) ?? 0,
       memberCount: membersByTenant.get(t.id) ?? 0,
       mailDomain: mailByTenant.get(t.id) ?? '',
+      isDemo: t.isDemo,
+      demoExpiresAt: t.demoExpiresAt,
+      lastActiveAt: lastActiveByTenant.get(t.id) ?? null,
     }));
   }
 
@@ -402,11 +429,17 @@ export class TenantsAdminService {
    * silently lost its filter (an unextended transaction client, say) would do
    * exactly that. The filter is written where it can be read.
    *
-   * Order does not matter: every foreign key among the scoped tables is
-   * ON DELETE CASCADE, so deleting a parent takes its children and deleting a
-   * child first is equally fine. Only the `tenant_id` keys are RESTRICT, which
-   * is what makes the final `tenants.delete()` a safety net -- if this list ever
-   * misses a table, that call fails loudly instead of leaving orphans.
+   * **Order matters, and this comment used to say it did not** -- "every foreign
+   * key among the scoped tables is ON DELETE CASCADE". Most are; three are not,
+   * and this loop would have failed on any community whose invites had ever been
+   * redeemed. The walk lives in `tenant-purge.ts` now, shared with v2-14's demo
+   * reset, and that file records which keys and why. Found while building the
+   * reset, not by a delete going wrong: nothing had deleted a populated
+   * community yet.
+   *
+   * Only the `tenant_id` keys are RESTRICT, which is what makes the final
+   * `tenants.delete()` a safety net -- if the model list ever misses a table,
+   * that call fails loudly instead of leaving orphans.
    */
   async remove(
     id: number,
@@ -422,19 +455,40 @@ export class TenantsAdminService {
       );
     }
 
-    if (existing.status !== 'suspended') {
-      throw new BadRequestException(
-        'Suspend this community first. Deleting is permanent, so taking it offline is a separate step.',
-      );
+    // Two of the three gates are waived for a demo, and only for a demo
+    // (v2-14).
+    //
+    // They exist because deleting a community destroys real members' data
+    // irreversibly, and neither premise holds here: a demo belongs to one
+    // visitor evaluating the product, holds nothing but generated fixtures and
+    // whatever they typed into it, and **deletes itself within the week
+    // regardless**. Making an operator suspend it and then retype a random hex
+    // hostname is friction that protects nothing.
+    //
+    // The first gate is NOT waived: `isRoot` is checked above and
+    // `chk_tenant_demo_not_root` makes the combination unrepresentable anyway.
+    //
+    // What makes this safe to branch on is that `is_demo` has exactly one
+    // writer -- `DemoService.confirmDemo`, at creation. `create` here never
+    // sets it and `update` never touches it, so no real community can drift
+    // into being one-click deletable. A spec asserts the full gauntlet still
+    // applies to a non-demo community, because the danger of this branch is
+    // not that it is wrong for demos but that it might leak past them.
+    if (!existing.isDemo) {
+      if (existing.status !== 'suspended') {
+        throw new BadRequestException(
+          'Suspend this community first. Deleting is permanent, so taking it offline is a separate step.',
+        );
+      }
+
+      if (normalizeTenantDomain(dto.confirmDomain ?? '') !== existing.domain) {
+        throw new BadRequestException(
+          `Type ${existing.domain} exactly to confirm you are deleting that community.`,
+        );
+      }
     }
 
-    if (normalizeTenantDomain(dto.confirmDomain ?? '') !== existing.domain) {
-      throw new BadRequestException(
-        `Type ${existing.domain} exactly to confirm you are deleting that community.`,
-      );
-    }
-
-    const deleted: Record<string, number> = {};
+    let deleted: Record<string, number> = {};
     await runUnscoped(`deleting tenant ${existing.domain} and all of its data`, async () => {
       // One transaction, so a failure part-way leaves the community intact
       // rather than half-erased. The timeout is raised well past Prisma's 5s
@@ -442,14 +496,7 @@ export class TenantsAdminService {
       // history, and it runs once in that community's lifetime.
       await this.prisma.$transaction(
         async (tx) => {
-          const delegates = tx as unknown as Record<
-            TenantScopedModel,
-            { deleteMany(args: { where: { tenantId: number } }): Promise<{ count: number }> }
-          >;
-          for (const model of TENANT_SCOPED_MODELS) {
-            const { count } = await delegates[model].deleteMany({ where: { tenantId: id } });
-            if (count > 0) deleted[model] = count;
-          }
+          deleted = await purgeTenantRows(tx, id);
           await (tx as unknown as {
             tenants: { delete(args: { where: { id: number } }): Promise<unknown> };
           }).tenants.delete({ where: { id } });

@@ -73,6 +73,7 @@ export const SITE_SETTING_KEYS = [
   'brand_error_url',
   'brand_icon_url',
   'brand_story_url',
+  'brand_hero_url',
   // Contact identity, per community (REQ-TENANT-01.4). Empty means "inherit the
   // deployment default", which is the matching env var or, failing that, a
   // derivation from the mail domain -- so an existing install behaves exactly
@@ -211,6 +212,10 @@ export const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   // migration seeds DinnerBears' existing map here; a fresh fork's bootstrap
   // clears it so a new instance shows just the story copy until it uploads one.
   brand_story_url: '',
+  // The photograph behind the home-page hero. Empty is the default and means
+  // no image at all -- the hero keeps the plain surface it has always had, so
+  // every existing community looks exactly as it did.
+  brand_hero_url: '',
   // All four empty on purpose -- see the key list above. A non-empty default
   // here would silently override the env var every install already has set.
   mail_domain: '',
@@ -468,6 +473,29 @@ export class AppConfigService {
     return tenant?.isRoot ?? false;
   }
 
+  /**
+   * Whether the community being served is an ephemeral demo, and when it goes
+   * (v2-14).
+   *
+   * Both come off one read of the resolved tenant's own row, like
+   * `servingRootTenant` above. Not derived from the host: a demo's address is
+   * generated and a community is a demo because its row says so.
+   *
+   * The expiry is serialised as an ISO string rather than a Date because this
+   * payload is JSON on the wire either way, and saying so here stops the
+   * frontend having to guess which it received.
+   */
+  private async servingDemoTenant(): Promise<{ isDemo: boolean; demoExpiresAt: string | null }> {
+    const tenantId = currentTenantId();
+    if (!tenantId) return { isDemo: false, demoExpiresAt: null };
+    const tenant = await this.prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { isDemo: true, demoExpiresAt: true },
+    });
+    if (!tenant?.isDemo) return { isDemo: false, demoExpiresAt: null };
+    return { isDemo: true, demoExpiresAt: tenant.demoExpiresAt?.toISOString() ?? null };
+  }
+
   /** The tenant's own mail domain, or null when it has not set one. */
   private async ownMailDomain(tenantId?: number): Promise<string | null> {
     const own = await this.tenantSetting('mail_domain', tenantId);
@@ -526,6 +554,14 @@ export class AppConfigService {
     errorUrl: string;
     iconUrl: string;
     storyUrl: string;
+    /**
+     * The photograph behind the home-page hero, or '' for none.
+     *
+     * A community's own upload like every other brand image. Empty is the
+     * common case and means the hero renders exactly as it did before this
+     * existed -- a background is an addition, never a requirement.
+     */
+    heroUrl: string;
     vapidPublicKey: string | null;
     facebookAppId: string | null;
     /**
@@ -552,6 +588,22 @@ export class AppConfigService {
      * an option that always fails is worse than no option.
      */
     isRoot: boolean;
+    /**
+     * Whether the community being served is an ephemeral demo (v2-14), and when
+     * it will be deleted.
+     *
+     * Together these drive the standing notice in the app shell. The notice is
+     * part of the feature rather than decoration: the visitor is an admin of
+     * this community and may well start entering real events for a real group,
+     * and without a visible warning its deletion destroys work they had no
+     * reason to think was disposable. The date is what makes it actionable --
+     * "temporary" is ignorable, "deleted on Friday" is not.
+     *
+     * Public, like every other field here, and unavoidably so: it is a fact
+     * about a community that announces itself on every page of that community.
+     */
+    isDemo: boolean;
+    demoExpiresAt: string | null;
     /**
      * Whether a human has confirmed this community's Terms and Privacy Policy.
      *
@@ -592,6 +644,7 @@ export class AppConfigService {
       errorUrl,
       iconUrl,
       storyUrl,
+      heroUrl,
       locationSingular,
       locationPlural,
       dinnerSingular,
@@ -611,6 +664,7 @@ export class AppConfigService {
       this.getSiteSetting('brand_error_url'),
       this.getSiteSetting('brand_icon_url'),
       this.getSiteSetting('brand_story_url'),
+      this.getSiteSetting('brand_hero_url'),
       this.getSiteSetting('term_location_singular'),
       this.getSiteSetting('term_location_plural'),
       this.getSiteSetting('term_dinner_singular'),
@@ -631,6 +685,7 @@ export class AppConfigService {
       errorUrl,
       iconUrl,
       storyUrl,
+      heroUrl,
       terms: {
         locationSingular,
         locationPlural,
@@ -648,6 +703,7 @@ export class AppConfigService {
       authProviders: await this.tenantOAuth.offeredProviders(),
       isStage: this.config.get<string>('IS_STAGE') === 'true',
       isRoot: await this.servingRootTenant(),
+      ...(await this.servingDemoTenant()),
       // The community's own support address (v2-10). Two member-facing pages
       // -- account deletion and the Facebook data-deletion callback -- told
       // people to email support@dinnerbears.com, a hardcoded address belonging

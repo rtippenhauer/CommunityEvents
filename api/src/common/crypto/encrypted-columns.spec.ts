@@ -33,6 +33,12 @@ const NOT_A_STORED_SECRET: Readonly<Record<string, string>> = {
   'invites.token': 'As emailVerificationToken, and looked up by value.',
   'event_guest_links.token': 'As invites.token.',
   'events.reservationConfirmToken': 'As invites.token.',
+  'demo_requests.passwordHash':
+    'As users.passwordHash -- bcrypt, hashed at request time and copied ' +
+    'verbatim onto the admin this request creates.',
+  'demo_requests.token':
+    'As invites.token: a single-use random value in a link, looked up by ' +
+    'value, which a randomised cipher cannot do.',
   'oauth_handoffs.tokenHash':
     'Already a SHA-256 digest, and the ticket it stands for lives about two ' +
     'minutes. Encrypting a hash would let anyone holding the key recover... a ' +

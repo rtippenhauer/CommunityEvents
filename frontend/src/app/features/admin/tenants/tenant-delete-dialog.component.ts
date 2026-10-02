@@ -23,6 +23,12 @@ export interface TenantDeleteDialogData {
  * be clicked by accident; a domain cannot be typed without having read which
  * community it names.
  *
+ * **A demo skips both the suspend gate and the retype** (v2-14), because the
+ * API does. Its data is generated fixtures plus whatever one visitor typed, and
+ * it deletes itself within the week regardless, so asking an operator to
+ * transcribe a random hex hostname protects nothing. The confirmation is still
+ * a deliberate second click on a dialog naming what goes.
+ *
  * The counts are shown because "delete this community" is abstract and "delete
  * 47 members and 12 events" is not. They come from the list the operator was
  * already looking at, so no extra request is made to render a warning.
@@ -59,12 +65,21 @@ export interface TenantDeleteDialogData {
         <li>all ratings, points, invites and history</li>
       </ul>
 
-      <p class="warn">This cannot be undone. There is no backup taken first.</p>
+      @if (data.tenant.isDemo) {
+        <p class="warn">
+          This is a demo and would be deleted automatically anyway. Removing it now frees a slot
+          immediately.
+        </p>
+      } @else {
+        <p class="warn">This cannot be undone. There is no backup taken first.</p>
+      }
 
-      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="confirm-field">
-        <mat-label>Type {{ data.tenant.domain }} to confirm</mat-label>
-        <input matInput [formControl]="confirmation" autocomplete="off" />
-      </mat-form-field>
+      @if (!data.tenant.isDemo) {
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="confirm-field">
+          <mat-label>Type {{ data.tenant.domain }} to confirm</mat-label>
+          <input matInput [formControl]="confirmation" autocomplete="off" />
+        </mat-form-field>
+      }
     </mat-dialog-content>
 
     <mat-dialog-actions align="end">
@@ -73,7 +88,7 @@ export interface TenantDeleteDialogData {
         mat-raised-button
         class="danger-btn"
         (click)="remove()"
-        [disabled]="!matches() || deleting"
+        [disabled]="!canDelete() || deleting"
       >
         @if (deleting) {
           <mat-spinner diameter="20" />
@@ -144,8 +159,23 @@ export class TenantDeleteDialogComponent {
     return typed === this.data.tenant.domain.toLowerCase();
   }
 
+  /**
+   * Whether the delete may proceed -- the ONE place that rule lives.
+   *
+   * It used to be written twice: once in the button's `[disabled]` and once as
+   * an early return in `remove()`. When demos stopped needing the typed
+   * confirmation, only the first was updated, so the button enabled itself and
+   * the handler silently bailed -- a Delete button that did nothing at all,
+   * with no error to explain it. Found on stage.
+   *
+   * Both callers read this now, so the two cannot disagree again.
+   */
+  canDelete(): boolean {
+    return this.data.tenant.isDemo || this.matches();
+  }
+
   remove(): void {
-    if (!this.matches()) return;
+    if (!this.canDelete()) return;
     this.deleting = true;
 
     this.tenantsAdminService.remove(this.data.tenant.id, this.confirmation.value.trim()).subscribe({

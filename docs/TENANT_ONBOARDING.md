@@ -481,7 +481,57 @@ With DNS and mail in place:
    set them under **Admin → API Keys**. Leaving them unset inherits the
    deployment's, which is usually what you want.
 
-## Checklist
+## 7. Demo communities
+
+Demos are not created this way, and deliberately cannot be. A visitor asks for
+one on the marketing site, confirms their address, and gets **their own
+community** with themselves as its administrator — deleted seven days later.
+Nothing is shared between two visitors' demos.
+
+**That is a privacy decision, not a convenience one.** An earlier design had a
+single shared demo where signing up granted admin. But an admin can see every
+user's email address, their linked Google/Facebook addresses, the address each
+invite was bound to, and can search on them — so a shared demo would have handed
+each visitor a searchable directory of the previous visitors' real addresses.
+
+### What an operator has to do
+
+Nothing, per demo. There is no provisioning command and no DNS work: the host is
+generated (`demo-<8 hex>.<your domain>`), which is a **single label** under the
+deployment domain, so the existing Universal SSL wildcard already covers it in
+production and the `*.stage.` wildcard covers it on stage.
+
+The one thing worth knowing is where the limits are, because they are
+deliberately low and an operator hitting them will want to know why:
+
+| Limit | Value | Where |
+| --- | --- | --- |
+| Live demos, total | 10 | `MAX_LIVE_DEMOS` |
+| Live demos per IP | 2 | `MAX_LIVE_DEMOS_PER_IP` |
+| Demo lifetime | 7 days | `DEMO_LIFETIME_DAYS` |
+| Unconfirmed request lifetime | 24 hours | `DEMO_REQUEST_LIFETIME_HOURS` |
+
+All four are in `api/src/modules/demo/demo.service.ts`. Ten is not a capacity
+limit — a demo is a few dozen rows — it is a blast-radius limit on a door open to
+anyone. The expiry sweep runs daily at 09:00 UTC; daily rather than weekly so a
+demo lives seven days rather than up to fourteen.
+
+### A demo cannot send email, and that took explicit work
+
+Leaving a demo without its own Brevo credentials would have had the *opposite*
+effect: a community with no key of its own falls back to the deployment's, and a
+demo is a subdomain of the deployment. Since anyone can create a demo, that
+fallback would have let anyone mail arbitrary addresses from your sending domain.
+So `EmailService` refuses outright for any community with `is_demo` set.
+
+The one message a demo causes — its confirmation link — is composed and sent in
+the **root tenant's** context, as the platform rather than as the demo.
+
+Two consequences worth knowing before somebody reports them as bugs: a demo admin
+who forgets their password cannot reset it (they ask for a new demo), and invites
+sent from inside a demo generate a link but deliver no mail.
+
+## Checklist## Checklist
 
 ```
 [ ] A/CNAME for the web host resolves
@@ -495,3 +545,6 @@ With DNS and mail in place:
 [ ] Client ID + secret saved at Admin -> Sign-in Providers (if wanted)
 [ ] Community created with a first admin; sign-in confirmed at its own host
 ```
+
+Demo communities need none of the above — no DNS, no certificate, no Brevo
+account. See section 7.
