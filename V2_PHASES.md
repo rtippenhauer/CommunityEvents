@@ -1729,7 +1729,8 @@ the existing shell's gating rather than anything this item changed, and the root
 tenant arguably wants a trimmed nav.
 
 ### v2-14 — Demo communities
-**Status:** In Progress. Depends on v2-3, v2-4 and v2-10.
+**Status:** Complete (2026-10-02). Tag `v2-14`. Depends on v2-3, v2-4 and v2-10.
+API unit 380, API e2e 928 across 45 files, frontend 223, Playwright 3.
 
 **Retitled and respecified 2026-09-18, mid-item.** This was "Demo tenant": one
 shared community anyone could sign up to, where self-registration granted admin
@@ -2408,9 +2409,9 @@ removes the Facebook login id and leaves the rest standing.
 
 ### v2-31 — A real email log
 
-**Status:** Not started. Not a blocker, wanted early. Pairs with `v2-27` but is
-deliberately separate: that item is about the *send* path, this is the *read*
-path.
+**Status:** In Progress (started 2026-10-02). Not a blocker, pulled forward by
+Rob. Pairs with `v2-27` but is deliberately separate: that item is about the
+*send* path, this is the *read* path.
 
 **Rob's call, 2026-10-01:** the admin email screen should list every message the
 community has sent, not only what is queued.
