@@ -568,6 +568,29 @@ V2_PHASES.md's "Deferred: CommunityEvents domain, branding and demo" for the
 backlog items (branding defaults, landing page, demo tenant), all deliberately
 held until the tenant work is stable.
 
+**The running order changed on 2026-10-01: the DinnerBears cutover comes first,
+and the numbers no longer say what comes next.** Read `docs/CUTOVER_PLAN.md` and
+V2_PHASES.md's "Running order" section, not the item numbers — tags exist
+through `v2-13`, so renumbering stopped being free and the order is stated in
+prose, the same way v2-9-before-v2-8 and v2-26/27/28 already are.
+
+The reason is drift. This repo forked from v1 at Phase 38 / v1.5.1 on
+2026-08-08, and v1 has since shipped Phase 39 (Muse API + Facebook RSVP sync,
+v1.6.0) plus three bugfixes (v1.6.1) — all listed in **v1's
+`docs/PORT_TO_COMMUNITYEVENTS.md`**, which is the authoritative port spec and
+lives in the other repo. The port list was growing faster than it was
+shrinking, so **v1 takes no new phases**: its Phase 40 (Ban Records) moved here
+as `v2-30` before any v1 code was written, and the drift list is now final at
+those four entries. Bugfixes may still land in v1; phases may not.
+
+Five things stand between here and a live DinnerBears — `/v2-done 14`, the
+dispatcher claim step carved out of `v2-27`, `v2-29` (port Phase 39), `v2-24`
+(cities, which the import depends on), `v2-25` (the import) — plus a production
+deployment that does not exist yet. The test for whether anything else belongs
+on that path is **"does DinnerBears have it today?"**; if not, going live
+without it is parity rather than regression, which defers nine of the fourteen
+open items.
+
 ## Stack (current `main`)
 Mostly the inherited v1 snapshot, with the data layer already replaced by
 `v2-1`. The rest will be replaced piece by piece as v2 items land — do not
