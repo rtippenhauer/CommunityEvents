@@ -1110,6 +1110,51 @@ export class AuthService {
       passwordResetToken: null,
       passwordResetExpiresAt: null,
     } });
+
+    // Every existing session dies with the old password.
+    //
+    // This is the whole point of a reset for the commonest case. Somebody who
+    // resets their password usually believes an account is compromised, and
+    // `JwtStrategy` checks `login_sessions.is_active` on every request -- which
+    // is what makes sessions revocable, and was doing nothing for the one
+    // gesture that most needs it. Before this, a stolen cookie kept working
+    // after the owner had locked the attacker out of the password, which is
+    // exactly backwards. Found by review, 2026-10-02.
+    //
+    // All of them, including any the owner holds elsewhere: they have just
+    // proved control of the mailbox and can sign in again with the new
+    // password, and "log me out everywhere" is the expected meaning of a reset.
+    await this.revokeAllSessions(user.id, 'user.password_reset');
+  }
+
+  /**
+   * Deactivates every live session for a user.
+   *
+   * `updateMany` rather than `update`: there is no unique key here and a user
+   * with no live session is an ordinary outcome, not a P2025. Audited, because
+   * the thing worth being able to reconstruct later is when somebody's sessions
+   * were cut and why.
+   */
+  private async revokeAllSessions(
+    userId: number,
+    action: string,
+    keepJti?: string,
+  ): Promise<void> {
+    const { count } = await this.prisma.login_sessions.updateMany({
+      where: {
+        userId,
+        isActive: true,
+        // `not` on a unique column rather than fetching ids first: one
+        // statement, and a missing jti simply spares nothing.
+        ...(keepJti ? { jwtJti: { not: keepJti } } : {}),
+      },
+      data: { isActive: false },
+    });
+    await this.auditService.log({
+      userId,
+      action,
+      metadata: { sessionsRevoked: count },
+    });
   }
 
   async setPassword(userId: number, email: string, newPassword: string): Promise<{ needsVerification: boolean }> {
@@ -1153,7 +1198,12 @@ export class AuthService {
     return { needsVerification: false };
   }
 
-  async changePassword(userId: number, currentPassword: string, newPassword: string): Promise<void> {
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+    keepJti?: string,
+  ): Promise<void> {
     const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user || !user.passwordHash) throw new BadRequestException('no_password');
 
@@ -1162,6 +1212,15 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
     await this.prisma.users.update({ where: { id: userId }, data: { passwordHash } });
+
+    // Every *other* session dies; this one survives.
+    //
+    // Deliberately different from a reset. Somebody changing their password
+    // proved the old one and is holding a working session, so signing them out
+    // of the tab they are in would be hostile for no gain. What a change should
+    // still do is evict anybody else holding a session minted under the old
+    // password -- which is the half that was missing.
+    await this.revokeAllSessions(userId, 'user.password_change', keepJti);
   }
 
   private async sendVerificationEmail(user: User, token: string): Promise<void> {

@@ -710,8 +710,21 @@ export class AuthController {
   async changePassword(
     @Body() dto: ChangePasswordDto,
     @CurrentUser() user: User,
+    @Req() req: Request,
   ): Promise<{ message: string }> {
-    await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    // The caller's own jti, so changing a password evicts every *other* session
+    // without signing the caller out of the tab they are in. Read the same way
+    // logout reads it.
+    const token = req.cookies?.['access_token'];
+    const payload = token
+      ? (this.authService['jwtService'].decode(token) as { jti?: string } | null)
+      : null;
+    await this.authService.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+      payload?.jti,
+    );
     return { message: 'Password updated' };
   }
 

@@ -42,34 +42,126 @@ export interface PublicAuthor {
  */
 type ReleaseWithRelations = Release & {
   author?: User | null;
-  release_feedback?: (ReleaseFeedback & { feedback: Feedback & { user?: User | null } })[];
+  /** The join rows only — global, two ids, no hop into scoped data. */
+  release_feedback?: ReleaseFeedback[];
 };
 
+/**
+ * **Does not traverse into `feedback`, and that is the point.**
+ *
+ * `releases` and `release_feedback` are global; `feedback` is tenant-scoped.
+ * The scoping extension cannot filter a to-one hop from a global parent --
+ * Prisma accepts no `where` on a to-one include -- and `tenant-scope.extension`
+ * names this exact chain as the one such case in the schema. So this used to be
+ * `release_feedback: { include: { feedback: { include: { user: true } } } }`,
+ * and `toPublicRelease` spread the whole feedback row into the response.
+ *
+ * The result: any signed-in member of any community reading the deployment-wide
+ * release notes received **other communities' feedback in full** -- `body`,
+ * `adminNote`, `status`, `title` -- including tickets their author had marked
+ * private. Demo visitors are ordinary members of their own community, so after
+ * v2-14 that audience included strangers. The frontend even redacts the
+ * submitter's name when `isPrivate` is set, which shows the intent was
+ * understood and enforced in the wrong layer: the API shipped the private body
+ * regardless. Found by review, 2026-10-02.
+ *
+ * The join rows themselves are safe to read -- they are global and carry only
+ * two ids. `attachLinkedFeedback` resolves those ids through the **scoped**
+ * client, which is the "anchor the query on the scoped model" the extension's
+ * comment asks for.
+ */
 const RELEASE_INCLUDE = {
   author: true,
-  release_feedback: { include: { feedback: { include: { user: true } } } },
+  release_feedback: true,
 } satisfies Prisma.releasesInclude;
+
+/**
+ * What a release says about the feedback behind it: enough to credit somebody
+ * and to let a feedback page say "shipped in 1.6.0", and nothing else.
+ *
+ * Every consumer was checked before narrowing this. `updates.component` reads
+ * `isPrivate` and `user.fullName` for the credit line, and the feedback board,
+ * the feedback detail page and the admin release screen each match on `id`
+ * alone. Nothing rendered `body`, `title`, `adminNote` or `status`, so serving
+ * them was pure exposure.
+ */
+export interface LinkedFeedback {
+  id: number;
+  isPrivate: boolean;
+  user: PublicAuthor | null;
+}
 
 function toPublicAuthor(user: User | null | undefined): PublicAuthor | null {
   if (!user) return null;
   return { id: user.id, fullName: user.fullName, profilePhotoPath: user.profilePhotoPath };
 }
 
-function toPublicRelease(release: ReleaseWithRelations) {
+function toPublicRelease(release: ReleaseWithRelations, linkedFeedback: LinkedFeedback[]) {
   const { release_feedback, ...rest } = release;
-  return {
-    ...rest,
-    author: toPublicAuthor(release.author),
-    linkedFeedback: (release_feedback ?? []).map((rf) => ({
-      ...rf.feedback,
-      user: toPublicAuthor(rf.feedback.user),
-    })),
-  };
+  return { ...rest, author: toPublicAuthor(release.author), linkedFeedback };
 }
 
 @Injectable()
 export class ReleasesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Resolves the feedback behind a set of releases, **through the scoped
+   * client**.
+   *
+   * This is the half that makes the isolation real. `release_feedback` is global
+   * and names feedback ids from every community, so these ids are read and then
+   * looked up as an ordinary scoped query -- no `runUnscoped`, no traversal from
+   * a global parent -- and the extension adds the tenant predicate. Ids
+   * belonging to another community simply return no row and are dropped.
+   *
+   * So a release shown in Dayton credits Dayton's contributors and nobody else.
+   * That is the correct reading of a deployment-wide note: the release is shared,
+   * the people are not.
+   *
+   * One query for the whole page rather than one per release, and the shape is
+   * narrowed to `LinkedFeedback` here so no caller can accidentally serve more.
+   */
+  private async linkedFeedbackFor(
+    releases: ReleaseWithRelations[],
+  ): Promise<Map<number, LinkedFeedback[]>> {
+    const byRelease = new Map<number, LinkedFeedback[]>();
+    for (const release of releases) byRelease.set(release.id, []);
+
+    const feedbackIds = [
+      ...new Set(releases.flatMap((r) => (r.release_feedback ?? []).map((rf) => rf.feedbackId))),
+    ];
+    if (feedbackIds.length === 0) return byRelease;
+
+    const rows = await this.prisma.feedback.findMany({
+      where: { id: { in: feedbackIds } },
+      select: { id: true, isPrivate: true, user: true },
+    });
+    const visible = new Map<number, LinkedFeedback>(
+      rows.map((row) => [
+        row.id,
+        { id: row.id, isPrivate: row.isPrivate, user: toPublicAuthor(row.user) },
+      ]),
+    );
+
+    for (const release of releases) {
+      byRelease.set(
+        release.id,
+        (release.release_feedback ?? [])
+          .map((rf) => visible.get(rf.feedbackId))
+          .filter((fb): fb is LinkedFeedback => fb !== undefined),
+      );
+    }
+    return byRelease;
+  }
+
+  /** Maps a page of releases to their public shape in one scoped lookup. */
+  private async toPublicReleases(
+    releases: ReleaseWithRelations[],
+  ): Promise<ReturnType<typeof toPublicRelease>[]> {
+    const linked = await this.linkedFeedbackFor(releases);
+    return releases.map((release) => toPublicRelease(release, linked.get(release.id) ?? []));
+  }
 
   // ── Public ────────────────────────────────────────────────────────────────
 
@@ -91,7 +183,7 @@ export class ReleasesService {
       include: RELEASE_INCLUDE,
       orderBy: { publishedAt: 'desc' },
     });
-    return releases.map(toPublicRelease);
+    return this.toPublicReleases(releases);
   }
 
   async findOnePublished(id: number): Promise<ReturnType<typeof toPublicRelease>> {
@@ -100,7 +192,7 @@ export class ReleasesService {
       include: RELEASE_INCLUDE,
     });
     if (!release) throw new NotFoundException(`Release ${id} not found`);
-    return toPublicRelease(release);
+    return (await this.toPublicReleases([release]))[0];
   }
 
   // ── Admin ─────────────────────────────────────────────────────────────────
@@ -110,7 +202,7 @@ export class ReleasesService {
       include: RELEASE_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
-    return releases.map(toPublicRelease);
+    return this.toPublicReleases(releases);
   }
 
   async findOneAdmin(id: number): Promise<ReturnType<typeof toPublicRelease>> {
@@ -119,7 +211,7 @@ export class ReleasesService {
       include: RELEASE_INCLUDE,
     });
     if (!release) throw new NotFoundException(`Release ${id} not found`);
-    return toPublicRelease(release);
+    return (await this.toPublicReleases([release]))[0];
   }
 
   async create(dto: CreateReleaseDto, authorId: number): Promise<Release> {
