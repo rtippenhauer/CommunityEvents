@@ -10,6 +10,63 @@ order (data layer has to exist before there's anything to scope). Update
 each item's status as `/v2-done` closes it; add new items here as later
 requirements docs (REQ-TENANT-02, …) land.
 
+## Running order (revised 2026-10-01): the DinnerBears cutover comes first
+
+**The goal changed.** Until now the backlog ran in number order and v2-25 (the
+DinnerBears import) sat deliberately last. Rob's call on 2026-10-01 is to get
+DinnerBears onto CommunityEvents as soon as possible, which makes the import
+the near-term objective rather than the finishing move. `docs/CUTOVER_PLAN.md`
+is the full plan; this section is the ordering it implies.
+
+**Nothing is renumbered.** Tags `v2-1` … `v2-13` exist and `v2-14` is about to,
+so renumbering stopped being free — the same reason v2-9-before-v2-8 and
+v2-26/27/28 are stated in prose rather than moved. **Read this section, not the
+numbers, for what comes next.**
+
+### Why the order changed: v1 is outrunning v2
+
+This repo forked from v1 at Phase 38 / v1.5.1 on 2026-08-08. Since then v1 has
+shipped Phase 39 (Muse API + Facebook RSVP sync, v1.6.0) and three bugfixes
+(v1.6.1), all recorded in v1's `docs/PORT_TO_COMMUNITYEVENTS.md` and none of
+them ported. Every further v1 phase adds to that list, so the cutover gets
+harder the longer it waits.
+
+Two decisions bound it:
+
+- **v1 takes no new phases.** Phase 40 (Ban Records) was moved here as `v2-30`
+  before any code was written, so it costs nothing to move. Bugfixes may still
+  land in v1 — all three in 1.6.1 are "No DB changes" and a paragraph each —
+  but a phase is weeks of porting.
+- **The drift list is now final at four entries**: Phase 39 and the three
+  1.6.1 fixes.
+
+### Pre-cutover — the critical path
+
+| Order | Item | Why it is required |
+|---|---|---|
+| 1 | `/v2-done 14` | Housekeeping. Nothing depends on v2-14; it is only waiting on a stage sign-off. |
+| 2 | **bugfix — dispatcher claim** | v2-27's first half, carved out. The dispatcher has no claim step and Admin → Send Now dispatches from a request, so it can double-send *today*. Hours of work, and a go-live blocker once real members are receiving real mail. |
+| 3 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
+| 4 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
+| 5 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
+| 6 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
+
+`v2-31` (a real email log) is not a blocker but is wanted early: the current
+screen is 100 rows with no search, which stops answering "did this member get
+their invite" at DinnerBears' volume on about day two.
+
+### Post-cutover — everything else
+
+`v2-15`, `v2-16`, `v2-17`, `v2-18` … `v2-23`, `v2-26`, `v2-28`, `v2-30`, and
+the rest of `v2-27`. Nine of these are either net-new features v1 never had, or
+operator tooling that matters only once somebody other than Rob runs an
+instance. **None of them is a parity requirement**, which is the test for
+whether something belongs on the critical path: DinnerBears runs without it
+today, so going live without it is parity rather than regression.
+
+The one that most wants pulling forward afterwards is `v2-24`'s security note —
+but that closes as a side effect of item 4 above.
+
 ## v2-1 — Prisma data layer (REQ-TENANT-01.3, first half)
 **Status:** Complete (2026-08-09)
 
@@ -2215,3 +2272,134 @@ a crawler receives without executing JavaScript, verified by fetching the page
 with scripting disabled rather than by reading DevTools; `robots.txt` answers
 per tenant; stage stays `Disallow: /` however an individual tenant is
 configured.
+
+### v2-29 — Port v1's Phase 39 (Muse API + Facebook RSVP sync)
+
+**Status:** Not started. **On the cutover critical path** — see the running
+order at the top. Depends on v2-5 (scoping), v2-6 (users scoped) and v2-9
+(per-community email, for the sync's confirmation mail).
+
+v1 shipped this on 2026-09-29 as v1.6.0, after this repo forked. **Muse is an
+outside app that creates the community's Facebook events**, reads their Going
+lists, posts invite links there, and pushes the lists back so the website holds
+a merged headcount. DinnerBears depends on it now, so cutting over without it
+would turn the Facebook mirror off.
+
+**The spec is v1's `docs/PORT_TO_COMMUNITYEVENTS.md`**, which carries the full
+rule set, the API contract, the four migrations and a per-column "import into
+v2?" table. v1 code is never copied across — this is re-implemented from that
+section. `docs/MUSE_API.md` comes over as-is. The 35 e2e cases in v1's
+`api/test/integrations.e2e-spec.ts` pin the behaviour and should be ported too.
+
+Four tables arrive: `api_tokens`, `event_facebook_links`, `facebook_accounts`,
+`facebook_event_attendees`. What changes in v2:
+
+- **All four are tenant-scoped** and must be classified in
+  `tenant-scoped-models.ts` — the build refuses to compile until they are.
+  Uniques become per-tenant: `(tenant_id, facebook_event_id)` and
+  `(tenant_id, facebook_user_id)` / `(tenant_id, profile_url)`, so two
+  communities may share a Facebook event or a Facebook person.
+- **The token identifies the tenant, not the Host header.** `api_tokens` gains
+  `tenant_id` and the guard resolves the community from the token's own row —
+  an integration call carries no session. Muse then changes only its base URL
+  and token per community. This is the one design point that does not survive
+  a literal port.
+- **`api_tokens` rows are not imported.** They would need a tenant anyway, and
+  tokens are reissued in v2.
+- **The automation-account conflict, which needs deciding before the schema is
+  written.** v2 allows exactly one non-human account per tenant
+  (`users.is_service_account`, see CLAUDE.md), and Muse is a *second*. Either
+  relax "exactly one" or model integration accounts separately. Whichever is
+  chosen, Muse accounts need the protections service accounts already have:
+  excluded from ban, delete, hard-delete and the inactivity sweep, and hidden
+  from the directory, leaderboard and member search.
+- **Facebook groups are free text on each link** (`facebook_group`), not a
+  foreign key, so v2-24 dropping `facebook_group_config` does not conflict.
+- **Bans already exist well enough** to port rule 13 (a banned or deleted
+  member keeps their Facebook link, is reported in `warnings`, and is never
+  added or counted) — v2 inherited `UserStatus.SUSPENDED` and the admin ban
+  path. `v2-30` enriches that later and is not a prerequisite.
+
+**Definition of done:** the Muse API answers identically to v1's contract on a
+community's own host; a token opens only the Muse routes and only for an active
+account holding that role; the sync's rules are pinned by the ported e2e suite;
+two communities can mirror Facebook independently with no cross-tenant read or
+write.
+
+### v2-30 — Ban records
+
+**Status:** Not started. **Not on the cutover critical path** — v1 does not have
+this feature either, so going live without it is parity. Moved here from v1's
+Phase 40 on 2026-10-01, before any v1 code was written.
+
+A permanent record of every ban, so somebody banned is recognised if they come
+back: name, every email address, Google/Facebook login ids, linked Facebook
+sync accounts, who banned them, when, and an optional reason — **kept even when
+the account is deleted**. Sign-up and invite redemption matching a record are
+blocked and audited; invites to a banned address are refused; a forceful ban no
+longer frees the address for re-use; an admin Banned list with Unban. A Meta
+Facebook-Login deletion request drops only the Facebook *login* id from the
+record, not the record.
+
+**A ban is community-wide, not deployment-wide** (Rob, 2026-10-01). The table is
+tenant-scoped. This is not a new policy — DinnerBears runs Cincinnati and Dayton
+as separate databases today, so a ban in one has never bound the other, and
+scoping keeps that identical through the cutover rather than silently widening
+it. One community's moderation judgment must not bind another's, and an operator
+imposing bans across customers' communities is a different product.
+
+Three things follow, and the first is a trap:
+
+- **The record holds identifying data as values, never as a foreign key to
+  `users`.** The whole point is surviving the account's deletion, and an FK does
+  the opposite — it either cascades the record away or blocks the delete. Email,
+  login ids and linked account ids are copied in as columns. `banned_by` may
+  stay an FK and should be nullable, as `audit_log.user_id` already is.
+- **Purging is automatic.** `purgeTenantRows` walks `TENANT_SCOPED_MODELS`, so
+  once classified, tenant deletion and demo expiry both sweep it with no special
+  handling. A ban created inside a seven-day demo dies with the demo, which is
+  correct.
+- **The asymmetry with `email_suppressions` is deliberate — do not "fix" it.**
+  Suppressions stay global because deliverability is a property of the address;
+  bans are scoped because moderation is a property of the community. So somebody
+  banned in Dayton still receives mail from Cincinnati. It will read as an
+  inconsistency to whoever sees it next, so say so where the table is defined.
+
+**Definition of done:** a ban survives the account's deletion; sign-up and invite
+redemption against a matching record are refused and audited; the record is
+invisible to and unmatchable from any other community; a Meta deletion request
+removes the Facebook login id and leaves the rest standing.
+
+### v2-31 — A real email log
+
+**Status:** Not started. Not a blocker, wanted early. Pairs with `v2-27` but is
+deliberately separate: that item is about the *send* path, this is the *read*
+path.
+
+**Rob's call, 2026-10-01:** the admin email screen should list every message the
+community has sent, not only what is queued.
+
+Half of that already works and the other half does not. `GET /admin/email/queue`
+returns rows of every status, and `v2-14` made `sendNow` write its own row
+(`recordImmediateSend`), so password resets, verifications and the rest are no
+longer invisible. But the endpoint is `findMany({ orderBy: { createdAt: 'desc' },
+take: 100 })` — **no pagination, no search, no date or status filter.** At
+DinnerBears' volume a hundred rows is a day or two, so "did this member get their
+invite" stops being answerable almost immediately, which is exactly the question
+an operator opens this screen to ask.
+
+So: paginate it, and let it be searched by recipient and subject and filtered by
+status and date range. The screen is a queue today and should read as a log with
+the queue visible inside it — pending and failed still need the existing flush,
+retry and cancel actions, which are about work rather than history.
+
+Worth settling in the same item: **how long a sent row is kept.** Nothing prunes
+`email_queue` today, so it grows without limit and carries `html_body` as
+LongText — the log is the reason to keep rows, and the body is what makes that
+expensive. Keeping the metadata far longer than the rendered body is the obvious
+shape.
+
+**Definition of done:** an admin can find any message the community has sent by
+recipient, subject, status or date, however long ago, without the row cap hiding
+it; pending and failed mail keeps its existing actions; retention is a decision
+that is written down rather than "forever by accident".
