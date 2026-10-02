@@ -55,20 +55,40 @@ async function bootstrap(): Promise<void> {
    *    for the whole deployment, which is how Rob's office request was refused
    *    for an address he had never used. Found that way.
    *
-   * `true` takes the left-most entry of `X-Forwarded-For`, which is the real
-   * client for both shapes this deployment serves: Cloudflare sets it to the
-   * originating address on proxied hosts, and NGINX sets it from the socket on
-   * the grey-clouded ones.
+   * **This used to be `true`, which was wrong, and the comment here used to
+   * argue otherwise.** `true` believes the whole chain and takes the left-most
+   * entry, so any client could prepend `X-Forwarded-For: 1.2.3.4` and be
+   * whoever it liked. The old reasoning was that this only bought a reset demo
+   * cap, bounded anyway by `MAX_LIVE_DEMOS` -- but the demo cap is not the only
+   * consumer. **`req.ip` also buckets the 5/min throttle on `/auth/login` and
+   * `/auth/register`,** so a spoofable address means an attacker rotating a
+   * header has no login rate limit at all. Trading away brute-force protection
+   * to fix a shared rate-limit bucket is a worse deal than the one it replaced.
+   * Found by review (ChatGPT, 2026-10-02).
    *
-   * **It is spoofable, and that is an accepted trade.** A client can prepend
-   * its own `X-Forwarded-For` and claim any address. What that buys is a
-   * reset rate-limit bucket and more than two demos -- and the demo pool is
-   * bounded by `MAX_LIVE_DEMOS` regardless, which is the limit that actually
-   * protects anything. Pinning this to the proxy's real address instead would
-   * mean maintaining Cloudflare's published ranges, for a guarantee neither
-   * consumer needs.
+   * **Trust the hop, not the header.** Express walks `X-Forwarded-For` from the
+   * socket leftwards and stops at the first address it does not trust, so
+   * trusting only private networks means a forged left-most entry is ignored:
+   * NGINX appends the real peer to whatever arrived
+   * (`$proxy_add_x_forwarded_for`), that appended address is the right-most and
+   * untrusted, and it wins. A forged header can therefore only ever name an
+   * address further left than the truth, which is never read.
+   *
+   * The presets cover this deployment's shape -- NGINX Proxy Manager runs in
+   * Docker on the same host, so the peer is loopback or RFC1918. A deployment
+   * that puts something public in front (Cloudflare proxying, rather than the
+   * grey-clouded hosts the demo requires) adds those ranges through
+   * `TRUSTED_PROXIES` rather than by widening this to `true` again.
+   *
+   * The consequence of getting this *too narrow* is the old shared-bucket bug
+   * back, which is visible and annoying. Too wide is an invisible hole in the
+   * login throttle. So it fails narrow deliberately.
    */
-  app.set('trust proxy', true);
+  const trustedProxies = (process.env.TRUSTED_PROXIES ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  app.set('trust proxy', ['loopback', 'linklocal', 'uniquelocal', ...trustedProxies]);
 
   app.set('query parser', 'extended');
   app.setGlobalPrefix('api/v1');

@@ -927,4 +927,175 @@ describe('Demo tenants (e2e)', () => {
       ).rejects.toThrow();
     });
   });
+
+  /**
+   * The failure and concurrency boundaries, all three found by peer review
+   * (ChatGPT, 2026-10-02) rather than by the suite — which is the point worth
+   * recording: every existing test here drives one request at a time down the
+   * happy path, so none of them could have found any of this.
+   */
+  describe('failure and concurrency boundaries', () => {
+    /**
+     * Confirming twice at once must produce one demo, not two.
+     *
+     * `confirmDemo` used to read the row, check `createdTenantId` was null, and
+     * write it back only after creating and seeding the community. Two
+     * overlapping calls on one token both saw it unused and both built a demo;
+     * the second link overwrote the first, leaving a community with **no request
+     * row pointing at it** — invisible to the per-IP and per-email caps while
+     * still holding one of the ten slots.
+     *
+     * This needs no attacker. The route is a GET on a link in an email, so a
+     * prefetching mail client, a double click, or two tabs is enough.
+     */
+    it('creates one demo when the same token is confirmed twice at once', async () => {
+      await askForDemo('racer@example.test');
+      const token = await tokenFor('racer@example.test');
+
+      // Fired together, not sequentially -- sequential calls were always safe
+      // and are what the old `already_confirmed` check covered.
+      const [a, b] = await Promise.all([confirm(token), confirm(token)]);
+
+      const statuses = [a.status, b.status].sort();
+      expect(statuses).toEqual([200, 400]);
+      const refused = a.status === 400 ? a : b;
+      expect(refused.body.reason).toBe('already_confirmed');
+
+      const demos = await unscoped('counting demos', () =>
+        prisma.tenants.findMany({ where: { isDemo: true } }),
+      );
+      expect(demos).toHaveLength(1);
+
+      // And the one demo that exists is the one the request points at, so both
+      // caps can still see it.
+      const row = await unscoped('reading the request', () =>
+        prisma.demo_requests.findFirst({ where: { email: 'racer@example.test' } }),
+      );
+      expect(row!.createdTenantId).toBe(demos[0].id);
+    });
+
+    // Ten tokens confirmed at once must produce ten demos and no orphans --
+    // the property above, under real contention rather than a pair.
+    it('leaves no demo unlinked when many confirmations overlap', async () => {
+      const emails = Array.from({ length: 6 }, (_, i) => `rush${i}@example.test`);
+      for (const email of emails) {
+        await demoService.requestDemo(email, email, 'V1sitorPassw0rd!', `198.51.100.${emails.indexOf(email)}`);
+      }
+      const tokens = await Promise.all(emails.map((e) => tokenFor(e)));
+
+      await Promise.all(tokens.map((t) => confirm(t)));
+
+      const [demos, linked] = await unscoped('checking for orphans', async () =>
+        await Promise.all([
+          prisma.tenants.count({ where: { isDemo: true } }),
+          prisma.demo_requests.count({ where: { createdTenantId: { not: null } } }),
+        ]),
+      );
+      // Every demo is accounted for by exactly one request.
+      expect(linked).toBe(demos);
+    });
+
+    /**
+     * A confirmation that cannot be sent must not leave the address locked out.
+     *
+     * The per-email cap counts an unexpired pending row, so a request whose mail
+     * never went anywhere used to block that address for the full 24 hours while
+     * holding a slot in the pool of ten. Ten of those closed the demo to
+     * everybody for a day.
+     */
+    it('discards a request whose confirmation could not be sent', async () => {
+      // No root tenant means sendConfirmation has nobody to send as, which is
+      // the cheapest way to make the hand-off fail for real rather than by
+      // stubbing it.
+      await unscoped('removing the root marker', () =>
+        prisma.tenants.updateMany({ where: { rootMarker: true }, data: { rootMarker: null } }),
+      );
+
+      await demoService.requestDemo('nomail@example.test', 'nomail@example.test', 'V1sitorPassw0rd!', '198.51.100.50');
+
+      const rows = await unscoped('counting requests', () =>
+        prisma.demo_requests.count({ where: { email: 'nomail@example.test' } }),
+      );
+      expect(rows).toBe(0);
+    });
+
+    /**
+     * And the general repair, which covers the cases nothing can detect — the
+     * link went to spam, or was simply lost. Asking again replaces the pending
+     * request rather than being refused.
+     */
+    it('replaces an unconfirmed request when the same address asks again', async () => {
+      await demoService.requestDemo('again@example.test', 'again@example.test', 'V1sitorPassw0rd!', '198.51.100.60');
+      const first = await tokenFor('again@example.test');
+
+      await demoService.requestDemo('again@example.test', 'again@example.test', 'V1sitorPassw0rd!', '198.51.100.60');
+
+      const rows = await unscoped('counting requests', () =>
+        prisma.demo_requests.findMany({ where: { email: 'again@example.test' } }),
+      );
+      // One row, and it is the new one -- so the address is never locked out and
+      // never accumulates links either.
+      expect(rows).toHaveLength(1);
+      expect(rows[0].token).not.toBe(first);
+
+      // The superseded link is dead, which is what stops this being a way to
+      // hold several valid tokens at once.
+      const res = await confirm(first);
+      expect(res.status).toBe(404);
+    });
+
+    // Superseding must never touch a request that already produced a community,
+    // or asking again would silently hand back the caps while the demo stood.
+    it('does not replace a request that already created a demo', async () => {
+      await askForDemo('settled@example.test');
+      await confirm(await tokenFor('settled@example.test'));
+
+      await demoService.requestDemo('settled@example.test', 'settled@example.test', 'V1sitorPassw0rd!', '198.51.100.70');
+
+      const rows = await unscoped('counting requests', () =>
+        prisma.demo_requests.findMany({ where: { email: 'settled@example.test' } }),
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].createdTenantId).not.toBeNull();
+      expect(
+        await unscoped('counting demos', () => prisma.tenants.count({ where: { isDemo: true } })),
+      ).toBe(1);
+    });
+
+    /**
+     * A confirmation that fails part-way must leave nothing behind: no
+     * half-built community holding a slot, and no claimed token the visitor
+     * cannot use again.
+     */
+    it('rolls back and releases the claim when provisioning fails', async () => {
+      await askForDemo('breaks@example.test');
+      const token = await tokenFor('breaks@example.test');
+
+      // Fails after the tenant exists, which is the state worth testing -- a
+      // failure before it leaves nothing to tidy.
+      const original = demoService['firstCityId'].bind(demoService);
+      (demoService as unknown as { firstCityId: () => Promise<number> }).firstCityId = async () => {
+        throw new Error('no city');
+      };
+
+      const failed = await confirm(token);
+      expect(failed.status).toBeGreaterThanOrEqual(400);
+
+      (demoService as unknown as { firstCityId: () => Promise<number> }).firstCityId = original;
+
+      const [demos, row] = await unscoped('checking nothing was left behind', async () =>
+        await Promise.all([
+          prisma.tenants.count({ where: { isDemo: true } }),
+          prisma.demo_requests.findFirst({ where: { email: 'breaks@example.test' } }),
+        ]),
+      );
+      expect(demos).toBe(0);
+      // The claim is back, so the same link works on a second attempt.
+      expect(row!.confirmedAt).toBeNull();
+      expect(row!.createdTenantId).toBeNull();
+
+      const retried = await confirm(token);
+      expect(retried.status).toBe(200);
+    });
+  });
 });

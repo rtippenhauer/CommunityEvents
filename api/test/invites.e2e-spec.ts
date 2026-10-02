@@ -5,6 +5,7 @@ import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { cities as City, event_rsvps as EventRsvp, facebook_group_config as FacebookGroupConfig, invites as Invite, locations as Location, users as User } from '@prisma/client';
 import { InviteFlavor, InviteType, RsvpStatus, UserRole } from '../src/database/enums';
+import { daysFromNowLocal } from './utils/dates';
 
 describe('Invites (e2e)', () => {
   let app: INestApplication;
@@ -89,7 +90,8 @@ describe('Invites (e2e)', () => {
 
       expect(res.body.type).toBe('admin');
       const expiresAt = new Date(res.body.expiresAt).getTime();
-      const expected30d = Date.now() + 30 * 24 * 60 * 60 * 1000;
+      // Calendar days, not fixed milliseconds -- see daysFromNowLocal.
+      const expected30d = daysFromNowLocal(30);
       expect(Math.abs(expiresAt - expected30d)).toBeLessThan(5 * 60 * 1000);
     });
 

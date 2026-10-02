@@ -272,6 +272,35 @@ export class DemoService {
     const lowerEmail = email.toLowerCase().trim();
     const clientIp = normalizeIp(ipAddress);
 
+    // Asking again replaces an unconfirmed request rather than being refused.
+    //
+    // **This is the fix for a lockout the per-email cap created.** That cap
+    // counts an unexpired pending row, so somebody who asked and never received
+    // the link -- it went to spam, the send was queued behind a provider outage,
+    // the root tenant was misconfigured, they simply lost the mail -- could not
+    // ask again for the full 24 hours, and the dead row went on holding a slot
+    // in the pool of ten the whole time. Ten of those closed the demo to
+    // everybody for a day. Found by review (ChatGPT, 2026-10-02); the mechanism
+    // it gave was a throwing provider, which `sendNow` actually swallows by
+    // falling back to the queue -- the real route is any silent non-delivery.
+    //
+    // Superseding keeps the invariant that matters (one *demo* per address,
+    // since a confirmed request is never superseded) while making an
+    // undelivered link self-healing: the answer to "I didn't get it" is to ask
+    // again. The route's 3/min throttle is what stops that being a free mailer.
+    const superseded = await runUnscoped('superseding an unconfirmed demo request', async () =>
+      await this.prisma.demo_requests.deleteMany({
+        where: { email: lowerEmail, createdTenantId: null, confirmedAt: null },
+      }),
+    );
+    if (superseded.count > 0) {
+      this.logger.log(
+        `Replacing ${superseded.count} unconfirmed demo request(s) for ${lowerEmail}.`,
+      );
+    }
+
+    // Capped after the supersede, so the row just removed is not counted
+    // against the address that is replacing it.
     const allowed = await this.withinCaps(clientIp, lowerEmail);
     if (!allowed.ok) {
       this.logger.warn(`Demo request from ${clientIp ?? 'unknown IP'} refused: ${allowed.reason}`);
@@ -282,7 +311,7 @@ export class DemoService {
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const expiresAt = new Date(Date.now() + DEMO_REQUEST_LIFETIME_HOURS * 60 * 60 * 1000);
 
-    await runUnscoped(
+    const created = await runUnscoped(
       'demo requests belong to no tenant',
       async () =>
         await this.prisma.demo_requests.create({
@@ -297,8 +326,46 @@ export class DemoService {
         }),
     );
 
-    await this.sendConfirmation(lowerEmail, fullName.trim(), token);
+    // A request whose confirmation could not be handed off is removed rather
+    // than left behind, so it holds neither the address nor a slot. Deliberately
+    // *not* the same thing as "the mail was delivered" -- nothing here can know
+    // that, which is why superseding above exists as well.
+    try {
+      const handedOff = await this.sendConfirmation(lowerEmail, fullName.trim(), token);
+      if (!handedOff) await this.discardRequest(created.id, 'its confirmation could not be sent');
+    } catch (err) {
+      await this.discardRequest(
+        created.id,
+        `sending its confirmation threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     return reply;
+  }
+
+  /**
+   * Drops a request that never got its link out of the door.
+   *
+   * Guarded on `createdTenantId: null` and `confirmedAt: null` so it can only
+   * ever remove a row that is still waiting -- never one that has been claimed
+   * or has produced a community.
+   */
+  private async discardRequest(id: number, why: string): Promise<void> {
+    try {
+      const { count } = await runUnscoped('discarding an undeliverable demo request', async () =>
+        await this.prisma.demo_requests.deleteMany({
+          where: { id, createdTenantId: null, confirmedAt: null },
+        }),
+      );
+      if (count > 0) {
+        this.logger.warn(`Discarded demo request ${id} because ${why}.`);
+      }
+    } catch (err) {
+      this.logger.error(
+        `Failed to discard demo request ${id} (${why}): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**
@@ -309,8 +376,34 @@ export class DemoService {
    * twenty outstanding requests could otherwise confirm in the same minute and
    * every one of them would have passed a cap check made when the pool was
    * empty.
+   *
+   * ## The token is claimed atomically, and that is load-bearing
+   *
+   * This used to read the row, check `createdTenantId` was null, and only write
+   * it back at the very end — a read-check-act with the whole provision in
+   * between. Two concurrent calls on one token both saw it unused and both
+   * built a community; the second `update` then overwrote the link, so one demo
+   * was left with **no request row pointing at it at all** — invisible to both
+   * caps while still holding a slot in the pool of ten. The route is a GET on a
+   * link in an email, so a mail client that prefetches, a double click, or two
+   * tabs is enough; it needs no attacker. The controller comment claiming
+   * `already_confirmed` made a second call harmless was only true of calls that
+   * did not overlap.
+   *
+   * `confirmedAt` is the claim. The guard lives in the `where` of a single
+   * `updateMany`, so MySQL's row lock decides it: exactly one caller sees
+   * `count === 1` and everybody else sees zero. Found by review (ChatGPT,
+   * 2026-10-02).
+   *
+   * Everything after the claim is wrapped, because a claim that is never
+   * released or linked is a link nobody can use again: on any failure the
+   * part-built community is purged and the claim is handed back, so the visitor
+   * can simply click again.
    */
   async confirmDemo(token: string): Promise<{ url: string; expiresAt: Date }> {
+    // Read first, only to tell the three refusals apart -- an unknown token, a
+    // used one and an expired one are different sentences to a visitor. The
+    // read decides nothing; the claim below does.
     const request = await runUnscoped(
       'demo requests belong to no tenant',
       async () => await this.prisma.demo_requests.findUnique({ where: { token } }),
@@ -324,69 +417,175 @@ export class DemoService {
       throw new BadRequestException({ message: 'Link expired', reason: 'expired' });
     }
 
-    const allowed = await this.withinCaps(
-      normalizeIp(request.ipAddress ?? undefined),
-      request.email,
-      request.id,
+    // One UPDATE, with every condition in its WHERE. A caller that loses this
+    // race is told the link is already used, which is what has just become true.
+    const claim = await runUnscoped('claiming a demo request', async () =>
+      await this.prisma.demo_requests.updateMany({
+        where: {
+          token,
+          createdTenantId: null,
+          confirmedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { confirmedAt: new Date() },
+      }),
     );
-    if (!allowed.ok) {
-      throw new BadRequestException({ message: 'No demo slots free', reason: allowed.reason });
+    if (claim.count === 0) {
+      throw new BadRequestException({ message: 'Already used', reason: 'already_confirmed' });
     }
 
-    const domain = this.generateDomain();
-    const expiresAt = new Date(Date.now() + DEMO_LIFETIME_DAYS * 24 * 60 * 60 * 1000);
+    // Held so the catch below knows whether there is a community to tear down.
+    let createdTenantId: number | undefined;
+    try {
+      // Capped after the claim, not before: two callers racing one token would
+      // both pass a check made before either had claimed it, and the loser must
+      // not consume a slot. A refusal here releases the claim like any other
+      // failure, so the visitor can retry once the pool has room.
+      const allowed = await this.withinCaps(
+        normalizeIp(request.ipAddress ?? undefined),
+        request.email,
+        request.id,
+      );
+      if (!allowed.ok) {
+        throw new BadRequestException({ message: 'No demo slots free', reason: allowed.reason });
+      }
 
-    const tenant = await runUnscoped('creating a demo community', async () =>
-      await this.prisma.tenants.create({
-        data: {
-          slug: domain.split('.')[0],
-          domain,
-          status: 'active',
-          isDemo: true,
-          demoExpiresAt: expiresAt,
-          // Never the root tenant; chk_tenant_demo_not_root rejects the
-          // combination in the database regardless.
-          isRoot: false,
-          rootMarker: null,
-        },
-      }),
-    );
+      const domain = this.generateDomain();
+      const demoExpiresAt = new Date(Date.now() + DEMO_LIFETIME_DAYS * 24 * 60 * 60 * 1000);
 
-    const cityId = await this.firstCityId();
-
-    // The requester, as the community's first admin. Created verified: they
-    // just proved the address by following the link that got them here, which
-    // is the same evidence email verification collects.
-    await runUnscoped("creating the demo's first admin", async () =>
-      await this.prisma.users.create({
-        data: {
-          tenantId: tenant.id,
-          cityId,
-          fullName: request.fullName,
-          email: request.email,
-          passwordHash: request.passwordHash,
-          role: UserRole.ADMIN,
-          status: UserStatus.ACTIVE,
-          emailStatus: EmailStatus.ACTIVE,
-          emailVerifiedAt: new Date(),
-        },
-      }),
-    );
-
-    await runUnscoped(
-      'seeding the demo community',
-      async () => await seedDemoTenant(this.prisma, tenant.id),
-    );
-
-    await runUnscoped(
-      'linking the request to the demo it created',
-      async () =>
-        await this.prisma.demo_requests.update({
-          where: { id: request.id },
-          data: { createdTenantId: tenant.id, confirmedAt: new Date() },
+      const tenant = await runUnscoped('creating a demo community', async () =>
+        await this.prisma.tenants.create({
+          data: {
+            slug: domain.split('.')[0],
+            domain,
+            status: 'active',
+            isDemo: true,
+            demoExpiresAt,
+            // Never the root tenant; chk_tenant_demo_not_root rejects the
+            // combination in the database regardless.
+            isRoot: false,
+            rootMarker: null,
+          },
         }),
-    );
+      );
+      createdTenantId = tenant.id;
 
+      const cityId = await this.firstCityId();
+
+      // The requester, as the community's first admin. Created verified: they
+      // just proved the address by following the link that got them here, which
+      // is the same evidence email verification collects.
+      await runUnscoped("creating the demo's first admin", async () =>
+        await this.prisma.users.create({
+          data: {
+            tenantId: tenant.id,
+            cityId,
+            fullName: request.fullName,
+            email: request.email,
+            passwordHash: request.passwordHash,
+            role: UserRole.ADMIN,
+            status: UserStatus.ACTIVE,
+            emailStatus: EmailStatus.ACTIVE,
+            emailVerifiedAt: new Date(),
+          },
+        }),
+      );
+
+      await runUnscoped(
+        'seeding the demo community',
+        async () => await seedDemoTenant(this.prisma, tenant.id),
+      );
+
+      await runUnscoped(
+        'linking the request to the demo it created',
+        async () =>
+          await this.prisma.demo_requests.update({
+            where: { id: request.id },
+            data: { createdTenantId: tenant.id },
+          }),
+      );
+
+      return await this.finishConfirmation(request, domain, demoExpiresAt);
+    } catch (err) {
+      await this.abandonConfirmation(request.id, createdTenantId, err);
+      throw err;
+    }
+  }
+
+  /**
+   * Undoes a confirmation that failed part-way.
+   *
+   * Two things to put back, and both matter. The **community**, because a demo
+   * whose admin or seed failed is a half-built site holding a slot that nothing
+   * would ever clean up except the seven-day sweep. The **claim**, because a
+   * token marked confirmed with no community behind it is a link the visitor
+   * cannot use again and cannot replace -- the per-email cap would refuse them a
+   * new request for as long as the old one is unexpired.
+   *
+   * Both are best-effort and neither is allowed to mask the original error:
+   * whatever actually went wrong is what the caller needs to see, and a failure
+   * to tidy up is a second, quieter problem for the log.
+   */
+  private async abandonConfirmation(
+    requestId: number,
+    tenantId: number | undefined,
+    cause: unknown,
+  ): Promise<void> {
+    const why = cause instanceof Error ? cause.message : String(cause);
+
+    if (tenantId !== undefined) {
+      try {
+        await runUnscoped(`removing a demo that failed to finish building`, async () => {
+          await this.prisma.$transaction(
+            async (tx) => {
+              await purgeTenantRows(tx, tenantId);
+              await (tx as unknown as {
+                tenants: { delete(args: { where: { id: number } }): Promise<unknown> };
+              }).tenants.delete({ where: { id: tenantId } });
+            },
+            { timeout: 120_000, maxWait: 15_000 },
+          );
+        });
+        this.logger.warn(`Rolled back half-built demo tenant ${tenantId} after: ${why}`);
+      } catch (cleanupErr) {
+        // Logged loudly rather than swallowed: this is the one state the expiry
+        // sweep cannot reason about, since the tenant has no demoExpiresAt use
+        // yet and no request row pointing at it.
+        this.logger.error(
+          `Failed to roll back half-built demo tenant ${tenantId} after "${why}": ` +
+            `${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+        );
+      }
+    }
+
+    try {
+      await runUnscoped('releasing an unfinished demo claim', async () =>
+        await this.prisma.demo_requests.updateMany({
+          // Guarded on `createdTenantId: null` so this can never un-confirm a
+          // request that did produce a community -- which is what it would do if
+          // the failure happened after the link was written.
+          where: { id: requestId, createdTenantId: null },
+          data: { confirmedAt: null },
+        }),
+      );
+    } catch (releaseErr) {
+      this.logger.error(
+        `Failed to release demo request ${requestId} after "${why}": ` +
+          `${releaseErr instanceof Error ? releaseErr.message : String(releaseErr)}`,
+      );
+    }
+  }
+
+  /**
+   * The bookkeeping after a demo exists: cache, log, and the "it is ready"
+   * mail. Split out only so `confirmDemo`'s success path is not buried under
+   * the rollback that wraps it.
+   */
+  private async finishConfirmation(
+    request: { email: string; fullName: string },
+    domain: string,
+    expiresAt: Date,
+  ): Promise<{ url: string; expiresAt: Date }> {
     this.tenantResolution.clearCache();
     this.logger.log(`Demo ${domain} created for ${request.email}, expires ${expiresAt.toISOString()}`);
 
@@ -846,7 +1045,11 @@ export class DemoService {
    * yet, nor could it send anything if it did. This is the platform writing to
    * somebody who asked it for a demo.
    */
-  private async sendConfirmation(email: string, fullName: string, token: string): Promise<void> {
+  private async sendConfirmation(
+    email: string,
+    fullName: string,
+    token: string,
+  ): Promise<boolean> {
     const root = await runUnscoped(
       'finding the root tenant to send as',
       async () =>
@@ -857,7 +1060,10 @@ export class DemoService {
     );
     if (!root) {
       this.logger.error('No root tenant, so no demo confirmation can be sent.');
-      return;
+      // False rather than a throw: the caller discards the request, which is the
+      // repair. Throwing would turn a misconfigured deployment into a 500 on a
+      // public endpoint while leaving the same dead row behind.
+      return false;
     }
 
     const base = await this.tenantResolution.baseUrlFor(root.id);
@@ -883,6 +1089,12 @@ export class DemoService {
           `Your demo is your own and is deleted ${DEMO_LIFETIME_DAYS} days after you create it.\n`,
       });
     });
+
+    // "Handed off", not "delivered". `sendNow` either reaches the provider or
+    // falls back to the queue for the dispatcher to retry, and both are a link
+    // that will arrive -- so true here means the message is somebody's
+    // responsibility now, which is the most this can honestly promise.
+    return true;
   }
 
   /**

@@ -6,6 +6,7 @@ import { HardDeleteTask } from '../src/modules/tasks/hard-delete.task';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { cities as City, event_rsvps as EventRsvp, facebook_deletion_requests as FacebookDeletionRequest, invites as Invite, locations as Location, login_sessions as LoginSession, oauth_accounts as OAuthAccount, push_subscriptions as PushSubscription, users as User } from '@prisma/client';
 import { FacebookDeletionStatus, InviteFlavor, InviteType, OAuthProvider, RsvpStatus, UserRole, UserStatus } from '../src/database/enums';
+import { daysFromNowLocal } from './utils/dates';
 
 describe('Account Lifecycle (e2e)', () => {
   let app: INestApplication;
@@ -83,7 +84,8 @@ describe('Account Lifecycle (e2e)', () => {
       expect(deleted!.passwordHash).toBeNull();
 
       const hardDeleteAt = deleted!.hardDeleteAt!.getTime();
-      const expected30d = Date.now() + 30 * 24 * 60 * 60 * 1000;
+      // Calendar days, not fixed milliseconds -- see daysFromNowLocal.
+      const expected30d = daysFromNowLocal(30);
       expect(Math.abs(hardDeleteAt - expected30d)).toBeLessThan(5 * 60 * 1000);
 
       const oauthRows = await prisma.oauth_accounts.findMany({ where: { userId: user.id } });
