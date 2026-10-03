@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { adminGuard } from './core/guards/admin.guard';
+import { rootTenantGuard } from './core/guards/root-tenant.guard';
 import { systemAdminGuard } from './core/guards/system-admin.guard';
 import { moderatorGuard } from './core/guards/moderator.guard';
 import { validatedMemberGuard } from './core/guards/validated-member.guard';
@@ -364,7 +365,9 @@ export const routes: Routes = [
       import('./features/admin/releases/admin-releases.component').then(
         (m) => m.AdminReleasesComponent,
       ),
-    canActivate: [authGuard, adminGuard],
+    // rootTenantGuard, not adminGuard alone: release notes are deployment-wide,
+    // so administering one community is not the question. See the guard.
+    canActivate: [authGuard, adminGuard, rootTenantGuard],
   },
   {
     path: 'admin/announcements',

@@ -350,9 +350,17 @@ model email_log_views {
   id             Int      @id @default(autoincrement()) @db.UnsignedInt
   tenantId       Int      @default(0) @map("tenant_id") @db.UnsignedInt
   viewedOn       DateTime @map("viewed_on") @db.Date
+  /// Requests for the list. Includes filter changes and search keystrokes, so
+  /// it measures "is this screen used" rather than "was this message needed".
   views          Int      @default(0) @db.UnsignedInt
+  /// Rows expanded to read the body -- a deliberate act with one message behind
+  /// it, which is the stronger signal of the two.
+  opens          Int      @default(0) @db.UnsignedInt
   /// Age, in days, of the oldest message reached on this day.
   deepestAgeDays Int      @default(0) @map("deepest_age_days") @db.UnsignedInt
+  /// Age, in days, of the oldest message actually OPENED. This is the column a
+  /// retention window should be decided on.
+  deepestOpenAgeDays Int  @default(0) @map("deepest_open_age_days") @db.UnsignedInt
   lastViewedAt   DateTime @map("last_viewed_at") @db.DateTime(0)
   tenant         tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_log_views_tenant")
 

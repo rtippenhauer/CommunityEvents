@@ -193,6 +193,41 @@ export class AdminController {
    * every row made the response grow with the community's mail rather than with
    * the page.
    */
+  /**
+   * Forgets this community's email-log review history.
+   *
+   * There has to be a way to reset it: the figures are evidence for a retention
+   * decision, and counts accumulated while somebody was poking at a new screen
+   * are not evidence about how it gets used.
+   */
+  /**
+   * Runs the body-retention sweep now, rather than at 04:00 UTC.
+   *
+   * The migration that added the column cleared nothing -- it could not, since
+   * clearing is a policy and not a schema change -- so a deployment upgrading
+   * into this carries every old body until the first nightly run. This is the
+   * button for not waiting, and it is also the only way to see the sweep work
+   * without ageing rows by hand.
+   *
+   * Scoped like every other read here, so it clears this community's mail and
+   * nobody else's -- unlike the cron, which deliberately sweeps all of them.
+   */
+  @Post('email/log/prune')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  async pruneEmailBodies(): Promise<{ cleared: number }> {
+    return { cleared: await this.emailService.clearOldBodies() };
+  }
+
+  @Delete('email/log/usage')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  async clearEmailLogUsage(): Promise<{ cleared: number }> {
+    return { cleared: await this.emailService.clearLogUsage() };
+  }
+
+  // Declared AFTER the usage route above: `:id` would otherwise match the
+  // literal "usage" and ParseIntPipe would 400 on it.
   @Get('email/log/:id')
   @Roles(UserRole.ADMIN)
   async getEmailLogEntry(@Param('id', ParseIntPipe) id: number) {

@@ -60,8 +60,21 @@ export interface EmailLogPage {
 export interface EmailLogUsage {
   /** Days in the last 90 on which somebody opened the log. */
   daysReviewed: number;
-  /** Age in days of the oldest message anybody has reached, ever. */
+  /** Requests for the list, all time. Filter changes and search keystrokes included. */
+  views: number;
+  /** Age in days of the oldest message anybody has scrolled to, ever. */
   deepestAgeDays: number;
+
+  /**
+   * Rows expanded to read the body, all time, and how far back that reached.
+   *
+   * The stronger of the two signals, and the one a retention window should be
+   * decided on: scrolling past a message says nothing, opening it says somebody
+   * needed it.
+   */
+  opens: number;
+  deepestOpenAgeDays: number;
+
   lastReviewedAt: Date | null;
 }
 
@@ -653,9 +666,20 @@ export class EmailService {
   async getLogEntry(id: number): Promise<EmailLogContent | null> {
     const row = await this.prisma.email_queue.findFirst({
       where: { id },
-      select: { id: true, templateParams: true, htmlBody: true, textBody: true },
+      select: {
+        id: true,
+        templateParams: true,
+        htmlBody: true,
+        textBody: true,
+        // Only to date the open; not returned to the caller.
+        createdAt: true,
+      },
     });
-    return row ?? null;
+    if (!row) return null;
+
+    const { createdAt, ...content } = row;
+    await this.recordLogOpen(createdAt);
+    return content;
   }
 
   /**
@@ -712,26 +736,66 @@ export class EmailService {
    * statistic could not be written.
    */
   private async recordLogView(oldestOnPage: Date | null): Promise<void> {
+    await this.bumpLogUsage({ views: 1, listAgeDays: this.ageInDays(oldestOnPage) });
+  }
+
+  /**
+   * Notes that a message was opened, and how old it was.
+   *
+   * Counted apart from list views because the two answer different questions.
+   * A list view happens on every filter change and every pause in typing; an
+   * open is somebody deciding they need *that* message. For "is it safe to
+   * delete rows older than six months", the opens are the evidence.
+   */
+  private async recordLogOpen(createdAt: Date): Promise<void> {
+    await this.bumpLogUsage({ opens: 1, openAgeDays: this.ageInDays(createdAt) });
+  }
+
+  /** Whole days, floored. Same-day is 0, which is honest rather than 1. */
+  private ageInDays(at: Date | null): number {
+    if (!at) return 0;
+    return Math.max(0, Math.floor((Date.now() - at.getTime()) / 86_400_000));
+  }
+
+  /**
+   * One row per community per day, updated in place.
+   *
+   * Raw SQL for `ON DUPLICATE KEY UPDATE ... GREATEST(...)`, which Prisma cannot
+   * express -- "keep the larger of the two" is the whole point of the depth
+   * columns. It therefore carries its own `tenant_id` from `requireTenantId`,
+   * because raw SQL is not routed through the scoping extension.
+   *
+   * Swallows its own errors. Nothing a reader does should fail because a
+   * statistic could not be written.
+   */
+  private async bumpLogUsage(delta: {
+    views?: number;
+    opens?: number;
+    listAgeDays?: number;
+    openAgeDays?: number;
+  }): Promise<void> {
     try {
       const tenantId = requireTenantId('recording that the email log was reviewed');
       const now = new Date();
-      // Whole days, floored. A message read the same day it was sent is 0, which
-      // is the honest answer rather than 1.
-      const ageDays = oldestOnPage
-        ? Math.max(0, Math.floor((now.getTime() - oldestOnPage.getTime()) / 86_400_000))
-        : 0;
+      const views = delta.views ?? 0;
+      const opens = delta.opens ?? 0;
+      const listAge = delta.listAgeDays ?? 0;
+      const openAge = delta.openAgeDays ?? 0;
 
       await this.prisma.$executeRaw`
-        INSERT INTO email_log_views (tenant_id, viewed_on, views, deepest_age_days, last_viewed_at)
-        VALUES (${tenantId}, CURDATE(), 1, ${ageDays}, ${now})
+        INSERT INTO email_log_views
+          (tenant_id, viewed_on, views, opens, deepest_age_days, deepest_open_age_days, last_viewed_at)
+        VALUES (${tenantId}, CURDATE(), ${views}, ${opens}, ${listAge}, ${openAge}, ${now})
         ON DUPLICATE KEY UPDATE
-          views = views + 1,
-          deepest_age_days = GREATEST(deepest_age_days, ${ageDays}),
+          views = views + ${views},
+          opens = opens + ${opens},
+          deepest_age_days = GREATEST(deepest_age_days, ${listAge}),
+          deepest_open_age_days = GREATEST(deepest_open_age_days, ${openAge}),
           last_viewed_at = ${now}
       `;
     } catch (err) {
       this.logger.warn(
-        `Could not record an email log view: ${err instanceof Error ? err.message : String(err)}`,
+        `Could not record email log usage: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -746,18 +810,37 @@ export class EmailService {
    */
   private async readLogUsage(): Promise<EmailLogUsage> {
     const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-    const [recent, deepest] = await Promise.all([
+    const [recent, totals] = await Promise.all([
       this.prisma.email_log_views.count({ where: { viewedOn: { gte: since } } }),
       this.prisma.email_log_views.aggregate({
-        _max: { deepestAgeDays: true, lastViewedAt: true },
+        _sum: { views: true, opens: true },
+        _max: { deepestAgeDays: true, deepestOpenAgeDays: true, lastViewedAt: true },
       }),
     ]);
 
     return {
       daysReviewed: recent,
-      deepestAgeDays: deepest._max.deepestAgeDays ?? 0,
-      lastReviewedAt: deepest._max.lastViewedAt ?? null,
+      views: totals._sum.views ?? 0,
+      opens: totals._sum.opens ?? 0,
+      deepestAgeDays: totals._max.deepestAgeDays ?? 0,
+      deepestOpenAgeDays: totals._max.deepestOpenAgeDays ?? 0,
+      lastReviewedAt: totals._max.lastViewedAt ?? null,
     };
+  }
+
+  /**
+   * Forgets this community's review history (Rob, 2026-10-03).
+   *
+   * There has to be a way to clear it, for the same reason the figures exist at
+   * all: they are evidence for a decision, and evidence gathered while somebody
+   * was poking at a new screen is not evidence about how the screen gets used.
+   * Starting the count again after a period of real use is the point.
+   *
+   * Scoped like every other read here, so one community cannot reset another's.
+   */
+  async clearLogUsage(): Promise<number> {
+    const { count } = await this.prisma.email_log_views.deleteMany({});
+    return count;
   }
 
   /**

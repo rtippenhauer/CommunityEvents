@@ -31,14 +31,42 @@
  */
 import { reshade } from '../utils/color.util';
 
-/**
- * Wide enough for the longest line at the size it is drawn, with the panel's
- * own padding included. Fixed rather than measured: this mark exists for one
- * known name, so fitting text at runtime would be machinery for a case that
- * cannot arise.
- */
-const WIDTH = 268;
 const HEIGHT = 48;
+
+/** Average glyph advance as a fraction of font size, mirroring `brand-mark.util.ts`. */
+const AVG_ADVANCE = 0.6;
+
+/** Where the text starts, to the right of the roundel. */
+const TEXT_X = 56;
+/** Breathing room between the longest line and the panel's right edge. */
+const RIGHT_PAD = 14;
+
+const LEAD_SIZE = 18;
+const REST_SIZE = 9.5;
+const REST_TRACKING = 2.1;
+
+/**
+ * The panel is sized to its contents, not to a guess.
+ *
+ * It was a fixed 268 wide, justified as "wide enough for the longest line" --
+ * and it was far too wide: the text ends around 190, so roughly a third of the
+ * mark was empty dark panel. At 32px tall in the toolbar that is ~50px of dead
+ * space pushing the nav to the right, which is what Rob saw (2026-10-03).
+ *
+ * Measured the same way the generated wordmark measures itself, which is where
+ * `AVG_ADVANCE` comes from: an approximation, but one already trusted to lay out
+ * every community's fallback logo. Erring wide by a few pixels is harmless;
+ * erring narrow would clip the name, so the estimate keeps `RIGHT_PAD` as slack.
+ *
+ * Uppercase glyphs run wider than the average, and each tracked letter adds its
+ * spacing, so the qualifier line is measured with both.
+ */
+function panelWidth(lead: string, rest: string): number {
+  const leadWidth = lead.length * LEAD_SIZE * AVG_ADVANCE;
+  // 0.72 rather than AVG_ADVANCE: this line is drawn in caps.
+  const restWidth = rest.length * (REST_SIZE * 0.72 + REST_TRACKING);
+  return Math.round(TEXT_X + Math.max(leadWidth, restWidth) + RIGHT_PAD);
+}
 
 function escapeXml(value: string): string {
   return value
@@ -88,6 +116,7 @@ function waves(cx: number, cy: number, stroke: string): string {
  */
 export function demoLogoDataUri(name: string, primary: string): string {
   const { lead, rest } = splitName(name);
+  const WIDTH = panelWidth(lead, rest.toUpperCase());
   const panel = reshade(primary, 16, 55);
   const ink = reshade(primary, 97, 30);
   const accent = reshade(primary, 62, 70);
@@ -99,12 +128,12 @@ export function demoLogoDataUri(name: string, primary: string): string {
       <rect x="0" y="0" width="${WIDTH}" height="${HEIGHT}" rx="12" fill="${panel}"/>
       <circle cx="30" cy="24" r="15" fill="none" stroke="${accent}" stroke-width="2" opacity="0.65"/>
       ${waves(30, 24, accent)}
-      <text x="56" y="21" font-family="${FONT_STACK}" font-size="18" font-weight="700"
+      <text x="56" y="21" font-family="${FONT_STACK}" font-size="${LEAD_SIZE}" font-weight="700"
             fill="${ink}" dominant-baseline="middle">${escapeXml(lead)}</text>
       ${
         rest
-          ? `<text x="57" y="36" font-family="${FONT_STACK}" font-size="9.5" font-weight="600"
-               letter-spacing="2.1" fill="${accent}"
+          ? `<text x="57" y="36" font-family="${FONT_STACK}" font-size="${REST_SIZE}" font-weight="600"
+               letter-spacing="${REST_TRACKING}" fill="${accent}"
                dominant-baseline="middle">${escapeXml(rest.toUpperCase())}</text>`
           : ''
       }

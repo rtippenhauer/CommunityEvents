@@ -29,6 +29,7 @@ describe('Email log (e2e)', () => {
   let emailService: EmailService;
   let city: City;
   let adminCookie: string;
+  let memberCookie: string;
 
   beforeAll(async () => {
     ({ app, prisma } = await createTestApp());
@@ -49,6 +50,11 @@ describe('Email log (e2e)', () => {
       email: 'admin@example.test',
     });
     adminCookie = await loginAs(app, admin);
+    const member = await seedUser(prisma, city.id, {
+      role: UserRole.MEMBER,
+      email: 'member@example.test',
+    });
+    memberCookie = await loginAs(app, member);
   });
 
   const queueOne = (toEmail: string, subject: string, toName?: string) =>
@@ -632,6 +638,208 @@ describe('Email log (e2e)', () => {
       client.$executeRaw = original;
       expect(res.status).toBe(200);
       expect(res.body.rows).toHaveLength(1);
+    });
+  });
+
+  /**
+   * Opening a message is counted apart from browsing the list (Rob,
+   * 2026-10-03).
+   *
+   * The two answer different questions. A list view happens on every filter
+   * change and every pause in typing; an open is somebody deciding they need
+   * *that* message. For "is it safe to delete rows older than six months", the
+   * opens are the evidence.
+   */
+  describe('detail opens', () => {
+    const openIt = (id: number) =>
+      request(server)
+        .get(`/api/v1/admin/email/log/${id}`)
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+    it('counts an open separately from a list view', async () => {
+      const row = await queueOne('opened@example.test', 'Opened');
+
+      await get();
+      await openIt(row!.id);
+
+      const res = await get();
+      expect(res.body.usage.opens).toBe(1);
+      // Two list requests in total: the one above, and this one. The open in
+      // between is not a view, which is the whole point of counting them apart.
+      expect(res.body.usage.views).toBe(2);
+    });
+
+    it('records how old the opened message was', async () => {
+      const row = await queueOne('old@example.test', 'Old');
+      await unscoped('ageing the message', () =>
+        prisma.email_queue.update({
+          where: { id: row!.id },
+          // Plus an hour: DATETIME(0) rounds, so an exact offset can floor low.
+          data: { createdAt: new Date(Date.now() - (25 * 24 + 1) * 60 * 60 * 1000) },
+        }),
+      );
+
+      await openIt(row!.id);
+
+      const res = await get();
+      expect(res.body.usage.deepestOpenAgeDays).toBe(25);
+    });
+
+    /**
+     * The depths are independent. Scrolling past an ancient message while only
+     * ever opening recent ones is exactly the case a retention decision needs to
+     * tell apart -- and it is the case where deleting old rows is safe.
+     */
+    it('keeps browse depth and open depth apart', async () => {
+      const ancient = await queueOne('ancient@example.test', 'Ancient');
+      const recent = await queueOne('recent@example.test', 'Recent');
+      await unscoped('ageing the old one', () =>
+        prisma.email_queue.update({
+          where: { id: ancient!.id },
+          data: { createdAt: new Date(Date.now() - (300 * 24 + 1) * 60 * 60 * 1000) },
+        }),
+      );
+
+      await get();            // sees both, so browse depth reaches 300
+      await openIt(recent!.id); // but only the recent one is opened
+
+      const res = await get();
+      expect(res.body.usage.deepestAgeDays).toBe(300);
+      expect(res.body.usage.deepestOpenAgeDays).toBe(0);
+    });
+
+    it('keeps the deepest open, not the most recent one', async () => {
+      const old = await queueOne('old@example.test', 'Old');
+      const fresh = await queueOne('fresh@example.test', 'Fresh');
+      await unscoped('ageing the old one', () =>
+        prisma.email_queue.update({
+          where: { id: old!.id },
+          data: { createdAt: new Date(Date.now() - (60 * 24 + 1) * 60 * 60 * 1000) },
+        }),
+      );
+
+      await openIt(old!.id);
+      await openIt(fresh!.id);
+
+      const res = await get();
+      expect(res.body.usage.opens).toBe(2);
+      expect(res.body.usage.deepestOpenAgeDays).toBe(60);
+    });
+
+    // A 404 is not an open: nothing was read.
+    it('does not count a message that does not exist', async () => {
+      await queueOne('present@example.test', 'Present');
+      await request(server)
+        .get('/api/v1/admin/email/log/999999')
+        .set('Cookie', adminCookie)
+        .expect(404);
+
+      const res = await get();
+      expect(res.body.usage.opens).toBe(0);
+    });
+  });
+
+  /**
+   * Resetting the evidence.
+   *
+   * It has to be possible for the same reason the figures exist: counts
+   * accumulated while somebody was poking at a new screen are not evidence
+   * about how the screen gets used.
+   */
+  describe('resetting review tracking', () => {
+    it('forgets the history and leaves the messages alone', async () => {
+      await queueOne('kept@example.test', 'Kept');
+      await get();
+
+      const res = await request(server)
+        .delete('/api/v1/admin/email/log/usage')
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(res.body.cleared).toBe(1);
+
+      // The log itself is untouched...
+      const after = await get();
+      expect(after.body.rows).toHaveLength(1);
+      // ...and the count starts again from this request.
+      expect(after.body.usage.views).toBe(1);
+      expect(after.body.usage.opens).toBe(0);
+      expect(after.body.usage.deepestOpenAgeDays).toBe(0);
+    });
+
+    // The route is literal and must not be swallowed by `log/:id`, which would
+    // 400 on ParseIntPipe instead of clearing anything.
+    it('is not shadowed by the detail route', async () => {
+      await request(server)
+        .delete('/api/v1/admin/email/log/usage')
+        .set('Cookie', adminCookie)
+        .expect(200);
+    });
+
+    it('is refused to a member', async () => {
+      await request(server)
+        .delete('/api/v1/admin/email/log/usage')
+        .set('Cookie', memberCookie)
+        .expect(403);
+    });
+  });
+
+  /**
+   * The manual sweep, which exists because the migration cleared nothing.
+   *
+   * Adding the column was a schema change; clearing bodies is a policy, so an
+   * upgrading deployment carries every old body until the first nightly run.
+   * This is the button for not waiting -- and the only way to watch the sweep
+   * work without ageing rows by hand.
+   */
+  describe('running the retention sweep by hand', () => {
+    it('clears old bodies on demand and reports how many', async () => {
+      const old = await queueOne('ancient@example.test', 'Ancient');
+      const fresh = await queueOne('fresh@example.test', 'Fresh');
+      await unscoped('ageing one of them', () =>
+        prisma.email_queue.updateMany({
+          where: { id: old!.id },
+          data: {
+            createdAt: new Date(Date.now() - (45 * 24 + 1) * 60 * 60 * 1000),
+            status: EmailQueueStatus.SENT,
+          },
+        }),
+      );
+
+      const res = await request(server)
+        .post('/api/v1/admin/email/log/prune')
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(res.body.cleared).toBe(1);
+
+      const [agedRow, freshRow] = await unscoped('reading both back', async () =>
+        await Promise.all([
+          prisma.email_queue.findUnique({ where: { id: old!.id } }),
+          prisma.email_queue.findUnique({ where: { id: fresh!.id } }),
+        ]),
+      );
+      // The old one keeps its envelope and loses its body...
+      expect(agedRow!.subject).toBe('Ancient');
+      expect(agedRow!.htmlBody).toBeNull();
+      // ...and the recent one is untouched.
+      expect(freshRow!.htmlBody).not.toBeNull();
+    });
+
+    it('reports zero when nothing is old enough', async () => {
+      await queueOne('recent@example.test', 'Recent');
+
+      const res = await request(server)
+        .post('/api/v1/admin/email/log/prune')
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(res.body.cleared).toBe(0);
+    });
+
+    it('is refused to a member', async () => {
+      await request(server)
+        .post('/api/v1/admin/email/log/prune')
+        .set('Cookie', memberCookie)
+        .expect(403);
     });
   });
 });

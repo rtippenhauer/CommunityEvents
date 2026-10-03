@@ -179,7 +179,9 @@
             <mat-icon matListItemIcon>flag</mat-icon> Moderation
           </a>
 
-          @if (isAdmin()) {
+          <!-- Root tenant only, as on the desktop menu: deployment-wide notes
+               are the operator's screen, not a community's. -->
+          @if (isAdmin() && brandConfig.isRoot()) {
             <mat-divider />
             <div class="sidenav-section-label">Releases</div>
             <a mat-list-item routerLink="/admin/releases/new" (click)="sidenav.close()">
@@ -327,7 +329,9 @@
                   <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
                 }
               </button>
-              @if (isAdmin()) {
+              <!-- Root tenant only: the release notes are deployment-wide, so
+                   this is the operator's screen rather than a community's. -->
+              @if (isAdmin() && brandConfig.isRoot()) {
                 <a mat-menu-item routerLink="/admin/releases/new">
                   <mat-icon>rocket_launch</mat-icon> Releases
                 </a>

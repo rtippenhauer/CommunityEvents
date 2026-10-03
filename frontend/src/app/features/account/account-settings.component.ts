@@ -14,6 +14,11 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDialog } from '@angular/material/dialog';
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+} from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { firstValueFrom } from 'rxjs';
@@ -659,6 +664,7 @@ export class AccountSettingsComponent implements OnInit {
   private readonly accountService = inject(AccountService);
   private readonly authService = inject(AuthService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -750,8 +756,27 @@ export class AccountSettingsComponent implements OnInit {
               ? 'Could not connect Google. Please try again.'
               : 'Google account connected!';
 
-    this.snackBar.open(message, 'OK', { duration: error ? 5000 : 3000 });
+    // The URL is cleaned up first, so a dialog the member leaves open does not
+    // re-announce itself if they refresh behind it.
     history.replaceState(null, '', window.location.pathname);
+
+    if (!error) {
+      this.snackBar.open(message, 'OK', { duration: 3000 });
+      return;
+    }
+
+    // A refusal gets a dialog, not a toast (Rob, 2026-10-03). The member pressed
+    // Connect, left for Google, came back, and nothing happened -- a message
+    // that fades at the bottom of the page is too easy to miss for something
+    // that stopped the action they asked for, and the commonest of these needs
+    // them to go and do something different.
+    this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Could not connect Google',
+        message,
+        acknowledgeOnly: true,
+      } satisfies ConfirmDialogData,
+    });
   }
 
   private loadProviders(): void {

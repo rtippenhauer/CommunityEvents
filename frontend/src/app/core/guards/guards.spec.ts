@@ -9,6 +9,7 @@ import { moderatorGuard } from './moderator.guard';
 import { systemAdminGuard } from './system-admin.guard';
 import { unsavedChangesGuard, HasUnsavedChanges } from './unsaved-changes.guard';
 import { rootLandingGuard } from './root-landing.guard';
+import { rootTenantGuard } from './root-tenant.guard';
 import { AuthService } from '../services/auth.service';
 import { BrandConfigService } from '../services/brand-config.service';
 
@@ -286,4 +287,44 @@ describe('route guards', () => {
     });
   });
 
+
+  /**
+   * The screens that operate something deployment-wide rather than one
+   * community. `adminGuard` alone was wrong for those: it asks what role
+   * somebody holds and nothing about where, so every community's admin was
+   * offered the Releases screen and could navigate to it. The API refused the
+   * calls, so the page simply broke -- which is how Rob found it.
+   */
+  describe('rootTenantGuard', () => {
+    function setup(isRoot: boolean) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          { provide: BrandConfigService, useValue: { isRoot: () => isRoot } },
+        ],
+      });
+    }
+
+    function run(): boolean | UrlTree {
+      return runGuard(rootTenantGuard as () => boolean | UrlTree);
+    }
+
+    it('admits the root tenant', () => {
+      setup(true);
+      expect(run()).toBe(true);
+    });
+
+    it("redirects another community's admin home", () => {
+      setup(false);
+      expect(run()).toBeInstanceOf(UrlTree);
+    });
+
+    // `isRoot` defaults to false until branding resolves, so an unresolved
+    // payload sends somebody home rather than into a screen that will 403.
+    it('fails closed', () => {
+      setup(false);
+      expect(run()).not.toBe(true);
+    });
+  });
 });

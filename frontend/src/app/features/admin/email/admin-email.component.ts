@@ -12,6 +12,11 @@ import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+} from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
@@ -56,7 +61,11 @@ interface EmailLogRow {
 
 interface EmailLogUsage {
   daysReviewed: number;
+  views: number;
   deepestAgeDays: number;
+  /** Rows expanded to read the body — the stronger signal of the two. */
+  opens: number;
+  deepestOpenAgeDays: number;
   lastReviewedAt: string | null;
 }
 
@@ -180,6 +189,7 @@ interface EmailConfig {
     MatButtonModule,
     MatCardModule,
     MatChipsModule,
+    MatDialogModule,
     MatDatepickerModule,
     MatNativeDateModule,
     MatSelectModule,
@@ -735,7 +745,13 @@ interface EmailConfig {
               @if (usageNote(); as note) {
                 <!-- Quiet on purpose: this exists to inform a retention decision
                      later, not to be a feature anybody acts on today. -->
-                <p class="usage-note">{{ note }}</p>
+                <p class="usage-note">
+                  {{ note }}
+                  <button mat-button class="usage-reset" (click)="clearUsage()">Reset</button>
+                  <button mat-button class="usage-reset" (click)="pruneBodies()" [disabled]="pruning()">
+                    Clear old bodies
+                  </button>
+                </p>
               }
 
               <div class="log-pager">
@@ -979,6 +995,12 @@ interface EmailConfig {
         gap: 12px;
         margin-top: 14px;
       }
+      .usage-reset {
+        min-width: 0 !important;
+        padding: 0 8px !important;
+        font-size: 12px !important;
+        line-height: 20px !important;
+      }
       .usage-note {
         margin: 12px 0 0;
         font-size: 12px;
@@ -1074,6 +1096,7 @@ export class AdminEmailComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   readonly queue = signal<EmailLogRow[]>([]);
   readonly config = signal<EmailConfig | null>(null);
@@ -1163,22 +1186,110 @@ export class AdminEmailComponent implements OnInit {
    * deliberately open until there is evidence.
    */
   readonly usage = signal<EmailLogUsage | null>(null);
+  readonly pruning = signal(false);
 
-  /** "…and the oldest message anyone has opened was 12 days old." */
+  /**
+   * Two sentences, because the two numbers answer different questions.
+   *
+   * Browsing says the screen is used. **Opening a message is what a retention
+   * window should be decided on** — scrolling past something says nothing,
+   * expanding it says somebody needed it. So the opens get their own sentence
+   * and their own depth.
+   */
   readonly usageNote = computed<string | null>(() => {
     const usage = this.usage();
     if (!usage || usage.daysReviewed === 0) return null;
-    const days = usage.daysReviewed;
-    const deepest = usage.deepestAgeDays;
-    const reviewed = days === 1 ? 'on 1 day' : `on ${days} days`;
-    const reach =
-      deepest <= 0
-        ? 'nothing older than today'
-        : deepest === 1
-          ? 'nothing older than a day'
-          : `nothing older than ${deepest} days`;
-    return `Reviewed ${reviewed} in the last 90 — reaching ${reach}.`;
+
+    const days = usage.daysReviewed === 1 ? '1 day' : `${usage.daysReviewed} days`;
+    const browsed =
+      `Reviewed on ${days} in the last 90 (${usage.views} ` +
+      `${usage.views === 1 ? 'view' : 'views'}), reaching back ${this.ageWords(usage.deepestAgeDays)}.`;
+
+    const opened =
+      usage.opens === 0
+        ? 'No message has been opened to read its contents.'
+        : `${usage.opens} ${usage.opens === 1 ? 'message' : 'messages'} opened, ` +
+          `the oldest ${this.ageWords(usage.deepestOpenAgeDays)} old.`;
+
+    return `${browsed} ${opened}`;
   });
+
+  /** "12 days", "a day", "today" — reads as prose in both sentences. */
+  private ageWords(days: number): string {
+    if (days <= 0) return 'today';
+    if (days === 1) return 'a day';
+    return `${days} days`;
+  }
+
+  /**
+   * Runs the retention sweep now instead of waiting for 04:00 UTC.
+   *
+   * Here because the migration that added the column cleared nothing -- a
+   * deployment upgrading into this keeps every old body until the first nightly
+   * run, and there is otherwise no way to see the sweep work.
+   */
+  pruneBodies(): void {
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        data: {
+          title: 'Clear old message bodies now?',
+          message:
+            'Clears the stored HTML of messages older than the retention window. The log ' +
+            'rows stay — who, what subject, when and what status are all kept — and nothing ' +
+            'still waiting to send is touched. This cannot be undone.',
+          confirmLabel: 'Clear',
+          confirmColor: 'warn',
+        } satisfies ConfirmDialogData,
+      })
+      .afterClosed()
+      .subscribe((confirmed?: boolean) => {
+        if (!confirmed) return;
+        this.pruning.set(true);
+        this.http.post<{ cleared: number }>('/api/v1/admin/email/log/prune', {}).subscribe({
+          next: (res) => {
+            this.pruning.set(false);
+            this.snackBar.open(
+              res.cleared === 0
+                ? 'Nothing was old enough to clear.'
+                : `Cleared the body of ${res.cleared} message(s).`,
+              'OK',
+              { duration: 4000 },
+            );
+            this.loadLog();
+          },
+          error: () => {
+            this.pruning.set(false);
+            this.snackBar.open('Could not clear old bodies', 'OK', { duration: 5000 });
+          },
+        });
+      });
+  }
+
+  clearUsage(): void {
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        data: {
+          title: 'Reset review tracking?',
+          message:
+            'Forgets how often this log has been reviewed and how far back. The messages ' +
+            'themselves are untouched. Worth doing once you have finished setting things up, ' +
+            'so the figures describe real use.',
+          confirmLabel: 'Reset',
+          confirmColor: 'warn',
+        } satisfies ConfirmDialogData,
+      })
+      .afterClosed()
+      .subscribe((confirmed?: boolean) => {
+        if (!confirmed) return;
+        this.http.delete('/api/v1/admin/email/log/usage').subscribe({
+          next: () => {
+            this.snackBar.open('Review tracking reset', 'OK', { duration: 3000 });
+            this.loadLog();
+          },
+          error: () => this.snackBar.open('Could not reset tracking', 'OK', { duration: 5000 }),
+        });
+      });
+  }
 
   readonly hasFilters = computed(
     () =>
