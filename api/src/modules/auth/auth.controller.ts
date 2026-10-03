@@ -310,15 +310,22 @@ export class AuthController {
           this.authService.linkGoogle(state.linkUserId!, profile.id, email),
         );
       } catch (err) {
-        // The commonest failure by far is this Google account already being
-        // attached to somebody else in this community, which is a conflict
-        // rather than a fault -- reported on the settings screen, where the
-        // member can see which account is connected.
-        const conflict = err instanceof ConflictException;
-        if (!conflict) {
+        // Three outcomes the member can act on, and one that is ours to fix.
+        //
+        //  taken     -- already attached to somebody else in this community
+        //  mismatch  -- a different address than this account's; a provider
+        //               account may only be linked to the account with the same
+        //               address (see assertProviderEmailMatches)
+        //  no_email  -- the provider shared no address, so there is nothing to
+        //               match and the link is refused
+        //
+        // Each is a conflict rather than a fault, so none of them is logged as
+        // an error; anything else is, because it means something broke.
+        const reason = linkFailureReason(err);
+        if (reason === 'failed') {
           this.logger.error(`Google linking failed: ${(err as Error).message}`);
         }
-        res.redirect(`${linkBase}/account/settings?linked=google&error=${conflict ? 'taken' : 'failed'}`);
+        res.redirect(`${linkBase}/account/settings?linked=google&error=${reason}`);
         return;
       }
       res.redirect(`${linkBase}/account/settings?linked=google`);
@@ -710,8 +717,21 @@ export class AuthController {
   async changePassword(
     @Body() dto: ChangePasswordDto,
     @CurrentUser() user: User,
+    @Req() req: Request,
   ): Promise<{ message: string }> {
-    await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    // The caller's own jti, so changing a password evicts every *other* session
+    // without signing the caller out of the tab they are in. Read the same way
+    // logout reads it.
+    const token = req.cookies?.['access_token'];
+    const payload = token
+      ? (this.authService['jwtService'].decode(token) as { jti?: string } | null)
+      : null;
+    await this.authService.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+      payload?.jti,
+    );
     return { message: 'Password updated' };
   }
 
@@ -739,4 +759,32 @@ export class AuthController {
     this.clearStaleAccessTokenCookies(res);
     return { message: 'Logged out' };
   }
+}
+
+/**
+ * Turns a linking failure into the short code the settings screen reads from
+ * `?error=`.
+ *
+ * A separate function because the Google flow reports failures through a
+ * redirect rather than a response body -- there is nowhere to put an exception.
+ * The Facebook link is a POST and needs none of this: its `reason` reaches the
+ * client through GlobalExceptionFilter as it stands.
+ *
+ * Unknown shapes fall through to `failed`, which is the one value the caller
+ * logs as an error. Erring that way means a new refusal nobody mapped here
+ * shows up in the log rather than being quietly reported to the member as
+ * something they can fix.
+ */
+function linkFailureReason(err: unknown): 'taken' | 'mismatch' | 'no_email' | 'failed' {
+  if (err instanceof ConflictException) return 'taken';
+  if (err instanceof BadRequestException) {
+    const response = err.getResponse();
+    const reason =
+      typeof response === 'object' && response !== null
+        ? (response as { reason?: unknown }).reason
+        : undefined;
+    if (reason === 'provider_email_mismatch') return 'mismatch';
+    if (reason === 'provider_email_missing') return 'no_email';
+  }
+  return 'failed';
 }

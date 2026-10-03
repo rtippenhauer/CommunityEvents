@@ -147,23 +147,64 @@ export class InvitesService {
     return invite;
   }
 
+  /**
+   * Spends one use of an invite, atomically.
+   *
+   * This was a read-modify-write and said so: the count was computed from the
+   * row the caller had already loaded, so two redemptions that both read
+   * `useCount: 9` against `maxUses: 10` both wrote 10 and both succeeded —
+   * eleven people through a ten-use invite, with the stored count showing ten
+   * and nothing to indicate otherwise. The old comment called it "a behaviour
+   * change that belongs with tests", which is correct and is what this is.
+   * Flagged again by review, 2026-10-02.
+   *
+   * **The gate is the `where`, not the arithmetic.** A single
+   * `UPDATE ... SET use_count = use_count + 1 WHERE id = ? AND (max_uses IS NULL
+   * OR use_count < max_uses)` is decided by the database under a row lock, so
+   * concurrent redemptions serialise and the one that would have exceeded the
+   * cap matches nothing. `count === 0` is therefore "somebody else took the last
+   * use", which is a refusal rather than a failure.
+   *
+   * The caller has already validated the invite (`validate`), so this is the
+   * second, narrower check that the earlier one cannot make — the window between
+   * validating and spending is exactly where the race lived.
+   */
   async redeem(invite: Invite, user: User): Promise<void> {
-    // The new count is computed from the row that was read, matching the
-    // entity version exactly. Worth noting it carries the same read-modify-
-    // write race it always had: two redemptions loading the same invite can
-    // both write useCount + 1. An atomic { increment: 1 } would close that,
-    // but the redeemedAt branch below depends on the resulting value, so
-    // fixing it properly is a behaviour change and belongs with tests.
-    const useCount = invite.useCount + 1;
-    const exhausted = invite.maxUses !== null && useCount >= invite.maxUses;
-
-    await this.prisma.invites.update({
-      where: { id: invite.id },
-      data: {
-        useCount,
-        ...(exhausted ? { redeemedBy: user.id, redeemedAt: new Date() } : {}),
+    const { count } = await this.prisma.invites.updateMany({
+      where: {
+        id: invite.id,
+        isRevoked: false,
+        // An unlimited invite has `maxUses: null` and is never exhausted.
+        OR: [{ maxUses: null }, { useCount: { lt: invite.maxUses ?? undefined } }],
       },
+      data: { useCount: { increment: 1 } },
     });
+
+    if (count === 0) {
+      throw new BadRequestException('invite_exhausted');
+    }
+
+    // Read back rather than computed, because the value this depends on is the
+    // one the database arrived at, not the one this request last saw. Under
+    // contention those differ, which is the whole reason the increment above is
+    // atomic -- deriving `exhausted` from the stale read would reintroduce the
+    // bug one line further down.
+    const fresh = await this.prisma.invites.findUnique({
+      where: { id: invite.id },
+      select: { useCount: true, maxUses: true, redeemedAt: true },
+    });
+    const exhausted =
+      fresh !== null && fresh.maxUses !== null && fresh.useCount >= fresh.maxUses;
+
+    // `redeemedAt` records who spent the final use. Guarded on it still being
+    // null so two redemptions landing together cannot overwrite each other's
+    // attribution.
+    if (exhausted && fresh.redeemedAt === null) {
+      await this.prisma.invites.updateMany({
+        where: { id: invite.id, redeemedAt: null },
+        data: { redeemedBy: user.id, redeemedAt: new Date() },
+      });
+    }
   }
 
   async revoke(id: number): Promise<void> {
