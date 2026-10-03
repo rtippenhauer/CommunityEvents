@@ -437,6 +437,11 @@ model email_queue {
   @@index([sendAfter], map: "idx_send_after")
   @@index([status, priority], map: "idx_status_priority")
   @@index([tenantId], map: "idx_email_queue_tenant")
+  /// The log's own index (v2-31). Every other index here serves the dispatcher
+  /// picking up work; this serves an operator reading history, which is scoped
+  /// to one community and ordered newest-first. `email_queue` only ever grows,
+  /// so without it each page is a filesort over the whole history.
+  @@index([tenantId, createdAt], map: "idx_email_queue_tenant_created")
 }
 
 model email_suppressions {
