@@ -6,7 +6,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { InviteFlavor, InviteType, UserStatus } from '../../database/enums';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { EmailService } from '../email/email.service';
-import { EmailTemplate } from '../email/email.constants';
+import { EmailCategory, EmailTemplate } from '../email/email.constants';
 import { AppConfigService } from '../app-config/app-config.service';
 import { ConfigService } from '@nestjs/config';
 import { computeRsvpCutoffAt } from '../../common/utils/rsvp-cutoff.util';
@@ -110,6 +110,7 @@ export class InvitesService {
         toEmail: dto.boundToEmail,
         toName: dto.boundToName ?? undefined,
         subject: `${inviterName} invited you to ${brandName}!`,
+        category: EmailCategory.INVITE,
         templateId: EmailTemplate.INVITE,
         templateParams: {
           inviter_name: inviterName,

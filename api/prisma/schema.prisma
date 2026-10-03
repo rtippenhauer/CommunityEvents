@@ -419,6 +419,12 @@ model email_queue {
   subject        String                @db.VarChar(500)
   templateId     String?               @map("template_id") @db.VarChar(100)
   templateParams Json?                 @map("template_params")
+  /// **Why** this message went out, for the admin log. Deliberately separate
+  /// from `templateId`, which is a dispatch instruction (it picks a Brevo
+  /// template and a member's opt-out) -- overloading it would let a change to a
+  /// screen alter what a member receives. Nothing branches on this.
+  /// NULL on rows written before the column existed, shown as "Unknown".
+  category       String?               @db.VarChar(50)
   htmlBody       String?               @map("html_body") @db.LongText
   textBody       String?               @map("text_body") @db.Text
   priority       Int                   @default(5) @db.TinyInt
@@ -431,6 +437,10 @@ model email_queue {
   sendAfter      DateTime?             @map("send_after") @db.DateTime(0)
   createdAt      DateTime              @default(now()) @map("created_at") @db.DateTime(0)
   sentAt         DateTime?             @map("sent_at") @db.DateTime(0)
+  /// When the retention sweep cleared the rendered body. Needed for the sweep to
+  /// be idempotent: an empty body is otherwise indistinguishable from a message
+  /// that never had one, since a provider-template send stores none.
+  bodyClearedAt  DateTime?             @map("body_cleared_at") @db.DateTime(0)
   tenantId       Int                   @default(0) @map("tenant_id") @db.UnsignedInt
   tenant         tenants               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_queue_tenant")
 
@@ -442,6 +452,7 @@ model email_queue {
   /// to one community and ordered newest-first. `email_queue` only ever grows,
   /// so without it each page is a filesort over the whole history.
   @@index([tenantId, createdAt], map: "idx_email_queue_tenant_created")
+  @@index([tenantId, category, createdAt], map: "idx_email_queue_tenant_category")
 }
 
 model email_suppressions {

@@ -8,7 +8,7 @@ import type {
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailProvider, EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
-import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
+import { EmailCategory, EmailCategoryName, EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
 import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { AppConfigService } from '../app-config/app-config.service';
@@ -26,7 +26,7 @@ import { EmailLogQueryDto } from './dto/email-log-query.dto';
  */
 export type EmailLogRow = Omit<
   EmailQueueRow,
-  'htmlBody' | 'textBody' | 'templateParams' | 'tenantId'
+  'htmlBody' | 'textBody' | 'templateParams' | 'tenantId' | 'bodyClearedAt'
 >;
 
 export interface EmailLogPage {
@@ -114,6 +114,11 @@ export interface QueueEmailDto {
   toName?: string | null;
   subject: string;
   templateId?: EmailTemplateName;
+  /**
+   * Why this message exists, for the admin log. Inert -- nothing branches on it.
+   * Omitted means `other`, which is honest rather than a guess.
+   */
+  category?: EmailCategoryName;
   templateParams?: Record<string, unknown>;
   htmlBody?: string | null;
   textBody?: string | null;
@@ -130,6 +135,8 @@ export class EmailService {
   private readonly suppressionSalt: string;
   /** The zone the provider's daily allowance resets in. See quota-day.ts. */
   private readonly quotaTimeZone: string;
+  /** How long a sent message's rendered body is kept. See clearOldBodies. */
+  private readonly bodyRetentionDays: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -144,6 +151,12 @@ export class EmailService {
     this.quotaTimeZone = resolveQuotaTimeZone(
       this.config.get<string>('EMAIL_QUOTA_TIMEZONE'),
     ).timeZone;
+    // 30 days by default (Rob, 2026-10-03). A floor of 1 rather than 0: a value
+    // of zero would clear a body the moment it was written, which is a
+    // misconfiguration that destroys data silently rather than an opt-out.
+    const configured = Number(this.config.get<string>('EMAIL_BODY_RETENTION_DAYS', '30'));
+    this.bodyRetentionDays =
+      Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 30;
   }
 
   private hashEmail(email: string): string {
@@ -365,6 +378,10 @@ export class EmailService {
         toName: dto.toName ?? null,
         subject: dto.subject,
         templateId: dto.templateId ?? null,
+        // `other` rather than NULL for anything written from here on: NULL means
+        // "this row predates the column", and conflating the two would make the
+        // log's Unknown rows grow forever instead of shrinking.
+        category: dto.category ?? EmailCategory.OTHER,
         // Nullable Json column: Prisma separates a SQL NULL from a JSON null,
         // and DbNull is what the entity wrote.
         templateParams: (dto.templateParams as Prisma.InputJsonValue) ?? Prisma.DbNull,
@@ -487,6 +504,7 @@ export class EmailService {
           toName: dto.toName ?? null,
           subject: dto.subject,
           templateId: dto.templateId ?? null,
+          category: dto.category ?? EmailCategory.OTHER,
           templateParams: (dto.templateParams as Prisma.InputJsonValue) ?? Prisma.DbNull,
           htmlBody: dto.htmlBody ?? null,
           textBody: dto.textBody ?? null,
@@ -560,6 +578,7 @@ export class EmailService {
           toName: true,
           subject: true,
           templateId: true,
+          category: true,
           status: true,
           provider: true,
           attempts: true,
@@ -623,6 +642,7 @@ export class EmailService {
     const where: Prisma.email_queueWhereInput = {};
 
     if (query.status) where.status = query.status as EmailQueueStatus;
+    if (query.category) where.category = query.category;
 
     if (query.q) {
       // The three fields somebody actually remembers. MySQL's collation is
@@ -644,6 +664,58 @@ export class EmailService {
     if (createdAt.gte || createdAt.lte) where.createdAt = createdAt;
 
     return where;
+  }
+
+
+  /**
+   * Clears the rendered body of messages older than the retention window
+   * (Rob, 2026-10-03).
+   *
+   * **The body goes; the row stays.** `html_body` is LongText and is most of
+   * what this table weighs, while the envelope -- who, what subject, when, what
+   * status -- is a few hundred bytes and is what the log is actually for.
+   * Keeping the row means "did we ever send Dana her invite, back in March" is
+   * still answerable a year later for almost nothing, while the part that costs
+   * real storage is gone after a month.
+   *
+   * If rows should disappear entirely instead, that is one more `deleteMany`
+   * here -- it was left out deliberately, because deleting the row destroys the
+   * only record that a message was ever sent, and nothing in this table can be
+   * reconstructed afterwards.
+   *
+   * Nothing prunes `email_queue` today, so this is the first thing that bounds
+   * it at all.
+   *
+   * **`bodyClearedAt` is what makes this idempotent.** An empty body is
+   * otherwise indistinguishable from a message that never had one -- a
+   * provider-template send stores none -- so without the marker the sweep would
+   * rewrite the same rows every night and report work it had not done.
+   *
+   * Pending and failed messages are left alone whatever their age: the
+   * dispatcher still intends to send them, and clearing the body would turn a
+   * retry into an empty email.
+   */
+  async clearOldBodies(
+    now = new Date(),
+    retentionDays = this.bodyRetentionDays,
+  ): Promise<number> {
+    const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+
+    const { count } = await this.prisma.email_queue.updateMany({
+      where: {
+        createdAt: { lt: cutoff },
+        bodyClearedAt: null,
+        // Only messages whose journey is over.
+        status: { in: [EmailQueueStatus.SENT, EmailQueueStatus.FAILED, EmailQueueStatus.CANCELLED] },
+      },
+      data: {
+        htmlBody: null,
+        textBody: null,
+        templateParams: Prisma.DbNull,
+        bodyClearedAt: now,
+      },
+    });
+    return count;
   }
 
   async cancelEmail(id: number): Promise<void> {

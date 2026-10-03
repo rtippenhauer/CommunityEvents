@@ -8,7 +8,7 @@ import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuditService } from '../audit/audit.service';
 import { EmailService } from '../email/email.service';
-import { EmailTemplate } from '../email/email.constants';
+import { EmailCategory, EmailTemplate } from '../email/email.constants';
 import { AvatarsService } from '../avatars/avatars.service';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
 import { coerceRawRows } from '../../common/utils/prisma-raw.util';
@@ -373,8 +373,22 @@ export class UsersService {
         toEmail: user.email,
         toName: user.fullName,
         subject: 'Your {{brand}} account has been deactivated',
+        category: EmailCategory.ACCOUNT_DELETED,
         templateId: EmailTemplate.ACCOUNT_DELETED,
         templateParams: { name: user.fullName },
+        // A body is required even with a templateId: the id is per-account
+        // configuration that may not exist, and Brevo is then called with no
+        // content at all. See brevo.service.ts.
+        htmlBody: `
+          <p>Hi ${user.fullName},</p>
+          <p>Your {{brand}} account has been deactivated and your personal details
+          have been removed.</p>
+          <p>If you did not ask for this, please get in touch.</p>
+        `,
+        textBody:
+          `Hi ${user.fullName}, your {{brand}} account has been deactivated and your ` +
+          `personal details have been removed. If you did not ask for this, please ` +
+          `get in touch.`,
         userId: user.id,
       });
     } catch {

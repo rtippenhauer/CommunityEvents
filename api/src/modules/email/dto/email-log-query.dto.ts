@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { EmailQueueStatus } from '../../../database/enums';
+import { EmailCategory } from '../email.constants';
 
 /**
  * How the admin email log is filtered (v2-31).
@@ -39,6 +40,14 @@ export class EmailLogQueryDto {
   @IsOptional()
   @IsIn(Object.values(EmailQueueStatus))
   status?: string;
+
+  /**
+   * Why the message went out. Validated against the known set rather than taken
+   * free-form, so a typo reads as a refusal instead of an empty log.
+   */
+  @IsOptional()
+  @IsIn(Object.values(EmailCategory))
+  category?: string;
 
   /**
    * Inclusive date bounds on when the message was created, as `YYYY-MM-DD` or a

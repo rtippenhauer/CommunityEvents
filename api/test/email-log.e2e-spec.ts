@@ -6,7 +6,12 @@ import { EmailService } from '../src/modules/email/email.service';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { cities as City } from '@prisma/client';
 import { EmailQueueStatus, UserRole } from '../src/database/enums';
+import { EmailCategory, EmailTemplate } from '../src/modules/email/email.constants';
 import { runUnscoped } from '../src/common/tenant/tenant-store';
+
+/** Reads across communities, which is what inspecting the stored row requires. */
+const unscoped = <T>(reason: string, fn: () => Promise<T>): Promise<T> =>
+  runUnscoped(reason, async () => await fn());
 
 /**
  * The email log, searchable and paginated (v2-31).
@@ -303,6 +308,215 @@ describe('Email log (e2e)', () => {
       expect(res.body.rows[0].toEmail).toBe('ours@example.test');
       expect(res.body.total).toBe(1);
       expect(res.body.counts.pending).toBe(1);
+    });
+  });
+
+  /**
+   * Why a message went out, and how long its body is kept (Rob, 2026-10-03).
+   *
+   * The log answered "what happened to this message" and not "why does it
+   * exist". `templateId` looked like the answer and is not one -- it is a
+   * dispatch instruction that picks a Brevo template and a member's opt-out, and
+   * only 4 of the 21 send sites set it, so the column read "—" for almost
+   * everything.
+   */
+  describe('category', () => {
+    it('records why a message was queued', async () => {
+      await emailService.queue({
+        toEmail: 'cat@example.test',
+        subject: 'Hi',
+        htmlBody: '<p>hi</p>',
+        category: EmailCategory.EVENT_REMINDER,
+      });
+
+      const res = await get();
+      expect(res.body.rows[0].category).toBe('event_reminder');
+    });
+
+    /**
+     * `other`, not NULL. NULL means "this row predates the column", so
+     * conflating the two would make the log's Unknown rows grow forever instead
+     * of shrinking as old mail ages out.
+     */
+    it('records `other` when the sender named nothing', async () => {
+      await emailService.queue({
+        toEmail: 'uncategorised@example.test',
+        subject: 'Hi',
+        htmlBody: '<p>hi</p>',
+      });
+
+      const res = await get();
+      expect(res.body.rows[0].category).toBe('other');
+    });
+
+    it('filters by it', async () => {
+      await emailService.queue({
+        toEmail: 'reminder@example.test',
+        subject: 'A',
+        htmlBody: '<p>a</p>',
+        category: EmailCategory.EVENT_REMINDER,
+      });
+      await emailService.queue({
+        toEmail: 'invite@example.test',
+        subject: 'B',
+        htmlBody: '<p>b</p>',
+        category: EmailCategory.INVITE,
+      });
+
+      const res = await get('?category=invite');
+      expect(res.body.rows).toHaveLength(1);
+      expect(res.body.rows[0].toEmail).toBe('invite@example.test');
+      expect(res.body.total).toBe(1);
+    });
+
+    it('rejects a category that is not one', async () => {
+      await request(server)
+        .get('/api/v1/admin/email/log?category=banana')
+        .set('Cookie', adminCookie)
+        .expect(400);
+    });
+
+    /**
+     * The property that keeps this honest: a label must never change what a
+     * member receives. Nothing branches on `category`, so a templated send is
+     * unaffected by carrying one.
+     */
+    it('does not disturb the template a message is sent with', async () => {
+      const row = await emailService.queue({
+        toEmail: 'templated@example.test',
+        subject: 'Hi',
+        htmlBody: '<p>hi</p>',
+        templateId: EmailTemplate.INVITE,
+        category: EmailCategory.EVENT_REMINDER,
+      });
+
+      const stored = await unscoped('reading the row', () =>
+        prisma.email_queue.findUnique({ where: { id: row!.id } }),
+      );
+      expect(stored!.templateId).toBe('invite');
+      expect(stored!.category).toBe('event_reminder');
+    });
+  });
+
+  /**
+   * Retention: the body goes, the row stays (Rob, 2026-10-03).
+   *
+   * Nothing pruned `email_queue` before this and it carries `html_body` as
+   * LongText. Keeping the envelope means "did we ever send Dana her invite"
+   * stays answerable long after the rendered HTML stops being interesting.
+   */
+  describe('body retention', () => {
+    const age = async (id: number, days: number) =>
+      unscoped('ageing a message', () =>
+        prisma.email_queue.update({
+          where: { id },
+          data: {
+            createdAt: new Date(Date.now() - days * 24 * 60 * 60 * 1000),
+            status: EmailQueueStatus.SENT,
+          },
+        }),
+      );
+
+    it('clears the body of an old message but keeps the row', async () => {
+      const row = await emailService.queue({
+        toEmail: 'old@example.test',
+        subject: 'Ancient',
+        htmlBody: '<p>secret</p>',
+        textBody: 'secret',
+      });
+      await age(row!.id, 45);
+
+      const cleared = await emailService.clearOldBodies();
+      expect(cleared).toBe(1);
+
+      const after = await unscoped('reading it back', () =>
+        prisma.email_queue.findUnique({ where: { id: row!.id } }),
+      );
+      // The envelope survives -- this is what the log is for.
+      expect(after).not.toBeNull();
+      expect(after!.toEmail).toBe('old@example.test');
+      expect(after!.subject).toBe('Ancient');
+      expect(after!.status).toBe(EmailQueueStatus.SENT);
+      // The expensive part is gone.
+      expect(after!.htmlBody).toBeNull();
+      expect(after!.textBody).toBeNull();
+      expect(after!.bodyClearedAt).not.toBeNull();
+    });
+
+    it('leaves a message inside the window alone', async () => {
+      const row = await emailService.queue({
+        toEmail: 'recent@example.test',
+        subject: 'Recent',
+        htmlBody: '<p>keep me</p>',
+      });
+      await age(row!.id, 5);
+
+      expect(await emailService.clearOldBodies()).toBe(0);
+
+      const after = await unscoped('reading it back', () =>
+        prisma.email_queue.findUnique({ where: { id: row!.id } }),
+      );
+      expect(after!.htmlBody).toContain('keep me');
+    });
+
+    /**
+     * Pending and failed messages keep their bodies whatever their age -- the
+     * dispatcher still intends to send them, and clearing the body would turn a
+     * retry into an empty email.
+     */
+    it('never clears a message that is still waiting to go', async () => {
+      const row = await emailService.queue({
+        toEmail: 'stuck@example.test',
+        subject: 'Stuck',
+        htmlBody: '<p>still needed</p>',
+      });
+      await unscoped('ageing it while leaving it pending', () =>
+        prisma.email_queue.update({
+          where: { id: row!.id },
+          data: {
+            createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+            status: EmailQueueStatus.PENDING,
+          },
+        }),
+      );
+
+      expect(await emailService.clearOldBodies()).toBe(0);
+
+      const after = await unscoped('reading it back', () =>
+        prisma.email_queue.findUnique({ where: { id: row!.id } }),
+      );
+      expect(after!.htmlBody).toContain('still needed');
+    });
+
+    /**
+     * `bodyClearedAt` is what makes the sweep idempotent. An empty body is
+     * otherwise indistinguishable from a message that never had one -- a
+     * provider-template send stores none -- so a second run would report work it
+     * had not done.
+     */
+    it('does not re-clear what it has already cleared', async () => {
+      const row = await emailService.queue({
+        toEmail: 'twice@example.test',
+        subject: 'Twice',
+        htmlBody: '<p>x</p>',
+      });
+      await age(row!.id, 45);
+
+      expect(await emailService.clearOldBodies()).toBe(1);
+      expect(await emailService.clearOldBodies()).toBe(0);
+    });
+
+    it('honours a different window', async () => {
+      const row = await emailService.queue({
+        toEmail: 'window@example.test',
+        subject: 'Window',
+        htmlBody: '<p>x</p>',
+      });
+      await age(row!.id, 10);
+
+      // Outside 30 days, inside 7.
+      expect(await emailService.clearOldBodies(new Date(), 30)).toBe(0);
+      expect(await emailService.clearOldBodies(new Date(), 7)).toBe(1);
     });
   });
 });

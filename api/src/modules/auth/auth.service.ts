@@ -21,7 +21,7 @@ import { CitiesService } from '../cities/cities.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
-import { EmailTemplate } from '../email/email.constants';
+import { EmailCategory, EmailTemplate } from '../email/email.constants';
 import { InviteFlavor, InviteType } from '../../database/enums';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
 import { onColorFor } from '../../common/utils/color.util';
@@ -585,8 +585,24 @@ export class AuthService {
       toEmail: user.email,
       toName: user.fullName,
       subject: `${providerLabel} login removed from {{brand}}`,
+      category: EmailCategory.PROVIDER_DISCONNECTED,
       templateId: EmailTemplate.PROVIDER_DISCONNECTED,
       templateParams: { provider: providerLabel, name: user.fullName },
+      // The body is not optional just because a template id is supplied: that id
+      // is per-account configuration that may not exist, and without a fallback
+      // Brevo is called with no content at all and answers `missing_parameter`.
+      // This send spent weeks failing exactly that way (Rob, 2026-10-03).
+      htmlBody: `
+        <p>Hi ${user.fullName},</p>
+        <p>Your <strong>${providerLabel}</strong> login has been removed from your
+        {{brand}} account. You can still sign in with your email address and password.</p>
+        <p>If you did not do this, reset your password — that also signs out anyone
+        else who is still connected.</p>
+      `,
+      textBody:
+        `Hi ${user.fullName}, your ${providerLabel} login has been removed from your ` +
+        `{{brand}} account. You can still sign in with your email address and password. ` +
+        `If you did not do this, reset your password.`,
       userId,
     });
   }
@@ -656,8 +672,22 @@ export class AuthService {
                 toEmail: user.email,
                 toName: user.fullName,
                 subject: 'Your {{brand}} account has been deactivated',
+                category: EmailCategory.ACCOUNT_DELETED,
                 templateId: EmailTemplate.ACCOUNT_DELETED,
                 templateParams: { name: user.fullName },
+                // A body is required even with a templateId: the id is
+                // per-account configuration that may not exist, and Brevo is
+                // then called with no content at all. See brevo.service.ts.
+                htmlBody: `
+                  <p>Hi ${user.fullName},</p>
+                  <p>Your {{brand}} account has been deactivated and your personal
+                  details have been removed.</p>
+                  <p>If you did not ask for this, please get in touch.</p>
+                `,
+                textBody:
+                  `Hi ${user.fullName}, your {{brand}} account has been deactivated and ` +
+                  `your personal details have been removed. If you did not ask for this, ` +
+                  `please get in touch.`,
                 userId: user.id,
               });
             } catch {
@@ -1068,6 +1098,7 @@ export class AuthService {
         toEmail: user.email,
         toName: user.fullName,
         subject: 'Security alert: your {{brand}} account has been locked',
+        category: EmailCategory.ACCOUNT_LOCKED,
         htmlBody: `
           <p>Hi ${user.fullName},</p>
           <p>We detected <strong>${attempts} failed login attempts</strong> on your {{brand}} account and have temporarily locked it.</p>
@@ -1169,6 +1200,7 @@ export class AuthService {
       toEmail: user.email,
       toName: user.fullName,
       subject: 'Reset your {{brand}} password',
+      category: EmailCategory.PASSWORD_RESET,
       htmlBody: `
         <h2>Password reset request</h2>
         <p>Hi ${user.fullName},</p>
@@ -1338,6 +1370,7 @@ export class AuthService {
         toEmail: user.email,
         toName: user.fullName,
         subject: 'Your {{brand}} password was changed',
+        category: EmailCategory.PASSWORD_CHANGED,
         htmlBody: `
           <p>Hi ${user.fullName},</p>
           <p>The password on your {{brand}} account was just changed, and anyone else
@@ -1372,6 +1405,7 @@ export class AuthService {
       toEmail: user.email,
       toName: user.fullName,
       subject: 'Verify your {{brand}} email',
+      category: EmailCategory.EMAIL_VERIFICATION,
       htmlBody: `
         <h2>Welcome to {{brand}}!</h2>
         <p>Hi ${user.fullName},</p>

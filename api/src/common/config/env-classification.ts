@@ -170,6 +170,15 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
   UPLOAD_PATH: { cls: 'deployment' },
   RELEASE_NOTES_DIR: { cls: 'deployment' },
   GIT_COMMIT: { cls: 'deployment', note: 'Stamped by the image build.' },
+  EMAIL_BODY_RETENTION_DAYS: {
+    cls: 'deployment',
+    note:
+      'How long a sent message keeps its rendered body in email_queue before ' +
+      'the nightly sweep clears it; the row itself is kept. Deployment-wide ' +
+      'because it is a storage policy for one database, not a property of any ' +
+      'community. Defaults to 30; values below 1 are ignored, since zero would ' +
+      'clear a body the moment it was written.',
+  },
   TRUSTED_PROXIES: {
     cls: 'deployment',
     note:

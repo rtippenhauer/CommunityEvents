@@ -10,6 +10,7 @@ import { seedDemoTenant } from '../../database/prisma/demo-seed';
 import { resolveRootTenantDomain } from '../../common/utils/tenant-domain.util';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import { EmailService } from '../email/email.service';
+import { EmailCategory } from '../email/email.constants';
 
 /** Matches AuthService.register, so this hash verifies like any other. */
 const BCRYPT_ROUNDS = 12;
@@ -1074,6 +1075,7 @@ export class DemoService {
         toEmail: email,
         toName: fullName,
         subject: 'Your {{brand}} demo',
+        category: EmailCategory.DEMO_CONFIRMATION,
         htmlBody:
           `<p>Hello ${escapeHtml(fullName)},</p>` +
           `<p>Here is the link to set up your demo community. It works once, and within ` +
@@ -1133,6 +1135,7 @@ export class DemoService {
         toEmail: email,
         toName: fullName,
         subject: 'Your {{brand}} demo is ready',
+        category: EmailCategory.DEMO_READY,
         htmlBody:
           `<p>Hello ${escapeHtml(fullName)},</p>` +
           `<p>Your demo community is set up and waiting:</p>` +

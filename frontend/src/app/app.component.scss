@@ -145,11 +145,19 @@
   color: var(--ce-on-chrome, #fff) !important;
   padding: 0 12px;
   gap: 0;
-  min-height: 68px !important;
-  height: 68px !important;
+  min-height: 60px !important;
+  height: 60px !important;
   align-items: stretch !important;
-  border-top: 12px solid var(--ce-chrome, #3D1C05) !important;
-  border-bottom: 12px solid var(--ce-chrome, #3D1C05) !important;
+  /* The frame the cream band sits in, and nothing else -- same colour as the
+     bar, so every pixel of it reads as empty dark space.
+     It was 12px, which made the chrome 92px tall to hold 68px of content: a
+     quarter of the bar was padding, and on a wide screen that is a lot of
+     nothing above and below a thin band (Rob, 2026-10-03).
+     Not dropped to zero: the band has a 10px radius, and a rounded rectangle
+     flush against its container's edges reads as a rendering fault rather than
+     as a shape. 5px is enough for the corners to be legible. */
+  border-top: 5px solid var(--ce-chrome, #3D1C05) !important;
+  border-bottom: 5px solid var(--ce-chrome, #3D1C05) !important;
   --mat-icon-button-icon-color: var(--ce-on-chrome, #fff);
 }
 

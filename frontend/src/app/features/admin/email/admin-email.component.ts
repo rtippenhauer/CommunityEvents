@@ -40,6 +40,8 @@ interface EmailLogRow {
   toName: string | null;
   subject: string | null;
   templateId: string | null;
+  /** Why the message went out. Null on rows written before the column existed. */
+  category: string | null;
   status: string;
   provider: string | null;
   attempts: number;
@@ -543,6 +545,19 @@ interface EmailConfig {
                 </mat-select>
               </mat-form-field>
 
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="status-field">
+                <mat-label>Type</mat-label>
+                <mat-select
+                  [value]="categoryFilter()"
+                  (selectionChange)="categoryFilter.set($event.value); applyFilters()"
+                >
+                  <mat-option value="">Any type</mat-option>
+                  @for (option of categoryOptions; track option.value) {
+                    <mat-option [value]="option.value">{{ option.label }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+
               <mat-form-field appearance="outline" subscriptSizing="dynamic" class="date-field">
                 <mat-label>From</mat-label>
                 <input
@@ -594,9 +609,12 @@ interface EmailConfig {
                     <mat-chip [class]="'chip-' + row.status">{{ row.status }}</mat-chip>
                   </td>
                 </ng-container>
-                <ng-container matColumnDef="template">
-                  <th mat-header-cell *matHeaderCellDef>Template</th>
-                  <td mat-cell *matCellDef="let row">{{ row.templateId ?? '—' }}</td>
+                <!-- "Why", not "which template". templateId is a dispatch
+                     instruction and was null on 17 of the 21 send sites, so the
+                     old Template column read "—" for almost everything. -->
+                <ng-container matColumnDef="category">
+                  <th mat-header-cell *matHeaderCellDef>Type</th>
+                  <td mat-cell *matCellDef="let row">{{ categoryLabel(row.category) }}</td>
                 </ng-container>
                 <ng-container matColumnDef="toEmail">
                   <th mat-header-cell *matHeaderCellDef>To</th>
@@ -1112,6 +1130,7 @@ export class AdminEmailComponent implements OnInit {
   // newest-first, not whatever they last searched for.
   readonly search = signal('');
   readonly statusFilter = signal<string>('');
+  readonly categoryFilter = signal<string>('');
   readonly fromDate = signal<Date | null>(null);
   readonly toDate = signal<Date | null>(null);
   readonly page = signal(1);
@@ -1121,15 +1140,69 @@ export class AdminEmailComponent implements OnInit {
   readonly counts = signal<Record<string, number>>({});
 
   readonly hasFilters = computed(
-    () => !!this.search() || !!this.statusFilter() || !!this.fromDate() || !!this.toDate(),
+    () =>
+      !!this.search() ||
+      !!this.statusFilter() ||
+      !!this.categoryFilter() ||
+      !!this.fromDate() ||
+      !!this.toDate(),
   );
+
+  /**
+   * The reasons a message gets sent, grouped the way an operator thinks about
+   * them rather than alphabetically.
+   *
+   * Kept in step with `EmailCategory` on the API by hand. A value the server
+   * knows and this list does not still displays correctly -- `categoryLabel`
+   * falls back to prettifying the raw value -- it just will not be offered as a
+   * filter, which is a missing convenience rather than a wrong answer.
+   */
+  readonly categoryOptions: ReadonlyArray<{ value: string; label: string }> = [
+    { value: 'invite', label: 'Invitation' },
+    { value: 'email_verification', label: 'Email verification' },
+    { value: 'password_reset', label: 'Password reset' },
+    { value: 'password_changed', label: 'Password changed' },
+    { value: 'account_locked', label: 'Account locked' },
+    { value: 'provider_disconnected', label: 'Login disconnected' },
+    { value: 'account_deleted', label: 'Account deleted' },
+    { value: 'account_deletion_warning', label: 'Deletion warning' },
+    { value: 'reengagement', label: 'Re-engagement' },
+    { value: 'event_invite', label: 'Event invitation' },
+    { value: 'event_published', label: 'Event published' },
+    { value: 'event_changed', label: 'Event changed' },
+    { value: 'event_cancelled', label: 'Event cancelled' },
+    { value: 'event_reminder', label: 'Event reminder' },
+    { value: 'rsvp_confirmation', label: 'RSVP confirmation' },
+    { value: 'guest_rsvp_confirmation', label: 'Guest RSVP confirmation' },
+    { value: 'reservation_request', label: 'Reservation request' },
+    { value: 'headcount_update', label: 'Headcount update' },
+    { value: 'demo_confirmation', label: 'Demo confirmation' },
+    { value: 'demo_ready', label: 'Demo ready' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  /**
+   * "Event cancelled", not "event_cancelled".
+   *
+   * A null means the row predates the column, and says so rather than showing a
+   * dash: "Unknown" is the honest answer to why that message was sent, and it is
+   * a set that only ever shrinks.
+   */
+  categoryLabel(category: string | null): string {
+    if (!category) return 'Unknown';
+    const known = this.categoryOptions.find((option) => option.value === category);
+    if (known) return known.label;
+    // A category the API added and this list has not caught up with.
+    const spaced = category.replace(/_/g, ' ');
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  }
 
   /** Debounces typing, so a search is one request rather than one per keystroke. */
   private searchDebounce?: ReturnType<typeof setTimeout>;
 
   readonly displayedColumns = [
     'status',
-    'template',
+    'category',
     'toEmail',
     'provider',
     'attempts',
@@ -1270,6 +1343,7 @@ export class AdminEmailComponent implements OnInit {
     const q = this.search().trim();
     if (q) params = params.set('q', q);
     if (this.statusFilter()) params = params.set('status', this.statusFilter());
+    if (this.categoryFilter()) params = params.set('category', this.categoryFilter());
     const from = this.fromDate();
     if (from) params = params.set('from', startOfLocalDay(from).toISOString());
     const to = this.toDate();
@@ -1313,6 +1387,7 @@ export class AdminEmailComponent implements OnInit {
   clearFilters(): void {
     this.search.set('');
     this.statusFilter.set('');
+    this.categoryFilter.set('');
     this.fromDate.set(null);
     this.toDate.set(null);
     this.page.set(1);
