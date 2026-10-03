@@ -519,6 +519,121 @@ describe('Email log (e2e)', () => {
       expect(await emailService.clearOldBodies(new Date(), 7)).toBe(1);
     });
   });
+
+  /**
+   * How often the log is read, and how far back (Rob, 2026-10-03).
+   *
+   * Deleting rows at 6 or 12 months is deliberately undecided, and this is the
+   * evidence for deciding it rather than guessing. The useful half is not the
+   * count but the reach: if nobody has opened anything older than a month, six
+   * months is plainly safe.
+   */
+  describe('review tracking', () => {
+    it('counts a day on which the log was read', async () => {
+      await queueOne('seen@example.test', 'Seen');
+
+      const res = await get();
+
+      expect(res.body.usage.daysReviewed).toBe(1);
+      expect(res.body.usage.lastReviewedAt).not.toBeNull();
+    });
+
+    /**
+     * One row per day, not per request. The debounced search fires on every
+     * pause in typing, so a request-level record would be mostly noise.
+     */
+    it('does not count the same day twice', async () => {
+      await queueOne('seen@example.test', 'Seen');
+
+      await get();
+      await get();
+      const third = await get();
+
+      expect(third.body.usage.daysReviewed).toBe(1);
+
+      const rows = await unscoped('reading the usage table', () =>
+        prisma.email_log_views.findMany(),
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].views).toBe(3);
+    });
+
+    /**
+     * The load-bearing column. It records the age of the oldest message the
+     * reader actually reached, which is what says whether a retention window
+     * would have thrown away something somebody wanted.
+     */
+    it('records how far back the reader reached', async () => {
+      const row = await queueOne('old@example.test', 'Old');
+      await unscoped('ageing the message', () =>
+        prisma.email_queue.update({
+          where: { id: row!.id },
+          // 40 days plus an hour: `created_at` is DATETIME(0) and MySQL ROUNDS
+          // fractional seconds rather than truncating, so an exact 40-day offset
+          // can be stored a half-second late and floor to 39. The buffer keeps
+          // the assertion about the metric rather than about rounding.
+          data: { createdAt: new Date(Date.now() - (40 * 24 + 1) * 60 * 60 * 1000) },
+        }),
+      );
+
+      const res = await get();
+      expect(res.body.usage.deepestAgeDays).toBe(40);
+    });
+
+    // Only ever grows: a shallow read after a deep one must not erase the
+    // evidence that somebody once went back a long way.
+    it('keeps the deepest reach, not the most recent one', async () => {
+      const old = await queueOne('old@example.test', 'Old');
+      await unscoped('ageing the message', () =>
+        prisma.email_queue.update({
+          where: { id: old!.id },
+          // 40 days plus an hour: `created_at` is DATETIME(0) and MySQL ROUNDS
+          // fractional seconds rather than truncating, so an exact 40-day offset
+          // can be stored a half-second late and floor to 39. The buffer keeps
+          // the assertion about the metric rather than about rounding.
+          data: { createdAt: new Date(Date.now() - (40 * 24 + 1) * 60 * 60 * 1000) },
+        }),
+      );
+      await get();
+
+      // A later, shallower read: filtered to today only.
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await get(`?from=${today}`);
+
+      expect(res.body.usage.deepestAgeDays).toBe(40);
+    });
+
+    it('reports nothing reviewed on a log nobody has opened', async () => {
+      const usage = await unscoped('reading the usage table', () =>
+        prisma.email_log_views.count(),
+      );
+      expect(usage).toBe(0);
+    });
+
+    // A statistic must never fail the screen it is measuring.
+    it('still answers if the usage write fails', async () => {
+      await queueOne('resilient@example.test', 'Resilient');
+      // Stubs the counter WRITE, not the method that guards it -- replacing
+      // `recordLogView` itself would bypass the try/catch being tested and
+      // prove nothing. The log's own reads use findMany/count, so nothing else
+      // in this request goes through $executeRaw.
+      const client = app.get(PrismaService) as unknown as {
+        $executeRaw: (...args: unknown[]) => Promise<number>;
+      };
+      const original = client.$executeRaw.bind(client);
+      client.$executeRaw = async () => {
+        throw new Error('counter is down');
+      };
+
+      const res = await request(server)
+        .get('/api/v1/admin/email/log')
+        .set('Cookie', adminCookie);
+
+      client.$executeRaw = original;
+      expect(res.status).toBe(200);
+      expect(res.body.rows).toHaveLength(1);
+    });
+  });
 });
 
 /**

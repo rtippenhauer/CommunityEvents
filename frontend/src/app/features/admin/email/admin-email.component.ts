@@ -54,6 +54,12 @@ interface EmailLogRow {
   createdAt: string;
 }
 
+interface EmailLogUsage {
+  daysReviewed: number;
+  deepestAgeDays: number;
+  lastReviewedAt: string | null;
+}
+
 interface EmailLogPage {
   rows: EmailLogRow[];
   total: number;
@@ -62,6 +68,7 @@ interface EmailLogPage {
   pages: number;
   /** Per-status totals for the whole community, ignoring filters and paging. */
   counts: Record<string, number>;
+  usage: EmailLogUsage;
 }
 
 interface EmailLogContent {
@@ -725,6 +732,12 @@ interface EmailConfig {
                    paging, so the component holds page/total already and
                    MatPaginator would be a second copy of that state to keep in
                    step. It also lets the range read in plain words. -->
+              @if (usageNote(); as note) {
+                <!-- Quiet on purpose: this exists to inform a retention decision
+                     later, not to be a feature anybody acts on today. -->
+                <p class="usage-note">{{ note }}</p>
+              }
+
               <div class="log-pager">
                 <span class="range">
                   Showing {{ rangeStart() }}–{{ rangeEnd() }} of {{ total() }}
@@ -966,6 +979,11 @@ interface EmailConfig {
         gap: 12px;
         margin-top: 14px;
       }
+      .usage-note {
+        margin: 12px 0 0;
+        font-size: 12px;
+        color: var(--ce-text-muted);
+      }
       .log-pager .range {
         font-size: 12.5px;
         color: var(--ce-text-muted);
@@ -1138,6 +1156,29 @@ export class AdminEmailComponent implements OnInit {
   readonly total = signal(0);
   readonly pages = signal(1);
   readonly counts = signal<Record<string, number>>({});
+  /**
+   * How much this log is actually read, shown so the retention decision can be
+   * made from the screen rather than from a SQL prompt. Bodies already clear at
+   * 30 days; whether the rows themselves should go at 6 or 12 months is
+   * deliberately open until there is evidence.
+   */
+  readonly usage = signal<EmailLogUsage | null>(null);
+
+  /** "…and the oldest message anyone has opened was 12 days old." */
+  readonly usageNote = computed<string | null>(() => {
+    const usage = this.usage();
+    if (!usage || usage.daysReviewed === 0) return null;
+    const days = usage.daysReviewed;
+    const deepest = usage.deepestAgeDays;
+    const reviewed = days === 1 ? 'on 1 day' : `on ${days} days`;
+    const reach =
+      deepest <= 0
+        ? 'nothing older than today'
+        : deepest === 1
+          ? 'nothing older than a day'
+          : `nothing older than ${deepest} days`;
+    return `Reviewed ${reviewed} in the last 90 — reaching ${reach}.`;
+  });
 
   readonly hasFilters = computed(
     () =>
@@ -1355,6 +1396,7 @@ export class AdminEmailComponent implements OnInit {
         this.total.set(res.total);
         this.pages.set(res.pages);
         this.counts.set(res.counts);
+        this.usage.set(res.usage);
         // Clamp, so deleting the last row of the last page does not strand the
         // viewer on an empty page past the end with no way back but the filters.
         if (res.page > res.pages) {

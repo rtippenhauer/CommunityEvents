@@ -337,6 +337,29 @@ model demo_requests {
   @@index([ipAddress], map: "idx_demo_request_ip")
 }
 
+/// How often a community's email log is reviewed, and how far back (v2-31).
+///
+/// Evidence for a decision that is deliberately deferred: bodies are cleared at
+/// 30 days, but whether the rows should also go at 6 or 12 months should be
+/// answered by what anybody actually reads, not by a guess. `deepestAgeDays` is
+/// the column that answers it.
+///
+/// One row per community per day. A request-level record would be noise -- the
+/// debounced search fires on every pause in typing.
+model email_log_views {
+  id             Int      @id @default(autoincrement()) @db.UnsignedInt
+  tenantId       Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  viewedOn       DateTime @map("viewed_on") @db.Date
+  views          Int      @default(0) @db.UnsignedInt
+  /// Age, in days, of the oldest message reached on this day.
+  deepestAgeDays Int      @default(0) @map("deepest_age_days") @db.UnsignedInt
+  lastViewedAt   DateTime @map("last_viewed_at") @db.DateTime(0)
+  tenant         tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_log_views_tenant")
+
+  @@unique([tenantId, viewedOn], map: "uq_email_log_view_day")
+  @@index([tenantId], map: "idx_email_log_view_tenant")
+}
+
 model email_provider_config {
   id                        Int      @id @default(autoincrement()) @db.UnsignedInt
   brevoEnabled              Boolean  @default(true) @map("brevo_enabled")
@@ -1129,6 +1152,7 @@ model tenants {
   content_flags            content_flags[]
   content_reports          content_reports[]
   custom_icons             custom_icons[]
+  email_log_views          email_log_views[]
   email_queue              email_queue[]
   event_comment_replies    event_comment_replies[]
   event_comments           event_comments[]

@@ -37,6 +37,7 @@ export const TENANT_SCOPED_MODELS = [
   'content_reports',
   'custom_icons',
   'email_provider_config',
+  'email_log_views',
   'email_queue',
   'event_comment_replies',
   'event_comments',

@@ -12,7 +12,7 @@ import { EmailCategory, EmailCategoryName, EmailTemplateName, NOTIFICATION_PREF_
 import { BrevoService, EmailAttachment } from './brevo.service';
 import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { AppConfigService } from '../app-config/app-config.service';
-import { currentTenantId } from '../../common/tenant/tenant-store';
+import { currentTenantId, requireTenantId } from '../../common/tenant/tenant-store';
 import { emailPalette } from '../../common/utils/color.util';
 import { EmailLogQueryDto } from './dto/email-log-query.dto';
 
@@ -46,6 +46,23 @@ export interface EmailLogPage {
    * disappear with work still outstanding.
    */
   counts: Record<string, number>;
+  usage: EmailLogUsage;
+}
+
+/**
+ * How much this community's email log is actually read (Rob, 2026-10-03).
+ *
+ * Bodies are cleared at 30 days; whether the rows themselves should go at 6 or
+ * 12 months is deliberately undecided, and this is the evidence for deciding it
+ * later. `deepestAgeDays` is the column that answers the question -- if nobody
+ * has opened anything older than a month, six months is plainly safe.
+ */
+export interface EmailLogUsage {
+  /** Days in the last 90 on which somebody opened the log. */
+  daysReviewed: number;
+  /** Age in days of the oldest message anybody has reached, ever. */
+  deepestAgeDays: number;
+  lastReviewedAt: Date | null;
 }
 
 export interface EmailLogContent {
@@ -597,6 +614,12 @@ export class EmailService {
       this.prisma.email_queue.groupBy({ by: ['status'], _count: { _all: true } }),
     ]);
 
+    // Recorded before the response is shaped, and never allowed to fail the
+    // read: this is a statistic, and a screen that 500s because a counter could
+    // not be written would be a poor trade for it.
+    const oldest = rows.length > 0 ? rows[rows.length - 1].createdAt : null;
+    await this.recordLogView(oldest);
+
     // No `hasContent` flag. Prisma cannot select "is this LongText column
     // non-empty" without reading it, and the honest alternatives were guessing
     // from `templateId` or sending the bodies after all. The detail fetch says
@@ -611,6 +634,7 @@ export class EmailService {
       // Every status present as a key, including the ones with no rows, so the
       // screen can render "0 failed" rather than having to treat a missing key
       // as zero at each use.
+      usage: await this.readLogUsage(),
       counts: Object.fromEntries([
         ...Object.values(EmailQueueStatus).map((status) => [status, 0]),
         ...byStatus.map((group) => [group.status, group._count._all]),
@@ -666,6 +690,75 @@ export class EmailService {
     return where;
   }
 
+
+
+  /**
+   * Notes that the log was read, and how far back the reader got.
+   *
+   * One row per community per day rather than one per request: the debounced
+   * search fires on every pause in typing, so a request-level record would be
+   * mostly noise, and the question this answers needs only daily granularity.
+   *
+   * **`deepest_age_days` is the column that matters.** "How often" says the
+   * screen is used; how far back anybody actually reached is what says which
+   * rows are safe to delete, which is the decision being deferred.
+   *
+   * Raw SQL for `ON DUPLICATE KEY UPDATE` with `GREATEST` -- Prisma's upsert
+   * cannot express "keep the larger of the two" -- and it therefore carries its
+   * own `tenant_id`, taken from `requireTenantId`, because raw SQL is not routed
+   * through the scoping extension.
+   *
+   * Swallows its own errors. Nothing a reader does should fail because a
+   * statistic could not be written.
+   */
+  private async recordLogView(oldestOnPage: Date | null): Promise<void> {
+    try {
+      const tenantId = requireTenantId('recording that the email log was reviewed');
+      const now = new Date();
+      // Whole days, floored. A message read the same day it was sent is 0, which
+      // is the honest answer rather than 1.
+      const ageDays = oldestOnPage
+        ? Math.max(0, Math.floor((now.getTime() - oldestOnPage.getTime()) / 86_400_000))
+        : 0;
+
+      await this.prisma.$executeRaw`
+        INSERT INTO email_log_views (tenant_id, viewed_on, views, deepest_age_days, last_viewed_at)
+        VALUES (${tenantId}, CURDATE(), 1, ${ageDays}, ${now})
+        ON DUPLICATE KEY UPDATE
+          views = views + 1,
+          deepest_age_days = GREATEST(deepest_age_days, ${ageDays}),
+          last_viewed_at = ${now}
+      `;
+    } catch (err) {
+      this.logger.warn(
+        `Could not record an email log view: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * The usage summary shown under the log, so the retention decision can be
+   * made from the screen rather than from a SQL prompt later.
+   *
+   * 90 days for "how often" because that is a long enough habit to read
+   * something into, and all time for "how far back" because a single deep read
+   * is exactly the evidence that would make a short retention wrong.
+   */
+  private async readLogUsage(): Promise<EmailLogUsage> {
+    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const [recent, deepest] = await Promise.all([
+      this.prisma.email_log_views.count({ where: { viewedOn: { gte: since } } }),
+      this.prisma.email_log_views.aggregate({
+        _max: { deepestAgeDays: true, lastViewedAt: true },
+      }),
+    ]);
+
+    return {
+      daysReviewed: recent,
+      deepestAgeDays: deepest._max.deepestAgeDays ?? 0,
+      lastReviewedAt: deepest._max.lastViewedAt ?? null,
+    };
+  }
 
   /**
    * Clears the rendered body of messages older than the retention window
