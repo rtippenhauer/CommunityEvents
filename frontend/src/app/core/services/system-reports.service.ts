@@ -31,13 +31,28 @@ export interface SystemBug {
   resolvedAt: string | null;
 }
 
+export type DemoWouldUse = 'yes' | 'maybe' | 'no';
+
+/** One returned survey. Every answer is optional, so every field is nullable. */
 export interface DemoFeedbackEntry {
   id: number;
-  body: string;
+  body: string | null;
   rating: number | null;
+  wouldUse: DemoWouldUse | null;
+  whatWorked: string | null;
+  whatDidnt: string | null;
   /** Written at submission time: the demo it came from no longer exists. */
   demoLabel: string;
   createdAt: string;
+}
+
+/** What the survey form sends. Nulls are omitted rather than sent as null. */
+export interface DemoSurveyAnswers {
+  rating: number | null;
+  wouldUse: string | null;
+  whatWorked: string | null;
+  whatDidnt: string | null;
+  body: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -64,11 +79,17 @@ export class SystemReportsService {
 
   // ── Demo feedback ─────────────────────────────────────────────────────────
 
-  submitDemoFeedback(body: string, rating: number | null): Observable<{ id: number }> {
-    return this.http.post<{ id: number }>('/api/v1/demo/feedback', {
-      body,
-      ...(rating ? { rating } : {}),
-    });
+  /**
+   * Unanswered questions are left out of the payload entirely rather than sent
+   * as null: the DTO's validators are `@IsOptional()`, which skips an absent
+   * field and rejects an explicit null.
+   */
+  submitDemoFeedback(answers: DemoSurveyAnswers): Observable<{ id: number }> {
+    const payload: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(answers)) {
+      if (value !== null && value !== '') payload[key] = value;
+    }
+    return this.http.post<{ id: number }>('/api/v1/demo/feedback', payload);
   }
 
   listDemoFeedback(): Observable<DemoFeedbackEntry[]> {

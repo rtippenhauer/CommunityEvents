@@ -18,6 +18,7 @@ import {
   Reporter,
 } from '../../core/services/system-reports.service';
 import { FeedbackStatus } from '../../core/services/feedback.service';
+import { hasAdminRights } from '../../core/utils/roles.util';
 
 const STATUS_LABELS: Record<FeedbackStatus, string> = {
   open: 'Open',
@@ -94,6 +95,7 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
         </form>
       </mat-card>
 
+      @if (canReadBoard()) {
       <h2>Known problems</h2>
 
       @if (loading()) {
@@ -134,6 +136,7 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
             }
           </mat-card>
         }
+      }
       }
     </div>
   `,
@@ -278,6 +281,18 @@ export class SystemBugsComponent implements OnInit {
     () => this.brand.isRoot() && this.auth.currentUser()?.role === 'system_admin',
   );
 
+  /**
+   * Filing is open to every member; **reading the board is not** (Rob,
+   * 2026-10-04).
+   *
+   * The list carries every other community's operational detail in free text.
+   * A member reporting their own experience needs none of it, and showing it to
+   * them widens the audience for that text by the size of the whole deployment.
+   * The API refuses either way -- this stops the page asking for a list it will
+   * be denied and rendering an empty "Known problems" heading under it.
+   */
+  readonly canReadBoard = computed(() => hasAdminRights(this.auth.currentUser()?.role));
+
   readonly form = this.fb.nonNullable.group({
     title: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(200)]],
     body: ['', [Validators.required, Validators.minLength(10), Validators.maxLength(10000)]],
@@ -288,6 +303,10 @@ export class SystemBugsComponent implements OnInit {
   }
 
   private load(): void {
+    if (!this.canReadBoard()) {
+      this.loading.set(false);
+      return;
+    }
     this.loading.set(true);
     this.reports.listBugs().subscribe({
       next: (rows) => {
@@ -340,7 +359,13 @@ export class SystemBugsComponent implements OnInit {
       case 'departed':
         return 'Reported by a community that has since closed';
       default:
-        return 'Reported by an admin of another community';
+        // "Member", not "admin" (Rob, 2026-10-04). Only admins can file, so
+        // "admin" would be the more precise word -- and precision is the
+        // problem: the role is itself information about another community's
+        // structure, and a community with one or two admins is a small enough
+        // set that timing could identify the person. "Member" is the larger
+        // haystack and the word the release credit line already uses.
+        return 'Reported by a member of another community';
     }
   }
 }

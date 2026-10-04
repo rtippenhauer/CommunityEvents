@@ -756,20 +756,23 @@ and the page no longer opens.
 
 ## Reporting problems to the people who build the site
 
-**Administrators can now report a site problem directly to the developers.** A
+**Anyone can now report a site problem directly to the developers.** A
 community's own Feedback board reaches that community's admins and stops there,
 which left no way at all to tell the people running the platform that something
-was broken. There is now a **Report a problem** screen that does exactly that.
+was broken. There is now a **Report a problem** screen, next to your community's
+own Feedback, and any member can use it — the person who runs into a problem is
+usually the one it happened to.
 
 **It is a shared board, and it says so.** Every community's administrators see
 the same list, so you can tell a problem is already known instead of reporting
 it again — and the form says plainly that other administrators will read it, so
 nothing personal should go in it. Your own community's Feedback board is still
-the private one, and nothing on it is shared.
+the private one, and nothing on it is shared. Reading the list is an
+administrator's view; reporting is open to everyone.
 
 **Who reported what stays with the community it came from.** Your own
-community sees the reporter's name; other communities see only "an admin of
-another community", with no name and no community named either. Only the
+community sees the reporter's name; other communities see only "a member of
+another community", with no name, no role and no community named either. Only the
 developers see both, because answering a report means knowing who to answer.
 Only the developers can change a report's status, so nobody can edit anybody
 else's.
@@ -780,8 +783,11 @@ operational detail.
 
 ## Telling us how a demo went
 
-**Demo communities now have their own feedback form**, linked from the standing
+**Demo communities now have their own short survey**, linked from the standing
 demo notice. A demo is deleted automatically within a week, but what gets
 written here is kept and read by the people building the platform, so a trial
-that ends still leaves something behind. Visitors can add a 1–5 rating and say
-what worked and what didn't.
+that ends still leaves something behind.
+
+It asks how it went overall, whether you would run your own community on this,
+what worked, what got in your way, and anything else. **Every question is
+optional** — answer one or all of them.

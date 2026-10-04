@@ -98,6 +98,15 @@
           <a mat-list-item routerLink="/feedback" (click)="sidenav.close()">
             <mat-icon matListItemIcon>feedback</mat-icon> Feedback
           </a>
+          <!-- v2-32. Deliberately next to this community's own Feedback and
+               NOT inside the admin section: any member may report a platform
+               problem, because the person who hit it is usually the member it
+               happened to. Hidden on a demo, at both ends. -->
+          @if (!brandConfig.isDemo()) {
+            <a mat-list-item routerLink="/system/bugs" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>bug_report</mat-icon> Report a problem
+            </a>
+          }
         }
         <a mat-list-item routerLink="/updates" (click)="sidenav.close()">
           <mat-icon matListItemIcon>new_releases</mat-icon> What's New
@@ -194,13 +203,6 @@
             </a>
             <a mat-list-item routerLink="/demo/feedback" (click)="sidenav.close()">
               <mat-icon matListItemIcon>reviews</mat-icon> Demo feedback
-            </a>
-          }
-          <!-- v2-32: offered to every real community's admins, not demos. -->
-          @if (isAdmin() && !brandConfig.isDemo()) {
-            <mat-divider />
-            <a mat-list-item routerLink="/system/bugs" (click)="sidenav.close()">
-              <mat-icon matListItemIcon>bug_report</mat-icon> Report a problem
             </a>
           }
         }
@@ -308,6 +310,14 @@
                   <a mat-menu-item routerLink="/feedback">
                     <mat-icon>feedback</mat-icon> Feedback
                   </a>
+                  <!-- v2-32. Next to this community's own Feedback rather than
+                       in the admin menu: any member may report a platform
+                       problem. The shared board behind it stays admin-read. -->
+                  @if (!brandConfig.isDemo()) {
+                    <a mat-menu-item routerLink="/system/bugs">
+                      <mat-icon>bug_report</mat-icon> Report a problem
+                    </a>
+                  }
                 }
                 <a mat-menu-item routerLink="/updates">
                   <mat-icon>new_releases</mat-icon> What's New
@@ -349,13 +359,6 @@
               @if (isAdmin() && brandConfig.isRoot()) {
                 <a mat-menu-item routerLink="/admin/releases/new">
                   <mat-icon>rocket_launch</mat-icon> Releases
-                </a>
-              }
-              <!-- The shared defect board (v2-32). Hidden on a demo, whose
-                   admin is whoever filled in the demo form. -->
-              @if (isAdmin() && !brandConfig.isDemo()) {
-                <a mat-menu-item routerLink="/system/bugs">
-                  <mat-icon>bug_report</mat-icon> Report a problem
                 </a>
               }
               <!-- The operator's read of what demo visitors said. -->

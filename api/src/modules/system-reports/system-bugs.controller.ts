@@ -51,20 +51,34 @@ export class SystemBugsController {
   constructor(private readonly reports: SystemReportsService) {}
 
   /**
-   * Admins only, deliberately -- not every member.
+   * **Any member of a real community may file** (Rob, 2026-10-04).
    *
-   * A platform defect reaches the operator through somebody who can already
-   * tell a platform defect from a community's own configuration, which keeps
-   * the board usable at the volume a deployment of communities produces. A
-   * member who finds a bug still has their own community's feedback board, and
-   * their admin escalates what belongs here.
+   * This was admins-only, on the argument that an admin can tell a platform
+   * defect from their own community's misconfiguration. That is true and it is
+   * not a reason to refuse the report: the person who hits a bug is usually the
+   * member it happened to, and routing them through an admin loses the detail
+   * on the way -- or loses the report, when nobody passes it on. Triage is the
+   * operator's job and happens after the fact; it should not be a condition of
+   * being heard.
+   *
+   * `non_validated` and `disabled` are excluded, as everywhere: `RolesGuard` is
+   * an allowlist, so a role absent here grants nothing.
    */
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   file(@CurrentUser() user: User, @Req() req: Request, @Body() dto: CreateSystemBugDto) {
     return this.reports.fileBug(user, req.tenant!.id, dto);
   }
 
+  /**
+   * Reading stays with admins, which is the asymmetry worth keeping.
+   *
+   * The board carries every other community's operational detail in free text.
+   * Filing is a member telling us something about their own experience; reading
+   * is being shown what every other community has reported, which a member has
+   * no need of and which widens the audience for that free text by the size of
+   * the whole deployment.
+   */
   @Get()
   @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   list(@CurrentUser() user: User, @Req() req: Request) {

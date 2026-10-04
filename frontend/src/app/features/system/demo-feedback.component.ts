@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -71,13 +72,34 @@ import {
               <span class="rating-hint">1 = poor, 5 = great. Optional.</span>
             </div>
 
+            <div class="question">
+              <span class="rating-label">Would you run your community on this?</span>
+              <mat-button-toggle-group formControlName="wouldUse" aria-label="Would you use it">
+                <mat-button-toggle value="yes">Yes</mat-button-toggle>
+                <mat-button-toggle value="maybe">Maybe</mat-button-toggle>
+                <mat-button-toggle value="no">No</mat-button-toggle>
+              </mat-button-toggle-group>
+            </div>
+
             <mat-form-field appearance="outline" class="full">
-              <mat-label>What worked, and what didn't</mat-label>
-              <textarea matInput formControlName="body" rows="5" maxlength="5000"></textarea>
+              <mat-label>What worked?</mat-label>
+              <textarea matInput formControlName="whatWorked" rows="3" maxlength="5000"></textarea>
             </mat-form-field>
 
+            <mat-form-field appearance="outline" class="full">
+              <mat-label>What got in your way?</mat-label>
+              <textarea matInput formControlName="whatDidnt" rows="3" maxlength="5000"></textarea>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full">
+              <mat-label>Anything else?</mat-label>
+              <textarea matInput formControlName="body" rows="3" maxlength="5000"></textarea>
+            </mat-form-field>
+
+            <p class="optional-note">Every question is optional — answer whichever you like.</p>
+
             <div class="actions">
-              <button mat-flat-button type="submit" [disabled]="form.invalid || saving()">
+              <button mat-flat-button type="submit" [disabled]="!hasAnswer() || saving()">
                 {{ saving() ? 'Sending…' : 'Send feedback' }}
               </button>
             </div>
@@ -97,7 +119,23 @@ import {
                 <span class="rating-chip">{{ entry.rating }}/5</span>
               }
             </div>
-            <p class="entry-body">{{ entry.body }}</p>
+            @if (entry.wouldUse) {
+              <p class="answer">
+                <span class="answer-q">Would run their community on it:</span>
+                {{ wouldUseLabel(entry.wouldUse) }}
+              </p>
+            }
+            @if (entry.whatWorked) {
+              <p class="answer"><span class="answer-q">What worked:</span> {{ entry.whatWorked }}</p>
+            }
+            @if (entry.whatDidnt) {
+              <p class="answer">
+                <span class="answer-q">What got in the way:</span> {{ entry.whatDidnt }}
+              </p>
+            }
+            @if (entry.body) {
+              <p class="answer"><span class="answer-q">Also:</span> {{ entry.body }}</p>
+            }
             <div class="entry-meta">{{ entry.createdAt | date: 'medium' }}</div>
           </mat-card>
         }
@@ -170,10 +208,27 @@ import {
         align-items: center;
         gap: 12px;
       }
-      .entry-body {
+      .answer {
         white-space: pre-wrap;
         color: var(--ce-text);
-        margin: 8px 0;
+        margin: 6px 0;
+        font-size: 0.9rem;
+      }
+      .answer-q {
+        font-weight: 600;
+        color: var(--ce-text-muted);
+      }
+      .question {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .optional-note {
+        font-size: 0.78rem;
+        color: var(--ce-text-muted);
+        margin: 0 0 8px;
       }
       .entry-meta {
         font-size: 0.78rem;
@@ -211,10 +266,40 @@ export class DemoFeedbackComponent implements OnInit {
   readonly isDemo = computed(() => this.brand.isDemo());
   readonly platformName = 'Community Events Project';
 
+  /**
+   * **No field is required, and the submit button is enabled by "any of them".**
+   *
+   * A survey that will not submit until one more box is filled is a survey that
+   * gets abandoned, and a partial answer from somebody who used the product for
+   * a week beats a complete answer from nobody. The service enforces the same
+   * "at least one" rule, so this is a convenience rather than the guarantee.
+   */
   readonly form = this.fb.nonNullable.group({
-    body: ['', [Validators.required, Validators.minLength(5), Validators.maxLength(5000)]],
     rating: this.fb.control<number | null>(null),
+    wouldUse: this.fb.control<string | null>(null),
+    whatWorked: ['', [Validators.maxLength(5000)]],
+    whatDidnt: ['', [Validators.maxLength(5000)]],
+    body: ['', [Validators.maxLength(5000)]],
   });
+
+  private readonly formValue = toSignal(this.form.valueChanges, {
+    initialValue: this.form.getRawValue(),
+  });
+
+  readonly hasAnswer = computed(() => {
+    const v = this.formValue();
+    return Boolean(
+      v.rating ||
+        v.wouldUse ||
+        v.whatWorked?.trim() ||
+        v.whatDidnt?.trim() ||
+        v.body?.trim(),
+    );
+  });
+
+  wouldUseLabel(value: 'yes' | 'maybe' | 'no'): string {
+    return { yes: 'Yes', maybe: 'Maybe', no: 'No' }[value];
+  }
 
   ngOnInit(): void {
     this.load();
@@ -232,13 +317,21 @@ export class DemoFeedbackComponent implements OnInit {
   }
 
   submit(): void {
-    if (this.form.invalid) return;
+    if (!this.hasAnswer()) return;
     this.saving.set(true);
-    const { body, rating } = this.form.getRawValue();
-    this.reports.submitDemoFeedback(body, rating).subscribe({
+    const v = this.form.getRawValue();
+    this.reports
+      .submitDemoFeedback({
+        rating: v.rating,
+        wouldUse: v.wouldUse,
+        whatWorked: v.whatWorked?.trim() || null,
+        whatDidnt: v.whatDidnt?.trim() || null,
+        body: v.body?.trim() || null,
+      })
+      .subscribe({
       next: () => {
         this.saving.set(false);
-        this.form.reset({ body: '', rating: null });
+        this.form.reset({ rating: null, wouldUse: null, whatWorked: '', whatDidnt: '', body: '' });
         this.snackBar.open('Thank you — that is genuinely useful.', 'OK', { duration: 3000 });
         this.load();
       },

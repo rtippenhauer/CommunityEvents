@@ -258,6 +258,45 @@ describe('System reports (e2e)', () => {
      * demo requester an admin, so without `NonDemoTenantGuard` "any tenant
      * admin may read the board" means "anybody who filled in the demo form".
      */
+    /**
+     * Members file, admins read (Rob, 2026-10-04).
+     *
+     * The asymmetry is the point. The person who hits a bug is usually the
+     * member it happened to, and routing them through an admin loses the detail
+     * -- or the report. Reading is different: the board carries every other
+     * community's operational detail in free text, which a member reporting
+     * their own experience has no need of.
+     */
+    it('lets an ordinary member file but not read the board', async () => {
+      const member = await seedUser(prisma, city.id, {
+        role: UserRole.MEMBER,
+        email: 'member@example.test',
+        fullName: 'Ordinary Member',
+      });
+      const memberCookie = await inTenant(TEST_TENANT_ID, () => loginAs(app, member));
+
+      await request(server)
+        .post('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', memberCookie)
+        .send({ title: 'Export is empty', body: 'Downloading my data gives a zero-byte file.' })
+        .expect(201);
+
+      await request(server)
+        .get('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', memberCookie)
+        .expect(403);
+
+      // And their own community's admins see who filed it.
+      const res = await request(server)
+        .get('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootAdminCookie)
+        .expect(200);
+      expect(res.body[0].reporter).toEqual({ kind: 'self', fullName: 'Ordinary Member' });
+    });
+
     it('refuses a demo community at both ends', async () => {
       await fileBug();
 
@@ -282,7 +321,12 @@ describe('System reports (e2e)', () => {
         .post('/api/v1/demo/feedback')
         .set('Host', demoDomain)
         .set('Cookie', demoAdminCookie)
-        .send({ body: 'Liked the event flow, the invite step confused me.', rating: 4 })
+        .send({
+          rating: 4,
+          wouldUse: 'maybe',
+          whatWorked: 'Setting up an event was quick.',
+          whatDidnt: 'The invite step confused me.',
+        })
         .expect(201);
 
     it('accepts feedback from inside a demo', async () => {
@@ -299,6 +343,29 @@ describe('System reports (e2e)', () => {
         .expect(403);
     });
 
+    /**
+     * Every question is optional on its own; "at least one of them" is the rule,
+     * and it lives in the service because the DTO cannot express it and a
+     * database CHECK naming the columns would need rewriting per question.
+     */
+    it('refuses a survey with nothing answered', async () => {
+      await request(server)
+        .post('/api/v1/demo/feedback')
+        .set('Host', demoDomain)
+        .set('Cookie', demoAdminCookie)
+        .send({})
+        .expect(400);
+    });
+
+    it('accepts a single answer', async () => {
+      await request(server)
+        .post('/api/v1/demo/feedback')
+        .set('Host', demoDomain)
+        .set('Cookie', demoAdminCookie)
+        .send({ wouldUse: 'yes' })
+        .expect(201);
+    });
+
     it('shows the operator every demo\'s feedback', async () => {
       await submit();
 
@@ -310,6 +377,8 @@ describe('System reports (e2e)', () => {
 
       expect(res.body).toHaveLength(1);
       expect(res.body[0].rating).toBe(4);
+      expect(res.body[0].wouldUse).toBe('maybe');
+      expect(res.body[0].whatDidnt).toContain('invite step');
       expect(res.body[0].demoLabel).toBeTruthy();
     });
 
@@ -357,7 +426,7 @@ describe('System reports (e2e)', () => {
       // The join is gone, so the label is the only thing still saying which
       // demo this was -- which is exactly why it is stored rather than derived.
       expect(res.body[0].demoLabel).toBeTruthy();
-      expect(res.body[0].body).toContain('invite step');
+      expect(res.body[0].whatDidnt).toContain('invite step');
     });
 
     /**

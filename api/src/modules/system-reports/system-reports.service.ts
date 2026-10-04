@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { runUnscoped } from '../../common/tenant/tenant-store';
 import { FeedbackStatus, UserRole } from '../../database/enums';
@@ -15,10 +20,14 @@ import { CreateDemoFeedbackDto } from './dto/create-demo-feedback.dto';
  * *person* only where they are already known.
  *
  *  - their own community's admins -- the full name, as on any other board
- *  - any other community's admins -- "an admin of another community", with no
+ *  - any other community's admins -- "a member of another community", with no
  *    name and **no community name either**. Naming the community would disclose
  *    the deployment's customer list to anybody who obtains a tenant, which is a
- *    different and larger leak than the one being avoided.
+ *    different and larger leak than the one being avoided. The word is
+ *    deliberately "member" and not the more accurate "admin" (Rob,
+ *    2026-10-04): the role is information about that community's structure, and
+ *    where it has one or two admins it narrows the set far enough that timing
+ *    could name the person.
  *  - the system admin on the root tenant -- name and community both, because
  *    replying to a defect report means knowing who hit it and where.
  */
@@ -42,8 +51,11 @@ export interface SystemBugView {
 
 export interface DemoFeedbackView {
   id: number;
-  body: string;
+  body: string | null;
   rating: number | null;
+  wouldUse: string | null;
+  whatWorked: string | null;
+  whatDidnt: string | null;
   demoLabel: string;
   createdAt: Date;
 }
@@ -269,11 +281,29 @@ export class SystemReportsService {
     demoLabel: string,
     dto: CreateDemoFeedbackDto,
   ): Promise<{ id: number }> {
+    // Every field is optional on its own and at least one is required
+    // together, which is a rule only this layer can see -- the DTO cannot
+    // express "unless one of the others", and a database CHECK naming the
+    // columns would need rewriting whenever a question is added. An empty
+    // submission is a mis-click, not an answer.
+    const answered =
+      dto.rating !== undefined ||
+      dto.wouldUse !== undefined ||
+      Boolean(dto.whatWorked?.trim()) ||
+      Boolean(dto.whatDidnt?.trim()) ||
+      Boolean(dto.body?.trim());
+    if (!answered) {
+      throw new BadRequestException('Answer at least one question before sending.');
+    }
+
     return await runUnscoped('demo feedback outlives the demo that produced it', async () =>
       await this.prisma.demo_feedback.create({
         data: {
-          body: dto.body,
+          body: dto.body?.trim() || null,
           rating: dto.rating ?? null,
+          wouldUse: dto.wouldUse ?? null,
+          whatWorked: dto.whatWorked?.trim() || null,
+          whatDidnt: dto.whatDidnt?.trim() || null,
           demoLabel,
           submittedByUserId: user.id,
           submittedByTenantId: tenantId,
@@ -302,7 +332,16 @@ export class SystemReportsService {
       await this.prisma.demo_feedback.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { id: true, body: true, rating: true, demoLabel: true, createdAt: true },
+        select: {
+          id: true,
+          body: true,
+          rating: true,
+          wouldUse: true,
+          whatWorked: true,
+          whatDidnt: true,
+          demoLabel: true,
+          createdAt: true,
+        },
       }),
     );
   }

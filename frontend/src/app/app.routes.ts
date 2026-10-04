@@ -367,7 +367,9 @@ export const routes: Routes = [
     path: 'system/bugs',
     loadComponent: () =>
       import('./features/system/system-bugs.component').then((m) => m.SystemBugsComponent),
-    canActivate: [authGuard, adminGuard, nonDemoTenantGuard],
+    // No `adminGuard`: any member of a real community may file a report, and
+    // the component shows the shared board only to those who may read it.
+    canActivate: [authGuard, nonDemoTenantGuard],
   },
   {
     // One component, two sides: the form inside a demo, the operator's list on

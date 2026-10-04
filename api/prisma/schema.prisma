@@ -1132,9 +1132,16 @@ model releases {
 /// inherited.
 model demo_feedback {
   id                 Int       @id @default(autoincrement()) @db.UnsignedInt
-  body               String    @db.Text
+  /// "Anything else" -- nullable since v2-32's survey pass, because a visitor
+  /// who answers the structured questions and skips the box has still told us
+  /// something. The service requires at least one answer overall.
+  body               String?   @db.Text
   /// 1-5 where the visitor gave one; the form does not require it.
   rating             Int?      @db.UnsignedTinyInt
+  /// The question the whole survey exists to answer.
+  wouldUse           demo_would_use? @map("would_use")
+  whatWorked         String?   @map("what_worked") @db.Text
+  whatDidnt          String?   @map("what_didnt") @db.Text
   demoLabel          String    @map("demo_label") @db.VarChar(120)
   submittedByUserId  Int?      @map("submitted_by_user_id") @db.UnsignedInt
   submittedByTenantId Int?     @map("submitted_by_tenant_id") @db.UnsignedInt
@@ -1444,6 +1451,17 @@ enum member_points_point_type {
 enum oauth_accounts_provider {
   google
   facebook
+}
+
+/// Whether a demo visitor would actually run their community on this.
+///
+/// Three values rather than a boolean: "maybe" is the commonest honest answer
+/// after a week's trial, and collapsing it into yes or no loses the difference
+/// between somebody who is nearly convinced and somebody who is not.
+enum demo_would_use {
+  yes
+  maybe
+  no
 }
 
 enum feedback_category {

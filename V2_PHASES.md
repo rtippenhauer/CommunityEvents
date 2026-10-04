@@ -2469,12 +2469,27 @@ every defect report ever filed, free text included — the same privilege the
 v2-14 rewrite existed to remove. `RolesGuard` cannot see this distinction: it
 answers what a role may do, never who holds it.
 
+**Any member may file; only admins may read the board** (Rob, 2026-10-04). It
+was admins-only at first, on the argument that an admin can tell a platform
+defect from their own community's misconfiguration — true, and not a reason to
+refuse the report, since the person who hits a bug is usually the member it
+happened to and routing them through an admin loses the detail or the report.
+Reading stays with admins because the board carries every other community's
+operational detail in free text, which a member reporting their own experience
+has no need of.
+
 **The reporter is named to three audiences in three ways** (Rob, 2026-10-04):
-their own community sees the full name; another community sees "an admin of
+their own community sees the full name; another community sees "a member of
 another community" with **no community name either**, since naming it would
 disclose the deployment's customer list to anyone who obtains a tenant; the
 operator sees name and community both, because answering a report means knowing
-who hit it and where. The operator's `admin_note` is never on anyone else's
+who hit it and where.
+
+**"Member", not "admin", in that middle line** — Rob caught this. "Admin" would
+be the more accurate word, and the accuracy is the problem: the role is
+information about another community's structure, and where that community has
+one or two admins it narrows the set far enough that timing could name the
+person. It is also the term the release credit line already uses. The operator's `admin_note` is never on anyone else's
 copy — it is where "duplicate of X" and "their DNS is wrong" get written.
 
 **The warning on the form names the audience, not just the destination.** Rob's
@@ -2489,6 +2504,21 @@ Submitted inside a demo by its own admin (who is the visitor), read by them and
 by the operator, never by another community — the opposite audience from the
 board next door, which is why it is a second table rather than a flag on the
 first.
+
+**It is a survey, not a comment box** (Rob, 2026-10-04): an overall 1–5, whether
+they would run their own community on it (yes/maybe/no — three values because
+"maybe" is the commonest honest answer after a week and collapsing it loses the
+difference between nearly convinced and not), what worked, what got in the way,
+and anything else. One free-text box asked the visitor to work out for
+themselves what was worth saying, which is how a feedback form comes back empty
+or comes back "it was fine".
+
+**Every question is optional and at least one is required.** A survey that will
+not submit until one more box is filled is one that gets abandoned, and a
+partial answer from somebody who used the product for a week beats a complete
+answer from nobody. The rule lives in the service: the DTO cannot express
+"unless one of the others", and a database CHECK naming the columns would need
+rewriting whenever a question is added.
 
 **Global because a demo is deleted within a week.** `purgeTenantRows` erases
 every scoped row belonging to it, so a visitor's verdict written into the
@@ -2533,9 +2563,6 @@ community's response.
   today. Whoever builds it should know the send must happen from *outside* the
   demo, since `sendingIsBlocked()` refuses mail on `is_demo` — which is already
   how the confirmation mail works, being sent before the demo exists.
-- **Members cannot file**, only admins. A platform defect reaches the operator
-  through somebody who can tell one from their own community's misconfiguration.
-  A member still has their own community's board, and their admin escalates.
 - **No reply path.** The operator sets a status and writes a private note;
   nothing is sent back to the reporter. `feedback_notes` is scoped and cannot
   hold a conversation about a global row.
