@@ -508,15 +508,26 @@ export class AuthService {
     }
 
     if (providerEmail.toLowerCase().trim() !== user.email.toLowerCase()) {
-      // The addresses are deliberately not named in the message. The caller
-      // already knows which provider account they just signed in with, and
-      // echoing the account's own address back into a redirect URL or an error
-      // body is a needless disclosure on a route an attacker may be driving.
+      /**
+       * **Both addresses are named** (Rob, 2026-10-03). This message used to
+       * name neither, reasoning that echoing an address back was a needless
+       * disclosure -- but the audience here is the one person who just proved
+       * they control both: they are signed in to this account and have this
+       * moment authenticated with that provider account. Withholding the pair
+       * from them discloses nothing to anybody else and leaves the member
+       * guessing which of their addresses the provider actually used, which is
+       * precisely the thing they got wrong.
+       *
+       * `providerEmail` rides on the response so the Google redirect can carry
+       * it without this message being reassembled; see `linkFailureReason`.
+       */
       throw new BadRequestException({
         message:
-          `That ${providerLabel} account uses a different email address than this ` +
-          `account. Connect the ${providerLabel} account with the same address.`,
+          `That ${providerLabel} account uses a different email address ` +
+          `(${providerEmail}) than this account (${user.email}). Connect the ` +
+          `${providerLabel} account with the same address.`,
         reason: 'provider_email_mismatch',
+        providerEmail,
       });
     }
   }

@@ -2,7 +2,14 @@
 
 **Project:** Community Events
 **Area:** Data migration / tenant provisioning
-**Status:** Draft
+**Status:** Draft — **superseded in part, 2026-10-03.** This doc describes
+one tenant per source database. Rob has since decided DinnerBears is **one
+tenant with Cincinnati and Dayton as cities** (see `docs/CUTOVER_PLAN.md`,
+"Tenancy shape"). The import is therefore two source databases into **one**
+tenant, which this doc does not yet describe and which raises a question it
+never had to answer: an address with an account in both source databases is two
+rows that must become one. Treat 01.1 and 01.4's "second run produces a second
+tenant" as out of date until this is revised.
 **Depends on:** REQ-TENANT-01 (tenant foundation), REQ-CITIES-01 (cities
 must be tenant-scoped before they can be imported as tenant data — see
 01.3 below). No technical dependency on REQ-CMS-01; it's sequenced after

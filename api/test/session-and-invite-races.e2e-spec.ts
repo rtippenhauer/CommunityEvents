@@ -317,6 +317,39 @@ describe('Session revocation and invite races (e2e)', () => {
     });
 
     /**
+     * The refusal names both addresses (Rob, 2026-10-03), so the member can see
+     * which of their addresses the provider actually used -- the thing they got
+     * wrong. Only somebody holding this session and that provider account
+     * reaches this message, and they control both.
+     */
+    it('names both addresses in the refusal', async () => {
+      const user = await seedUser(prisma, city.id, { email: 'mine@example.test' });
+
+      await expect(
+        authService.linkGoogle(user.id, 'some-google-id', 'theirs@example.test'),
+      ).rejects.toMatchObject({
+        response: {
+          reason: 'provider_email_mismatch',
+          // Carried separately so the Google redirect can rebuild the sentence
+          // without the account's own address ever entering the URL.
+          providerEmail: 'theirs@example.test',
+        },
+      });
+
+      await expect(
+        authService.linkGoogle(user.id, 'some-google-id', 'theirs@example.test'),
+      ).rejects.toMatchObject({
+        response: { message: expect.stringContaining('theirs@example.test') },
+      });
+
+      await expect(
+        authService.linkGoogle(user.id, 'some-google-id', 'theirs@example.test'),
+      ).rejects.toMatchObject({
+        response: { message: expect.stringContaining('mine@example.test') },
+      });
+    });
+
+    /**
      * Fails closed. Facebook does not always return an address, and "nothing to
      * compare" must not read as "allowed" — that is exactly where somebody would
      * aim by dropping the email scope.

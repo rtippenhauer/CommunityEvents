@@ -16,6 +16,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { QuillModule } from 'ngx-quill';
 import { normalizeNbsp } from '../../../shared/utils/normalize-nbsp';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import {
   FeedbackService,
   FeedbackItem,
@@ -57,9 +58,15 @@ import {
           <span class="item-count"
             >{{ filtered().length }} item{{ filtered().length === 1 ? '' : 's' }}</span
           >
-          <button mat-stroked-button routerLink="/admin/releases/new">
-            <mat-icon>rocket_launch</mat-icon> New Release
-          </button>
+          <!-- Root tenant only, matching the nav and the route guard. This was
+               the third door into a deployment-wide screen and the one the nav
+               fix missed, so a community's admin still had a button for it
+               (Rob, 2026-10-03). -->
+          @if (brandConfig.isRoot()) {
+            <button mat-stroked-button routerLink="/admin/releases/new">
+              <mat-icon>rocket_launch</mat-icon> New Release
+            </button>
+          }
         </div>
       </div>
 
@@ -561,6 +568,9 @@ export class AdminFeedbackComponent implements OnInit {
   private readonly feedbackService = inject(FeedbackService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly snackBar = inject(MatSnackBar);
+  // Public: the template reads isRoot() to decide whether this community's
+  // admin is offered the deployment-wide releases screen at all.
+  readonly brandConfig = inject(BrandConfigService);
 
   readonly loading = signal(true);
   readonly savingId = signal<number | null>(null);

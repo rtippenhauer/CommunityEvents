@@ -648,6 +648,21 @@ shrinking, so **v1 takes no new phases**: its Phase 40 (Ban Records) moved here
 as `v2-30` before any v1 code was written, and the drift list is now final at
 those four entries. Bugfixes may still land in v1; phases may not.
 
+**DinnerBears is ONE tenant; Cincinnati and Dayton are cities inside it**
+(Rob, 2026-10-03). This reverses what `docs/CUTOVER_PLAN.md` and
+`REQ-IMPORT-01` said — they reasoned from how v1 *runs today* (two deployments,
+two databases) rather than from what a tenant is, and v1 runs two deployments
+only because v1 had no way to run two cities. A tenant is a community;
+DinnerBears is one community meeting in two cities, which is what
+`REQ-CITIES-01`'s `feature_cities` was built for. Rob's "a ban is community
+wide" (Phase 40 / `v2-30`) already said the same thing: it is only coherent if
+the community spans both cities.
+
+The consequence that is not free: email is unique per tenant
+(`@@unique([tenantId, email])`), so an address holding an account in **both**
+source databases is two rows that must become one. Two tenants made that a
+non-question. `REQ-IMPORT-01` is marked superseded in part until it is answered.
+
 Five things stand between here and a live DinnerBears — `/v2-done 14`, the
 dispatcher claim step carved out of `v2-27`, `v2-29` (port Phase 39), `v2-24`
 (cities, which the import depends on), `v2-25` (the import) — plus a production

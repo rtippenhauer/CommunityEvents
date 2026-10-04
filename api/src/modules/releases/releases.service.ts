@@ -96,9 +96,32 @@ function toPublicAuthor(user: User | null | undefined): PublicAuthor | null {
   return { id: user.id, fullName: user.fullName, profilePhotoPath: user.profilePhotoPath };
 }
 
-function toPublicRelease(release: ReleaseWithRelations, linkedFeedback: LinkedFeedback[]) {
+/**
+ * What one release resolved to for the community asking: the tickets from
+ * *this* community, and a bare count of the ones from everywhere else.
+ */
+interface ResolvedCredits {
+  visible: LinkedFeedback[];
+  anonymous: number;
+}
+
+function toPublicRelease(release: ReleaseWithRelations, credits: ResolvedCredits) {
   const { release_feedback, ...rest } = release;
-  return { ...rest, author: toPublicAuthor(release.author), linkedFeedback };
+  return {
+    ...rest,
+    author: toPublicAuthor(release.author),
+    linkedFeedback: credits.visible,
+    /**
+     * How many of this release's linked tickets came from another community
+     * (Rob, 2026-10-03). A number, never an id and never a name: the point is
+     * that the work was asked for by a member somewhere, not who or where.
+     *
+     * Dropping those tickets silently -- which is what this did before -- made
+     * a release that shipped entirely on another community's reports show no
+     * credit line at all, crediting nobody for work somebody did ask for.
+     */
+    anonymousCredits: credits.anonymous,
+  };
 }
 
 @Injectable()
@@ -113,20 +136,27 @@ export class ReleasesService {
    * and names feedback ids from every community, so these ids are read and then
    * looked up as an ordinary scoped query -- no `runUnscoped`, no traversal from
    * a global parent -- and the extension adds the tenant predicate. Ids
-   * belonging to another community simply return no row and are dropped.
+   * belonging to another community return no row.
    *
-   * So a release shown in Dayton credits Dayton's contributors and nobody else.
+   * So a release shown in Dayton names Dayton's contributors and nobody else.
    * That is the correct reading of a deployment-wide note: the release is shared,
    * the people are not.
+   *
+   * **The ones it cannot name are counted, not discarded** (Rob, 2026-10-03).
+   * Discarding them meant a release driven entirely by another community's
+   * reports credited nobody, which reads as "we thought of this ourselves". The
+   * count carries the fact that a member asked for it; the identity is what
+   * stays behind the tenant boundary. A reporter is still named in full to their
+   * own community, which is the one place the name means anything.
    *
    * One query for the whole page rather than one per release, and the shape is
    * narrowed to `LinkedFeedback` here so no caller can accidentally serve more.
    */
   private async linkedFeedbackFor(
     releases: ReleaseWithRelations[],
-  ): Promise<Map<number, LinkedFeedback[]>> {
-    const byRelease = new Map<number, LinkedFeedback[]>();
-    for (const release of releases) byRelease.set(release.id, []);
+  ): Promise<Map<number, ResolvedCredits>> {
+    const byRelease = new Map<number, ResolvedCredits>();
+    for (const release of releases) byRelease.set(release.id, { visible: [], anonymous: 0 });
 
     const feedbackIds = [
       ...new Set(releases.flatMap((r) => (r.release_feedback ?? []).map((rf) => rf.feedbackId))),
@@ -145,12 +175,14 @@ export class ReleasesService {
     );
 
     for (const release of releases) {
-      byRelease.set(
-        release.id,
-        (release.release_feedback ?? [])
-          .map((rf) => visible.get(rf.feedbackId))
-          .filter((fb): fb is LinkedFeedback => fb !== undefined),
-      );
+      const links = release.release_feedback ?? [];
+      const mine = links
+        .map((rf) => visible.get(rf.feedbackId))
+        .filter((fb): fb is LinkedFeedback => fb !== undefined);
+      // Everything the scoped lookup did not return belongs to another
+      // community. Counted, not resolved -- there is deliberately no second
+      // query to find out whose it was.
+      byRelease.set(release.id, { visible: mine, anonymous: links.length - mine.length });
     }
     return byRelease;
   }
@@ -160,7 +192,9 @@ export class ReleasesService {
     releases: ReleaseWithRelations[],
   ): Promise<ReturnType<typeof toPublicRelease>[]> {
     const linked = await this.linkedFeedbackFor(releases);
-    return releases.map((release) => toPublicRelease(release, linked.get(release.id) ?? []));
+    return releases.map((release) =>
+      toPublicRelease(release, linked.get(release.id) ?? { visible: [], anonymous: 0 }),
+    );
   }
 
   // ── Public ────────────────────────────────────────────────────────────────

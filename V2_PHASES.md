@@ -2440,3 +2440,79 @@ shape.
 recipient, subject, status or date, however long ago, without the row cap hiding
 it; pending and failed mail keeps its existing actions; retention is a decision
 that is written down rather than "forever by accident".
+
+---
+
+### v2-32 — A channel from a community to the operator
+
+**Status:** Not started. Raised by Rob 2026-10-03, who asked two questions the
+codebase answers "no" to: can a root-tenant admin get feedback about errors or
+issues with the site, and can a non-root admin send anything to the system
+admin.
+
+**The gap.** `feedback` is tenant-scoped, so a community's bug reports reach
+that community's own admins and stop there. There is no route of any kind from a
+customer community to the deployment operator — not a missing screen, a missing
+channel. A DinnerBears admin who hits a platform bug today can only mail Rob out
+of band. That becomes load-bearing at the cutover, when the operator stops being
+the only admin on the deployment.
+
+**Shape, chosen by Rob 2026-10-03:** a deployment-wide inbox on the root tenant.
+The operator sees reports from every community with the community named.
+
+#### The row stays in the reporter's community
+
+An escalated report is an ordinary `feedback` row on the reporter's own tenant
+carrying a new flag — not a copy written onto the root tenant. Three reasons,
+and the third is the one that forces it:
+
+1. The reporter keeps seeing their own ticket where they filed it, with its
+   status and notes, which is the behaviour they already have.
+2. A copy would have two statuses free to disagree, the same second-answer
+   problem `v2-12`'s stored flag and `v2-13`'s nginx `server_name` both had.
+3. **`feedback.user_id` is a foreign key to `users`, which is tenant-scoped.** A
+   row on the root tenant cannot point at a member of another community. A copy
+   would have to either invent a shadow user or drop the author, and dropping the
+   author is exactly the credit this item has to preserve.
+
+So the operator's inbox is a `runUnscoped` read across communities — the same
+waiver `release_feedback` and the email dispatcher already carry — filtered to
+the escalated flag, with `tenant_id` resolved to a community name for display.
+The community's own admins keep seeing it in their board unchanged.
+
+#### Credit, when an escalated report ships
+
+Settled with Rob 2026-10-03 and already **half built**: `v2-31`'s release work
+made the thanks line count contributors it cannot name (`anonymousCredits`), so
+a release shipped on another community's report credits "a community member"
+there and names them in full in their own community. That is precisely the rule
+Rob asked for, and it needs no further work here.
+
+What this item adds is the other end: `/admin/releases/resolved-feedback` is a
+scoped query, so the operator can only link tickets filed inside the root
+tenant. It must offer escalated tickets from every community, which is the same
+`runUnscoped` read as the inbox.
+
+#### Open questions
+
+- **Does the reporter have to be an admin?** Rob's question named a non-root
+  admin, but an ordinary member hitting a platform bug is the commoner case. An
+  admins-only channel is a smaller blast radius and a worse product; a member
+  channel needs rate limiting, which `feedback` does not have today.
+- **Is an escalated ticket visible to the reporter's own admins?** Keeping it
+  visible is simpler and honest. Hiding it would mean a member can route around
+  their own community's moderators, which is a different feature.
+- **Does the operator reply?** `feedback_notes` is scoped and would work
+  unchanged if the note is written in the reporter's tenant under
+  `runWithTenant`. Without a reply path this is a suggestion box.
+
+**Definition of done:** a member or admin of any community can send a report to
+the deployment operator; the operator sees every community's reports in one
+place with the community named; the reporter still sees their ticket in their own
+community; and linking one to a release credits them by name there and
+anonymously everywhere else.
+
+**Not on the cutover path.** DinnerBears does not have this today, so going live
+without it is parity rather than regression — the test the running order uses.
+It is wanted soon after, because the cutover is the moment the operator stops
+being the only admin.

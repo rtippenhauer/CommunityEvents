@@ -261,5 +261,65 @@ describe('Release isolation (e2e)', () => {
       expect(linked[0].isPrivate).toBe(true);
       expect(JSON.stringify(res.body)).not.toContain('ours — public');
     });
+
+    /**
+     * Counted, not discarded (Rob, 2026-10-03).
+     *
+     * The isolation above was correct and incomplete: a ticket from another
+     * community was dropped with no trace, so a release shipped entirely on
+     * somebody else's report credited nobody at all. The fix keeps the identity
+     * behind the boundary and lets the *fact* of a contributor cross it.
+     */
+    it("counts the other community's contributors without naming them", async () => {
+      await seedCrossTenantRelease();
+
+      const res = await request(server)
+        .get('/api/v1/releases')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootMemberCookie)
+        .expect(200);
+
+      expect(res.body[0].linkedFeedback).toHaveLength(1);
+      expect(res.body[0].anonymousCredits).toBe(1);
+    });
+
+    // Symmetric, and the reason this is not just a nicety: each side sees one
+    // named contributor and one anonymous one, so neither community is told it
+    // was the only one asking.
+    it('counts anonymously in both directions', async () => {
+      await seedCrossTenantRelease();
+
+      const res = await request(server)
+        .get('/api/v1/releases')
+        .set('Host', otherDomain)
+        .set('Cookie', otherAdminCookie)
+        .expect(200);
+
+      expect(res.body[0].linkedFeedback).toHaveLength(1);
+      expect(res.body[0].anonymousCredits).toBe(1);
+    });
+
+    /**
+     * The count is a number and nothing else. An id would say which rows exist
+     * elsewhere, which is the information the tenant boundary is for.
+     */
+    it('sends no identifying detail with the anonymous count', async () => {
+      await seedCrossTenantRelease();
+
+      const theirFeedbackId = await unscoped('finding their ticket', async () => {
+        const row = await prisma.feedback.findFirst({ where: { tenantId: otherTenantId } });
+        return row!.id;
+      });
+
+      const res = await request(server)
+        .get('/api/v1/releases')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootMemberCookie)
+        .expect(200);
+
+      const linked = res.body[0].linkedFeedback as { id: number }[];
+      expect(linked.map((fb) => fb.id)).not.toContain(theirFeedbackId);
+      expect(typeof res.body[0].anonymousCredits).toBe('number');
+    });
   });
 });

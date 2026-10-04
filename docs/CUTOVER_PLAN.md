@@ -143,10 +143,48 @@ on the day, and most have bitten this project before in some form.
 
 ### Tenancy shape
 
-Two source databases become **two independent tenants**, not one tenant with two
-cities. That matches `REQ-IMPORT-01` and matches how DinnerBears already runs.
-It also means per-community bans, per-community mail and per-community OAuth all
-keep their existing boundaries rather than merging.
+**DinnerBears is one tenant. Cincinnati and Dayton are cities inside it**
+(Rob, 2026-10-03).
+
+This reverses what this section said, and the reversal is the right way round:
+it said two source databases become two independent tenants, reasoning from how
+v1 *runs today* rather than from what a tenant *is*. v1 runs two deployments
+because v1 had no other way to run two cities — that is the constraint v2 exists
+to remove, so treating it as the target shape would have carried the old
+limitation across the cutover and called it a requirement. A tenant is a
+community; DinnerBears is one community that meets in two cities.
+
+Rob's Phase 40 direction already said this before this section was corrected —
+**a ban is community-wide**, which is only a coherent sentence if the community
+spans both cities. Under two tenants somebody barred in Cincinnati would simply
+sign up in Dayton.
+
+`REQ-CITIES-01` is what makes this work and already assumes it: `feature_cities`
+on, every event, user and location carrying a city, and each member choosing
+which cities they want to see. That is the feature the two-tenant shape would
+have left switched off and unused on the one deployment that needs it most.
+
+**What this merges, deliberately:** one Brevo account, one Google app, one
+`mail_domain`, one `app_config`, one set of admins, one member directory, one
+leaderboard. All of those were listed as reasons to stay split, and all of them
+are things one organisation should have one of.
+
+**The one genuinely hard consequence is duplicate people.** Email is unique per
+tenant (`@@unique([tenantId, email])`), so an address holding an account in both
+v1 databases is two rows that must become one row or collide at import. Two
+tenants made this a non-question by keeping them apart. It needs an explicit
+answer in `REQ-IMPORT-01` before the import runs:
+
+- which account wins where the two disagree (role, join date, notification
+  prefs, city);
+- what happens to the loser's RSVPs, points, achievements and ratings —
+  reassigned to the survivor, or dropped;
+- what the survivor's city preference becomes, since the whole point is that
+  this person attends in both.
+
+Until that is decided, the import is **not** a matter of pointing the existing
+script at a second database. See `REQ-IMPORT-01`, which still describes the
+two-tenant shape and needs revising to match this section.
 
 ### Domains, and the `www` trap
 

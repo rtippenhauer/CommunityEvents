@@ -727,3 +727,29 @@ second time.
 reverse proxy every request appeared to come from the proxy itself, which made
 the per-visitor rate limits act as one shared limit for the whole deployment
 rather than per person. Rate limiting is now per visitor as intended.
+
+## Accounts and sign-in
+
+**Connecting a Google or Facebook account now tells you both addresses when it
+refuses.** A provider account may only be connected to the account with the same
+email address, and the refusal used to say so without naming either — leaving
+you to guess which of your addresses the provider actually used. It now names
+the provider's address and this account's, so the mismatch is visible rather
+than inferred. Facebook's refusal also opens as a dialog now, the same as
+Google's, instead of a message that fades at the bottom of the page.
+
+## Updates and release notes
+
+**The thanks line now credits members from other communities too, without
+naming them.** Release notes are shared across every community on the
+deployment, but the people who asked for a change are not — so a note shipped on
+another community's suggestion previously thanked nobody at all. Those
+contributors are now counted and thanked as "a community member", while their
+own community still sees them by name. Members who marked their report private
+are unchanged: they were already thanked anonymously.
+
+**The release-note editor is now reachable only by the deployment operator.**
+Release notes apply to every community, so they were never a community's screen
+to edit — but any community's admin was still offered the link and could open
+the page, which then refused every action on it. The link is no longer shown
+and the page no longer opens.

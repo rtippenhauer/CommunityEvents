@@ -742,6 +742,24 @@ export class AccountSettingsComponent implements OnInit {
     if (params.get('linked') !== 'google') return;
 
     const error = params.get('error');
+
+    /**
+     * The mismatch message names both addresses (Rob, 2026-10-03).
+     *
+     * Only the Google one arrives in the query string; this account's own
+     * address comes from the session, so the more identifying of the two is
+     * never in a URL. If either is somehow absent the sentence falls back to
+     * the unqualified wording rather than rendering an empty pair of brackets.
+     */
+    const googleEmail = params.get('providerEmail')?.trim();
+    const accountEmail = this.authService.currentUser()?.email?.trim();
+    const mismatchMessage =
+      googleEmail && accountEmail
+        ? `That Google account uses a different email address (${googleEmail}) than ` +
+          `this account (${accountEmail}). Connect the Google account with the same address.`
+        : 'That Google account uses a different email address than this account. ' +
+          'Connect the Google account with the same address.';
+
     // `mismatch` and `no_email` are refusals the member can act on, so they say
     // what to do instead of "please try again" — a Google account may only be
     // connected to the account with the same email address.
@@ -749,7 +767,7 @@ export class AccountSettingsComponent implements OnInit {
       error === 'taken'
         ? 'That Google account is already connected to another member here.'
         : error === 'mismatch'
-          ? 'That Google account uses a different email address than this account. Connect the Google account with the same address.'
+          ? mismatchMessage
           : error === 'no_email'
             ? 'Google did not share an email address, so it cannot be connected to this account.'
             : error
@@ -865,8 +883,22 @@ export class AccountSettingsComponent implements OnInit {
           },
           error: (err: HttpErrorResponse) => {
             this.fbLinking.set(false);
-            this.snackBar.open(err?.error?.message ?? 'Failed to connect Facebook.', 'OK', {
-              duration: 5000,
+            /**
+             * A dialog, matching Google (Rob, 2026-10-03). The two buttons sit
+             * next to each other and do the same thing, so a refusal that fades
+             * at the bottom of the page for one and stops the page for the other
+             * is the asymmetry the multi-tenancy notes already warn about in the
+             * link affordances themselves.
+             *
+             * The API composes this message, so a mismatch arrives naming both
+             * addresses with nothing to reassemble here.
+             */
+            this.dialog.open(ConfirmDialogComponent, {
+              data: {
+                title: 'Could not connect Facebook',
+                message: err?.error?.message ?? 'Failed to connect Facebook.',
+                acknowledgeOnly: true,
+              } satisfies ConfirmDialogData,
             });
           },
         });

@@ -321,11 +321,17 @@ export class AuthController {
         //
         // Each is a conflict rather than a fault, so none of them is logged as
         // an error; anything else is, because it means something broke.
-        const reason = linkFailureReason(err);
+        const { reason, providerEmail } = linkFailureReason(err);
         if (reason === 'failed') {
           this.logger.error(`Google linking failed: ${(err as Error).message}`);
         }
-        res.redirect(`${linkBase}/account/settings?linked=google&error=${reason}`);
+        // Encoded, because an address contains characters the query string
+        // gives its own meaning to -- a `+` tag most of all, which would
+        // otherwise arrive as a space and name an address nobody owns.
+        const detail = providerEmail
+          ? `&providerEmail=${encodeURIComponent(providerEmail)}`
+          : '';
+        res.redirect(`${linkBase}/account/settings?linked=google&error=${reason}${detail}`);
         return;
       }
       res.redirect(`${linkBase}/account/settings?linked=google`);
@@ -775,16 +781,35 @@ export class AuthController {
  * shows up in the log rather than being quietly reported to the member as
  * something they can fix.
  */
-function linkFailureReason(err: unknown): 'taken' | 'mismatch' | 'no_email' | 'failed' {
-  if (err instanceof ConflictException) return 'taken';
+type LinkFailure = {
+  reason: 'taken' | 'mismatch' | 'no_email' | 'failed';
+  /**
+   * The address the provider returned, carried back only on a mismatch so the
+   * settings page can name both addresses (Rob, 2026-10-03).
+   *
+   * **Only the provider's address travels in the URL.** The account's own
+   * address is already in the browser's session, so the page composes the pair
+   * itself and the more identifying of the two never enters a redirect, an
+   * access log or a `Referer` header.
+   */
+  providerEmail?: string;
+};
+
+function linkFailureReason(err: unknown): LinkFailure {
+  if (err instanceof ConflictException) return { reason: 'taken' };
   if (err instanceof BadRequestException) {
     const response = err.getResponse();
-    const reason =
+    const body =
       typeof response === 'object' && response !== null
-        ? (response as { reason?: unknown }).reason
-        : undefined;
-    if (reason === 'provider_email_mismatch') return 'mismatch';
-    if (reason === 'provider_email_missing') return 'no_email';
+        ? (response as { reason?: unknown; providerEmail?: unknown })
+        : {};
+    if (body.reason === 'provider_email_mismatch') {
+      return {
+        reason: 'mismatch',
+        providerEmail: typeof body.providerEmail === 'string' ? body.providerEmail : undefined,
+      };
+    }
+    if (body.reason === 'provider_email_missing') return { reason: 'no_email' };
   }
-  return 'failed';
+  return { reason: 'failed' };
 }

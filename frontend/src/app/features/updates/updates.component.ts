@@ -46,7 +46,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
               <h2 class="release-title">{{ release.title }}</h2>
               <div class="release-body" [innerHTML]="safeHtml(release.body)"></div>
 
-              @if (creditedItems(release).length > 0) {
+              @if (hasCredits(release)) {
                 <div class="community-credit">
                   <mat-icon class="credit-icon">people</mat-icon>
                   <span>
@@ -242,17 +242,48 @@ export class UpdatesComponent implements OnInit {
       .replace(/\{\{\s*events\s*\}\}/gi, this.brandConfig.dinnerPluralLower());
   }
 
-  creditedItems(release: Release): Release['linkedFeedback'] {
-    return release.linkedFeedback ?? [];
+  /**
+   * Whether this release has anybody to thank — which is no longer the same
+   * question as whether it has feedback *this* community can see. A release
+   * shipped on another community's report has an anonymous credit and no
+   * visible ticket, and it still earned a thanks line (Rob, 2026-10-03).
+   */
+  hasCredits(release: Release): boolean {
+    return (release.linkedFeedback ?? []).length > 0 || (release.anonymousCredits ?? 0) > 0;
   }
 
+  /**
+   * The thanks line.
+   *
+   * Three kinds of contributor collapse into two phrasings. A member of this
+   * community who did not mark their ticket private is named. A member of this
+   * community who did, and a member of any other community, both become "a
+   * community member" — the first because they asked for privacy, the second
+   * because their name belongs to their own community's copy of this note,
+   * where they are named in full.
+   */
   creditList(release: Release): string {
-    const names = (release.linkedFeedback ?? []).map((fb) =>
-      fb.isPrivate ? 'a community member' : (fb.user?.fullName ?? 'a community member'),
-    );
-    const unique = [...new Set(names)];
-    if (unique.length === 1) return unique[0];
-    if (unique.length === 2) return `${unique[0]} and ${unique[1]}`;
-    return `${unique.slice(0, -1).join(', ')}, and ${unique[unique.length - 1]}`;
+    const named = [
+      ...new Set(
+        (release.linkedFeedback ?? [])
+          .filter((fb) => !fb.isPrivate && fb.user?.fullName)
+          .map((fb) => fb.user!.fullName),
+      ),
+    ];
+
+    const anonymous =
+      (release.linkedFeedback ?? []).filter((fb) => fb.isPrivate || !fb.user?.fullName).length +
+      (release.anonymousCredits ?? 0);
+
+    const parts = [...named];
+    // Collapsed to one phrase rather than repeated: "a community member and a
+    // community member" names the same unknown twice.
+    if (anonymous === 1) parts.push('a community member');
+    else if (anonymous > 1) parts.push(`${anonymous} community members`);
+
+    if (parts.length === 0) return 'a community member';
+    if (parts.length === 1) return parts[0];
+    if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+    return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
   }
 }
