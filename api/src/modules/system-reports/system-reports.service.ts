@@ -37,8 +37,11 @@ export type ReporterView =
   | { kind: 'operator'; fullName: string; community: string }
   | { kind: 'departed' };
 
+export type SystemReportCategory = 'bug' | 'feature_request';
+
 export interface SystemBugView {
   id: number;
+  category: SystemReportCategory;
   title: string;
   body: string;
   status: FeedbackStatus;
@@ -87,8 +90,9 @@ export class SystemReportsService {
    */
   async fileBug(user: User, tenantId: number, dto: CreateSystemBugDto): Promise<{ id: number }> {
     const created = await runUnscoped('a bug report is deployment-wide by design', async () =>
-      await this.prisma.system_bugs.create({
+      await this.prisma.system_reports.create({
         data: {
+          category: dto.category,
           title: dto.title,
           body: dto.body,
           reportedByUserId: user.id,
@@ -112,10 +116,11 @@ export class SystemReportsService {
    */
   async listBugs(viewer: Viewer): Promise<SystemBugView[]> {
     const rows = await runUnscoped('the bug board spans every community', async () =>
-      await this.prisma.system_bugs.findMany({
+      await this.prisma.system_reports.findMany({
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
+          category: true,
           title: true,
           body: true,
           status: true,
@@ -133,6 +138,7 @@ export class SystemReportsService {
 
     return rows.map((row) => ({
       id: row.id,
+      category: row.category as SystemReportCategory,
       title: row.title,
       body: row.body,
       status: row.status as FeedbackStatus,
@@ -234,7 +240,7 @@ export class SystemReportsService {
    */
   async updateBug(id: number, dto: UpdateSystemBugDto): Promise<SystemBugView> {
     const existing = await runUnscoped('the operator acts on every community\'s reports', async () =>
-      await this.prisma.system_bugs.findUnique({ where: { id }, select: { id: true, status: true } }),
+      await this.prisma.system_reports.findUnique({ where: { id }, select: { id: true, status: true } }),
     );
     if (!existing) throw new NotFoundException('Report not found');
 
@@ -246,7 +252,7 @@ export class SystemReportsService {
       nextStatus === FeedbackStatus.WONT_FIX;
 
     await runUnscoped('the operator acts on every community\'s reports', async () =>
-      await this.prisma.system_bugs.update({
+      await this.prisma.system_reports.update({
         where: { id },
         data: {
           ...(dto.status !== undefined ? { status: dto.status } : {}),

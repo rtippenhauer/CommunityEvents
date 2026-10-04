@@ -2456,10 +2456,36 @@ having consented to their own community's admins reading it, and forwarding it
 to the operator would change the audience after the fact. What crosses a
 boundary is what its author wrote **in order to** cross one.
 
-#### `system_bugs` — the shared defect board
+#### Where the boundary sits (revised 2026-10-04)
 
-Filed by an admin of a non-demo community, read by the admins of every other
-non-demo community, triaged only by the system admin on the root tenant.
+Rob moved it once more: **"Feature request and bug reports should be global and
+only general comments should be tenant scoped."**
+
+The line is *what the report is about*. A bug and a feature request are about
+the **product**, so both belong to whoever builds it and both are worth every
+community seeing. A general comment is about a **community** — its venues, its
+schedule, its people — and has no audience outside it.
+
+**This had to be a table boundary and could not be a column on `feedback`.**
+Scoping here is per *model*: a model is in `TENANT_SCOPED_MODELS` or
+`GLOBAL_MODELS` and the extension applies to all of it. That is deliberate — a
+predicate that applied to some rows of a table and not others is exactly the
+kind of isolation nobody can confirm by reading a query. So `system_bugs` was
+renamed `system_reports` and took a `category`, and `feedback` now refuses
+anything but `comment`.
+
+**Existing `feedback` rows are deliberately not moved.** Their authors wrote
+them inside a community, for that community's admins, before any of this
+existed. Migrating them would retroactively widen the audience of writing that
+was never offered a choice about it. They stay where they are, stay readable
+there, and `feedback_category` keeps all three values because it still
+describes them.
+
+#### `system_reports` — the shared board
+
+Filed by any member of a non-demo community, read by the admins of every other
+non-demo community, triaged only by the system admin on the root tenant. Holds
+bugs and feature requests.
 
 **Demo communities are excluded at both ends, and this is the load-bearing
 guard.** `demo.service` creates a demo's requester as an `ADMIN`, so "any tenant
@@ -2530,8 +2556,8 @@ only thing that still says which demo a surviving row came from.
 
 Both tables are global and point at the scoped `users` and `tenants`. A
 restrictive key would block `purgeTenantRows`, which walks only the scoped model
-list and so would never clear it — deleting a community would fail on a bug one
-of its admins filed years earlier. `tenant-scoped-models.spec` does not catch
+list and so would never clear it — deleting a community would fail on a report one
+of its members filed years earlier. `tenant-scoped-models.spec` does not catch
 this: it checks scoped→scoped keys only. **`releases.created_by` is the same
 shape today** and is merely unreachable, since only root-tenant admins author
 releases and the root tenant cannot be deleted.

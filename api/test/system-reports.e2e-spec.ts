@@ -125,7 +125,11 @@ describe('System reports (e2e)', () => {
       .post('/api/v1/system/bugs')
       .set('Host', TEST_TENANT_DOMAIN)
       .set('Cookie', rootAdminCookie)
-      .send({ title: 'Calendar feed 500s', body: 'Subscribing to the ics feed returns a 500.' })
+      .send({
+        category: 'bug',
+        title: 'Calendar feed 500s',
+        body: 'Subscribing to the ics feed returns a 500.',
+      })
       .expect(201);
 
   describe('the shared bug board', () => {
@@ -138,6 +142,41 @@ describe('System reports (e2e)', () => {
      * The point of the board: the defect travels so another community can see
      * it is already known.
      */
+    /**
+     * Feature requests share this board with bugs (Rob, 2026-10-04): both are
+     * about the *product*, so both belong to whoever builds it. A general
+     * comment is about a community and stays on its own scoped board.
+     */
+    it('takes a feature request as well as a bug', async () => {
+      await request(server)
+        .post('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootAdminCookie)
+        .send({
+          category: 'feature_request',
+          title: 'Let members export their RSVPs',
+          body: 'A CSV of what I have signed up for would save a lot of scrolling.',
+        })
+        .expect(201);
+
+      const res = await request(server)
+        .get('/api/v1/system/bugs')
+        .set('Host', otherDomain)
+        .set('Cookie', otherAdminCookie)
+        .expect(200);
+
+      expect(res.body[0].category).toBe('feature_request');
+    });
+
+    it('refuses a category that is not a product report', async () => {
+      await request(server)
+        .post('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootAdminCookie)
+        .send({ category: 'comment', title: 'Nice venue', body: 'The Thursday place was great.' })
+        .expect(400);
+    });
+
     it('shows the report to another community', async () => {
       await fileBug();
 
@@ -279,7 +318,11 @@ describe('System reports (e2e)', () => {
         .post('/api/v1/system/bugs')
         .set('Host', TEST_TENANT_DOMAIN)
         .set('Cookie', memberCookie)
-        .send({ title: 'Export is empty', body: 'Downloading my data gives a zero-byte file.' })
+        .send({
+          category: 'bug',
+          title: 'Export is empty',
+          body: 'Downloading my data gives a zero-byte file.',
+        })
         .expect(201);
 
       await request(server)
@@ -310,7 +353,7 @@ describe('System reports (e2e)', () => {
         .post('/api/v1/system/bugs')
         .set('Host', demoDomain)
         .set('Cookie', demoAdminCookie)
-        .send({ title: 'From a stranger', body: 'This should never be filed at all.' })
+        .send({ category: 'bug', title: 'From a stranger', body: 'This should never be filed at all.' })
         .expect(403);
     });
   });
@@ -440,7 +483,11 @@ describe('System reports (e2e)', () => {
         .post('/api/v1/system/bugs')
         .set('Host', otherDomain)
         .set('Cookie', otherAdminCookie)
-        .send({ title: 'Filed then left', body: 'The community that reported this is going away.' })
+        .send({
+          category: 'bug',
+          title: 'Filed then left',
+          body: 'The community that reported this is going away.',
+        })
         .expect(201);
 
       await unscoped('deleting the community that filed it', async () => {

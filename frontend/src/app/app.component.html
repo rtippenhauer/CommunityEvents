@@ -104,7 +104,7 @@
                happened to. Hidden on a demo, at both ends. -->
           @if (!brandConfig.isDemo()) {
             <a mat-list-item routerLink="/system/bugs" (click)="sidenav.close()">
-              <mat-icon matListItemIcon>bug_report</mat-icon> Report a problem
+              <mat-icon matListItemIcon>bug_report</mat-icon> Bugs &amp; requests
             </a>
           }
         }
@@ -315,7 +315,7 @@
                        problem. The shared board behind it stays admin-read. -->
                   @if (!brandConfig.isDemo()) {
                     <a mat-menu-item routerLink="/system/bugs">
-                      <mat-icon>bug_report</mat-icon> Report a problem
+                      <mat-icon>bug_report</mat-icon> Bugs &amp; requests
                     </a>
                   }
                 }

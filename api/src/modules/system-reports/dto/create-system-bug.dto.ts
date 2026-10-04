@@ -1,15 +1,29 @@
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEnum, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
- * A defect report bound for the deployment operator.
+ * What a global report is (Rob, 2026-10-04).
  *
- * No category and no privacy flag, unlike `CreateFeedbackDto`. There is one
- * kind of thing here -- something is broken -- and the board is shared by
+ * Both kinds are about the *product*, so both belong to whoever builds it. A
+ * general comment is about a community -- its venues, its schedule, its people
+ * -- and stays on that community's own tenant-scoped feedback board.
+ */
+export enum SystemReportCategory {
+  BUG = 'bug',
+  FEATURE_REQUEST = 'feature_request',
+}
+
+/**
+ * A report about the product, bound for the deployment operator.
+ *
+ * **No privacy flag**, unlike `CreateFeedbackDto`: the board is shared by
  * construction, so a "private" option would be a promise this table cannot
- * keep. The form says so in as many words rather than offering a toggle that
- * would have to be ignored.
+ * keep. The form says who reads it rather than offering a toggle that would
+ * have to be ignored.
  */
 export class CreateSystemBugDto {
+  @IsEnum(SystemReportCategory)
+  category: SystemReportCategory;
+
   @IsString()
   @MinLength(3)
   @MaxLength(200)

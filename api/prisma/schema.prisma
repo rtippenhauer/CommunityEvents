@@ -1155,8 +1155,11 @@ model demo_feedback {
   @@index([createdAt], map: "idx_demo_feedback_created")
 }
 
-model system_bugs {
+model system_reports {
   id                 Int             @id @default(autoincrement()) @db.UnsignedInt
+  /// Defaults to `bug` because every row that existed before this column did
+  /// was one -- the table was called `system_bugs`.
+  category           system_report_category @default(bug)
   title              String          @db.VarChar(200)
   body               String          @db.Text
   status             feedback_status @default(open)
@@ -1173,6 +1176,7 @@ model system_bugs {
   @@index([reportedByUserId], map: "fk_system_bug_reporter")
   @@index([reportedByTenantId], map: "fk_system_bug_tenant")
   @@index([status], map: "idx_system_bug_status")
+  @@index([category], map: "idx_system_report_category")
   @@index([createdAt], map: "idx_system_bug_created")
 }
 
@@ -1293,7 +1297,7 @@ model tenants {
   tenant_secrets           tenant_secrets[]
   email_provider_config    email_provider_config?
   demo_request             demo_requests?
-  system_bugs              system_bugs[]
+  system_reports           system_reports[]
   demo_feedback            demo_feedback[]
 
   @@index([status], map: "idx_tenant_status")
@@ -1363,7 +1367,7 @@ model users {
   events_events_created_byTousers                              events[]                   @relation("events_created_byTousers")
   events_events_reservation_assignee_idTousers                 events[]                   @relation("events_reservation_assignee_idTousers")
   feedback                                                     feedback[]
-  system_bugs                                                  system_bugs[]
+  system_reports                                               system_reports[]
   demo_feedback                                                demo_feedback[]
   feedback_notes                                               feedback_notes[]
   feedback_upvotes                                             feedback_upvotes[]
@@ -1458,6 +1462,17 @@ enum oauth_accounts_provider {
 /// Three values rather than a boolean: "maybe" is the commonest honest answer
 /// after a week's trial, and collapsing it into yes or no loses the difference
 /// between somebody who is nearly convinced and somebody who is not.
+/// What a global report is (Rob, 2026-10-04).
+///
+/// Bugs and feature requests are both *about the product*, so both belong to
+/// whoever builds it and are shared across communities. A general comment is
+/// about a community -- its venues, its schedule, its people -- and stays in
+/// that community's own `feedback` board, which remains tenant-scoped.
+enum system_report_category {
+  bug
+  feature_request
+}
+
 enum demo_would_use {
   yes
   maybe

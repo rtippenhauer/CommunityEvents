@@ -18,8 +18,11 @@ export type Reporter =
   | { kind: 'operator'; fullName: string; community: string }
   | { kind: 'departed' };
 
+export type SystemReportCategory = 'bug' | 'feature_request';
+
 export interface SystemBug {
   id: number;
+  category: SystemReportCategory;
   title: string;
   body: string;
   status: FeedbackStatus;
@@ -65,8 +68,12 @@ export class SystemReportsService {
     return this.http.get<SystemBug[]>('/api/v1/system/bugs');
   }
 
-  fileBug(title: string, body: string): Observable<{ id: number }> {
-    return this.http.post<{ id: number }>('/api/v1/system/bugs', { title, body });
+  fileBug(
+    category: SystemReportCategory,
+    title: string,
+    body: string,
+  ): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>('/api/v1/system/bugs', { category, title, body });
   }
 
   /** Operator only; the API refuses anyone else. */

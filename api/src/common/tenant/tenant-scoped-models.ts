@@ -101,14 +101,22 @@ export const GLOBAL_MODELS = [
    * Both of v2-32's report tables are global, for opposite-looking reasons that
    * are the same reason: each has to outlive the community it came from.
    *
-   * `system_bugs` is read by every non-demo community's admins, so scoping it
+   * `system_reports` is read by every non-demo community's admins, so scoping it
    * would hide it from its whole audience. `demo_feedback` is read by nobody but
    * the demo's own admin and the operator -- but a demo is purged after seven
    * days, and a scoped row would be erased exactly when it became the only
    * record of what the visitor thought.
    *
    * Neither is a hole in the isolation: what crosses a boundary is what its
-   * author wrote *in order to* send it across one. `feedback` stays scoped.
+   * author wrote *in order to* send it across one.
+   *
+   * **This list is also where the bug/feature-request/comment split is
+   * enforced** (Rob, 2026-10-04). Bugs and feature requests are about the
+   * product and live in `system_reports`; general comments are about a
+   * community and stay in the scoped `feedback`. That had to be a table
+   * boundary rather than a column on one table, because scoping is per *model*
+   * here and deliberately so -- a predicate that applied to some rows and not
+   * others is the kind of isolation nobody can confirm by reading a query.
    */
   'demo_feedback',
   // Written before the tenant it will create exists -- see the model comment.
@@ -118,7 +126,7 @@ export const GLOBAL_MODELS = [
   'merch_config',
   'release_feedback',
   'releases',
-  'system_bugs',
+  'system_reports',
   'tenants',
 ] as const;
 

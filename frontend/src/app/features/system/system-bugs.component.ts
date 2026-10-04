@@ -16,6 +16,7 @@ import {
   SystemReportsService,
   SystemBug,
   Reporter,
+  SystemReportCategory,
 } from '../../core/services/system-reports.service';
 import { FeedbackStatus } from '../../core/services/feedback.service';
 import { hasAdminRights } from '../../core/utils/roles.util';
@@ -54,7 +55,7 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="bugs-page">
-      <h1>Report a problem</h1>
+      <h1>Bugs &amp; feature requests</h1>
 
       <!--
         The notice says who reads this, not just where it goes. An earlier
@@ -68,17 +69,30 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
         <p>
           This goes to the {{ platformName }} developers and is
           <strong>visible to the administrators of every community</strong> on this platform, so
-          they can see a problem is already known. Describe what broke, not who it happened to —
-          please don't include member names, email addresses, or anything else personal. Your own
-          community's
-          <strong>Feedback</strong> board is the private one.
+          they can see what is already reported. Describe what happened, not who it happened to —
+          please don't include member names, email addresses, or anything else personal. Comments
+          about your own community belong on its
+          <strong>Feedback</strong> board, which stays private to it.
         </p>
       </div>
 
       <mat-card class="file-card">
         <form [formGroup]="form" (ngSubmit)="submit()">
+          <!--
+            Bugs and feature requests share this board because both are about
+            the PRODUCT (Rob, 2026-10-04). A comment about a community goes to
+            that community's own Feedback instead, which stays private to it.
+          -->
           <mat-form-field appearance="outline" class="full">
-            <mat-label>What's broken</mat-label>
+            <mat-label>Type</mat-label>
+            <mat-select formControlName="category">
+              <mat-option value="bug">Something is broken</mat-option>
+              <mat-option value="feature_request">Something is missing</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full">
+            <mat-label>Summary</mat-label>
             <input matInput formControlName="title" maxlength="200" />
           </mat-form-field>
 
@@ -96,7 +110,7 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
       </mat-card>
 
       @if (canReadBoard()) {
-      <h2>Known problems</h2>
+      <h2>Already reported</h2>
 
       @if (loading()) {
         <div class="loading"><mat-spinner diameter="32" /></div>
@@ -107,7 +121,10 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
           <mat-card class="bug-card">
             <div class="bug-head">
               <strong>{{ bug.title }}</strong>
-              <span class="status status-{{ bug.status }}">{{ statusLabel(bug.status) }}</span>
+              <span class="chips">
+                <span class="category">{{ categoryLabel(bug.category) }}</span>
+                <span class="status status-{{ bug.status }}">{{ statusLabel(bug.status) }}</span>
+              </span>
             </div>
             <p class="bug-body">{{ bug.body }}</p>
             <div class="bug-meta">
@@ -199,6 +216,20 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
         color: var(--ce-text-muted);
         display: flex;
         gap: 6px;
+      }
+      .chips {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .category {
+        font-size: 0.72rem;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 10px;
+        border: 1px solid var(--ce-rule);
+        color: var(--ce-text-muted);
+        white-space: nowrap;
       }
       .status {
         font-size: 0.72rem;
@@ -294,6 +325,7 @@ export class SystemBugsComponent implements OnInit {
   readonly canReadBoard = computed(() => hasAdminRights(this.auth.currentUser()?.role));
 
   readonly form = this.fb.nonNullable.group({
+    category: ['bug' as SystemReportCategory, Validators.required],
     title: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(200)]],
     body: ['', [Validators.required, Validators.minLength(10), Validators.maxLength(10000)]],
   });
@@ -320,11 +352,11 @@ export class SystemBugsComponent implements OnInit {
   submit(): void {
     if (this.form.invalid) return;
     this.saving.set(true);
-    const { title, body } = this.form.getRawValue();
-    this.reports.fileBug(title, body).subscribe({
+    const { category, title, body } = this.form.getRawValue();
+    this.reports.fileBug(category, title, body).subscribe({
       next: () => {
         this.saving.set(false);
-        this.form.reset();
+        this.form.reset({ category: 'bug', title: '', body: '' });
         this.snackBar.open('Report sent. Thank you.', 'OK', { duration: 3000 });
         this.load();
       },
@@ -344,6 +376,10 @@ export class SystemBugsComponent implements OnInit {
 
   statusLabel(status: FeedbackStatus): string {
     return STATUS_LABELS[status];
+  }
+
+  categoryLabel(category: SystemReportCategory): string {
+    return category === 'bug' ? 'Bug' : 'Feature request';
   }
 
   /**

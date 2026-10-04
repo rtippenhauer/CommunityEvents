@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -60,50 +61,24 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
           </div>
         } @else {
           <form [formGroup]="form" (ngSubmit)="submit()" class="feedback-form">
-            <mat-form-field appearance="outline">
-              <mat-label>Type</mat-label>
-              <mat-select formControlName="category">
-                <mat-select-trigger>
-                  @switch (form.controls.category.value) {
-                    @case ('bug') {
-                      <span class="opt-row"
-                        ><mat-icon class="opt-icon bug-icon">bug_report</mat-icon> Bug Report</span
-                      >
-                    }
-                    @case ('feature_request') {
-                      <span class="opt-row"
-                        ><mat-icon class="opt-icon feature-icon">lightbulb</mat-icon> Feature
-                        Request</span
-                      >
-                    }
-                    @case ('comment') {
-                      <span class="opt-row"
-                        ><mat-icon class="opt-icon comment-icon">chat_bubble_outline</mat-icon>
-                        General Comment</span
-                      >
-                    }
-                  }
-                </mat-select-trigger>
-                <mat-option value="bug">
-                  <span class="opt-row"
-                    ><mat-icon class="opt-icon bug-icon">bug_report</mat-icon> Bug Report</span
-                  >
-                </mat-option>
-                <mat-option value="feature_request">
-                  <span class="opt-row"
-                    ><mat-icon class="opt-icon feature-icon">lightbulb</mat-icon> Feature
-                    Request</span
-                  >
-                </mat-option>
-                <mat-option value="comment">
-                  <span class="opt-row"
-                    ><mat-icon class="opt-icon comment-icon">chat_bubble_outline</mat-icon> General
-                    Comment</span
-                  >
-                </mat-option>
-              </mat-select>
-              <mat-error>Please select a type</mat-error>
-            </mat-form-field>
+            <!--
+              The Type picker is gone (Rob, 2026-10-04). This board takes
+              comments about THIS community; bugs and feature requests are about
+              the product and go to the platform board, where every community
+              can see them and the people who build it can act on them. A select
+              with one remaining option is a question with one answer, so the
+              field went and a signpost took its place.
+            -->
+            @if (!brandConfig.isDemo()) {
+              <div class="route-note">
+                <mat-icon>bug_report</mat-icon>
+                <span>
+                  Found a bug, or want a feature? That goes to
+                  <a routerLink="/system/bugs">the platform board</a> instead — this one is for
+                  comments about {{ brandConfig.brand().name }}.
+                </span>
+              </div>
+            }
 
             <mat-form-field appearance="outline">
               <mat-label>Title</mat-label>
@@ -298,11 +273,30 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         gap: 12px;
         flex-wrap: wrap;
       }
+      .route-note {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        background: var(--ce-surface-variant);
+        border-left: 4px solid var(--ce-banner);
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        font-size: 0.85rem;
+        line-height: 1.5;
+        color: var(--ce-text);
+      }
+      .route-note a {
+        color: var(--ce-text);
+        font-weight: 600;
+      }
     `,
   ],
 })
 export class FeedbackNewComponent {
   private readonly fb = inject(NonNullableFormBuilder);
+  // Public: the template names this community and hides the signpost on a demo.
+  readonly brandConfig = inject(BrandConfigService);
   private readonly feedbackService = inject(FeedbackService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
@@ -329,7 +323,8 @@ export class FeedbackNewComponent {
   };
 
   readonly form = this.fb.group({
-    category: ['bug' as FeedbackCategory, Validators.required],
+    // Fixed: this board is comments only. See the template.
+    category: ['comment' as FeedbackCategory, Validators.required],
     title: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(200)]],
     body: ['', [Validators.required, Validators.minLength(10), Validators.maxLength(10000)]],
     isPrivate: [false],
@@ -408,6 +403,6 @@ export class FeedbackNewComponent {
 
   reset(): void {
     this.submitted.set(false);
-    this.form.reset({ category: 'bug', title: '', body: '', isPrivate: false });
+    this.form.reset({ category: 'comment', title: '', body: '', isPrivate: false });
   }
 }

@@ -38,11 +38,16 @@ describe('Feedback CRUD (e2e)', () => {
     nonValidatedCookie = await loginAs(app, nonValidated);
   });
 
+  /**
+   * `comment`, not `bug` -- this board takes comments only as of 2026-10-04.
+   * Bugs and feature requests are about the product and go to the global
+   * `system_reports` board; see `system-reports.e2e-spec.ts`.
+   */
   function validFeedbackPayload(overrides: Record<string, unknown> = {}) {
     return {
-      category: 'bug',
-      title: 'The merch page is broken',
-      body: 'Clicking the store link does nothing on mobile Safari.',
+      category: 'comment',
+      title: 'Thursday venue was great',
+      body: 'The Thursday place had plenty of room and the staff were lovely.',
       ...overrides,
     };
   }
@@ -55,7 +60,7 @@ describe('Feedback CRUD (e2e)', () => {
         .send(validFeedbackPayload())
         .expect(201);
 
-      expect(res.body).toMatchObject({ title: 'The merch page is broken', status: 'open' });
+      expect(res.body).toMatchObject({ title: 'Thursday venue was great', status: 'open' });
     });
 
     it('rejects a payload missing required fields', async () => {
@@ -64,6 +69,27 @@ describe('Feedback CRUD (e2e)', () => {
         .set('Cookie', memberCookie)
         .send({ title: 'No body or category' })
         .expect(400);
+    });
+
+    /**
+     * The boundary moved on 2026-10-04 (Rob): bugs and feature requests are
+     * about the *product* and go to the global `system_reports` board where
+     * every community can see them. This board keeps comments, which are about
+     * one community and have no audience outside it.
+     *
+     * Refused rather than removed from `feedback_category`, because the enum
+     * still describes rows written before the split -- those stay where their
+     * authors put them.
+     */
+    it('refuses a bug or feature request, which belong on the platform board', async () => {
+      for (const category of ['bug', 'feature_request']) {
+        const res = await request(server)
+          .post('/api/v1/feedback')
+          .set('Cookie', memberCookie)
+          .send(validFeedbackPayload({ category }))
+          .expect(400);
+        expect(res.body.reason).toBe('use_system_reports');
+      }
     });
 
     it('rejects an invalid category', async () => {

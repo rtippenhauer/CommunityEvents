@@ -754,17 +754,28 @@ to edit — but any community's admin was still offered the link and could open
 the page, which then refused every action on it. The link is no longer shown
 and the page no longer opens.
 
-## Reporting problems to the people who build the site
+## Bugs and feature requests now reach the people who build the site
 
-**Anyone can now report a site problem directly to the developers.** A
-community's own Feedback board reaches that community's admins and stops there,
-which left no way at all to tell the people running the platform that something
-was broken. There is now a **Report a problem** screen, next to your community's
-own Feedback, and any member can use it — the person who runs into a problem is
-usually the one it happened to.
+**Bugs and feature requests now go to the developers; comments stay with your
+community.** A community's own Feedback board reaches that community's admins
+and stops there, which left no way at all to tell the people running the
+platform that something was broken or missing. Those two now have their own
+screen — **Bugs & requests**, next to your community's Feedback — and any member
+can use it, because the person who runs into a problem is usually the one it
+happened to.
+
+**Your community's Feedback board is now for comments about your community** —
+its venues, its schedule, how things are going. That is the part nobody outside
+your community ever sees, and it has not changed. The feedback form now points
+you at the right place rather than offering a Type menu whose options went to
+different audiences.
+
+**Reports written before this change stay exactly where they are.** They were
+written for your community's admins, so they remain yours and remain private to
+you; only new ones take the new route.
 
 **It is a shared board, and it says so.** Every community's administrators see
-the same list, so you can tell a problem is already known instead of reporting
+the same list, so you can tell something is already reported instead of raising
 it again — and the form says plainly that other administrators will read it, so
 nothing personal should go in it. Your own community's Feedback board is still
 the private one, and nothing on it is shared. Reading the list is an
