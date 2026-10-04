@@ -46,7 +46,11 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
           <h1>Submit Feedback</h1>
         </div>
         <p class="subtitle">
-          Bug reports, feature ideas, or general comments — we read everything.
+          <!-- This said "Bug reports, feature ideas, or general comments" until
+               2026-10-04, which is now the opposite of what the page does: both
+               of those go to the platform board. Stale copy that contradicts the
+               form is worse than no copy, because it is read as the rule. -->
+          How things are going in this community — your admins read every one.
         </p>
 
         @if (submitted()) {
@@ -85,7 +89,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
               <input
                 matInput
                 formControlName="title"
-                placeholder="Brief summary of the issue or idea"
+                placeholder="Brief summary of your comment"
                 maxlength="200"
               />
               <mat-hint align="end">{{ form.controls.title.value.length }} / 200</mat-hint>
@@ -102,7 +106,7 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
               <label class="quill-label">Description</label>
               <quill-editor
                 formControlName="body"
-                placeholder="Describe the issue or idea in detail…"
+                placeholder="Tell your admins what's on your mind…"
                 [modules]="quillModules"
                 class="quill-editor"
                 (onEditorCreated)="onEditorCreated($event)"

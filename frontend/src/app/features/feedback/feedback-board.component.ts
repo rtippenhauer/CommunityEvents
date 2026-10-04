@@ -46,7 +46,12 @@ const COMPLETED_STATUSES = new Set(['shipped', 'wont_fix', 'closed']);
       <div class="page-header">
         <div class="header-text">
           <h1>Feedback Board</h1>
-          <p class="subtitle">Upvote ideas, report bugs, and track what we're working on.</p>
+          <!-- Reworded 2026-10-04: bugs and feature requests are filed on the
+               platform board now, so telling people to report them here sends
+               them to a form that refuses them. -->
+          <p class="subtitle">
+            What your community is saying — upvote, discuss and track what's being worked on.
+          </p>
         </div>
         <div class="header-actions">
           <button mat-stroked-button routerLink="/updates">
@@ -426,6 +431,17 @@ export class FeedbackBoardComponent implements OnInit {
   );
 
   private activeCategory: FeedbackCategory | undefined;
+
+  /**
+   * All three categories stay as tabs even though only `comment` can be filed
+   * here any more (2026-10-04).
+   *
+   * The bug and feature-request rows written before the split were deliberately
+   * left where their authors put them -- moving them would have widened an
+   * audience nobody offered them a choice about -- so they are still here and
+   * still need browsing. Dropping the tabs would hide them rather than move
+   * them. The tabs go when the rows do, which may be never.
+   */
   readonly tabCategories: (FeedbackCategory | undefined)[] = [
     undefined,
     'bug',
