@@ -168,6 +168,87 @@ describe('System reports (e2e)', () => {
       expect(res.body[0].category).toBe('feature_request');
     });
 
+    /**
+     * Screenshots are stored as **upload paths, never URLs**, and this is the
+     * assertion that keeps it that way.
+     *
+     * They render as `<img src>` on a board the administrators of every
+     * community read. An arbitrary URL accepted here would be a tracking pixel
+     * reporting which communities opened a report and when, to whoever filed
+     * it -- and a way to put a chosen image in front of every operator on the
+     * deployment.
+     */
+    it('refuses a screenshot that is not one of our own uploads', async () => {
+      for (const bad of [
+        'https://evil.test/pixel.png',
+        '//evil.test/pixel.png',
+        '/api/uploads/../../etc/passwd',
+        'javascript:alert(1)',
+      ]) {
+        await request(server)
+          .post('/api/v1/system/bugs')
+          .set('Host', TEST_TENANT_DOMAIN)
+          .set('Cookie', rootAdminCookie)
+          .send({
+            category: 'bug',
+            title: 'With an off-site image',
+            body: 'This body is long enough to pass validation.',
+            screenshots: [bad],
+          })
+          .expect(400);
+      }
+    });
+
+    it('accepts an upload path and gives it back with the report', async () => {
+      await request(server)
+        .post('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootAdminCookie)
+        .send({
+          category: 'bug',
+          title: 'With a screenshot',
+          body: 'This body is long enough to pass validation.',
+          screenshots: ['/api/uploads/report-123-456.png'],
+        })
+        .expect(201);
+
+      const res = await request(server)
+        .get('/api/v1/system/bugs')
+        .set('Host', otherDomain)
+        .set('Cookie', otherAdminCookie)
+        .expect(200);
+
+      expect(res.body[0].screenshots).toEqual(['/api/uploads/report-123-456.png']);
+    });
+
+    it('caps the number of screenshots', async () => {
+      await request(server)
+        .post('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootAdminCookie)
+        .send({
+          category: 'bug',
+          title: 'Too many pictures',
+          body: 'This body is long enough to pass validation.',
+          screenshots: Array.from({ length: 6 }, (_, i) => `/api/uploads/report-${i}.png`),
+        })
+        .expect(400);
+    });
+
+    // A report with none comes back with an empty list, not null -- the board
+    // renders it without a guard on every card.
+    it('reports an empty screenshot list when there are none', async () => {
+      await fileBug();
+
+      const res = await request(server)
+        .get('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootAdminCookie)
+        .expect(200);
+
+      expect(res.body[0].screenshots).toEqual([]);
+    });
+
     it('refuses a category that is not a product report', async () => {
       await request(server)
         .post('/api/v1/system/bugs')

@@ -1164,6 +1164,9 @@ model system_reports {
   body               String          @db.Text
   status             feedback_status @default(open)
   adminNote          String?         @map("admin_note") @db.Text
+  /// A JSON array of upload paths, never arbitrary URLs -- see
+  /// `SCREENSHOT_PATH` in the DTO for why that distinction is load-bearing.
+  screenshots        String?         @db.Text
   reportedByUserId   Int?            @map("reported_by_user_id") @db.UnsignedInt
   reportedByTenantId Int?            @map("reported_by_tenant_id") @db.UnsignedInt
   resolvedAt         DateTime?       @map("resolved_at") @db.DateTime(0)

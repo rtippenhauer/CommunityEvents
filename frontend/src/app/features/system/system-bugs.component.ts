@@ -1,6 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  HostListener,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  FormBuilder,
+  FormGroupDirective,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -101,6 +115,53 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
             <textarea matInput formControlName="body" rows="5" maxlength="10000"></textarea>
           </mat-form-field>
 
+          <!--
+            Paste is the affordance Rob asked for, and the one people actually
+            use for a screenshot: Win+Shift+S then Ctrl+V. The file picker is
+            the fallback for anyone whose screenshot is already a file.
+          -->
+          <div class="shots">
+            <div class="shots-head">
+              <span>Screenshots</span>
+              <button mat-stroked-button type="button" (click)="picker.click()">
+                <mat-icon>add_photo_alternate</mat-icon> Add
+              </button>
+              <input
+                #picker
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                hidden
+                (change)="pickFiles($event)"
+              />
+            </div>
+            <p class="shots-hint">
+              Paste one anywhere on this page (Ctrl+V), or add a file. Up to 5.
+              <strong>A screenshot shows everything on it</strong> — crop out member names and
+              addresses before you attach it.
+            </p>
+            @if (uploading()) {
+              <mat-spinner diameter="20" />
+            }
+            @if (shots().length > 0) {
+              <div class="shot-list">
+                @for (shot of shots(); track shot) {
+                  <div class="shot">
+                    <img [src]="shot" alt="Attached screenshot" />
+                    <button
+                      mat-icon-button
+                      type="button"
+                      aria-label="Remove screenshot"
+                      (click)="removeShot(shot)"
+                    >
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+
           <div class="actions">
             <button mat-flat-button type="submit" [disabled]="form.invalid || saving()">
               {{ saving() ? 'Sending…' : 'Send report' }}
@@ -127,6 +188,15 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
               </span>
             </div>
             <p class="bug-body">{{ bug.body }}</p>
+            @if (bug.screenshots.length > 0) {
+              <div class="shot-list">
+                @for (shot of bug.screenshots; track shot) {
+                  <a [href]="shot" target="_blank" rel="noopener">
+                    <img class="shot-thumb" [src]="shot" alt="Screenshot on this report" />
+                  </a>
+                }
+              </div>
+            }
             <div class="bug-meta">
               <span>{{ describe(bug.reporter) }}</span>
               <span class="dot">·</span>
@@ -268,6 +338,51 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
         color: var(--ce-text-muted);
         margin: 4px 0 0;
       }
+      .shots {
+        margin-bottom: 16px;
+      }
+      .shots-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 600;
+        color: var(--ce-text);
+      }
+      .shots-hint {
+        font-size: 0.78rem;
+        color: var(--ce-text-muted);
+        margin: 4px 0 8px;
+        line-height: 1.5;
+      }
+      .shot-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 8px 0;
+      }
+      .shot {
+        position: relative;
+        display: inline-flex;
+      }
+      .shot img,
+      .shot-thumb {
+        max-width: 140px;
+        max-height: 110px;
+        border-radius: 6px;
+        border: 1px solid var(--ce-rule);
+        display: block;
+      }
+      .shot button {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: var(--ce-surface);
+        border: 1px solid var(--ce-rule);
+        border-radius: 50%;
+        width: 26px;
+        height: 26px;
+        line-height: 26px;
+      }
       .loading {
         display: flex;
         justify-content: center;
@@ -324,14 +439,92 @@ export class SystemBugsComponent implements OnInit {
    */
   readonly canReadBoard = computed(() => hasAdminRights(this.auth.currentUser()?.role));
 
+  /**
+   * Needed to clear the *submitted* flag, not just the values.
+   *
+   * `form.reset()` empties the controls and marks them pristine, but the
+   * directive stays `submitted: true` -- and Material's default error matcher
+   * shows an error when a control is invalid and `(touched || form.submitted)`.
+   * So a successful send emptied the form and immediately painted every
+   * required field red, which reads as the submission having failed. Rob filed
+   * it through this very board on 2026-10-04: "After submitting feedback, we
+   * are back on the same form with Errors."
+   *
+   * `resetForm()` resets both, which is the only call that does.
+   */
+  private readonly formDirective = viewChild(FormGroupDirective);
+
   readonly form = this.fb.nonNullable.group({
     category: ['bug' as SystemReportCategory, Validators.required],
     title: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(200)]],
     body: ['', [Validators.required, Validators.minLength(10), Validators.maxLength(10000)]],
   });
 
+  readonly shots = signal<string[]>([]);
+  readonly uploading = signal(false);
+
+  private static readonly MAX_SHOTS = 5;
+
   ngOnInit(): void {
     this.load();
+  }
+
+  /**
+   * Catches a pasted image anywhere on the page.
+   *
+   * Bound at the host rather than on the textarea, because a screenshot is
+   * pasted wherever the cursor happens to be and asking somebody to click into
+   * the right box first is the kind of instruction nobody reads. A paste
+   * carrying no image falls through untouched, so ordinary text pasting is
+   * unaffected.
+   */
+  @HostListener('document:paste', ['$event'])
+  onPaste(event: ClipboardEvent): void {
+    const files = Array.from(event.clipboardData?.files ?? []).filter((f) =>
+      f.type.startsWith('image/'),
+    );
+    if (files.length === 0) return;
+    event.preventDefault();
+    this.upload(files);
+  }
+
+  pickFiles(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.upload(Array.from(input.files ?? []));
+    // Cleared so picking the same file twice in a row still fires `change`.
+    input.value = '';
+  }
+
+  private upload(files: File[]): void {
+    const room = SystemBugsComponent.MAX_SHOTS - this.shots().length;
+    if (room <= 0) {
+      this.snackBar.open(`Up to ${SystemBugsComponent.MAX_SHOTS} screenshots.`, 'OK', {
+        duration: 4000,
+      });
+      return;
+    }
+
+    this.uploading.set(true);
+    let pending = Math.min(files.length, room);
+    for (const file of files.slice(0, room)) {
+      this.reports.uploadScreenshot(file).subscribe({
+        next: ({ url }) => {
+          this.shots.update((current) => [...current, url]);
+          if (--pending === 0) this.uploading.set(false);
+        },
+        error: () => {
+          if (--pending === 0) this.uploading.set(false);
+          this.snackBar.open('Could not upload that image.', 'OK', { duration: 5000 });
+        },
+      });
+    }
+  }
+
+  removeShot(url: string): void {
+    // Only dropped from the report. The uploaded file stays on disk, which is
+    // the same thing the feedback board's image upload does; a delete route
+    // would need to prove nothing else references it.
+    this.shots.update((current) => current.filter((u) => u !== url));
   }
 
   private load(): void {
@@ -353,10 +546,11 @@ export class SystemBugsComponent implements OnInit {
     if (this.form.invalid) return;
     this.saving.set(true);
     const { category, title, body } = this.form.getRawValue();
-    this.reports.fileBug(category, title, body).subscribe({
+    this.reports.fileBug(category, title, body, this.shots()).subscribe({
       next: () => {
         this.saving.set(false);
-        this.form.reset({ category: 'bug', title: '', body: '' });
+        this.formDirective()?.resetForm({ category: 'bug', title: '', body: '' });
+        this.shots.set([]);
         this.snackBar.open('Report sent. Thank you.', 'OK', { duration: 3000 });
         this.load();
       },

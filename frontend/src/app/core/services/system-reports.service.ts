@@ -24,6 +24,8 @@ export interface SystemBug {
   id: number;
   category: SystemReportCategory;
   title: string;
+  /** Upload paths, already validated server-side. Empty when there are none. */
+  screenshots: string[];
   body: string;
   status: FeedbackStatus;
   /** Null for everyone but the operator — their triage note is not shared. */
@@ -72,8 +74,26 @@ export class SystemReportsService {
     category: SystemReportCategory,
     title: string,
     body: string,
+    screenshots: string[] = [],
   ): Observable<{ id: number }> {
-    return this.http.post<{ id: number }>('/api/v1/system/bugs', { category, title, body });
+    return this.http.post<{ id: number }>('/api/v1/system/bugs', {
+      category,
+      title,
+      body,
+      ...(screenshots.length ? { screenshots } : {}),
+    });
+  }
+
+  /**
+   * Uploads one image and returns the path to send with the report.
+   *
+   * Its own endpoint rather than the feedback board's: that one is open to
+   * demo visitors, this one inherits the non-demo guard.
+   */
+  uploadScreenshot(file: File): Observable<{ url: string }> {
+    const body = new FormData();
+    body.append('image', file);
+    return this.http.post<{ url: string }>('/api/v1/system/bugs/images', body);
   }
 
   /** Operator only; the API refuses anyone else. */

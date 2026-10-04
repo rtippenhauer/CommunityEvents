@@ -1,7 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  FormBuilder,
+  FormGroupDirective,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
@@ -274,6 +287,12 @@ export class DemoFeedbackComponent implements OnInit {
    * a week beats a complete answer from nobody. The service enforces the same
    * "at least one" rule, so this is a convenience rather than the guarantee.
    */
+  // Same reason as the bug form: `reset()` leaves the directive submitted, so
+  // the cleared form paints itself red. Nothing here is `required`, so this one
+  // was not visibly broken -- it is kept identical so the next required field
+  // added does not reintroduce it.
+  private readonly formDirective = viewChild(FormGroupDirective);
+
   readonly form = this.fb.nonNullable.group({
     rating: this.fb.control<number | null>(null),
     wouldUse: this.fb.control<string | null>(null),
@@ -331,7 +350,13 @@ export class DemoFeedbackComponent implements OnInit {
       .subscribe({
       next: () => {
         this.saving.set(false);
-        this.form.reset({ rating: null, wouldUse: null, whatWorked: '', whatDidnt: '', body: '' });
+        this.formDirective()?.resetForm({
+          rating: null,
+          wouldUse: null,
+          whatWorked: '',
+          whatDidnt: '',
+          body: '',
+        });
         this.snackBar.open('Thank you — that is genuinely useful.', 'OK', { duration: 3000 });
         this.load();
       },

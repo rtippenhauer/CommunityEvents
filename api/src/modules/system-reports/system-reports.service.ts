@@ -43,6 +43,7 @@ export interface SystemBugView {
   id: number;
   category: SystemReportCategory;
   title: string;
+  screenshots: string[];
   body: string;
   status: FeedbackStatus;
   adminNote: string | null;
@@ -70,6 +71,25 @@ interface Viewer {
   role: string;
 }
 
+/**
+ * Reads the stored screenshot JSON back, defensively.
+ *
+ * The column is text, so a malformed value is something the reader has to
+ * survive rather than something the writer can rule out -- a hand-edited row or
+ * a half-applied migration should cost a missing thumbnail, not a 500 on the
+ * board every community reads. The path *shape* was validated on the way in by
+ * `CreateSystemBugDto`, which is where that check belongs.
+ */
+function parseScreenshots(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 @Injectable()
 export class SystemReportsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -95,6 +115,9 @@ export class SystemReportsService {
           category: dto.category,
           title: dto.title,
           body: dto.body,
+          // Stored as JSON text. Null rather than "[]" when there are none, so
+          // the common case costs nothing and reads as absent rather than empty.
+          screenshots: dto.screenshots?.length ? JSON.stringify(dto.screenshots) : null,
           reportedByUserId: user.id,
           reportedByTenantId: tenantId,
         },
@@ -125,6 +148,7 @@ export class SystemReportsService {
           body: true,
           status: true,
           adminNote: true,
+          screenshots: true,
           reportedByUserId: true,
           reportedByTenantId: true,
           createdAt: true,
@@ -140,6 +164,7 @@ export class SystemReportsService {
       id: row.id,
       category: row.category as SystemReportCategory,
       title: row.title,
+      screenshots: parseScreenshots(row.screenshots),
       body: row.body,
       status: row.status as FeedbackStatus,
       // An operator's working note is not part of the shared record. It is

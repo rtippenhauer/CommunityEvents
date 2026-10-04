@@ -82,15 +82,14 @@ import {
           </mat-select>
         </mat-form-field>
 
-        <mat-form-field appearance="outline" class="filter-field">
-          <mat-label>Category</mat-label>
-          <mat-select [(ngModel)]="filterCategory" (ngModelChange)="applyFilter()">
-            <mat-option [value]="null">All categories</mat-option>
-            <mat-option value="bug">Bug</mat-option>
-            <mat-option value="feature_request">Feature Request</mat-option>
-            <mat-option value="comment">Comment</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <!--
+          The Category filter is gone (Rob, 2026-10-04): "category here doesn't
+          matter at the moment". This board takes comments only now, so the
+          control offered three values of which exactly one could ever match
+          anything new. The category is still on the row and still rendered as a
+          chip, so rows written before the split stay identifiable without a
+          filter that implies a choice nobody has.
+        -->
       </div>
 
       @if (loading()) {
@@ -583,7 +582,7 @@ export class AdminFeedbackComponent implements OnInit {
   readonly itemNotes = signal<FeedbackNote[]>([]);
 
   filterStatus: FeedbackStatus | null = null;
-  filterCategory: string | null = null;
+
   newNoteContent = '';
   newNoteAdminOnly = false;
 
@@ -636,7 +635,6 @@ export class AdminFeedbackComponent implements OnInit {
   applyFilter(): void {
     let result = this.items();
     if (this.filterStatus) result = result.filter((i) => i.status === this.filterStatus);
-    if (this.filterCategory) result = result.filter((i) => i.category === this.filterCategory);
     this.filtered.set(result);
   }
 

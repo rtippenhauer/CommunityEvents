@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -7,9 +8,16 @@ import {
   Patch,
   Post,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import type { FileFilterCallback } from 'multer';
 import type { Request } from 'express';
+import { extname } from 'path';
+import { mkdirSync } from 'fs';
 import { SystemReportsService } from './system-reports.service';
 import { CreateSystemBugDto } from './dto/create-system-bug.dto';
 import { UpdateSystemBugDto } from './dto/update-system-bug.dto';
@@ -68,6 +76,56 @@ export class SystemBugsController {
   @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
   file(@CurrentUser() user: User, @Req() req: Request, @Body() dto: CreateSystemBugDto) {
     return this.reports.fileBug(user, req.tenant!.id, dto);
+  }
+
+  /**
+   * Screenshots for a report (Rob, 2026-10-04).
+   *
+   * Its own route rather than reusing `POST /feedback/images`, because the two
+   * carry different guards: that one is any signed-in member of any community
+   * including a demo, this one inherits `NonDemoTenantGuard` from the class.
+   * Sharing the route would have meant a demo visitor uploading into the shared
+   * board's storage.
+   *
+   * Files land in the same deployment-wide uploads directory, which is what
+   * makes the path readable from every community -- the point, here.
+   */
+  @Post('images')
+  @Roles(UserRole.MEMBER, UserRole.MODERATOR, UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dest = process.env.UPLOAD_PATH ?? '/app/uploads';
+          mkdirSync(dest, { recursive: true });
+          cb(null, dest);
+        },
+        filename: (_req, file, cb) => {
+          const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+          // `report-` rather than `feedback-`: the two live in one directory
+          // and belong to different boards with different audiences.
+          cb(null, `report-${unique}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (_req, file, cb: FileFilterCallback) => {
+        const okMime = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(
+          file.mimetype,
+        );
+        const okExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(
+          extname(file.originalname).toLowerCase(),
+        );
+        // Both, not either: the extension decides the served Content-Type and
+        // the mimetype is client-supplied, so trusting one alone lets the other
+        // through.
+        if (okMime && okExt) cb(null, true);
+        else cb(new Error('Only JPEG, PNG, WebP, and GIF images are allowed'));
+      },
+    }),
+  )
+  uploadImage(@UploadedFile() file: Express.Multer.File): { url: string } {
+    if (!file) throw new BadRequestException('No image provided');
+    return { url: `/api/uploads/${file.filename}` };
   }
 
   /**
