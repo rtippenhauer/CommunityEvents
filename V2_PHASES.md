@@ -2482,16 +2482,27 @@ The community's own admins keep seeing it in their board unchanged.
 
 #### Credit, when an escalated report ships
 
-Settled with Rob 2026-10-03 and already **half built**: `v2-31`'s release work
-made the thanks line count contributors it cannot name (`anonymousCredits`), so
-a release shipped on another community's report credits "a community member"
-there and names them in full in their own community. That is precisely the rule
-Rob asked for, and it needs no further work here.
+The rendering half is built: the thanks line counts contributors it cannot name
+(`anonymousCredits`), so a release shipped on another community's report credits
+"a community member" there and names them in full in their own community. That
+is the rule Rob asked for on 2026-10-03.
 
-What this item adds is the other end: `/admin/releases/resolved-feedback` is a
-scoped query, so the operator can only link tickets filed inside the root
-tenant. It must offer escalated tickets from every community, which is the same
-`runUnscoped` read as the inbox.
+**It is also, today, unreachable — and that is this item's point, not a defect
+in it.** Rob caught the overstatement: a release can only link what
+`/admin/releases/resolved-feedback` offers, that is a plain scoped query, and
+`ReleasesAdminController` is root-tenant-only. So the operator is shown their
+*own* community's resolved feedback — and the root tenant is the platform's
+marketing community, which has no members filing tickets. The screen reads "No
+resolved feedback tickets available" and always will. Nothing can be linked, so
+`anonymousCredits` is always zero and no thanks line ever renders anywhere.
+
+So the credit work is correct, tested and inert until this item lands. What
+makes it live is **escalation**, not a widening of that query: an operator who
+could link any community's resolved feedback would be reading every community's
+feedback board, which is broader than the inbox Rob chose and is the exposure
+`RELEASE_INCLUDE` was just narrowed to prevent. Escalated tickets are the ones
+whose authors asked for the operator to see them, and they are the only ones
+this endpoint should cross a tenant boundary to offer.
 
 #### Open questions
 
