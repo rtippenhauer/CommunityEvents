@@ -6,7 +6,7 @@ import type {
   release_feedback as ReleaseFeedback,
   users as User,
 } from '@prisma/client';
-import { requireTenantId } from '../../common/tenant/tenant-store';
+import { requireTenantId, runUnscoped } from '../../common/tenant/tenant-store';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { FeedbackStatus } from '../../database/enums';
 import { CreateReleaseDto } from './dto/create-release.dto';
@@ -161,7 +161,14 @@ export class ReleasesService {
     const feedbackIds = [
       ...new Set(releases.flatMap((r) => (r.release_feedback ?? []).map((rf) => rf.feedbackId))),
     ];
-    if (feedbackIds.length === 0) return byRelease;
+    // Reports are credited whether or not any legacy `feedback` is linked.
+    // This used to `return` here, which meant a release credited ONLY by
+    // bug/feature reports -- i.e. every release from now on -- showed no
+    // thanks line at all. Caught by the cross-tenant credit test.
+    if (feedbackIds.length === 0) {
+      await this.addReportCredits(releases, byRelease);
+      return byRelease;
+    }
 
     const rows = await this.prisma.feedback.findMany({
       where: { id: { in: feedbackIds } },
@@ -184,7 +191,79 @@ export class ReleasesService {
       // query to find out whose it was.
       byRelease.set(release.id, { visible: mine, anonymous: links.length - mine.length });
     }
+
+    await this.addReportCredits(releases, byRelease);
     return byRelease;
+  }
+
+  /**
+   * Folds the **global bug/feature reports** shipped in these releases into the
+   * same credits (v2-32, Rob 2026-10-04).
+   *
+   * ## Why the thanks cannot be written into the note
+   *
+   * A release note is authored in the repo and imported by
+   * `release-notes-importer.service` into every deployment, keyed by version --
+   * one blob of markdown, identical everywhere. A contributor named in that text
+   * would therefore be fixed copy naming one community's member to every other
+   * community on the platform.
+   *
+   * So the credit is a **link**, resolved here per reader. The note stays one
+   * artifact and the thanks line comes out different in every community: the
+   * contributor by name at home, "a community member" everywhere else.
+   *
+   * The reporter is resolved through the **scoped** client, exactly as the
+   * feedback half above is, so a name cannot cross even if this method is
+   * wrong about which tenant is asking.
+   */
+  private async addReportCredits(
+    releases: ReleaseWithRelations[],
+    byRelease: Map<number, ResolvedCredits>,
+  ): Promise<void> {
+    const releaseIds = releases.map((r) => r.id);
+    if (releaseIds.length === 0) return;
+
+    // The reports are global, so finding them is an explicit waiver. Only the
+    // reporter id comes back -- never the title or body, which belong to the
+    // board and not to a release note.
+    const reports = await runUnscoped('reports shipped in a release span communities', async () =>
+      await this.prisma.system_reports.findMany({
+        where: { shippedInReleaseId: { in: releaseIds } },
+        select: { id: true, shippedInReleaseId: true, reportedByUserId: true },
+      }),
+    );
+    if (reports.length === 0) return;
+
+    const userIds = [
+      ...new Set(reports.map((r) => r.reportedByUserId).filter((id): id is number => id !== null)),
+    ];
+    const mine =
+      userIds.length === 0
+        ? []
+        : await this.prisma.users.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, fullName: true, profilePhotoPath: true },
+          });
+    const byUser = new Map(mine.map((u) => [u.id, u]));
+
+    for (const report of reports) {
+      const credits = byRelease.get(report.shippedInReleaseId!);
+      if (!credits) continue;
+
+      const user = report.reportedByUserId ? byUser.get(report.reportedByUserId) : undefined;
+      if (user) {
+        // `isPrivate: false` -- a report filed on the shared board was never
+        // private, so there is nothing to redact beyond the tenant boundary
+        // the scoped lookup above already enforced.
+        credits.visible.push({
+          id: report.id,
+          isPrivate: false,
+          user: { id: user.id, fullName: user.fullName, profilePhotoPath: user.profilePhotoPath },
+        });
+      } else {
+        credits.anonymous += 1;
+      }
+    }
   }
 
   /** Maps a page of releases to their public shape in one scoped lookup. */

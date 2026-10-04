@@ -6,7 +6,7 @@ import {
   resetThrottler,
   TEST_TENANT_DOMAIN,
 } from './utils/test-app';
-import { seedCity, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedUser, seedServiceAccount, loginAs } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { runUnscoped, runWithTenant } from '../src/common/tenant/tenant-store';
 import { UserRole } from '../src/database/enums';
@@ -435,6 +435,163 @@ describe('System reports (e2e)', () => {
         .set('Host', demoDomain)
         .set('Cookie', demoAdminCookie)
         .send({ category: 'bug', title: 'From a stranger', body: 'This should never be filed at all.' })
+        .expect(403);
+    });
+  });
+
+  /**
+   * The release workflow (Rob, 2026-10-04): a phase pulls in reports, each
+   * becomes `resolved` as the code lands, and on release each becomes `shipped`
+   * carrying the version -- at which point its author is thanked.
+   *
+   * **The cross-tenant half is the point.** A release note is one blob of
+   * markdown imported identically into every community, so a name written into
+   * that text would name one community's member to all the others. The credit is
+   * a link instead, resolved per reader.
+   */
+  describe('shipping a report and crediting its author', () => {
+    /**
+     * The reporter is deliberately NOT the release author.
+     *
+     * The author's name is public on a release note everywhere -- it is who
+     * wrote the note -- so asserting "Root Admin" is absent proved nothing
+     * while the same person filed the report. A separate contributor is what
+     * makes the cross-tenant assertion mean something.
+     */
+    const shipIt = async (version: string) => {
+      const reporter = await seedUser(prisma, city.id, {
+        role: UserRole.MEMBER,
+        email: `reporter-${version}@example.test`,
+        fullName: 'Contributing Member',
+      });
+      const reporterCookie = await inTenant(TEST_TENANT_ID, () => loginAs(app, reporter));
+
+      const { body: created } = await request(server)
+        .post('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', reporterCookie)
+        .send({
+          category: 'bug',
+          title: `Shipped in ${version}`,
+          body: 'This body is long enough to pass validation.',
+        })
+        .expect(201);
+
+      const release = await unscoped('seeding a published release', async () =>
+        await prisma.releases.create({
+          data: {
+            version,
+            title: 'A release',
+            body: 'notes',
+            publishedAt: new Date(),
+            createdBy: rootAdminId,
+          },
+        }),
+      );
+
+      await request(server)
+        .patch(`/api/v1/system/bugs/${created.id}`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', operatorCookie)
+        .send({ status: 'shipped', shippedInVersion: version })
+        .expect(200);
+
+      return { reportId: created.id as number, releaseId: release.id };
+    };
+
+    it('records the version on the report', async () => {
+      await shipIt('3.0.0');
+
+      const res = await request(server)
+        .get('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', operatorCookie)
+        .expect(200);
+
+      expect(res.body[0].status).toBe('shipped');
+      expect(res.body[0].shippedInVersion).toBe('3.0.0');
+    });
+
+    /**
+     * An unknown version is refused rather than ignored: marking a report
+     * shipped with a null link would lose the contributor's thanks with no
+     * error anywhere.
+     */
+    it('refuses a version that does not exist', async () => {
+      const { body: created } = await fileBug();
+
+      await request(server)
+        .patch(`/api/v1/system/bugs/${created.id}`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', operatorCookie)
+        .send({ status: 'shipped', shippedInVersion: '9.9.9' })
+        .expect(404);
+    });
+
+    // At home: the contributor by name, on the release note every community
+    // reads from the same markdown.
+    it('names the contributor in their own community', async () => {
+      await shipIt('3.1.0');
+
+      const res = await request(server)
+        .get('/api/v1/releases')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootAdminCookie)
+        .expect(200);
+
+      const release = res.body.find((r: { version: string }) => r.version === '3.1.0');
+      expect(release.linkedFeedback).toHaveLength(1);
+      expect(release.linkedFeedback[0].user.fullName).toBe('Contributing Member');
+    });
+
+    /**
+     * And everywhere else: counted, never named. This is the assertion that
+     * answers "how will the thanks work across tenants".
+     */
+    it('credits the same release anonymously in another community', async () => {
+      await shipIt('3.2.0');
+
+      const res = await request(server)
+        .get('/api/v1/releases')
+        .set('Host', otherDomain)
+        .set('Cookie', otherAdminCookie)
+        .expect(200);
+
+      const release = res.body.find((r: { version: string }) => r.version === '3.2.0');
+      expect(release.linkedFeedback).toHaveLength(0);
+      expect(release.anonymousCredits).toBe(1);
+      // The contributor's name does not cross. The release AUTHOR's does, and
+      // should: it is who wrote the note, which is the same note everywhere.
+      expect(JSON.stringify(res.body)).not.toContain('Contributing Member');
+    });
+
+    // Automation does the flipping, so it needs both halves; a community admin
+    // needs neither and is refused by the root-tenant guard regardless of role.
+    it('lets automation read and triage, and still refuses a community admin', async () => {
+      const { body: created } = await fileBug();
+
+      // The harness does not create one, so this spec makes its own.
+      const automation = await seedServiceAccount(prisma, city.id, { role: UserRole.AUTOMATION });
+      const automationCookie = await inTenant(TEST_TENANT_ID, () => loginAs(app, automation));
+
+      await request(server)
+        .get('/api/v1/system/bugs')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', automationCookie)
+        .expect(200);
+
+      await request(server)
+        .patch(`/api/v1/system/bugs/${created.id}`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', automationCookie)
+        .send({ status: 'resolved' })
+        .expect(200);
+
+      await request(server)
+        .patch(`/api/v1/system/bugs/${created.id}`)
+        .set('Host', otherDomain)
+        .set('Cookie', otherAdminCookie)
+        .send({ status: 'wont_fix' })
         .expect(403);
     });
   });

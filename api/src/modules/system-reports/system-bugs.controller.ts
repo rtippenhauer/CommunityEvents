@@ -23,7 +23,7 @@ import { CreateSystemBugDto } from './dto/create-system-bug.dto';
 import { UpdateSystemBugDto } from './dto/update-system-bug.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { SystemAdminGuard } from '../../common/guards/system-admin.guard';
+import { RootTenantGuard } from '../../common/guards/root-tenant.guard';
 import { NonDemoTenantGuard } from '../../common/guards/tenant-kind.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -138,7 +138,7 @@ export class SystemBugsController {
    * the whole deployment.
    */
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.AUTOMATION)
   list(@CurrentUser() user: User, @Req() req: Request) {
     return this.reports.listBugs({
       tenantId: req.tenant!.id,
@@ -148,13 +148,24 @@ export class SystemBugsController {
   }
 
   /**
-   * `SystemAdminGuard` stacks on top of the class guards rather than replacing
-   * them: it requires the `system_admin` role **and** the root tenant, which is
-   * the "only system admin can interact with it" half of the design.
+   * Triage: status, the operator's note, and which release it shipped in.
+   *
+   * **`RootTenantGuard` rather than `SystemAdminGuard`**, because the latter
+   * requires the role to be exactly `system_admin` and this route now also
+   * admits `automation` (Rob, 2026-10-04). The pairing is identical to
+   * `ReleasesAdminController`: the guard answers *where* — only the root tenant,
+   * which a community's own admin cannot reach — and `@Roles` answers *who*. A
+   * community admin is refused by both halves independently.
+   *
+   * Automation is here because the workflow is Rob's: a phase pulls in the
+   * reports it will cover, each becomes `resolved` as the code lands, and on
+   * release each becomes `shipped` carrying the version. Doing that by hand for
+   * every report in every release is the kind of step that silently stops
+   * happening.
    */
   @Patch(':id')
-  @Roles(UserRole.SYSTEM_ADMIN)
-  @UseGuards(SystemAdminGuard)
+  @Roles(UserRole.SYSTEM_ADMIN, UserRole.AUTOMATION)
+  @UseGuards(RootTenantGuard)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSystemBugDto) {
     return this.reports.updateBug(id, dto);
   }

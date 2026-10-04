@@ -42,6 +42,8 @@ export type SystemReportCategory = 'bug' | 'feature_request';
 export interface SystemBugView {
   id: number;
   category: SystemReportCategory;
+  /** The release this shipped in, or null while it is still open. */
+  shippedInVersion: string | null;
   title: string;
   screenshots: string[];
   body: string;
@@ -149,6 +151,7 @@ export class SystemReportsService {
           status: true,
           adminNote: true,
           screenshots: true,
+          shippedInRelease: { select: { version: true } },
           reportedByUserId: true,
           reportedByTenantId: true,
           createdAt: true,
@@ -163,6 +166,7 @@ export class SystemReportsService {
     return rows.map((row) => ({
       id: row.id,
       category: row.category as SystemReportCategory,
+      shippedInVersion: row.shippedInRelease?.version ?? null,
       title: row.title,
       screenshots: parseScreenshots(row.screenshots),
       body: row.body,
@@ -276,12 +280,43 @@ export class SystemReportsService {
       nextStatus === FeedbackStatus.CLOSED ||
       nextStatus === FeedbackStatus.WONT_FIX;
 
+    /**
+     * The release is named by version and resolved here.
+     *
+     * An unknown version is refused rather than ignored: silently leaving the
+     * link null would mark the report shipped with nothing to credit, and the
+     * contributor's thanks would disappear with no error anywhere. An empty
+     * string clears it, for a release that gets unpublished.
+     *
+     * By version and not by row id, because automation knows "2.0.0" and does
+     * not know what primary key that release took on this deployment -- stage
+     * and production differ. `releases.version` is unique, which is also why
+     * the note importer keys on it.
+     */
+    let releaseLink: Record<string, number | null> = {};
+    if (dto.shippedInVersion !== undefined) {
+      if (dto.shippedInVersion === '') {
+        releaseLink = { shippedInReleaseId: null };
+      } else {
+        const version = dto.shippedInVersion;
+        const release = await runUnscoped('releases are deployment-wide', async () =>
+          await this.prisma.releases.findUnique({
+            where: { version },
+            select: { id: true },
+          }),
+        );
+        if (!release) throw new NotFoundException(`No release with version "${version}"`);
+        releaseLink = { shippedInReleaseId: release.id };
+      }
+    }
+
     await runUnscoped('the operator acts on every community\'s reports', async () =>
       await this.prisma.system_reports.update({
         where: { id },
         data: {
           ...(dto.status !== undefined ? { status: dto.status } : {}),
           ...(dto.adminNote !== undefined ? { adminNote: dto.adminNote } : {}),
+          ...releaseLink,
           updatedAt: new Date(),
           resolvedAt: isDone ? new Date() : null,
         },

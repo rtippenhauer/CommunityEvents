@@ -1063,6 +1063,7 @@ model releases {
   createdAt                                  DateTime           @default(now()) @map("created_at") @db.DateTime(0)
   updatedAt                                  DateTime           @default(now()) @map("updated_at") @db.DateTime(0)
   release_feedback                           release_feedback[]
+  system_reports                             system_reports[]
   author                                     users              @relation("releases_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction, map: "fk_release_author")
   users_users_last_seen_release_idToreleases users[]            @relation("users_last_seen_release_idToreleases")
 
@@ -1170,6 +1171,18 @@ model system_reports {
   reportedByUserId   Int?            @map("reported_by_user_id") @db.UnsignedInt
   reportedByTenantId Int?            @map("reported_by_tenant_id") @db.UnsignedInt
   resolvedAt         DateTime?       @map("resolved_at") @db.DateTime(0)
+  /// The release this shipped in, set when the status becomes `shipped`.
+  ///
+  /// A plain foreign key rather than a join table: a report ships once, so this
+  /// is one release to many reports. `releases` is global like this table, so
+  /// the key crosses no tenant boundary.
+  ///
+  /// **This, and not the note's text, is where a contributor is credited.** The
+  /// note body is imported identically into every community from the repo, so a
+  /// name written into it would be fixed text naming a stranger to all but one
+  /// of them. The link is data, so each community renders it for itself.
+  shippedInReleaseId Int?            @map("shipped_in_release_id") @db.UnsignedInt
+  shippedInRelease   releases?       @relation(fields: [shippedInReleaseId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_report_release")
   createdAt          DateTime        @default(now()) @map("created_at") @db.DateTime(0)
   updatedAt          DateTime        @default(now()) @map("updated_at") @db.DateTime(0)
 
@@ -1180,6 +1193,7 @@ model system_reports {
   @@index([reportedByTenantId], map: "fk_system_bug_tenant")
   @@index([status], map: "idx_system_bug_status")
   @@index([category], map: "idx_system_report_category")
+  @@index([shippedInReleaseId], map: "fk_system_report_release")
   @@index([createdAt], map: "idx_system_bug_created")
 }
 
