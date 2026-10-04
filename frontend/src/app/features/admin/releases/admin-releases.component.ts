@@ -38,8 +38,16 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
   template: `
     <div class="releases-page">
       <div class="page-header">
-        <button mat-button routerLink="/admin/feedback">
-          <mat-icon>arrow_back</mat-icon> Feedback
+        <!--
+          Back to the PLATFORM board, not this community's (Rob, 2026-10-04).
+          This screen is root-tenant-only and release notes are deployment-wide,
+          so the work that lands in one is a bug or feature request from the
+          shared board. The old link went to /admin/feedback, which on the root
+          tenant is the operator's own near-empty community board -- a dead end
+          dressed as the way back.
+        -->
+        <button mat-button routerLink="/system/bugs">
+          <mat-icon>arrow_back</mat-icon> Bugs &amp; requests
         </button>
         <h1>Releases</h1>
       </div>
@@ -150,7 +158,7 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
             }
 
             <div class="form-actions">
-              <button mat-button type="button" routerLink="/admin/feedback">Cancel</button>
+              <button mat-button type="button" routerLink="/system/bugs">Cancel</button>
               <button mat-raised-button color="primary" type="submit" [disabled]="saving()">
                 @if (saving()) {
                   <mat-spinner diameter="18" />

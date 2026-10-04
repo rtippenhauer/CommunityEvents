@@ -167,6 +167,16 @@
             <a mat-list-item routerLink="/admin/tenants" (click)="sidenav.close()">
               <mat-icon matListItemIcon>domain</mat-icon> Communities
             </a>
+            <!-- The operator's own route to the shared board. It is also under
+                 Updates for every member, but an operator triaging reports
+                 looks here, next to the other deployment-level screens (Rob,
+                 2026-10-04). -->
+            <a mat-list-item routerLink="/system/bugs" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>bug_report</mat-icon> Bugs &amp; requests
+            </a>
+            <a mat-list-item routerLink="/demo/feedback" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>reviews</mat-icon> Demo feedback
+            </a>
           }
 
           <mat-divider />
@@ -200,9 +210,6 @@
             <div class="sidenav-section-label">Releases</div>
             <a mat-list-item routerLink="/admin/releases/new" (click)="sidenav.close()">
               <mat-icon matListItemIcon>rocket_launch</mat-icon> Releases
-            </a>
-            <a mat-list-item routerLink="/demo/feedback" (click)="sidenav.close()">
-              <mat-icon matListItemIcon>reviews</mat-icon> Demo feedback
             </a>
           }
         }
@@ -361,12 +368,6 @@
                   <mat-icon>rocket_launch</mat-icon> Releases
                 </a>
               }
-              <!-- The operator's read of what demo visitors said. -->
-              @if (isAdmin() && brandConfig.isRoot()) {
-                <a mat-menu-item routerLink="/demo/feedback">
-                  <mat-icon>reviews</mat-icon> Demo feedback
-                </a>
-              }
             </mat-menu>
 
             <mat-menu #securityMenu="matMenu" panelClass="nav-menu">
@@ -415,6 +416,12 @@
                 <mat-divider />
                 <a mat-menu-item routerLink="/admin/tenants">
                   <mat-icon>domain</mat-icon> Communities
+                </a>
+                <a mat-menu-item routerLink="/system/bugs">
+                  <mat-icon>bug_report</mat-icon> Bugs &amp; requests
+                </a>
+                <a mat-menu-item routerLink="/demo/feedback">
+                  <mat-icon>reviews</mat-icon> Demo feedback
                 </a>
               }
             </mat-menu>
