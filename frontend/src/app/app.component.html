@@ -14,6 +14,11 @@
         deleted within a week.
       }
       Don't keep anything here you would mind losing.
+      <!-- The one route into the demo's feedback form (v2-32). It lives here
+           rather than in the admin menu because the person we want to hear
+           from is the visitor, and the visitor is not looking for an admin
+           screen -- they are reading this banner. -->
+      <a class="demo-banner-link" routerLink="/demo/feedback">Tell us what you think</a>
     </span>
   </div>
 }
@@ -187,6 +192,16 @@
             <a mat-list-item routerLink="/admin/releases/new" (click)="sidenav.close()">
               <mat-icon matListItemIcon>rocket_launch</mat-icon> Releases
             </a>
+            <a mat-list-item routerLink="/demo/feedback" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>reviews</mat-icon> Demo feedback
+            </a>
+          }
+          <!-- v2-32: offered to every real community's admins, not demos. -->
+          @if (isAdmin() && !brandConfig.isDemo()) {
+            <mat-divider />
+            <a mat-list-item routerLink="/system/bugs" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>bug_report</mat-icon> Report a problem
+            </a>
           }
         }
         <mat-divider />
@@ -334,6 +349,19 @@
               @if (isAdmin() && brandConfig.isRoot()) {
                 <a mat-menu-item routerLink="/admin/releases/new">
                   <mat-icon>rocket_launch</mat-icon> Releases
+                </a>
+              }
+              <!-- The shared defect board (v2-32). Hidden on a demo, whose
+                   admin is whoever filled in the demo form. -->
+              @if (isAdmin() && !brandConfig.isDemo()) {
+                <a mat-menu-item routerLink="/system/bugs">
+                  <mat-icon>bug_report</mat-icon> Report a problem
+                </a>
+              }
+              <!-- The operator's read of what demo visitors said. -->
+              @if (isAdmin() && brandConfig.isRoot()) {
+                <a mat-menu-item routerLink="/demo/feedback">
+                  <mat-icon>reviews</mat-icon> Demo feedback
                 </a>
               }
             </mat-menu>

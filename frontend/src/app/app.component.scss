@@ -51,6 +51,16 @@
   strong {
     font-weight: 700;
   }
+
+  // Underlined rather than button-shaped: the banner is a notice, and a button
+  // in it would compete with whatever the page below is actually for.
+  .demo-banner-link {
+    color: var(--ce-text);
+    font-weight: 600;
+    text-decoration: underline;
+    margin-left: 6px;
+    white-space: nowrap;
+  }
 }
 
 // Sits under the stage banner when both are up. Deliberately quieter than the

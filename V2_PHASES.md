@@ -2445,85 +2445,100 @@ that is written down rather than "forever by accident".
 
 ### v2-32 — A channel from a community to the operator
 
-**Status:** Not started. Raised by Rob 2026-10-03, who asked two questions the
-codebase answers "no" to: can a root-tenant admin get feedback about errors or
-issues with the site, and can a non-root admin send anything to the system
-admin.
+**Status:** Built 2026-10-04 (branch `v2-32-system-bugs`). Raised by Rob
+2026-10-03, who asked two questions the codebase answered "no" to: can a
+root-tenant admin get feedback about errors or issues with the site, and can a
+non-root admin send anything to the system admin.
 
-**The gap.** `feedback` is tenant-scoped, so a community's bug reports reach
-that community's own admins and stop there. There is no route of any kind from a
-customer community to the deployment operator — not a missing screen, a missing
-channel. A DinnerBears admin who hits a platform bug today can only mail Rob out
-of band. That becomes load-bearing at the cutover, when the operator stops being
-the only admin on the deployment.
+**Two tables, deliberately not one, and `feedback` is untouched.** Rob settled
+the shape on 2026-10-04: *"Feedback is always scoped."* A member wrote that
+having consented to their own community's admins reading it, and forwarding it
+to the operator would change the audience after the fact. What crosses a
+boundary is what its author wrote **in order to** cross one.
 
-**Shape, chosen by Rob 2026-10-03:** a deployment-wide inbox on the root tenant.
-The operator sees reports from every community with the community named.
+#### `system_bugs` — the shared defect board
 
-#### The row stays in the reporter's community
+Filed by an admin of a non-demo community, read by the admins of every other
+non-demo community, triaged only by the system admin on the root tenant.
 
-An escalated report is an ordinary `feedback` row on the reporter's own tenant
-carrying a new flag — not a copy written onto the root tenant. Three reasons,
-and the third is the one that forces it:
+**Demo communities are excluded at both ends, and this is the load-bearing
+guard.** `demo.service` creates a demo's requester as an `ADMIN`, so "any tenant
+admin" and "anybody who filled in the demo form" are the same set of people.
+Without `NonDemoTenantGuard`, every stranger who asked for a demo could read
+every defect report ever filed, free text included — the same privilege the
+v2-14 rewrite existed to remove. `RolesGuard` cannot see this distinction: it
+answers what a role may do, never who holds it.
 
-1. The reporter keeps seeing their own ticket where they filed it, with its
-   status and notes, which is the behaviour they already have.
-2. A copy would have two statuses free to disagree, the same second-answer
-   problem `v2-12`'s stored flag and `v2-13`'s nginx `server_name` both had.
-3. **`feedback.user_id` is a foreign key to `users`, which is tenant-scoped.** A
-   row on the root tenant cannot point at a member of another community. A copy
-   would have to either invent a shadow user or drop the author, and dropping the
-   author is exactly the credit this item has to preserve.
+**The reporter is named to three audiences in three ways** (Rob, 2026-10-04):
+their own community sees the full name; another community sees "an admin of
+another community" with **no community name either**, since naming it would
+disclose the deployment's customer list to anyone who obtains a tenant; the
+operator sees name and community both, because answering a report means knowing
+who hit it and where. The operator's `admin_note` is never on anyone else's
+copy — it is where "duplicate of X" and "their DNS is wrong" get written.
 
-So the operator's inbox is a `runUnscoped` read across communities — the same
-waiver `release_feedback` and the email dispatcher already carry — filtered to
-the escalated flag, with `tenant_id` resolved to a community name for display.
-The community's own admins keep seeing it in their board unchanged.
+**The warning on the form names the audience, not just the destination.** Rob's
+first draft said it goes to the developer; under the visibility rule above that
+understates it, and somebody told "this goes to the developer" will write things
+they would never post to a shared board. The notice says every community's
+administrators can read it.
 
-#### Credit, when an escalated report ships
+#### `demo_feedback` — what a demo visitor thought
 
-The rendering half is built: the thanks line counts contributors it cannot name
-(`anonymousCredits`), so a release shipped on another community's report credits
-"a community member" there and names them in full in their own community. That
-is the rule Rob asked for on 2026-10-03.
+Submitted inside a demo by its own admin (who is the visitor), read by them and
+by the operator, never by another community — the opposite audience from the
+board next door, which is why it is a second table rather than a flag on the
+first.
 
-**It is also, today, unreachable — and that is this item's point, not a defect
-in it.** Rob caught the overstatement: a release can only link what
-`/admin/releases/resolved-feedback` offers, that is a plain scoped query, and
-`ReleasesAdminController` is root-tenant-only. So the operator is shown their
-*own* community's resolved feedback — and the root tenant is the platform's
-marketing community, which has no members filing tickets. The screen reads "No
-resolved feedback tickets available" and always will. Nothing can be linked, so
-`anonymousCredits` is always zero and no thanks line ever renders anywhere.
+**Global because a demo is deleted within a week.** `purgeTenantRows` erases
+every scoped row belonging to it, so a visitor's verdict written into the
+scoped `feedback` table would be destroyed at exactly the moment it became the
+only record of the trial. `demo_label` is written at submission time and is the
+only thing that still says which demo a surviving row came from.
 
-So the credit work is correct, tested and inert until this item lands. What
-makes it live is **escalation**, not a widening of that query: an operator who
-could link any community's resolved feedback would be reading every community's
-feedback board, which is broader than the inbox Rob chose and is the exposure
-`RELEASE_INCLUDE` was just narrowed to prevent. Escalated tickets are the ones
-whose authors asked for the operator to see them, and they are the only ones
-this endpoint should cross a tenant boundary to offer.
+#### Every foreign key is `ON DELETE SET NULL`
 
-#### Open questions
+Both tables are global and point at the scoped `users` and `tenants`. A
+restrictive key would block `purgeTenantRows`, which walks only the scoped model
+list and so would never clear it — deleting a community would fail on a bug one
+of its admins filed years earlier. `tenant-scoped-models.spec` does not catch
+this: it checks scoped→scoped keys only. **`releases.created_by` is the same
+shape today** and is merely unreachable, since only root-tenant admins author
+releases and the root tenant cannot be deleted.
 
-- **Does the reporter have to be an admin?** Rob's question named a non-root
-  admin, but an ordinary member hitting a platform bug is the commoner case. An
-  admins-only channel is a smaller blast radius and a worse product; a member
-  channel needs rate limiting, which `feedback` does not have today.
-- **Is an escalated ticket visible to the reporter's own admins?** Keeping it
-  visible is simpler and honest. Hiding it would mean a member can route around
-  their own community's moderators, which is a different feature.
-- **Does the operator reply?** `feedback_notes` is scoped and would work
-  unchanged if the note is written in the reporter's tenant under
-  `runWithTenant`. Without a reply path this is a suggestion box.
+#### What this unblocks
 
-**Definition of done:** a member or admin of any community can send a report to
-the deployment operator; the operator sees every community's reports in one
-place with the community named; the reporter still sees their ticket in their own
-community; and linking one to a release credits them by name there and
-anonymously everywhere else.
+The release credit line, which shipped in `25e70da` and was inert: the operator
+could only link resolved feedback from the root tenant, which has no members
+filing tickets. A bug filed here and linked to a release now credits its
+reporter **by name in their own community** and as "a community member"
+everywhere else — the rule Rob set on 2026-10-03.
+
+#### Verified by breaking it
+
+The isolation holds **two independent ways**, found by sabotaging each in turn
+and watching the suite stay green: the author lookup runs through the *scoped*
+client, so another community's reporter returns no row at all, and the
+projection separately compares `reportedByTenantId` against the viewer's. Only
+with both removed does `never names the reporter to another community` fail —
+and it then fails printing `"fullName": "Root Admin"` into the other
+community's response.
+
+#### Still open
+
+- **The follow-up survey** Rob wants mailed before or just after a demo is
+  deleted. Deliberately not built: mailing somebody later means keeping an
+  address past the demo and past `demo_requests`' own seven-day window, which is
+  a retention decision to be made rather than inherited. Nothing stores one
+  today. Whoever builds it should know the send must happen from *outside* the
+  demo, since `sendingIsBlocked()` refuses mail on `is_demo` — which is already
+  how the confirmation mail works, being sent before the demo exists.
+- **Members cannot file**, only admins. A platform defect reaches the operator
+  through somebody who can tell one from their own community's misconfiguration.
+  A member still has their own community's board, and their admin escalates.
+- **No reply path.** The operator sets a status and writes a private note;
+  nothing is sent back to the reporter. `feedback_notes` is scoped and cannot
+  hold a conversation about a global row.
 
 **Not on the cutover path.** DinnerBears does not have this today, so going live
 without it is parity rather than regression — the test the running order uses.
-It is wanted soon after, because the cutover is the moment the operator stops
-being the only admin.

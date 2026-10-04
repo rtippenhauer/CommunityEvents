@@ -1071,6 +1071,104 @@ model releases {
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// A defect report that crosses communities (v2-32).
+///
+/// **Global on purpose, and the only free-text table that is.** `feedback` is
+/// and stays tenant-scoped: a member wrote it having consented to their own
+/// community's admins reading it, and forwarding that to the deployment
+/// operator would change the audience after the fact. A bug report is consent
+/// given at the moment of writing, which is the only kind that holds -- so it
+/// is a separate object rather than a flag on `feedback` (Rob, 2026-10-04).
+///
+/// Filed by an admin of a **non-demo** community, readable by the admins of
+/// every other non-demo community, and actionable only by the system admin on
+/// the root tenant. Demo communities are excluded at both ends because
+/// `demo.service` makes every demo requester an admin, so "any tenant admin"
+/// would otherwise mean "any stranger who asked for a demo" -- the same
+/// privilege the v2-14 rewrite existed to remove.
+///
+/// ## Both foreign keys are SetNull, deliberately
+///
+/// This is a GLOBAL table pointing at the SCOPED `users` and `tenants`. A
+/// restrictive key there blocks `purgeTenantRows`, which walks only the scoped
+/// list and so would never clear it -- deleting a community would fail on a bug
+/// one of its admins filed years earlier. `tenant-scoped-models.spec` does not
+/// catch this, because it checks scoped->scoped keys only; `releases.created_by`
+/// is the same shape today and is merely unreachable, since only root-tenant
+/// admins author releases and the root tenant cannot be deleted.
+///
+/// Nulling is also the right meaning: the defect outlives the community that
+/// found it, and an orphaned report reads as "another community" to everyone,
+/// which is what it has become.
+/// What a demo visitor thought of the product (v2-32, Rob 2026-10-04).
+///
+/// Seen by the demo's own admin -- who is the visitor, since `demo.service`
+/// makes the requester an admin -- and by the system admin. Never by another
+/// community: this is the opposite audience from `system_bugs`, which is why
+/// it is a second table rather than a flag on the first.
+///
+/// ## Why it is global, which is the whole point
+///
+/// A demo is deleted after seven days or 48 idle hours, and `purgeTenantRows`
+/// erases every scoped row belonging to it. A demo's feedback written into the
+/// scoped `feedback` table would therefore be destroyed at exactly the moment it
+/// became the only thing left worth having -- the operator would be able to read
+/// it only while the visitor was still using the product, and never afterwards.
+///
+/// So the row is global and both foreign keys are SetNull, like `system_bugs`.
+///
+/// ## And why the demo is named here rather than joined to
+///
+/// `reported_by_tenant_id` goes NULL when the demo is purged, so a join would
+/// leave every surviving row attributed to nobody. `demo_label` is written at
+/// submission time and is the only thing that still says which demo this was.
+/// It holds the community's display name, never its host -- a demo host is
+/// derived and reused, so it would identify a *slot* rather than a visit.
+///
+/// **No contact detail is kept.** The follow-up survey Rob wants is a later
+/// phase and needs its own retention decision; storing an address here now
+/// would quietly outlive both the demo and `demo_requests`' own seven-day
+/// window, which is the kind of retention that should be chosen rather than
+/// inherited.
+model demo_feedback {
+  id                 Int       @id @default(autoincrement()) @db.UnsignedInt
+  body               String    @db.Text
+  /// 1-5 where the visitor gave one; the form does not require it.
+  rating             Int?      @db.UnsignedTinyInt
+  demoLabel          String    @map("demo_label") @db.VarChar(120)
+  submittedByUserId  Int?      @map("submitted_by_user_id") @db.UnsignedInt
+  submittedByTenantId Int?     @map("submitted_by_tenant_id") @db.UnsignedInt
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+
+  submitter users?   @relation(fields: [submittedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_demo_feedback_user")
+  tenant    tenants? @relation(fields: [submittedByTenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_demo_feedback_tenant")
+
+  @@index([submittedByUserId], map: "fk_demo_feedback_user")
+  @@index([submittedByTenantId], map: "fk_demo_feedback_tenant")
+  @@index([createdAt], map: "idx_demo_feedback_created")
+}
+
+model system_bugs {
+  id                 Int             @id @default(autoincrement()) @db.UnsignedInt
+  title              String          @db.VarChar(200)
+  body               String          @db.Text
+  status             feedback_status @default(open)
+  adminNote          String?         @map("admin_note") @db.Text
+  reportedByUserId   Int?            @map("reported_by_user_id") @db.UnsignedInt
+  reportedByTenantId Int?            @map("reported_by_tenant_id") @db.UnsignedInt
+  resolvedAt         DateTime?       @map("resolved_at") @db.DateTime(0)
+  createdAt          DateTime        @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt          DateTime        @default(now()) @map("updated_at") @db.DateTime(0)
+
+  reporter users?   @relation(fields: [reportedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_bug_reporter")
+  tenant   tenants? @relation(fields: [reportedByTenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_bug_tenant")
+
+  @@index([reportedByUserId], map: "fk_system_bug_reporter")
+  @@index([reportedByTenantId], map: "fk_system_bug_tenant")
+  @@index([status], map: "idx_system_bug_status")
+  @@index([createdAt], map: "idx_system_bug_created")
+}
+
 model tenants {
   id                       Int                        @id @default(autoincrement()) @db.UnsignedInt
   slug                     String                     @unique(map: "uq_tenant_slug") @db.VarChar(50)
@@ -1188,6 +1286,8 @@ model tenants {
   tenant_secrets           tenant_secrets[]
   email_provider_config    email_provider_config?
   demo_request             demo_requests?
+  system_bugs              system_bugs[]
+  demo_feedback            demo_feedback[]
 
   @@index([status], map: "idx_tenant_status")
 }
@@ -1256,6 +1356,8 @@ model users {
   events_events_created_byTousers                              events[]                   @relation("events_created_byTousers")
   events_events_reservation_assignee_idTousers                 events[]                   @relation("events_reservation_assignee_idTousers")
   feedback                                                     feedback[]
+  system_bugs                                                  system_bugs[]
+  demo_feedback                                                demo_feedback[]
   feedback_notes                                               feedback_notes[]
   feedback_upvotes                                             feedback_upvotes[]
   invites_invites_created_byTousers                            invites[]                  @relation("invites_created_byTousers")

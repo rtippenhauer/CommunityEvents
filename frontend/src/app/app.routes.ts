@@ -8,6 +8,7 @@ import { validatedMemberGuard } from './core/guards/validated-member.guard';
 import { unsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import { featureGuard } from './core/guards/feature.guard';
 import { rootLandingGuard } from './core/guards/root-landing.guard';
+import { nonDemoTenantGuard, demoFeedbackGuard } from './core/guards/tenant-kind.guard';
 
 export const routes: Routes = [
   // Two components answer `/`, and the order is the rule: the landing page is
@@ -358,6 +359,23 @@ export const routes: Routes = [
         (m) => m.AdminFeedbackComponent,
       ),
     canActivate: [authGuard, adminGuard],
+  },
+  {
+    // The shared defect board (v2-32). `nonDemoTenantGuard` and not
+    // `adminGuard` alone: a demo's requester is an admin of their demo, so the
+    // role says nothing about whether this is a vetted person.
+    path: 'system/bugs',
+    loadComponent: () =>
+      import('./features/system/system-bugs.component').then((m) => m.SystemBugsComponent),
+    canActivate: [authGuard, adminGuard, nonDemoTenantGuard],
+  },
+  {
+    // One component, two sides: the form inside a demo, the operator's list on
+    // the root tenant. `demoFeedbackGuard` allows exactly those two.
+    path: 'demo/feedback',
+    loadComponent: () =>
+      import('./features/system/demo-feedback.component').then((m) => m.DemoFeedbackComponent),
+    canActivate: [authGuard, demoFeedbackGuard],
   },
   {
     path: 'admin/releases/new',

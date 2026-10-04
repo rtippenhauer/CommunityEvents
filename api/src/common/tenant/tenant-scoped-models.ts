@@ -97,6 +97,20 @@ export const TENANT_SCOPED_MODELS = [
 export const GLOBAL_MODELS = [
   'avatar',
   'cities',
+  /**
+   * Both of v2-32's report tables are global, for opposite-looking reasons that
+   * are the same reason: each has to outlive the community it came from.
+   *
+   * `system_bugs` is read by every non-demo community's admins, so scoping it
+   * would hide it from its whole audience. `demo_feedback` is read by nobody but
+   * the demo's own admin and the operator -- but a demo is purged after seven
+   * days, and a scoped row would be erased exactly when it became the only
+   * record of what the visitor thought.
+   *
+   * Neither is a hole in the isolation: what crosses a boundary is what its
+   * author wrote *in order to* send it across one. `feedback` stays scoped.
+   */
+  'demo_feedback',
   // Written before the tenant it will create exists -- see the model comment.
   'demo_requests',
   'email_suppressions',
@@ -104,6 +118,7 @@ export const GLOBAL_MODELS = [
   'merch_config',
   'release_feedback',
   'releases',
+  'system_bugs',
   'tenants',
 ] as const;
 
