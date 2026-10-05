@@ -96,8 +96,27 @@ function parseScreenshots(raw: string | null): string[] {
 export class SystemReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Whoever is operating the deployment rather than a community.
+   *
+   * **`automation` counts, alongside `system_admin`** (Rob, 2026-10-04). It did
+   * not at first, which meant the automation account could read every report
+   * and saw every reporter as "a member of another community" -- including the
+   * operator's own. That is defensible for a release note, where the credit is
+   * a link resolved per reader and no name is needed, and useless for triage,
+   * where the whole job is knowing who reported what and what was already said
+   * about it.
+   *
+   * Both halves of the pair still apply: the **root tenant** and one of these
+   * two roles. A community's own admin satisfies neither, and the automation
+   * account exists on the root tenant by construction (`automationLogin` admits
+   * no other).
+   */
   private isOperator(viewer: Viewer): boolean {
-    return viewer.isRootTenant && viewer.role === UserRole.SYSTEM_ADMIN;
+    return (
+      viewer.isRootTenant &&
+      (viewer.role === UserRole.SYSTEM_ADMIN || viewer.role === UserRole.AUTOMATION)
+    );
   }
 
   // ── System bugs ───────────────────────────────────────────────────────────

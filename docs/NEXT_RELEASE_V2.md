@@ -7,6 +7,19 @@ automatically by `/v2-done` when a v2 item wraps, and by hand for ad hoc v2
 work in between. There is no `/v2-release` yet — Rob will trim this down
 into the actual 2.0 release copy by hand when that cutover happens.
 
+> **Never name a contributor in this file.**
+>
+> This text is imported by `release-notes-importer.service` into **every**
+> deployment, keyed by version — one blob of markdown, identical in every
+> community. A name written here is therefore fixed copy naming one community's
+> member to all the others, which is exactly the disclosure `system_reports` is
+> careful about everywhere else.
+>
+> Thanks are **data, not prose**: mark the report `shipped` with that version
+> (`PATCH /system/bugs/:id`), and each community renders its own line from the
+> link — the contributor by name at home, "a community member" everywhere else.
+> Nothing in the build enforces this, so it is a rule rather than a guard.
+
 ---
 
 ## Platform / data layer

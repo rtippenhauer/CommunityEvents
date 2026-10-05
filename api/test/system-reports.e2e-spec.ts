@@ -574,11 +574,22 @@ describe('System reports (e2e)', () => {
       const automation = await seedServiceAccount(prisma, city.id, { role: UserRole.AUTOMATION });
       const automationCookie = await inTenant(TEST_TENANT_ID, () => loginAs(app, automation));
 
-      await request(server)
+      /**
+       * Automation sees identities, like the system admin (Rob, 2026-10-04).
+       *
+       * It did not at first, and read every reporter as "a member of another
+       * community" -- fine for a release note, where the credit is a link
+       * resolved per reader, useless for triage, where knowing who reported
+       * what is the job.
+       */
+      const seen = await request(server)
         .get('/api/v1/system/bugs')
         .set('Host', TEST_TENANT_DOMAIN)
         .set('Cookie', automationCookie)
         .expect(200);
+      expect(seen.body[0].reporter.kind).toBe('operator');
+      expect(seen.body[0].reporter.fullName).toBeTruthy();
+      expect(seen.body[0].reporter.community).toBeTruthy();
 
       await request(server)
         .patch(`/api/v1/system/bugs/${created.id}`)
