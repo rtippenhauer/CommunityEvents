@@ -23,7 +23,7 @@ import { CreateSystemBugDto } from './dto/create-system-bug.dto';
 import { UpdateSystemBugDto } from './dto/update-system-bug.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { RootTenantGuard } from '../../common/guards/root-tenant.guard';
+import { OperatorGuard } from '../../common/guards/operator.guard';
 import { NonDemoTenantGuard } from '../../common/guards/tenant-kind.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -144,18 +144,24 @@ export class SystemBugsController {
       tenantId: req.tenant!.id,
       isRootTenant: req.tenant!.isRoot,
       role: user.role,
+      // The column, not the role: the service account is flipped between roles
+      // for testing, so a role check fails exactly when automation is in use.
+      isServiceAccount: user.isServiceAccount,
     });
   }
 
   /**
    * Triage: status, the operator's note, and which release it shipped in.
    *
-   * **`RootTenantGuard` rather than `SystemAdminGuard`**, because the latter
-   * requires the role to be exactly `system_admin` and this route now also
-   * admits `automation` (Rob, 2026-10-04). The pairing is identical to
-   * `ReleasesAdminController`: the guard answers *where* — only the root tenant,
-   * which a community's own admin cannot reach — and `@Roles` answers *who*. A
-   * community admin is refused by both halves independently.
+   * **`OperatorGuard`, which keys on `is_service_account` and not on the role.**
+   * This was `SystemAdminGuard` (too strict -- exact role `system_admin`), then
+   * `RootTenantGuard` + `@Roles(SYSTEM_ADMIN, AUTOMATION)`, which still failed
+   * on stage because the service account is deliberately flipped to `admin` for
+   * testing and was sitting there. See that guard for the rule CLAUDE.md states
+   * twice and this route broke twice.
+   *
+   * A root-tenant admin who is not the service account is still refused, per
+   * Rob: only the system admin interacts with this board.
    *
    * Automation is here because the workflow is Rob's: a phase pulls in the
    * reports it will cover, each becomes `resolved` as the code lands, and on
@@ -164,8 +170,11 @@ export class SystemBugsController {
    * happening.
    */
   @Patch(':id')
-  @Roles(UserRole.SYSTEM_ADMIN, UserRole.AUTOMATION)
-  @UseGuards(RootTenantGuard)
+  // The coarse filter. `ADMIN` is listed because the service account is flipped
+  // to it for testing -- `OperatorGuard` below is what actually decides, and it
+  // refuses a root-tenant admin who is not the service account.
+  @Roles(UserRole.SYSTEM_ADMIN, UserRole.AUTOMATION, UserRole.ADMIN)
+  @UseGuards(OperatorGuard)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSystemBugDto) {
     return this.reports.updateBug(id, dto);
   }

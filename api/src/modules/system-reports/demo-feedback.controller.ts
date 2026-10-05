@@ -72,6 +72,9 @@ export class DemoFeedbackController {
       tenantId: req.tenant!.id,
       isRootTenant: req.tenant!.isRoot,
       role: user.role,
+      // The column, not the role: the service account is flipped between roles
+      // for testing, so a role check fails exactly when automation is in use.
+      isServiceAccount: user.isServiceAccount,
     });
   }
 }

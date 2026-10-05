@@ -570,8 +570,17 @@ describe('System reports (e2e)', () => {
     it('lets automation read and triage, and still refuses a community admin', async () => {
       const { body: created } = await fileBug();
 
-      // The harness does not create one, so this spec makes its own.
-      const automation = await seedServiceAccount(prisma, city.id, { role: UserRole.AUTOMATION });
+      /**
+       * **Seeded holding `admin`, not `automation`, and that is the point.**
+       *
+       * The service account is deliberately flipped between roles so it can
+       * browse role-gated pages, and on stage it was sitting at `admin` when
+       * this was first tried -- which made a role-keyed check withhold every
+       * name at the moment automation was being used. CLAUDE.md says to key on
+       * `is_service_account` for exactly this reason; the test holds the code
+       * to it by seeding the awkward role rather than the expected one.
+       */
+      const automation = await seedServiceAccount(prisma, city.id, { role: UserRole.ADMIN });
       const automationCookie = await inTenant(TEST_TENANT_ID, () => loginAs(app, automation));
 
       /**

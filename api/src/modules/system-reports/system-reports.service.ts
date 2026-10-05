@@ -71,6 +71,8 @@ interface Viewer {
   tenantId: number;
   isRootTenant: boolean;
   role: string;
+  /** `users.is_service_account` — the automation account's stable identity. */
+  isServiceAccount: boolean;
 }
 
 /**
@@ -99,24 +101,27 @@ export class SystemReportsService {
   /**
    * Whoever is operating the deployment rather than a community.
    *
-   * **`automation` counts, alongside `system_admin`** (Rob, 2026-10-04). It did
-   * not at first, which meant the automation account could read every report
-   * and saw every reporter as "a member of another community" -- including the
-   * operator's own. That is defensible for a release note, where the credit is
-   * a link resolved per reader and no name is needed, and useless for triage,
-   * where the whole job is knowing who reported what and what was already said
-   * about it.
+   * **The automation account counts, and is recognised by
+   * `is_service_account` rather than by its role** (Rob, 2026-10-04).
    *
-   * Both halves of the pair still apply: the **root tenant** and one of these
-   * two roles. A community's own admin satisfies neither, and the automation
-   * account exists on the root tenant by construction (`automationLogin` admits
-   * no other).
+   * This keyed on the role twice before it was right. First `system_admin`
+   * alone, so automation saw every reporter as "a member of another community";
+   * then `system_admin || automation`, which still failed on stage -- because
+   * the service account is deliberately **flipped between roles** for testing
+   * and was sitting at `admin` when it was tried.
+   *
+   * CLAUDE.md says this in two places, about this exact account: guards key on
+   * the column, *never* on the role, because the role is the one property here
+   * guaranteed to change. `automationLogin` already does it correctly. This did
+   * not, and the symptom was a projection that silently withheld every name at
+   * the moment the account was being used.
+   *
+   * Both halves of the pair still apply: the **root tenant** and either the
+   * `system_admin` role or the service account. A community's own admin
+   * satisfies neither, and `automationLogin` admits no tenant but root.
    */
   private isOperator(viewer: Viewer): boolean {
-    return (
-      viewer.isRootTenant &&
-      (viewer.role === UserRole.SYSTEM_ADMIN || viewer.role === UserRole.AUTOMATION)
-    );
+    return viewer.isRootTenant && (viewer.role === UserRole.SYSTEM_ADMIN || viewer.isServiceAccount);
   }
 
   // ── System bugs ───────────────────────────────────────────────────────────
@@ -346,6 +351,7 @@ export class SystemReportsService {
       tenantId: 0,
       isRootTenant: true,
       role: UserRole.SYSTEM_ADMIN,
+      isServiceAccount: false,
     }).then((all) => all.filter((b) => b.id === id));
     return view;
   }
