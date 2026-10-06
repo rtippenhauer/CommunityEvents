@@ -127,6 +127,22 @@ superseded by the new architecture):
   against the **same** target tenant must be refused, not silently
   duplicate data.
 
+### Check before import: uploaded images in feedback bodies
+
+A feedback ticket's body is HTML and may embed `<img src="/api/uploads/...">`.
+v2 serves only **named subdirectories** of the upload path and deliberately not
+its root, since profile photos sit there behind an auth guard — so a URL
+pointing at the flat root 404s here even though the file imports fine.
+
+Check the old repo's `main.ts` for which prefixes v1 served. If v1 served the
+root, imported tickets will carry paths v2 will not serve and the images need
+moving into a subdirectory with the body HTML rewritten to match. If v1 has the
+same subdirectory-only list, those images were already broken there and nothing
+is lost.
+
+Found on 2026-10-05, when the same flaw made v2's own feedback and report
+attachments upload successfully and render as broken images.
+
 ### REQ-IMPORT-01.5 — Validation pass
 
 - After import, an automated check confirms: row counts per table match
