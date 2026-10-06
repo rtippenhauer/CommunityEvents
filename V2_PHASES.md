@@ -2570,6 +2570,28 @@ filing tickets. A bug filed here and linked to a release now credits its
 reporter **by name in their own community** and as "a community member"
 everywhere else — the rule Rob set on 2026-10-03.
 
+#### Confirmed on stage, both directions (2026-10-05)
+
+Not just in fixtures. Report #3 was filed by Rob in `stagertippenhauer`,
+marked `shipped` against release `2.0.0` by the automation account, and the
+same release then read:
+
+- **`stage.rtippenhauer.com`** — his full name;
+- **`stage.communityeventsproject.com`** — "a community member".
+
+One release row, one blob of imported markdown, two different thanks lines.
+That is the property the whole design exists for, and it is the one the e2e
+could only assert against a fixture.
+
+The API side was checked from root first (`linkedFeedback: []`,
+`anonymousCredits: 1`) before the UI confirmed it, so the anonymisation is
+known to happen in the payload rather than in the rendering.
+
+**Automation cannot publish a release**, deliberately — `ReleasesAdminController`
+admits it for drafts and unpublish only, and the member-facing `/releases` list
+filters to published. So the draft had to be published by hand before the
+Updates page would show any of this.
+
 #### Verified by breaking it
 
 The isolation holds **two independent ways**, found by sabotaging each in turn
