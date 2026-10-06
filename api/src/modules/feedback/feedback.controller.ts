@@ -16,7 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import type { FileFilterCallback } from 'multer';
 import type { Request } from 'express';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
 import { FeedbackService } from './feedback.service';
 import { CreateFeedbackDto } from './dto/create-feedback.dto';
@@ -71,7 +71,12 @@ export class FeedbackController {
     FileInterceptor('image', {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          const dest = process.env.UPLOAD_PATH ?? '/app/uploads';
+          // `feedback/`, not the uploads root (2026-10-05). The root is not
+          // served as a static asset -- deliberately, since profile photos live
+          // there behind an auth guard -- so every image attached to a feedback
+          // ticket was stored correctly and rendered as a broken image. Found
+          // while fixing the same flaw in the reports board, which copied it.
+          const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'feedback');
           mkdirSync(dest, { recursive: true });
           cb(null, dest);
         },
@@ -99,7 +104,7 @@ export class FeedbackController {
       throw new ForbiddenException('Non-validated members cannot upload images');
     }
     if (!file) throw new BadRequestException('No image provided');
-    return { url: `/api/uploads/${file.filename}` };
+    return { url: `/api/uploads/feedback/${file.filename}` };
   }
 
   @Get()

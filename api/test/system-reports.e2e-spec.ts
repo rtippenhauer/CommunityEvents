@@ -182,7 +182,10 @@ describe('System reports (e2e)', () => {
       for (const bad of [
         'https://evil.test/pixel.png',
         '//evil.test/pixel.png',
-        '/api/uploads/../../etc/passwd',
+        '/api/uploads/reports/../../etc/passwd',
+        // The old flat shape, which stored fine and then 404'd because only
+        // named subdirectories are served (found on stage, 2026-10-05).
+        '/api/uploads/report-123.png',
         'javascript:alert(1)',
       ]) {
         await request(server)
@@ -208,7 +211,7 @@ describe('System reports (e2e)', () => {
           category: 'bug',
           title: 'With a screenshot',
           body: 'This body is long enough to pass validation.',
-          screenshots: ['/api/uploads/report-123-456.png'],
+          screenshots: ['/api/uploads/reports/report-123-456.png'],
         })
         .expect(201);
 
@@ -218,7 +221,7 @@ describe('System reports (e2e)', () => {
         .set('Cookie', otherAdminCookie)
         .expect(200);
 
-      expect(res.body[0].screenshots).toEqual(['/api/uploads/report-123-456.png']);
+      expect(res.body[0].screenshots).toEqual(['/api/uploads/reports/report-123-456.png']);
     });
 
     it('caps the number of screenshots', async () => {
@@ -230,7 +233,7 @@ describe('System reports (e2e)', () => {
           category: 'bug',
           title: 'Too many pictures',
           body: 'This body is long enough to pass validation.',
-          screenshots: Array.from({ length: 6 }, (_, i) => `/api/uploads/report-${i}.png`),
+          screenshots: Array.from({ length: 6 }, (_, i) => `/api/uploads/reports/report-${i}.png`),
         })
         .expect(400);
     });

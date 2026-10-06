@@ -19,8 +19,13 @@ import {
  * deployment. Only a filename produced by this module's own upload route is
  * accepted, and the pattern allows no slashes beyond the fixed prefix, so it
  * cannot be walked out of the uploads directory either.
+ *
+ * The prefix gained `reports/` on 2026-10-05: only named subdirectories are
+ * served as static assets, so a file written to the uploads root stored fine
+ * and then 404'd. Tightening the pattern with it means an old flat path is now
+ * refused rather than silently accepted and broken.
  */
-const SCREENSHOT_PATH = /^\/api\/uploads\/[A-Za-z0-9._-]+$/;
+const SCREENSHOT_PATH = /^\/api\/uploads\/reports\/[A-Za-z0-9._-]+$/;
 
 /**
  * What a global report is (Rob, 2026-10-04).

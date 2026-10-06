@@ -16,7 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import type { FileFilterCallback } from 'multer';
 import type { Request } from 'express';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
 import { SystemReportsService } from './system-reports.service';
 import { CreateSystemBugDto } from './dto/create-system-bug.dto';
@@ -96,7 +96,11 @@ export class SystemBugsController {
     FileInterceptor('image', {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          const dest = process.env.UPLOAD_PATH ?? '/app/uploads';
+          // A directory of its own, because only named subdirectories are
+          // served as static assets -- the uploads root deliberately is not,
+          // since profile photos sit there behind an auth guard. Writing to the
+          // root stored the file and returned a URL that 404s.
+          const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'reports');
           mkdirSync(dest, { recursive: true });
           cb(null, dest);
         },
@@ -125,7 +129,7 @@ export class SystemBugsController {
   )
   uploadImage(@UploadedFile() file: Express.Multer.File): { url: string } {
     if (!file) throw new BadRequestException('No image provided');
-    return { url: `/api/uploads/${file.filename}` };
+    return { url: `/api/uploads/reports/${file.filename}` };
   }
 
   /**

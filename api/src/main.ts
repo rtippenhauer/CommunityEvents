@@ -132,6 +132,14 @@ async function bootstrap(): Promise<void> {
   app.useStaticAssets(join(uploadPath, 'custom-icons'), { prefix: '/api/uploads/custom-icons' });
   app.useStaticAssets(join(uploadPath, 'branding'), { prefix: '/api/uploads/branding' });
   app.useStaticAssets(join(uploadPath, 'avatars'), { prefix: '/api/uploads/avatars' });
+  // Added 2026-10-05, after a screenshot attached to a report 404'd on stage.
+  // Both of these used to write to the uploads ROOT and return a URL under
+  // `/api/uploads/`, which nothing serves -- so every attachment was stored
+  // correctly and displayed as a broken image. Serving the root instead would
+  // have "fixed" it by exposing profile photos, which the comment above exists
+  // to prevent; a directory per category is the shape this file already uses.
+  app.useStaticAssets(join(uploadPath, 'reports'), { prefix: '/api/uploads/reports' });
+  app.useStaticAssets(join(uploadPath, 'feedback'), { prefix: '/api/uploads/feedback' });
 
   app.useGlobalPipes(
     new ValidationPipe({
