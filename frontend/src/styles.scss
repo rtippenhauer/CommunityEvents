@@ -75,6 +75,26 @@ html {
   --ce-font-body:          'DM Sans', sans-serif;
 }
 
+/**
+ * Images inside member-written HTML (2026-10-05).
+ *
+ * Feedback bodies and admin notes are composed in Quill and rendered through
+ * `[innerHTML]`, so an embedded screenshot arrives at whatever size it was
+ * captured at. Unconstrained, one pasted screenshot pushed the feedback form's
+ * card off-centre and left a page of empty space beside it -- and the same HTML
+ * is rendered again on the board, the detail page and the admin screen, so the
+ * rule belongs here rather than in whichever component noticed first.
+ *
+ * Not resized on upload: the stored image keeps its detail for anyone who opens
+ * it full size.
+ */
+.item-body img,
+.note-body img,
+.ql-editor img {
+  max-width: 100%;
+  height: auto;
+}
+
 *,
 *::before,
 *::after {
