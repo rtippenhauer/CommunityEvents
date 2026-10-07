@@ -109,6 +109,18 @@ import { isElevatedRole } from '../../core/utils/roles.util';
 
           <!-- Body -->
           <div class="item-body" [innerHTML]="safeBody()"></div>
+                @if (item(); as fb) {
+                  @if (fb.screenshots?.length) {
+                  <div class="fb-shots">
+                    @for (shot of fb.screenshots; track shot) {
+                      <a [href]="shot" target="_blank" rel="noopener">
+                        <img class="fb-shot" [src]="shot" alt="Attachment" />
+                      </a>
+                    }
+                  </div>
+                  }
+                }
+
 
           <!-- Notes thread -->
           <div class="notes-section">

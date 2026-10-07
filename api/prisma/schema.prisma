@@ -674,6 +674,19 @@ model feedback {
   adminNote        String?            @map("admin_note") @db.Text
   releaseNote      String?            @map("release_note") @db.VarChar(500)
   isPrivate        Boolean            @default(false) @map("is_private")
+  /// Attached images, as upload paths under `/api/uploads/feedback/`.
+  ///
+  /// **Attachments, not markup.** They used to be embedded in `body` by the
+  /// editor, which made a screenshot count against the body's 10,000-character
+  /// limit -- two of them blew past it and the submit failed, while a report
+  /// that was *only* screenshots failed the 10-character minimum. The size of a
+  /// picture has nothing to do with whether the description is long enough.
+  /// `system_reports` already treated them as files; this follows it.
+  ///
+  /// `Json` rather than text, so Prisma parses it: feedback rows are returned
+  /// straight to the client from several read paths, and a text column would
+  /// need decoding in each one.
+  screenshots      Json?
   upvoteCount      Int                @default(0) @map("upvote_count") @db.UnsignedInt
   seenAt           DateTime?          @map("seen_at") @db.DateTime(0)
   resolvedAt       DateTime?          @map("resolved_at") @db.DateTime(0)

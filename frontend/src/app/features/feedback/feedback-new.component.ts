@@ -5,6 +5,7 @@ import {
   signal,
   viewChild,
   ChangeDetectionStrategy,
+  HostListener,
 } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -120,9 +121,47 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
               #imageInput
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif"
+              multiple
               style="display:none"
               (change)="onImageFileSelected($event)"
             />
+
+            <!--
+              Attachments, below the description rather than inside it. A
+              screenshot used to be embedded in the body, so two of them made
+              the ticket too long to submit and a screenshots-only ticket was
+              too short -- the size of a picture deciding whether the words
+              were enough (Rob, 2026-10-06).
+            -->
+            <div class="shots">
+              <div class="shots-head">
+                <span>Screenshots</span>
+                <button mat-stroked-button type="button" (click)="imageInput.click()">
+                  <mat-icon>add_photo_alternate</mat-icon> Add
+                </button>
+                @if (uploading()) {
+                  <mat-spinner diameter="18" />
+                }
+              </div>
+              <p class="shots-hint">Paste one anywhere on this page, or add a file. Up to 5.</p>
+              @if (shots().length > 0) {
+                <div class="shot-list">
+                  @for (shot of shots(); track shot) {
+                    <div class="shot">
+                      <img [src]="shot" alt="Attached screenshot" />
+                      <button
+                        mat-icon-button
+                        type="button"
+                        aria-label="Remove screenshot"
+                        (click)="removeShot(shot)"
+                      >
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
 
             <div class="private-toggle">
               <mat-slide-toggle formControlName="isPrivate" color="primary">
@@ -236,6 +275,40 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         display: block;
       }
 
+      .shots { margin-bottom: 16px; }
+      .shots-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 600;
+        color: var(--ce-text);
+      }
+      .shots-hint {
+        font-size: 0.78rem;
+        color: var(--ce-text-muted);
+        margin: 4px 0 8px;
+      }
+      .shot-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+      .shot { position: relative; display: inline-flex; }
+      .shot img {
+        max-width: 140px;
+        max-height: 110px;
+        border-radius: 6px;
+        border: 1px solid var(--ce-rule);
+        display: block;
+      }
+      .shot button {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: var(--ce-surface);
+        border: 1px solid var(--ce-rule);
+        border-radius: 50%;
+        width: 26px;
+        height: 26px;
+        line-height: 26px;
+      }
+
       .quill-editor {
         display: block;
       }
@@ -317,23 +390,26 @@ export class FeedbackNewComponent {
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
 
-  private readonly imageInput = viewChild<ElementRef<HTMLInputElement>>('imageInput');
   private quillInstance: any = null;
 
   readonly saving = signal(false);
   readonly submitted = signal(false);
   readonly showBodyError = signal(false);
+  /** Attached images — files on the ticket, never markup in the body. */
+  readonly shots = signal<string[]>([]);
+  readonly uploading = signal(false);
 
   readonly quillModules = {
     toolbar: {
       container: [
         ['bold', 'italic', 'underline', 'strike'],
         [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image'],
+        // No 'image': attachments are files on the ticket now, not markup in
+        // the body, so inserting one here would put it back in the body.
+        ['link'],
         ['clean'],
       ],
       handlers: {
-        image: () => this.imageInput()?.nativeElement.click(),
       },
     },
   };
@@ -444,6 +520,7 @@ export class FeedbackNewComponent {
         title: val.title.trim(),
         body: normalizeNbsp(val.body),
         isPrivate: val.isPrivate,
+        screenshots: this.shots(),
       })
       .subscribe({
         next: () => {
@@ -481,28 +558,61 @@ export class FeedbackNewComponent {
 
   onImageFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (file) this.handleImageFile(file);
+    for (const file of Array.from(input.files ?? [])) this.handleImageFile(file);
+    // Cleared so picking the same file twice in a row still fires `change`.
     input.value = '';
   }
 
+  /**
+   * Catches a pasted image anywhere on the page, not only inside the editor.
+   *
+   * The editor-scoped listener stays for the case where the cursor is in the
+   * description, but a screenshot is pasted wherever the cursor happens to be
+   * and asking somebody to click into the right box first is an instruction
+   * nobody reads. A paste carrying no image falls through untouched.
+   */
+  @HostListener('document:paste', ['$event'])
+  onPagePaste(event: ClipboardEvent): void {
+    const files = Array.from(event.clipboardData?.files ?? []).filter((f) =>
+      f.type.startsWith('image/'),
+    );
+    if (files.length === 0) return;
+    event.preventDefault();
+    for (const file of files) this.handleImageFile(file);
+  }
+
+  /**
+   * Uploads one image and attaches it to the ticket.
+   *
+   * It used to `insertEmbed` into the editor, which is what put screenshots in
+   * the body and made a picture count against the description's length limits.
+   * Same upload, different destination.
+   */
   private handleImageFile(file: File): void {
+    if (this.shots().length >= 5) {
+      this.snackBar.open('Up to 5 images.', 'OK', { duration: 4000 });
+      return;
+    }
+    this.uploading.set(true);
     this.feedbackService.uploadImage(file).subscribe({
       next: ({ url }) => {
-        if (this.quillInstance) {
-          const range = this.quillInstance.getSelection(true);
-          this.quillInstance.insertEmbed(range.index, 'image', url);
-          this.quillInstance.setSelection(range.index + 1);
-        }
+        this.uploading.set(false);
+        this.shots.update((current) => [...current, url]);
       },
       error: () => {
+        this.uploading.set(false);
         this.snackBar.open('Image upload failed — please try again', 'OK', { duration: 4000 });
       },
     });
   }
 
+  removeShot(url: string): void {
+    this.shots.update((current) => current.filter((u) => u !== url));
+  }
+
   reset(): void {
     this.submitted.set(false);
     this.form.reset({ category: 'comment', title: '', body: '', isPrivate: false });
+    this.shots.set([]);
   }
 }

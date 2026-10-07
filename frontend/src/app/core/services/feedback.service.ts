@@ -29,6 +29,8 @@ export interface FeedbackLinkedRelease {
 }
 
 export interface FeedbackItem {
+  /** Attached images. Empty or absent on tickets written before 2026-10-06. */
+  screenshots?: string[];
   id: number;
   userId: number;
   user: FeedbackUser | null;
@@ -56,6 +58,8 @@ export interface CreateFeedbackDto {
   title: string;
   body: string;
   isPrivate?: boolean;
+  /** Upload paths; attachments on the ticket, not markup in the body. */
+  screenshots?: string[];
 }
 
 export interface UpdateFeedbackDto {

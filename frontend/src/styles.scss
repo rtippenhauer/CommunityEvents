@@ -95,6 +95,23 @@ html {
   height: auto;
 }
 
+/* Attachments on a feedback ticket, which are files on the row rather than
+   markup in its body (2026-10-06). Thumbnails that open full size. */
+.fb-shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.fb-shot {
+  max-width: 140px;
+  max-height: 110px;
+  border-radius: 6px;
+  border: 1px solid var(--ce-rule);
+  display: block;
+}
+
 *,
 *::before,
 *::after {

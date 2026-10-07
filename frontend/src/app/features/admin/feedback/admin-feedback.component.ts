@@ -150,6 +150,15 @@ import {
                   [class.truncated]="expandedId() !== item.id"
                   [innerHTML]="safeHtml(item.body)"
                 ></div>
+                @if (item.screenshots?.length) {
+                  <div class="fb-shots">
+                    @for (shot of item.screenshots; track shot) {
+                      <a [href]="shot" target="_blank" rel="noopener">
+                        <img class="fb-shot" [src]="shot" alt="Attachment" />
+                      </a>
+                    }
+                  </div>
+                }
                 <button mat-button class="expand-btn" (click)="toggleExpand(item.id)">
                   {{ expandedId() === item.id ? 'Show less' : 'Show more' }}
                 </button>
