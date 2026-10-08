@@ -422,37 +422,46 @@ export class FeedbackNewComponent {
     isPrivate: [false],
   });
 
+  /**
+   * **Images come out of the description before anything is validated**
+   * (Rob, 2026-10-07, reported from a phone).
+   *
+   * On iOS the editor takes a photo straight into the body as a `data:` URI --
+   * no paste event carries a file, so the attach handlers never see it. The
+   * body then fails `maxLength`, and the ORDER made that fatal: the length
+   * check ran first and returned, so the repair never got the chance to shrink
+   * the body it was complaining about. The member saw "that description is too
+   * long" beside an empty Screenshots box, with no way to act on it.
+   *
+   * So extraction runs first, and it does not merely rewrite the markup to a
+   * URL: it REMOVES the image from the body and adds it to the attachments,
+   * which is where it belongs. After that the description is text, the limits
+   * mean what they say, and a phone behaves like a desktop.
+   */
   submit(): void {
     this.form.markAllAsTouched();
+    this.saving.set(true);
+    void this.extractInlineImages(this.form.controls.body.value).then((body) => {
+      this.form.controls.body.setValue(body);
+      this.saving.set(false);
+      if (this.validate()) this.send();
+    });
+  }
+
+  /** Returns false and says why, rather than refusing in silence. */
+  private validate(): boolean {
     const rawBody = this.form.controls.body.value.replace(/<[^>]*>/g, '').trim();
     if (rawBody.length < 10) {
       this.showBodyError.set(true);
-      return;
+      return false;
     }
     this.showBodyError.set(false);
 
-    /**
-     * **Never return silently** (Rob, 2026-10-05: "After I submitted Feedback
-     * the page still showed me feedback and made it look like it didn't work").
-     *
-     * This was a bare `if (this.form.invalid) return;`. Title errors are visible
-     * under their field, but the body is a Quill editor with no `mat-error`, so
-     * a body over the length cap failed the form and the press did nothing at
-     * all -- no spinner, no message, no change. A form that refuses without
-     * saying so is indistinguishable from a broken one.
-     *
-     * The length is the case that actually bites: an embedded screenshot pushes
-     * the HTML past the cap quickly, and that is the one failure a member cannot
-     * guess at.
-     */
     if (this.form.invalid) {
-      const body = this.form.controls.body;
-      if (body.hasError('maxlength')) {
-        this.snackBar.open(
-          'That description is too long — try removing an image or shortening the text.',
-          'OK',
-          { duration: 6000 },
-        );
+      if (this.form.controls.body.hasError('maxlength')) {
+        this.snackBar.open('That description is too long — please shorten it.', 'OK', {
+          duration: 6000,
+        });
       } else if (this.form.controls.title.invalid) {
         this.snackBar.open('Please give it a title of at least 3 characters.', 'OK', {
           duration: 4000,
@@ -460,53 +469,39 @@ export class FeedbackNewComponent {
       } else {
         this.snackBar.open('Please check the form and try again.', 'OK', { duration: 4000 });
       }
-      return;
+      return false;
     }
-
-    this.saving.set(true);
-    // Any image that reached the body as a data URI is uploaded first and the
-    // markup rewritten to point at it. See `uploadInlineImages`.
-    void this.uploadInlineImages(this.form.controls.body.value).then((body) => {
-      this.form.controls.body.setValue(body);
-      this.send();
-    });
+    return true;
   }
 
   /**
-   * Replaces `src="data:image/..."` with an uploaded URL, and is the actual fix
-   * for Rob's 2026-10-05 report that submitting did nothing and saved nothing.
+   * Pulls every inline image out of the body and attaches it instead.
    *
-   * A screenshot embedded as base64 is hundreds of kilobytes of text, so the
-   * body blew past `maxLength(10000)`, the form was invalid, and `submit()`
-   * returned without a word. The paste handler in `onEditorCreated` uploads
-   * images it recognises -- but it only sees `clipboardData.items`, and a data
-   * URI can arrive by routes it never watches: pasted HTML carrying one, a
-   * drag-and-drop, an image copied from another page, or anything Quill's own
-   * clipboard matchers let through.
+   * `data:` covers what iOS inserts and what a pasted HTML fragment carries;
+   * `blob:` covers the object URLs some editors use. Both are fetchable from
+   * the page holding them, which is what makes this possible at all.
    *
-   * So this is the belt rather than the braces: whatever got a data URI in, it
-   * does not reach the server as one. Catching it here rather than at paste
-   * time also means a body that was already drafted gets fixed on its way out.
-   *
-   * An upload that fails leaves that one image as it was -- the submit then
-   * fails the length check and says so, which is better than dropping a
-   * member's screenshot silently.
+   * An upload that fails leaves that image in the body untouched -- better a
+   * ticket refused for length, with the picture still visible to its author,
+   * than one that submits with their screenshot silently discarded.
    */
-  private async uploadInlineImages(html: string): Promise<string> {
-    const dataUri = /<img[^>]+src="(data:image\/[a-z+]+;base64,[^"]+)"/gi;
-    const matches = [...html.matchAll(dataUri)];
+  private async extractInlineImages(html: string): Promise<string> {
+    const inline = /<img\b[^>]*\bsrc="(data:image\/[^"]+|blob:[^"]+)"[^>]*>/gi;
+    const matches = [...html.matchAll(inline)];
     if (matches.length === 0) return html;
 
     let result = html;
-    for (const [, uri] of matches) {
+    for (const [tag, src] of matches) {
+      if (this.shots().length >= 5) break;
       try {
-        const blob = await (await fetch(uri)).blob();
+        const blob = await (await fetch(src)).blob();
         const ext = (blob.type.split('/')[1] ?? 'png').replace('+xml', '');
         const file = new File([blob], `pasted-${Date.now()}.${ext}`, { type: blob.type });
         const { url } = await firstValueFrom(this.feedbackService.uploadImage(file));
-        result = result.split(uri).join(url);
+        this.shots.update((current) => [...current, url]);
+        result = result.split(tag).join('');
       } catch {
-        // Left as-is on purpose; the length check below reports it.
+        // Left in the body on purpose; validate() then reports the length.
       }
     }
     return result;
