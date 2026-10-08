@@ -149,13 +149,17 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
                   @for (shot of shots(); track shot) {
                     <div class="shot">
                       <img [src]="shot" alt="Attached screenshot" />
+                      <!-- A plain button, not mat-icon-button: Material keeps a
+                           40px touch target inside whatever size you give it, so
+                           the glyph sat outside its own circle on a phone
+                           (Rob, 2026-10-07). -->
                       <button
-                        mat-icon-button
+                        class="shot-remove"
                         type="button"
                         aria-label="Remove screenshot"
                         (click)="removeShot(shot)"
                       >
-                        <mat-icon>close</mat-icon>
+                        &times;
                       </button>
                     </div>
                   }
@@ -297,16 +301,24 @@ import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
         border: 1px solid var(--ce-rule);
         display: block;
       }
-      .shot button {
+      .shot-remove {
         position: absolute;
-        top: -8px;
-        right: -8px;
+        top: -9px;
+        right: -9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        font-size: 17px;
+        line-height: 1;
         background: var(--ce-surface);
+        color: var(--ce-text);
         border: 1px solid var(--ce-rule);
         border-radius: 50%;
-        width: 26px;
-        height: 26px;
-        line-height: 26px;
+        cursor: pointer;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
       }
 
       .quill-editor {
