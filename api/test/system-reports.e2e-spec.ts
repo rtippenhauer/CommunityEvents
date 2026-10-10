@@ -682,6 +682,11 @@ describe('System reports (e2e)', () => {
       expect(res.body).toHaveLength(1);
       expect(res.body[0].rating).toBe(4);
       expect(res.body[0].wouldUse).toBe('maybe');
+      // The requester's address, kept so the team can reply once the demo is
+      // gone -- and the label is the demo's own host, not the fixture brand
+      // name every demo shares (Rob, 2026-10-09).
+      expect(res.body[0].submittedByEmail).toBe('demoadmin@example.test');
+      expect(res.body[0].demoLabel).toBe('demo-reports');
       expect(res.body[0].whatDidnt).toContain('invite step');
       expect(res.body[0].demoLabel).toBeTruthy();
     });
@@ -727,9 +732,11 @@ describe('System reports (e2e)', () => {
         .expect(200);
 
       expect(res.body).toHaveLength(1);
-      // The join is gone, so the label is the only thing still saying which
-      // demo this was -- which is exactly why it is stored rather than derived.
-      expect(res.body[0].demoLabel).toBeTruthy();
+      // The join is gone, so these two are the only things still saying which
+      // demo it was and who to reply to -- which is exactly why both are stored
+      // rather than derived.
+      expect(res.body[0].demoLabel).toBe('demo-reports');
+      expect(res.body[0].submittedByEmail).toBe('demoadmin@example.test');
       expect(res.body[0].whatDidnt).toContain('invite step');
     });
 

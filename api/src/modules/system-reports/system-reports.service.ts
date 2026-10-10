@@ -57,6 +57,8 @@ export interface SystemBugView {
 
 export interface DemoFeedbackView {
   id: number;
+  /** The requester's address; null on rows written before 2026-10-09. */
+  submittedByEmail: string | null;
   body: string | null;
   rating: number | null;
   wouldUse: string | null;
@@ -396,6 +398,8 @@ export class SystemReportsService {
           whatWorked: dto.whatWorked?.trim() || null,
           whatDidnt: dto.whatDidnt?.trim() || null,
           demoLabel,
+          // Denormalised deliberately: the user row goes with the demo.
+          submittedByEmail: user.email,
           submittedByUserId: user.id,
           submittedByTenantId: tenantId,
         },
@@ -431,6 +435,7 @@ export class SystemReportsService {
           whatWorked: true,
           whatDidnt: true,
           demoLabel: true,
+          submittedByEmail: true,
           createdAt: true,
         },
       }),

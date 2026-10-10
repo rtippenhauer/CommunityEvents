@@ -7,7 +7,6 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { DemoTenantGuard } from '../../common/guards/tenant-kind.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { AppConfigService } from '../app-config/app-config.service';
 import { UserRole } from '../../database/enums';
 import type { users as User } from '@prisma/client';
 
@@ -40,10 +39,7 @@ import type { users as User } from '@prisma/client';
 @Controller('demo/feedback')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DemoFeedbackController {
-  constructor(
-    private readonly reports: SystemReportsService,
-    private readonly appConfig: AppConfigService,
-  ) {}
+  constructor(private readonly reports: SystemReportsService) {}
 
   /**
    * `DemoTenantGuard` rather than the non-demo one: this is the single route in
@@ -53,10 +49,23 @@ export class DemoFeedbackController {
   @Roles(UserRole.ADMIN, UserRole.MEMBER)
   @UseGuards(DemoTenantGuard)
   async submit(@CurrentUser() user: User, @Req() req: Request, @Body() dto: CreateDemoFeedbackDto) {
-    // The community's own display name, captured now because the `tenants` row
-    // is going to be deleted and take the join with it.
-    const label = (await this.appConfig.getPublicValue('brand_name')) || req.tenant!.slug;
-    return this.reports.submitDemoFeedback(user, req.tenant!.id, label.slice(0, 120), dto);
+    /**
+     * The demo's own host label, not its brand name (Rob, 2026-10-09).
+     *
+     * This read `brand_name`, and every demo is seeded from one fixture -- so
+     * the column held "Riverside Community Events" on every row and identified
+     * the template rather than the visit. The slug is the generated subdomain,
+     * which is unique per demo.
+     *
+     * The address rides along because it is the only way to reply once the
+     * demo is purged, and because the slug says which demo without saying who.
+     */
+    return this.reports.submitDemoFeedback(
+      user,
+      req.tenant!.id,
+      req.tenant!.slug.slice(0, 120),
+      dto,
+    );
   }
 
   /**

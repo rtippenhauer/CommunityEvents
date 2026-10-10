@@ -46,8 +46,14 @@ export interface DemoFeedbackEntry {
   wouldUse: DemoWouldUse | null;
   whatWorked: string | null;
   whatDidnt: string | null;
-  /** Written at submission time: the demo it came from no longer exists. */
+  /**
+   * The demo's own host label, written at submission time because the demo it
+   * came from no longer exists. Unique per demo -- it used to be the brand
+   * name, which is identical on every demo.
+   */
   demoLabel: string;
+  /** The requester's address; null on rows written before 2026-10-09. */
+  submittedByEmail?: string | null;
   createdAt: string;
 }
 

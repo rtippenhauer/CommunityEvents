@@ -1156,7 +1156,21 @@ model demo_feedback {
   wouldUse           demo_would_use? @map("would_use")
   whatWorked         String?   @map("what_worked") @db.Text
   whatDidnt          String?   @map("what_didnt") @db.Text
+  /// The demo's own host label, which is unique per demo.
+  ///
+  /// **Not the brand name**, which is what this held until 2026-10-09 and was
+  /// the same string on every row: a demo is seeded from one fixture, so every
+  /// one of them is called "Riverside Community Events". It identified the
+  /// template, not the visit.
   demoLabel          String    @map("demo_label") @db.VarChar(120)
+  /// The requester's address, kept so the team can follow up.
+  ///
+  /// Denormalised for the same reason as the label: `submitted_by_user_id` goes
+  /// NULL when the demo is purged, which for a demo is a certainty, so a join
+  /// would leave every surviving row anonymous. This is the only personal
+  /// detail that outlives a demo, it is kept deliberately, and the form says so
+  /// where somebody is deciding whether to write anything.
+  submittedByEmail   String?   @map("submitted_by_email") @db.VarChar(255)
   submittedByUserId  Int?      @map("submitted_by_user_id") @db.UnsignedInt
   submittedByTenantId Int?     @map("submitted_by_tenant_id") @db.UnsignedInt
   createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)

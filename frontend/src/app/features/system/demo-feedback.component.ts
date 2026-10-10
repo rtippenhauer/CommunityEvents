@@ -69,7 +69,9 @@ import {
           <mat-icon>schedule</mat-icon>
           <p>
             This demo community is deleted automatically, but what you write here is kept and read
-            by the people building {{ platformName }}. Tell us what worked and what didn't.
+            by the people building {{ platformName }} — along with
+            <strong>your email address</strong>, so we can follow up if we need to. Tell us what
+            worked and what didn't.
           </p>
         </div>
 
@@ -127,7 +129,7 @@ import {
         @for (entry of entries(); track entry.id) {
           <mat-card class="entry-card">
             <div class="entry-head">
-              <strong>{{ entry.demoLabel }}</strong>
+              <strong>{{ entry.submittedByEmail || entry.demoLabel }}</strong>
               @if (entry.rating !== null) {
                 <span class="rating-chip">{{ entry.rating }}/5</span>
               }
@@ -149,7 +151,12 @@ import {
             @if (entry.body) {
               <p class="answer"><span class="answer-q">Also:</span> {{ entry.body }}</p>
             }
-            <div class="entry-meta">{{ entry.createdAt | date: 'medium' }}</div>
+            <div class="entry-meta">
+              {{ entry.createdAt | date: 'medium' }}
+              @if (entry.submittedByEmail) {
+                · demo <strong>{{ entry.demoLabel }}</strong>
+              }
+            </div>
           </mat-card>
         }
       } @else if (!isDemo()) {
