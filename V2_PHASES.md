@@ -45,7 +45,7 @@ Two decisions bound it:
 | Order | Item | Why it is required |
 |---|---|---|
 | 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
-| 2 | **bugfix — dispatcher claim** | v2-27's first half, carved out. The dispatcher has no claim step and Admin → Send Now dispatches from a request, so it can double-send *today*. Hours of work, and a go-live blocker once real members are receiving real mail. |
+| 2 | ~~bugfix — dispatcher claim~~ | Done (2026-10-10, `bugfix-dispatcher-claim`), pending Rob's stage pass. v2-27's first half, carved out. The dispatcher had no claim step and Admin → Send Now dispatches from a request, so it could double-send *today*. See v2-27's section for what the claim settled and what is left of that item. |
 | 3 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
 | 4 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
 | 5 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
@@ -2193,9 +2193,56 @@ change, since they exist only to describe this gap.
 
 ### v2-27 — One way to send an email
 
-**Status:** Not started. No dependencies; can land whenever. Numbered next-free
-rather than as a running order, like v2-26 — it belongs before v2-25, which is
-deliberately last.
+**Status:** Half done. **The claim step landed on 2026-10-10** as
+`bugfix-dispatcher-claim`, carved out and run ahead of everything else because
+it fixed a live double-send rather than refactoring anything. The unification
+below is untouched and still open. No dependencies; can land whenever. Numbered
+next-free rather than as a running order, like v2-26 — it belongs before
+v2-25, which is deliberately last.
+
+**What the claim settled** (`email-dispatcher-claim.e2e-spec.ts`): one
+conditional UPDATE per message, `pending` -> `sending`, whose row lock is the
+whole mechanism — two dispatchers racing serialise, the loser matches nothing,
+and `updateMany`'s count answers "is this mine". Claiming per *message* rather
+than per batch is what makes the count sufficient; a batch claim can only say
+how many of twenty rows it won, not which, and would need a per-run token
+written into the row and read back.
+
+Three things followed from introducing the state, and the second is the one
+worth remembering:
+
+- `releaseStaleClaims` is the way out of `sending`. A dispatcher killed
+  mid-send leaves a row nothing would ever select again, so trading a
+  double-send hazard for a silent-loss one would not have been a fix. Ten
+  minutes, counting the abandoned attempt so a message that reliably kills the
+  dispatcher cannot loop. **A reclaimed row may already have been sent** —
+  accepted knowingly, because that window needs a crash between the provider's
+  200 and the next write, where the alternative loses an invite with no trace.
+- **A sweep by age is only as safe as the ceiling on a legitimate claim.** Both
+  provider sends were bare `fetch`, inheriting undici's 300-second default, so a
+  batch could have held its last claim for an hour and a half and any sane sweep
+  would have been reclaiming rows a live dispatcher was still working through.
+  `EMAIL_SEND_TIMEOUT_MS` bounds them at 30s. A timeout that looks like a
+  nicety was load-bearing.
+- `cancelEmail` wrote `cancelled` over whatever the row held. On a `sending`
+  row that denies mail which went out, and the dispatcher's own write would
+  overwrite the cancellation anyway; it now acts on pending, failed and blocked.
+
+**Found by the concurrency test rather than by reading the code:**
+`getOrCreateConfig` was a read-then-create, so two dispatchers reaching a
+community's *first* message together both inserted and the loser crashed the
+whole run on `uq_email_provider_config_tenant`. Reachable before this item
+too — the cron and the flush button on a brand-new community. It re-reads on
+P2002, because the unique key is `tenant_id` and the scoping extension may not
+merge a tenant into a `where` on a unique key, so an upsert would have had to
+name the tenant by hand.
+
+**Not verified on stage yet**, and the stage pass has one thing worth doing by
+hand: the `sending` chip and its filter option on Admin → Email were not
+rendered in a browser, because the state is transient by design. Setting a row
+to `sending` with a stale `claimed_at` shows both, and the sweep then returns it
+to the queue within ten minutes, which is also the only way to watch that
+recovery happen.
 
 **Rob's question, 2026-09-07:** "Why do we send some emails immediately but
 queue others? Should immediate sends go in the queue too and just start it up,
@@ -2216,17 +2263,20 @@ the daily counter entirely. The dispatcher's counter write is a *delta* rather
 than an absolute purely because a second writer exists; that comment is a long
 apology for having two paths.
 
-**The prerequisite: the dispatcher has no claim step.** It selects rows
-`WHERE status = PENDING`, sends, and only then writes SENT/FAILED. Nothing
-marks a row as in-flight. That is safe only while exactly one dispatcher runs,
-and **that is already not true**: Admin → Send Now calls `dispatchPending` from
-a request, so an admin pressing it while the cron is mid-run can double-send.
-Latent today, routine under any change that dispatches more often.
+**The prerequisite was that the dispatcher had no claim step** — done, see
+the status above; kept here because it is the reasoning that put it first. It
+selected rows `WHERE status = PENDING`, sent, and only then wrote SENT/FAILED.
+Nothing marked a row as in-flight. That is safe only while exactly one
+dispatcher runs, and **that was already not true**: Admin → Send Now calls
+`dispatchPending` from a request, so an admin pressing it while the cron was
+mid-run could double-send. Latent then, routine under any change that
+dispatches more often.
 
-So the first change is an atomic claim -- `updateMany` from PENDING to a
+So the first change was an atomic claim -- `updateMany` from PENDING to a
 SENDING state conditional on the row still being PENDING, then send only what
-was actually claimed. **That is worth doing on its own**, before and
-independently of any unification, because it fixes a live hazard.
+was actually claimed. **That was worth doing on its own**, before and
+independently of any unification, because it fixed a live hazard. It shipped
+that way on 2026-10-10.
 
 **Then unify, but keep the send synchronous for the waiting-user cases.**
 Enqueue-and-return would let a request succeed the moment the row is written,
@@ -2242,10 +2292,16 @@ event reminders.
 
 **Definition of done:** one code path writes email, and `sendNow` is either
 gone or a thin wrapper that enqueues at top priority and dispatches its own
-row. Two dispatchers running at once cannot send the same row twice, proven by
-a test that runs them concurrently. The daily counter has a single writer and
-the delta workaround is removed. A password reset still fails loudly in the
-request that asked for it, rather than being accepted and lost.
+row. ~~Two dispatchers running at once cannot send the same row twice, proven
+by a test that runs them concurrently.~~ — **met 2026-10-10**; the proof is
+the three concurrency cases in `test/email-dispatcher-claim.e2e-spec.ts`, which
+fail as 12-messages-becomes-24-sends with the claim gate removed. The daily
+counter has a single writer and the delta workaround is removed. A password
+reset still fails loudly in the request that asked for it, rather than being
+accepted and lost.
+
+**What remains is therefore the unification alone**, and the delta counter
+comment is still the long apology for having two writers that it was before.
 
 ### v2-28 — Search indexing and link-preview metadata, per tenant
 
