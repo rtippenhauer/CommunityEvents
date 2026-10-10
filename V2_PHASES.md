@@ -2237,6 +2237,25 @@ P2002, because the unique key is `tenant_id` and the scoping extension may not
 merge a tenant into a `where` on a unique key, so an upsert would have had to
 name the tenant by hand.
 
+**This item's migration was tested against populated data** — the first in
+this repo that was, and CLAUDE.md still records that gap as open for the rest.
+The recipe is cheap enough to repeat: build the table at its *pre*-migration
+definition in a scratch database on the e2e MySQL, insert a row holding every
+value the change touches, pipe the migration file in verbatim
+(`docker exec -i dinnerbears-mysql-test mysql -uroot -ptest <db> < migration.sql`),
+and read the rows back. It cost about five minutes and changed the migration.
+
+Two findings worth keeping. **MySQL converts an ENUM by string value, not by
+its stored ordinal**, so inserting a value mid-list does not corrupt existing
+rows — which is the failure everybody expects and is not the real one. **The
+real one is that a mid-list insertion cannot be done in place**: InnoDB answers
+"Cannot change column type INPLACE. Try ALGORITHM=COPY" and rebuilds the whole
+table under a write lock. `sending` is appended for that reason, both
+statements now assert `ALGORITHM=INPLACE, LOCK=NONE` so a future MySQL that
+cannot comply fails loudly rather than quietly locking the table, and the
+tidier declaration order it gave up was buying nothing — no query orders by
+that column.
+
 **Not verified on stage yet**, and the stage pass has one thing worth doing by
 hand: the `sending` chip and its filter option on Admin → Email were not
 rendered in a browser, because the state is transient by design. Setting a row
