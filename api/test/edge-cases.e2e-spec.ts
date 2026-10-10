@@ -129,7 +129,7 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
       await request(server)
         .post('/api/v1/feedback')
         .set('Cookie', memberCookie)
-        .send({ category: 'bug', title: 'A'.repeat(201), body: 'This is a valid length body.' })
+        .send({ category: 'comment', title: 'A'.repeat(201), body: 'This is a valid length body.' })
         .expect(400);
     });
 
@@ -137,7 +137,7 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
       await request(server)
         .post('/api/v1/feedback')
         .set('Cookie', memberCookie)
-        .send({ category: 'bug', title: 'Valid title', body: 'A'.repeat(10001) })
+        .send({ category: 'comment', title: 'Valid title', body: 'A'.repeat(10001) })
         .expect(400);
     });
 
@@ -371,7 +371,7 @@ describe('Edge Cases — Field Limits, Injection & Parameterization (e2e)', () =
       const res = await request(server)
         .post('/api/v1/feedback')
         .set('Cookie', memberCookie)
-        .send({ category: 'bug', title: 'XSS test', body: `Before ${XSS_PAYLOAD} After` })
+        .send({ category: 'comment', title: 'XSS test', body: `Before ${XSS_PAYLOAD} After` })
         .expect(201);
       expect(res.body.body).not.toContain('<script>');
       expect(res.body.body).toContain('Before');

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AuthFlowError } from '../../common/errors/auth-flow.error';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -21,7 +21,7 @@ import { CitiesService } from '../cities/cities.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { EmailService } from '../email/email.service';
-import { EmailTemplate } from '../email/email.constants';
+import { EmailCategory, EmailTemplate } from '../email/email.constants';
 import { InviteFlavor, InviteType } from '../../database/enums';
 import { stripUserSecrets } from '../../common/utils/public-user.util';
 import { onColorFor } from '../../common/utils/color.util';
@@ -62,6 +62,11 @@ function isCdnPhoto(path: string | null, hosts: string[]): boolean {
 
 @Injectable()
 export class AuthService {
+  // The class had none, and the lockout alert below swallowed its failures with
+  // a bare `catch {}`. A security notice that silently fails to send is the one
+  // kind worth hearing about.
+  private readonly logger = new Logger(AuthService.name);
+
   private readonly loginWindowMs: number;
 
   constructor(
@@ -378,6 +383,8 @@ export class AuthService {
       throw new ConflictException('This Facebook account is already linked to another user');
     }
 
+    await this.assertProviderEmailMatches(userId, email, 'Facebook');
+
     await this.prisma.oauth_accounts.create({
       data: {
         userId,
@@ -437,6 +444,94 @@ export class AuthService {
    * `linkFacebook` has never compared them either, and a rule applying to one
    * provider and not the other is the asymmetry v2-8 set out to remove.
    */
+  /**
+   * A provider account may only be attached to an account with the **same
+   * address** (Rob, 2026-10-02).
+   *
+   * ## What this closes
+   *
+   * Linking used to compare nothing. The `email` the provider returned was
+   * stored on the `oauth_accounts` row and never checked against `users.email`,
+   * so the only question asked was whether that provider account was already
+   * attached to somebody else. Anyone holding a session on an account could
+   * therefore attach **their own** Google or Facebook account to it — and since
+   * sign-in resolves on `providerId` alone, with no password anywhere in that
+   * path, the link is a second permanent credential.
+   *
+   * That made it a persistence mechanism that survived the one gesture meant to
+   * end a compromise. An attacker with a stolen password signs in, links their
+   * own provider account, and when the owner resets the password — which now
+   * revokes every session — the attacker simply presses "Continue with Google"
+   * and is back in. Found by Rob asking whether a reset actually evicts somebody
+   * who authenticated before it.
+   *
+   * **Re-prompting for the password would not have fixed this**, which is worth
+   * recording because it is the obvious-looking answer: the attacker has the
+   * password, that is how they got in.
+   *
+   * ## The cost, accepted deliberately
+   *
+   * This reverses the reasoning that used to sit on `linkGoogle` — "people hold
+   * several Google addresses and connect whichever they sign in with". That is
+   * true and it is now refused: an account at `a@example.com` cannot link a
+   * Google account at `b@example.com`. The trade was made knowingly, because
+   * address ownership was being enforced at signup (where the provider address
+   * *becomes* the account address, so it is nearly redundant) and not when
+   * attaching a second credential to an account with history behind it.
+   *
+   * ## No address means no link
+   *
+   * Fails closed. Facebook does not always return an email — a user without a
+   * verified address, or one who declined the permission — and "nothing to
+   * compare" must not read as "allowed", or the rule has a hole exactly where
+   * somebody would aim for it by dropping the scope. A member in that position
+   * cannot link that provider, which is the honest consequence.
+   */
+  private async assertProviderEmailMatches(
+    userId: number,
+    providerEmail: string | null,
+    providerLabel: string,
+  ): Promise<void> {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (!providerEmail) {
+      throw new BadRequestException({
+        message:
+          `${providerLabel} did not share an email address, so it cannot be ` +
+          `connected to this account.`,
+        reason: 'provider_email_missing',
+      });
+    }
+
+    if (providerEmail.toLowerCase().trim() !== user.email.toLowerCase()) {
+      /**
+       * **Both addresses are named** (Rob, 2026-10-03). This message used to
+       * name neither, reasoning that echoing an address back was a needless
+       * disclosure -- but the audience here is the one person who just proved
+       * they control both: they are signed in to this account and have this
+       * moment authenticated with that provider account. Withholding the pair
+       * from them discloses nothing to anybody else and leaves the member
+       * guessing which of their addresses the provider actually used, which is
+       * precisely the thing they got wrong.
+       *
+       * `providerEmail` rides on the response so the Google redirect can carry
+       * it without this message being reassembled; see `linkFailureReason`.
+       */
+      throw new BadRequestException({
+        message:
+          `That ${providerLabel} account uses a different email address ` +
+          `(${providerEmail}) than this account (${user.email}). Connect the ` +
+          `${providerLabel} account with the same address.`,
+        reason: 'provider_email_mismatch',
+        providerEmail,
+      });
+    }
+  }
+
   async linkGoogle(userId: number, googleId: string, email: string | null): Promise<void> {
     const alreadyLinked = await this.prisma.oauth_accounts.findFirst({
       where: { provider: OAuthProvider.GOOGLE, providerId: googleId },
@@ -446,6 +541,8 @@ export class AuthService {
       if (alreadyLinked.userId === userId) return;
       throw new ConflictException('This Google account is already linked to another user');
     }
+
+    await this.assertProviderEmailMatches(userId, email, 'Google');
 
     await this.prisma.oauth_accounts.create({
       data: {
@@ -499,8 +596,24 @@ export class AuthService {
       toEmail: user.email,
       toName: user.fullName,
       subject: `${providerLabel} login removed from {{brand}}`,
+      category: EmailCategory.PROVIDER_DISCONNECTED,
       templateId: EmailTemplate.PROVIDER_DISCONNECTED,
       templateParams: { provider: providerLabel, name: user.fullName },
+      // The body is not optional just because a template id is supplied: that id
+      // is per-account configuration that may not exist, and without a fallback
+      // Brevo is called with no content at all and answers `missing_parameter`.
+      // This send spent weeks failing exactly that way (Rob, 2026-10-03).
+      htmlBody: `
+        <p>Hi ${user.fullName},</p>
+        <p>Your <strong>${providerLabel}</strong> login has been removed from your
+        {{brand}} account. You can still sign in with your email address and password.</p>
+        <p>If you did not do this, reset your password — that also signs out anyone
+        else who is still connected.</p>
+      `,
+      textBody:
+        `Hi ${user.fullName}, your ${providerLabel} login has been removed from your ` +
+        `{{brand}} account. You can still sign in with your email address and password. ` +
+        `If you did not do this, reset your password.`,
       userId,
     });
   }
@@ -570,8 +683,22 @@ export class AuthService {
                 toEmail: user.email,
                 toName: user.fullName,
                 subject: 'Your {{brand}} account has been deactivated',
+                category: EmailCategory.ACCOUNT_DELETED,
                 templateId: EmailTemplate.ACCOUNT_DELETED,
                 templateParams: { name: user.fullName },
+                // A body is required even with a templateId: the id is
+                // per-account configuration that may not exist, and Brevo is
+                // then called with no content at all. See brevo.service.ts.
+                htmlBody: `
+                  <p>Hi ${user.fullName},</p>
+                  <p>Your {{brand}} account has been deactivated and your personal
+                  details have been removed.</p>
+                  <p>If you did not ask for this, please get in touch.</p>
+                `,
+                textBody:
+                  `Hi ${user.fullName}, your {{brand}} account has been deactivated and ` +
+                  `your personal details have been removed. If you did not ask for this, ` +
+                  `please get in touch.`,
                 userId: user.id,
               });
             } catch {
@@ -982,6 +1109,7 @@ export class AuthService {
         toEmail: user.email,
         toName: user.fullName,
         subject: 'Security alert: your {{brand}} account has been locked',
+        category: EmailCategory.ACCOUNT_LOCKED,
         htmlBody: `
           <p>Hi ${user.fullName},</p>
           <p>We detected <strong>${attempts} failed login attempts</strong> on your {{brand}} account and have temporarily locked it.</p>
@@ -1083,6 +1211,7 @@ export class AuthService {
       toEmail: user.email,
       toName: user.fullName,
       subject: 'Reset your {{brand}} password',
+      category: EmailCategory.PASSWORD_RESET,
       htmlBody: `
         <h2>Password reset request</h2>
         <p>Hi ${user.fullName},</p>
@@ -1110,6 +1239,51 @@ export class AuthService {
       passwordResetToken: null,
       passwordResetExpiresAt: null,
     } });
+
+    // Every existing session dies with the old password.
+    //
+    // This is the whole point of a reset for the commonest case. Somebody who
+    // resets their password usually believes an account is compromised, and
+    // `JwtStrategy` checks `login_sessions.is_active` on every request -- which
+    // is what makes sessions revocable, and was doing nothing for the one
+    // gesture that most needs it. Before this, a stolen cookie kept working
+    // after the owner had locked the attacker out of the password, which is
+    // exactly backwards. Found by review, 2026-10-02.
+    //
+    // All of them, including any the owner holds elsewhere: they have just
+    // proved control of the mailbox and can sign in again with the new
+    // password, and "log me out everywhere" is the expected meaning of a reset.
+    await this.revokeAllSessions(user.id, 'user.password_reset');
+  }
+
+  /**
+   * Deactivates every live session for a user.
+   *
+   * `updateMany` rather than `update`: there is no unique key here and a user
+   * with no live session is an ordinary outcome, not a P2025. Audited, because
+   * the thing worth being able to reconstruct later is when somebody's sessions
+   * were cut and why.
+   */
+  private async revokeAllSessions(
+    userId: number,
+    action: string,
+    keepJti?: string,
+  ): Promise<void> {
+    const { count } = await this.prisma.login_sessions.updateMany({
+      where: {
+        userId,
+        isActive: true,
+        // `not` on a unique column rather than fetching ids first: one
+        // statement, and a missing jti simply spares nothing.
+        ...(keepJti ? { jwtJti: { not: keepJti } } : {}),
+      },
+      data: { isActive: false },
+    });
+    await this.auditService.log({
+      userId,
+      action,
+      metadata: { sessionsRevoked: count },
+    });
   }
 
   async setPassword(userId: number, email: string, newPassword: string): Promise<{ needsVerification: boolean }> {
@@ -1153,7 +1327,12 @@ export class AuthService {
     return { needsVerification: false };
   }
 
-  async changePassword(userId: number, currentPassword: string, newPassword: string): Promise<void> {
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+    keepJti?: string,
+  ): Promise<void> {
     const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user || !user.passwordHash) throw new BadRequestException('no_password');
 
@@ -1162,6 +1341,67 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, 12);
     await this.prisma.users.update({ where: { id: userId }, data: { passwordHash } });
+
+    // Every *other* session dies; this one survives.
+    //
+    // Deliberately different from a reset. Somebody changing their password
+    // proved the old one and is holding a working session, so signing them out
+    // of the tab they are in would be hostile for no gain. What a change should
+    // still do is evict anybody else holding a session minted under the old
+    // password -- which is the half that was missing.
+    await this.revokeAllSessions(userId, 'user.password_change', keepJti);
+
+    // And tell them it happened (Rob, 2026-10-02).
+    //
+    // A reset is self-announcing -- the member asked for it and the link came to
+    // their own mailbox -- but a change involved no mail at all, so somebody
+    // whose password was changed by a person holding their session had no signal
+    // whatsoever. This is the only notice that reaches an address an attacker
+    // does not control.
+    await this.sendPasswordChangedNotice(user);
+  }
+
+  /**
+   * "Your password was changed."
+   *
+   * Sent after the fact rather than as a confirmation step: the change has
+   * already happened and the point is that it reaches the mailbox even when the
+   * person who made it is not the owner. The body says what to do about it,
+   * which is the reset link -- that is what revokes every session, including
+   * whoever made the change.
+   *
+   * Never allowed to fail the request. The password is already changed and the
+   * sessions already revoked; a mail outage must not report that as an error and
+   * invite the member to try again.
+   */
+  private async sendPasswordChangedNotice(user: User): Promise<void> {
+    try {
+      const appUrl = await this.tenantResolution.baseUrlFor();
+      await this.emailService.sendNow({
+        toEmail: user.email,
+        toName: user.fullName,
+        subject: 'Your {{brand}} password was changed',
+        category: EmailCategory.PASSWORD_CHANGED,
+        htmlBody: `
+          <p>Hi ${user.fullName},</p>
+          <p>The password on your {{brand}} account was just changed, and anyone else
+          who was signed in has been signed out.</p>
+          <p>If this was you, there is nothing to do.</p>
+          <p>If it was not, <a href="${appUrl}/auth/forgot-password">reset your password
+          immediately</a> — that will sign out whoever made the change.</p>
+        `,
+        textBody:
+          `Hi ${user.fullName}, the password on your {{brand}} account was just changed, ` +
+          `and anyone else who was signed in has been signed out. If this was not you, ` +
+          `reset your password immediately at ${appUrl}/auth/forgot-password — that will ` +
+          `sign out whoever made the change.`,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Password changed for user ${user.id} but the notice could not be sent: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async sendVerificationEmail(user: User, token: string): Promise<void> {
@@ -1176,6 +1416,7 @@ export class AuthService {
       toEmail: user.email,
       toName: user.fullName,
       subject: 'Verify your {{brand}} email',
+      category: EmailCategory.EMAIL_VERIFICATION,
       htmlBody: `
         <h2>Welcome to {{brand}}!</h2>
         <p>Hi ${user.fullName},</p>

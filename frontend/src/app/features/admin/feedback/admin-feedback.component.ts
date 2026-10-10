@@ -16,6 +16,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { QuillModule } from 'ngx-quill';
 import { normalizeNbsp } from '../../../shared/utils/normalize-nbsp';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import {
   FeedbackService,
   FeedbackItem,
@@ -57,9 +58,15 @@ import {
           <span class="item-count"
             >{{ filtered().length }} item{{ filtered().length === 1 ? '' : 's' }}</span
           >
-          <button mat-stroked-button routerLink="/admin/releases/new">
-            <mat-icon>rocket_launch</mat-icon> New Release
-          </button>
+          <!-- Root tenant only, matching the nav and the route guard. This was
+               the third door into a deployment-wide screen and the one the nav
+               fix missed, so a community's admin still had a button for it
+               (Rob, 2026-10-03). -->
+          @if (brandConfig.isRoot()) {
+            <button mat-stroked-button routerLink="/admin/releases/new">
+              <mat-icon>rocket_launch</mat-icon> New Release
+            </button>
+          }
         </div>
       </div>
 
@@ -75,15 +82,14 @@ import {
           </mat-select>
         </mat-form-field>
 
-        <mat-form-field appearance="outline" class="filter-field">
-          <mat-label>Category</mat-label>
-          <mat-select [(ngModel)]="filterCategory" (ngModelChange)="applyFilter()">
-            <mat-option [value]="null">All categories</mat-option>
-            <mat-option value="bug">Bug</mat-option>
-            <mat-option value="feature_request">Feature Request</mat-option>
-            <mat-option value="comment">Comment</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <!--
+          The Category filter is gone (Rob, 2026-10-04): "category here doesn't
+          matter at the moment". This board takes comments only now, so the
+          control offered three values of which exactly one could ever match
+          anything new. The category is still on the row and still rendered as a
+          chip, so rows written before the split stay identifiable without a
+          filter that implies a choice nobody has.
+        -->
       </div>
 
       @if (loading()) {
@@ -144,6 +150,15 @@ import {
                   [class.truncated]="expandedId() !== item.id"
                   [innerHTML]="safeHtml(item.body)"
                 ></div>
+                @if (item.screenshots?.length) {
+                  <div class="fb-shots">
+                    @for (shot of item.screenshots; track shot) {
+                      <a [href]="shot" target="_blank" rel="noopener">
+                        <img class="fb-shot" [src]="shot" alt="Attachment" />
+                      </a>
+                    }
+                  </div>
+                }
                 <button mat-button class="expand-btn" (click)="toggleExpand(item.id)">
                   {{ expandedId() === item.id ? 'Show less' : 'Show more' }}
                 </button>
@@ -561,6 +576,9 @@ export class AdminFeedbackComponent implements OnInit {
   private readonly feedbackService = inject(FeedbackService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly snackBar = inject(MatSnackBar);
+  // Public: the template reads isRoot() to decide whether this community's
+  // admin is offered the deployment-wide releases screen at all.
+  readonly brandConfig = inject(BrandConfigService);
 
   readonly loading = signal(true);
   readonly savingId = signal<number | null>(null);
@@ -573,7 +591,7 @@ export class AdminFeedbackComponent implements OnInit {
   readonly itemNotes = signal<FeedbackNote[]>([]);
 
   filterStatus: FeedbackStatus | null = null;
-  filterCategory: string | null = null;
+
   newNoteContent = '';
   newNoteAdminOnly = false;
 
@@ -626,7 +644,6 @@ export class AdminFeedbackComponent implements OnInit {
   applyFilter(): void {
     let result = this.items();
     if (this.filterStatus) result = result.filter((i) => i.status === this.filterStatus);
-    if (this.filterCategory) result = result.filter((i) => i.category === this.filterCategory);
     this.filtered.set(result);
   }
 

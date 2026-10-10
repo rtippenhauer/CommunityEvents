@@ -312,6 +312,29 @@ export class BrevoService {
         this.logger.warn(`No Brevo template ID for ${payload.templateName}`);
         if (payload.htmlBody) body['htmlContent'] = payload.htmlBody;
         if (payload.textBody) body['textContent'] = payload.textBody;
+
+        // Nothing to send: no template id resolved and the caller supplied no
+        // body to fall back to.
+        //
+        // Refused here rather than handed to Brevo, which answers
+        // `missing_parameter: Either of htmlContent or textContent is required`
+        // -- an accurate message that says nothing about the cause. Three send
+        // sites shipped in this state (provider_disconnected and both
+        // account_deleted paths), each failing three times and settling as
+        // `failed` with a provider error that reads like a Brevo problem. Found
+        // by Rob on stage, 2026-10-03, reading a row in the new email log.
+        //
+        // A programming error, not a runtime condition: every templated send
+        // needs a body, because a template id is per-account configuration that
+        // may simply not exist. Thrown so it lands in the row's error message
+        // where somebody will see it.
+        if (!payload.htmlBody && !payload.textBody) {
+          throw new Error(
+            `Cannot send "${payload.templateName}": no Brevo template is configured for it ` +
+              `in this community, and the message carries no htmlBody or textBody to fall ` +
+              `back to. Give the send a body, or set its template id on Admin → Email.`,
+          );
+        }
       }
     } else {
       if (payload.htmlBody) body['htmlContent'] = payload.htmlBody;

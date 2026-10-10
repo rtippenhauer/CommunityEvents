@@ -7,6 +7,19 @@ automatically by `/v2-done` when a v2 item wraps, and by hand for ad hoc v2
 work in between. There is no `/v2-release` yet — Rob will trim this down
 into the actual 2.0 release copy by hand when that cutover happens.
 
+> **Never name a contributor in this file.**
+>
+> This text is imported by `release-notes-importer.service` into **every**
+> deployment, keyed by version — one blob of markdown, identical in every
+> community. A name written here is therefore fixed copy naming one community's
+> member to all the others, which is exactly the disclosure `system_reports` is
+> careful about everywhere else.
+>
+> Thanks are **data, not prose**: mark the report `shipped` with that version
+> (`PATCH /system/bugs/:id`), and each community renders its own line from the
+> link — the contributor by name at home, "a community member" everywhere else.
+> Nothing in the build enforces this, so it is a rule rather than a guard.
+
 ---
 
 ## Platform / data layer
@@ -727,3 +740,95 @@ second time.
 reverse proxy every request appeared to come from the proxy itself, which made
 the per-visitor rate limits act as one shared limit for the whole deployment
 rather than per person. Rate limiting is now per visitor as intended.
+
+## Accounts and sign-in
+
+**Connecting a Google or Facebook account now tells you both addresses when it
+refuses.** A provider account may only be connected to the account with the same
+email address, and the refusal used to say so without naming either — leaving
+you to guess which of your addresses the provider actually used. It now names
+the provider's address and this account's, so the mismatch is visible rather
+than inferred. Facebook's refusal also opens as a dialog now, the same as
+Google's, instead of a message that fades at the bottom of the page.
+
+## Updates and release notes
+
+**The thanks line now credits members from other communities too, without
+naming them.** Release notes are shared across every community on the
+deployment, but the people who asked for a change are not — so a note shipped on
+another community's suggestion previously thanked nobody at all. Those
+contributors are now counted and thanked as "a community member", while their
+own community still sees them by name. Members who marked their report private
+are unchanged: they were already thanked anonymously.
+
+**The release-note editor is now reachable only by the deployment operator.**
+Release notes apply to every community, so they were never a community's screen
+to edit — but any community's admin was still offered the link and could open
+the page, which then refused every action on it. The link is no longer shown
+and the page no longer opens.
+
+## Bugs and feature requests now reach the people who build the site
+
+**Bugs and feature requests now go to the developers; comments stay with your
+community.** A community's own Feedback board reaches that community's admins
+and stops there, which left no way at all to tell the people running the
+platform that something was broken or missing. Those two now have their own
+screen — **Bugs & requests**, next to your community's Feedback — and any member
+can use it, because the person who runs into a problem is usually the one it
+happened to.
+
+**Your community's Feedback board is now for comments about your community** —
+its venues, its schedule, how things are going. That is the part nobody outside
+your community ever sees, and it has not changed. The feedback form now points
+you at the right place rather than offering a Type menu whose options went to
+different audiences.
+
+**Reports written before this change stay exactly where they are.** They were
+written for your community's admins, so they remain yours and remain private to
+you; only new ones take the new route.
+
+**It is a shared board, and it says so.** Every community's administrators see
+the same list, so you can tell something is already reported instead of raising
+it again — and the form says plainly that other administrators will read it, so
+nothing personal should go in it. Your own community's Feedback board is still
+the private one, and nothing on it is shared. Reading the list is an
+administrator's view; reporting is open to everyone.
+
+**Who reported what stays with the community it came from.** Your own
+community sees the reporter's name; other communities see only "a member of
+another community", with no name, no role and no community named either. Only the
+developers see both, because answering a report means knowing who to answer.
+Only the developers can change a report's status, so nobody can edit anybody
+else's.
+
+**Demo communities are left out of this entirely**, in both directions — a demo
+is open to anyone who asks for one, and the board carries real communities'
+operational detail.
+
+## Telling us how a demo went
+
+**Demo communities now have their own short survey**, linked from the standing
+demo notice. A demo is deleted automatically within a week, but what gets
+written here is kept and read by the people building the platform, so a trial
+that ends still leaves something behind.
+
+It asks how it went overall, whether you would run your own community on this,
+what worked, what got in your way, and anything else. **Every question is
+optional** — answer one or all of them.
+
+**Your email address is kept with it**, so the team can follow up — the form
+says so before you write anything. It is the only detail that outlives the
+demo, and without it there would be no way to reply once the community is gone.
+
+## Screenshots on feedback and reports
+
+**You can attach screenshots to a feedback ticket or a platform report** — paste
+one anywhere on the page, or add a file, up to five. They are attachments on the
+ticket rather than pictures inside the description, so a long screenshot no
+longer counts against how much you are allowed to write, and a report that is
+mostly pictures is no longer rejected for being too short.
+
+Attachments appear as thumbnails that open full size, and a note on the form is
+worth repeating: **a screenshot shows everything on it**, so crop out member
+names and addresses before attaching one — the platform board is read by the
+administrators of every community.

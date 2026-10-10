@@ -9,6 +9,8 @@ import { moderatorGuard } from './moderator.guard';
 import { systemAdminGuard } from './system-admin.guard';
 import { unsavedChangesGuard, HasUnsavedChanges } from './unsaved-changes.guard';
 import { rootLandingGuard } from './root-landing.guard';
+import { rootTenantGuard } from './root-tenant.guard';
+import { nonDemoTenantGuard, demoFeedbackGuard } from './tenant-kind.guard';
 import { AuthService } from '../services/auth.service';
 import { BrandConfigService } from '../services/brand-config.service';
 
@@ -286,4 +288,99 @@ describe('route guards', () => {
     });
   });
 
+
+  /**
+   * The screens that operate something deployment-wide rather than one
+   * community. `adminGuard` alone was wrong for those: it asks what role
+   * somebody holds and nothing about where, so every community's admin was
+   * offered the Releases screen and could navigate to it. The API refused the
+   * calls, so the page simply broke -- which is how Rob found it.
+   */
+  describe('rootTenantGuard', () => {
+    function setup(isRoot: boolean) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          { provide: BrandConfigService, useValue: { isRoot: () => isRoot } },
+        ],
+      });
+    }
+
+    function run(): boolean | UrlTree {
+      return runGuard(rootTenantGuard as () => boolean | UrlTree);
+    }
+
+    it('admits the root tenant', () => {
+      setup(true);
+      expect(run()).toBe(true);
+    });
+
+    it("redirects another community's admin home", () => {
+      setup(false);
+      expect(run()).toBeInstanceOf(UrlTree);
+    });
+
+    // `isRoot` defaults to false until branding resolves, so an unresolved
+    // payload sends somebody home rather than into a screen that will 403.
+    it('fails closed', () => {
+      setup(false);
+      expect(run()).not.toBe(true);
+    });
+  });
+
+  /**
+   * The demo guards (v2-32).
+   *
+   * `demo.service` creates a demo's requester as an ADMIN, so `adminGuard`
+   * cannot tell a vetted operator of a real community from a stranger who
+   * filled in the demo form. These are what carry that distinction into the UI.
+   */
+  describe('nonDemoTenantGuard', () => {
+    function setup(isDemo: boolean) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          { provide: BrandConfigService, useValue: { isDemo: () => isDemo, isRoot: () => false } },
+        ],
+      });
+    }
+
+    it('admits a real community', () => {
+      setup(false);
+      expect(runGuard(nonDemoTenantGuard as () => boolean | UrlTree)).toBe(true);
+    });
+
+    it('turns a demo away from the shared bug board', () => {
+      setup(true);
+      expect(runGuard(nonDemoTenantGuard as () => boolean | UrlTree)).toBeInstanceOf(UrlTree);
+    });
+  });
+
+  describe('demoFeedbackGuard', () => {
+    function setup(isDemo: boolean, isRoot: boolean) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          { provide: BrandConfigService, useValue: { isDemo: () => isDemo, isRoot: () => isRoot } },
+        ],
+      });
+    }
+
+    // The visitor filling the form in, and the operator reading the answers.
+    it('admits a demo and the root tenant', () => {
+      setup(true, false);
+      expect(runGuard(demoFeedbackGuard as () => boolean | UrlTree)).toBe(true);
+      setup(false, true);
+      expect(runGuard(demoFeedbackGuard as () => boolean | UrlTree)).toBe(true);
+    });
+
+    // A real community has its own feedback board and nothing to say about a demo.
+    it('turns an ordinary community away', () => {
+      setup(false, false);
+      expect(runGuard(demoFeedbackGuard as () => boolean | UrlTree)).toBeInstanceOf(UrlTree);
+    });
+  });
 });

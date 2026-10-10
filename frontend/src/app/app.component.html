@@ -14,6 +14,11 @@
         deleted within a week.
       }
       Don't keep anything here you would mind losing.
+      <!-- The one route into the demo's feedback form (v2-32). It lives here
+           rather than in the admin menu because the person we want to hear
+           from is the visitor, and the visitor is not looking for an admin
+           screen -- they are reading this banner. -->
+      <a class="demo-banner-link" routerLink="/demo/feedback">Tell us what you think</a>
     </span>
   </div>
 }
@@ -93,6 +98,15 @@
           <a mat-list-item routerLink="/feedback" (click)="sidenav.close()">
             <mat-icon matListItemIcon>feedback</mat-icon> Feedback
           </a>
+          <!-- v2-32. Deliberately next to this community's own Feedback and
+               NOT inside the admin section: any member may report a platform
+               problem, because the person who hit it is usually the member it
+               happened to. Hidden on a demo, at both ends. -->
+          @if (!brandConfig.isDemo()) {
+            <a mat-list-item routerLink="/system/bugs" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>bug_report</mat-icon> Bugs &amp; requests
+            </a>
+          }
         }
         <a mat-list-item routerLink="/updates" (click)="sidenav.close()">
           <mat-icon matListItemIcon>new_releases</mat-icon> What's New
@@ -153,6 +167,16 @@
             <a mat-list-item routerLink="/admin/tenants" (click)="sidenav.close()">
               <mat-icon matListItemIcon>domain</mat-icon> Communities
             </a>
+            <!-- The operator's own route to the shared board. It is also under
+                 Updates for every member, but an operator triaging reports
+                 looks here, next to the other deployment-level screens (Rob,
+                 2026-10-04). -->
+            <a mat-list-item routerLink="/system/bugs" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>bug_report</mat-icon> Bugs &amp; requests
+            </a>
+            <a mat-list-item routerLink="/demo/feedback" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>reviews</mat-icon> Demo feedback
+            </a>
           }
 
           <mat-divider />
@@ -179,7 +203,9 @@
             <mat-icon matListItemIcon>flag</mat-icon> Moderation
           </a>
 
-          @if (isAdmin()) {
+          <!-- Root tenant only, as on the desktop menu: deployment-wide notes
+               are the operator's screen, not a community's. -->
+          @if (isAdmin() && brandConfig.isRoot()) {
             <mat-divider />
             <div class="sidenav-section-label">Releases</div>
             <a mat-list-item routerLink="/admin/releases/new" (click)="sidenav.close()">
@@ -291,6 +317,14 @@
                   <a mat-menu-item routerLink="/feedback">
                     <mat-icon>feedback</mat-icon> Feedback
                   </a>
+                  <!-- v2-32. Next to this community's own Feedback rather than
+                       in the admin menu: any member may report a platform
+                       problem. The shared board behind it stays admin-read. -->
+                  @if (!brandConfig.isDemo()) {
+                    <a mat-menu-item routerLink="/system/bugs">
+                      <mat-icon>bug_report</mat-icon> Bugs &amp; requests
+                    </a>
+                  }
                 }
                 <a mat-menu-item routerLink="/updates">
                   <mat-icon>new_releases</mat-icon> What's New
@@ -327,7 +361,9 @@
                   <span class="nav-badge menu-badge">{{ feedbackService.unseenCount() }}</span>
                 }
               </button>
-              @if (isAdmin()) {
+              <!-- Root tenant only: the release notes are deployment-wide, so
+                   this is the operator's screen rather than a community's. -->
+              @if (isAdmin() && brandConfig.isRoot()) {
                 <a mat-menu-item routerLink="/admin/releases/new">
                   <mat-icon>rocket_launch</mat-icon> Releases
                 </a>
@@ -380,6 +416,12 @@
                 <mat-divider />
                 <a mat-menu-item routerLink="/admin/tenants">
                   <mat-icon>domain</mat-icon> Communities
+                </a>
+                <a mat-menu-item routerLink="/system/bugs">
+                  <mat-icon>bug_report</mat-icon> Bugs &amp; requests
+                </a>
+                <a mat-menu-item routerLink="/demo/feedback">
+                  <mat-icon>reviews</mat-icon> Demo feedback
                 </a>
               }
             </mat-menu>

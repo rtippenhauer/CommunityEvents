@@ -310,15 +310,28 @@ export class AuthController {
           this.authService.linkGoogle(state.linkUserId!, profile.id, email),
         );
       } catch (err) {
-        // The commonest failure by far is this Google account already being
-        // attached to somebody else in this community, which is a conflict
-        // rather than a fault -- reported on the settings screen, where the
-        // member can see which account is connected.
-        const conflict = err instanceof ConflictException;
-        if (!conflict) {
+        // Three outcomes the member can act on, and one that is ours to fix.
+        //
+        //  taken     -- already attached to somebody else in this community
+        //  mismatch  -- a different address than this account's; a provider
+        //               account may only be linked to the account with the same
+        //               address (see assertProviderEmailMatches)
+        //  no_email  -- the provider shared no address, so there is nothing to
+        //               match and the link is refused
+        //
+        // Each is a conflict rather than a fault, so none of them is logged as
+        // an error; anything else is, because it means something broke.
+        const { reason, providerEmail } = linkFailureReason(err);
+        if (reason === 'failed') {
           this.logger.error(`Google linking failed: ${(err as Error).message}`);
         }
-        res.redirect(`${linkBase}/account/settings?linked=google&error=${conflict ? 'taken' : 'failed'}`);
+        // Encoded, because an address contains characters the query string
+        // gives its own meaning to -- a `+` tag most of all, which would
+        // otherwise arrive as a space and name an address nobody owns.
+        const detail = providerEmail
+          ? `&providerEmail=${encodeURIComponent(providerEmail)}`
+          : '';
+        res.redirect(`${linkBase}/account/settings?linked=google&error=${reason}${detail}`);
         return;
       }
       res.redirect(`${linkBase}/account/settings?linked=google`);
@@ -710,8 +723,21 @@ export class AuthController {
   async changePassword(
     @Body() dto: ChangePasswordDto,
     @CurrentUser() user: User,
+    @Req() req: Request,
   ): Promise<{ message: string }> {
-    await this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    // The caller's own jti, so changing a password evicts every *other* session
+    // without signing the caller out of the tab they are in. Read the same way
+    // logout reads it.
+    const token = req.cookies?.['access_token'];
+    const payload = token
+      ? (this.authService['jwtService'].decode(token) as { jti?: string } | null)
+      : null;
+    await this.authService.changePassword(
+      user.id,
+      dto.currentPassword,
+      dto.newPassword,
+      payload?.jti,
+    );
     return { message: 'Password updated' };
   }
 
@@ -739,4 +765,51 @@ export class AuthController {
     this.clearStaleAccessTokenCookies(res);
     return { message: 'Logged out' };
   }
+}
+
+/**
+ * Turns a linking failure into the short code the settings screen reads from
+ * `?error=`.
+ *
+ * A separate function because the Google flow reports failures through a
+ * redirect rather than a response body -- there is nowhere to put an exception.
+ * The Facebook link is a POST and needs none of this: its `reason` reaches the
+ * client through GlobalExceptionFilter as it stands.
+ *
+ * Unknown shapes fall through to `failed`, which is the one value the caller
+ * logs as an error. Erring that way means a new refusal nobody mapped here
+ * shows up in the log rather than being quietly reported to the member as
+ * something they can fix.
+ */
+type LinkFailure = {
+  reason: 'taken' | 'mismatch' | 'no_email' | 'failed';
+  /**
+   * The address the provider returned, carried back only on a mismatch so the
+   * settings page can name both addresses (Rob, 2026-10-03).
+   *
+   * **Only the provider's address travels in the URL.** The account's own
+   * address is already in the browser's session, so the page composes the pair
+   * itself and the more identifying of the two never enters a redirect, an
+   * access log or a `Referer` header.
+   */
+  providerEmail?: string;
+};
+
+function linkFailureReason(err: unknown): LinkFailure {
+  if (err instanceof ConflictException) return { reason: 'taken' };
+  if (err instanceof BadRequestException) {
+    const response = err.getResponse();
+    const body =
+      typeof response === 'object' && response !== null
+        ? (response as { reason?: unknown; providerEmail?: unknown })
+        : {};
+    if (body.reason === 'provider_email_mismatch') {
+      return {
+        reason: 'mismatch',
+        providerEmail: typeof body.providerEmail === 'string' ? body.providerEmail : undefined,
+      };
+    }
+    if (body.reason === 'provider_email_missing') return { reason: 'no_email' };
+  }
+  return { reason: 'failed' };
 }

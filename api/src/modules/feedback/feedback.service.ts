@@ -58,6 +58,9 @@ export class FeedbackService {
         category: dto.category,
         body: sanitizeHtml(dto.body, ALLOWED_HTML),
         isPrivate: dto.isPrivate ?? false,
+        // Null rather than [] when there are none: the common case costs
+        // nothing and reads as absent rather than empty.
+        screenshots: dto.screenshots?.length ? dto.screenshots : undefined,
       },
     });
   }

@@ -8,12 +8,110 @@ import type {
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailProvider, EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
-import { EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
+import { EmailCategory, EmailCategoryName, EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
 import { BrevoService, EmailAttachment } from './brevo.service';
 import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { AppConfigService } from '../app-config/app-config.service';
-import { currentTenantId } from '../../common/tenant/tenant-store';
+import { currentTenantId, requireTenantId } from '../../common/tenant/tenant-store';
 import { emailPalette } from '../../common/utils/color.util';
+import { EmailLogQueryDto } from './dto/email-log-query.dto';
+
+/**
+ * One row of the email log (v2-31).
+ *
+ * Everything the list renders, and nothing it does not: `htmlBody`, `textBody`
+ * and `templateParams` are absent on purpose, because they are most of the
+ * table's bytes and none of its searchable surface. `EmailLogContent` carries
+ * them for the single row somebody expands.
+ */
+export type EmailLogRow = Omit<
+  EmailQueueRow,
+  'htmlBody' | 'textBody' | 'templateParams' | 'tenantId' | 'bodyClearedAt'
+>;
+
+export interface EmailLogPage {
+  rows: EmailLogRow[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  /**
+   * How many messages this community holds in each status, **ignoring the
+   * filters and the page**.
+   *
+   * Needed because the screen's "Retry failed" button and its counts used to be
+   * derived from the loaded rows, which was correct only while every row was
+   * loaded. Under pagination that silently becomes "failed on this page",
+   * so a second page of failures would report none and the button would
+   * disappear with work still outstanding.
+   */
+  counts: Record<string, number>;
+  usage: EmailLogUsage;
+}
+
+/**
+ * How much this community's email log is actually read (Rob, 2026-10-03).
+ *
+ * Bodies are cleared at 30 days; whether the rows themselves should go at 6 or
+ * 12 months is deliberately undecided, and this is the evidence for deciding it
+ * later. `deepestAgeDays` is the column that answers the question -- if nobody
+ * has opened anything older than a month, six months is plainly safe.
+ */
+export interface EmailLogUsage {
+  /** Days in the last 90 on which somebody opened the log. */
+  daysReviewed: number;
+  /** Requests for the list, all time. Filter changes and search keystrokes included. */
+  views: number;
+  /** Age in days of the oldest message anybody has scrolled to, ever. */
+  deepestAgeDays: number;
+
+  /**
+   * Rows expanded to read the body, all time, and how far back that reached.
+   *
+   * The stronger of the two signals, and the one a retention window should be
+   * decided on: scrolling past a message says nothing, opening it says somebody
+   * needed it.
+   */
+  opens: number;
+  deepestOpenAgeDays: number;
+
+  lastReviewedAt: Date | null;
+}
+
+export interface EmailLogContent {
+  id: number;
+  templateParams: Prisma.JsonValue | null;
+  htmlBody: string | null;
+  textBody: string | null;
+}
+
+/**
+ * Widens a bare `YYYY-MM-DD` to the end of that same UTC day, so an inclusive
+ * `to` date includes the day it names.
+ *
+ * Without this, `to=2026-10-02` parses as that day's midnight and excludes
+ * everything sent during it — a filter that looks like it works while quietly
+ * dropping the most recent day, which is the day somebody filtering by date is
+ * usually asking about.
+ *
+ * **UTC throughout, and the UI does not rely on it.** `setUTCHours` to match
+ * how `new Date('YYYY-MM-DD')` parsed it; reading the string as UTC and then
+ * setting local hours would shift the bound by the server's offset, which is
+ * the bug this comment replaced. The admin screen sends full ISO instants from
+ * its date picker, converted from the viewer's own midnight, so the only caller
+ * that sees the date-only rule is a human querying by hand.
+ *
+ * Deliberately **not** `quotaDayStart`. That names the instant a *provider's*
+ * allowance resets, which is a different question from which messages a reader
+ * wants to see — borrowing it would make this screen a second, disagreeing
+ * answer to "when does a day begin".
+ */
+function endOfDayIfDateOnly(value: string): Date {
+  const parsed = new Date(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return parsed;
+  parsed.setUTCHours(23, 59, 59, 999);
+  return parsed;
+}
 
 /**
  * The placeholder every email writes instead of a hard-coded product name.
@@ -46,6 +144,11 @@ export interface QueueEmailDto {
   toName?: string | null;
   subject: string;
   templateId?: EmailTemplateName;
+  /**
+   * Why this message exists, for the admin log. Inert -- nothing branches on it.
+   * Omitted means `other`, which is honest rather than a guess.
+   */
+  category?: EmailCategoryName;
   templateParams?: Record<string, unknown>;
   htmlBody?: string | null;
   textBody?: string | null;
@@ -62,6 +165,8 @@ export class EmailService {
   private readonly suppressionSalt: string;
   /** The zone the provider's daily allowance resets in. See quota-day.ts. */
   private readonly quotaTimeZone: string;
+  /** How long a sent message's rendered body is kept. See clearOldBodies. */
+  private readonly bodyRetentionDays: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -76,6 +181,12 @@ export class EmailService {
     this.quotaTimeZone = resolveQuotaTimeZone(
       this.config.get<string>('EMAIL_QUOTA_TIMEZONE'),
     ).timeZone;
+    // 30 days by default (Rob, 2026-10-03). A floor of 1 rather than 0: a value
+    // of zero would clear a body the moment it was written, which is a
+    // misconfiguration that destroys data silently rather than an opt-out.
+    const configured = Number(this.config.get<string>('EMAIL_BODY_RETENTION_DAYS', '30'));
+    this.bodyRetentionDays =
+      Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : 30;
   }
 
   private hashEmail(email: string): string {
@@ -297,6 +408,10 @@ export class EmailService {
         toName: dto.toName ?? null,
         subject: dto.subject,
         templateId: dto.templateId ?? null,
+        // `other` rather than NULL for anything written from here on: NULL means
+        // "this row predates the column", and conflating the two would make the
+        // log's Unknown rows grow forever instead of shrinking.
+        category: dto.category ?? EmailCategory.OTHER,
         // Nullable Json column: Prisma separates a SQL NULL from a JSON null,
         // and DbNull is what the entity wrote.
         templateParams: (dto.templateParams as Prisma.InputJsonValue) ?? Prisma.DbNull,
@@ -419,6 +534,7 @@ export class EmailService {
           toName: dto.toName ?? null,
           subject: dto.subject,
           templateId: dto.templateId ?? null,
+          category: dto.category ?? EmailCategory.OTHER,
           templateParams: (dto.templateParams as Prisma.InputJsonValue) ?? Prisma.DbNull,
           htmlBody: dto.htmlBody ?? null,
           textBody: dto.textBody ?? null,
@@ -435,11 +551,347 @@ export class EmailService {
     }
   }
 
-  async getQueue(limit = 100): Promise<EmailQueueRow[]> {
-    return this.prisma.email_queue.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: limit,
+  /**
+   * The email log: everything this community has sent or tried to (v2-31).
+   *
+   * Replaces `getQueue`, which was `findMany({ orderBy: createdAt desc, take:
+   * 100 })` — every status, which was right, but a hard cap of a hundred rows
+   * with no search, which meant "did this member get their invite" stopped
+   * being answerable after a day or two of real volume. That is the only
+   * question this screen exists to answer.
+   *
+   * **Bodies and template params are deliberately not selected.** `html_body`
+   * is LongText, so sending it for every row made the list heavy in proportion
+   * to the mail rather than to the page, and nothing on the list renders it.
+   * `getLogEntry` fetches them for the one row somebody expands. `hasContent`
+   * is computed here so the UI can say whether expanding will show anything
+   * without fetching it first.
+   *
+   * Pagination is offset-based rather than cursor-based: the screen has numbered
+   * pages and a "jump to the end" affordance, which a cursor cannot express, and
+   * the index added in this item makes the offset scan cheap enough at the
+   * volumes a single community reaches.
+   */
+  async getLog(query: EmailLogQueryDto): Promise<EmailLogPage> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 50;
+
+    const where = this.buildLogWhere(query);
+
+    // Counted in the same round trip. The total is what draws the paginator,
+    // and fetching it separately would let the two disagree about a log that is
+    // being written to while it is read.
+    const [rows, total, byStatus] = await Promise.all([
+      this.prisma.email_queue.findMany({
+        where,
+        // `id` is not decoration -- it is what makes paging correct.
+        //
+        // `created_at` is DATETIME(0), so it has whole-second precision, and a
+        // fan-out writes one row per member inside a single second: an event
+        // reminder to eighty people is eighty rows sharing a timestamp. Ordering
+        // by that column alone leaves those ties in whatever order the engine
+        // chooses, and an unstable order under OFFSET/LIMIT does not merely look
+        // untidy -- a row can appear on two consecutive pages while another is
+        // skipped entirely, so scanning the log after a bulk send silently
+        // misses messages.
+        //
+        // `id` is unique and monotonic with insertion, so it makes the order
+        // total. It costs nothing: InnoDB carries the primary key in every
+        // secondary index, so `(tenant_id, created_at)` already sorts by id
+        // within a timestamp.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          toEmail: true,
+          toName: true,
+          subject: true,
+          templateId: true,
+          category: true,
+          status: true,
+          provider: true,
+          attempts: true,
+          priority: true,
+          lastAttemptAt: true,
+          errorMessage: true,
+          brevoStatus: true,
+          sendAfter: true,
+          sentAt: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.email_queue.count({ where }),
+      // Unfiltered on purpose -- see `counts`. One grouped query, so it costs a
+      // single index scan rather than one count per status.
+      this.prisma.email_queue.groupBy({ by: ['status'], _count: { _all: true } }),
+    ]);
+
+    // Recorded before the response is shaped, and never allowed to fail the
+    // read: this is a statistic, and a screen that 500s because a counter could
+    // not be written would be a poor trade for it.
+    const oldest = rows.length > 0 ? rows[rows.length - 1].createdAt : null;
+    await this.recordLogView(oldest);
+
+    // No `hasContent` flag. Prisma cannot select "is this LongText column
+    // non-empty" without reading it, and the honest alternatives were guessing
+    // from `templateId` or sending the bodies after all. The detail fetch says
+    // what is there, and the screen already has an empty state for a message
+    // whose content was never stored -- a provider-template send stores none.
+    return {
+      rows,
+      total,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(total / limit)),
+      // Every status present as a key, including the ones with no rows, so the
+      // screen can render "0 failed" rather than having to treat a missing key
+      // as zero at each use.
+      usage: await this.readLogUsage(),
+      counts: Object.fromEntries([
+        ...Object.values(EmailQueueStatus).map((status) => [status, 0]),
+        ...byStatus.map((group) => [group.status, group._count._all]),
+      ]) as Record<string, number>,
+    };
+  }
+
+  /**
+   * The heavy half of one log entry, fetched when a row is expanded.
+   *
+   * Separate from the list for the reason above: these three columns are most
+   * of the table's bytes and none of its searchable surface. Scoped like every
+   * other read here, so one community cannot fetch another's message by id --
+   * the extension adds the predicate, and a wrong id reads as absent.
+   */
+  async getLogEntry(id: number): Promise<EmailLogContent | null> {
+    const row = await this.prisma.email_queue.findFirst({
+      where: { id },
+      select: {
+        id: true,
+        templateParams: true,
+        htmlBody: true,
+        textBody: true,
+        // Only to date the open; not returned to the caller.
+        createdAt: true,
+      },
     });
+    if (!row) return null;
+
+    const { createdAt, ...content } = row;
+    await this.recordLogOpen(createdAt);
+    return content;
+  }
+
+  /**
+   * Shared by the page and its count, so the two cannot drift apart and report
+   * a total that does not match the rows.
+   */
+  private buildLogWhere(query: EmailLogQueryDto): Prisma.email_queueWhereInput {
+    const where: Prisma.email_queueWhereInput = {};
+
+    if (query.status) where.status = query.status as EmailQueueStatus;
+    if (query.category) where.category = query.category;
+
+    if (query.q) {
+      // The three fields somebody actually remembers. MySQL's collation is
+      // case-insensitive, so no `mode: 'insensitive'` is needed -- and asking
+      // for it on MySQL is an error rather than a no-op.
+      where.OR = [
+        { toEmail: { contains: query.q } },
+        { toName: { contains: query.q } },
+        { subject: { contains: query.q } },
+      ];
+    }
+
+    const createdAt: Prisma.DateTimeFilter = {};
+    if (query.from) createdAt.gte = new Date(query.from);
+    // A bare `YYYY-MM-DD` parses as midnight, so an inclusive end date has to
+    // reach the end of that day -- otherwise "to: today" returns nothing sent
+    // today, which reads as a broken filter rather than an off-by-one.
+    if (query.to) createdAt.lte = endOfDayIfDateOnly(query.to);
+    if (createdAt.gte || createdAt.lte) where.createdAt = createdAt;
+
+    return where;
+  }
+
+
+
+  /**
+   * Notes that the log was read, and how far back the reader got.
+   *
+   * One row per community per day rather than one per request: the debounced
+   * search fires on every pause in typing, so a request-level record would be
+   * mostly noise, and the question this answers needs only daily granularity.
+   *
+   * **`deepest_age_days` is the column that matters.** "How often" says the
+   * screen is used; how far back anybody actually reached is what says which
+   * rows are safe to delete, which is the decision being deferred.
+   *
+   * Raw SQL for `ON DUPLICATE KEY UPDATE` with `GREATEST` -- Prisma's upsert
+   * cannot express "keep the larger of the two" -- and it therefore carries its
+   * own `tenant_id`, taken from `requireTenantId`, because raw SQL is not routed
+   * through the scoping extension.
+   *
+   * Swallows its own errors. Nothing a reader does should fail because a
+   * statistic could not be written.
+   */
+  private async recordLogView(oldestOnPage: Date | null): Promise<void> {
+    await this.bumpLogUsage({ views: 1, listAgeDays: this.ageInDays(oldestOnPage) });
+  }
+
+  /**
+   * Notes that a message was opened, and how old it was.
+   *
+   * Counted apart from list views because the two answer different questions.
+   * A list view happens on every filter change and every pause in typing; an
+   * open is somebody deciding they need *that* message. For "is it safe to
+   * delete rows older than six months", the opens are the evidence.
+   */
+  private async recordLogOpen(createdAt: Date): Promise<void> {
+    await this.bumpLogUsage({ opens: 1, openAgeDays: this.ageInDays(createdAt) });
+  }
+
+  /** Whole days, floored. Same-day is 0, which is honest rather than 1. */
+  private ageInDays(at: Date | null): number {
+    if (!at) return 0;
+    return Math.max(0, Math.floor((Date.now() - at.getTime()) / 86_400_000));
+  }
+
+  /**
+   * One row per community per day, updated in place.
+   *
+   * Raw SQL for `ON DUPLICATE KEY UPDATE ... GREATEST(...)`, which Prisma cannot
+   * express -- "keep the larger of the two" is the whole point of the depth
+   * columns. It therefore carries its own `tenant_id` from `requireTenantId`,
+   * because raw SQL is not routed through the scoping extension.
+   *
+   * Swallows its own errors. Nothing a reader does should fail because a
+   * statistic could not be written.
+   */
+  private async bumpLogUsage(delta: {
+    views?: number;
+    opens?: number;
+    listAgeDays?: number;
+    openAgeDays?: number;
+  }): Promise<void> {
+    try {
+      const tenantId = requireTenantId('recording that the email log was reviewed');
+      const now = new Date();
+      const views = delta.views ?? 0;
+      const opens = delta.opens ?? 0;
+      const listAge = delta.listAgeDays ?? 0;
+      const openAge = delta.openAgeDays ?? 0;
+
+      await this.prisma.$executeRaw`
+        INSERT INTO email_log_views
+          (tenant_id, viewed_on, views, opens, deepest_age_days, deepest_open_age_days, last_viewed_at)
+        VALUES (${tenantId}, CURDATE(), ${views}, ${opens}, ${listAge}, ${openAge}, ${now})
+        ON DUPLICATE KEY UPDATE
+          views = views + ${views},
+          opens = opens + ${opens},
+          deepest_age_days = GREATEST(deepest_age_days, ${listAge}),
+          deepest_open_age_days = GREATEST(deepest_open_age_days, ${openAge}),
+          last_viewed_at = ${now}
+      `;
+    } catch (err) {
+      this.logger.warn(
+        `Could not record email log usage: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * The usage summary shown under the log, so the retention decision can be
+   * made from the screen rather than from a SQL prompt later.
+   *
+   * 90 days for "how often" because that is a long enough habit to read
+   * something into, and all time for "how far back" because a single deep read
+   * is exactly the evidence that would make a short retention wrong.
+   */
+  private async readLogUsage(): Promise<EmailLogUsage> {
+    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const [recent, totals] = await Promise.all([
+      this.prisma.email_log_views.count({ where: { viewedOn: { gte: since } } }),
+      this.prisma.email_log_views.aggregate({
+        _sum: { views: true, opens: true },
+        _max: { deepestAgeDays: true, deepestOpenAgeDays: true, lastViewedAt: true },
+      }),
+    ]);
+
+    return {
+      daysReviewed: recent,
+      views: totals._sum.views ?? 0,
+      opens: totals._sum.opens ?? 0,
+      deepestAgeDays: totals._max.deepestAgeDays ?? 0,
+      deepestOpenAgeDays: totals._max.deepestOpenAgeDays ?? 0,
+      lastReviewedAt: totals._max.lastViewedAt ?? null,
+    };
+  }
+
+  /**
+   * Forgets this community's review history (Rob, 2026-10-03).
+   *
+   * There has to be a way to clear it, for the same reason the figures exist at
+   * all: they are evidence for a decision, and evidence gathered while somebody
+   * was poking at a new screen is not evidence about how the screen gets used.
+   * Starting the count again after a period of real use is the point.
+   *
+   * Scoped like every other read here, so one community cannot reset another's.
+   */
+  async clearLogUsage(): Promise<number> {
+    const { count } = await this.prisma.email_log_views.deleteMany({});
+    return count;
+  }
+
+  /**
+   * Clears the rendered body of messages older than the retention window
+   * (Rob, 2026-10-03).
+   *
+   * **The body goes; the row stays.** `html_body` is LongText and is most of
+   * what this table weighs, while the envelope -- who, what subject, when, what
+   * status -- is a few hundred bytes and is what the log is actually for.
+   * Keeping the row means "did we ever send Dana her invite, back in March" is
+   * still answerable a year later for almost nothing, while the part that costs
+   * real storage is gone after a month.
+   *
+   * If rows should disappear entirely instead, that is one more `deleteMany`
+   * here -- it was left out deliberately, because deleting the row destroys the
+   * only record that a message was ever sent, and nothing in this table can be
+   * reconstructed afterwards.
+   *
+   * Nothing prunes `email_queue` today, so this is the first thing that bounds
+   * it at all.
+   *
+   * **`bodyClearedAt` is what makes this idempotent.** An empty body is
+   * otherwise indistinguishable from a message that never had one -- a
+   * provider-template send stores none -- so without the marker the sweep would
+   * rewrite the same rows every night and report work it had not done.
+   *
+   * Pending and failed messages are left alone whatever their age: the
+   * dispatcher still intends to send them, and clearing the body would turn a
+   * retry into an empty email.
+   */
+  async clearOldBodies(
+    now = new Date(),
+    retentionDays = this.bodyRetentionDays,
+  ): Promise<number> {
+    const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+
+    const { count } = await this.prisma.email_queue.updateMany({
+      where: {
+        createdAt: { lt: cutoff },
+        bodyClearedAt: null,
+        // Only messages whose journey is over.
+        status: { in: [EmailQueueStatus.SENT, EmailQueueStatus.FAILED, EmailQueueStatus.CANCELLED] },
+      },
+      data: {
+        htmlBody: null,
+        textBody: null,
+        templateParams: Prisma.DbNull,
+        bodyClearedAt: now,
+      },
+    });
+    return count;
   }
 
   async cancelEmail(id: number): Promise<void> {

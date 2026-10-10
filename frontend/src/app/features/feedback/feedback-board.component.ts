@@ -46,7 +46,12 @@ const COMPLETED_STATUSES = new Set(['shipped', 'wont_fix', 'closed']);
       <div class="page-header">
         <div class="header-text">
           <h1>Feedback Board</h1>
-          <p class="subtitle">Upvote ideas, report bugs, and track what we're working on.</p>
+          <!-- Reworded 2026-10-04: bugs and feature requests are filed on the
+               platform board now, so telling people to report them here sends
+               them to a form that refuses them. -->
+          <p class="subtitle">
+            What your community is saying — upvote, discuss and track what's being worked on.
+          </p>
         </div>
         <div class="header-actions">
           <button mat-stroked-button routerLink="/updates">
@@ -59,12 +64,18 @@ const COMPLETED_STATUSES = new Set(['shipped', 'wont_fix', 'closed']);
       </div>
 
       <!-- Filter tabs -->
-      <mat-tab-group (selectedIndexChange)="onTabChange($event)" animationDuration="0">
-        <mat-tab label="All" />
-        <mat-tab label="Bugs" />
-        <mat-tab label="Features" />
-        <mat-tab label="Comments" />
-      </mat-tab-group>
+      <!--
+        The category tabs are gone (Rob, 2026-10-04). This board takes comments
+        only; bugs and feature requests are filed on the platform board, so
+        "Bugs" and "Features" were tabs that could never fill. Keeping them to
+        browse rows written before the split was the wrong trade -- three of the
+        four tabs described a boundary that no longer exists, which reads as the
+        feature being broken.
+
+        Pre-split rows are NOT hidden by this: with no filter the list shows
+        everything this community has, so they are still here and still
+        readable, just not filterable by a category nobody can choose any more.
+      -->
 
       <!-- Sort + completed toggle -->
       <div class="sort-bar">
@@ -425,13 +436,7 @@ export class FeedbackBoardComponent implements OnInit {
     () => this.allItems().filter((i) => COMPLETED_STATUSES.has(i.status)).length,
   );
 
-  private activeCategory: FeedbackCategory | undefined;
-  readonly tabCategories: (FeedbackCategory | undefined)[] = [
-    undefined,
-    'bug',
-    'feature_request',
-    'comment',
-  ];
+
 
   ngOnInit(): void {
     this.load();
@@ -451,18 +456,14 @@ export class FeedbackBoardComponent implements OnInit {
 
   private load(): void {
     this.loading.set(true);
-    this.feedbackService.getPublicList(this.activeCategory, this.sort()).subscribe({
+    // No category filter: this board is comments only, so every row belongs.
+    this.feedbackService.getPublicList(undefined, this.sort()).subscribe({
       next: (data) => {
         this.allItems.set(data);
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
     });
-  }
-
-  onTabChange(index: number): void {
-    this.activeCategory = this.tabCategories[index];
-    this.load();
   }
 
   setSort(s: 'newest' | 'upvotes'): void {

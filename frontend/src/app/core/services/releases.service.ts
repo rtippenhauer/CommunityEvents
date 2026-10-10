@@ -11,7 +11,14 @@ export interface Release {
   publishedAt: string | null;
   createdAt: string;
   author: { id: number; fullName: string };
+  /** Tickets from *this* community — the only ones the API will name. */
   linkedFeedback: FeedbackItem[];
+  /**
+   * How many linked tickets came from another community. The API deliberately
+   * sends a number and not ids or names: those members are credited by their
+   * own community, not by this one.
+   */
+  anonymousCredits?: number;
 }
 
 export interface CreateReleaseDto {

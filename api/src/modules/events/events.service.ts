@@ -34,6 +34,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { SetReservationDto } from './dto/set-reservation.dto';
 import { EmailService } from '../email/email.service';
+import { EmailCategory } from '../email/email.constants';
 import { CalendarService } from '../calendar/calendar.service';
 import { PointsService, SecretDinnerResync } from '../community/points.service';
 import { AchievementsService } from '../community/achievements.service';
@@ -567,6 +568,7 @@ export class EventsService {
     for (const rsvp of rsvps) {
       if (!rsvp.user?.email) continue;
       await this.emailService.queue({
+        category: EmailCategory.EVENT_CANCELLED,
         toEmail: rsvp.user.email,
         toName: rsvp.user.fullName,
         subject: `Cancelled: ${event.title}`,
@@ -582,6 +584,7 @@ export class EventsService {
       if (!link.recipientEmail) continue;
       const name = link.recipientName ?? link.recipientEmail;
       await this.emailService.queue({
+        category: EmailCategory.EVENT_CANCELLED,
         toEmail: link.recipientEmail,
         toName: name,
         subject: `Cancelled: ${event.title}`,
@@ -653,6 +656,7 @@ export class EventsService {
         rsvp.status === RsvpStatus.GOING,
       );
       await this.emailService.queue({
+        category: EmailCategory.EVENT_CHANGED,
         toEmail: rsvp.user.email,
         toName: rsvp.user.fullName,
         subject: `Updated: ${event.title}`,
@@ -679,6 +683,7 @@ export class EventsService {
           link.memberRsvp?.status === RsvpStatus.GOING,
         );
       await this.emailService.queue({
+        category: EmailCategory.EVENT_CHANGED,
         toEmail: link.recipientEmail,
         toName: name,
         subject: `Updated: ${event.title}`,
@@ -889,6 +894,7 @@ export class EventsService {
       );
 
       await this.emailService.sendNow({
+        category: EmailCategory.EVENT_PUBLISHED,
         toEmail: member.email,
         toName: member.fullName,
         subject: `${brandName} ${eventSingularLower} at ${event.locationName} — ${dateDisplay}`,
@@ -959,6 +965,7 @@ export class EventsService {
     );
 
     await this.emailService.sendNow({
+      category: EmailCategory.RSVP_CONFIRMATION,
       toEmail: user.email,
       toName: user.fullName,
       subject: `You're going to ${brandName} at ${event.locationName}!`,
@@ -1417,6 +1424,7 @@ export class EventsService {
       );
 
       void this.emailService.queue({
+        category: EmailCategory.EVENT_INVITE,
         toEmail: recipientEmail,
         toName: recipientName ?? undefined,
         subject: `You're invited to a ${brandName} ${eventSingularLower}!`,
@@ -1509,6 +1517,7 @@ export class EventsService {
     const photoUrl = event.location?.photos?.[0]?.filePath ?? null;
 
     await this.emailService.queue({
+      category: EmailCategory.GUEST_RSVP_CONFIRMATION,
       toEmail: email,
       toName: name,
       subject: `You're going to a ${brandName} ${eventSingularLower}!`,
@@ -1675,6 +1684,7 @@ export class EventsService {
     );
 
     await this.emailService.queue({
+      category: EmailCategory.EVENT_INVITE,
       toEmail: link.recipientEmail,
       toName: link.recipientName ?? undefined,
       subject: `You're invited to a ${brandName} ${eventSingularLower}!`,
@@ -1995,6 +2005,7 @@ export class EventsService {
 </html>`;
 
     await this.emailService.queue({
+      category: EmailCategory.RESERVATION_REQUEST,
       toEmail: recipientEmail,
       toName: recipientName,
       subject: `Action needed: make the reservation for ${event.title}`,
@@ -2223,6 +2234,7 @@ export class EventsService {
 </html>`;
 
     await this.emailService.queue({
+      category: EmailCategory.HEADCOUNT_UPDATE,
       toEmail: recipientEmail,
       toName: recipientName,
       subject: `Headcount update for ${event.title} — please call ${event.locationName}`,

@@ -6,12 +6,20 @@ import {
   signal,
   ChangeDetectionStrategy,
 } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+} from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { MatSelectModule } from '@angular/material/select';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -23,24 +31,82 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-interface EmailQueueItem {
+/**
+ * One row of the email log (v2-31).
+ *
+ * Bodies and template params are **not** here: `htmlBody` is LongText, so
+ * carrying it on every row made the response grow with the community's mail
+ * rather than with the page. `EmailLogContent` is fetched for the single row
+ * somebody expands.
+ */
+interface EmailLogRow {
   id: number;
   toEmail: string;
   toName: string | null;
   subject: string | null;
   templateId: string | null;
-  templateParams: Record<string, unknown> | null;
-  htmlBody: string | null;
-  textBody: string | null;
+  /** Why the message went out. Null on rows written before the column existed. */
+  category: string | null;
   status: string;
   provider: string | null;
   attempts: number;
+  priority: number;
   lastAttemptAt: string | null;
   errorMessage: string | null;
   brevoStatus: string | null;
-  scheduledAt: string | null;
+  sendAfter: string | null;
   sentAt: string | null;
   createdAt: string;
+}
+
+interface EmailLogUsage {
+  daysReviewed: number;
+  views: number;
+  deepestAgeDays: number;
+  /** Rows expanded to read the body — the stronger signal of the two. */
+  opens: number;
+  deepestOpenAgeDays: number;
+  lastReviewedAt: string | null;
+}
+
+interface EmailLogPage {
+  rows: EmailLogRow[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  /** Per-status totals for the whole community, ignoring filters and paging. */
+  counts: Record<string, number>;
+  usage: EmailLogUsage;
+}
+
+interface EmailLogContent {
+  id: number;
+  templateParams: Record<string, unknown> | null;
+  htmlBody: string | null;
+  textBody: string | null;
+}
+
+/**
+ * The viewer's own day, for the date filters.
+ *
+ * A `MatDatepicker` hands back a Date at local midnight of the chosen day,
+ * which is already the start; the end is the last instant of it. Both are sent
+ * as ISO instants, so the range an admin picks is the range in their own
+ * calendar day rather than in the server's — the API would read a bare
+ * `YYYY-MM-DD` as UTC, which is an hours-wide disagreement about "today" for
+ * anyone outside it.
+ */
+function startOfLocalDay(day: Date): Date {
+  const start = new Date(day);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function endOfLocalDay(day: Date): Date {
+  const end = new Date(day);
+  end.setHours(23, 59, 59, 999);
+  return end;
 }
 
 /**
@@ -123,6 +189,10 @@ interface EmailConfig {
     MatButtonModule,
     MatCardModule,
     MatChipsModule,
+    MatDialogModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    MatSelectModule,
     MatDividerModule,
     MatExpansionModule,
     MatFormFieldModule,
@@ -162,7 +232,7 @@ interface EmailConfig {
               >
                 <mat-icon>send</mat-icon> {{ flushing() ? 'Sending…' : 'Send Now' }}
               </button>
-              <button mat-icon-button (click)="loadQueue()" matTooltip="Refresh queue">
+              <button mat-icon-button (click)="loadLog()" matTooltip="Refresh queue">
                 <mat-icon>refresh</mat-icon>
               </button>
             </div>
@@ -453,16 +523,101 @@ interface EmailConfig {
           </mat-expansion-panel>
         </mat-accordion>
 
-        <!-- Queue -->
+        <!-- The log. Named for what it is: every message this community has
+             sent or tried to, with the queue visible inside it as two statuses
+             rather than as a separate screen. -->
         <mat-card>
           <mat-card-header>
-            <mat-card-title>Email Queue</mat-card-title>
+            <mat-card-title>Email Log</mat-card-title>
+            <mat-card-subtitle>
+              Everything this community has sent. {{ pendingCount() }} waiting,
+              {{ failedCount() }} failed.
+            </mat-card-subtitle>
           </mat-card-header>
           <mat-card-content>
+            <div class="log-filters">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field">
+                <mat-label>Search</mat-label>
+                <input
+                  matInput
+                  [value]="search()"
+                  (input)="onSearchInput($any($event.target).value)"
+                  placeholder="Recipient, name or subject"
+                />
+                <mat-icon matPrefix>search</mat-icon>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="status-field">
+                <mat-label>Status</mat-label>
+                <mat-select
+                  [value]="statusFilter()"
+                  (selectionChange)="statusFilter.set($event.value); applyFilters()"
+                >
+                  <mat-option value="">Any status</mat-option>
+                  <mat-option value="sent">Sent</mat-option>
+                  <mat-option value="pending">Pending</mat-option>
+                  <mat-option value="failed">Failed</mat-option>
+                  <mat-option value="cancelled">Cancelled</mat-option>
+                  <mat-option value="blocked">Blocked</mat-option>
+                </mat-select>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="status-field">
+                <mat-label>Type</mat-label>
+                <mat-select
+                  [value]="categoryFilter()"
+                  (selectionChange)="categoryFilter.set($event.value); applyFilters()"
+                >
+                  <mat-option value="">Any type</mat-option>
+                  @for (option of categoryOptions; track option.value) {
+                    <mat-option [value]="option.value">{{ option.label }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="date-field">
+                <mat-label>From</mat-label>
+                <input
+                  matInput
+                  [matDatepicker]="fromPicker"
+                  [value]="fromDate()"
+                  (dateChange)="fromDate.set($event.value); applyFilters()"
+                />
+                <mat-datepicker-toggle matIconSuffix [for]="fromPicker" />
+                <mat-datepicker #fromPicker />
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="date-field">
+                <mat-label>To</mat-label>
+                <input
+                  matInput
+                  [matDatepicker]="toPicker"
+                  [value]="toDate()"
+                  (dateChange)="toDate.set($event.value); applyFilters()"
+                />
+                <mat-datepicker-toggle matIconSuffix [for]="toPicker" />
+                <mat-datepicker #toPicker />
+              </mat-form-field>
+
+              @if (hasFilters()) {
+                <button mat-button (click)="clearFilters()">
+                  <mat-icon>clear</mat-icon> Clear
+                </button>
+              }
+            </div>
+
             @if (loading()) {
               <mat-spinner diameter="28" />
             } @else if (queue().length === 0) {
-              <p class="empty-state">Queue is empty.</p>
+              <!-- Two different nothings, and conflating them is how somebody
+                   concludes no mail was ever sent. -->
+              <p class="empty-state">
+                @if (hasFilters()) {
+                  No messages match those filters.
+                } @else {
+                  This community has not sent any email yet.
+                }
+              </p>
             } @else {
               <table mat-table [dataSource]="queue()" class="queue-table" multiTemplateDataRows>
                 <ng-container matColumnDef="status">
@@ -471,9 +626,12 @@ interface EmailConfig {
                     <mat-chip [class]="'chip-' + row.status">{{ row.status }}</mat-chip>
                   </td>
                 </ng-container>
-                <ng-container matColumnDef="template">
-                  <th mat-header-cell *matHeaderCellDef>Template</th>
-                  <td mat-cell *matCellDef="let row">{{ row.templateId ?? '—' }}</td>
+                <!-- "Why", not "which template". templateId is a dispatch
+                     instruction and was null on 17 of the 21 send sites, so the
+                     old Template column read "—" for almost everything. -->
+                <ng-container matColumnDef="category">
+                  <th mat-header-cell *matHeaderCellDef>Type</th>
+                  <td mat-cell *matCellDef="let row">{{ categoryLabel(row.category) }}</td>
                 </ng-container>
                 <ng-container matColumnDef="toEmail">
                   <th mat-header-cell *matHeaderCellDef>To</th>
@@ -535,29 +693,37 @@ interface EmailConfig {
                             ><strong class="detail-error">{{ row.errorMessage }}</strong>
                           </div>
                         }
-                        @if (row.templateParams) {
-                          <div class="detail-block">
-                            <span>Template params</span>
-                            <pre>{{ row.templateParams | json }}</pre>
-                          </div>
-                        }
-                        @if (row.htmlBody) {
-                          <div class="detail-block">
-                            <span>HTML body (source)</span>
-                            <pre class="detail-body">{{ row.htmlBody }}</pre>
-                          </div>
-                        }
-                        @if (row.textBody) {
-                          <div class="detail-block">
-                            <span>Text body</span>
-                            <pre class="detail-body">{{ row.textBody }}</pre>
-                          </div>
-                        }
-                        @if (!row.templateParams && !row.htmlBody && !row.textBody) {
-                          <p class="empty-state">
-                            No stored content for this email — it may have been sent via provider
-                            template only.
-                          </p>
+                        <!-- Content is fetched on expand rather than carried on
+                             every row: html_body is LongText, so including it in
+                             the list made the response grow with the community's
+                             mail instead of with the page. -->
+                        @if (loadingContent()) {
+                          <mat-spinner diameter="20" />
+                        } @else if (expandedContent(); as content) {
+                          @if (content.templateParams) {
+                            <div class="detail-block">
+                              <span>Template params</span>
+                              <pre>{{ content.templateParams | json }}</pre>
+                            </div>
+                          }
+                          @if (content.htmlBody) {
+                            <div class="detail-block">
+                              <span>HTML body (source)</span>
+                              <pre class="detail-body">{{ content.htmlBody }}</pre>
+                            </div>
+                          }
+                          @if (content.textBody) {
+                            <div class="detail-block">
+                              <span>Text body</span>
+                              <pre class="detail-body">{{ content.textBody }}</pre>
+                            </div>
+                          }
+                          @if (!content.templateParams && !content.htmlBody && !content.textBody) {
+                            <p class="empty-state">
+                              No stored content for this email — it may have been sent via provider
+                              template only.
+                            </p>
+                          }
                         }
                       </div>
                     }
@@ -571,6 +737,78 @@ interface EmailConfig {
                   class="detail-row"
                 ></tr>
               </table>
+
+              <!-- Hand-rolled rather than MatPaginator: the server owns the
+                   paging, so the component holds page/total already and
+                   MatPaginator would be a second copy of that state to keep in
+                   step. It also lets the range read in plain words. -->
+              @if (usageNote(); as note) {
+                <!-- Quiet on purpose: this exists to inform a retention decision
+                     later, not to be a feature anybody acts on today. -->
+                <p class="usage-note">
+                  {{ note }}
+                  <button mat-button class="usage-reset" (click)="clearUsage()">Reset</button>
+                  <button mat-button class="usage-reset" (click)="pruneBodies()" [disabled]="pruning()">
+                    Clear old bodies
+                  </button>
+                </p>
+              }
+
+              <div class="log-pager">
+                <span class="range">
+                  Showing {{ rangeStart() }}–{{ rangeEnd() }} of {{ total() }}
+                </span>
+
+                <mat-form-field appearance="outline" subscriptSizing="dynamic" class="size-field">
+                  <mat-label>Per page</mat-label>
+                  <mat-select [value]="pageSize()" (selectionChange)="setPageSize($event.value)">
+                    <mat-option [value]="25">25</mat-option>
+                    <mat-option [value]="50">50</mat-option>
+                    <mat-option [value]="100">100</mat-option>
+                    <mat-option [value]="200">200</mat-option>
+                  </mat-select>
+                </mat-form-field>
+
+                <div class="pager-buttons">
+                  <button
+                    mat-icon-button
+                    [disabled]="page() <= 1"
+                    (click)="goToPage(1)"
+                    matTooltip="First page"
+                    aria-label="First page"
+                  >
+                    <mat-icon>first_page</mat-icon>
+                  </button>
+                  <button
+                    mat-icon-button
+                    [disabled]="page() <= 1"
+                    (click)="goToPage(page() - 1)"
+                    matTooltip="Previous page"
+                    aria-label="Previous page"
+                  >
+                    <mat-icon>chevron_left</mat-icon>
+                  </button>
+                  <span class="page-of">Page {{ page() }} of {{ pages() }}</span>
+                  <button
+                    mat-icon-button
+                    [disabled]="page() >= pages()"
+                    (click)="goToPage(page() + 1)"
+                    matTooltip="Next page"
+                    aria-label="Next page"
+                  >
+                    <mat-icon>chevron_right</mat-icon>
+                  </button>
+                  <button
+                    mat-icon-button
+                    [disabled]="page() >= pages()"
+                    (click)="goToPage(pages())"
+                    matTooltip="Last page"
+                    aria-label="Last page"
+                  >
+                    <mat-icon>last_page</mat-icon>
+                  </button>
+                </div>
+              </div>
             }
           </mat-card-content>
         </mat-card>
@@ -727,6 +965,64 @@ interface EmailConfig {
       .queue-table {
         width: 100%;
       }
+
+      /* Wraps rather than scrolling sideways: four filters plus a Clear button
+         will not fit a phone in one row, and a horizontally scrolling filter bar
+         hides the controls it exists to offer. */
+      .log-filters {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .search-field {
+        flex: 1 1 240px;
+        min-width: 200px;
+      }
+      .status-field {
+        flex: 0 0 160px;
+      }
+      .date-field {
+        flex: 0 0 160px;
+      }
+
+      .log-pager {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .usage-reset {
+        min-width: 0 !important;
+        padding: 0 8px !important;
+        font-size: 12px !important;
+        line-height: 20px !important;
+      }
+      .usage-note {
+        margin: 12px 0 0;
+        font-size: 12px;
+        color: var(--ce-text-muted);
+      }
+      .log-pager .range {
+        font-size: 12.5px;
+        color: var(--ce-text-muted);
+      }
+      .size-field {
+        flex: 0 0 110px;
+      }
+      .pager-buttons {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .page-of {
+        font-size: 12.5px;
+        padding: 0 8px;
+        white-space: nowrap;
+      }
       .detail-row td {
         border-bottom-width: 1px;
         padding: 0 !important;
@@ -800,8 +1096,9 @@ export class AdminEmailComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
-  readonly queue = signal<EmailQueueItem[]>([]);
+  readonly queue = signal<EmailLogRow[]>([]);
   readonly config = signal<EmailConfig | null>(null);
   readonly loading = signal(false);
   readonly retrying = signal(false);
@@ -853,12 +1150,211 @@ export class AdminEmailComponent implements OnInit {
     return !!cfg && !cfg.brevoApiKeySet && !cfg.mayUseDeploymentCredentials;
   });
 
-  readonly failedCount = computed(() => this.queue().filter((e) => e.status === 'failed').length);
+  /**
+   * From the server, not from the loaded rows (v2-31).
+   *
+   * It used to be `queue().filter(...).length`, which was right only while every
+   * row was loaded. Under pagination that quietly becomes "failed on this page",
+   * so a second page of failures would report none and the Retry button would
+   * vanish with work still outstanding.
+   */
+  readonly failedCount = computed(() => this.counts()['failed'] ?? 0);
+  readonly pendingCount = computed(() => this.counts()['pending'] ?? 0);
+
   readonly expandedRowId = signal<number | null>(null);
+  /** The expanded row's body, fetched on demand and cached per row. */
+  readonly expandedContent = signal<EmailLogContent | null>(null);
+  readonly loadingContent = signal(false);
+
+  // ── The log's filters and page ──────────────────────────────────────────
+  // View state, not persisted: an admin opening this screen wants the whole log
+  // newest-first, not whatever they last searched for.
+  readonly search = signal('');
+  readonly statusFilter = signal<string>('');
+  readonly categoryFilter = signal<string>('');
+  readonly fromDate = signal<Date | null>(null);
+  readonly toDate = signal<Date | null>(null);
+  readonly page = signal(1);
+  readonly pageSize = signal(50);
+  readonly total = signal(0);
+  readonly pages = signal(1);
+  readonly counts = signal<Record<string, number>>({});
+  /**
+   * How much this log is actually read, shown so the retention decision can be
+   * made from the screen rather than from a SQL prompt. Bodies already clear at
+   * 30 days; whether the rows themselves should go at 6 or 12 months is
+   * deliberately open until there is evidence.
+   */
+  readonly usage = signal<EmailLogUsage | null>(null);
+  readonly pruning = signal(false);
+
+  /**
+   * Two sentences, because the two numbers answer different questions.
+   *
+   * Browsing says the screen is used. **Opening a message is what a retention
+   * window should be decided on** — scrolling past something says nothing,
+   * expanding it says somebody needed it. So the opens get their own sentence
+   * and their own depth.
+   */
+  readonly usageNote = computed<string | null>(() => {
+    const usage = this.usage();
+    if (!usage || usage.daysReviewed === 0) return null;
+
+    const days = usage.daysReviewed === 1 ? '1 day' : `${usage.daysReviewed} days`;
+    const browsed =
+      `Reviewed on ${days} in the last 90 (${usage.views} ` +
+      `${usage.views === 1 ? 'view' : 'views'}), reaching back ${this.ageWords(usage.deepestAgeDays)}.`;
+
+    const opened =
+      usage.opens === 0
+        ? 'No message has been opened to read its contents.'
+        : `${usage.opens} ${usage.opens === 1 ? 'message' : 'messages'} opened, ` +
+          `the oldest ${this.ageWords(usage.deepestOpenAgeDays)} old.`;
+
+    return `${browsed} ${opened}`;
+  });
+
+  /** "12 days", "a day", "today" — reads as prose in both sentences. */
+  private ageWords(days: number): string {
+    if (days <= 0) return 'today';
+    if (days === 1) return 'a day';
+    return `${days} days`;
+  }
+
+  /**
+   * Runs the retention sweep now instead of waiting for 04:00 UTC.
+   *
+   * Here because the migration that added the column cleared nothing -- a
+   * deployment upgrading into this keeps every old body until the first nightly
+   * run, and there is otherwise no way to see the sweep work.
+   */
+  pruneBodies(): void {
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        data: {
+          title: 'Clear old message bodies now?',
+          message:
+            'Clears the stored HTML of messages older than the retention window. The log ' +
+            'rows stay — who, what subject, when and what status are all kept — and nothing ' +
+            'still waiting to send is touched. This cannot be undone.',
+          confirmLabel: 'Clear',
+          confirmColor: 'warn',
+        } satisfies ConfirmDialogData,
+      })
+      .afterClosed()
+      .subscribe((confirmed?: boolean) => {
+        if (!confirmed) return;
+        this.pruning.set(true);
+        this.http.post<{ cleared: number }>('/api/v1/admin/email/log/prune', {}).subscribe({
+          next: (res) => {
+            this.pruning.set(false);
+            this.snackBar.open(
+              res.cleared === 0
+                ? 'Nothing was old enough to clear.'
+                : `Cleared the body of ${res.cleared} message(s).`,
+              'OK',
+              { duration: 4000 },
+            );
+            this.loadLog();
+          },
+          error: () => {
+            this.pruning.set(false);
+            this.snackBar.open('Could not clear old bodies', 'OK', { duration: 5000 });
+          },
+        });
+      });
+  }
+
+  clearUsage(): void {
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        data: {
+          title: 'Reset review tracking?',
+          message:
+            'Forgets how often this log has been reviewed and how far back. The messages ' +
+            'themselves are untouched. Worth doing once you have finished setting things up, ' +
+            'so the figures describe real use.',
+          confirmLabel: 'Reset',
+          confirmColor: 'warn',
+        } satisfies ConfirmDialogData,
+      })
+      .afterClosed()
+      .subscribe((confirmed?: boolean) => {
+        if (!confirmed) return;
+        this.http.delete('/api/v1/admin/email/log/usage').subscribe({
+          next: () => {
+            this.snackBar.open('Review tracking reset', 'OK', { duration: 3000 });
+            this.loadLog();
+          },
+          error: () => this.snackBar.open('Could not reset tracking', 'OK', { duration: 5000 }),
+        });
+      });
+  }
+
+  readonly hasFilters = computed(
+    () =>
+      !!this.search() ||
+      !!this.statusFilter() ||
+      !!this.categoryFilter() ||
+      !!this.fromDate() ||
+      !!this.toDate(),
+  );
+
+  /**
+   * The reasons a message gets sent, grouped the way an operator thinks about
+   * them rather than alphabetically.
+   *
+   * Kept in step with `EmailCategory` on the API by hand. A value the server
+   * knows and this list does not still displays correctly -- `categoryLabel`
+   * falls back to prettifying the raw value -- it just will not be offered as a
+   * filter, which is a missing convenience rather than a wrong answer.
+   */
+  readonly categoryOptions: ReadonlyArray<{ value: string; label: string }> = [
+    { value: 'invite', label: 'Invitation' },
+    { value: 'email_verification', label: 'Email verification' },
+    { value: 'password_reset', label: 'Password reset' },
+    { value: 'password_changed', label: 'Password changed' },
+    { value: 'account_locked', label: 'Account locked' },
+    { value: 'provider_disconnected', label: 'Login disconnected' },
+    { value: 'account_deleted', label: 'Account deleted' },
+    { value: 'account_deletion_warning', label: 'Deletion warning' },
+    { value: 'reengagement', label: 'Re-engagement' },
+    { value: 'event_invite', label: 'Event invitation' },
+    { value: 'event_published', label: 'Event published' },
+    { value: 'event_changed', label: 'Event changed' },
+    { value: 'event_cancelled', label: 'Event cancelled' },
+    { value: 'event_reminder', label: 'Event reminder' },
+    { value: 'rsvp_confirmation', label: 'RSVP confirmation' },
+    { value: 'guest_rsvp_confirmation', label: 'Guest RSVP confirmation' },
+    { value: 'reservation_request', label: 'Reservation request' },
+    { value: 'headcount_update', label: 'Headcount update' },
+    { value: 'demo_confirmation', label: 'Demo confirmation' },
+    { value: 'demo_ready', label: 'Demo ready' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  /**
+   * "Event cancelled", not "event_cancelled".
+   *
+   * A null means the row predates the column, and says so rather than showing a
+   * dash: "Unknown" is the honest answer to why that message was sent, and it is
+   * a set that only ever shrinks.
+   */
+  categoryLabel(category: string | null): string {
+    if (!category) return 'Unknown';
+    const known = this.categoryOptions.find((option) => option.value === category);
+    if (known) return known.label;
+    // A category the API added and this list has not caught up with.
+    const spaced = category.replace(/_/g, ' ');
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  }
+
+  /** Debounces typing, so a search is one request rather than one per keystroke. */
+  private searchDebounce?: ReturnType<typeof setTimeout>;
 
   readonly displayedColumns = [
     'status',
-    'template',
+    'category',
     'toEmail',
     'provider',
     'attempts',
@@ -924,7 +1420,7 @@ export class AdminEmailComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadConfig();
-    this.loadQueue();
+    this.loadLog();
     this.loadQuotaWindow();
   }
 
@@ -981,16 +1477,95 @@ export class AdminEmailComponent implements OnInit {
     });
   }
 
-  loadQueue(): void {
+  /**
+   * Fetches one page of the log with the current filters applied.
+   *
+   * **Dates are sent as full ISO instants**, converted from the picker's local
+   * midnight, rather than as `YYYY-MM-DD`. The API accepts both, but a bare date
+   * is interpreted in UTC there — sending instants means the range a viewer
+   * selects is the range in their own day, which is what they meant, and keeps
+   * the server from having to guess a timezone.
+   */
+  loadLog(): void {
     this.loading.set(true);
-    this.http.get<EmailQueueItem[]>('/api/v1/admin/email/queue').subscribe({
-      next: (q) => {
-        this.queue.set(q);
+
+    let params = new HttpParams()
+      .set('page', String(this.page()))
+      .set('limit', String(this.pageSize()));
+    const q = this.search().trim();
+    if (q) params = params.set('q', q);
+    if (this.statusFilter()) params = params.set('status', this.statusFilter());
+    if (this.categoryFilter()) params = params.set('category', this.categoryFilter());
+    const from = this.fromDate();
+    if (from) params = params.set('from', startOfLocalDay(from).toISOString());
+    const to = this.toDate();
+    if (to) params = params.set('to', endOfLocalDay(to).toISOString());
+
+    this.http.get<EmailLogPage>('/api/v1/admin/email/log', { params }).subscribe({
+      next: (res) => {
+        this.queue.set(res.rows);
+        this.total.set(res.total);
+        this.pages.set(res.pages);
+        this.counts.set(res.counts);
+        this.usage.set(res.usage);
+        // Clamp, so deleting the last row of the last page does not strand the
+        // viewer on an empty page past the end with no way back but the filters.
+        if (res.page > res.pages) {
+          this.page.set(res.pages);
+          this.loadLog();
+          return;
+        }
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
     });
   }
+
+  /** Typing re-queries after a pause, and always from page one. */
+  onSearchInput(value: string): void {
+    this.search.set(value);
+    clearTimeout(this.searchDebounce);
+    this.searchDebounce = setTimeout(() => {
+      this.page.set(1);
+      this.loadLog();
+    }, 300);
+  }
+
+  /** Any filter change resets to page one — page 4 of a new filter is nonsense. */
+  applyFilters(): void {
+    this.page.set(1);
+    this.loadLog();
+  }
+
+  clearFilters(): void {
+    this.search.set('');
+    this.statusFilter.set('');
+    this.categoryFilter.set('');
+    this.fromDate.set(null);
+    this.toDate.set(null);
+    this.page.set(1);
+    this.loadLog();
+  }
+
+  goToPage(page: number): void {
+    const target = Math.min(Math.max(1, page), this.pages());
+    if (target === this.page()) return;
+    this.page.set(target);
+    this.expandedRowId.set(null);
+    this.loadLog();
+  }
+
+  setPageSize(size: number): void {
+    this.pageSize.set(size);
+    this.page.set(1);
+    this.loadLog();
+  }
+
+  /** The 1-based range this page covers, for "showing 51–100 of 1,284". */
+  readonly rangeStart = computed(() =>
+    this.total() === 0 ? 0 : (this.page() - 1) * this.pageSize() + 1,
+  );
+  readonly rangeEnd = computed(() => Math.min(this.page() * this.pageSize(), this.total()));
 
   /** Clears a stored key, so the provider falls back to its env var. */
   removeKey(provider: 'brevo' | 'resend'): void {
@@ -1088,7 +1663,7 @@ export class AdminEmailComponent implements OnInit {
       next: () => {
         this.snackBar.open('Queue flushed', 'OK', { duration: 2000 });
         this.flushing.set(false);
-        this.loadQueue();
+        this.loadLog();
         // The counters and the account allowance both moved, or the button was
         // pressed precisely to find out that they had not. Either way the
         // numbers on screen are the point of pressing it.
@@ -1108,7 +1683,7 @@ export class AdminEmailComponent implements OnInit {
       next: (res) => {
         this.snackBar.open(`${res.retried} email(s) queued for retry`, 'OK', { duration: 3000 });
         this.retrying.set(false);
-        this.loadQueue();
+        this.loadLog();
       },
       error: () => {
         this.snackBar.open('Retry failed', 'OK', { duration: 3000 });
@@ -1117,15 +1692,41 @@ export class AdminEmailComponent implements OnInit {
     });
   }
 
+  /**
+   * Expands a row and fetches its stored content.
+   *
+   * The body is not in the list response, so it is fetched here — once per
+   * expand, which is the trade that keeps the list small. A failure leaves the
+   * row expanded with no content rather than closing it again: the envelope
+   * fields above are the useful part and are already on screen.
+   */
   toggleDetail(id: number): void {
-    this.expandedRowId.set(this.expandedRowId() === id ? null : id);
+    if (this.expandedRowId() === id) {
+      this.expandedRowId.set(null);
+      this.expandedContent.set(null);
+      return;
+    }
+
+    this.expandedRowId.set(id);
+    this.expandedContent.set(null);
+    this.loadingContent.set(true);
+    this.http.get<EmailLogContent>(`/api/v1/admin/email/log/${id}`).subscribe({
+      next: (content) => {
+        // Guard against a slow response for a row the admin has since collapsed
+        // or navigated away from, which would otherwise show one message's body
+        // under another's heading.
+        if (this.expandedRowId() === id) this.expandedContent.set(content);
+        this.loadingContent.set(false);
+      },
+      error: () => this.loadingContent.set(false),
+    });
   }
 
   cancelEmail(id: number): void {
     this.http.delete(`/api/v1/admin/email/${id}`).subscribe({
       next: () => {
         this.snackBar.open('Email cancelled', 'OK', { duration: 2000 });
-        this.loadQueue();
+        this.loadLog();
       },
       error: () => this.snackBar.open('Failed to cancel', 'OK', { duration: 3000 }),
     });

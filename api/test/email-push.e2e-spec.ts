@@ -346,11 +346,13 @@ describe('Email/Push Dispatch (e2e)', () => {
     });
   });
 
-  describe('GET /admin/email/queue, POST /admin/email/retry-failed, DELETE /admin/email/:id', () => {
+  describe('GET /admin/email/log, POST /admin/email/retry-failed, DELETE /admin/email/:id', () => {
+    // Renamed from `email/queue` in v2-31, and the shape changed with it: a
+    // paginated envelope rather than a bare array capped at 100 rows.
     it('lists queued emails for admin', async () => {
       await emailService.queue({ toEmail: 'listed@example.test', subject: 'Hi', htmlBody: '<p>hi</p>' });
-      const res = await request(server).get('/api/v1/admin/email/queue').set('Cookie', adminCookie).expect(200);
-      expect(res.body.some((e: { toEmail: string }) => e.toEmail === 'listed@example.test')).toBe(true);
+      const res = await request(server).get('/api/v1/admin/email/log').set('Cookie', adminCookie).expect(200);
+      expect(res.body.rows.some((e: { toEmail: string }) => e.toEmail === 'listed@example.test')).toBe(true);
     });
 
     it('retries failed emails, resetting them to pending', async () => {
@@ -374,7 +376,7 @@ describe('Email/Push Dispatch (e2e)', () => {
     });
 
     it('rejects a member reading the queue (admin-only)', async () => {
-      await request(server).get('/api/v1/admin/email/queue').set('Cookie', memberCookie).expect(403);
+      await request(server).get('/api/v1/admin/email/log').set('Cookie', memberCookie).expect(403);
     });
   });
 

@@ -51,3 +51,7 @@ Stage.env
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Playwright MCP browser output (screenshots, snapshots, console logs) —
+# scratch from driving a browser against a running site, never part of a build.
+.playwright-mcp/

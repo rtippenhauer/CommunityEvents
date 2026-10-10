@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
@@ -15,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { AdminService, AuditLogFilter } from './admin.service';
 import { EmailService } from '../email/email.service';
+import { EmailLogQueryDto } from '../email/dto/email-log-query.dto';
 import { EmailDispatcherService } from '../email/email-dispatcher.service';
 import { BrevoWebhookService } from '../email/brevo-webhook.service';
 import { BrevoService } from '../email/brevo.service';
@@ -166,10 +168,72 @@ export class AdminController {
     return this.adminService.getInviteLineage();
   }
 
-  @Get('email/queue')
+  /**
+   * The email log (v2-31).
+   *
+   * Was `email/queue` returning a bare array capped at 100 rows. Renamed
+   * because the name was the bug: it is the record of what this community has
+   * *sent*, not only of what is waiting, and the cap meant "did this member get
+   * their invite" stopped being answerable after a day or two of real volume.
+   *
+   * One route rather than a log route beside a queue route — pending and failed
+   * mail is this same table filtered by status, and two endpoints over one table
+   * is how the two drift.
+   */
+  @Get('email/log')
   @Roles(UserRole.ADMIN)
-  getEmailQueue() {
-    return this.emailService.getQueue();
+  getEmailLog(@Query() query: EmailLogQueryDto) {
+    return this.emailService.getLog(query);
+  }
+
+  /**
+   * One message's stored content, fetched when a row is expanded.
+   *
+   * Separate from the list because `html_body` is LongText: sending it with
+   * every row made the response grow with the community's mail rather than with
+   * the page.
+   */
+  /**
+   * Forgets this community's email-log review history.
+   *
+   * There has to be a way to reset it: the figures are evidence for a retention
+   * decision, and counts accumulated while somebody was poking at a new screen
+   * are not evidence about how it gets used.
+   */
+  /**
+   * Runs the body-retention sweep now, rather than at 04:00 UTC.
+   *
+   * The migration that added the column cleared nothing -- it could not, since
+   * clearing is a policy and not a schema change -- so a deployment upgrading
+   * into this carries every old body until the first nightly run. This is the
+   * button for not waiting, and it is also the only way to see the sweep work
+   * without ageing rows by hand.
+   *
+   * Scoped like every other read here, so it clears this community's mail and
+   * nobody else's -- unlike the cron, which deliberately sweeps all of them.
+   */
+  @Post('email/log/prune')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  async pruneEmailBodies(): Promise<{ cleared: number }> {
+    return { cleared: await this.emailService.clearOldBodies() };
+  }
+
+  @Delete('email/log/usage')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  async clearEmailLogUsage(): Promise<{ cleared: number }> {
+    return { cleared: await this.emailService.clearLogUsage() };
+  }
+
+  // Declared AFTER the usage route above: `:id` would otherwise match the
+  // literal "usage" and ParseIntPipe would 400 on it.
+  @Get('email/log/:id')
+  @Roles(UserRole.ADMIN)
+  async getEmailLogEntry(@Param('id', ParseIntPipe) id: number) {
+    const entry = await this.emailService.getLogEntry(id);
+    if (!entry) throw new NotFoundException('No such message');
+    return entry;
   }
 
   // Both endpoints answer through toEmailConfigView, which drops the two API

@@ -44,7 +44,7 @@ Two decisions bound it:
 
 | Order | Item | Why it is required |
 |---|---|---|
-| 1 | `/v2-done 14` | Housekeeping. Nothing depends on v2-14; it is only waiting on a stage sign-off. |
+| 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
 | 2 | **bugfix — dispatcher claim** | v2-27's first half, carved out. The dispatcher has no claim step and Admin → Send Now dispatches from a request, so it can double-send *today*. Hours of work, and a go-live blocker once real members are receiving real mail. |
 | 3 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
 | 4 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
@@ -2409,7 +2409,7 @@ removes the Facebook login id and leaves the rest standing.
 
 ### v2-31 — A real email log
 
-**Status:** In Progress (started 2026-10-02). Not a blocker, pulled forward by
+**Status:** Complete (2026-10-03). Not a blocker, pulled forward by
 Rob. Pairs with `v2-27` but is deliberately separate: that item is about the
 *send* path, this is the *read* path.
 
@@ -2440,3 +2440,180 @@ shape.
 recipient, subject, status or date, however long ago, without the row cap hiding
 it; pending and failed mail keeps its existing actions; retention is a decision
 that is written down rather than "forever by accident".
+
+---
+
+### v2-32 — A channel from a community to the operator
+
+**Status:** Complete (2026-10-09). Raised by Rob
+2026-10-03, who asked two questions the codebase answered "no" to: can a
+root-tenant admin get feedback about errors or issues with the site, and can a
+non-root admin send anything to the system admin.
+
+**Two tables, deliberately not one, and `feedback` is untouched.** Rob settled
+the shape on 2026-10-04: *"Feedback is always scoped."* A member wrote that
+having consented to their own community's admins reading it, and forwarding it
+to the operator would change the audience after the fact. What crosses a
+boundary is what its author wrote **in order to** cross one.
+
+#### Where the boundary sits (revised 2026-10-04)
+
+Rob moved it once more: **"Feature request and bug reports should be global and
+only general comments should be tenant scoped."**
+
+The line is *what the report is about*. A bug and a feature request are about
+the **product**, so both belong to whoever builds it and both are worth every
+community seeing. A general comment is about a **community** — its venues, its
+schedule, its people — and has no audience outside it.
+
+**This had to be a table boundary and could not be a column on `feedback`.**
+Scoping here is per *model*: a model is in `TENANT_SCOPED_MODELS` or
+`GLOBAL_MODELS` and the extension applies to all of it. That is deliberate — a
+predicate that applied to some rows of a table and not others is exactly the
+kind of isolation nobody can confirm by reading a query. So `system_bugs` was
+renamed `system_reports` and took a `category`, and `feedback` now refuses
+anything but `comment`.
+
+**Existing `feedback` rows are deliberately not moved.** Their authors wrote
+them inside a community, for that community's admins, before any of this
+existed. Migrating them would retroactively widen the audience of writing that
+was never offered a choice about it. They stay where they are, stay readable
+there, and `feedback_category` keeps all three values because it still
+describes them.
+
+#### `system_reports` — the shared board
+
+Filed by any member of a non-demo community, read by the admins of every other
+non-demo community, triaged only by the system admin on the root tenant. Holds
+bugs and feature requests.
+
+**Demo communities are excluded at both ends, and this is the load-bearing
+guard.** `demo.service` creates a demo's requester as an `ADMIN`, so "any tenant
+admin" and "anybody who filled in the demo form" are the same set of people.
+Without `NonDemoTenantGuard`, every stranger who asked for a demo could read
+every defect report ever filed, free text included — the same privilege the
+v2-14 rewrite existed to remove. `RolesGuard` cannot see this distinction: it
+answers what a role may do, never who holds it.
+
+**Any member may file; only admins may read the board** (Rob, 2026-10-04). It
+was admins-only at first, on the argument that an admin can tell a platform
+defect from their own community's misconfiguration — true, and not a reason to
+refuse the report, since the person who hits a bug is usually the member it
+happened to and routing them through an admin loses the detail or the report.
+Reading stays with admins because the board carries every other community's
+operational detail in free text, which a member reporting their own experience
+has no need of.
+
+**The reporter is named to three audiences in three ways** (Rob, 2026-10-04):
+their own community sees the full name; another community sees "a member of
+another community" with **no community name either**, since naming it would
+disclose the deployment's customer list to anyone who obtains a tenant; the
+operator sees name and community both, because answering a report means knowing
+who hit it and where.
+
+**"Member", not "admin", in that middle line** — Rob caught this. "Admin" would
+be the more accurate word, and the accuracy is the problem: the role is
+information about another community's structure, and where that community has
+one or two admins it narrows the set far enough that timing could name the
+person. It is also the term the release credit line already uses. The operator's `admin_note` is never on anyone else's
+copy — it is where "duplicate of X" and "their DNS is wrong" get written.
+
+**The warning on the form names the audience, not just the destination.** Rob's
+first draft said it goes to the developer; under the visibility rule above that
+understates it, and somebody told "this goes to the developer" will write things
+they would never post to a shared board. The notice says every community's
+administrators can read it.
+
+#### `demo_feedback` — what a demo visitor thought
+
+Submitted inside a demo by its own admin (who is the visitor), read by them and
+by the operator, never by another community — the opposite audience from the
+board next door, which is why it is a second table rather than a flag on the
+first.
+
+**It is a survey, not a comment box** (Rob, 2026-10-04): an overall 1–5, whether
+they would run their own community on it (yes/maybe/no — three values because
+"maybe" is the commonest honest answer after a week and collapsing it loses the
+difference between nearly convinced and not), what worked, what got in the way,
+and anything else. One free-text box asked the visitor to work out for
+themselves what was worth saying, which is how a feedback form comes back empty
+or comes back "it was fine".
+
+**Every question is optional and at least one is required.** A survey that will
+not submit until one more box is filled is one that gets abandoned, and a
+partial answer from somebody who used the product for a week beats a complete
+answer from nobody. The rule lives in the service: the DTO cannot express
+"unless one of the others", and a database CHECK naming the columns would need
+rewriting whenever a question is added.
+
+**Global because a demo is deleted within a week.** `purgeTenantRows` erases
+every scoped row belonging to it, so a visitor's verdict written into the
+scoped `feedback` table would be destroyed at exactly the moment it became the
+only record of the trial. `demo_label` is written at submission time and is the
+only thing that still says which demo a surviving row came from.
+
+#### Every foreign key is `ON DELETE SET NULL`
+
+Both tables are global and point at the scoped `users` and `tenants`. A
+restrictive key would block `purgeTenantRows`, which walks only the scoped model
+list and so would never clear it — deleting a community would fail on a report one
+of its members filed years earlier. `tenant-scoped-models.spec` does not catch
+this: it checks scoped→scoped keys only. **`releases.created_by` is the same
+shape today** and is merely unreachable, since only root-tenant admins author
+releases and the root tenant cannot be deleted.
+
+#### What this unblocks
+
+The release credit line, which shipped in `25e70da` and was inert: the operator
+could only link resolved feedback from the root tenant, which has no members
+filing tickets. A bug filed here and linked to a release now credits its
+reporter **by name in their own community** and as "a community member"
+everywhere else — the rule Rob set on 2026-10-03.
+
+#### Confirmed on stage, both directions (2026-10-05)
+
+Not just in fixtures. Report #3 was filed by Rob in `stagertippenhauer`,
+marked `shipped` against release `2.0.0` by the automation account, and the
+same release then read:
+
+- **`stage.rtippenhauer.com`** — his full name;
+- **`stage.communityeventsproject.com`** — "a community member".
+
+One release row, one blob of imported markdown, two different thanks lines.
+That is the property the whole design exists for, and it is the one the e2e
+could only assert against a fixture.
+
+The API side was checked from root first (`linkedFeedback: []`,
+`anonymousCredits: 1`) before the UI confirmed it, so the anonymisation is
+known to happen in the payload rather than in the rendering.
+
+**Automation cannot publish a release**, deliberately — `ReleasesAdminController`
+admits it for drafts and unpublish only, and the member-facing `/releases` list
+filters to published. So the draft had to be published by hand before the
+Updates page would show any of this.
+
+#### Verified by breaking it
+
+The isolation holds **two independent ways**, found by sabotaging each in turn
+and watching the suite stay green: the author lookup runs through the *scoped*
+client, so another community's reporter returns no row at all, and the
+projection separately compares `reportedByTenantId` against the viewer's. Only
+with both removed does `never names the reporter to another community` fail —
+and it then fails printing `"fullName": "Root Admin"` into the other
+community's response.
+
+#### Still open
+
+- **The follow-up survey** Rob wants mailed before or just after a demo is
+  deleted. Deliberately not built: mailing somebody later means keeping an
+  address past the demo and past `demo_requests`' own seven-day window, which is
+  a retention decision to be made rather than inherited. Nothing stores one
+  today. Whoever builds it should know the send must happen from *outside* the
+  demo, since `sendingIsBlocked()` refuses mail on `is_demo` — which is already
+  how the confirmation mail works, being sent before the demo exists.
+- **No reply path.** The operator sets a status and writes a private note;
+  nothing is sent back to the reporter. `feedback_notes` is scoped and cannot
+  hold a conversation about a global row.
+
+**Not on the cutover path.** DinnerBears does not have this today, so going live
+without it is parity rather than regression — the test the running order uses.

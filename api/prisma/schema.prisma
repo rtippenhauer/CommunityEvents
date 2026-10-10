@@ -337,6 +337,37 @@ model demo_requests {
   @@index([ipAddress], map: "idx_demo_request_ip")
 }
 
+/// How often a community's email log is reviewed, and how far back (v2-31).
+///
+/// Evidence for a decision that is deliberately deferred: bodies are cleared at
+/// 30 days, but whether the rows should also go at 6 or 12 months should be
+/// answered by what anybody actually reads, not by a guess. `deepestAgeDays` is
+/// the column that answers it.
+///
+/// One row per community per day. A request-level record would be noise -- the
+/// debounced search fires on every pause in typing.
+model email_log_views {
+  id             Int      @id @default(autoincrement()) @db.UnsignedInt
+  tenantId       Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  viewedOn       DateTime @map("viewed_on") @db.Date
+  /// Requests for the list. Includes filter changes and search keystrokes, so
+  /// it measures "is this screen used" rather than "was this message needed".
+  views          Int      @default(0) @db.UnsignedInt
+  /// Rows expanded to read the body -- a deliberate act with one message behind
+  /// it, which is the stronger signal of the two.
+  opens          Int      @default(0) @db.UnsignedInt
+  /// Age, in days, of the oldest message reached on this day.
+  deepestAgeDays Int      @default(0) @map("deepest_age_days") @db.UnsignedInt
+  /// Age, in days, of the oldest message actually OPENED. This is the column a
+  /// retention window should be decided on.
+  deepestOpenAgeDays Int  @default(0) @map("deepest_open_age_days") @db.UnsignedInt
+  lastViewedAt   DateTime @map("last_viewed_at") @db.DateTime(0)
+  tenant         tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_log_views_tenant")
+
+  @@unique([tenantId, viewedOn], map: "uq_email_log_view_day")
+  @@index([tenantId], map: "idx_email_log_view_tenant")
+}
+
 model email_provider_config {
   id                        Int      @id @default(autoincrement()) @db.UnsignedInt
   brevoEnabled              Boolean  @default(true) @map("brevo_enabled")
@@ -419,6 +450,12 @@ model email_queue {
   subject        String                @db.VarChar(500)
   templateId     String?               @map("template_id") @db.VarChar(100)
   templateParams Json?                 @map("template_params")
+  /// **Why** this message went out, for the admin log. Deliberately separate
+  /// from `templateId`, which is a dispatch instruction (it picks a Brevo
+  /// template and a member's opt-out) -- overloading it would let a change to a
+  /// screen alter what a member receives. Nothing branches on this.
+  /// NULL on rows written before the column existed, shown as "Unknown".
+  category       String?               @db.VarChar(50)
   htmlBody       String?               @map("html_body") @db.LongText
   textBody       String?               @map("text_body") @db.Text
   priority       Int                   @default(5) @db.TinyInt
@@ -431,12 +468,22 @@ model email_queue {
   sendAfter      DateTime?             @map("send_after") @db.DateTime(0)
   createdAt      DateTime              @default(now()) @map("created_at") @db.DateTime(0)
   sentAt         DateTime?             @map("sent_at") @db.DateTime(0)
+  /// When the retention sweep cleared the rendered body. Needed for the sweep to
+  /// be idempotent: an empty body is otherwise indistinguishable from a message
+  /// that never had one, since a provider-template send stores none.
+  bodyClearedAt  DateTime?             @map("body_cleared_at") @db.DateTime(0)
   tenantId       Int                   @default(0) @map("tenant_id") @db.UnsignedInt
   tenant         tenants               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_queue_tenant")
 
   @@index([sendAfter], map: "idx_send_after")
   @@index([status, priority], map: "idx_status_priority")
   @@index([tenantId], map: "idx_email_queue_tenant")
+  /// The log's own index (v2-31). Every other index here serves the dispatcher
+  /// picking up work; this serves an operator reading history, which is scoped
+  /// to one community and ordered newest-first. `email_queue` only ever grows,
+  /// so without it each page is a filesort over the whole history.
+  @@index([tenantId, createdAt], map: "idx_email_queue_tenant_created")
+  @@index([tenantId, category, createdAt], map: "idx_email_queue_tenant_category")
 }
 
 model email_suppressions {
@@ -627,6 +674,19 @@ model feedback {
   adminNote        String?            @map("admin_note") @db.Text
   releaseNote      String?            @map("release_note") @db.VarChar(500)
   isPrivate        Boolean            @default(false) @map("is_private")
+  /// Attached images, as upload paths under `/api/uploads/feedback/`.
+  ///
+  /// **Attachments, not markup.** They used to be embedded in `body` by the
+  /// editor, which made a screenshot count against the body's 10,000-character
+  /// limit -- two of them blew past it and the submit failed, while a report
+  /// that was *only* screenshots failed the 10-character minimum. The size of a
+  /// picture has nothing to do with whether the description is long enough.
+  /// `system_reports` already treated them as files; this follows it.
+  ///
+  /// `Json` rather than text, so Prisma parses it: feedback rows are returned
+  /// straight to the client from several read paths, and a text column would
+  /// need decoding in each one.
+  screenshots      Json?
   upvoteCount      Int                @default(0) @map("upvote_count") @db.UnsignedInt
   seenAt           DateTime?          @map("seen_at") @db.DateTime(0)
   resolvedAt       DateTime?          @map("resolved_at") @db.DateTime(0)
@@ -1016,6 +1076,7 @@ model releases {
   createdAt                                  DateTime           @default(now()) @map("created_at") @db.DateTime(0)
   updatedAt                                  DateTime           @default(now()) @map("updated_at") @db.DateTime(0)
   release_feedback                           release_feedback[]
+  system_reports                             system_reports[]
   author                                     users              @relation("releases_created_byTousers", fields: [createdBy], references: [id], onUpdate: NoAction, map: "fk_release_author")
   users_users_last_seen_release_idToreleases users[]            @relation("users_last_seen_release_idToreleases")
 
@@ -1024,6 +1085,145 @@ model releases {
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// A defect report that crosses communities (v2-32).
+///
+/// **Global on purpose, and the only free-text table that is.** `feedback` is
+/// and stays tenant-scoped: a member wrote it having consented to their own
+/// community's admins reading it, and forwarding that to the deployment
+/// operator would change the audience after the fact. A bug report is consent
+/// given at the moment of writing, which is the only kind that holds -- so it
+/// is a separate object rather than a flag on `feedback` (Rob, 2026-10-04).
+///
+/// Filed by an admin of a **non-demo** community, readable by the admins of
+/// every other non-demo community, and actionable only by the system admin on
+/// the root tenant. Demo communities are excluded at both ends because
+/// `demo.service` makes every demo requester an admin, so "any tenant admin"
+/// would otherwise mean "any stranger who asked for a demo" -- the same
+/// privilege the v2-14 rewrite existed to remove.
+///
+/// ## Both foreign keys are SetNull, deliberately
+///
+/// This is a GLOBAL table pointing at the SCOPED `users` and `tenants`. A
+/// restrictive key there blocks `purgeTenantRows`, which walks only the scoped
+/// list and so would never clear it -- deleting a community would fail on a bug
+/// one of its admins filed years earlier. `tenant-scoped-models.spec` does not
+/// catch this, because it checks scoped->scoped keys only; `releases.created_by`
+/// is the same shape today and is merely unreachable, since only root-tenant
+/// admins author releases and the root tenant cannot be deleted.
+///
+/// Nulling is also the right meaning: the defect outlives the community that
+/// found it, and an orphaned report reads as "another community" to everyone,
+/// which is what it has become.
+/// What a demo visitor thought of the product (v2-32, Rob 2026-10-04).
+///
+/// Seen by the demo's own admin -- who is the visitor, since `demo.service`
+/// makes the requester an admin -- and by the system admin. Never by another
+/// community: this is the opposite audience from `system_bugs`, which is why
+/// it is a second table rather than a flag on the first.
+///
+/// ## Why it is global, which is the whole point
+///
+/// A demo is deleted after seven days or 48 idle hours, and `purgeTenantRows`
+/// erases every scoped row belonging to it. A demo's feedback written into the
+/// scoped `feedback` table would therefore be destroyed at exactly the moment it
+/// became the only thing left worth having -- the operator would be able to read
+/// it only while the visitor was still using the product, and never afterwards.
+///
+/// So the row is global and both foreign keys are SetNull, like `system_bugs`.
+///
+/// ## And why the demo is named here rather than joined to
+///
+/// `reported_by_tenant_id` goes NULL when the demo is purged, so a join would
+/// leave every surviving row attributed to nobody. `demo_label` is written at
+/// submission time and is the only thing that still says which demo this was.
+/// It holds the community's display name, never its host -- a demo host is
+/// derived and reused, so it would identify a *slot* rather than a visit.
+///
+/// **No contact detail is kept.** The follow-up survey Rob wants is a later
+/// phase and needs its own retention decision; storing an address here now
+/// would quietly outlive both the demo and `demo_requests`' own seven-day
+/// window, which is the kind of retention that should be chosen rather than
+/// inherited.
+model demo_feedback {
+  id                 Int       @id @default(autoincrement()) @db.UnsignedInt
+  /// "Anything else" -- nullable since v2-32's survey pass, because a visitor
+  /// who answers the structured questions and skips the box has still told us
+  /// something. The service requires at least one answer overall.
+  body               String?   @db.Text
+  /// 1-5 where the visitor gave one; the form does not require it.
+  rating             Int?      @db.UnsignedTinyInt
+  /// The question the whole survey exists to answer.
+  wouldUse           demo_would_use? @map("would_use")
+  whatWorked         String?   @map("what_worked") @db.Text
+  whatDidnt          String?   @map("what_didnt") @db.Text
+  /// The demo's own host label, which is unique per demo.
+  ///
+  /// **Not the brand name**, which is what this held until 2026-10-09 and was
+  /// the same string on every row: a demo is seeded from one fixture, so every
+  /// one of them is called "Riverside Community Events". It identified the
+  /// template, not the visit.
+  demoLabel          String    @map("demo_label") @db.VarChar(120)
+  /// The requester's address, kept so the team can follow up.
+  ///
+  /// Denormalised for the same reason as the label: `submitted_by_user_id` goes
+  /// NULL when the demo is purged, which for a demo is a certainty, so a join
+  /// would leave every surviving row anonymous. This is the only personal
+  /// detail that outlives a demo, it is kept deliberately, and the form says so
+  /// where somebody is deciding whether to write anything.
+  submittedByEmail   String?   @map("submitted_by_email") @db.VarChar(255)
+  submittedByUserId  Int?      @map("submitted_by_user_id") @db.UnsignedInt
+  submittedByTenantId Int?     @map("submitted_by_tenant_id") @db.UnsignedInt
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+
+  submitter users?   @relation(fields: [submittedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_demo_feedback_user")
+  tenant    tenants? @relation(fields: [submittedByTenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_demo_feedback_tenant")
+
+  @@index([submittedByUserId], map: "fk_demo_feedback_user")
+  @@index([submittedByTenantId], map: "fk_demo_feedback_tenant")
+  @@index([createdAt], map: "idx_demo_feedback_created")
+}
+
+model system_reports {
+  id                 Int             @id @default(autoincrement()) @db.UnsignedInt
+  /// Defaults to `bug` because every row that existed before this column did
+  /// was one -- the table was called `system_bugs`.
+  category           system_report_category @default(bug)
+  title              String          @db.VarChar(200)
+  body               String          @db.Text
+  status             feedback_status @default(open)
+  adminNote          String?         @map("admin_note") @db.Text
+  /// A JSON array of upload paths, never arbitrary URLs -- see
+  /// `SCREENSHOT_PATH` in the DTO for why that distinction is load-bearing.
+  screenshots        String?         @db.Text
+  reportedByUserId   Int?            @map("reported_by_user_id") @db.UnsignedInt
+  reportedByTenantId Int?            @map("reported_by_tenant_id") @db.UnsignedInt
+  resolvedAt         DateTime?       @map("resolved_at") @db.DateTime(0)
+  /// The release this shipped in, set when the status becomes `shipped`.
+  ///
+  /// A plain foreign key rather than a join table: a report ships once, so this
+  /// is one release to many reports. `releases` is global like this table, so
+  /// the key crosses no tenant boundary.
+  ///
+  /// **This, and not the note's text, is where a contributor is credited.** The
+  /// note body is imported identically into every community from the repo, so a
+  /// name written into it would be fixed text naming a stranger to all but one
+  /// of them. The link is data, so each community renders it for itself.
+  shippedInReleaseId Int?            @map("shipped_in_release_id") @db.UnsignedInt
+  shippedInRelease   releases?       @relation(fields: [shippedInReleaseId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_report_release")
+  createdAt          DateTime        @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt          DateTime        @default(now()) @map("updated_at") @db.DateTime(0)
+
+  reporter users?   @relation(fields: [reportedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_bug_reporter")
+  tenant   tenants? @relation(fields: [reportedByTenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_bug_tenant")
+
+  @@index([reportedByUserId], map: "fk_system_bug_reporter")
+  @@index([reportedByTenantId], map: "fk_system_bug_tenant")
+  @@index([status], map: "idx_system_bug_status")
+  @@index([category], map: "idx_system_report_category")
+  @@index([shippedInReleaseId], map: "fk_system_report_release")
+  @@index([createdAt], map: "idx_system_bug_created")
+}
+
 model tenants {
   id                       Int                        @id @default(autoincrement()) @db.UnsignedInt
   slug                     String                     @unique(map: "uq_tenant_slug") @db.VarChar(50)
@@ -1113,6 +1313,7 @@ model tenants {
   content_flags            content_flags[]
   content_reports          content_reports[]
   custom_icons             custom_icons[]
+  email_log_views          email_log_views[]
   email_queue              email_queue[]
   event_comment_replies    event_comment_replies[]
   event_comments           event_comments[]
@@ -1140,6 +1341,8 @@ model tenants {
   tenant_secrets           tenant_secrets[]
   email_provider_config    email_provider_config?
   demo_request             demo_requests?
+  system_reports           system_reports[]
+  demo_feedback            demo_feedback[]
 
   @@index([status], map: "idx_tenant_status")
 }
@@ -1208,6 +1411,8 @@ model users {
   events_events_created_byTousers                              events[]                   @relation("events_created_byTousers")
   events_events_reservation_assignee_idTousers                 events[]                   @relation("events_reservation_assignee_idTousers")
   feedback                                                     feedback[]
+  system_reports                                               system_reports[]
+  demo_feedback                                                demo_feedback[]
   feedback_notes                                               feedback_notes[]
   feedback_upvotes                                             feedback_upvotes[]
   invites_invites_created_byTousers                            invites[]                  @relation("invites_created_byTousers")
@@ -1294,6 +1499,28 @@ enum member_points_point_type {
 enum oauth_accounts_provider {
   google
   facebook
+}
+
+/// Whether a demo visitor would actually run their community on this.
+///
+/// Three values rather than a boolean: "maybe" is the commonest honest answer
+/// after a week's trial, and collapsing it into yes or no loses the difference
+/// between somebody who is nearly convinced and somebody who is not.
+/// What a global report is (Rob, 2026-10-04).
+///
+/// Bugs and feature requests are both *about the product*, so both belong to
+/// whoever builds it and are shared across communities. A general comment is
+/// about a community -- its venues, its schedule, its people -- and stays in
+/// that community's own `feedback` board, which remains tenant-scoped.
+enum system_report_category {
+  bug
+  feature_request
+}
+
+enum demo_would_use {
+  yes
+  maybe
+  no
 }
 
 enum feedback_category {

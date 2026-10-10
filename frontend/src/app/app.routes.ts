@@ -1,12 +1,14 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { adminGuard } from './core/guards/admin.guard';
+import { rootTenantGuard } from './core/guards/root-tenant.guard';
 import { systemAdminGuard } from './core/guards/system-admin.guard';
 import { moderatorGuard } from './core/guards/moderator.guard';
 import { validatedMemberGuard } from './core/guards/validated-member.guard';
 import { unsavedChangesGuard } from './core/guards/unsaved-changes.guard';
 import { featureGuard } from './core/guards/feature.guard';
 import { rootLandingGuard } from './core/guards/root-landing.guard';
+import { nonDemoTenantGuard, demoFeedbackGuard } from './core/guards/tenant-kind.guard';
 
 export const routes: Routes = [
   // Two components answer `/`, and the order is the rule: the landing page is
@@ -359,12 +361,33 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    // The shared defect board (v2-32). `nonDemoTenantGuard` and not
+    // `adminGuard` alone: a demo's requester is an admin of their demo, so the
+    // role says nothing about whether this is a vetted person.
+    path: 'system/bugs',
+    loadComponent: () =>
+      import('./features/system/system-bugs.component').then((m) => m.SystemBugsComponent),
+    // No `adminGuard`: any member of a real community may file a report, and
+    // the component shows the shared board only to those who may read it.
+    canActivate: [authGuard, nonDemoTenantGuard],
+  },
+  {
+    // One component, two sides: the form inside a demo, the operator's list on
+    // the root tenant. `demoFeedbackGuard` allows exactly those two.
+    path: 'demo/feedback',
+    loadComponent: () =>
+      import('./features/system/demo-feedback.component').then((m) => m.DemoFeedbackComponent),
+    canActivate: [authGuard, demoFeedbackGuard],
+  },
+  {
     path: 'admin/releases/new',
     loadComponent: () =>
       import('./features/admin/releases/admin-releases.component').then(
         (m) => m.AdminReleasesComponent,
       ),
-    canActivate: [authGuard, adminGuard],
+    // rootTenantGuard, not adminGuard alone: release notes are deployment-wide,
+    // so administering one community is not the question. See the guard.
+    canActivate: [authGuard, adminGuard, rootTenantGuard],
   },
   {
     path: 'admin/announcements',

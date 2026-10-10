@@ -16,7 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import type { FileFilterCallback } from 'multer';
 import type { Request } from 'express';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
 import { FeedbackService } from './feedback.service';
 import { CreateFeedbackDto } from './dto/create-feedback.dto';
@@ -35,10 +35,33 @@ const ALLOWED_IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 export class FeedbackController {
   constructor(private readonly feedbackService: FeedbackService) {}
 
+  /**
+   * This community's own board, which as of 2026-10-04 takes **comments only**.
+   *
+   * Rob moved the boundary: bugs and feature requests are about the *product*
+   * and belong to whoever builds it, so they go to the global `system_reports`
+   * board where every community can see them. A general comment is about this
+   * community -- its venues, its schedule, its people -- and has no audience
+   * outside it.
+   *
+   * Refused here rather than removed from `feedback_category`, because the
+   * enum still describes **existing rows**. Those are deliberately left where
+   * they are: their authors wrote them for this community's admins before any
+   * of this existed, and moving them would retroactively widen an audience
+   * nobody offered them a choice about.
+   */
   @Post()
   create(@Body() dto: CreateFeedbackDto, @CurrentUser() user: User) {
     if (user.role === UserRole.NON_VALIDATED) {
       throw new ForbiddenException('Non-validated members cannot submit feedback');
+    }
+    if (dto.category !== FeedbackCategory.COMMENT) {
+      throw new BadRequestException({
+        message:
+          'Bugs and feature requests go to the platform board, where every community can see ' +
+          'them. This board is for comments about this community.',
+        reason: 'use_system_reports',
+      });
     }
     return this.feedbackService.create(dto, user.id);
   }
@@ -48,7 +71,12 @@ export class FeedbackController {
     FileInterceptor('image', {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          const dest = process.env.UPLOAD_PATH ?? '/app/uploads';
+          // `feedback/`, not the uploads root (2026-10-05). The root is not
+          // served as a static asset -- deliberately, since profile photos live
+          // there behind an auth guard -- so every image attached to a feedback
+          // ticket was stored correctly and rendered as a broken image. Found
+          // while fixing the same flaw in the reports board, which copied it.
+          const dest = join(process.env.UPLOAD_PATH ?? '/app/uploads', 'feedback');
           mkdirSync(dest, { recursive: true });
           cb(null, dest);
         },
@@ -76,7 +104,7 @@ export class FeedbackController {
       throw new ForbiddenException('Non-validated members cannot upload images');
     }
     if (!file) throw new BadRequestException('No image provided');
-    return { url: `/api/uploads/${file.filename}` };
+    return { url: `/api/uploads/feedback/${file.filename}` };
   }
 
   @Get()

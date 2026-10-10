@@ -38,11 +38,16 @@ describe('Feedback CRUD (e2e)', () => {
     nonValidatedCookie = await loginAs(app, nonValidated);
   });
 
+  /**
+   * `comment`, not `bug` -- this board takes comments only as of 2026-10-04.
+   * Bugs and feature requests are about the product and go to the global
+   * `system_reports` board; see `system-reports.e2e-spec.ts`.
+   */
   function validFeedbackPayload(overrides: Record<string, unknown> = {}) {
     return {
-      category: 'bug',
-      title: 'The merch page is broken',
-      body: 'Clicking the store link does nothing on mobile Safari.',
+      category: 'comment',
+      title: 'Thursday venue was great',
+      body: 'The Thursday place had plenty of room and the staff were lovely.',
       ...overrides,
     };
   }
@@ -55,7 +60,7 @@ describe('Feedback CRUD (e2e)', () => {
         .send(validFeedbackPayload())
         .expect(201);
 
-      expect(res.body).toMatchObject({ title: 'The merch page is broken', status: 'open' });
+      expect(res.body).toMatchObject({ title: 'Thursday venue was great', status: 'open' });
     });
 
     it('rejects a payload missing required fields', async () => {
@@ -63,6 +68,83 @@ describe('Feedback CRUD (e2e)', () => {
         .post('/api/v1/feedback')
         .set('Cookie', memberCookie)
         .send({ title: 'No body or category' })
+        .expect(400);
+    });
+
+    /**
+     * The boundary moved on 2026-10-04 (Rob): bugs and feature requests are
+     * about the *product* and go to the global `system_reports` board where
+     * every community can see them. This board keeps comments, which are about
+     * one community and have no audience outside it.
+     *
+     * Refused rather than removed from `feedback_category`, because the enum
+     * still describes rows written before the split -- those stay where their
+     * authors put them.
+     */
+    it('refuses a bug or feature request, which belong on the platform board', async () => {
+      for (const category of ['bug', 'feature_request']) {
+        const res = await request(server)
+          .post('/api/v1/feedback')
+          .set('Cookie', memberCookie)
+          .send(validFeedbackPayload({ category }))
+          .expect(400);
+        expect(res.body.reason).toBe('use_system_reports');
+      }
+    });
+
+    /**
+     * Attachments are files on the ticket, not markup in its body (Rob,
+     * 2026-10-06): "feedback is storing the screenshot in the text ... Bugs and
+     * features treats them as files and not in the description".
+     *
+     * Embedding made a picture count against the body's limits -- two
+     * screenshots were too long to submit, and a screenshots-only ticket was
+     * too short.
+     */
+    it('stores attachments as files alongside the body', async () => {
+      const res = await request(server)
+        .post('/api/v1/feedback')
+        .set('Cookie', memberCookie)
+        .send(validFeedbackPayload({ screenshots: ['/api/uploads/feedback/feedback-1-2.png'] }))
+        .expect(201);
+
+      expect(res.body.screenshots).toEqual(['/api/uploads/feedback/feedback-1-2.png']);
+      // And the body is untouched by them.
+      expect(res.body.body).not.toContain('uploads');
+    });
+
+    /**
+     * Only this module's own uploads. These render as `<img src>` on the board
+     * and the admin screen, so an arbitrary URL would be a tracking pixel.
+     */
+    it('refuses an attachment that is not one of our own uploads', async () => {
+      for (const bad of [
+        'https://evil.test/pixel.png',
+        '//evil.test/pixel.png',
+        '/api/uploads/feedback/../../etc/passwd',
+        // The old flat path, which nothing serves.
+        '/api/uploads/feedback-1.png',
+      ]) {
+        await request(server)
+          .post('/api/v1/feedback')
+          .set('Cookie', memberCookie)
+          .send(validFeedbackPayload({ screenshots: [bad] }))
+          .expect(400);
+      }
+    });
+
+    it('caps the number of attachments', async () => {
+      await request(server)
+        .post('/api/v1/feedback')
+        .set('Cookie', memberCookie)
+        .send(
+          validFeedbackPayload({
+            screenshots: Array.from(
+              { length: 6 },
+              (_, i) => `/api/uploads/feedback/feedback-${i}.png`,
+            ),
+          }),
+        )
         .expect(400);
     });
 
