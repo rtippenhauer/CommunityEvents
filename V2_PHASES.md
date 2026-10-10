@@ -44,7 +44,7 @@ Two decisions bound it:
 
 | Order | Item | Why it is required |
 |---|---|---|
-| 1 | `/v2-done 14` | Housekeeping. Nothing depends on v2-14; it is only waiting on a stage sign-off. |
+| 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
 | 2 | **bugfix — dispatcher claim** | v2-27's first half, carved out. The dispatcher has no claim step and Admin → Send Now dispatches from a request, so it can double-send *today*. Hours of work, and a go-live blocker once real members are receiving real mail. |
 | 3 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
 | 4 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
@@ -2409,7 +2409,7 @@ removes the Facebook login id and leaves the rest standing.
 
 ### v2-31 — A real email log
 
-**Status:** In Progress (started 2026-10-02). Not a blocker, pulled forward by
+**Status:** Complete (2026-10-03). Not a blocker, pulled forward by
 Rob. Pairs with `v2-27` but is deliberately separate: that item is about the
 *send* path, this is the *read* path.
 
@@ -2445,7 +2445,7 @@ that is written down rather than "forever by accident".
 
 ### v2-32 — A channel from a community to the operator
 
-**Status:** Built 2026-10-04 (branch `v2-32-system-bugs`). Raised by Rob
+**Status:** Complete (2026-10-09). Raised by Rob
 2026-10-03, who asked two questions the codebase answered "no" to: can a
 root-tenant admin get feedback about errors or issues with the site, and can a
 non-root admin send anything to the system admin.

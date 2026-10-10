@@ -815,3 +815,20 @@ that ends still leaves something behind.
 It asks how it went overall, whether you would run your own community on this,
 what worked, what got in your way, and anything else. **Every question is
 optional** — answer one or all of them.
+
+**Your email address is kept with it**, so the team can follow up — the form
+says so before you write anything. It is the only detail that outlives the
+demo, and without it there would be no way to reply once the community is gone.
+
+## Screenshots on feedback and reports
+
+**You can attach screenshots to a feedback ticket or a platform report** — paste
+one anywhere on the page, or add a file, up to five. They are attachments on the
+ticket rather than pictures inside the description, so a long screenshot no
+longer counts against how much you are allowed to write, and a report that is
+mostly pictures is no longer rejected for being too short.
+
+Attachments appear as thumbnails that open full size, and a note on the form is
+worth repeating: **a screenshot shows everything on it**, so crop out member
+names and addresses before attaching one — the platform board is read by the
+administrators of every community.

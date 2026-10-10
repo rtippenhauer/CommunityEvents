@@ -34,19 +34,103 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** `v2-31` — a real email log: the admin email screen
-caps at 100 rows with no search, so "did this member get their invite" stops
-being answerable within a couple of days at DinnerBears' volume. Paginate,
-search by recipient and subject, filter by status and date, and decide how long
-a sent row and its rendered body are kept.
+**Current v2 work item:** the **dispatcher claim bugfix** — v2-27's first half,
+carved out and now the top of the running order. The email dispatcher has no
+atomic claim step and Admin → Send Now dispatches straight from a request, so
+it can double-send *today*. Hours of work, and a go-live blocker the moment real
+members receive real mail. Then `v2-29` (port v1's Phase 39).
 
 **The running order is no longer the numbers** — see `docs/CUTOVER_PLAN.md` and
 V2_PHASES.md's "Running order". The critical path to a live DinnerBears is the
 dispatcher claim fix, `v2-29` (port v1's Phase 39), `v2-24` (cities) and `v2-25`
-(the import), plus a production deployment that does not exist yet. `v2-31` is
-not on that path but was pulled forward by Rob on 2026-10-02.
+(the import), plus a production deployment that does not exist yet. `v2-31` and
+`v2-32` were not on that path; both were pulled forward by Rob and are done.
 
 **Completed v2 items:**
+- **`v2-32` — A channel from a community to the operator** (2026-10-09). Two
+  global tables, because `feedback` stays tenant-scoped: a member wrote that
+  having consented to their own community's admins reading it, and forwarding it
+  would change the audience after the fact. What crosses a boundary is what its
+  author wrote *in order to* cross one.
+
+  **`system_reports`** holds bugs and feature requests — both are about the
+  *product*, so both belong to whoever builds it (Rob, 2026-10-04; general
+  comments stay on the community's own board). Any member may file; only admins
+  read the shared list; only the operator triages. **That had to be a table
+  boundary and could not be a flag**, because scoping here is per *model* — a
+  predicate applying to some rows of a table and not others is isolation nobody
+  can confirm by reading a query.
+
+  **The reporter is named three ways**: their own community sees the full name,
+  another community sees "a member of another community" with no name, no role
+  and **no community name** either (naming it would disclose the customer list
+  to anyone who obtains a tenant), and the operator sees both. The word is
+  deliberately "member" and not the more accurate "admin" — the role is
+  information about another community's structure.
+
+  **Demo communities are excluded at both ends**, which is the load-bearing
+  guard: `demo.service` makes every demo requester an `ADMIN`, so without it
+  "any tenant admin may read the board" means "anybody who filled in the demo
+  form". The v2-14 failure in a new place.
+
+  **`demo_feedback`** is the opposite audience — the demo's own admin and the
+  operator, never another community. Global because a demo is purged within a
+  week and a scoped row would be destroyed exactly when it became the only
+  record of the trial. It keeps the requester's **email**, the one personal
+  detail that outlives a demo, because once the community is gone there is no
+  other way to reply; the form says so before anybody writes.
+
+  **Every foreign key is `ON DELETE SET NULL`.** These are global tables
+  pointing at the scoped `users` and `tenants`, and `purgeTenantRows` walks only
+  the scoped list — a restrictive key would make deleting a community fail on a
+  report one of its members filed. `releases.created_by` is the same shape today
+  and merely unreachable.
+
+  **The credit for a shipped report is a LINK, never prose.** A release note is
+  authored in the repo and imported into every deployment keyed by version — one
+  blob of markdown, identical everywhere — so a name written into that text
+  would name one community's member to all the others. The link resolves per
+  reader instead: confirmed on stage, the same release reads as the contributor
+  by name in their own community and "a community member" in the next.
+
+  **Three mistakes worth not repeating.** The operator check keyed on the
+  *role* twice before it was right, and the second reached stage — the service
+  account is deliberately flipped to `admin` for testing, and CLAUDE.md says in
+  two places to key on `is_service_account` instead. Attachments uploaded,
+  stored, and 404'd, because only named subdirectories of the upload path are
+  served and both upload routes wrote to the root (the feedback board had the
+  same bug and is fixed with it). And `demo_label` was populated from
+  `brand_name`, which is one fixture string on every demo — it identified the
+  template, not the visit.
+
+  **Stage found what tests could not, repeatedly**, and every visual defect was
+  Rob's: remove buttons rendering outside their own circles, a pasted screenshot
+  shoving a card off-centre, and iOS inserting a photo into the description as a
+  data URI, where no paste event carries a file. Attachments are files on the
+  row now, not markup in the body, which is what made a two-screenshot ticket
+  too long and a screenshots-only one too short.
+- **`v2-31` — A real email log** (2026-10-03). Pagination, search by recipient
+  and subject, status and date filters, and categories that say *why* a message
+  was sent — deliberately **not** `templateId`, which is a dispatch instruction
+  that selects a Brevo template and gates notification preferences, so labelling
+  with it would let a screen change alter what members receive.
+
+  **Retention is decided, not inherited**: the rendered body is cleared after 30
+  days and the envelope kept, because the envelope answers "did this member get
+  their invite" for a few hundred bytes while the body is what makes keeping it
+  expensive. Deleting rows outright was deferred pending evidence, so the screen
+  counts how often it is reviewed and how far back — `deepest_open_age_days`,
+  the age of the oldest message anybody *opened* rather than merely scrolled
+  past, is the number that decision should turn on.
+
+  **`created_at` is `DATETIME(0)` and ties made pagination unstable**, so
+  `orderBy` carries an `id` tiebreaker; without it rows repeat or vanish between
+  pages under OFFSET/LIMIT. Found because a spec passed alone and failed after
+  its neighbours.
+
+  Also landed here: three Brevo sends that could never deliver (no body and no
+  template id, so the provider refused with `missing_parameter`), and a guard
+  that now refuses that combination outright rather than posting it.
 - **`v2-14` — Demo communities** (2026-10-02). One demo **per visitor**, asked
   for on the marketing page and confirmed by email, at a generated host, with
   the requester as its first admin, deleted after seven days or 48 idle hours.
