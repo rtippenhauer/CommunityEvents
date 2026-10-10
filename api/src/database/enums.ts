@@ -80,10 +80,15 @@ export const EmailQueueStatus = {
   /**
    * Claimed by a dispatcher, in flight or about to be.
    *
-   * The ordering here is the row's lifecycle, so SENDING sits between PENDING
-   * and SENT deliberately. Nothing may send a row in this state but whoever
-   * claimed it, which is what lets the cron and Admin -> Send Now drain the
-   * same queue at the same time without mailing a member twice.
+   * Nothing may send a row in this state but whoever claimed it, which is what
+   * lets the cron and Admin -> Send Now drain the same queue at the same time
+   * without mailing a member twice.
+   *
+   * Listed here in lifecycle order for reading. That deliberately does *not*
+   * match the MySQL declaration order, where `sending` is last: appending is
+   * the only ENUM change InnoDB can make in place, and this object's order
+   * reaches nothing but `Object.values` (an `@IsIn` list and the log's zeroed
+   * counts), neither of which cares.
    */
   SENDING: 'sending',
   SENT: 'sent',

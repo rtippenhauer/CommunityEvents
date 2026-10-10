@@ -1614,6 +1614,10 @@ enum event_rsvps_status {
 
 enum email_queue_status {
   pending
+  sent
+  failed
+  cancelled
+  blocked
   /// Claimed by a dispatcher and handed to the provider, or about to be.
   ///
   /// The state that makes the queue safe to drain from more than one place at
@@ -1621,11 +1625,14 @@ enum email_queue_status {
   /// selected `pending`, sent, and only then wrote the outcome, so an admin
   /// pressing Send Now while the cron was mid-run could mail the same row
   /// twice. A row here is owned by whoever moved it here.
+  ///
+  /// **Last, not next to `pending` where the lifecycle would read better.**
+  /// This order is the MySQL declaration order, and appending is the only ENUM
+  /// change InnoDB can make in place -- inserting mid-list rebuilds the whole
+  /// table under a write lock, and nothing prunes `email_queue`, so it is the
+  /// table that grows forever. Nothing orders by this column, so the tidier
+  /// order would have bought nothing. See the migration for the measurement.
   sending
-  sent
-  failed
-  cancelled
-  blocked
 }
 
 enum email_queue_provider {

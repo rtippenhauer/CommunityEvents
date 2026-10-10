@@ -10,18 +10,37 @@
 -- `sending` because the value did not exist until now, so `claimed_at` is
 -- legitimately NULL everywhere.
 
--- `sending` is inserted between `pending` and `sent` rather than appended.
--- MySQL orders an ENUM by declaration, and `ORDER BY status` on this column
--- should read as the row's lifecycle; appending would sort an in-flight message
--- after a cancelled one. Re-declaring the whole set is the only way to say it --
--- MySQL has no "add a value in position" -- and it rewrites no rows, since
--- every existing value keeps both its spelling and its relative order.
+-- `sending` is APPENDED, not inserted next to `pending` where the lifecycle
+-- would read better. The declaration order is not free:
+--
+--   * Appending is the one ENUM change InnoDB can make in place. Inserting a
+--     value mid-list cannot be done INPLACE at all ("Cannot change column type
+--     INPLACE. Try ALGORITHM=COPY") and so rebuilds the whole table, holding a
+--     write lock for the duration. Nothing prunes `email_queue` -- v2-31 clears
+--     old *bodies* and keeps every envelope -- so this table only ever grows,
+--     and at the DinnerBears cutover it is the one that would be biggest. A
+--     migration that stops mail while it copies is not worth a tidier
+--     `ORDER BY`.
+--   * Nothing orders by this column. The log orders by `created_at, id`, the
+--     filters are equality, and the one `groupBy(['status'])` does not depend
+--     on declaration order for correctness.
+--
+-- Existing values are preserved either way -- MySQL converts an ENUM by string
+-- and not by its stored ordinal, verified against a populated table before
+-- choosing this -- but appending also leaves every existing ordinal untouched,
+-- so the rewrite has nothing to rewrite.
 ALTER TABLE `email_queue`
-  MODIFY COLUMN `status` ENUM('pending','sending','sent','failed','cancelled','blocked')
-  NOT NULL DEFAULT 'pending';
+  MODIFY COLUMN `status`
+  ENUM('pending','sent','failed','cancelled','blocked','sending')
+  NOT NULL DEFAULT 'pending',
+  ALGORITHM=INPLACE, LOCK=NONE;
 
 -- DATETIME(3), unlike the DATETIME(0) columns beside it: the stale-claim sweep
 -- compares this against a cutoff, and whole-second precision would report a
 -- claim as up to a second older than it is.
+--
+-- Adding a nullable column is in-place too, so neither statement here rebuilds
+-- the table or blocks a concurrent send.
 ALTER TABLE `email_queue`
-  ADD COLUMN `claimed_at` DATETIME(3) NULL AFTER `send_after`;
+  ADD COLUMN `claimed_at` DATETIME(3) NULL AFTER `send_after`,
+  ALGORITHM=INPLACE, LOCK=NONE;
