@@ -556,6 +556,12 @@ interface EmailConfig {
                   <mat-option value="">Any status</mat-option>
                   <mat-option value="sent">Sent</mat-option>
                   <mat-option value="pending">Pending</mat-option>
+                  <!-- Claimed by a dispatcher and in flight. Normally empty and
+                       normally brief, which is why it is offered as a filter at
+                       all: a row that stays here is one whose dispatcher died,
+                       and this is how an operator finds it before the sweep
+                       returns it to the queue. -->
+                  <mat-option value="sending">Sending</mat-option>
                   <mat-option value="failed">Failed</mat-option>
                   <mat-option value="cancelled">Cancelled</mat-option>
                   <mat-option value="blocked">Blocked</mat-option>
@@ -1078,6 +1084,13 @@ interface EmailConfig {
       }
       .chip-pending {
         background: #fff9c4 !important;
+      }
+      /* In flight. A literal like its four neighbours, and for the same reason
+         they are: these are status tints, which is the exception v2-11's
+         no-colour-literals rule names -- "in progress" means the same thing
+         whatever palette a community has chosen. */
+      .chip-sending {
+        background: #bbdefb !important;
       }
       .chip-sent {
         background: #c8e6c9 !important;

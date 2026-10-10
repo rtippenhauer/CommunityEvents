@@ -23,10 +23,16 @@ import { EmailLogQueryDto } from './dto/email-log-query.dto';
  * and `templateParams` are absent on purpose, because they are most of the
  * table's bytes and none of its searchable surface. `EmailLogContent` carries
  * them for the single row somebody expands.
+ *
+ * `claimedAt` is absent for the same reason as `tenantId` and `bodyClearedAt`:
+ * it is the dispatcher's own bookkeeping, read by nothing but the stale-claim
+ * sweep. An `Omit` rather than a `Pick` is what makes that a decision somebody
+ * has to take -- a new column on the model is required here until it is either
+ * rendered or listed above.
  */
 export type EmailLogRow = Omit<
   EmailQueueRow,
-  'htmlBody' | 'textBody' | 'templateParams' | 'tenantId' | 'bodyClearedAt'
+  'htmlBody' | 'textBody' | 'templateParams' | 'tenantId' | 'bodyClearedAt' | 'claimedAt'
 >;
 
 export interface EmailLogPage {
@@ -894,13 +900,37 @@ export class EmailService {
     return count;
   }
 
+  /**
+   * Stops a queued message from going out, where that is still a true statement.
+   *
+   * The status filter is the point. Without it this wrote `cancelled` over
+   * whatever the row held, which was merely untidy for a `sent` row -- the
+   * message had gone and the log now denied it -- and became a correctness
+   * problem once the dispatcher gained a claim step: a row marked `sending` has
+   * been handed to the provider or is about to be, by a dispatcher that will
+   * write the real outcome when it returns. Cancelling it would record a
+   * cancellation for mail that went out, and the dispatcher's own write would
+   * then overwrite the cancellation anyway. Nothing can be called off at that
+   * point, so this does not pretend otherwise.
+   *
+   * The three statuses left are the ones where cancelling means something: a
+   * message still waiting, one that failed and would be retried, and one
+   * blocked on a limit. That is also exactly the set the admin screen offers
+   * the button for.
+   *
+   * Still `updateMany` and still a silent no-op when nothing matches -- the
+   * screen can easily be a few seconds stale, and a second click is not an
+   * error. TypeORM's update() reported affected: 0 here; Prisma's update()
+   * throws P2025, which would surface as a 500.
+   */
   async cancelEmail(id: number): Promise<void> {
-    // Cancelling an email that is already gone is a no-op, not an error --
-    // the admin queue view can easily be a few seconds stale. TypeORM's
-    // update() reported affected: 0 here; Prisma's update() throws P2025,
-    // which would surface as a 500 on a second click.
     await this.prisma.email_queue.updateMany({
-      where: { id },
+      where: {
+        id,
+        status: {
+          in: [EmailQueueStatus.PENDING, EmailQueueStatus.FAILED, EmailQueueStatus.BLOCKED],
+        },
+      },
       data: { status: EmailQueueStatus.CANCELLED },
     });
   }

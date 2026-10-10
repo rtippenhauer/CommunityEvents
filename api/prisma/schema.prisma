@@ -466,6 +466,16 @@ model email_queue {
   errorMessage   String?               @map("error_message") @db.Text
   brevoStatus    String?               @map("brevo_status") @db.VarChar(100)
   sendAfter      DateTime?             @map("send_after") @db.DateTime(0)
+  /// When this row was claimed for sending, set in the same write that moves it
+  /// to `sending`.
+  ///
+  /// Only the stale-claim sweep reads it, and that is the whole reason it
+  /// exists: a dispatcher killed between claiming a row and writing its outcome
+  /// leaves the row `sending` forever, which no later run would touch. Milli-
+  /// second precision, unlike the DATETIME(0) columns around it, because the
+  /// sweep compares it against a cutoff measured in minutes and a whole-second
+  /// column would make a claim up to a second older than it is.
+  claimedAt      DateTime?             @map("claimed_at") @db.DateTime(3)
   createdAt      DateTime              @default(now()) @map("created_at") @db.DateTime(0)
   sentAt         DateTime?             @map("sent_at") @db.DateTime(0)
   /// When the retention sweep cleared the rendered body. Needed for the sweep to
@@ -1604,6 +1614,14 @@ enum event_rsvps_status {
 
 enum email_queue_status {
   pending
+  /// Claimed by a dispatcher and handed to the provider, or about to be.
+  ///
+  /// The state that makes the queue safe to drain from more than one place at
+  /// once. Before it there was no in-flight marker at all: the dispatcher
+  /// selected `pending`, sent, and only then wrote the outcome, so an admin
+  /// pressing Send Now while the cron was mid-run could mail the same row
+  /// twice. A row here is owned by whoever moved it here.
+  sending
   sent
   failed
   cancelled

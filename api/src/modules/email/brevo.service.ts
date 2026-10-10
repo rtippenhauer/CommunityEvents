@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type { email_provider_config as EmailProviderConfig } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { EmailTemplateName } from './email.constants';
+import { EMAIL_SEND_TIMEOUT_MS, EmailTemplateName } from './email.constants';
 import { requireTenantId } from '../../common/tenant/tenant-store';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 
@@ -356,6 +356,10 @@ export class BrevoService {
         Accept: 'application/json',
       },
       body: JSON.stringify(body),
+      // See EMAIL_SEND_TIMEOUT_MS in email.constants.ts. An abort throws,
+      // which the dispatcher already treats as a failed attempt and retries --
+      // the behaviour we want, and what an untimed hang does not do.
+      signal: AbortSignal.timeout(EMAIL_SEND_TIMEOUT_MS),
     });
 
     if (!response.ok) {

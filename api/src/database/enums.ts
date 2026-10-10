@@ -77,6 +77,15 @@ export type ReportStatus = (typeof ReportStatus)[keyof typeof ReportStatus];
 // from email-queue.entity.ts
 export const EmailQueueStatus = {
   PENDING: 'pending',
+  /**
+   * Claimed by a dispatcher, in flight or about to be.
+   *
+   * The ordering here is the row's lifecycle, so SENDING sits between PENDING
+   * and SENT deliberately. Nothing may send a row in this state but whoever
+   * claimed it, which is what lets the cron and Admin -> Send Now drain the
+   * same queue at the same time without mailing a member twice.
+   */
+  SENDING: 'sending',
   SENT: 'sent',
   FAILED: 'failed',
   CANCELLED: 'cancelled',

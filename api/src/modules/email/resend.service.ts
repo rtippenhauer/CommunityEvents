@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { requireTenantId } from '../../common/tenant/tenant-store';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import { EMAIL_SEND_TIMEOUT_MS } from './email.constants';
 
 export interface ResendSendPayload {
   toEmail: string;
@@ -81,6 +82,11 @@ export class ResendService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      // Bounded for the same reason as the Brevo send: the dispatcher holds a
+      // claim on the row for as long as this call runs, and the stale-claim
+      // sweep's cutoff is only safe if that duration has a ceiling. See
+      // EMAIL_SEND_TIMEOUT_MS in email.constants.ts.
+      signal: AbortSignal.timeout(EMAIL_SEND_TIMEOUT_MS),
     });
 
     if (!response.ok) {

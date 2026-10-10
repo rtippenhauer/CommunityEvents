@@ -1,4 +1,25 @@
 /**
+ * How long one provider send may take before it is abandoned.
+ *
+ * Here rather than in either provider service because both need the same
+ * ceiling for the same reason, and the reason is not about either provider.
+ *
+ * Bare `fetch` has no timeout of its own, so these sends inherited undici's
+ * 300-second header timeout -- five minutes during which the dispatcher holds
+ * its claim on the row it is sending. That is what makes this correctness and
+ * not a nicety: the stale-claim sweep (`STALE_CLAIM_MS` in
+ * email-dispatcher.service.ts) decides a claim has been abandoned by how old it
+ * is, and it can only choose a safe cutoff if there is a ceiling on how long a
+ * *live* send holds one. Without a ceiling the sweep would eventually reclaim
+ * rows that a working dispatcher was still sending, which is the double-send
+ * the claim exists to prevent.
+ *
+ * Thirty seconds is far longer than either API takes to accept a message and
+ * far shorter than the ten minutes the sweep waits.
+ */
+export const EMAIL_SEND_TIMEOUT_MS = 30_000;
+
+/**
  * Why a message went out, for the admin email log (Rob, 2026-10-03).
  *
  * ## Why this is not `templateId`
