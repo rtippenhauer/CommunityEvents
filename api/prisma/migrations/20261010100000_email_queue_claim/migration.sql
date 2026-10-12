@@ -39,8 +39,25 @@ ALTER TABLE `email_queue`
 -- compares this against a cutoff, and whole-second precision would report a
 -- claim as up to a second older than it is.
 --
--- Adding a nullable column is in-place too, so neither statement here rebuilds
--- the table or blocks a concurrent send.
+-- INSTANT, and the clause is doing real work. This statement originally read
+-- `AFTER send_after, ALGORITHM=INPLACE, LOCK=NONE`, which looked like the same
+-- care taken over the ENUM above and was the opposite: for ADD COLUMN, INPLACE
+-- means "rebuild the table but allow concurrent DML", so asserting it opted out
+-- of the metadata-only path and rebuilt `email_queue` -- the very thing the
+-- comment above refuses to do. Measured on MySQL 9.7.2 via
+-- `information_schema.INNODB_TABLES.TOTAL_ROW_VERSIONS`, which counts instant
+-- changes: INSTANT gave 1, INPLACE gave 0, meaning the table had been rewritten.
+--
+-- The column position was never the cost. 9.7 adds a column instantly in any
+-- position, `AFTER send_after` included (the "instant add must be last"
+-- restriction was lifted in 8.0.29). It is dropped anyway because it bought
+-- nothing -- nothing reads this table's columns positionally, Prisma keys
+-- everything by name -- and appending keeps the statement instant on 8.0.12
+-- through 8.0.28 as well, where the lifted restriction does not yet apply.
+--
+-- No LOCK clause: MySQL rejects one outright next to ALGORITHM=INSTANT
+-- ("Incorrect usage of ALGORITHM=INSTANT and LOCK=NONE"). There is nothing to
+-- lock, which is the point.
 ALTER TABLE `email_queue`
-  ADD COLUMN `claimed_at` DATETIME(3) NULL AFTER `send_after`,
-  ALGORITHM=INPLACE, LOCK=NONE;
+  ADD COLUMN `claimed_at` DATETIME(3) NULL,
+  ALGORITHM=INSTANT;

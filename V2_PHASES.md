@@ -2245,16 +2245,44 @@ value the change touches, pipe the migration file in verbatim
 (`docker exec -i dinnerbears-mysql-test mysql -uroot -ptest <db> < migration.sql`),
 and read the rows back. It cost about five minutes and changed the migration.
 
-Two findings worth keeping. **MySQL converts an ENUM by string value, not by
-its stored ordinal**, so inserting a value mid-list does not corrupt existing
-rows — which is the failure everybody expects and is not the real one. **The
-real one is that a mid-list insertion cannot be done in place**: InnoDB answers
-"Cannot change column type INPLACE. Try ALGORITHM=COPY" and rebuilds the whole
-table under a write lock. `sending` is appended for that reason, both
-statements now assert `ALGORITHM=INPLACE, LOCK=NONE` so a future MySQL that
-cannot comply fails loudly rather than quietly locking the table, and the
-tidier declaration order it gave up was buying nothing — no query orders by
-that column.
+Three findings worth keeping, and the third only surfaced because Rob asked
+whether the *column* needed to go mid-table, having read the ENUM reasoning as
+being about fields.
+
+**1. MySQL converts an ENUM by string value, not by its stored ordinal**, so
+inserting a value mid-list does not corrupt existing rows — the failure
+everybody expects, and not the real one.
+
+**2. The real one is that a mid-list ENUM insertion rebuilds the table.**
+InnoDB refuses it in place ("Cannot change column type INPLACE. Try
+ALGORITHM=COPY") and copies every row under a write lock. `sending` is appended
+for that reason, and the tidier declaration order it gave up was buying nothing
+— no query orders by that column.
+
+**3. `ALGORITHM=INPLACE` is the wrong assertion for ADD COLUMN, and asserting
+it caused exactly the harm finding 2 avoided.** For a column type change
+INPLACE is the cheap path; for ADD COLUMN it means "rebuild, but allow
+concurrent DML", so the metadata-only path is `ALGORITHM=INSTANT` and naming
+INPLACE opts out of it. The first version of this migration therefore refused
+to rebuild `email_queue` for the ENUM and then rebuilt it one statement later
+for the column. **The same clause means different things on adjacent lines**,
+which is the part worth remembering. `LOCK=NONE` is also rejected outright
+beside `ALGORITHM=INSTANT`, so the ADD COLUMN carries no LOCK clause.
+
+The column *position* was never the cost — MySQL 8.0.29 lifted the "instant
+add must be last" restriction, so `AFTER send_after` is instant on 9.7 anyway.
+It was dropped because it bought nothing and appending keeps the statement
+instant on 8.0.12–8.0.28 too.
+
+**How each claim was checked**, since all three are about whether a table got
+rewritten and nothing in the statement's success says so.
+`information_schema.INNODB_TABLES` answers it two ways: `TABLE_ID` changes on a
+rebuild and survives a metadata-only change (appending an ENUM value kept it,
+a forced mid-list COPY bumped it), and `TOTAL_ROW_VERSIONS` increments on an
+instant change (1 after `ADD COLUMN ... ALGORITHM=INSTANT`, 0 after the INPLACE
+version, i.e. rewritten). Note the counter only moves on a table that *has*
+rows — it reads 0 on an empty one either way, which is briefly alarming and
+means nothing.
 
 **Not verified on stage yet**, and the stage pass has one thing worth doing by
 hand: the `sending` chip and its filter option on Admin → Email were not
