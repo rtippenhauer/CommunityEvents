@@ -2110,32 +2110,44 @@ event list by `cityId` today, and the personal iCal feed has a single-city
 filter. What this item adds is the multi-select, the tenant toggle, and the
 scoping.
 
-**The gap: dropping the subdomains removes the only way a new member's city is
-ever determined.** `cityForTenant` (`auth.controller.ts:142`) takes the first
-label of the tenant's host and looks up a city by `subdomain`; when that finds
-nothing, `resolveCityId` (`auth.service.ts:99`) falls back to `cities[0]`, and
-`findAll` orders by `name asc`. So on a single-host, two-city DinnerBears,
-**every new member is filed under Cincinnati**, because C sorts before D. Not a
-crash — a silent mis-assignment for half the community, and there is no city
-picker at registration anywhere: the subdomain *was* the mechanism.
+**What dropping the subdomains actually costs: a default, not a capability.**
+Members choose their own city at **Profile → Settings** (a `cityId` select
+populated from `/api/v1/cities`, written through `UpdateProfileDto.cityId`),
+and choose All-vs-my-city for both the event view and auto-invites at
+**Profile → Calendar**. None of that is going away.
 
-Existing members are unaffected: the import carries their legacy city across.
-This is only about people who join after the cutover, which is why it would
-have been easy to miss until the complaints arrived.
+So what is left is the *registration* default. `cityForTenant`
+(`auth.controller.ts:142`) takes the first label of the tenant's host and looks
+up a city by `subdomain`; finding nothing, `resolveCityId` (`auth.service.ts:99`)
+falls back to `cities[0]` ordered by `name asc` — Cincinnati, on a two-city
+DinnerBears.
 
-Options, for Rob to pick rather than for this doc to assume: ask at
-registration; carry a city on the invite, since the inviter knows it; or let
-`city_id` stay null (this item already makes it nullable) and have the member
-choose preferences on first use, with `calendarAutoInvite: 'city'` reading the
-new table. The last fits this item's shape best but changes what a brand-new
-member sees before they have chosen anything.
+**Three things keep that from mattering much**, and they are worth stating
+because the first read of this looks worse than it is: `calendarCityFilter`
+defaults to `all`, so a new member sees every city's events regardless;
+`calendarAutoInvite` defaults to `none`, so nothing is mis-targeted at them
+either; and the "My city only" options name the city in their own label
+("Show only Cincinnati dinners"), so the wrong value announces itself at the
+moment it first has any effect. A Dayton member's `city_id` is wrong until they
+visit one screen, and nothing they see is wrong before then.
+
+So this is a defaulting choice rather than a gap. Options: ask at registration;
+carry the city on the invite, since the inviter knows it and registration is
+invite-gated anyway; or let `city_id` stay null (this item already makes it
+nullable) and let the existing preference screens do the work. The last is the
+smallest change and the most consistent with where this item is already going.
+
+What is **not** optional is the dead code: `findBySubdomainOrNull`,
+`cityForTenant` and the `subdomain` reads in `bootstrap.ts` and `seed.ts` all
+go with the column, or they stay as a lookup against a field that no longer
+exists.
 
 **Definition of done:** `cities` is tenant-scoped with no cross-tenant
 name collisions; the feature toggle correctly makes cities either fully
-required or fully invisible; a member joining a multi-city community ends up in
-the right city or cities by some deliberate mechanism rather than by
-`cities[0]`, and `findBySubdomainOrNull` and `cityForTenant` are gone with the
-column; members can select All or specific cities
+required or fully invisible; a member joining a multi-city community gets their
+city by a deliberate mechanism rather than by `cities[0]`, and
+`findBySubdomainOrNull`, `cityForTenant` and the `subdomain` reads in
+`bootstrap.ts`/`seed.ts` are gone with the column; members can select All or specific cities
 via `user_city_preferences`, applied consistently to event list defaults,
 the iCal feed, and notifications; nothing uses city as an access gate; a
 member with a city-limited preference can still freely RSVP to and rate

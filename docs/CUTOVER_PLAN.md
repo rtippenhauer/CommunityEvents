@@ -326,11 +326,17 @@ written down, and it is the half of the decision with migration consequences.
 
 Rob's reason for being comfortable dropping them: **nobody uses them.** What is
 wanted instead is filtering events by city with no URL involved, which is what
-`v2-24` already specifies. One consequence does need building, and it is
-recorded in that item: the subdomain was the *only* signal of a new member's
-city, so with one host every post-cutover signup silently lands in Cincinnati
-(`resolveCityId` falls back to `cities[0]`, ordered by name). Imported members
-keep their real city; new ones need a deliberate mechanism.
+`v2-24` already specifies — and members already select their own city at
+Profile → Settings, and All-vs-my-city at Profile → Calendar, so none of that
+capability is at risk.
+
+What the subdomains were actually supplying was the *registration default*, and
+with one host it becomes `cities[0]` — Cincinnati, ordered by name. That
+matters less than it first appears: a new member's view defaults to all cities
+and their auto-invites default to off, so nothing they see is wrong until they
+opt into a city-filtered view, which names the city in its own label. It is a
+defaulting choice to make deliberately in `v2-24`, not a hole. Imported members
+keep their real city either way.
 
 `tenants.domain` is stored bare and **cannot hold a `www.` prefix** —
 `normalizeTenantDomain` strips it, so `www.dinnerbears.com` and

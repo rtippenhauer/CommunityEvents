@@ -761,6 +761,13 @@ DinnerBears is one community meeting in two cities, which is what
 wide" (Phase 40 / `v2-30`) already said the same thing: it is only coherent if
 the community spans both cities.
 
+**A city is a row, not a hostname, and not a URL** (Rob, 2026-10-14). He built
+the city-URL path in v1 and nobody uses it; what is wanted is filtering events
+by city with no URL involved, which is what `v2-24` already specifies. Members
+already pick their own city at Profile → Settings and All-vs-my-city at
+Profile → Calendar — so dropping `cities.subdomain` costs a registration
+*default*, not a capability.
+
 **One tenant means one host** (Rob, 2026-10-14):
 `cincinnati.dinnerbears.com` and `dayton.dinnerbears.com` are dropped, since a
 city is a row and does not get a hostname. Retire them as **301 redirects held
