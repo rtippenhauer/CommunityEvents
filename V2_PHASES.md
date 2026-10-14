@@ -2781,9 +2781,32 @@ with categories, so there is now somewhere for an admin-visible record to live �
 worth doing here rather than deferring, since the failure mode is a member
 who replied and whose RSVP silently did not change.
 
+**Two defects of our own ride along**, both found on 2026-10-14 while working
+out how to import v1's release notes, and both on the same surface as #43:
+
+- **`whats-new.service.ts` can show the wrong release as newest.** It takes the
+  latest with `orderBy: { publishedAt: 'desc' }` and no `id` tiebreaker;
+  `releases.published_at` is `DATETIME(0)`, and the notes importer inserts every
+  file in one sequential loop with `VALUES (…, NOW(), …)`. One note at a time
+  never ties, which is why this has never shown; importing v1's four backlogged
+  notes on one boot puts them all in the same second and the "latest" becomes
+  whatever the engine returns. **This is `v2-31`'s pagination tie exactly** —
+  same `DATETIME(0)`, same missing tiebreaker, and there the symptom was rows
+  repeating and vanishing between pages. Fix the announcements query two lines
+  below at the same time: same shape, less exposed only because announcements
+  are written one at a time by hand.
+- **`ReleaseNotesImporterService` relies on unsorted `fs.readdir` order.** It
+  filters `.md` files and loops without sorting. Alphabetical order happens to
+  be right for every version so far and stops being right at `1.6.10.md`, which
+  sorts before `1.6.2.md`.
+
 **Definition of done:** all five fixed, each with the v2 equivalent of the v1
 test named in the port doc, and the three tenancy wrinkles above addressed
-rather than ported literally. A Gmail-shaped calendar reply (readable marker,
+rather than ported literally. The two ride-along defects fixed, with a test
+that imports several notes in one pass and asserts the newest wins.
+`1.6.1.md`, `1.6.2.md` and `1.6.3.md` copied into `api/release-notes/` as part
+of this item — they describe these fixes, and `docs/CUTOVER_PLAN.md` explains
+why a note may not land before its feature. A Gmail-shaped calendar reply (readable marker,
 `=3D` escapes) records an RSVP against the right community. v1's port doc rows
 for #41, #42, #43, #45 and #47 go to `Ported: Yes` — that edit is in the other
 repo and is part of this item, not an afterthought.

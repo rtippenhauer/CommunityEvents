@@ -62,6 +62,124 @@ the email dispatcher's missing claim step, and production deployment.
 
 ---
 
+## The fastest route to one codebase (2026-10-14)
+
+Rob's goal, stated plainly: stop maintaining two codebases, as soon as
+possible. The ordered list below is what must be *true* at cutover. This
+section is what to do about it in which order, which is not the same thing —
+the list reads as serial and three parts of it are not.
+
+**Four changes to the obvious order, in descending value:**
+
+**1. Stand up the production deployment early, in parallel with the code
+work.** It is step 7 below, which implies last, and it is the step with all the
+unknown unknowns: no prod image tag, no prod Unraid template, no prod database,
+no `SECRET_ENCRYPTION_KEY` on a mapped volume, and Cloudflare certificate
+behaviour that already cost an afternoon on stage during `v2-13`/`v2-14` (the
+Universal SSL wildcard covers one label, so a `demo.stage.…` host has no edge
+certificate). None of that depends on a single line of `v2-33`, `v2-29`,
+`v2-24` or `v2-25`. Doing it while code is in flight converts the riskiest step
+from a schedule tail-risk into something already proven — and a prod deployment
+with no data is also where the import dry runs should land.
+
+**2. Answer the email-collision question now, before `v2-25` needs it.** Email
+is unique per tenant (`@@unique([tenantId, email])`) and DinnerBears is **one**
+tenant spanning two cities, so an address holding an account in both the
+Cincinnati and the Dayton database is two rows that must become one. This is
+the single open design question that can stall the *end* of the project, when
+everything else is finished and a dry run is sitting on a conflict. It is a
+decision, not code; it costs nothing today. `REQ-IMPORT-01` is marked
+superseded in part until it is answered.
+
+What has to be decided: which row wins for profile fields, what happens to two
+different password hashes, whether both cities' RSVP and points history merge
+onto the survivor, and what the member is told. The merge rule should be
+written into `REQ-IMPORT-01` and exercised by a dry run against a copy of both
+databases — the count of colliding addresses is itself a thing to measure
+early, because it may be two people or two hundred.
+
+**3. `v2-33` before `v2-29`.** Both are ports and neither depends on the other,
+but `v2-33` is five paragraph-sized fixes with no schema changes against
+`v2-29`'s four tables, token system and fourteen-rule sync engine. It also
+unblocks the release-note import below, and it is the kind of work that reveals
+how far v2 has drifted from v1 before that question is asked on something large.
+
+**4. Treat the release notes as part of those two items, not as a task.** See
+the section below; the files cannot land before the features they describe.
+
+**What genuinely must stay serial:** `v2-24` (cities) before `v2-25` (the
+import), because the import switches `feature_cities` on and writes
+`user_city_preferences`, which are v2-24 deliverables. And the dispatcher claim
+before any of it, which is already done and only wants merging.
+
+---
+
+## The v1 release notes (Rob's ask, 2026-10-14)
+
+**Goal:** members arriving on v2 see the release history they already know,
+through `1.6.4` or wherever v1 has got to at cutover.
+
+**It is a four-file copy, and it is not a task of its own.** v2's
+`api/release-notes/` holds `1.5.0.md` and `1.5.1.md` — the fork point. v1 holds
+those plus `1.6.0`, `1.6.1`, `1.6.2` and `1.6.3`. The files are plain markdown,
+`# Title` then body, with no metadata to translate.
+
+**Why it is not a copy you can do today**, and this is the importer's own
+design rather than an obstacle to route around. `ReleaseNotesImporterService`
+runs on every boot, imports every `.md` in the directory, and **finalized
+entries always import as published**. The notes ship inside the image
+specifically so that "a note only ever appears once THIS instance is actually
+running the code it describes" — its comment says so. Copying `1.6.0.md` now
+publishes a note announcing Facebook RSVP sync on a deployment that has no
+Muse API.
+
+So each note travels with its feature:
+
+| Note | Lands with | Describes |
+|---|---|---|
+| `1.6.0.md` | `v2-29` | Phase 39 — Facebook RSVP sync |
+| `1.6.1.md` | `v2-33` | three of the five fixes |
+| `1.6.2.md` | `v2-33` | the Gmail calendar-reply fix (#45) |
+| `1.6.3.md` | `v2-33` | the reservation self-confirm fix (#47) |
+| `1.6.4+` | whatever ports it | unknown until cutover |
+
+**Two things block a clean import, both found while checking this:**
+
+**`{{events}}` renders literally.** v1's notes are written with `{{points}}`,
+`{{locations}}` and `{{events}}` so one note reads correctly on every instance —
+`1.6.0.md` uses `{{events}}` four times in its first paragraph. Substituting
+them is fix **#43**, which v2 does not have: only `updates.component.ts` touches
+the tokens, so the login splash prints them raw. **The release-note import
+therefore depends on `v2-33`**, not merely on the features being present.
+
+**The splash can show the wrong release as newest.** `whats-new.service.ts`
+picks the latest with `orderBy: { publishedAt: 'desc' }` and **no `id`
+tiebreaker**, `releases.published_at` is `DATETIME(0)` (whole seconds), and the
+importer inserts every file in one sequential loop with `VALUES (…, NOW(), …)`.
+One note at a time, as every release so far has been, never ties. Four notes
+imported on one boot all land in the same second, and which one the splash
+calls newest is then whatever the engine returns — plausibly `1.6.1` instead of
+`1.6.3`. This is the identical defect `v2-31` fixed in the email log, where
+`created_at` is also `DATETIME(0)` and ties made pagination skip and repeat
+rows; the fix there was an `id` tiebreaker in `orderBy`, and it is the same fix
+here. Recorded as part of `v2-33`. The announcements query two lines below has
+the same shape and is less exposed, since announcements are written by hand one
+at a time — fix both.
+
+**One mercy:** the splash shows only the single latest unseen release, never a
+backlog, so importing four notes produces at most one popup rather than four.
+`fs.readdir` order is also worth a `.sort()` while in there — it is relied on
+and unsorted, and alphabetically `1.6.10.md` precedes `1.6.2.md`.
+
+**A decision still needed:** v2's `package.json` is still v1's `1.5.1` and
+there is no `/v2-release`. At cutover, does v2 continue v1's numbering (…1.6.4,
+then 2.0) or start fresh? `releases.version` is a unique `VARCHAR(20)` and
+holds either, so this is a presentation choice rather than a technical one —
+but the splash orders by date, so whatever is chosen, the dates have to be
+right.
+
+---
+
 ## The critical path
 
 ### 1. `/v2-done 14`
@@ -275,3 +393,8 @@ get their invite" at DinnerBears' volume within a couple of days.
 3. **How long the old v1 deployments stay up** after cutover as a rollback path.
 4. **Email retention** (`v2-31`) — how long a sent row and its rendered body are
    kept, now that the log is a feature rather than a queue.
+5. **How an address held in both source databases becomes one account** — see
+   change 2 above. The question that can stall the end of the project, and the
+   only one on this list that is free to answer today.
+6. **Does v2 continue v1's version numbering at cutover**, or start fresh? See
+   the release-notes section.
