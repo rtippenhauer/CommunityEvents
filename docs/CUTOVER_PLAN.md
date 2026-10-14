@@ -18,10 +18,18 @@ has shipped:
 | | |
 |---|---|
 | **Phase 39** — Muse API + Facebook RSVP sync (v1.6.0, 2026-09-29) | four tables, a token system, a bearer guard, a fourteen-rule sync engine, 35 e2e tests, three UI surfaces |
-| **Three bugfixes** (v1.6.1, 2026-09-30) | location snapshots on upcoming events; auto-invites when an event is created already published; release-note placeholders on the login splash |
+| **Five bugfixes** (v1.6.1 → v1.6.3) | see `v2-33`; all "No DB changes" |
 
-All four are recorded in v1's `docs/PORT_TO_COMMUNITYEVENTS.md` with
-`Ported: No`. Most of that landed in four days.
+**v1's `docs/PORT_TO_COMMUNITYEVENTS.md` is the authoritative list and this
+document deliberately no longer restates it.** It did, and that is exactly what
+rotted: the table above read "three bugfixes (v1.6.1)" until 2026-10-14, by
+which point v1 was at **v1.6.3** and two more fixes existed that nothing in this
+repo mentioned. A duplicated list goes stale silently every time a v1 bugfix
+lands, while a version number goes stale *visibly*.
+
+So the check is a version comparison, not a reading: **this document was last
+reconciled against v1 v1.6.3.** If v1's `package.json` is ahead of that, the
+delta is in its port doc and has not been recorded here yet.
 
 **The port list was growing faster than it was shrinking.** Two decisions on
 2026-10-01 stop that:
@@ -30,8 +38,12 @@ All four are recorded in v1's `docs/PORT_TO_COMMUNITYEVENTS.md` with
   before any v1 code existed, so it cost nothing. Bugfixes may still land in
   v1 — all three in 1.6.1 are "No DB changes" and a paragraph each — but a
   phase is weeks of porting.
-- **The drift list is final at four entries.** Phase 39 and the three 1.6.1
-  fixes. Nothing else will be added to it.
+- **The *phase* list is closed.** Phase 39 is the last one to port, and nothing
+  further will be added. This was previously written as "the drift list is final
+  at four entries", which contradicted the line directly above it — bugfixes
+  were always allowed to keep landing, so the list necessarily grows. What is
+  frozen is the expensive half: a phase is weeks of porting, a bugfix is a
+  paragraph.
 
 That is what makes a cutover plan possible at all. Without the freeze there is
 no fixed target to aim at.

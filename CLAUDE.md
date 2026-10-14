@@ -35,16 +35,23 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 ## V2 Rewrite Status
 
 **Current v2 work item:** the **dispatcher claim bugfix** — v2-27's first half,
-carved out and now the top of the running order. The email dispatcher has no
-atomic claim step and Admin → Send Now dispatches straight from a request, so
-it can double-send *today*. Hours of work, and a go-live blocker the moment real
-members receive real mail. Then `v2-29` (port v1's Phase 39).
+carved out. Built and verified on stage 2026-10-12, **not yet merged**: branch
+`bugfix-dispatcher-claim`, pushed, image `v2-stage` at commit `97388d5`.
+
+It was a live defect, not a latent one. Rob reproduced the double-send on the
+pre-fix stage image by pressing Admin → Send Now in two browser tabs: 40
+queued rows produced **57 sends**. After the fix the same procedure sent 20 for
+a 20-row batch, 1:1. Worth keeping because `V2_PHASES.md` had called it "latent
+today", and it took two clicks.
+
+Then `v2-33` (v1's five bugfixes) and `v2-29` (port v1's Phase 39).
 
 **The running order is no longer the numbers** — see `docs/CUTOVER_PLAN.md` and
 V2_PHASES.md's "Running order". The critical path to a live DinnerBears is the
-dispatcher claim fix, `v2-29` (port v1's Phase 39), `v2-24` (cities) and `v2-25`
-(the import), plus a production deployment that does not exist yet. `v2-31` and
-`v2-32` were not on that path; both were pulled forward by Rob and are done.
+dispatcher claim fix, `v2-33` (v1's five outstanding bugfixes), `v2-29` (port
+v1's Phase 39), `v2-24` (cities) and `v2-25` (the import), plus a production
+deployment that does not exist yet. `v2-31` and `v2-32` were not on that path;
+both were pulled forward by Rob and are done.
 
 **Completed v2 items:**
 - **`v2-32` — A channel from a community to the operator** (2026-10-09). Two
@@ -725,12 +732,24 @@ prose, the same way v2-9-before-v2-8 and v2-26/27/28 already are.
 
 The reason is drift. This repo forked from v1 at Phase 38 / v1.5.1 on
 2026-08-08, and v1 has since shipped Phase 39 (Muse API + Facebook RSVP sync,
-v1.6.0) plus three bugfixes (v1.6.1) — all listed in **v1's
+v1.6.0) plus **five** bugfixes (v1.6.1 through v1.6.3) — all listed in **v1's
 `docs/PORT_TO_COMMUNITYEVENTS.md`**, which is the authoritative port spec and
 lives in the other repo. The port list was growing faster than it was
 shrinking, so **v1 takes no new phases**: its Phase 40 (Ban Records) moved here
-as `v2-30` before any v1 code was written, and the drift list is now final at
-those four entries. Bugfixes may still land in v1; phases may not.
+as `v2-30` before any v1 code was written. Bugfixes may still land in v1;
+phases may not. The bugfixes are `v2-33`, and all five were verified as live
+defects in this repo on 2026-10-14 rather than taken on trust.
+
+**Do not trust a count of them written here, and do not restate the list.**
+This paragraph said "three bugfixes (v1.6.1)" and called the drift list "final
+at four entries" until 2026-10-14, by which point v1 was at v1.6.3 and two
+fixes existed that nothing in this repo mentioned — while the sentence
+directly beside it said bugfixes may keep landing, so the list could never have
+been final. What is frozen is **phases**. A restated list rots silently; a
+version number rots visibly, so the rule is: **this repo was last reconciled
+against v1 v1.6.3**, and if v1's `package.json` is ahead, read its port doc for
+the delta before planning anything. The v1 repo is a sibling checkout
+(`../DinnerBears`), so that is a file read, not a question.
 
 **DinnerBears is ONE tenant; Cincinnati and Dayton are cities inside it**
 (Rob, 2026-10-03). This reverses what `docs/CUTOVER_PLAN.md` and
@@ -747,10 +766,10 @@ The consequence that is not free: email is unique per tenant
 source databases is two rows that must become one. Two tenants made that a
 non-question. `REQ-IMPORT-01` is marked superseded in part until it is answered.
 
-Five things stand between here and a live DinnerBears — `/v2-done 14`, the
-dispatcher claim step carved out of `v2-27`, `v2-29` (port Phase 39), `v2-24`
-(cities, which the import depends on), `v2-25` (the import) — plus a production
-deployment that does not exist yet. The test for whether anything else belongs
+Six things stand between here and a live DinnerBears — `/v2-done 14`, the
+dispatcher claim step carved out of `v2-27`, `v2-33` (v1's five bugfixes),
+`v2-29` (port Phase 39), `v2-24` (cities, which the import depends on), `v2-25`
+(the import) — plus a production deployment that does not exist yet. The test for whether anything else belongs
 on that path is **"does DinnerBears have it today?"**; if not, going live
 without it is parity rather than regression, which defers nine of the fourteen
 open items.

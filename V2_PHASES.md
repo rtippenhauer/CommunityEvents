@@ -26,10 +26,16 @@ numbers, for what comes next.**
 ### Why the order changed: v1 is outrunning v2
 
 This repo forked from v1 at Phase 38 / v1.5.1 on 2026-08-08. Since then v1 has
-shipped Phase 39 (Muse API + Facebook RSVP sync, v1.6.0) and three bugfixes
-(v1.6.1), all recorded in v1's `docs/PORT_TO_COMMUNITYEVENTS.md` and none of
-them ported. Every further v1 phase adds to that list, so the cutover gets
-harder the longer it waits.
+shipped Phase 39 (Muse API + Facebook RSVP sync, v1.6.0) and **five** bugfixes
+(v1.6.1 through v1.6.3), all recorded in v1's
+`docs/PORT_TO_COMMUNITYEVENTS.md` and none of them ported. Every further v1
+phase adds to that list, so the cutover gets harder the longer it waits.
+
+**Read that file for the list, not this one.** This section said "three
+bugfixes" until 2026-10-14, when v1 was already at v1.6.3 — a restated list
+goes stale invisibly, so the bugfixes now live in `v2-33` as one item and the
+count here is a pointer rather than a record. Last reconciled against v1
+**v1.6.3**.
 
 Two decisions bound it:
 
@@ -37,8 +43,10 @@ Two decisions bound it:
   before any code was written, so it costs nothing to move. Bugfixes may still
   land in v1 — all three in 1.6.1 are "No DB changes" and a paragraph each —
   but a phase is weeks of porting.
-- **The drift list is now final at four entries**: Phase 39 and the three
-  1.6.1 fixes.
+- **The *phase* list is closed**: Phase 39 is the last one to port. This read
+  "the drift list is now final at four entries", which contradicted the bullet
+  above it — bugfixes were always allowed to keep landing, and two more did.
+  The bugfixes are `v2-33`; what is frozen is phases.
 
 ### Pre-cutover — the critical path
 
@@ -46,10 +54,11 @@ Two decisions bound it:
 |---|---|---|
 | 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
 | 2 | ~~bugfix — dispatcher claim~~ | Done (2026-10-10, `bugfix-dispatcher-claim`), pending Rob's stage pass. v2-27's first half, carved out. The dispatcher had no claim step and Admin → Send Now dispatches from a request, so it could double-send *today*. See v2-27's section for what the claim settled and what is left of that item. |
-| 3 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
-| 4 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
-| 5 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
-| 6 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
+| 3 | **v2-33 — port v1's five bugfixes** | Every one is fixed in DinnerBears today, so shipping without them is regression, not parity — the same test this table uses. No schema changes, one branch. Verified as live defects here on 2026-10-14. |
+| 4 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
+| 5 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
+| 6 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
+| 7 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
 `v2-31` (a real email log) is not a blocker but is wanted early: the current
 screen is 100 rows with no search, which stops answering "did this member get
@@ -2720,3 +2729,64 @@ community's response.
 
 **Not on the cutover path.** DinnerBears does not have this today, so going live
 without it is parity rather than regression — the test the running order uses.
+
+### v2-33 — Port v1's five outstanding bugfixes
+
+**Status:** Not started. **On the cutover path**, by the running order's own
+test: every one of these is fixed in DinnerBears production today, so shipping
+v2 without them is a regression rather than parity. They were previously
+treated as "bugfixes may still land in v1, they port cheaply" and never written
+down here as work.
+
+**The spec is v1's `docs/PORT_TO_COMMUNITYEVENTS.md`**, one section per fix,
+each naming the v1 PR and its test file. That file is authoritative and this
+section does not restate its rules — see the note in `docs/CUTOVER_PLAN.md`
+about why duplicating it is what let two fixes go unnoticed for a fortnight.
+**Last reconciled against v1 v1.6.3** (2026-10-14).
+
+**All five were verified as live defects in this repo on 2026-10-14**, rather
+than assumed from the port doc's `Ported: No` column:
+
+| v1 PR | Fix | Where it is broken here |
+|---|---|---|
+| #41 | Upcoming events follow their location's name/address | `locations.service.ts` never writes `locationName`/`locationAddress`; no refresh path exists at all |
+| #42 | Creating an event as Published sends the auto-invites | `sendPublishInvites` is called only from `update`, gated on `!wasPublished && status === PUBLISHED` (`events.service.ts:501`). `create` never calls it |
+| #43 | Release-note placeholders filled in on the login splash | No substitution helper exists; only `updates.component.ts` touches the tokens, so the splash prints `{{points}}` literally |
+| #45 | Gmail calendar replies (Accept/Maybe/Decline) are recorded | `extractIcalFromEmail` treats a readable `BEGIN:VCALENDAR` as un-encoded and strips only soft line breaks, so Gmail's `PARTSTAT=3DACCEPTED` never decodes (`calendar.service.ts:550`) |
+| #47 | The assigned member can mark their reservation made | `setReservation` already implements `callerIsAssignee` as a self-confirm (`events.service.ts:1785`), but its only route is `@Patch(':id/reservation')` under `@Roles(ADMIN, MODERATOR)` — the member it was written for gets 403 |
+
+**#45's comment is the interesting one**, and the reason to read the code rather
+than the diff. v2 does not lack the reasoning; it has a long, confident comment
+explaining that a matching `BEGIN:VCALENDAR` proves the block was never
+quoted-printable. That is true of most senders and false of Gmail, which sends
+a readable marker *and* `=3D` escapes. The fix is to branch on whether `=3D`
+is present, because a full decode of clean iCal corrupts `PARTSTAT=ACCEPTED`
+(`=AC` reads as an escape) — so neither "always decode" nor "never decode" is
+right, which is why the wrong answer looked reasoned.
+
+**Three need more than the v1 diff, because v1 had no tenants:**
+
+- **#45** — the iCal UID (`dinnerbears-event-<id>@…`) and the organizer address
+  have to identify the *tenant*, not just the event. A reply arriving at the
+  deployment's `calendar@` must resolve to one community before an RSVP is
+  written, and the handler runs outside any request so it has no ambient tenant.
+- **#43** — substitution has to use the *tenant's* terms, and must cover every
+  surface that renders a release note rather than the two v1 had.
+- **#41** — naturally tenant-scoped, but v2's enrichment path must write through
+  the same helper as the manual edit or the rename case stays broken.
+
+**#45 is also invisible when it fails**, which v1 flags and did not fix: a
+dropped reply is a container log line and nothing else. v2-31 built an email log
+with categories, so there is now somewhere for an admin-visible record to live —
+worth doing here rather than deferring, since the failure mode is a member
+who replied and whose RSVP silently did not change.
+
+**Definition of done:** all five fixed, each with the v2 equivalent of the v1
+test named in the port doc, and the three tenancy wrinkles above addressed
+rather than ported literally. A Gmail-shaped calendar reply (readable marker,
+`=3D` escapes) records an RSVP against the right community. v1's port doc rows
+for #41, #42, #43, #45 and #47 go to `Ported: Yes` — that edit is in the other
+repo and is part of this item, not an afterthought.
+
+**No schema changes**, in v1 or here, which is what makes this one branch rather
+than five.
