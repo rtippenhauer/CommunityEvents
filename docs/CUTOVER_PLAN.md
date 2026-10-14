@@ -324,6 +324,14 @@ is the natural consequence of "DinnerBears is one community meeting in two
 cities" — a city is a row, so it does not get a hostname — but it had not been
 written down, and it is the half of the decision with migration consequences.
 
+Rob's reason for being comfortable dropping them: **nobody uses them.** What is
+wanted instead is filtering events by city with no URL involved, which is what
+`v2-24` already specifies. One consequence does need building, and it is
+recorded in that item: the subdomain was the *only* signal of a new member's
+city, so with one host every post-cutover signup silently lands in Cincinnati
+(`resolveCityId` falls back to `cities[0]`, ordered by name). Imported members
+keep their real city; new ones need a deliberate mechanism.
+
 `tenants.domain` is stored bare and **cannot hold a `www.` prefix** —
 `normalizeTenantDomain` strips it, so `www.dinnerbears.com` and
 `dinnerbears.com` resolve to one tenant row by design. Check the apex actually
@@ -423,9 +431,17 @@ get their invite" at DinnerBears' volume within a couple of days.
 
 ## Open questions
 
-1. **How many cities does each source deployment actually carry?** If each has
-   exactly one, v2-24's multi-select is dead weight at cutover and could ship
-   thinner. If a deployment already runs several, the full feature is needed.
+1. ~~**How many cities does each source deployment actually carry?**~~
+   **Answered by the one-tenant decision.** This was written when the plan was
+   two tenants, where "one city each" would have made v2-24's multi-select dead
+   weight. The two deployments now merge into **one tenant holding both
+   Cincinnati and Dayton**, so multi-city is live from the first day and the
+   multi-select is required rather than speculative — a member wanting Dayton
+   only, or both, is the ordinary case immediately.
+
+   It also means a member with an account in both source databases legitimately
+   imports with **two** rows in `user_city_preferences`, which is the one place
+   the email-collision merge produces a union rather than a choice.
 2. **The automation-account conflict** in `v2-29` — relax "one non-human account
    per tenant", or model integration accounts separately.
 3. **How long the old v1 deployments stay up** after cutover as a rollback path.
