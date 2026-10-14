@@ -316,13 +316,51 @@ Until that is decided, the import is **not** a matter of pointing the existing
 script at a second database. See `REQ-IMPORT-01`, which still describes the
 two-tenant shape and needs revising to match this section.
 
-### Domains, and the `www` trap
+### Domains — one host, and retiring the city subdomains
+
+**Decided by Rob, 2026-10-14: one tenant, one host.
+`cincinnati.dinnerbears.com` and `dayton.dinnerbears.com` are dropped.** This
+is the natural consequence of "DinnerBears is one community meeting in two
+cities" — a city is a row, so it does not get a hostname — but it had not been
+written down, and it is the half of the decision with migration consequences.
 
 `tenants.domain` is stored bare and **cannot hold a `www.` prefix** —
 `normalizeTenantDomain` strips it, so `www.dinnerbears.com` and
 `dinnerbears.com` resolve to one tenant row by design. Check the apex actually
 has an A record before relying on it; in v1 the apex published MX only, which is
 the whole reason `BASE_DOMAIN` was `www.dinnerbears.com` there.
+
+**Retiring a host is not deleting its DNS record.** Four things members already
+hold are bound to a hostname, and only one of them fails in a way anybody
+notices:
+
+| What | If the host just disappears |
+|---|---|
+| **iCal feed subscriptions** | **Silent.** `feedUrl` builds `https://<tenant host>/api/v1/calendar/feed.ics?token=…` and the member pasted that into Google or Apple Calendar months ago. A dead host makes the client stop refreshing; it does not tell anybody. The member simply stops seeing dinners and assumes none are scheduled. |
+| **Web push subscriptions** | **Silent.** A push endpoint belongs to the service-worker registration, which is per *origin*. A member who installed the PWA from `dayton.dinnerbears.com` has a subscription that cannot be moved to another host at all — `push_subscriptions.endpoint` is unique and origin-bound, so it has to be re-created by that member visiting the new host. |
+| **Links in already-sent email** | Semi-visible. Invite, event and reset links in mail already delivered point at the old host and cannot be rewritten. They fail as a dead link rather than a wrong page. |
+| **OAuth redirect URIs** | **Loudly**, which makes it the good case: Google answers `redirect_uri_mismatch`. Register the surviving host and drop the others as part of the cutover. |
+
+So the retired hosts should keep answering **301 redirects to the surviving
+host for a long window** rather than being removed. That rescues bookmarks and,
+on most clients, the calendar feeds — both Google and Apple follow a permanent
+redirect on a later refetch. It cannot rescue push.
+
+**But a redirect only helps if the token still resolves, and that is an import
+question nothing has answered.** `users.calendar_token` is a `VARCHAR(36)`
+unique column; `REQ-IMPORT-01` does not mention it anywhere. If the import
+carries each member's existing token across, a redirect makes every subscribed
+feed keep working. If it generates fresh tokens, **every feed in the community
+breaks the moment the old hosts go**, redirects or not, and the only remedy is
+asking every member to re-subscribe — which most will not do. Preserving
+`calendar_token` should be an explicit import requirement.
+
+**It also collides with the email question above.** A member holding an account
+in both source databases has *two* calendar tokens, and the merged account can
+keep only one — so one of their two subscribed feeds dies whatever the
+redirects do. Whoever that affects needs telling directly, which is another
+reason to measure how many addresses actually collide before the cutover rather
+than during it.
 
 ### Mail domain — set it explicitly, never derive it
 
@@ -395,6 +433,10 @@ get their invite" at DinnerBears' volume within a couple of days.
    kept, now that the log is a feature rather than a queue.
 5. **How an address held in both source databases becomes one account** — see
    change 2 above. The question that can stall the end of the project, and the
-   only one on this list that is free to answer today.
+   only one on this list that is free to answer today. Now also carries which
+   of the member's two `calendar_token`s survives.
+7. **Which host survives** — `www.dinnerbears.com` is the presumption, but the
+   two deployments' current hostnames are not recorded here and the retired
+   ones need naming before redirects can be written.
 6. **Does v2 continue v1's version numbering at cutover**, or start fresh? See
    the release-notes section.

@@ -761,10 +761,22 @@ DinnerBears is one community meeting in two cities, which is what
 wide" (Phase 40 / `v2-30`) already said the same thing: it is only coherent if
 the community spans both cities.
 
+**One tenant means one host** (Rob, 2026-10-14):
+`cincinnati.dinnerbears.com` and `dayton.dinnerbears.com` are dropped, since a
+city is a row and does not get a hostname. Retire them as **301 redirects held
+for a long window**, not as deleted DNS — an iCal feed subscription and a web
+push registration are both bound to the host a member first used, and both fail
+*silently* when it vanishes. Push cannot be rescued by a redirect at all
+(endpoints are per-origin); feeds can, but only if the import preserves
+`users.calendar_token`, which `REQ-IMPORT-01` does not currently mention. See
+`docs/CUTOVER_PLAN.md`.
+
 The consequence that is not free: email is unique per tenant
 (`@@unique([tenantId, email])`), so an address holding an account in **both**
 source databases is two rows that must become one. Two tenants made that a
 non-question. `REQ-IMPORT-01` is marked superseded in part until it is answered.
+It decides a second thing as well — a merged member has two `calendar_token`s
+and keeps one, so one of their two subscribed calendars dies regardless.
 
 Six things stand between here and a live DinnerBears — `/v2-done 14`, the
 dispatcher claim step carved out of `v2-27`, `v2-33` (v1's five bugfixes),
