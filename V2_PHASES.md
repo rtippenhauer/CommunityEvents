@@ -2180,10 +2180,32 @@ queue/suppression (already global — deliverability is a property of the
 address, not the tenant), release notes, and per-city Facebook group
 config (dropped per v2-24).
 
-Built generically enough to run again later against the second,
-manually-duplicated DinnerBears database in its own container — same
-script, different connection string and target slug, producing a second
-independent tenant.
+**There is only ONE source database** (corrected 2026-10-14). This said the
+script should be "built generically enough to run again later against the
+second, manually-duplicated DinnerBears database in its own container…
+producing a second independent tenant". No such database exists: v1 is one
+deployment with one database holding Cincinnati and Dayton as `cities` rows.
+The duplicate deployment that motivated this whole project was a *different
+community* — a prospective customer who never launched — and it has no data
+worth importing.
+
+Keeping the script general is still worth something, just for a different
+reason: the next import is a **new customer** arriving from somewhere else, not
+a second DinnerBears. So parameterise the connection and the target slug, and
+do not build a second run into the plan.
+
+**`stage.dinnerbears.com` has its own database and is the right dry-run
+target** — a realistic source schema nobody minds breaking, available now
+rather than at the end.
+
+**Two columns must be carried across verbatim, not regenerated**, or the
+cutover breaks silently for every member at once. `users.calendar_token` is the
+identity inside an iCal feed URL members have already pasted into Google or
+Apple Calendar; the host does not change, so the subscription survives if and
+only if the token does. `push_subscriptions.endpoint` is the same story for web
+push — same origin, so the registration stays valid if the row comes across.
+Neither is mentioned in `REQ-IMPORT-01`, and nothing surfaces an error if they
+are wrong: the member simply stops hearing from the app.
 
 **Definition of done:** primary DinnerBears database imports cleanly into
 a new tenant with all FKs remapped and validated; dry-run mode reports

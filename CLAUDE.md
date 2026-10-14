@@ -23,11 +23,31 @@ for that reason. v2 work publishes to its own `v2-stage` tag instead (see
 
 ## Project Overview
 Community dining platform that organizes weekly group dinners across
-multiple cities. v1 runs Cincinnati and Dayton as two full duplicate
-deployments (separate container, separate database, settings-driven
-branding). v2 replaces that with a single deployment, single database, and
-tenant-scoped data — a new tenant (city/community) is a database row, not a
-new container/database pair. The underlying product (organizing recurring
+multiple cities.
+
+**v1 runs ONE deployment and ONE database** (`www.dinnerbears.com` live, plus
+`stage.dinnerbears.com` for testing). **Cincinnati and Dayton are `cities` rows
+inside that single database**, seeded together by v1's own
+`CreateCitiesAndAppConfig` migration, and a member chooses all-cities or
+their-city-only from their profile. v1 has always been multi-city in one
+instance.
+
+> **Corrected 2026-10-14, and it had been wrong in five documents.** This said
+> "v1 runs Cincinnati and Dayton as two full duplicate deployments (separate
+> container, separate database)". The *architecture* half was true and the
+> *example* was not: the two duplicate deployments were DinnerBears and a
+> second database Rob stood up for a prospective customer who never went live
+> — **and that duplication is exactly what led to CommunityEvents**. Two
+> cities were never two deployments. Somebody mapped "two deployments" onto the
+> two city names, and from there the cutover plan and `REQ-IMPORT-01` spent
+> weeks reasoning about merging two source databases that do not exist. Checked
+> against v1's own migration, not inferred.
+
+So v2's premise is validated by the actual history rather than by analogy: a new
+community should not cost a new container and database, because Rob did it once
+for a customer and that was the trigger for this rewrite. v2 replaces the
+pattern with a single deployment, single database, and tenant-scoped data — a
+new tenant (community) is a database row, not a new container/database pair. The underlying product (organizing recurring
 group dinners) isn't changing, only the deployment architecture; whether
 "tenant" ends up meaning strictly "city" or something broader isn't decided
 beyond what `docs/REQ-TENANT-01.md` specifies.
@@ -752,14 +772,15 @@ the delta before planning anything. The v1 repo is a sibling checkout
 (`../DinnerBears`), so that is a file read, not a question.
 
 **DinnerBears is ONE tenant; Cincinnati and Dayton are cities inside it**
-(Rob, 2026-10-03). This reverses what `docs/CUTOVER_PLAN.md` and
-`REQ-IMPORT-01` said — they reasoned from how v1 *runs today* (two deployments,
-two databases) rather than from what a tenant is, and v1 runs two deployments
-only because v1 had no way to run two cities. A tenant is a community;
-DinnerBears is one community meeting in two cities, which is what
-`REQ-CITIES-01`'s `feature_cities` was built for. Rob's "a ban is community
-wide" (Phase 40 / `v2-30`) already said the same thing: it is only coherent if
-the community spans both cities.
+(Rob, 2026-10-03) — and as of 2026-10-14 this is simply a description of v1
+rather than a decision about v2. v1 is one deployment with one database holding
+both cities. The earlier justification here claimed v2 was correcting a v1
+limitation ("v1 runs two deployments only because v1 had no way to run two
+cities"); that was false in both halves, since v1 runs one deployment and has
+had cities since its third migration. A tenant is a community; DinnerBears is
+one community meeting in two cities, which is what `REQ-CITIES-01`'s
+`feature_cities` generalizes. Rob's "a ban is community wide" (Phase 40 /
+`v2-30`) agrees: it is only coherent if the community spans both cities.
 
 **A city is a row, not a hostname, and not a URL** (Rob, 2026-10-14). He built
 the city-URL path in v1 and nobody uses it; what is wanted is filtering events
@@ -778,12 +799,14 @@ push registration are both bound to the host a member first used, and both fail
 `users.calendar_token`, which `REQ-IMPORT-01` does not currently mention. See
 `docs/CUTOVER_PLAN.md`.
 
-The consequence that is not free: email is unique per tenant
-(`@@unique([tenantId, email])`), so an address holding an account in **both**
-source databases is two rows that must become one. Two tenants made that a
-non-question. `REQ-IMPORT-01` is marked superseded in part until it is answered.
-It decides a second thing as well — a merged member has two `calendar_token`s
-and keeps one, so one of their two subscribed calendars dies regardless.
+**There is no account-merge problem, and the one recorded here was imaginary.**
+This paragraph said an address with an account in *both source databases* was
+two rows that had to become one, and set out a merge rule as the question most
+likely to stall the cutover. There is one source database, email is already
+unique in it, and nothing merges. Deleted rather than softened, because a
+plausible-sounding problem in a planning doc costs more than a missing one.
+`REQ-IMPORT-01` is still marked superseded in part, now only for the
+one-tenant-per-source-database framing.
 
 Six things stand between here and a live DinnerBears — `/v2-done 14`, the
 dispatcher claim step carved out of `v2-27`, `v2-33` (v1's five bugfixes),

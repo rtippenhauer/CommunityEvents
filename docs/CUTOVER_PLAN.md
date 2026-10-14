@@ -82,21 +82,23 @@ certificate). None of that depends on a single line of `v2-33`, `v2-29`,
 from a schedule tail-risk into something already proven — and a prod deployment
 with no data is also where the import dry runs should land.
 
-**2. Answer the email-collision question now, before `v2-25` needs it.** Email
-is unique per tenant (`@@unique([tenantId, email])`) and DinnerBears is **one**
-tenant spanning two cities, so an address holding an account in both the
-Cincinnati and the Dayton database is two rows that must become one. This is
-the single open design question that can stall the *end* of the project, when
-everything else is finished and a dry run is sitting on a conflict. It is a
-decision, not code; it costs nothing today. `REQ-IMPORT-01` is marked
-superseded in part until it is answered.
+**2. ~~Answer the email-collision question now.~~ WITHDRAWN 2026-10-14 — there
+is no collision.** This was listed as the single question most likely to stall
+the end of the project: with two source databases, an address holding an account
+in both would be two rows that could not coexist under
+`@@unique([tenantId, email])`, and a merge rule would be needed for password
+hashes, roles, points ledgers and the rest.
 
-What has to be decided: which row wins for profile fields, what happens to two
-different password hashes, whether both cities' RSVP and points history merge
-onto the survivor, and what the member is told. The merge rule should be
-written into `REQ-IMPORT-01` and exercised by a dry run against a copy of both
-databases — the count of colliding addresses is itself a thing to measure
-early, because it may be two people or two hundred.
+There is **one** source database. Email is already unique inside it, nothing
+merges, and the whole problem was an artefact of this document's own wrong
+premise about how v1 runs. Recorded as withdrawn rather than deleted, because
+the reasoning was sound and only the fact underneath it was false — and because
+a planning document that quietly loses its scariest item teaches nobody anything.
+
+**What to do with the time instead: rehearse the import against
+`stage.dinnerbears.com`'s database.** v1 has a stage deployment, which is a
+realistic source schema that nobody minds breaking — a far better dry-run
+target than a copy of production, and available now rather than at the end.
 
 **3. `v2-33` before `v2-29`.** Both are ports and neither depends on the other,
 but `v2-33` is five paragraph-sized fixes with no schema changes against
@@ -276,13 +278,22 @@ on the day, and most have bitten this project before in some form.
 **DinnerBears is one tenant. Cincinnati and Dayton are cities inside it**
 (Rob, 2026-10-03).
 
-This reverses what this section said, and the reversal is the right way round:
-it said two source databases become two independent tenants, reasoning from how
-v1 *runs today* rather than from what a tenant *is*. v1 runs two deployments
-because v1 had no other way to run two cities — that is the constraint v2 exists
-to remove, so treating it as the target shape would have carried the old
-limitation across the cutover and called it a requirement. A tenant is a
-community; DinnerBears is one community that meets in two cities.
+**As of 2026-10-14 this is a description of v1, not a decision about v2.**
+v1 is **one** deployment with **one** database, and Cincinnati and Dayton are
+`cities` rows inside it — seeded together by v1's third migration. There was
+never anything to reverse and never two source databases.
+
+The correction matters because this section's original reasoning was confident
+and wrong in both halves: it said "v1 runs two deployments because v1 had no
+other way to run two cities". v1 runs one deployment, and has had a `cities`
+table since 2024. The two genuinely duplicated deployments behind v2's premise
+were DinnerBears and a second database Rob stood up for a prospective customer
+who never launched — the duplication that led to CommunityEvents in the first
+place. "Two deployments" got mapped onto the two city names, and this plan then
+reasoned for a fortnight about merging source databases that do not exist.
+
+A tenant is a community; DinnerBears is one community that meets in two cities,
+and v1 already modelled it that way.
 
 Rob's Phase 40 direction already said this before this section was corrected —
 **a ban is community-wide**, which is only a coherent sentence if the community
@@ -344,9 +355,22 @@ keep their real city either way.
 has an A record before relying on it; in v1 the apex published MX only, which is
 the whole reason `BASE_DOMAIN` was `www.dinnerbears.com` there.
 
-**Retiring a host is not deleting its DNS record.** Four things members already
-hold are bound to a hostname, and only one of them fails in a way anybody
-notices:
+**Most of the risk here evaporated on 2026-10-14**, and what is left is worth
+keeping. v1's real hosts are `www.dinnerbears.com` (live) and
+`stage.dinnerbears.com` (testing). The city subdomains are a `cities.subdomain`
+column and a pair of names nobody uses — Rob's words — so dropping them breaks
+nothing members hold. **And `www.dinnerbears.com` survives as the tenant's
+host**, which means the feeds, push subscriptions, sent-email links and OAuth
+redirect URIs below all keep pointing at a host that still answers.
+
+So the table is no longer a cutover hazard list. It stays because it is the
+reasoning that applies to *any* host this project ever retires — a customer
+leaving, a community renaming itself — and because one item in it survives
+regardless of hostnames: see the `calendar_token` note underneath, which is
+about the *token*, not the host.
+
+**Retiring a host is not deleting its DNS record.** Four things members hold are
+bound to a hostname, and only one of them fails in a way anybody notices:
 
 | What | If the host just disappears |
 |---|---|
@@ -355,26 +379,24 @@ notices:
 | **Links in already-sent email** | Semi-visible. Invite, event and reset links in mail already delivered point at the old host and cannot be rewritten. They fail as a dead link rather than a wrong page. |
 | **OAuth redirect URIs** | **Loudly**, which makes it the good case: Google answers `redirect_uri_mismatch`. Register the surviving host and drop the others as part of the cutover. |
 
-So the retired hosts should keep answering **301 redirects to the surviving
-host for a long window** rather than being removed. That rescues bookmarks and,
-on most clients, the calendar feeds — both Google and Apple follow a permanent
-redirect on a later refetch. It cannot rescue push.
+A retired host that anybody did use should therefore keep answering **301
+redirects for a long window** rather than being removed. Not needed for the city
+subdomains, since nobody used them.
 
-**But a redirect only helps if the token still resolves, and that is an import
-question nothing has answered.** `users.calendar_token` is a `VARCHAR(36)`
-unique column; `REQ-IMPORT-01` does not mention it anywhere. If the import
-carries each member's existing token across, a redirect makes every subscribed
-feed keep working. If it generates fresh tokens, **every feed in the community
-breaks the moment the old hosts go**, redirects or not, and the only remedy is
-asking every member to re-subscribe — which most will not do. Preserving
-`calendar_token` should be an explicit import requirement.
+**The one item that survives the good news: `users.calendar_token` must be
+preserved by the import.** This is about the token, not the host. A member's
+feed URL is `https://www.dinnerbears.com/api/v1/calendar/feed.ics?token=…`,
+already pasted into Google or Apple Calendar; the host is unchanged, so the URL
+keeps resolving — **as long as the token behind it still identifies that
+member**. `users.calendar_token` is a unique `VARCHAR(36)` and
+`REQ-IMPORT-01` does not mention it anywhere. Carry it across and every
+subscription survives the cutover silently and correctly. Mint fresh tokens and
+**every calendar feed in the community dies at once**, with no error shown to
+anyone, and the only remedy is asking every member to re-subscribe. It should be
+an explicit import requirement, and it is cheap to make one.
 
-**It also collides with the email question above.** A member holding an account
-in both source databases has *two* calendar tokens, and the merged account can
-keep only one — so one of their two subscribed feeds dies whatever the
-redirects do. Whoever that affects needs telling directly, which is another
-reason to measure how many addresses actually collide before the cutover rather
-than during it.
+The same applies to `push_subscriptions.endpoint`: same origin, so the
+registrations stay valid if their rows are imported.
 
 ### Mail domain — set it explicitly, never derive it
 
@@ -440,25 +462,30 @@ get their invite" at DinnerBears' volume within a couple of days.
 1. ~~**How many cities does each source deployment actually carry?**~~
    **Answered by the one-tenant decision.** This was written when the plan was
    two tenants, where "one city each" would have made v2-24's multi-select dead
-   weight. The two deployments now merge into **one tenant holding both
-   Cincinnati and Dayton**, so multi-city is live from the first day and the
-   multi-select is required rather than speculative — a member wanting Dayton
-   only, or both, is the ordinary case immediately.
+   weight. v1's single database already holds **both Cincinnati and Dayton**, so
+   the imported tenant is multi-city on day one and the multi-select is required
+   rather than speculative — a member wanting Dayton only, or both, is the
+   ordinary case immediately. (Nothing "merges": there was only ever one
+   deployment.)
 
-   It also means a member with an account in both source databases legitimately
-   imports with **two** rows in `user_city_preferences`, which is the one place
-   the email-collision merge produces a union rather than a choice.
+   Each imported member has exactly one legacy city, so each gets one row in
+   `user_city_preferences` — the earlier claim here, that a member with accounts
+   in both databases would import with two, was a consequence of the
+   two-database error and is withdrawn.
 2. **The automation-account conflict** in `v2-29` — relax "one non-human account
    per tenant", or model integration accounts separately.
 3. **How long the old v1 deployments stay up** after cutover as a rollback path.
 4. **Email retention** (`v2-31`) — how long a sent row and its rendered body are
    kept, now that the log is a feature rather than a queue.
-5. **How an address held in both source databases becomes one account** — see
-   change 2 above. The question that can stall the end of the project, and the
-   only one on this list that is free to answer today. Now also carries which
-   of the member's two `calendar_token`s survives.
-7. **Which host survives** — `www.dinnerbears.com` is the presumption, but the
-   two deployments' current hostnames are not recorded here and the retired
-   ones need naming before redirects can be written.
+5. ~~**How an address held in both source databases becomes one account**~~ —
+   **void, 2026-10-14.** There is one source database; see change 2.
+6. ~~**Which host survives**~~ — **answered, 2026-10-14.**
+   `www.dinnerbears.com` is live and survives as the tenant's host;
+   `stage.dinnerbears.com` is v1's test deployment and is the natural import
+   rehearsal target. The city subdomains are unused and simply go.
+7. **Does the import preserve `users.calendar_token` and
+   `push_subscriptions.endpoint`?** Must be yes, and `REQ-IMPORT-01` says
+   nothing about either. The only member-visible breakage left in the cutover,
+   and silent if it goes wrong.
 6. **Does v2 continue v1's version numbering at cutover**, or start fresh? See
    the release-notes section.

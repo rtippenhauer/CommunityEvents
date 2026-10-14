@@ -2,14 +2,29 @@
 
 **Project:** Community Events
 **Area:** Data migration / tenant provisioning
-**Status:** Draft — **superseded in part, 2026-10-03.** This doc describes
-one tenant per source database. Rob has since decided DinnerBears is **one
-tenant with Cincinnati and Dayton as cities** (see `docs/CUTOVER_PLAN.md`,
-"Tenancy shape"). The import is therefore two source databases into **one**
-tenant, which this doc does not yet describe and which raises a question it
-never had to answer: an address with an account in both source databases is two
-rows that must become one. Treat 01.1 and 01.4's "second run produces a second
-tenant" as out of date until this is revised.
+**Status:** Draft — **superseded in part, 2026-10-03; corrected 2026-10-14.**
+
+This doc describes one tenant per source database. DinnerBears is **one tenant
+with Cincinnati and Dayton as cities** (Rob, 2026-10-03), so 01.1 and 01.4's
+"second run produces a second tenant" is out of date and this doc needs
+revising.
+
+**What changed on 2026-10-14: there is only ONE source database.** The
+2026-10-03 note said the import was "two source databases into one tenant" and
+raised an account-merge question — an address with an account in both. That was
+built on the belief that v1 runs Cincinnati and Dayton as separate deployments.
+It does not: v1 is one deployment, one database, with both cities as `cities`
+rows. **So there is no merge, no colliding email, and no second source.** The
+import reads one database.
+
+Two things this doc still must gain, and neither is about merging:
+- **Preserve `users.calendar_token`.** A member's iCal subscription is
+  `…/calendar/feed.ics?token=…` already pasted into their calendar app. The
+  host does not change at cutover, so the URL keeps working only if the token
+  still identifies them. Fresh tokens would break every feed in the community
+  at once, silently.
+- **Preserve `push_subscriptions.endpoint`** for the same reason: same origin,
+  so the registrations remain valid if their rows come across.
 **Depends on:** REQ-TENANT-01 (tenant foundation), REQ-CITIES-01 (cities
 must be tenant-scoped before they can be imported as tenant data — see
 01.3 below). No technical dependency on REQ-CMS-01; it's sequenced after
