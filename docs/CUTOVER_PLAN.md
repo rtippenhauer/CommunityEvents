@@ -1,10 +1,14 @@
 # Cutover plan — DinnerBears onto CommunityEvents
 
-**Status:** Draft, 2026-10-01. The plan for retiring the two v1 DinnerBears
-deployments and running them as tenants of this one.
+**Status:** Draft, 2026-10-01. The plan for retiring the single v1 DinnerBears
+deployment and running it as one tenant of this one. (This said "the two v1
+deployments ... as tenants" until 2026-10-14 — a survivor of the two-deployments
+error corrected in CLAUDE.md. v1 is one production deployment, one production
+database, two cities, and becomes one tenant; its stage deployment is a second
+environment, as v2 has.)
 
-The backlog in `V2_PHASES.md` is fourteen open items. **Five of them stand
-between here and a live DinnerBears**, and nine do not. This document is the
+The backlog in `V2_PHASES.md` is fifteen open items. **Five of them stand
+between here and a live DinnerBears**, and ten do not. This document is the
 five, why each is required, and what the cutover itself involves — which is
 mostly not code.
 
@@ -147,7 +151,7 @@ alone. `v2-33`'s `{{events}}` substitution is still needed for them to render.
 
 **Does DinnerBears have it today?** If not, going live without it is parity,
 not regression, and it belongs after the cutover. That single question moves
-nine of the fourteen open items off the critical path, including the entire
+ten of the fifteen open items off the critical path, including the entire
 CMS batch, the operator wizard and handbook, and ban records.
 
 It also promotes two things that were not on the backlog as blockers at all:
@@ -516,18 +520,20 @@ on the day, and most have bitten this project before in some form.
 (Rob, 2026-10-03).
 
 **As of 2026-10-14 this is a description of v1, not a decision about v2.**
-v1 is **one** deployment with **one** database, and Cincinnati and Dayton are
-`cities` rows inside it — seeded together by v1's third migration. There was
+v1 has **one production** deployment and **one production** database — plus
+stage, the same second environment v2 has — and Cincinnati and Dayton are
+`cities` rows inside it, seeded together by v1's third migration. There was
 never anything to reverse and never two source databases.
 
 The correction matters because this section's original reasoning was confident
 and wrong in both halves: it said "v1 runs two deployments because v1 had no
-other way to run two cities". v1 runs one deployment, and has had a `cities`
-table since 2024. The two genuinely duplicated deployments behind v2's premise
-were DinnerBears and a second database Rob stood up for a prospective customer
-who never launched — the duplication that led to CommunityEvents in the first
-place. "Two deployments" got mapped onto the two city names, and this plan then
-reasoned for a fortnight about merging source databases that do not exist.
+other way to run two cities". v1 runs one production deployment, and has had a
+`cities` table since 2024. The duplication behind v2's premise was a **second
+deployment being developed for a different group**, which never reached
+production (Rob, 2026-10-15) — the effort that led to CommunityEvents in the
+first place, and which holds no data to import. "Two deployments" got mapped
+onto the two city names, and this plan then reasoned for a fortnight about
+merging source databases that do not exist.
 
 A tenant is a community; DinnerBears is one community that meets in two cities,
 and v1 already modelled it that way.

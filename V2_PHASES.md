@@ -66,10 +66,10 @@ their invite" at DinnerBears' volume on about day two.
 
 ### Post-cutover — everything else
 
-`v2-15`, `v2-16`, `v2-17`, `v2-18` … `v2-23`, `v2-26`, `v2-28`, `v2-30`, and
-the rest of `v2-27`. Nine of these are either net-new features v1 never had, or
-operator tooling that matters only once somebody other than Rob runs an
-instance. **None of them is a parity requirement**, which is the test for
+`v2-15`, `v2-16`, `v2-17`, `v2-18` … `v2-23`, `v2-26`, `v2-28`, `v2-30`,
+`v2-34`, and the rest of `v2-27`. Ten of these are either net-new features v1
+never had, or operator tooling that matters only once somebody other than Rob
+runs an instance. **None of them is a parity requirement**, which is the test for
 whether something belongs on the critical path: DinnerBears runs without it
 today, so going live without it is parity rather than regression.
 
@@ -2194,11 +2194,13 @@ stamps `NOW()` and would give four backfilled notes one shared second. See
 **There is only ONE source database** (corrected 2026-10-14). This said the
 script should be "built generically enough to run again later against the
 second, manually-duplicated DinnerBears database in its own container…
-producing a second independent tenant". No such database exists: v1 is one
-deployment with one database holding Cincinnati and Dayton as `cities` rows.
-The duplicate deployment that motivated this whole project was a *different
-community* — a prospective customer who never launched — and it has no data
-worth importing.
+producing a second independent tenant". No such database exists: v1 has one
+production deployment and one production database, holding Cincinnati and
+Dayton as `cities` rows. (Stage has its own, which is the dry-run target
+below — that is v1's second *environment*, not a second community.) The
+duplicate deployment that motivated this whole project was being built for a
+*different group* and never reached production, so it has no data worth
+importing.
 
 Keeping the script general is still worth something, just for a different
 reason: the next import is a **new customer** arriving from somewhere else, not
@@ -2857,10 +2859,12 @@ right, which is why the wrong answer looked reasoned.
   the same helper as the manual edit or the rename case stays broken.
 
 **#45 is also invisible when it fails**, which v1 flags and did not fix: a
-dropped reply is a container log line and nothing else. v2-31 built an email log
-with categories, so there is now somewhere for an admin-visible record to live —
-worth doing here rather than deferring, since the failure mode is a member
-who replied and whose RSVP silently did not change.
+dropped reply is a container log line and nothing else. The failure mode is a
+member who replied and whose RSVP silently did not change. **That visibility is
+`v2-34` and is deliberately not part of this item** (Rob, 2026-10-14) — fixing
+the decode is what restores parity with DinnerBears, which is this item's test,
+and an admin-visible inbound record is new capability v1 never had. Do not let
+it grow the branch.
 
 **Two defects of our own ride along**, both found on 2026-10-14 while working
 out how to import v1's release notes, and both on the same surface as #43:
@@ -2894,3 +2898,69 @@ repo and is part of this item, not an afterthought.
 
 **No schema changes**, in v1 or here, which is what makes this one branch rather
 than five.
+
+### v2-34 — An inbound email log
+
+**Status:** Not started. **Post-cutover** (Rob, 2026-10-14: "future phase").
+Asked for as "email logs for incoming emails and any errors" — and it should
+have been written down when `v2-31` built the log, because what that item built
+is only half of one.
+
+**What exists today is outbound-only, and the table name says so.** The screen
+reads `email_queue`: a row is a message *this deployment decided to send*, with
+`status`, `attempts`, `error_message` and `brevo_status` recording how that
+went. Inbound mail has no row anywhere in the schema.
+
+**There is exactly one inbound path, and it fails silently seven ways.** The
+Cloudflare Worker POSTs a calendar reply to `processRsvpReply`
+(`api/src/modules/calendar/calendar.service.ts`), which returns early on: no
+iCal block, not a `METHOD:REPLY`, an unrecognized UID, an unparseable
+`ATTENDEE` line, an unhandled `PARTSTAT`, an event that is missing or not
+published, and no member matching the address. **Every one is a `logger.warn`
+or `logger.debug` and nothing else**, so the failure mode is a member who
+pressed Accept in Gmail and whose RSVP did not change, leaving a container log
+line as the only evidence. Nobody reads container logs to answer "why is this
+member not on the list".
+
+`v2-33`'s #45 fixes the *decode* that makes most of those exits fire today. It
+does not make the remaining six visible, and the two are worth separating: a
+decode bug is fixed once, while an unrecognized UID or an unknown address is a
+condition that recurs forever and needs somewhere to be seen.
+
+**Three design questions, none of them settled here:**
+
+- **It is probably not a column on `email_queue`.** A queue row is *work to
+  do* — the dispatcher's indexes, claim step and retry counter all assume it.
+  An inbound row is a record of something that already happened and will never
+  be sent. A `direction` column would mean every existing dispatcher query
+  needs a predicate it does not carry today, which is the same objection that
+  forced `system_reports` to be its own table in `v2-32`: a predicate that
+  applies to some rows of a table and not others is a boundary nobody can
+  confirm by reading a query.
+- **A message that resolves to no tenant is the most important row to keep,
+  and a scoped table cannot hold it.** The handler runs outside any request, so
+  there is no ambient tenant; the tenant has to be derived from the recipient
+  address or the UID *before* anything can be written scoped. But "this reply
+  arrived and matched no community" is precisely the case an operator needs to
+  see. So either the table is global with a nullable tenant id —
+  `ON DELETE SET NULL`, like `v2-32`'s two tables, for the same reason — or
+  unresolvable messages are dropped, which defeats the item. Decide this first;
+  it decides the schema.
+- **Retention is a fresh decision, not `v2-31`'s.** That item clears the
+  rendered body after 30 days and keeps the envelope, on the grounds that the
+  envelope answers the question cheaply. A raw inbound email is larger, is
+  written by a member rather than by us, and the part worth keeping may be
+  exactly the part that is expensive. `deepest_open_age_days` was built to
+  decide the outbound window on evidence; the same instrument should decide
+  this one rather than inheriting a number.
+
+**Also in scope:** the Worker catches its own POST failures and returns, so
+Cloudflare's Email Routing activity log shows every message as **Handled** even
+when nothing was delivered — which is how v1's apex-host misconfiguration went
+unnoticed. A rejected or unreachable POST currently surfaces nowhere on either
+side, and an inbound log is the only place it could.
+
+**Definition of done:** inbound messages and their outcome are visible to an
+admin on the same screen as outbound, each failure exit above distinguishable
+from the others, a message matching no community visible to the operator, and a
+retention position taken deliberately with its reasoning recorded.

@@ -16,19 +16,20 @@ conventions the rest of the project follows.
 
 ## Background
 
-DinnerBears serves its community from a single deployment with a single
-database, and duplicating that whole stack is what it takes to serve a *second*
-community — which Rob did once, standing up a separate container and database
-for a prospective customer who never went live. Branding is settings-driven
-(icon/name/terms via `app_config`), so the duplicate differed only by
+DinnerBears serves its community from a single production deployment with a
+single database (plus stage, as v2 has), and duplicating that whole stack is
+what it takes to serve a *second* community — which is what was under way for a
+different group, a separate container and database, abandoned before it reached
+production. Branding is settings-driven (icon/name/terms via `app_config`), so
+the duplicate differed only by
 configuration. Community Events replaces that manual pattern with a single
 deployment, single database, and tenant-scoped data — new tenant = a database
 row, not a new deployment.
 
 > **Corrected 2026-10-14.** This paragraph read "DinnerBears currently serves
 > two user bases by running two full duplicate deployments". The duplication was
-> real and is still the reason this document exists, but the two deployments
-> were DinnerBears and the never-launched customer — **not** Cincinnati and
+> real and is still the reason this document exists, but the second deployment
+> was the never-launched build for another group — **not** Cincinnati and
 > Dayton, which have always been `cities` rows in one database. The misreading
 > propagated into `docs/CUTOVER_PLAN.md` and `REQ-IMPORT-01`, where it invented
 > a two-database import and an account-merge problem that do not exist.

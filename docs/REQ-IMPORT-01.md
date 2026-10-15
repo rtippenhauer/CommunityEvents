@@ -13,9 +13,10 @@ revising.
 2026-10-03 note said the import was "two source databases into one tenant" and
 raised an account-merge question — an address with an account in both. That was
 built on the belief that v1 runs Cincinnati and Dayton as separate deployments.
-It does not: v1 is one deployment, one database, with both cities as `cities`
-rows. **So there is no merge, no colliding email, and no second source.** The
-import reads one database.
+It does not: v1 has one production deployment and one production database,
+with both cities as `cities` rows. **So there is no merge, no colliding email,
+and no second source.** The import reads one database. (Stage has its own, and
+is the dry-run target — a second environment, not a second community.)
 
 Three things this doc still must gain, and none is about merging. The first two
 were measured against the live database on 2026-10-14 and are requirements, not
