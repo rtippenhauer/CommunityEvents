@@ -209,6 +209,73 @@ before any of it, which is already done and only wants merging.
 
 ---
 
+## The rehearsal sequence (Rob, 2026-10-14)
+
+Stage exists → set up `stage.dinnerbears.com` with a member who has a calendar
+feed → migrate → test → test-migrate live `www.dinnerbears.com` data → change
+the URL and strip the email credentials → validate → build production →
+migrate, smoke test, go live.
+
+**Creating a calendar subscriber before migrating is the sharp part.** It turns
+"did `calendar_token` survive" from a hope into an observation, and 26 of 62
+members depend on it.
+
+### The step that needs care: "can't email production members"
+
+The intent, in Rob's words: live DinnerBears data running on stage, under a
+stage URL, must not be able to email real members. **Its two halves pull in
+opposite directions, so the order matters.**
+
+`BrevoService.getEffectiveConfig` resolves a key as
+`db?.brevoApiKey || env.apiKey`, where `env` is populated **only if**
+`isOnDeploymentDomain(tenantId)` is true — that is, the tenant's domain is the
+deployment's or sits under it. So:
+
+- **A tenant on a `dinnerbears.com` host cannot send**, full stop, once its own
+  key is cleared. Not on the deployment's domain, so `env` is empty strings and
+  there is nothing to fall back to. The guard is a property of the domain.
+- **A tenant moved to a `*.stage.communityeventsproject.com` host *gains* the
+  ability to send**, because it now sits under the deployment domain and
+  inherits stage's env `BREVO_API_KEY`. **Clearing the tenant's own key does not
+  help**, because the fallback is what supplies the credential.
+
+So changing the URL to a stage address is the step that *creates* the hazard,
+and clearing the tenant's own key does not close it.
+
+**Decided by Rob, 2026-10-14: disable email across the whole stage deployment.**
+"It's just a test bed." That is the blunt option and it is the right one here —
+it does not depend on which host the rehearsal tenant ends up on, which is the
+detail most likely to drift mid-rehearsal.
+
+**Unset both provider keys in stage's env, not just Brevo.** The env fallback
+has two copies on the sending path and `BREVO_API_KEY` is only one of them:
+
+- `BREVO_API_KEY` — `BrevoService.getEffectiveConfig`
+- `RESEND_API_KEY` — `ResendService`, which carries its own identically-gated
+  `|| env` line
+
+Resend is the overflow provider and `resend_overflow_enabled` defaults to
+`false`, so it is normally dormant. **The import is what makes that worth
+checking:** v1 has its own `email_provider_config`, so a copied row can arrive
+with overflow switched **on**, and a dormant provider becomes a live one without
+anybody enabling it. Either unset `RESEND_API_KEY` too, or confirm
+`resend_overflow_enabled = 0` on the imported row.
+
+(`BrevoWebhookService.register` holds a third copy of the same fallback. It
+registers callbacks rather than sending, so it cannot mail a member, but it is
+the third place to look if this reasoning is ever revisited.)
+
+**What this costs:** stage cannot test email while the keys are out, which
+matters for any later item whose stage pass needs real sends — `v2-9`'s needed
+real sends and live inbound webhooks. It is a toggle, not a permanent state:
+out while live member data is sitting on stage, back in afterwards.
+
+**Verify rather than assume:** on the imported tenant, Admin → Email should
+report no provider available. Queued mail then settles as `BLOCKED` rather than
+sending, which is the guard working and not a fault.
+
+---
+
 ## The v1 release notes (Rob's ask, 2026-10-14)
 
 **Goal:** members arriving on v2 see the release history they already know,
@@ -266,12 +333,35 @@ backlog, so importing four notes produces at most one popup rather than four.
 `fs.readdir` order is also worth a `.sort()` while in there — it is relied on
 and unsorted, and alphabetically `1.6.10.md` precedes `1.6.2.md`.
 
-**A decision still needed:** v2's `package.json` is still v1's `1.5.1` and
-there is no `/v2-release`. At cutover, does v2 continue v1's numbering (…1.6.4,
-then 2.0) or start fresh? `releases.version` is a unique `VARCHAR(20)` and
-holds either, so this is a presentation choice rather than a technical one —
-but the splash orders by date, so whatever is chosen, the dates have to be
-right.
+### What members actually read at go-live: one `2.0` note
+
+**Decided by Rob, 2026-10-14.** Everything v2 has accumulated is consolidated
+into a **single 2.0 release note** for production, covering **user-focused
+changes only**, and kept tight.
+
+That also settles the version question: v1's notes import with their real dates
+(`1.5.0` … `1.6.3`), and `2.0` follows them. Numbering continues v1's lineage
+rather than restarting, so a member's Updates page reads as one unbroken
+history of the thing they have been using.
+
+**The raw material is `docs/NEXT_RELEASE_V2.md` — 834 lines across 28
+sections** — and the filter does most of the work, because the great majority
+of it is operator-facing: the data layer, multi-community groundwork, data
+separation, stored credentials, per-community API keys, operator screens,
+"behind the scenes". A DinnerBears member is not the audience for any of it.
+
+**Expect the result to be genuinely short, and treat that as correct rather
+than as a gap.** The cutover is a lift and shift: for a member, almost nothing
+about using the site changes, which is the *point*. The honest member-facing
+list is roughly calendar entries, feedback screenshots, reports reaching the
+people who build the site, and whatever `v2-33` restores. Padding it with
+architecture would be writing release notes for the wrong reader — and the
+operator-facing material is already documented, which is a different job from
+being announced.
+
+`docs/NEXT_RELEASE_V2.md` therefore stays what it is: an accumulating record to
+draw from, not the note itself. The note is `api/release-notes/2.0.md`, written
+once, imported by `ReleaseNotesImporterService` like any other.
 
 ---
 
@@ -626,6 +716,9 @@ get their invite" at DinnerBears' volume within a couple of days.
    kept, now that the log is a feature rather than a queue.
 5. ~~**How an address held in both source databases becomes one account**~~ —
    **void, 2026-10-14.** There is one source database; see change 2.
+6. ~~**Does v2 continue v1's version numbering?**~~ — **answered, 2026-10-14:
+   yes.** v1's notes import with their real dates and a single `2.0` note
+   follows them.
 6. ~~**Which host survives**~~ — **answered, 2026-10-14.**
    `www.dinnerbears.com` is live and survives as the tenant's host;
    `stage.dinnerbears.com` is v1's test deployment and is the natural import
