@@ -240,19 +240,39 @@ deployment's or sits under it. So:
   help**, because the fallback is what supplies the credential.
 
 So changing the URL to a stage address is the step that *creates* the hazard,
-and clearing the tenant's own key does not close it. Two ways to actually close
-it:
+and clearing the tenant's own key does not close it.
 
-1. **Keep the rehearsal tenant on a `dinnerbears.com` host** pointed at the
-   stage container through the proxy — `v2.dinnerbears.com`, say. Inheritance is
-   then structurally impossible and a single label keeps TLS simple. Preferred.
-2. **Or unset `BREVO_API_KEY` in stage's own environment**, which disables
-   sending for the whole stage deployment including its root tenant. Heavier,
-   and it changes what else stage can be used to test.
+**Decided by Rob, 2026-10-14: disable email across the whole stage deployment.**
+"It's just a test bed." That is the blunt option and it is the right one here —
+it does not depend on which host the rehearsal tenant ends up on, which is the
+detail most likely to drift mid-rehearsal.
 
-**Whichever is chosen, verify rather than assume:** on the imported tenant,
-Admin → Email should report no provider available. Queued mail then settles as
-`BLOCKED` rather than sending, which is the guard working and not a fault.
+**Unset both provider keys in stage's env, not just Brevo.** The env fallback
+has two copies on the sending path and `BREVO_API_KEY` is only one of them:
+
+- `BREVO_API_KEY` — `BrevoService.getEffectiveConfig`
+- `RESEND_API_KEY` — `ResendService`, which carries its own identically-gated
+  `|| env` line
+
+Resend is the overflow provider and `resend_overflow_enabled` defaults to
+`false`, so it is normally dormant. **The import is what makes that worth
+checking:** v1 has its own `email_provider_config`, so a copied row can arrive
+with overflow switched **on**, and a dormant provider becomes a live one without
+anybody enabling it. Either unset `RESEND_API_KEY` too, or confirm
+`resend_overflow_enabled = 0` on the imported row.
+
+(`BrevoWebhookService.register` holds a third copy of the same fallback. It
+registers callbacks rather than sending, so it cannot mail a member, but it is
+the third place to look if this reasoning is ever revisited.)
+
+**What this costs:** stage cannot test email while the keys are out, which
+matters for any later item whose stage pass needs real sends — `v2-9`'s needed
+real sends and live inbound webhooks. It is a toggle, not a permanent state:
+out while live member data is sitting on stage, back in afterwards.
+
+**Verify rather than assume:** on the imported tenant, Admin → Email should
+report no provider available. Queued mail then settles as `BLOCKED` rather than
+sending, which is the guard working and not a fault.
 
 ---
 
