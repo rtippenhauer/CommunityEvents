@@ -209,6 +209,53 @@ before any of it, which is already done and only wants merging.
 
 ---
 
+## The rehearsal sequence (Rob, 2026-10-14)
+
+Stage exists → set up `stage.dinnerbears.com` with a member who has a calendar
+feed → migrate → test → test-migrate live `www.dinnerbears.com` data → change
+the URL and strip the email credentials → validate → build production →
+migrate, smoke test, go live.
+
+**Creating a calendar subscriber before migrating is the sharp part.** It turns
+"did `calendar_token` survive" from a hope into an observation, and 26 of 62
+members depend on it.
+
+### The step that needs care: "can't email production members"
+
+The intent, in Rob's words: live DinnerBears data running on stage, under a
+stage URL, must not be able to email real members. **Its two halves pull in
+opposite directions, so the order matters.**
+
+`BrevoService.getEffectiveConfig` resolves a key as
+`db?.brevoApiKey || env.apiKey`, where `env` is populated **only if**
+`isOnDeploymentDomain(tenantId)` is true — that is, the tenant's domain is the
+deployment's or sits under it. So:
+
+- **A tenant on a `dinnerbears.com` host cannot send**, full stop, once its own
+  key is cleared. Not on the deployment's domain, so `env` is empty strings and
+  there is nothing to fall back to. The guard is a property of the domain.
+- **A tenant moved to a `*.stage.communityeventsproject.com` host *gains* the
+  ability to send**, because it now sits under the deployment domain and
+  inherits stage's env `BREVO_API_KEY`. **Clearing the tenant's own key does not
+  help**, because the fallback is what supplies the credential.
+
+So changing the URL to a stage address is the step that *creates* the hazard,
+and clearing the tenant's own key does not close it. Two ways to actually close
+it:
+
+1. **Keep the rehearsal tenant on a `dinnerbears.com` host** pointed at the
+   stage container through the proxy — `v2.dinnerbears.com`, say. Inheritance is
+   then structurally impossible and a single label keeps TLS simple. Preferred.
+2. **Or unset `BREVO_API_KEY` in stage's own environment**, which disables
+   sending for the whole stage deployment including its root tenant. Heavier,
+   and it changes what else stage can be used to test.
+
+**Whichever is chosen, verify rather than assume:** on the imported tenant,
+Admin → Email should report no provider available. Queued mail then settles as
+`BLOCKED` rather than sending, which is the guard working and not a fault.
+
+---
+
 ## The v1 release notes (Rob's ask, 2026-10-14)
 
 **Goal:** members arriving on v2 see the release history they already know,
