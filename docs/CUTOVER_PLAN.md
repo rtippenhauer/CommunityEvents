@@ -252,8 +252,36 @@ assumed go-live was distant. It is not any more.
 
 ### 6. Production deployment
 
-Not a numbered item because it is operations rather than code, and it does not
-exist in any form yet:
+**Confirmed shape (Rob, 2026-10-14):** two deployments, each with **its own
+database**. Stage exists today. Production is created at go-live, mirroring what
+`www.dinnerbears.com` is for v1, and **in the long term hosts every production
+community** — each one a tenant of that single deployment, which is the whole
+point of the rewrite.
+
+Two consequences worth stating, because both are already covered elsewhere in
+this document and are easy to lose:
+
+- **Production's root tenant is the operator's own**, serving the marketing
+  landing page (`v2-13`). DinnerBears is a **non-root** tenant on its own
+  domain, so by `v2-12`'s rule it may not inherit the deployment's Brevo or
+  Google credentials and must bring its own — see "Email credentials" and
+  "OAuth" below.
+- **The rehearsal belongs on stage and the real import on production.** Separate
+  deployments and separate databases mean no contest over `tenants.domain`,
+  which is unique: a rehearsal tenant claiming `dinnerbears.com` on stage does
+  not block the real one claiming it on production, and the rehearsal can stay
+  up as a reference afterwards.
+
+> **Open: the project's domain spelling.** Rob consistently says
+> `communityevents.com` (stage and www); this repo says
+> `communityeventsproject.com` throughout — CLAUDE.md, `REQ-TENANT-01.7`, and
+> the stage host actually deployed and answering today
+> (`stage.communityeventsproject.com`). Resolve before building production: it
+> sets `APP_URL`, the root tenant's domain, the certificate scope and
+> `demo.<domain>`. If `communityevents.com` is the real target then several
+> documents and the live stage configuration need correcting together.
+
+It does not exist in any form yet:
 
 - **No v2 production image tag.** `scripts/publish-v2-stage.sh` is the only
   publish script here, and `:stage` / `:latest` belong to v1's pipeline and must
