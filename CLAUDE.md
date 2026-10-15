@@ -54,9 +54,20 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** the **dispatcher claim bugfix** — v2-27's first half,
-carved out. Built and verified on stage 2026-10-12, **not yet merged**: branch
-`bugfix-dispatcher-claim`, pushed, image `v2-stage` at commit `97388d5`.
+**Current v2 work item:** **`v2-33`** — porting v1's five outstanding bugfixes.
+Branch `v2-33-port-v1-bugfixes`, cut off `main` 2026-10-14, nothing implemented
+yet. See V2_PHASES.md for the five, each already verified as a live defect in
+this repo with a file and line.
+
+**`v2-33` + `v2-29` is what "caught up to prod DinnerBears" means** — the
+bugfixes and Phase 39 (MUSE) respectively. `v2-24` (cities) is *not* catch-up;
+it is new v2 work the import depends on. Then `v2-25` (the import) and a
+production deployment.
+
+**Just merged:** the **dispatcher claim bugfix** — v2-27's first half, carved
+out. Stage-verified 2026-10-12 and merged to `main` 2026-10-14 as PR #25
+(`b06cfc3`); image `v2-stage` sits at `97388d5`, which is the same code —
+everything after that commit was markdown.
 
 It was a live defect, not a latent one. Rob reproduced the double-send on the
 pre-fix stage image by pressing Admin → Send Now in two browser tabs: 40

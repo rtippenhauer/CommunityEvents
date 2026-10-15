@@ -53,7 +53,7 @@ Two decisions bound it:
 | Order | Item | Why it is required |
 |---|---|---|
 | 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
-| 2 | ~~bugfix — dispatcher claim~~ | Done (2026-10-10, `bugfix-dispatcher-claim`), pending Rob's stage pass. v2-27's first half, carved out. The dispatcher had no claim step and Admin → Send Now dispatches from a request, so it could double-send *today*. See v2-27's section for what the claim settled and what is left of that item. |
+| 2 | ~~bugfix — dispatcher claim~~ | **Done and merged** (PR #25, `b06cfc3`, 2026-10-14). Stage found it was a *live* defect, not a latent one: 40 queued rows produced 57 sends on the pre-fix image, reproduced by pressing Send Now in two browser tabs. 40 → 40 after. v2-27's first half, carved out. The dispatcher had no claim step and Admin → Send Now dispatches from a request, so it could double-send *today*. See v2-27's section for what the claim settled and what is left of that item. |
 | 3 | **v2-33 — port v1's five bugfixes** | Every one is fixed in DinnerBears today, so shipping without them is regression, not parity — the same test this table uses. No schema changes, one branch. Verified as live defects here on 2026-10-14. |
 | 4 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
 | 5 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
