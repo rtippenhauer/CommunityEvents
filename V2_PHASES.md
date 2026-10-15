@@ -26,10 +26,16 @@ numbers, for what comes next.**
 ### Why the order changed: v1 is outrunning v2
 
 This repo forked from v1 at Phase 38 / v1.5.1 on 2026-08-08. Since then v1 has
-shipped Phase 39 (Muse API + Facebook RSVP sync, v1.6.0) and three bugfixes
-(v1.6.1), all recorded in v1's `docs/PORT_TO_COMMUNITYEVENTS.md` and none of
-them ported. Every further v1 phase adds to that list, so the cutover gets
-harder the longer it waits.
+shipped Phase 39 (Muse API + Facebook RSVP sync, v1.6.0) and **five** bugfixes
+(v1.6.1 through v1.6.3), all recorded in v1's
+`docs/PORT_TO_COMMUNITYEVENTS.md` and none of them ported. Every further v1
+phase adds to that list, so the cutover gets harder the longer it waits.
+
+**Read that file for the list, not this one.** This section said "three
+bugfixes" until 2026-10-14, when v1 was already at v1.6.3 — a restated list
+goes stale invisibly, so the bugfixes now live in `v2-33` as one item and the
+count here is a pointer rather than a record. Last reconciled against v1
+**v1.6.3**.
 
 Two decisions bound it:
 
@@ -37,19 +43,22 @@ Two decisions bound it:
   before any code was written, so it costs nothing to move. Bugfixes may still
   land in v1 — all three in 1.6.1 are "No DB changes" and a paragraph each —
   but a phase is weeks of porting.
-- **The drift list is now final at four entries**: Phase 39 and the three
-  1.6.1 fixes.
+- **The *phase* list is closed**: Phase 39 is the last one to port. This read
+  "the drift list is now final at four entries", which contradicted the bullet
+  above it — bugfixes were always allowed to keep landing, and two more did.
+  The bugfixes are `v2-33`; what is frozen is phases.
 
 ### Pre-cutover — the critical path
 
 | Order | Item | Why it is required |
 |---|---|---|
 | 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
-| 2 | **bugfix — dispatcher claim** | v2-27's first half, carved out. The dispatcher has no claim step and Admin → Send Now dispatches from a request, so it can double-send *today*. Hours of work, and a go-live blocker once real members are receiving real mail. |
-| 3 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
-| 4 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
-| 5 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
-| 6 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
+| 2 | ~~bugfix — dispatcher claim~~ | Done (2026-10-10, `bugfix-dispatcher-claim`), pending Rob's stage pass. v2-27's first half, carved out. The dispatcher had no claim step and Admin → Send Now dispatches from a request, so it could double-send *today*. See v2-27's section for what the claim settled and what is left of that item. |
+| 3 | **v2-33 — port v1's five bugfixes** | Every one is fixed in DinnerBears today, so shipping without them is regression, not parity — the same test this table uses. No schema changes, one branch. Verified as live defects here on 2026-10-14. |
+| 4 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
+| 5 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
+| 6 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
+| 7 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
 `v2-31` (a real email log) is not a blocker but is wanted early: the current
 screen is 100 rows with no search, which stops answering "did this member get
@@ -2088,9 +2097,58 @@ fold into the preference table**: it defaults to `none` where
 in every member who never touched it. It narrows to an on/off and reads
 its cities from the new table.
 
+**Confirmed by Rob 2026-10-14, with one gap this item now has to close.** His
+words: he built the city-URL path in v1, nobody uses it, and what is actually
+wanted is filtering events by city *without* the URL. That is already what this
+item specifies — `subdomain` was being dropped and subdomain-as-host removed
+entirely — and it arrives at the decision from a different direction than the
+2026-08-31 reasoning did (that one was about Meta blocking group posting). Two
+independent routes to the same answer.
+
+Much of the filtering also already exists: `events.service.ts:155` filters the
+event list by `cityId` today, and the personal iCal feed has a single-city
+filter. What this item adds is the multi-select, the tenant toggle, and the
+scoping.
+
+**What dropping the subdomains actually costs: a default, not a capability.**
+Members choose their own city at **Profile → Settings** (a `cityId` select
+populated from `/api/v1/cities`, written through `UpdateProfileDto.cityId`),
+and choose All-vs-my-city for both the event view and auto-invites at
+**Profile → Calendar**. None of that is going away.
+
+So what is left is the *registration* default. `cityForTenant`
+(`auth.controller.ts:142`) takes the first label of the tenant's host and looks
+up a city by `subdomain`; finding nothing, `resolveCityId` (`auth.service.ts:99`)
+falls back to `cities[0]` ordered by `name asc` — Cincinnati, on a two-city
+DinnerBears.
+
+**Three things keep that from mattering much**, and they are worth stating
+because the first read of this looks worse than it is: `calendarCityFilter`
+defaults to `all`, so a new member sees every city's events regardless;
+`calendarAutoInvite` defaults to `none`, so nothing is mis-targeted at them
+either; and the "My city only" options name the city in their own label
+("Show only Cincinnati dinners"), so the wrong value announces itself at the
+moment it first has any effect. A Dayton member's `city_id` is wrong until they
+visit one screen, and nothing they see is wrong before then.
+
+**Settled by Rob 2026-10-14: default to Cincinnati, options in Profile.** Which
+is what happens today — most members defaulted there — so this is explicitly
+*not* work. `resolveCityId` already falls back to the first city by name and the
+Profile → Settings picker already exists; the behaviour after dropping the
+subdomains is the behaviour now, minus a hint nobody used. No registration
+prompt, no city on the invite.
+
+What is **not** optional is the dead code: `findBySubdomainOrNull`,
+`cityForTenant` and the `subdomain` reads in `bootstrap.ts` and `seed.ts` all
+go with the column, or they stay as a lookup against a field that no longer
+exists.
+
 **Definition of done:** `cities` is tenant-scoped with no cross-tenant
 name collisions; the feature toggle correctly makes cities either fully
-required or fully invisible; members can select All or specific cities
+required or fully invisible; a new member still lands in the first city and can
+change it in Profile, unchanged from today; `findBySubdomainOrNull`,
+`cityForTenant` and the `subdomain` reads in `bootstrap.ts`/`seed.ts` are gone
+with the column; members can select All or specific cities
 via `user_city_preferences`, applied consistently to event list defaults,
 the iCal feed, and notifications; nothing uses city as an access gate; a
 member with a city-limited preference can still freely RSVP to and rate
@@ -2120,13 +2178,45 @@ locations, ratings, achievements/points ledger (full ledger, not just
 totals), feedback, announcements, moderation history, audit log, and
 cities (per v2-24's tenant-scoped model). Explicitly excluded: email
 queue/suppression (already global — deliverability is a property of the
-address, not the tenant), release notes, and per-city Facebook group
-config (dropped per v2-24).
+address, not the tenant) and per-city Facebook group config (dropped per
+v2-24).
 
-Built generically enough to run again later against the second,
-manually-duplicated DinnerBears database in its own container — same
-script, different connection string and target slug, producing a second
-independent tenant.
+**Release notes are still excluded from *this* script, but are no longer simply
+dropped** (Rob, 2026-10-14). `releases` is a global table — one list per
+deployment, shared by every community, which is why notes carry `{{events}}`
+tokens that render per community. So v1's rows are imported **once as
+deployment setup**, not per tenant: inside this script they would be
+re-imported for every future customer. Doing it as a one-off also carries the
+real `published_at` dates across, which the file-based importer cannot — it
+stamps `NOW()` and would give four backfilled notes one shared second. See
+`docs/CUTOVER_PLAN.md`.
+
+**There is only ONE source database** (corrected 2026-10-14). This said the
+script should be "built generically enough to run again later against the
+second, manually-duplicated DinnerBears database in its own container…
+producing a second independent tenant". No such database exists: v1 is one
+deployment with one database holding Cincinnati and Dayton as `cities` rows.
+The duplicate deployment that motivated this whole project was a *different
+community* — a prospective customer who never launched — and it has no data
+worth importing.
+
+Keeping the script general is still worth something, just for a different
+reason: the next import is a **new customer** arriving from somewhere else, not
+a second DinnerBears. So parameterise the connection and the target slug, and
+do not build a second run into the plan.
+
+**`stage.dinnerbears.com` has its own database and is the right dry-run
+target** — a realistic source schema nobody minds breaking, available now
+rather than at the end.
+
+**Two columns must be carried across verbatim, not regenerated**, or the
+cutover breaks silently for every member at once. `users.calendar_token` is the
+identity inside an iCal feed URL members have already pasted into Google or
+Apple Calendar; the host does not change, so the subscription survives if and
+only if the token does. `push_subscriptions.endpoint` is the same story for web
+push — same origin, so the registration stays valid if the row comes across.
+Neither is mentioned in `REQ-IMPORT-01`, and nothing surfaces an error if they
+are wrong: the member simply stops hearing from the app.
 
 **Definition of done:** primary DinnerBears database imports cleanly into
 a new tenant with all FKs remapped and validated; dry-run mode reports
@@ -2193,9 +2283,103 @@ change, since they exist only to describe this gap.
 
 ### v2-27 — One way to send an email
 
-**Status:** Not started. No dependencies; can land whenever. Numbered next-free
-rather than as a running order, like v2-26 — it belongs before v2-25, which is
-deliberately last.
+**Status:** Half done. **The claim step landed on 2026-10-10** as
+`bugfix-dispatcher-claim`, carved out and run ahead of everything else because
+it fixed a live double-send rather than refactoring anything. The unification
+below is untouched and still open. No dependencies; can land whenever. Numbered
+next-free rather than as a running order, like v2-26 — it belongs before
+v2-25, which is deliberately last.
+
+**What the claim settled** (`email-dispatcher-claim.e2e-spec.ts`): one
+conditional UPDATE per message, `pending` -> `sending`, whose row lock is the
+whole mechanism — two dispatchers racing serialise, the loser matches nothing,
+and `updateMany`'s count answers "is this mine". Claiming per *message* rather
+than per batch is what makes the count sufficient; a batch claim can only say
+how many of twenty rows it won, not which, and would need a per-run token
+written into the row and read back.
+
+Three things followed from introducing the state, and the second is the one
+worth remembering:
+
+- `releaseStaleClaims` is the way out of `sending`. A dispatcher killed
+  mid-send leaves a row nothing would ever select again, so trading a
+  double-send hazard for a silent-loss one would not have been a fix. Ten
+  minutes, counting the abandoned attempt so a message that reliably kills the
+  dispatcher cannot loop. **A reclaimed row may already have been sent** —
+  accepted knowingly, because that window needs a crash between the provider's
+  200 and the next write, where the alternative loses an invite with no trace.
+- **A sweep by age is only as safe as the ceiling on a legitimate claim.** Both
+  provider sends were bare `fetch`, inheriting undici's 300-second default, so a
+  batch could have held its last claim for an hour and a half and any sane sweep
+  would have been reclaiming rows a live dispatcher was still working through.
+  `EMAIL_SEND_TIMEOUT_MS` bounds them at 30s. A timeout that looks like a
+  nicety was load-bearing.
+- `cancelEmail` wrote `cancelled` over whatever the row held. On a `sending`
+  row that denies mail which went out, and the dispatcher's own write would
+  overwrite the cancellation anyway; it now acts on pending, failed and blocked.
+
+**Found by the concurrency test rather than by reading the code:**
+`getOrCreateConfig` was a read-then-create, so two dispatchers reaching a
+community's *first* message together both inserted and the loser crashed the
+whole run on `uq_email_provider_config_tenant`. Reachable before this item
+too — the cron and the flush button on a brand-new community. It re-reads on
+P2002, because the unique key is `tenant_id` and the scoping extension may not
+merge a tenant into a `where` on a unique key, so an upsert would have had to
+name the tenant by hand.
+
+**This item's migration was tested against populated data** — the first in
+this repo that was, and CLAUDE.md still records that gap as open for the rest.
+The recipe is cheap enough to repeat: build the table at its *pre*-migration
+definition in a scratch database on the e2e MySQL, insert a row holding every
+value the change touches, pipe the migration file in verbatim
+(`docker exec -i dinnerbears-mysql-test mysql -uroot -ptest <db> < migration.sql`),
+and read the rows back. It cost about five minutes and changed the migration.
+
+Three findings worth keeping, and the third only surfaced because Rob asked
+whether the *column* needed to go mid-table, having read the ENUM reasoning as
+being about fields.
+
+**1. MySQL converts an ENUM by string value, not by its stored ordinal**, so
+inserting a value mid-list does not corrupt existing rows — the failure
+everybody expects, and not the real one.
+
+**2. The real one is that a mid-list ENUM insertion rebuilds the table.**
+InnoDB refuses it in place ("Cannot change column type INPLACE. Try
+ALGORITHM=COPY") and copies every row under a write lock. `sending` is appended
+for that reason, and the tidier declaration order it gave up was buying nothing
+— no query orders by that column.
+
+**3. `ALGORITHM=INPLACE` is the wrong assertion for ADD COLUMN, and asserting
+it caused exactly the harm finding 2 avoided.** For a column type change
+INPLACE is the cheap path; for ADD COLUMN it means "rebuild, but allow
+concurrent DML", so the metadata-only path is `ALGORITHM=INSTANT` and naming
+INPLACE opts out of it. The first version of this migration therefore refused
+to rebuild `email_queue` for the ENUM and then rebuilt it one statement later
+for the column. **The same clause means different things on adjacent lines**,
+which is the part worth remembering. `LOCK=NONE` is also rejected outright
+beside `ALGORITHM=INSTANT`, so the ADD COLUMN carries no LOCK clause.
+
+The column *position* was never the cost — MySQL 8.0.29 lifted the "instant
+add must be last" restriction, so `AFTER send_after` is instant on 9.7 anyway.
+It was dropped because it bought nothing and appending keeps the statement
+instant on 8.0.12–8.0.28 too.
+
+**How each claim was checked**, since all three are about whether a table got
+rewritten and nothing in the statement's success says so.
+`information_schema.INNODB_TABLES` answers it two ways: `TABLE_ID` changes on a
+rebuild and survives a metadata-only change (appending an ENUM value kept it,
+a forced mid-list COPY bumped it), and `TOTAL_ROW_VERSIONS` increments on an
+instant change (1 after `ADD COLUMN ... ALGORITHM=INSTANT`, 0 after the INPLACE
+version, i.e. rewritten). Note the counter only moves on a table that *has*
+rows — it reads 0 on an empty one either way, which is briefly alarming and
+means nothing.
+
+**Not verified on stage yet**, and the stage pass has one thing worth doing by
+hand: the `sending` chip and its filter option on Admin → Email were not
+rendered in a browser, because the state is transient by design. Setting a row
+to `sending` with a stale `claimed_at` shows both, and the sweep then returns it
+to the queue within ten minutes, which is also the only way to watch that
+recovery happen.
 
 **Rob's question, 2026-09-07:** "Why do we send some emails immediately but
 queue others? Should immediate sends go in the queue too and just start it up,
@@ -2216,17 +2400,20 @@ the daily counter entirely. The dispatcher's counter write is a *delta* rather
 than an absolute purely because a second writer exists; that comment is a long
 apology for having two paths.
 
-**The prerequisite: the dispatcher has no claim step.** It selects rows
-`WHERE status = PENDING`, sends, and only then writes SENT/FAILED. Nothing
-marks a row as in-flight. That is safe only while exactly one dispatcher runs,
-and **that is already not true**: Admin → Send Now calls `dispatchPending` from
-a request, so an admin pressing it while the cron is mid-run can double-send.
-Latent today, routine under any change that dispatches more often.
+**The prerequisite was that the dispatcher had no claim step** — done, see
+the status above; kept here because it is the reasoning that put it first. It
+selected rows `WHERE status = PENDING`, sent, and only then wrote SENT/FAILED.
+Nothing marked a row as in-flight. That is safe only while exactly one
+dispatcher runs, and **that was already not true**: Admin → Send Now calls
+`dispatchPending` from a request, so an admin pressing it while the cron was
+mid-run could double-send. Latent then, routine under any change that
+dispatches more often.
 
-So the first change is an atomic claim -- `updateMany` from PENDING to a
+So the first change was an atomic claim -- `updateMany` from PENDING to a
 SENDING state conditional on the row still being PENDING, then send only what
-was actually claimed. **That is worth doing on its own**, before and
-independently of any unification, because it fixes a live hazard.
+was actually claimed. **That was worth doing on its own**, before and
+independently of any unification, because it fixed a live hazard. It shipped
+that way on 2026-10-10.
 
 **Then unify, but keep the send synchronous for the waiting-user cases.**
 Enqueue-and-return would let a request succeed the moment the row is written,
@@ -2242,10 +2429,16 @@ event reminders.
 
 **Definition of done:** one code path writes email, and `sendNow` is either
 gone or a thin wrapper that enqueues at top priority and dispatches its own
-row. Two dispatchers running at once cannot send the same row twice, proven by
-a test that runs them concurrently. The daily counter has a single writer and
-the delta workaround is removed. A password reset still fails loudly in the
-request that asked for it, rather than being accepted and lost.
+row. ~~Two dispatchers running at once cannot send the same row twice, proven
+by a test that runs them concurrently.~~ — **met 2026-10-10**; the proof is
+the three concurrency cases in `test/email-dispatcher-claim.e2e-spec.ts`, which
+fail as 12-messages-becomes-24-sends with the claim gate removed. The daily
+counter has a single writer and the delta workaround is removed. A password
+reset still fails loudly in the request that asked for it, rather than being
+accepted and lost.
+
+**What remains is therefore the unification alone**, and the delta counter
+comment is still the long apology for having two writers that it was before.
 
 ### v2-28 — Search indexing and link-preview metadata, per tenant
 
@@ -2617,3 +2810,87 @@ community's response.
 
 **Not on the cutover path.** DinnerBears does not have this today, so going live
 without it is parity rather than regression — the test the running order uses.
+
+### v2-33 — Port v1's five outstanding bugfixes
+
+**Status:** Not started. **On the cutover path**, by the running order's own
+test: every one of these is fixed in DinnerBears production today, so shipping
+v2 without them is a regression rather than parity. They were previously
+treated as "bugfixes may still land in v1, they port cheaply" and never written
+down here as work.
+
+**The spec is v1's `docs/PORT_TO_COMMUNITYEVENTS.md`**, one section per fix,
+each naming the v1 PR and its test file. That file is authoritative and this
+section does not restate its rules — see the note in `docs/CUTOVER_PLAN.md`
+about why duplicating it is what let two fixes go unnoticed for a fortnight.
+**Last reconciled against v1 v1.6.3** (2026-10-14).
+
+**All five were verified as live defects in this repo on 2026-10-14**, rather
+than assumed from the port doc's `Ported: No` column:
+
+| v1 PR | Fix | Where it is broken here |
+|---|---|---|
+| #41 | Upcoming events follow their location's name/address | `locations.service.ts` never writes `locationName`/`locationAddress`; no refresh path exists at all |
+| #42 | Creating an event as Published sends the auto-invites | `sendPublishInvites` is called only from `update`, gated on `!wasPublished && status === PUBLISHED` (`events.service.ts:501`). `create` never calls it |
+| #43 | Release-note placeholders filled in on the login splash | No substitution helper exists; only `updates.component.ts` touches the tokens, so the splash prints `{{points}}` literally |
+| #45 | Gmail calendar replies (Accept/Maybe/Decline) are recorded | `extractIcalFromEmail` treats a readable `BEGIN:VCALENDAR` as un-encoded and strips only soft line breaks, so Gmail's `PARTSTAT=3DACCEPTED` never decodes (`calendar.service.ts:550`) |
+| #47 | The assigned member can mark their reservation made | `setReservation` already implements `callerIsAssignee` as a self-confirm (`events.service.ts:1785`), but its only route is `@Patch(':id/reservation')` under `@Roles(ADMIN, MODERATOR)` — the member it was written for gets 403 |
+
+**#45's comment is the interesting one**, and the reason to read the code rather
+than the diff. v2 does not lack the reasoning; it has a long, confident comment
+explaining that a matching `BEGIN:VCALENDAR` proves the block was never
+quoted-printable. That is true of most senders and false of Gmail, which sends
+a readable marker *and* `=3D` escapes. The fix is to branch on whether `=3D`
+is present, because a full decode of clean iCal corrupts `PARTSTAT=ACCEPTED`
+(`=AC` reads as an escape) — so neither "always decode" nor "never decode" is
+right, which is why the wrong answer looked reasoned.
+
+**Three need more than the v1 diff, because v1 had no tenants:**
+
+- **#45** — the iCal UID (`dinnerbears-event-<id>@…`) and the organizer address
+  have to identify the *tenant*, not just the event. A reply arriving at the
+  deployment's `calendar@` must resolve to one community before an RSVP is
+  written, and the handler runs outside any request so it has no ambient tenant.
+- **#43** — substitution has to use the *tenant's* terms, and must cover every
+  surface that renders a release note rather than the two v1 had.
+- **#41** — naturally tenant-scoped, but v2's enrichment path must write through
+  the same helper as the manual edit or the rename case stays broken.
+
+**#45 is also invisible when it fails**, which v1 flags and did not fix: a
+dropped reply is a container log line and nothing else. v2-31 built an email log
+with categories, so there is now somewhere for an admin-visible record to live —
+worth doing here rather than deferring, since the failure mode is a member
+who replied and whose RSVP silently did not change.
+
+**Two defects of our own ride along**, both found on 2026-10-14 while working
+out how to import v1's release notes, and both on the same surface as #43:
+
+- **`whats-new.service.ts` can show the wrong release as newest.** It takes the
+  latest with `orderBy: { publishedAt: 'desc' }` and no `id` tiebreaker;
+  `releases.published_at` is `DATETIME(0)`, and the notes importer inserts every
+  file in one sequential loop with `VALUES (…, NOW(), …)`. One note at a time
+  never ties, which is why this has never shown; importing v1's four backlogged
+  notes on one boot puts them all in the same second and the "latest" becomes
+  whatever the engine returns. **This is `v2-31`'s pagination tie exactly** —
+  same `DATETIME(0)`, same missing tiebreaker, and there the symptom was rows
+  repeating and vanishing between pages. Fix the announcements query two lines
+  below at the same time: same shape, less exposed only because announcements
+  are written one at a time by hand.
+- **`ReleaseNotesImporterService` relies on unsorted `fs.readdir` order.** It
+  filters `.md` files and loops without sorting. Alphabetical order happens to
+  be right for every version so far and stops being right at `1.6.10.md`, which
+  sorts before `1.6.2.md`.
+
+**Definition of done:** all five fixed, each with the v2 equivalent of the v1
+test named in the port doc, and the three tenancy wrinkles above addressed
+rather than ported literally. The two ride-along defects fixed, with a test
+that imports several notes in one pass and asserts the newest wins.
+`1.6.1.md`, `1.6.2.md` and `1.6.3.md` copied into `api/release-notes/` as part
+of this item — they describe these fixes, and `docs/CUTOVER_PLAN.md` explains
+why a note may not land before its feature. A Gmail-shaped calendar reply (readable marker,
+`=3D` escapes) records an RSVP against the right community. v1's port doc rows
+for #41, #42, #43, #45 and #47 go to `Ported: Yes` — that edit is in the other
+repo and is part of this item, not an afterthought.
+
+**No schema changes**, in v1 or here, which is what makes this one branch rather
+than five.

@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
 import type {
   email_provider_config as EmailProviderConfig,
   email_queue as EmailQueueRow,
-  Prisma,
 } from '@prisma/client';
 import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import {
@@ -21,6 +21,27 @@ import { EmailTemplateName } from './email.constants';
 
 const MAX_ATTEMPTS = 3;
 const BATCH_SIZE = 20;
+
+/**
+ * How long a claim may be held before the sweep assumes nobody is holding it.
+ *
+ * A dispatcher killed between claiming a row and writing its outcome -- a
+ * container recreate, an OOM, a deploy -- leaves that row `sending` with no
+ * live process behind it, and no later run would ever touch it again. So the
+ * state needs a way out, and the only evidence available is how long ago it was
+ * entered.
+ *
+ * Ten minutes is twenty times the longest a claim can legitimately be held: a
+ * claim covers exactly one message, and the provider calls carry a 30-second
+ * timeout (`EMAIL_SEND_TIMEOUT_MS` in email.constants.ts) for precisely this
+ * reason. **That timeout is what makes this number meaningful** -- an untimed
+ * `fetch` leans on undici's 300-second default, and a batch of twenty would
+ * then be able to hold its last claim for an hour and a half, so a sweep on any
+ * sane schedule would be reclaiming rows that a live dispatcher was still
+ * working through. Claiming per message rather than per batch is the other half
+ * of it: the window measures one send, not twenty.
+ */
+const STALE_CLAIM_MS = 10 * 60 * 1000;
 
 /**
  * What is left of the shared account allowance, decremented as a batch spends
@@ -96,7 +117,17 @@ export class EmailDispatcherService {
    */
   async dispatchPending(): Promise<void> {
     const now = new Date();
+
+    // Before anything is picked up, so a row abandoned by a dead dispatcher is
+    // back in the queue in time to be part of this run rather than the next.
+    await this.releaseStaleClaims(now);
+
     // TypeORM took an array of where-objects as an OR; Prisma spells that out.
+    //
+    // Still only a list of *candidates*. Selecting a row here grants nothing --
+    // two dispatchers running at once will read overlapping batches, and which
+    // of them may send a given row is settled one row at a time by `claim`
+    // below. The ordering and the batch ceiling are what this query is for.
     const batch = await this.prisma.email_queue.findMany({
       where: {
         status: EmailQueueStatus.PENDING,
@@ -133,6 +164,12 @@ export class EmailDispatcherService {
 
         let anySent = false;
         for (const email of emails) {
+          // The claim is what makes the whole loop safe, and it is deliberately
+          // per message rather than per batch. Per batch would be one fewer
+          // round trip and would hold every claim for as long as the slowest
+          // send in the batch, which is what STALE_CLAIM_MS would then have to
+          // tolerate; per message, a claim is held for one provider call.
+          if (!(await this.claim(email))) continue;
           anySent = (await this.sendOne(email, providerConfig, room)) || anySent;
         }
 
@@ -260,6 +297,127 @@ export class EmailDispatcherService {
     }
   }
 
+  /**
+   * Takes ownership of one queued message, or reports that somebody else has.
+   *
+   * This is the fix. The dispatcher used to select `pending`, send, and only
+   * then write the outcome, so nothing marked a row as in flight -- safe while
+   * exactly one dispatcher ran, and **that was already not true**: Admin ->
+   * Send Now calls `dispatchPending` from a request, so an admin pressing it
+   * while the cron was mid-run could hand the same row to Brevo twice. Latent
+   * only because the overlap had to be timed to the second; routine under
+   * anything that dispatches more often.
+   *
+   * `status: PENDING` in the where clause is the entire mechanism. The UPDATE
+   * takes a row lock, so two dispatchers racing for one row serialise behind it
+   * and the second sees `sending` rather than `pending` -- its own update
+   * matches nothing. **The count is therefore the answer to "is this mine",**
+   * which is why this returns a boolean rather than fire-and-forgetting:
+   * `updateMany` reports how many rows it changed, and for a where clause
+   * targeting a single primary key that is 1 (won) or 0 (lost).
+   *
+   * No claim token is needed to tell the two apart, which is the advantage of
+   * claiming one row at a time. A batch claim can only report *how many* of
+   * twenty rows it won, not which, so it would need a per-run token written
+   * into the row and read back -- a column, an index and a second query to
+   * learn what one count already says here.
+   *
+   * `attempts` is deliberately not touched. The outcome write still owns that
+   * number, exactly as before; what counts an abandoned claim as an attempt is
+   * `releaseStaleClaims`, which is the only place that knows one happened.
+   */
+  private async claim(email: EmailQueueRow): Promise<boolean> {
+    const { count } = await this.prisma.email_queue.updateMany({
+      where: { id: email.id, status: EmailQueueStatus.PENDING },
+      data: { status: EmailQueueStatus.SENDING, claimedAt: new Date() },
+    });
+
+    if (count === 0) {
+      // Not an error, and not rare under the configuration this fixes: it means
+      // the other dispatcher is sending this message. Logged at debug because a
+      // busy deployment with an admin on the flush button would otherwise fill
+      // the log with the system working correctly.
+      this.logger.debug(`Email ${email.id} was claimed by another dispatcher; skipping`);
+    }
+
+    return count === 1;
+  }
+
+  /**
+   * Returns rows abandoned mid-send to the queue, so a claim cannot be eternal.
+   *
+   * The state `claim` introduces needs a way out. A dispatcher killed between
+   * claiming a row and writing its outcome -- a container recreate, an OOM, a
+   * deploy landing mid-batch -- leaves that row `sending` with nothing alive
+   * behind it, and every later run selects `pending` only, so without this the
+   * message would sit there permanently. Trading a double-send hazard for a
+   * silent-loss one would not be a fix.
+   *
+   * **A reclaimed row may already have been sent**, and that is accepted
+   * knowingly: the provider can have accepted the message in the instant before
+   * the process died. So this does not eliminate double-sends, it shrinks the
+   * window from "the cron and a button overlap", which is ordinary, to "the
+   * process died between the provider's 200 and the next write", which needs a
+   * crash inside a few milliseconds. The alternative -- leaving the row alone
+   * -- loses an invite or a password reset with no trace, and a lost send is the
+   * failure this subsystem has already been bitten by twice.
+   *
+   * **The increment is what bounds it.** An abandoned claim was an attempt, and
+   * it is the one attempt nobody wrote down, so counting it here is what stops
+   * a message that reliably kills the dispatcher from being retried forever.
+   * The split is on the stored value because the two writes have to agree about
+   * what the incremented value will be: a row at `MAX_ATTEMPTS - 1` has no
+   * tries left once this one is counted, so it settles as `failed` instead of
+   * going back on the queue. The two where clauses cover disjoint ranges, so
+   * the order of the writes does not matter.
+   */
+  private async releaseStaleClaims(now: Date): Promise<void> {
+    const cutoff = new Date(now.getTime() - STALE_CLAIM_MS);
+
+    // `claimedAt: null` should be unreachable -- the write that sets `sending`
+    // sets it in the same statement -- and is included because the cost of
+    // being wrong is asymmetric: a row that somehow arrived here without a
+    // timestamp would be invisible to a bare `lt` and stuck for good, which is
+    // the exact failure this method exists to prevent.
+    const stale = {
+      status: EmailQueueStatus.SENDING,
+      OR: [{ claimedAt: { lt: cutoff } }, { claimedAt: null }],
+    } satisfies Prisma.email_queueWhereInput;
+
+    const spent = await this.prisma.email_queue.updateMany({
+      where: { ...stale, attempts: { gte: MAX_ATTEMPTS - 1 } },
+      data: {
+        status: EmailQueueStatus.FAILED,
+        attempts: { increment: 1 },
+        claimedAt: null,
+        errorMessage: 'Dispatcher stopped mid-send and the message ran out of attempts',
+      },
+    });
+
+    const requeued = await this.prisma.email_queue.updateMany({
+      where: { ...stale, attempts: { lt: MAX_ATTEMPTS - 1 } },
+      data: {
+        status: EmailQueueStatus.PENDING,
+        attempts: { increment: 1 },
+        claimedAt: null,
+        // Kept rather than cleared, because the row is about to look like an
+        // ordinary pending message again and this is the only thing that would
+        // tell an operator reading the log why it was tried more than once.
+        errorMessage: 'Dispatcher stopped mid-send; the message was returned to the queue',
+      },
+    });
+
+    // Warn, not debug: nothing reaches here during normal operation, so a
+    // non-zero count means a dispatcher died, and that is worth seeing in a log
+    // whether or not anybody was looking for it.
+    if (requeued.count || spent.count) {
+      this.logger.warn(
+        `Released ${requeued.count + spent.count} abandoned email claim(s): ` +
+          `${requeued.count} returned to the queue, ${spent.count} marked failed.`,
+      );
+    }
+  }
+
   /** Returns whether the message actually left, which the caller records. */
   private async sendOne(
     email: EmailQueueRow,
@@ -272,6 +430,11 @@ export class EmailDispatcherService {
     const patch: Prisma.email_queueUpdateInput = {
       attempts: email.attempts + 1,
       lastAttemptAt: new Date(),
+      // Every branch below is terminal for this claim, so the claim is given up
+      // here once rather than in each of them. It keeps `claimed_at IS NOT
+      // NULL` meaning "somebody is sending this right now", which is the
+      // property `releaseStaleClaims` reads the column for.
+      claimedAt: null,
     };
 
     // Two independent budgets, and both have to allow the send.
@@ -355,6 +518,14 @@ export class EmailDispatcherService {
 
     // Same reasoning as the blocked branch above: the row may have been removed
     // while the provider call was in flight.
+    //
+    // Deliberately *not* also conditional on `status: SENDING`, which would
+    // make the write provably touch only a row we still own. The guard would
+    // cost more than it buys: if anything did take the claim back, the message
+    // has still been handed to the provider, and refusing to record that leaves
+    // a row saying `pending` for mail that already went -- which is the next
+    // dispatcher sending it again. This write is the account of what happened,
+    // and it is true whoever else touched the row.
     await this.prisma.email_queue.updateMany({ where: { id: email.id }, data: patch });
     return patch.status === EmailQueueStatus.SENT;
   }
@@ -370,7 +541,27 @@ export class EmailDispatcherService {
   private async getOrCreateConfig(): Promise<EmailProviderConfig> {
     const existing = await this.prisma.email_provider_config.findFirst();
     if (existing) return existing;
-    return this.prisma.email_provider_config.create({ data: newEmailProviderConfig() });
+
+    try {
+      return await this.prisma.email_provider_config.create({ data: newEmailProviderConfig() });
+    } catch (err) {
+      // Two dispatchers reaching a community's first message together both see
+      // no row and both insert one; `uq_email_provider_config_tenant` lets
+      // exactly one through and the loser arrives here. Not hypothetical --
+      // found by the concurrency test written for the claim, which crashed the
+      // whole run on this line before the claim had a chance to do anything.
+      //
+      // Re-read rather than upsert: the unique key is `tenant_id`, which the
+      // scoping extension is not allowed to merge into a `where` on a unique
+      // key, so an upsert here would have to name the tenant by hand. Reading
+      // back the row the other dispatcher just wrote asks nothing of the
+      // extension and gives both callers the same row.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const won = await this.prisma.email_provider_config.findFirst();
+        if (won) return won;
+      }
+      throw err;
+    }
   }
 
   /**

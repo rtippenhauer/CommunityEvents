@@ -23,11 +23,31 @@ for that reason. v2 work publishes to its own `v2-stage` tag instead (see
 
 ## Project Overview
 Community dining platform that organizes weekly group dinners across
-multiple cities. v1 runs Cincinnati and Dayton as two full duplicate
-deployments (separate container, separate database, settings-driven
-branding). v2 replaces that with a single deployment, single database, and
-tenant-scoped data — a new tenant (city/community) is a database row, not a
-new container/database pair. The underlying product (organizing recurring
+multiple cities.
+
+**v1 runs ONE deployment and ONE database** (`www.dinnerbears.com` live, plus
+`stage.dinnerbears.com` for testing). **Cincinnati and Dayton are `cities` rows
+inside that single database**, seeded together by v1's own
+`CreateCitiesAndAppConfig` migration, and a member chooses all-cities or
+their-city-only from their profile. v1 has always been multi-city in one
+instance.
+
+> **Corrected 2026-10-14, and it had been wrong in five documents.** This said
+> "v1 runs Cincinnati and Dayton as two full duplicate deployments (separate
+> container, separate database)". The *architecture* half was true and the
+> *example* was not: the two duplicate deployments were DinnerBears and a
+> second database Rob stood up for a prospective customer who never went live
+> — **and that duplication is exactly what led to CommunityEvents**. Two
+> cities were never two deployments. Somebody mapped "two deployments" onto the
+> two city names, and from there the cutover plan and `REQ-IMPORT-01` spent
+> weeks reasoning about merging two source databases that do not exist. Checked
+> against v1's own migration, not inferred.
+
+So v2's premise is validated by the actual history rather than by analogy: a new
+community should not cost a new container and database, because Rob did it once
+for a customer and that was the trigger for this rewrite. v2 replaces the
+pattern with a single deployment, single database, and tenant-scoped data — a
+new tenant (community) is a database row, not a new container/database pair. The underlying product (organizing recurring
 group dinners) isn't changing, only the deployment architecture; whether
 "tenant" ends up meaning strictly "city" or something broader isn't decided
 beyond what `docs/REQ-TENANT-01.md` specifies.
@@ -35,16 +55,23 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 ## V2 Rewrite Status
 
 **Current v2 work item:** the **dispatcher claim bugfix** — v2-27's first half,
-carved out and now the top of the running order. The email dispatcher has no
-atomic claim step and Admin → Send Now dispatches straight from a request, so
-it can double-send *today*. Hours of work, and a go-live blocker the moment real
-members receive real mail. Then `v2-29` (port v1's Phase 39).
+carved out. Built and verified on stage 2026-10-12, **not yet merged**: branch
+`bugfix-dispatcher-claim`, pushed, image `v2-stage` at commit `97388d5`.
+
+It was a live defect, not a latent one. Rob reproduced the double-send on the
+pre-fix stage image by pressing Admin → Send Now in two browser tabs: 40
+queued rows produced **57 sends**. After the fix the same procedure sent 20 for
+a 20-row batch, 1:1. Worth keeping because `V2_PHASES.md` had called it "latent
+today", and it took two clicks.
+
+Then `v2-33` (v1's five bugfixes) and `v2-29` (port v1's Phase 39).
 
 **The running order is no longer the numbers** — see `docs/CUTOVER_PLAN.md` and
 V2_PHASES.md's "Running order". The critical path to a live DinnerBears is the
-dispatcher claim fix, `v2-29` (port v1's Phase 39), `v2-24` (cities) and `v2-25`
-(the import), plus a production deployment that does not exist yet. `v2-31` and
-`v2-32` were not on that path; both were pulled forward by Rob and are done.
+dispatcher claim fix, `v2-33` (v1's five outstanding bugfixes), `v2-29` (port
+v1's Phase 39), `v2-24` (cities) and `v2-25` (the import), plus a production
+deployment that does not exist yet. `v2-31` and `v2-32` were not on that path;
+both were pulled forward by Rob and are done.
 
 **Completed v2 items:**
 - **`v2-32` — A channel from a community to the operator** (2026-10-09). Two
@@ -725,32 +752,66 @@ prose, the same way v2-9-before-v2-8 and v2-26/27/28 already are.
 
 The reason is drift. This repo forked from v1 at Phase 38 / v1.5.1 on
 2026-08-08, and v1 has since shipped Phase 39 (Muse API + Facebook RSVP sync,
-v1.6.0) plus three bugfixes (v1.6.1) — all listed in **v1's
+v1.6.0) plus **five** bugfixes (v1.6.1 through v1.6.3) — all listed in **v1's
 `docs/PORT_TO_COMMUNITYEVENTS.md`**, which is the authoritative port spec and
 lives in the other repo. The port list was growing faster than it was
 shrinking, so **v1 takes no new phases**: its Phase 40 (Ban Records) moved here
-as `v2-30` before any v1 code was written, and the drift list is now final at
-those four entries. Bugfixes may still land in v1; phases may not.
+as `v2-30` before any v1 code was written. Bugfixes may still land in v1;
+phases may not. The bugfixes are `v2-33`, and all five were verified as live
+defects in this repo on 2026-10-14 rather than taken on trust.
+
+**Do not trust a count of them written here, and do not restate the list.**
+This paragraph said "three bugfixes (v1.6.1)" and called the drift list "final
+at four entries" until 2026-10-14, by which point v1 was at v1.6.3 and two
+fixes existed that nothing in this repo mentioned — while the sentence
+directly beside it said bugfixes may keep landing, so the list could never have
+been final. What is frozen is **phases**. A restated list rots silently; a
+version number rots visibly, so the rule is: **this repo was last reconciled
+against v1 v1.6.3**, and if v1's `package.json` is ahead, read its port doc for
+the delta before planning anything. The v1 repo is a sibling checkout
+(`../DinnerBears`), so that is a file read, not a question.
 
 **DinnerBears is ONE tenant; Cincinnati and Dayton are cities inside it**
-(Rob, 2026-10-03). This reverses what `docs/CUTOVER_PLAN.md` and
-`REQ-IMPORT-01` said — they reasoned from how v1 *runs today* (two deployments,
-two databases) rather than from what a tenant is, and v1 runs two deployments
-only because v1 had no way to run two cities. A tenant is a community;
-DinnerBears is one community meeting in two cities, which is what
-`REQ-CITIES-01`'s `feature_cities` was built for. Rob's "a ban is community
-wide" (Phase 40 / `v2-30`) already said the same thing: it is only coherent if
-the community spans both cities.
+(Rob, 2026-10-03) — and as of 2026-10-14 this is simply a description of v1
+rather than a decision about v2. v1 is one deployment with one database holding
+both cities. The earlier justification here claimed v2 was correcting a v1
+limitation ("v1 runs two deployments only because v1 had no way to run two
+cities"); that was false in both halves, since v1 runs one deployment and has
+had cities since its third migration. A tenant is a community; DinnerBears is
+one community meeting in two cities, which is what `REQ-CITIES-01`'s
+`feature_cities` generalizes. Rob's "a ban is community wide" (Phase 40 /
+`v2-30`) agrees: it is only coherent if the community spans both cities.
 
-The consequence that is not free: email is unique per tenant
-(`@@unique([tenantId, email])`), so an address holding an account in **both**
-source databases is two rows that must become one. Two tenants made that a
-non-question. `REQ-IMPORT-01` is marked superseded in part until it is answered.
+**A city is a row, not a hostname, and not a URL** (Rob, 2026-10-14). He built
+the city-URL path in v1 and nobody uses it; what is wanted is filtering events
+by city with no URL involved, which is what `v2-24` already specifies. Members
+already pick their own city at Profile → Settings and All-vs-my-city at
+Profile → Calendar — so dropping `cities.subdomain` costs a registration
+*default*, not a capability.
 
-Five things stand between here and a live DinnerBears — `/v2-done 14`, the
-dispatcher claim step carved out of `v2-27`, `v2-29` (port Phase 39), `v2-24`
-(cities, which the import depends on), `v2-25` (the import) — plus a production
-deployment that does not exist yet. The test for whether anything else belongs
+**One tenant means one host** (Rob, 2026-10-14):
+`cincinnati.dinnerbears.com` and `dayton.dinnerbears.com` are dropped, since a
+city is a row and does not get a hostname. Retire them as **301 redirects held
+for a long window**, not as deleted DNS — an iCal feed subscription and a web
+push registration are both bound to the host a member first used, and both fail
+*silently* when it vanishes. Push cannot be rescued by a redirect at all
+(endpoints are per-origin); feeds can, but only if the import preserves
+`users.calendar_token`, which `REQ-IMPORT-01` does not currently mention. See
+`docs/CUTOVER_PLAN.md`.
+
+**There is no account-merge problem, and the one recorded here was imaginary.**
+This paragraph said an address with an account in *both source databases* was
+two rows that had to become one, and set out a merge rule as the question most
+likely to stall the cutover. There is one source database, email is already
+unique in it, and nothing merges. Deleted rather than softened, because a
+plausible-sounding problem in a planning doc costs more than a missing one.
+`REQ-IMPORT-01` is still marked superseded in part, now only for the
+one-tenant-per-source-database framing.
+
+Six things stand between here and a live DinnerBears — `/v2-done 14`, the
+dispatcher claim step carved out of `v2-27`, `v2-33` (v1's five bugfixes),
+`v2-29` (port Phase 39), `v2-24` (cities, which the import depends on), `v2-25`
+(the import) — plus a production deployment that does not exist yet. The test for whether anything else belongs
 on that path is **"does DinnerBears have it today?"**; if not, going live
 without it is parity rather than regression, which defers nine of the fourteen
 open items.

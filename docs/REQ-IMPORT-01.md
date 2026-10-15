@@ -2,14 +2,41 @@
 
 **Project:** Community Events
 **Area:** Data migration / tenant provisioning
-**Status:** Draft — **superseded in part, 2026-10-03.** This doc describes
-one tenant per source database. Rob has since decided DinnerBears is **one
-tenant with Cincinnati and Dayton as cities** (see `docs/CUTOVER_PLAN.md`,
-"Tenancy shape"). The import is therefore two source databases into **one**
-tenant, which this doc does not yet describe and which raises a question it
-never had to answer: an address with an account in both source databases is two
-rows that must become one. Treat 01.1 and 01.4's "second run produces a second
-tenant" as out of date until this is revised.
+**Status:** Draft — **superseded in part, 2026-10-03; corrected 2026-10-14.**
+
+This doc describes one tenant per source database. DinnerBears is **one tenant
+with Cincinnati and Dayton as cities** (Rob, 2026-10-03), so 01.1 and 01.4's
+"second run produces a second tenant" is out of date and this doc needs
+revising.
+
+**What changed on 2026-10-14: there is only ONE source database.** The
+2026-10-03 note said the import was "two source databases into one tenant" and
+raised an account-merge question — an address with an account in both. That was
+built on the belief that v1 runs Cincinnati and Dayton as separate deployments.
+It does not: v1 is one deployment, one database, with both cities as `cities`
+rows. **So there is no merge, no colliding email, and no second source.** The
+import reads one database.
+
+Three things this doc still must gain, and none is about merging. The first two
+were measured against the live database on 2026-10-14 and are requirements, not
+precautions — **26 of 62 members have a calendar feed subscribed and 3 have
+push**:
+
+- **Preserve `users.calendar_token`.** A member's iCal subscription is
+  `…/calendar/feed.ics?token=…`, already pasted into their calendar app.
+  `www.dinnerbears.com` survives as the tenant's host, so the URL keeps working
+  if and only if the token still identifies them. Regenerating it stops 26
+  calendars refreshing, with no error shown to anyone.
+- **Preserve `push_subscriptions` rows**, which is necessary and *not
+  sufficient*: a subscription is bound to the `applicationServerKey` it was
+  created with, so the production deployment must also inherit v1's
+  `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`. That is
+  deployment env rather than imported data, so it belongs in the cutover
+  checklist as well as here — see `docs/CUTOVER_PLAN.md`.
+- **Carry `deletedAt` and `hardDeleteAt`.** v1's inactivity sweep leaves
+  soft-deleted members in the table. Import them without those timestamps and
+  they come back to life as active members; exclude them entirely and their
+  RSVP and comment rows lose their foreign-key target.
 **Depends on:** REQ-TENANT-01 (tenant foundation), REQ-CITIES-01 (cities
 must be tenant-scoped before they can be imported as tenant data — see
 01.3 below). No technical dependency on REQ-CMS-01; it's sequenced after
