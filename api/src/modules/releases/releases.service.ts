@@ -286,7 +286,9 @@ export class ReleasesService {
     return this.prisma.releases.findMany({
       where: { publishedAt: undefined },
       include: RELEASE_INCLUDE,
-      orderBy: { publishedAt: 'desc' },
+      // id breaks DATETIME(0) ties: the importer publishes several notes in
+      // the same second, and the Updates page should still list them in order.
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     });
   }
 
@@ -294,7 +296,7 @@ export class ReleasesService {
     const releases = await this.prisma.releases.findMany({
       where: { publishedAt: { not: null } },
       include: RELEASE_INCLUDE,
-      orderBy: { publishedAt: 'desc' },
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     });
     return this.toPublicReleases(releases);
   }

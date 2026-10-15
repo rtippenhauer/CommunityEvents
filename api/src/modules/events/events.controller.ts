@@ -283,12 +283,24 @@ export class EventsController {
   @Patch(':id/reservation')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MODERATOR)
-  setReservation(
+  async setReservation(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SetReservationDto,
     @CurrentUser() user: User,
   ) {
-    return this.eventsService.setReservation(id, dto, user);
+    // Converted like create/update: the event page sets this response into its
+    // signal, and an ISO eventTime redraws a 6:30pm dinner as 12:30 (v2-11).
+    return toEventDateStrings(await this.eventsService.setReservation(id, dto, user));
+  }
+
+  // The member assigned to make the reservation marks it made (v1 PR #47). Any
+  // signed-in user may call it; the service refuses everyone but the assignee,
+  // and it only ever confirms -- reassigning, contacts and un-confirming stay
+  // on the admin/moderator PATCH above.
+  @Post(':id/reservation/confirm')
+  @UseGuards(JwtAuthGuard)
+  async confirmOwnReservation(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: User) {
+    return toEventDateStrings(await this.eventsService.confirmOwnReservation(id, user));
   }
 
   @Post('reservation-confirm/:token')

@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { TenantSecretsService } from '../tenant-secrets/tenant-secrets.service';
 import type { location_photos as LocationPhoto } from '@prisma/client';
+import { refreshUpcomingEventLocations } from '../../common/utils/event-location-snapshot.util';
 
 /**
  * Structural on purpose. Enrichment is handed locations by LocationsService
@@ -310,7 +311,13 @@ export class EnrichmentService {
         updates.lng = placeData.geometry.location.lng;
       }
     }
-    await this.prisma.locations.update({ where: { id: location.id }, data: updates });
+    const fresh = await this.prisma.locations.update({ where: { id: location.id }, data: updates });
+    // A rename or re-address by enrichment is the same correction as a manual
+    // edit, so it goes through the same helper -- otherwise the imported-name
+    // fix v1 PR #41 was written for stays broken whenever enrichment made it.
+    if (updates.name || updates.address) {
+      await refreshUpcomingEventLocations(this.prisma, fresh);
+    }
 
     return result;
   }

@@ -23,6 +23,8 @@ import {
 } from '../../core/services/feedback.service';
 import { ReleasesService, Release } from '../../core/services/releases.service';
 import { normalizeNbsp } from '../../shared/utils/normalize-nbsp';
+import { substituteTerms } from '../../shared/utils/substitute-terms';
+import { BrandConfigService } from '../../core/services/brand-config.service';
 import { isElevatedRole } from '../../core/utils/roles.util';
 
 @Component({
@@ -89,7 +91,7 @@ import { isElevatedRole } from '../../core/utils/roles.util';
               <a [routerLink]="['/updates']" class="release-link"
                 >v{{ shippedRelease()!.version }}</a
               >
-              — {{ shippedRelease()!.title }}
+              — {{ releaseTitle(shippedRelease()!) }}
             </div>
           }
 
@@ -428,6 +430,7 @@ export class FeedbackDetailComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly brand = inject(BrandConfigService);
   private readonly fb = inject(NonNullableFormBuilder);
 
   readonly loading = signal(true);
@@ -435,6 +438,12 @@ export class FeedbackDetailComponent implements OnInit {
   readonly item = signal<FeedbackItem | null>(null);
   readonly notes = signal<FeedbackNote[]>([]);
   readonly shippedRelease = signal<Release | null>(null);
+
+  // A shipped item names its release by title, which is a release note's and
+  // may carry {{events}}-style placeholders like the rest of it.
+  releaseTitle(release: Release): string {
+    return substituteTerms(release.title, this.brand);
+  }
 
   readonly quillModules = {
     toolbar: [['bold', 'italic'], [{ list: 'bullet' }], ['link'], ['clean']],

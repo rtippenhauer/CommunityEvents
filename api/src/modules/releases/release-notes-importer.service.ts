@@ -77,7 +77,13 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
     }
     const authorId = lookup.authorId;
 
-    const finalized = files.filter((f) => f.endsWith('.md') && f !== DRAFT_FILE);
+    // Sorted by version, not left in readdir order: readdir promises no order
+    // at all, and even alphabetical stops being right at 1.6.10.md, which sorts
+    // before 1.6.2.md. Insertion order is what decides the id, and the id is
+    // what breaks the published_at tie when several notes import in one boot.
+    const finalized = files
+      .filter((f) => f.endsWith('.md') && f !== DRAFT_FILE)
+      .sort(compareNoteFiles);
     for (const file of finalized) {
       await this.importFinalized(dir, file, authorId);
     }
@@ -204,4 +210,23 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
       authorId,
     );
   }
+}
+
+/**
+ * Orders release-note files by version: numeric segments compare as numbers
+ * (1.6.2 < 1.6.10), and anything that is not purely dotted digits falls back
+ * to a plain string compare so an oddly named file still sorts deterministically.
+ */
+export function compareNoteFiles(a: string, b: string): number {
+  const va = a.replace(/\.md$/, '');
+  const vb = b.replace(/\.md$/, '');
+  const numeric = /^\d+(\.\d+)*$/;
+  if (!numeric.test(va) || !numeric.test(vb)) return va < vb ? -1 : va > vb ? 1 : 0;
+  const pa = va.split('.').map(Number);
+  const pb = vb.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
 }

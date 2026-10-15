@@ -67,9 +67,10 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 ## V2 Rewrite Status
 
 **Current v2 work item:** **`v2-33`** — porting v1's five outstanding bugfixes.
-Branch `v2-33-port-v1-bugfixes`, cut off `main` 2026-10-14, nothing implemented
-yet. See V2_PHASES.md for the five, each already verified as a live defect in
-this repo with a file and line.
+Branch `v2-33-port-v1-bugfixes`, cut off `main` 2026-10-14. **All five
+implemented 2026-10-15 and open as a PR, awaiting `/v2-testing 33`** — the visual
+half (splash and Updates wording, the assignee's button) has not been seen on
+stage. See V2_PHASES.md's v2-33 section for what landed and what is unverified.
 
 **`v2-33` + `v2-29` is what "caught up to prod DinnerBears" means** — the
 bugfixes and Phase 39 (MUSE) respectively. `v2-24` (cities) is *not* catch-up;

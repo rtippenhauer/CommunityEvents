@@ -2815,7 +2815,7 @@ without it is parity rather than regression — the test the running order uses.
 
 ### v2-33 — Port v1's five outstanding bugfixes
 
-**Status:** Not started. **On the cutover path**, by the running order's own
+**Status:** Implemented 2026-10-15, PR open, **not yet on stage**. **On the cutover path**, by the running order's own
 test: every one of these is fixed in DinnerBears production today, so shipping
 v2 without them is a regression rather than parity. They were previously
 treated as "bugfixes may still land in v1, they port cheaply" and never written
@@ -2898,6 +2898,54 @@ repo and is part of this item, not an afterthought.
 
 **No schema changes**, in v1 or here, which is what makes this one branch rather
 than five.
+
+**What landed (2026-10-15), and how each wrinkle was answered:**
+
+- **#41** — `common/utils/event-location-snapshot.util.ts` is the one helper;
+  `LocationsService.update` and `EnrichmentService.enrich` (on a rename or
+  re-address) both call it, and saving an upcoming event re-copies its
+  location. The test drives the enrichment path with Places stubbed, so "writes
+  through the same helper" is asserted, not assumed.
+- **#42** — `EventsService.create` invalidates the feeds and sends the invites
+  when the event is born Published.
+- **#43** — `shared/utils/substitute-terms.ts`, used by Updates, the splash, and
+  the feedback page's "Shipped in" banner (a third surface v1 did not have).
+  The terms are the serving community's, because they come from its branding
+  payload. The admin release editor deliberately shows the raw tokens, like the
+  legal editor. Nothing on the API renders a note (no email or push of one).
+- **#45** — the decode lives in `calendar/ical-extract.util.ts` with a unit spec.
+  **The community is taken from the event, not the host**: event ids are unique
+  across the database, so the UID already identifies the community and nothing
+  about its format had to change. The reply is looked up `runUnscoped`, then
+  everything else runs in `runWithTenant(event.tenantId)` — so the attendee is
+  matched among *that* community's members, which matters because one address
+  can hold an account in several. The host only narrows: a reply POSTed to a
+  non-root community's own host is refused for another community's event. The
+  root host accepts any, because communities on the deployment's subdomain
+  share its calendar address. The organizer address needed no change (it was
+  already per-community, v2-6).
+- **#47** — `POST /events/:id/reservation/confirm`, `JwtAuthGuard` only, 403 for
+  anyone but `reservation_assignee_id`.
+- **Ride-alongs** — `id` tiebreakers on the release and announcement queries in
+  `whats-new.service.ts` and on both release lists in `releases.service.ts`
+  (the Updates page lists them in the same tie); the importer sorts by numeric
+  version (`compareNoteFiles`).
+
+**Found on the way and fixed, same surface:** `PATCH /events/:id/reservation`
+returned the raw row, so the event page stored ISO timestamps — `v2-11`'s
+6:30pm-redraws-as-12:30 defect on the very screen #47 touches. Both reservation
+routes now return `toEventDateStrings`.
+
+**`1.6.1.md` is copied with "Thanks, Larry!" removed** — `v2-32`'s rule that a
+credit is a link and never prose, since one note is shown to every community.
+
+**Still open for `/v2-done 33`:** v1's port-doc rows (the other repo, not edited
+by the automated run that built this); stage verification. **Known hazard for
+`v2-25`, not fixed here:** the legacy `dinnerbears-event-N@dinnerbears.com` UID
+branch now resolves the community from the id, so if the import remaps event ids
+a reply to a pre-cutover invitation names whichever event holds that id now. The
+attendee must still be a member of that community with that address, which
+makes a wrong RSVP unlikely rather than impossible.
 
 ### v2-34 — An inbound email log
 

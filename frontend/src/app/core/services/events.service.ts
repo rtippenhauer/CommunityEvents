@@ -316,6 +316,12 @@ export class EventsService {
     return this.http.patch<Event>(`${this.base}/${eventId}/reservation`, payload);
   }
 
+  // The assigned member marking their own reservation made. Not admin-only:
+  // the API refuses anyone but the assignee.
+  confirmOwnReservation(eventId: number): Observable<Event> {
+    return this.http.post<Event>(`${this.base}/${eventId}/reservation/confirm`, {});
+  }
+
   getReservationInfo(token: string): Observable<ReservationConfirmInfo> {
     return this.http.get<ReservationConfirmInfo>(`${this.base}/reservation-confirm/${token}`);
   }
