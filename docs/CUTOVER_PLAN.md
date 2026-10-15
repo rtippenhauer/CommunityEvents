@@ -7,8 +7,8 @@ error corrected in CLAUDE.md. v1 is one production deployment, one production
 database, two cities, and becomes one tenant; its stage deployment is a second
 environment, as v2 has.)
 
-The backlog in `V2_PHASES.md` is fifteen open items. **Five of them stand
-between here and a live DinnerBears**, and ten do not. This document is the
+The backlog in `V2_PHASES.md` is sixteen open items. **Five of them stand
+between here and a live DinnerBears**, and eleven do not. This document is the
 five, why each is required, and what the cutover itself involves — which is
 mostly not code.
 
@@ -151,7 +151,7 @@ alone. `v2-33`'s `{{events}}` substitution is still needed for them to render.
 
 **Does DinnerBears have it today?** If not, going live without it is parity,
 not regression, and it belongs after the cutover. That single question moves
-ten of the fifteen open items off the critical path, including the entire
+eleven of the sixteen open items off the critical path, including the entire
 CMS batch, the operator wizard and handbook, and ban records.
 
 It also promotes two things that were not on the backlog as blockers at all:

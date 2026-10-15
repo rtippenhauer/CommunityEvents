@@ -67,9 +67,9 @@ their invite" at DinnerBears' volume on about day two.
 ### Post-cutover — everything else
 
 `v2-15`, `v2-16`, `v2-17`, `v2-18` … `v2-23`, `v2-26`, `v2-28`, `v2-30`,
-`v2-34`, and the rest of `v2-27`. Ten of these are either net-new features v1
-never had, or operator tooling that matters only once somebody other than Rob
-runs an instance. **None of them is a parity requirement**, which is the test for
+`v2-34`, `v2-35`, and the rest of `v2-27`. Eleven of these are either net-new
+features v1 never had, or operator tooling that matters only once somebody
+other than Rob runs an instance. **None of them is a parity requirement**, which is the test for
 whether something belongs on the critical path: DinnerBears runs without it
 today, so going live without it is parity rather than regression.
 
@@ -3012,3 +3012,77 @@ side, and an inbound log is the only place it could.
 admin on the same screen as outbound, each failure exit above distinguishable
 from the others, a message matching no community visible to the operator, and a
 retention position taken deliberately with its reasoning recorded.
+
+### v2-35 — Record a report on behalf of a member
+
+**Status:** Not started. **Post-cutover** by the parity test — DinnerBears has
+nothing like it — but **its value decays**: it exists so reports arriving by
+text, call or conversation land in the same place as filed ones, and a month of
+them recorded nowhere is a month that cannot be recovered. Cheap enough to ride
+along with another item rather than take its own branch.
+
+**Asked for by Rob, 2026-10-15, from a real case.** A DinnerBears member told
+him about three separate issues in conversation and filed no ticket. Two of the
+three are fixed in `v2-33`. He expects the member to keep messaging him, and
+reasonably wants that to keep working — he can ask follow-up questions, which a
+form cannot.
+
+**Credit is already a link, and that is why this is small.**
+`system_reports.reported_by_user_id` plus `shipped_in_release_id` is where a
+contributor is named (`v2-32`), and `describeReporters` renders it per reader —
+their own community sees the name, another community sees "a member of another
+community", the operator sees both. The operator `PATCH` can already set
+`shippedInVersion`. **The only missing piece is naming a reporter other than
+the caller**: `POST /system-bugs` takes it from the session
+(`system-reports.service.ts`), so a report can currently only be filed by the
+person reporting.
+
+**No schema change.** `reported_by_user_id` and `reported_by_tenant_id` are
+nullable columns on a global table.
+
+**The shape (decided with Rob, 2026-10-15):**
+
+- **One route taking an explicit target user**, exposed two ways rather than
+  built twice.
+- **From the root tenant: choose the community, then choose from its members.**
+  This is an existing pattern, not new ground — `GET
+  /system/tenants/:tenantId/users` already lists one community's people behind
+  `SystemAdminGuard` (the role *and* `req.tenant.isRoot`), because a system
+  admin holds no account in the communities they administer. Add the form to the
+  operator board (`frontend/src/app/features/system/system-bugs.component.ts`).
+- **A member picker scoped to a chosen tenant, never a search across all of
+  them.** The operator legitimately takes a `runUnscoped` waiver in
+  `describeReporters`, so a cross-community search would *work*; it would also
+  be a browsable directory of every community's members, which is the exact
+  shape `v2-14` was retitled to avoid. Selecting the community first gives the
+  same capability and no directory.
+- **The same form for a community's own admin, over their own members**, where
+  ordinary tenant scoping restricts the picker with no extra code and no
+  cross-tenant read. That is worth having for its own sake — admins hear things
+  in person too — and it is also what makes "go to that community and file it
+  there" work at all. **It only works where the actor holds an account in that
+  community**, which is true of DinnerBears for Rob after the import (his v1
+  account comes across) and false of any customer community.
+- **Audited on the root tenant** when filed from root, per the existing rule for
+  system-admin actions on other communities, so the trail shows who *recorded*
+  it.
+
+**The body is a paraphrase and must read as one.** The board would otherwise
+present the operator's wording as the member's own. Mark it as reported verbally
+and recorded by whoever typed it — a field or a required prefix, not a
+convention nobody enforces.
+
+**Until this exists, the one-off is three `system_reports` inserts** after the
+import: his user id, the DinnerBears tenant id, `status = 'shipped'`, and
+`shipped_in_release_id` from the matching `releases` row. Ordering matters —
+the import must run first for the user to exist, and the release row must exist
+in that deployment. Worth knowing because it also decides whether `1.6.1.md`
+keeps a "Thanks, Larry!" line: with the rows, the link is the credit and the
+note stays generic, which is `v2-32`'s rule. Without them the prose is the only
+credit and it names a stranger to every other community.
+
+**Definition of done:** a report can be filed naming another user as its
+reporter — from root for any community, and by a community's own admin for its
+own members — the reporter renders exactly as a self-filed one does for all
+three audiences, the recorded-by-proxy distinction is visible on the board, and
+the root-tenant audit entry names the actor.
