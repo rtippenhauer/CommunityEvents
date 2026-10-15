@@ -112,19 +112,13 @@ The 62 is worth knowing on its own: this is a small community. The import is
 small and fast, a dry run is cheap to repeat, and contacting affected members
 individually is realistic if anything does go wrong.
 
-**Push needs something the import cannot do by itself: v1's VAPID keypair must
-move to the production deployment's env.** A subscription is bound to the
-`applicationServerKey` it was created with, so fresh VAPID keys invalidate all
-three regardless of whether their rows import. `env-classification.ts` already
-says why the keypair cannot be per-tenant — "a per-tenant value would
-invalidate those subscriptions with nothing able to re-establish them" — and
-the same reasoning applies across the cutover. Copy `VAPID_PUBLIC_KEY`,
-`VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` from v1's environment when building
-production, **before** anybody subscribes on the new deployment.
-
-With three subscribers, generating fresh keys and telling those three to
-re-enable notifications is also a defensible choice. What is not defensible is
-doing it by accident, which is the default if nobody looks.
+**Push needs something the import cannot do by itself**, and it is **settled**:
+production adopts v1's VAPID keypair. A subscription is bound to the
+`applicationServerKey` it was created with, so fresh keys would invalidate all
+three regardless of whether their rows import. One keypair serves every tenant
+by design, and production holds no subscriptions yet, so adopting v1's breaks
+nothing. Details and the exact variables are in the production-deployment
+section above.
 
 ### Release notes are one shared list, so they are not tenant data
 
@@ -392,6 +386,32 @@ It does not exist in any form yet:
   `docs/SECRETS.md`. Getting this wrong is how v2-7's stage deploy produced
   three keys in three container recreates. Map `/app/appdata` before first boot,
   and back the key up the moment it is generated.
+- **No VAPID keypair — and it must be v1's, not a fresh one** (decided by Rob,
+  2026-10-14). Copy `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` from v1's
+  environment into production's, **before anybody subscribes to push on the new
+  deployment**.
+
+  One keypair serves every tenant, by design and not by omission:
+  `PushService.onModuleInit` reads the three values from env once at boot and
+  hands them to `webpush.setVapidDetails` globally, and VAPID appears in neither
+  `tenant-secret-keys.ts` nor `encrypted-columns.ts`, so there is no
+  per-community override to configure. `env-classification.ts` says why it must
+  stay that way: "a per-tenant value would invalidate those subscriptions with
+  nothing able to re-establish them."
+
+  Carrying v1's keys costs nothing here because **production has no
+  subscriptions of its own yet**, so there is nothing to invalidate by adopting
+  them — while minting fresh ones silently kills the 3 that exist in
+  DinnerBears.
+
+  **Only the keys have to match.** `VAPID_SUBJECT` is a contact address in the
+  JWT, not part of what binds a subscription, so it is free to become a
+  CommunityEvents address. The public and private halves must be byte-identical
+  to v1's.
+
+  **Omitting them fails quietly**: with any of the three unset, `PushService`
+  logs "VAPID keys not configured — push notifications disabled" and carries
+  on. Nothing errors, no screen says anything, push simply never works.
 
 ---
 
