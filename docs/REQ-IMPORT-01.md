@@ -17,14 +17,26 @@ It does not: v1 is one deployment, one database, with both cities as `cities`
 rows. **So there is no merge, no colliding email, and no second source.** The
 import reads one database.
 
-Two things this doc still must gain, and neither is about merging:
+Three things this doc still must gain, and none is about merging. The first two
+were measured against the live database on 2026-10-14 and are requirements, not
+precautions — **26 of 62 members have a calendar feed subscribed and 3 have
+push**:
+
 - **Preserve `users.calendar_token`.** A member's iCal subscription is
-  `…/calendar/feed.ics?token=…` already pasted into their calendar app. The
-  host does not change at cutover, so the URL keeps working only if the token
-  still identifies them. Fresh tokens would break every feed in the community
-  at once, silently.
-- **Preserve `push_subscriptions.endpoint`** for the same reason: same origin,
-  so the registrations remain valid if their rows come across.
+  `…/calendar/feed.ics?token=…`, already pasted into their calendar app.
+  `www.dinnerbears.com` survives as the tenant's host, so the URL keeps working
+  if and only if the token still identifies them. Regenerating it stops 26
+  calendars refreshing, with no error shown to anyone.
+- **Preserve `push_subscriptions` rows**, which is necessary and *not
+  sufficient*: a subscription is bound to the `applicationServerKey` it was
+  created with, so the production deployment must also inherit v1's
+  `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`. That is
+  deployment env rather than imported data, so it belongs in the cutover
+  checklist as well as here — see `docs/CUTOVER_PLAN.md`.
+- **Carry `deletedAt` and `hardDeleteAt`.** v1's inactivity sweep leaves
+  soft-deleted members in the table. Import them without those timestamps and
+  they come back to life as active members; exclude them entirely and their
+  RSVP and comment rows lose their foreign-key target.
 **Depends on:** REQ-TENANT-01 (tenant foundation), REQ-CITIES-01 (cities
 must be tenant-scoped before they can be imported as tenant data — see
 01.3 below). No technical dependency on REQ-CMS-01; it's sequenced after

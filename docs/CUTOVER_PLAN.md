@@ -92,21 +92,39 @@ work: `resolveCityId` already falls back to the first city by name, and the
 Profile → Settings picker already exists. It removes the "deliberate mechanism"
 wording from `v2-24`'s definition of done rather than adding to it.
 
-**Preserve `users.calendar_token` and `push_subscriptions.endpoint` where
-possible; where not, count who is affected and contact them directly.** The
-count comes first either way, because it decides whether this is a migration
-requirement or a short email. Against the live database:
+**Preserve `users.calendar_token` and `push_subscriptions.endpoint`.** Measured
+against the live `dinnerbears` database on 2026-10-14:
 
-```sql
-SELECT COUNT(*) AS calendar_subscribers FROM users
-WHERE calendar_token IS NOT NULL AND status <> 'deleted';
+| | |
+|---|---|
+| Members (not deleted) | **62** |
+| With a calendar feed subscribed | **26** |
+| With a push subscription | **3** |
 
-SELECT COUNT(DISTINCT user_id) AS push_subscribers FROM push_subscriptions;
-```
+**26 of 62 is 42% of the community, so this is a requirement rather than a
+nice-to-have.** `calendar_token` is one column on `users`; carry it with the
+rest of the row and every one of those feeds keeps working, because
+`www.dinnerbears.com` survives as the tenant's host and the feed URL is
+unchanged. Regenerate it and 26 calendars stop refreshing with no error shown
+to anyone.
 
-Push is the one that cannot be rescued by preserving anything: an endpoint
-belongs to a service-worker registration on the origin that created it. If that
-count is small, contacting them is the whole fix.
+The 62 is worth knowing on its own: this is a small community. The import is
+small and fast, a dry run is cheap to repeat, and contacting affected members
+individually is realistic if anything does go wrong.
+
+**Push needs something the import cannot do by itself: v1's VAPID keypair must
+move to the production deployment's env.** A subscription is bound to the
+`applicationServerKey` it was created with, so fresh VAPID keys invalidate all
+three regardless of whether their rows import. `env-classification.ts` already
+says why the keypair cannot be per-tenant — "a per-tenant value would
+invalidate those subscriptions with nothing able to re-establish them" — and
+the same reasoning applies across the cutover. Copy `VAPID_PUBLIC_KEY`,
+`VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` from v1's environment when building
+production, **before** anybody subscribes on the new deployment.
+
+With three subscribers, generating fresh keys and telling those three to
+re-enable notifications is also a defensible choice. What is not defensible is
+doing it by accident, which is the default if nobody looks.
 
 ### Release notes are one shared list, so they are not tenant data
 
@@ -592,9 +610,10 @@ get their invite" at DinnerBears' volume within a couple of days.
    `www.dinnerbears.com` is live and survives as the tenant's host;
    `stage.dinnerbears.com` is v1's test deployment and is the natural import
    rehearsal target. The city subdomains are unused and simply go.
-7. **Does the import preserve `users.calendar_token` and
-   `push_subscriptions.endpoint`?** Must be yes, and `REQ-IMPORT-01` says
-   nothing about either. The only member-visible breakage left in the cutover,
-   and silent if it goes wrong.
+7. ~~**Does the import preserve `users.calendar_token` and
+   `push_subscriptions.endpoint`?**~~ — **measured 2026-10-14: 26 of 62
+   members have a calendar feed, 3 have push.** Both become requirements;
+   `REQ-IMPORT-01` still says nothing about either, and push additionally needs
+   v1's VAPID keypair carried into production's env.
 6. **Does v2 continue v1's version numbering at cutover**, or start fresh? See
    the release-notes section.
