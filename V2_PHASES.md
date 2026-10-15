@@ -2131,11 +2131,12 @@ either; and the "My city only" options name the city in their own label
 moment it first has any effect. A Dayton member's `city_id` is wrong until they
 visit one screen, and nothing they see is wrong before then.
 
-So this is a defaulting choice rather than a gap. Options: ask at registration;
-carry the city on the invite, since the inviter knows it and registration is
-invite-gated anyway; or let `city_id` stay null (this item already makes it
-nullable) and let the existing preference screens do the work. The last is the
-smallest change and the most consistent with where this item is already going.
+**Settled by Rob 2026-10-14: default to Cincinnati, options in Profile.** Which
+is what happens today — most members defaulted there — so this is explicitly
+*not* work. `resolveCityId` already falls back to the first city by name and the
+Profile → Settings picker already exists; the behaviour after dropping the
+subdomains is the behaviour now, minus a hint nobody used. No registration
+prompt, no city on the invite.
 
 What is **not** optional is the dead code: `findBySubdomainOrNull`,
 `cityForTenant` and the `subdomain` reads in `bootstrap.ts` and `seed.ts` all
@@ -2144,10 +2145,10 @@ exists.
 
 **Definition of done:** `cities` is tenant-scoped with no cross-tenant
 name collisions; the feature toggle correctly makes cities either fully
-required or fully invisible; a member joining a multi-city community gets their
-city by a deliberate mechanism rather than by `cities[0]`, and
-`findBySubdomainOrNull`, `cityForTenant` and the `subdomain` reads in
-`bootstrap.ts`/`seed.ts` are gone with the column; members can select All or specific cities
+required or fully invisible; a new member still lands in the first city and can
+change it in Profile, unchanged from today; `findBySubdomainOrNull`,
+`cityForTenant` and the `subdomain` reads in `bootstrap.ts`/`seed.ts` are gone
+with the column; members can select All or specific cities
 via `user_city_preferences`, applied consistently to event list defaults,
 the iCal feed, and notifications; nothing uses city as an access gate; a
 member with a city-limited preference can still freely RSVP to and rate
@@ -2177,8 +2178,18 @@ locations, ratings, achievements/points ledger (full ledger, not just
 totals), feedback, announcements, moderation history, audit log, and
 cities (per v2-24's tenant-scoped model). Explicitly excluded: email
 queue/suppression (already global — deliverability is a property of the
-address, not the tenant), release notes, and per-city Facebook group
-config (dropped per v2-24).
+address, not the tenant) and per-city Facebook group config (dropped per
+v2-24).
+
+**Release notes are still excluded from *this* script, but are no longer simply
+dropped** (Rob, 2026-10-14). `releases` is a global table — one list per
+deployment, shared by every community, which is why notes carry `{{events}}`
+tokens that render per community. So v1's rows are imported **once as
+deployment setup**, not per tenant: inside this script they would be
+re-imported for every future customer. Doing it as a one-off also carries the
+real `published_at` dates across, which the file-based importer cannot — it
+stamps `NOW()` and would give four backfilled notes one shared second. See
+`docs/CUTOVER_PLAN.md`.
 
 **There is only ONE source database** (corrected 2026-10-14). This said the
 script should be "built generically enough to run again later against the

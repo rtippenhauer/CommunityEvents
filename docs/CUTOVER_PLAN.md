@@ -50,6 +50,87 @@ no fixed target to aim at.
 
 ---
 
+## What "lift and shift" requires, measured (2026-10-14)
+
+Rob's framing: **import as much as possible**. That is a sharper test than
+"does DinnerBears have it today?", because it asks whether v2 has somewhere to
+*put* every row v1 holds — a question with a checkable answer.
+
+Comparing v1's 41 entities against v2's 45 Prisma models, **exactly four tables
+exist in v1 with no home in v2**:
+
+| v1 table | Comes with |
+|---|---|
+| `api_tokens` | `v2-29` (Phase 39 — Muse bearer tokens) |
+| `event_facebook_links` | `v2-29` |
+| `facebook_accounts` | `v2-29` ("a Facebook profile seen on a synced Going list") |
+| `facebook_event_attendees` | `v2-29` |
+
+**All four are Phase 39.** Nothing else in v1 lacks a destination, so the
+schema answer to "can we lift and shift" is: yes, once `v2-29` lands. The eight
+models v2 has and v1 does not (`tenants`, the demo tables, `system_reports`,
+`tenant_secrets`, `oauth_handoffs`, `email_log_views`, `release_feedback`,
+`demo_requests`) are all v2-native with nothing to import.
+
+So the pre-migration list is **three items, one of which is not a port**:
+
+1. **`v2-33`** — v1's five bugfixes.
+2. **`v2-29`** — Phase 39. Closes the entire table gap above.
+3. **`v2-24`** — cities. **The non-port item**, and the one easy to forget: v1's
+   `cities` holds both rows with a globally-unique `subdomain`, v2's `cities` is
+   not tenant-scoped at all, and the import writes `user_city_preferences`,
+   which this item creates. It also closes a live cross-tenant write hole.
+
+Then `v2-25` (the import) and the production deployment. The dispatcher claim
+is done and awaiting merge.
+
+### Two decisions from Rob, 2026-10-14
+
+**New members default to Cincinnati, and change it in Profile.** This is what
+happens today — most members defaulted there — so it is explicitly *not* new
+work: `resolveCityId` already falls back to the first city by name, and the
+Profile → Settings picker already exists. It removes the "deliberate mechanism"
+wording from `v2-24`'s definition of done rather than adding to it.
+
+**Preserve `users.calendar_token` and `push_subscriptions.endpoint` where
+possible; where not, count who is affected and contact them directly.** The
+count comes first either way, because it decides whether this is a migration
+requirement or a short email. Against the live database:
+
+```sql
+SELECT COUNT(*) AS calendar_subscribers FROM users
+WHERE calendar_token IS NOT NULL AND status <> 'deleted';
+
+SELECT COUNT(DISTINCT user_id) AS push_subscribers FROM push_subscriptions;
+```
+
+Push is the one that cannot be rescued by preserving anything: an endpoint
+belongs to a service-worker registration on the origin that created it. If that
+count is small, contacting them is the whole fix.
+
+### Release notes are one shared list, so they are not tenant data
+
+Rob, 2026-10-14: "we only have 1 list of release notes." Correct, and it
+changes where the import of them belongs. `releases` is a **global** table in
+v2 — one list per deployment, shared by every community, which is exactly why
+notes are written with `{{events}}` and `{{points}}` tokens that render per
+community.
+
+So importing v1's `releases` rows is a **one-time deployment setup step, not
+part of the per-tenant import**. Putting it inside the tenant import would
+re-import DinnerBears' release history every time a future customer is
+onboarded.
+
+Done that way it is also strictly better than copying the markdown files, and
+fixes a defect for free: v1's rows carry their **real `published_at` dates**,
+where the file importer stamps `NOW()` on first insert and would give four
+backfilled notes the same whole second — the tie recorded against `v2-33`. The
+file importer then keeps working as designed, since its `ON DUPLICATE KEY
+UPDATE` deliberately refreshes only title and body and leaves `published_at`
+alone. `v2-33`'s `{{events}}` substitution is still needed for them to render.
+
+---
+
 ## The test for "is this a blocker"
 
 **Does DinnerBears have it today?** If not, going live without it is parity,
