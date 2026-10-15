@@ -266,12 +266,35 @@ backlog, so importing four notes produces at most one popup rather than four.
 `fs.readdir` order is also worth a `.sort()` while in there — it is relied on
 and unsorted, and alphabetically `1.6.10.md` precedes `1.6.2.md`.
 
-**A decision still needed:** v2's `package.json` is still v1's `1.5.1` and
-there is no `/v2-release`. At cutover, does v2 continue v1's numbering (…1.6.4,
-then 2.0) or start fresh? `releases.version` is a unique `VARCHAR(20)` and
-holds either, so this is a presentation choice rather than a technical one —
-but the splash orders by date, so whatever is chosen, the dates have to be
-right.
+### What members actually read at go-live: one `2.0` note
+
+**Decided by Rob, 2026-10-14.** Everything v2 has accumulated is consolidated
+into a **single 2.0 release note** for production, covering **user-focused
+changes only**, and kept tight.
+
+That also settles the version question: v1's notes import with their real dates
+(`1.5.0` … `1.6.3`), and `2.0` follows them. Numbering continues v1's lineage
+rather than restarting, so a member's Updates page reads as one unbroken
+history of the thing they have been using.
+
+**The raw material is `docs/NEXT_RELEASE_V2.md` — 834 lines across 28
+sections** — and the filter does most of the work, because the great majority
+of it is operator-facing: the data layer, multi-community groundwork, data
+separation, stored credentials, per-community API keys, operator screens,
+"behind the scenes". A DinnerBears member is not the audience for any of it.
+
+**Expect the result to be genuinely short, and treat that as correct rather
+than as a gap.** The cutover is a lift and shift: for a member, almost nothing
+about using the site changes, which is the *point*. The honest member-facing
+list is roughly calendar entries, feedback screenshots, reports reaching the
+people who build the site, and whatever `v2-33` restores. Padding it with
+architecture would be writing release notes for the wrong reader — and the
+operator-facing material is already documented, which is a different job from
+being announced.
+
+`docs/NEXT_RELEASE_V2.md` therefore stays what it is: an accumulating record to
+draw from, not the note itself. The note is `api/release-notes/2.0.md`, written
+once, imported by `ReleaseNotesImporterService` like any other.
 
 ---
 
@@ -626,6 +649,9 @@ get their invite" at DinnerBears' volume within a couple of days.
    kept, now that the log is a feature rather than a queue.
 5. ~~**How an address held in both source databases becomes one account**~~ —
    **void, 2026-10-14.** There is one source database; see change 2.
+6. ~~**Does v2 continue v1's version numbering?**~~ — **answered, 2026-10-14:
+   yes.** v1's notes import with their real dates and a single `2.0` note
+   follows them.
 6. ~~**Which host survives**~~ — **answered, 2026-10-14.**
    `www.dinnerbears.com` is live and survives as the tenant's host;
    `stage.dinnerbears.com` is v1's test deployment and is the natural import
