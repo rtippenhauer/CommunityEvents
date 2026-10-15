@@ -272,14 +272,14 @@ this document and are easy to lose:
   not block the real one claiming it on production, and the rehearsal can stay
   up as a reference afterwards.
 
-> **Open: the project's domain spelling.** Rob consistently says
-> `communityevents.com` (stage and www); this repo says
-> `communityeventsproject.com` throughout — CLAUDE.md, `REQ-TENANT-01.7`, and
-> the stage host actually deployed and answering today
-> (`stage.communityeventsproject.com`). Resolve before building production: it
-> sets `APP_URL`, the root tenant's domain, the certificate scope and
-> `demo.<domain>`. If `communityevents.com` is the real target then several
-> documents and the live stage configuration need correcting together.
+> **The domain is `communityeventsproject.com`** — confirmed by Rob
+> 2026-10-14, so production is `www.communityeventsproject.com` and stage is
+> `stage.communityeventsproject.com`, exactly as `REQ-TENANT-01.7` and CLAUDE.md
+> already say. Noted because the near-miss is easy to make in both directions:
+> the **GitHub repository** is `rtippenhauer/CommunityEvents`, with no
+> "project", and `communityevents.com` is somebody else's domain. The repo name
+> and the domain are deliberately not the same string; neither is a typo for the
+> other.
 
 It does not exist in any form yet:
 
