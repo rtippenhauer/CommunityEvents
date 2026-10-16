@@ -709,6 +709,68 @@ rollback lever and a bad thing to forget.
 anyone. It is a container log line and nothing else; `v2-34` is the admin-visible
 record, and until it exists a stage test means watching `docker logs -f`.
 
+#### What Cloudflare actually holds (audited and configured 2026-10-15)
+
+Read from the API, not remembered. One account; the zones that matter are
+`communityeventsproject.com`, `dinnerbears.com` and `tippenhauerworks.com`.
+**If the dashboard and this section disagree, the dashboard is the truth and
+this section is the bug** — re-audit and correct it here.
+
+**Two email Workers, deliberately.** v1's `dinnerbear_calendar` serves both
+`calendar@dinnerbears.com` (→ `API_URL=https://www.dinnerbears.com`) and
+`calendar-stage@dinnerbears.com` (→ `STAGE_API_URL=https://stage.dinnerbears.com`).
+v2 could not share it: pointing its `STAGE_API_URL` at v2's stage would have
+sent v1 stage's RSVPs there. So v2 has its own, `communityevents_calendar`,
+deployed from [`cloudflare/email-worker.js`](../cloudflare/email-worker.js) —
+which differs from v1's copy in one way: **no hardcoded fallback host.** An
+address whose deployment has no URL is dropped with a log line.
+
+| Worker | Variable | Value |
+|---|---|---|
+| `communityevents_calendar` | `STAGE_API_URL` | `https://stage.communityeventsproject.com` |
+| | `API_URL` | **unset on purpose** — production does not exist; a non-`calendar-stage@` address is dropped, not posted |
+| | `CLOUDFLARE_EMAIL_SECRET` | **not yet set** — must match the stage container; store as a *secret*, not plain text |
+
+v1's Worker holds its `CLOUDFLARE_EMAIL_SECRET` as a **plain-text variable**,
+so any API token that can read Worker settings can read it. Worth moving to a
+secret in the v1 repo's terms; not changed from here.
+
+**`communityeventsproject.com`:**
+- **DNS.** Apex, `www`, `stage`, `demo` → `74.83.52.104`, proxied.
+  `*.stage` and `demo.stage` → same, **DNS-only** (Universal SSL covers one
+  label). **`*` added 2026-10-15** → `74.83.52.104`, proxied, so a new tenant
+  subdomain needs no DNS edit.
+- **The wildcard reaches the origin, and the origin refuses it.** An unknown
+  subdomain answers **525** (Cloudflare ↔ origin TLS handshake failed): Nginx
+  Proxy Manager has no proxy host or certificate for names it has not been told
+  about. Before the wildcard those names did not resolve at all, so nothing
+  regressed — but a new tenant still needs an NPM host until NPM gets a
+  wildcard host with a wildcard (DNS-challenge) or Cloudflare Origin CA cert.
+- **Email Routing** enabled on the apex. Literal routes `noreply@` and `admin@`
+  forward to Rob's Gmail, and the **catch-all forwards to Gmail too** — so until
+  the calendar route exists, a stage RSVP reply lands in that inbox and never
+  reaches the API.
+- **Stage's reply address, verified** by fetching the stage root community's
+  subscribed feed (same `contactsFor()` as the emailed invite):
+  `ORGANIZER;CN=Community Events Project:mailto:calendar-stage@communityeventsproject.com`.
+  Apex, so no subdomain onboarding. Only the **root** community was checked;
+  stage's second community resolves its own `mail_domain`, and its replies need
+  a route in *that* domain's zone.
+- **Pending:** route `calendar-stage@communityeventsproject.com` →
+  `communityevents_calendar`, created **together with** the secret — a route
+  without it drops replies that currently at least reach Gmail.
+  **`calendar@communityeventsproject.com` is not routed** and must not be until
+  `API_URL` names a real production host.
+
+**`tippenhauerworks.com`:** set up from a separate session; not recorded here
+yet. As audited it had no wildcard, no MX, Email Routing never configured, and
+an apex on GoDaddy's site-builder addresses — so a wildcard copying the apex
+would send every subdomain to GoDaddy.
+
+**`dinnerbears.com`:** read, not changed. Literal routes for `calendar@` and
+`calendar-stage@` → `dinnerbear_calendar`; `support@`, `hello@`, `admin@`,
+`rob@` → Gmail; catch-all **drops**.
+
 ### Email credentials
 
 A community on its **own domain** may not fall back to the deployment's Brevo
