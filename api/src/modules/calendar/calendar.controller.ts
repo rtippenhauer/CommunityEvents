@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Header, Headers, HttpCode, Patch, Post, Query, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, HttpCode, Patch, Post, Query, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { IsEnum, IsBoolean, IsOptional, IsString } from 'class-validator';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CalendarService, CalendarSettingsResponse } from './calendar.service';
@@ -82,12 +82,15 @@ export class CalendarController {
   async rsvpReply(
     @Headers('x-cloudflare-secret') secret: string | undefined,
     @Body() dto: RsvpReplyDto,
+    @Req() req: Request,
   ): Promise<{ ok: boolean }> {
     const expected = this.config.get<string>('CLOUDFLARE_EMAIL_SECRET', '');
     if (!expected || secret !== expected) {
       throw new UnauthorizedException('Invalid Cloudflare secret');
     }
-    await this.calendarService.processRsvpReply(dto.raw);
+    // The host only narrows which community a reply may be about; the event
+    // its UID names decides which one it is. See processRsvpReply.
+    await this.calendarService.processRsvpReply(dto.raw, req.tenant);
     return { ok: true };
   }
 }

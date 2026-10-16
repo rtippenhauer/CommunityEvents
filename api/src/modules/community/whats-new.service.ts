@@ -34,7 +34,12 @@ export class WhatsNewService {
 
     const latestRelease = await this.prisma.releases.findFirst({
       where: { publishedAt: { not: null } },
-      orderBy: { publishedAt: 'desc' },
+      // published_at is DATETIME(0) and the notes importer writes every file
+      // with NOW() in one pass, so a boot importing several notes gives them
+      // all the same second. Without the id tiebreaker "latest" is whatever
+      // the engine returns -- v2-31's pagination tie in a new place. The
+      // importer inserts in version order, so the highest id is the newest.
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     });
     const release =
       latestRelease && latestRelease.id !== user.lastSeenReleaseId
@@ -49,7 +54,9 @@ export class WhatsNewService {
 
     const latestAnnouncement = await this.prisma.announcements.findFirst({
       where: { status: AnnouncementStatus.PUBLISHED },
-      orderBy: { publishedAt: 'desc' },
+      // Same DATETIME(0) tie as releases above, less exposed only because
+      // announcements are published one at a time by hand.
+      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
     });
     const announcement =
       latestAnnouncement && latestAnnouncement.id !== user.lastSeenAnnouncementId

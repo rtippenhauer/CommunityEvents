@@ -13,6 +13,7 @@ import { UpdateLocationDto } from './dto/update-location.dto';
 import { toPublicUser } from '../../common/utils/public-user.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { AppConfigService } from '../app-config/app-config.service';
+import { refreshUpcomingEventLocations } from '../../common/utils/event-location-snapshot.util';
 
 // What these reads return: the row plus the relations the responses have
 // always carried. The moderator-only columns stay omitted by PrismaService
@@ -207,7 +208,10 @@ export class LocationsService {
     }
 
     await this.prisma.locations.update({ where: { id }, data });
-    return this.findOne(id);
+    const updated = await this.findOne(id);
+    // Upcoming dinners here pick up the new name/address; past ones keep theirs.
+    await refreshUpcomingEventLocations(this.prisma, updated);
+    return updated;
   }
 
   async remove(id: number): Promise<void> {

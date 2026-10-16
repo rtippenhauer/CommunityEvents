@@ -1,15 +1,20 @@
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
+import request from 'supertest';
 import { createTestApp, truncateAllTables } from './utils/test-app';
-import { seedCity, seedUser } from './utils/seed';
+import { seedCity, seedUser, loginAs } from './utils/seed';
 import { ReleaseNotesImporterService } from '../src/modules/releases/release-notes-importer.service';
+import { WhatsNewService } from '../src/modules/community/whats-new.service';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { UserRole } from '../src/database/enums';
 
 const FIXTURES_DIR = join(__dirname, 'fixtures', 'release-notes');
 const EMPTY_DRAFT_DIR = join(__dirname, 'fixtures', 'release-notes-empty-draft');
 const MISSING_DIR = join(__dirname, 'fixtures', 'release-notes-does-not-exist');
+// Four notes whose alphabetical order is not their version order (1.6.10 sorts
+// before 1.6.2), imported in one boot the way v1's backlog will be.
+const MANY_DIR = join(__dirname, 'fixtures', 'release-notes-many');
 
 // Phase 33 (release-note pipeline): shared release notes ship inside the
 // Docker image (see docs/RELEASE_NOTE_PIPELINE_SPEC.md) and get imported into
@@ -21,6 +26,7 @@ describe('Release notes boot-time import (e2e)', () => {
   let prisma: PrismaService;
   let configService: ConfigService;
   let importer: ReleaseNotesImporterService;
+  let city: { id: number };
 
   beforeAll(async () => {
     ({ app, prisma } = await createTestApp());
@@ -37,7 +43,7 @@ describe('Release notes boot-time import (e2e)', () => {
     configService.set('RELEASE_NOTES_DIR', FIXTURES_DIR);
     configService.set('IS_STAGE', 'false');
 
-    const city = await seedCity(prisma);
+    city = await seedCity(prisma);
     await seedUser(prisma, city.id, {
       role: UserRole.AUTOMATION,
       email: 'automation@communityevents.internal',
@@ -130,5 +136,43 @@ describe('Release notes boot-time import (e2e)', () => {
     const release = await prisma.releases.findFirst({ where: { version: '9.9.9' } });
     expect(release).not.toBeNull();
     expect(release!.publishedAt).not.toBeNull();
+  });
+
+  // v2-33 ride-alongs. published_at is DATETIME(0) and every note in one boot
+  // is written with NOW(), so several notes share a second; the splash must
+  // still pick the newest version, and the importer must insert in version
+  // order (not readdir's) for the id tiebreaker to mean anything.
+  describe('several notes imported in one pass', () => {
+    beforeEach(() => {
+      configService.set('RELEASE_NOTES_DIR', MANY_DIR);
+    });
+
+    it('inserts them in version order, 1.6.10 after 1.6.9', async () => {
+      await importer.importAll();
+      const rows = await prisma.releases.findMany({ orderBy: { id: 'asc' }, select: { version: true } });
+      expect(rows.map((r) => r.version)).toEqual(['1.6.1', '1.6.2', '1.6.9', '1.6.10']);
+    });
+
+    it('shows the newest version on the splash when they tie on published_at', async () => {
+      await importer.importAll();
+      // Force the tie rather than hoping the loop stayed inside one second.
+      await prisma.releases.updateMany({ data: { publishedAt: new Date('2026-10-15T12:00:00Z') } });
+      const member = await seedUser(prisma, city.id, { email: 'member@example.test' });
+
+      const { release } = await app.get(WhatsNewService).getUnseen(member.id);
+      expect(release?.version).toBe('1.6.10');
+    });
+
+    it('lists them newest first on the Updates page', async () => {
+      await importer.importAll();
+      await prisma.releases.updateMany({ data: { publishedAt: new Date('2026-10-15T12:00:00Z') } });
+
+      const member = await seedUser(prisma, city.id, { email: 'member@example.test' });
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/releases')
+        .set('Cookie', await loginAs(app, member))
+        .expect(200);
+      expect(res.body.map((r: { version: string }) => r.version)).toEqual(['1.6.10', '1.6.9', '1.6.2', '1.6.1']);
+    });
   });
 });

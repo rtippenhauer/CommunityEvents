@@ -40,6 +40,7 @@ import { PointsService, SecretDinnerResync } from '../community/points.service';
 import { AchievementsService } from '../community/achievements.service';
 import { ConfigService } from '@nestjs/config';
 import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
+import { easternToday } from '../../common/utils/event-location-snapshot.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
 import { emailPalette, type EmailPalette } from '../../common/utils/color.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS, eventUid } from '../../common/utils/ics.util';
@@ -403,7 +404,19 @@ export class EventsService {
       data.publishedAt = new Date();
     }
 
-    return this.prisma.events.create({ data });
+    const saved = await this.prisma.events.create({ data });
+
+    // Created already Published: do what publishing a draft in update() does --
+    // refresh the calendar feeds and send the auto-invites. Without this, an
+    // event created straight as Published reached nobody's inbox or calendar
+    // (v1 PR #42). A draft sends nothing.
+    if (saved.status === EventStatus.PUBLISHED) {
+      void this.calendarService.invalidateAll();
+      const full = await this.findOne(saved.id, UserRole.ADMIN);
+      void this.sendPublishInvites(full);
+    }
+
+    return saved;
   }
 
   async update(id: number, dto: UpdateEventDto, callerRole?: UserRole): Promise<EventRow & { secretDinnerResync?: SecretDinnerResync }> {
@@ -441,6 +454,18 @@ export class EventsService {
       event.locationAddress = location.address;
       event.locationLat = location.lat;
       event.locationLng = location.lng;
+    } else if (event.locationId && (dto.eventDate ?? toDateString(event.eventDate)) >= easternToday()) {
+      // Same location: still re-copy its current name/address, so a location
+      // fixed after the event was created is picked up by saving the event.
+      // Past events keep the details they had at the time. Not a location
+      // change, so it sends no "details changed" email.
+      const location = await this.prisma.locations.findFirst({ where: { id: event.locationId } });
+      if (location) {
+        event.locationName = location.name;
+        event.locationAddress = location.address;
+        event.locationLat = location.lat;
+        event.locationLng = location.lng;
+      }
     }
 
     if (dto.title !== undefined) event.title = dto.title;
@@ -1766,6 +1791,24 @@ export class EventsService {
       eventTime: toTimeString(event.eventTime),
       ...(inviteToken ? { inviteToken } : {}),
     };
+  }
+
+  /**
+   * The assignee's own "I made the reservation". setReservation already treats
+   * a caller who is the assignee as a self-confirm; this is the route that lets
+   * that caller reach it without admin rights. Tenant-scoped by the extension,
+   * so an event in another community is a 404 like any missing one.
+   */
+  async confirmOwnReservation(eventId: number, user: User): Promise<EventRow> {
+    const event = await this.prisma.events.findFirst({
+      where: { id: eventId },
+      select: { reservationAssigneeId: true },
+    });
+    if (!event) throw new NotFoundException(`Event ${eventId} not found`);
+    if (event.reservationAssigneeId === null || event.reservationAssigneeId !== user.id) {
+      throw new ForbiddenException('You are not assigned to make this reservation');
+    }
+    return this.setReservation(eventId, { confirmed: true }, user);
   }
 
   async setReservation(eventId: number, dto: SetReservationDto, callerUser?: User): Promise<EventRow> {

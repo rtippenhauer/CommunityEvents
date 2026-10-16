@@ -9,6 +9,9 @@ import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { AppConfigService } from '../app-config/app-config.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
+import type { TenantContext } from '../../common/tenant/tenant-context';
+import { extractIcalFromEmail } from './ical-extract.util';
 
 /**
  * The minimum an event needs to expose to be rendered into an .ics entry.
@@ -460,8 +463,19 @@ export class CalendarService {
 
   // ── Inbound reply processing (Phase 16c) ─────────────────────────────────────
 
-  async processRsvpReply(rawEmail: string): Promise<void> {
-    const ical = this.extractIcalFromEmail(rawEmail);
+  /**
+   * `requestTenant` is the community whose host the reply was POSTed to, which
+   * is NOT necessarily the one the reply is about. The Cloudflare Worker posts
+   * everything arriving at a calendar address to one API_URL, and a community on
+   * a subdomain of this deployment shares the deployment's calendar address --
+   * so a reply about any of those communities' events lands on the root host.
+   * The community is therefore taken from the event the UID names (event ids are
+   * unique across the database), and everything after that runs inside it. The
+   * host only narrows: a reply POSTed to a non-root community's own host is
+   * accepted only for that community's events.
+   */
+  async processRsvpReply(rawEmail: string, requestTenant?: TenantContext): Promise<void> {
+    const ical = extractIcalFromEmail(rawEmail);
     if (!ical) {
       this.logger.warn('rsvp-reply: no iCal block found in email');
       return;
@@ -504,15 +518,36 @@ export class CalendarService {
       return;
     }
 
-    const event = await this.prisma.events.findUnique({ where: { id: eventId } });
+    const event = await runUnscoped(
+      'calendar reply: the UID names an event, and the event names its community',
+      async () =>
+        await this.prisma.events.findUnique({
+          where: { id: eventId },
+          select: { id: true, tenantId: true, status: true },
+        }),
+    );
     if (!event || event.status !== EventStatus.PUBLISHED) {
       this.logger.warn(`rsvp-reply: event ${eventId} not found or not published`);
       return;
     }
+    if (requestTenant && !requestTenant.isRoot && requestTenant.id !== event.tenantId) {
+      this.logger.warn(
+        `rsvp-reply: event ${eventId} belongs to tenant ${event.tenantId}, but the reply was posted to tenant ${requestTenant.id}'s host`,
+      );
+      return;
+    }
 
-    // findFirst: the address is only unique within a tenant now. No tenant is
-    // named here because the extension supplies it -- and it is the right one,
-    // since the events lookup just above resolved in the same context.
+    await runWithTenant(event.tenantId, async () => {
+      await this.recordRsvpReply(eventId, attendeeEmail, rsvpStatus);
+    });
+  }
+
+  /** The write half of a reply, run inside the event's own community. */
+  private async recordRsvpReply(eventId: number, attendeeEmail: string, rsvpStatus: RsvpStatus): Promise<void> {
+    // findFirst: the address is only unique within a tenant. The extension
+    // supplies the tenant, which processRsvpReply has just set to the event's
+    // own -- so this finds the member the invitation was sent to, not a
+    // same-address account in whichever community the reply was posted to.
     const user = await this.prisma.users.findFirst({ where: { email: attendeeEmail } });
     if (!user) {
       this.logger.warn(`rsvp-reply: no user found for ${attendeeEmail}`);
@@ -536,48 +571,5 @@ export class CalendarService {
 
     this.invalidateForUser(user.id);
     this.logger.log(`rsvp-reply: ${attendeeEmail} → ${rsvpStatus} for event ${eventId}`);
-  }
-
-  private extractIcalFromEmail(rawEmail: string): string | null {
-    // Try plain-text first — BEGIN:VCALENDAR is readable ASCII, so if this matches
-    // directly the block was never actually quoted-printable encoded (real QP
-    // encoding would have broken up "BEGIN:VCALENDAR" itself with soft line
-    // breaks, in which case this regex wouldn't match at all — see the fallback
-    // branch below for that case). Only undo QP soft-line-break folding here —
-    // do NOT run full hex-escape decoding (`=3D` etc.) on already-clean text: its
-    // "=XY" pattern also matches plenty of legitimate iCal content whenever X and
-    // Y happen to be hex digits (e.g. "PARTSTAT=ACCEPTED" contains "=AC", and
-    // "PARTSTAT=DECLINED" contains "=DE"), silently corrupting real PARTSTAT
-    // values while "=TE" in "TENTATIVE" happens to survive since T isn't hex.
-    const inline = rawEmail.match(/BEGIN:VCALENDAR[\s\S]*?END:VCALENDAR/i);
-    if (inline) return inline[0].replace(/=\r?\n/g, '');
-
-    // Try after full QP decode of the email (catches cases where the iCal section
-    // has soft-line-break folding that obscures the BEGIN: marker)
-    const qpDecoded = this.decodeQuotedPrintable(rawEmail);
-    const qpMatch = qpDecoded.match(/BEGIN:VCALENDAR[\s\S]*?END:VCALENDAR/i);
-    if (qpMatch) return qpMatch[0];
-
-    // Base64-encoded MIME part
-    const b64Parts = rawEmail.match(/Content-Transfer-Encoding:\s*base64[\s\S]*?(?=\n--|\n\n--|$)/gi) ?? [];
-    for (const part of b64Parts) {
-      const b64 = part.match(/\n\n([\w+/=\r\n]+)/)?.[1];
-      if (!b64) continue;
-      try {
-        const decoded = Buffer.from(b64.replace(/[\r\n]/g, ''), 'base64').toString('utf-8');
-        const cal = decoded.match(/BEGIN:VCALENDAR[\s\S]*?END:VCALENDAR/i);
-        if (cal) return cal[0];
-      } catch {
-        // ignore malformed base64
-      }
-    }
-
-    return null;
-  }
-
-  private decodeQuotedPrintable(str: string): string {
-    return str
-      .replace(/=\r?\n/g, '')  // remove QP soft line breaks
-      .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
   }
 }

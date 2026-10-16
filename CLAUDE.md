@@ -25,29 +25,41 @@ for that reason. v2 work publishes to its own `v2-stage` tag instead (see
 Community dining platform that organizes weekly group dinners across
 multiple cities.
 
-**v1 runs ONE deployment and ONE database** (`www.dinnerbears.com` live, plus
-`stage.dinnerbears.com` for testing). **Cincinnati and Dayton are `cities` rows
-inside that single database**, seeded together by v1's own
-`CreateCitiesAndAppConfig` migration, and a member chooses all-cities or
+**v1 runs ONE production deployment serving ONE community**, with
+`stage.dinnerbears.com` beside it for testing — stage and prod, each with its
+own database, which is the ordinary two-environment shape and **the same one v2
+has**. So there is exactly one production database, and one import source.
+**Cincinnati and Dayton are `cities` rows inside it**, seeded together by v1's
+own `CreateCitiesAndAppConfig` migration, and a member chooses all-cities or
 their-city-only from their profile. v1 has always been multi-city in one
 instance.
 
 > **Corrected 2026-10-14, and it had been wrong in five documents.** This said
 > "v1 runs Cincinnati and Dayton as two full duplicate deployments (separate
 > container, separate database)". The *architecture* half was true and the
-> *example* was not: the two duplicate deployments were DinnerBears and a
-> second database Rob stood up for a prospective customer who never went live
-> — **and that duplication is exactly what led to CommunityEvents**. Two
-> cities were never two deployments. Somebody mapped "two deployments" onto the
-> two city names, and from there the cutover plan and `REQ-IMPORT-01` spent
-> weeks reasoning about merging two source databases that do not exist. Checked
-> against v1's own migration, not inferred.
+> *example* was not. Two cities were never two deployments. Somebody mapped
+> "two deployments" onto the two city names, and from there the cutover plan and
+> `REQ-IMPORT-01` spent weeks reasoning about merging two source databases that
+> do not exist. Checked against v1's own migration, not inferred.
+
+> **Corrected again 2026-10-15, on the other half.** The replacement text said
+> v1 runs "ONE deployment and ONE database", which overcorrected: v1 has stage
+> and prod exactly as v2 does, and that was never the anomaly. It also said the
+> second deployment was one Rob "stood up" for a customer "who never went
+> live", which reads as a thing that ran. **It never reached production** — it
+> was a duplicate stack being *developed* for a different group, and was
+> abandoned before go-live (Rob, 2026-10-15). What matters for the import is
+> unchanged: one production database, and the never-launched build holds no
+> data worth importing.
 
 So v2's premise is validated by the actual history rather than by analogy: a new
-community should not cost a new container and database, because Rob did it once
-for a customer and that was the trigger for this rewrite. v2 replaces the
-pattern with a single deployment, single database, and tenant-scoped data — a
-new tenant (community) is a database row, not a new container/database pair. The underlying product (organizing recurring
+community should not cost a new container and database, because duplicating the
+whole stack for a second group is what the project was already doing when it
+stopped and became this rewrite. That it never shipped is the point rather than
+a caveat — the duplication cost enough to kill the approach before it reached
+anybody. v2 replaces the pattern with a single deployment, single database, and
+tenant-scoped data — a new tenant (community) is a database row, not a new
+container/database pair. The underlying product (organizing recurring
 group dinners) isn't changing, only the deployment architecture; whether
 "tenant" ends up meaning strictly "city" or something broader isn't decided
 beyond what `docs/REQ-TENANT-01.md` specifies.
@@ -55,9 +67,10 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 ## V2 Rewrite Status
 
 **Current v2 work item:** **`v2-33`** — porting v1's five outstanding bugfixes.
-Branch `v2-33-port-v1-bugfixes`, cut off `main` 2026-10-14, nothing implemented
-yet. See V2_PHASES.md for the five, each already verified as a live defect in
-this repo with a file and line.
+Branch `v2-33-port-v1-bugfixes`, cut off `main` 2026-10-14. **All five
+implemented 2026-10-15 and open as a PR, awaiting `/v2-testing 33`** — the visual
+half (splash and Updates wording, the assignee's button) has not been seen on
+stage. See V2_PHASES.md's v2-33 section for what landed and what is unverified.
 
 **`v2-33` + `v2-29` is what "caught up to prod DinnerBears" means** — the
 bugfixes and Phase 39 (MUSE) respectively. `v2-24` (cities) is *not* catch-up;
@@ -784,12 +797,14 @@ the delta before planning anything. The v1 repo is a sibling checkout
 
 **DinnerBears is ONE tenant; Cincinnati and Dayton are cities inside it**
 (Rob, 2026-10-03) — and as of 2026-10-14 this is simply a description of v1
-rather than a decision about v2. v1 is one deployment with one database holding
+rather than a decision about v2. v1 has one production database and it holds
 both cities. The earlier justification here claimed v2 was correcting a v1
 limitation ("v1 runs two deployments only because v1 had no way to run two
-cities"); that was false in both halves, since v1 runs one deployment and has
-had cities since its third migration. A tenant is a community; DinnerBears is
-one community meeting in two cities, which is what `REQ-CITIES-01`'s
+cities"); that was false in both halves, since v1 runs one production
+deployment and has had cities since its third migration. (v1's stage
+deployment is a second *environment*, not a second community — see the intro.)
+A tenant is a community; DinnerBears is one community meeting in two cities,
+which is what `REQ-CITIES-01`'s
 `feature_cities` generalizes. Rob's "a ban is community wide" (Phase 40 /
 `v2-30`) agrees: it is only coherent if the community spans both cities.
 
@@ -824,7 +839,7 @@ dispatcher claim step carved out of `v2-27`, `v2-33` (v1's five bugfixes),
 `v2-29` (port Phase 39), `v2-24` (cities, which the import depends on), `v2-25`
 (the import) — plus a production deployment that does not exist yet. The test for whether anything else belongs
 on that path is **"does DinnerBears have it today?"**; if not, going live
-without it is parity rather than regression, which defers nine of the fourteen
+without it is parity rather than regression, which defers eleven of the sixteen
 open items.
 
 ## Stack (current `main`)

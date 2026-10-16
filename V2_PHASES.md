@@ -66,10 +66,10 @@ their invite" at DinnerBears' volume on about day two.
 
 ### Post-cutover — everything else
 
-`v2-15`, `v2-16`, `v2-17`, `v2-18` … `v2-23`, `v2-26`, `v2-28`, `v2-30`, and
-the rest of `v2-27`. Nine of these are either net-new features v1 never had, or
-operator tooling that matters only once somebody other than Rob runs an
-instance. **None of them is a parity requirement**, which is the test for
+`v2-15`, `v2-16`, `v2-17`, `v2-18` … `v2-23`, `v2-26`, `v2-28`, `v2-30`,
+`v2-34`, `v2-35`, and the rest of `v2-27`. Eleven of these are either net-new
+features v1 never had, or operator tooling that matters only once somebody
+other than Rob runs an instance. **None of them is a parity requirement**, which is the test for
 whether something belongs on the critical path: DinnerBears runs without it
 today, so going live without it is parity rather than regression.
 
@@ -2194,11 +2194,13 @@ stamps `NOW()` and would give four backfilled notes one shared second. See
 **There is only ONE source database** (corrected 2026-10-14). This said the
 script should be "built generically enough to run again later against the
 second, manually-duplicated DinnerBears database in its own container…
-producing a second independent tenant". No such database exists: v1 is one
-deployment with one database holding Cincinnati and Dayton as `cities` rows.
-The duplicate deployment that motivated this whole project was a *different
-community* — a prospective customer who never launched — and it has no data
-worth importing.
+producing a second independent tenant". No such database exists: v1 has one
+production deployment and one production database, holding Cincinnati and
+Dayton as `cities` rows. (Stage has its own, which is the dry-run target
+below — that is v1's second *environment*, not a second community.) The
+duplicate deployment that motivated this whole project was being built for a
+*different group* and never reached production, so it has no data worth
+importing.
 
 Keeping the script general is still worth something, just for a different
 reason: the next import is a **new customer** arriving from somewhere else, not
@@ -2813,7 +2815,7 @@ without it is parity rather than regression — the test the running order uses.
 
 ### v2-33 — Port v1's five outstanding bugfixes
 
-**Status:** Not started. **On the cutover path**, by the running order's own
+**Status:** Implemented 2026-10-15, PR open, **not yet on stage**. **On the cutover path**, by the running order's own
 test: every one of these is fixed in DinnerBears production today, so shipping
 v2 without them is a regression rather than parity. They were previously
 treated as "bugfixes may still land in v1, they port cheaply" and never written
@@ -2857,10 +2859,12 @@ right, which is why the wrong answer looked reasoned.
   the same helper as the manual edit or the rename case stays broken.
 
 **#45 is also invisible when it fails**, which v1 flags and did not fix: a
-dropped reply is a container log line and nothing else. v2-31 built an email log
-with categories, so there is now somewhere for an admin-visible record to live —
-worth doing here rather than deferring, since the failure mode is a member
-who replied and whose RSVP silently did not change.
+dropped reply is a container log line and nothing else. The failure mode is a
+member who replied and whose RSVP silently did not change. **That visibility is
+`v2-34` and is deliberately not part of this item** (Rob, 2026-10-14) — fixing
+the decode is what restores parity with DinnerBears, which is this item's test,
+and an admin-visible inbound record is new capability v1 never had. Do not let
+it grow the branch.
 
 **Two defects of our own ride along**, both found on 2026-10-14 while working
 out how to import v1's release notes, and both on the same surface as #43:
@@ -2894,3 +2898,201 @@ repo and is part of this item, not an afterthought.
 
 **No schema changes**, in v1 or here, which is what makes this one branch rather
 than five.
+
+**#45 cannot be stage-tested until Cloudflare is set up for this deployment**
+(2026-10-15). The decode fix is necessary and not sufficient: a reply has to
+reach the API first, and nothing has ever pointed Email Routing at
+`communityeventsproject.com`. Needed, in `docs/CUTOVER_PLAN.md` under "Inbound
+mail": Email Routing on the apex, a route for `calendar-stage@` to the email
+Worker, and `STAGE_API_URL` plus a matching `CLOUDFLARE_EMAIL_SECRET`. Confirm
+the address by reading one real invite's `ORGANIZER` line, because it resolves
+from that community's own `mail_domain`. Test the other four fixes first; they
+need nothing from Cloudflare.
+
+**What landed (2026-10-15), and how each wrinkle was answered:**
+
+- **#41** — `common/utils/event-location-snapshot.util.ts` is the one helper;
+  `LocationsService.update` and `EnrichmentService.enrich` (on a rename or
+  re-address) both call it, and saving an upcoming event re-copies its
+  location. The test drives the enrichment path with Places stubbed, so "writes
+  through the same helper" is asserted, not assumed.
+- **#42** — `EventsService.create` invalidates the feeds and sends the invites
+  when the event is born Published.
+- **#43** — `shared/utils/substitute-terms.ts`, used by Updates, the splash, and
+  the feedback page's "Shipped in" banner (a third surface v1 did not have).
+  The terms are the serving community's, because they come from its branding
+  payload. The admin release editor deliberately shows the raw tokens, like the
+  legal editor. Nothing on the API renders a note (no email or push of one).
+- **#45** — the decode lives in `calendar/ical-extract.util.ts` with a unit spec.
+  **The community is taken from the event, not the host**: event ids are unique
+  across the database, so the UID already identifies the community and nothing
+  about its format had to change. The reply is looked up `runUnscoped`, then
+  everything else runs in `runWithTenant(event.tenantId)` — so the attendee is
+  matched among *that* community's members, which matters because one address
+  can hold an account in several. The host only narrows: a reply POSTed to a
+  non-root community's own host is refused for another community's event. The
+  root host accepts any, because communities on the deployment's subdomain
+  share its calendar address. The organizer address needed no change (it was
+  already per-community, v2-6).
+- **#47** — `POST /events/:id/reservation/confirm`, `JwtAuthGuard` only, 403 for
+  anyone but `reservation_assignee_id`.
+- **Ride-alongs** — `id` tiebreakers on the release and announcement queries in
+  `whats-new.service.ts` and on both release lists in `releases.service.ts`
+  (the Updates page lists them in the same tie); the importer sorts by numeric
+  version (`compareNoteFiles`).
+
+**Found on the way and fixed, same surface:** `PATCH /events/:id/reservation`
+returned the raw row, so the event page stored ISO timestamps — `v2-11`'s
+6:30pm-redraws-as-12:30 defect on the very screen #47 touches. Both reservation
+routes now return `toEventDateStrings`.
+
+**`1.6.1.md` is copied with "Thanks, Larry!" removed** — `v2-32`'s rule that a
+credit is a link and never prose, since one note is shown to every community.
+
+**Still open for `/v2-done 33`:** v1's port-doc rows (the other repo, not edited
+by the automated run that built this); stage verification. **Known hazard for
+`v2-25`, not fixed here:** the legacy `dinnerbears-event-N@dinnerbears.com` UID
+branch now resolves the community from the id, so if the import remaps event ids
+a reply to a pre-cutover invitation names whichever event holds that id now. The
+attendee must still be a member of that community with that address, which
+makes a wrong RSVP unlikely rather than impossible.
+
+### v2-34 — An inbound email log
+
+**Status:** Not started. **Post-cutover** (Rob, 2026-10-14: "future phase").
+Asked for as "email logs for incoming emails and any errors" — and it should
+have been written down when `v2-31` built the log, because what that item built
+is only half of one.
+
+**What exists today is outbound-only, and the table name says so.** The screen
+reads `email_queue`: a row is a message *this deployment decided to send*, with
+`status`, `attempts`, `error_message` and `brevo_status` recording how that
+went. Inbound mail has no row anywhere in the schema.
+
+**There is exactly one inbound path, and it fails silently seven ways.** The
+Cloudflare Worker POSTs a calendar reply to `processRsvpReply`
+(`api/src/modules/calendar/calendar.service.ts`), which returns early on: no
+iCal block, not a `METHOD:REPLY`, an unrecognized UID, an unparseable
+`ATTENDEE` line, an unhandled `PARTSTAT`, an event that is missing or not
+published, and no member matching the address. **Every one is a `logger.warn`
+or `logger.debug` and nothing else**, so the failure mode is a member who
+pressed Accept in Gmail and whose RSVP did not change, leaving a container log
+line as the only evidence. Nobody reads container logs to answer "why is this
+member not on the list".
+
+`v2-33`'s #45 fixes the *decode* that makes most of those exits fire today. It
+does not make the remaining six visible, and the two are worth separating: a
+decode bug is fixed once, while an unrecognized UID or an unknown address is a
+condition that recurs forever and needs somewhere to be seen.
+
+**Three design questions, none of them settled here:**
+
+- **It is probably not a column on `email_queue`.** A queue row is *work to
+  do* — the dispatcher's indexes, claim step and retry counter all assume it.
+  An inbound row is a record of something that already happened and will never
+  be sent. A `direction` column would mean every existing dispatcher query
+  needs a predicate it does not carry today, which is the same objection that
+  forced `system_reports` to be its own table in `v2-32`: a predicate that
+  applies to some rows of a table and not others is a boundary nobody can
+  confirm by reading a query.
+- **A message that resolves to no tenant is the most important row to keep,
+  and a scoped table cannot hold it.** The handler runs outside any request, so
+  there is no ambient tenant; the tenant has to be derived from the recipient
+  address or the UID *before* anything can be written scoped. But "this reply
+  arrived and matched no community" is precisely the case an operator needs to
+  see. So either the table is global with a nullable tenant id —
+  `ON DELETE SET NULL`, like `v2-32`'s two tables, for the same reason — or
+  unresolvable messages are dropped, which defeats the item. Decide this first;
+  it decides the schema.
+- **Retention is a fresh decision, not `v2-31`'s.** That item clears the
+  rendered body after 30 days and keeps the envelope, on the grounds that the
+  envelope answers the question cheaply. A raw inbound email is larger, is
+  written by a member rather than by us, and the part worth keeping may be
+  exactly the part that is expensive. `deepest_open_age_days` was built to
+  decide the outbound window on evidence; the same instrument should decide
+  this one rather than inheriting a number.
+
+**Also in scope:** the Worker catches its own POST failures and returns, so
+Cloudflare's Email Routing activity log shows every message as **Handled** even
+when nothing was delivered — which is how v1's apex-host misconfiguration went
+unnoticed. A rejected or unreachable POST currently surfaces nowhere on either
+side, and an inbound log is the only place it could.
+
+**Definition of done:** inbound messages and their outcome are visible to an
+admin on the same screen as outbound, each failure exit above distinguishable
+from the others, a message matching no community visible to the operator, and a
+retention position taken deliberately with its reasoning recorded.
+
+### v2-35 — Record a report on behalf of a member
+
+**Status:** Not started. **Post-cutover** by the parity test — DinnerBears has
+nothing like it — but **its value decays**: it exists so reports arriving by
+text, call or conversation land in the same place as filed ones, and a month of
+them recorded nowhere is a month that cannot be recovered. Cheap enough to ride
+along with another item rather than take its own branch.
+
+**Asked for by Rob, 2026-10-15, from a real case.** A DinnerBears member told
+him about three separate issues in conversation and filed no ticket. Two of the
+three are fixed in `v2-33`. He expects the member to keep messaging him, and
+reasonably wants that to keep working — he can ask follow-up questions, which a
+form cannot.
+
+**Credit is already a link, and that is why this is small.**
+`system_reports.reported_by_user_id` plus `shipped_in_release_id` is where a
+contributor is named (`v2-32`), and `describeReporters` renders it per reader —
+their own community sees the name, another community sees "a member of another
+community", the operator sees both. The operator `PATCH` can already set
+`shippedInVersion`. **The only missing piece is naming a reporter other than
+the caller**: `POST /system-bugs` takes it from the session
+(`system-reports.service.ts`), so a report can currently only be filed by the
+person reporting.
+
+**No schema change.** `reported_by_user_id` and `reported_by_tenant_id` are
+nullable columns on a global table.
+
+**The shape (decided with Rob, 2026-10-15):**
+
+- **One route taking an explicit target user**, exposed two ways rather than
+  built twice.
+- **From the root tenant: choose the community, then choose from its members.**
+  This is an existing pattern, not new ground — `GET
+  /system/tenants/:tenantId/users` already lists one community's people behind
+  `SystemAdminGuard` (the role *and* `req.tenant.isRoot`), because a system
+  admin holds no account in the communities they administer. Add the form to the
+  operator board (`frontend/src/app/features/system/system-bugs.component.ts`).
+- **A member picker scoped to a chosen tenant, never a search across all of
+  them.** The operator legitimately takes a `runUnscoped` waiver in
+  `describeReporters`, so a cross-community search would *work*; it would also
+  be a browsable directory of every community's members, which is the exact
+  shape `v2-14` was retitled to avoid. Selecting the community first gives the
+  same capability and no directory.
+- **The same form for a community's own admin, over their own members**, where
+  ordinary tenant scoping restricts the picker with no extra code and no
+  cross-tenant read. That is worth having for its own sake — admins hear things
+  in person too — and it is also what makes "go to that community and file it
+  there" work at all. **It only works where the actor holds an account in that
+  community**, which is true of DinnerBears for Rob after the import (his v1
+  account comes across) and false of any customer community.
+- **Audited on the root tenant** when filed from root, per the existing rule for
+  system-admin actions on other communities, so the trail shows who *recorded*
+  it.
+
+**The body is a paraphrase and must read as one.** The board would otherwise
+present the operator's wording as the member's own. Mark it as reported verbally
+and recorded by whoever typed it — a field or a required prefix, not a
+convention nobody enforces.
+
+**Until this exists, the one-off is three `system_reports` inserts** after the
+import: his user id, the DinnerBears tenant id, `status = 'shipped'`, and
+`shipped_in_release_id` from the matching `releases` row. Ordering matters —
+the import must run first for the user to exist, and the release row must exist
+in that deployment. Worth knowing because it also decides whether `1.6.1.md`
+keeps a "Thanks, Larry!" line: with the rows, the link is the credit and the
+note stays generic, which is `v2-32`'s rule. Without them the prose is the only
+credit and it names a stranger to every other community.
+
+**Definition of done:** a report can be filed naming another user as its
+reporter — from root for any community, and by a community's own admin for its
+own members — the reporter renders exactly as a self-filed one does for all
+three audiences, the recorded-by-proxy distinction is visible on the board, and
+the root-tenant audit entry names the actor.
