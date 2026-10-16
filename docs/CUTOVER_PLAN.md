@@ -648,6 +648,67 @@ the tenant's host**. A tenant subdomain normally publishes no MX record, so
 `hello@dayton.dinnerbears.com` would bounce silently. v1's Phase 38 was partly
 a fix for exactly this. Set each tenant's mail domain as part of creating it.
 
+### Inbound mail — calendar replies (Cloudflare)
+
+**This exists in no repo and is the least documented thing on the critical
+path** (written down 2026-10-15, after a stage invite's reply address was
+questioned). v1 works because of Cloudflare dashboard state, not because of
+anything checked in — the same class of divergence as v1's PR #46, where the
+Worker's live `API_URL` had been corrected in the dashboard while the repo copy
+still said the apex.
+
+**Which address a reply goes to.** Two functions resolve an `ORGANIZER`, and
+they are not interchangeable:
+
+| Path | Function | Address |
+|---|---|---|
+| The emailed invite (`buildInviteAttachment`) **and** the subscribed iCal feed | `AppConfigService.calendarOrganizerEmail()` | `calendar@` / `calendar-stage@<mail domain>` |
+| "Add to calendar" download and guest links (`generateIcs`, `generateGuestIcs`) | `AppConfigService.eventOrganizerEmail()` | `noreply@<mail domain>` |
+
+A reply follows the `.ics` `ORGANIZER`, **not** the message's `From` — the From
+is the Brevo sending identity (`noreply@`, correctly). So the emailed invite is
+repliable and always was; the `noreply@` on a download is deliberate, because
+nothing is expecting a reply to a file.
+
+The local part is `calendar-stage@` when `APP_URL` contains `stage`, and the
+domain is that community's own: `contact_calendar_email`, else a derivation
+from its `mail_domain`, else `CALENDAR_ORGANIZER_EMAIL`, else the deployment
+domain. **Verify it by reading one real invite's `ORGANIZER` line** rather than
+deducing it — the resolution order has four steps and only the row knows.
+
+**What Cloudflare needs**, per zone:
+
+1. **Email Routing enabled on the apex.** It is a zone-level feature that
+   applies to the apex by default. Subdomains can be added (up to 30 domains
+   per zone, apex included) but take **literal** rules only — **catch-all is
+   apex-only**. This is why the stage reply address is
+   `calendar-stage@communityeventsproject.com` and not
+   `calendar@stage.communityeventsproject.com`: the second needs the subdomain
+   onboarded, and buys nothing.
+2. **A route per address → the email Worker.** The Worker does not filter: it
+   forwards whatever is routed to it. So the route list *is* the access
+   control.
+3. **Worker variables.** `CLOUDFLARE_EMAIL_SECRET` matching the API container,
+   `API_URL` and `STAGE_API_URL` on real web hosts. **The repo's default is
+   still the apex** (`https://dinnerbears.com`), which has MX and no A record,
+   so an unset variable fails silently — Cloudflare logs the message as
+   **Handled** either way.
+
+**The prefix decides the deployment, which is the trap.** The Worker branches
+`to.startsWith('calendar-stage@') ? STAGE_API_URL : API_URL`. Every other
+address — `calendar@`, `noreply@`, anything new — posts to `API_URL`,
+production. An address invented for stage that does not start with
+`calendar-stage@` silently delivers stage replies to production.
+
+**At go-live:** `calendar@dinnerbears.com` already routes to the Worker and
+posts to v1's host. Moving `API_URL` to the new deployment is a dashboard edit
+with no deploy, so it is also reversible in seconds — which makes it a good
+rollback lever and a bad thing to forget.
+
+**Still unverified:** whether a reply that arrives and is refused is visible to
+anyone. It is a container log line and nothing else; `v2-34` is the admin-visible
+record, and until it exists a stage test means watching `docker logs -f`.
+
 ### Email credentials
 
 A community on its **own domain** may not fall back to the deployment's Brevo

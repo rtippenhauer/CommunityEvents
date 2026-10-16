@@ -2899,6 +2899,16 @@ repo and is part of this item, not an afterthought.
 **No schema changes**, in v1 or here, which is what makes this one branch rather
 than five.
 
+**#45 cannot be stage-tested until Cloudflare is set up for this deployment**
+(2026-10-15). The decode fix is necessary and not sufficient: a reply has to
+reach the API first, and nothing has ever pointed Email Routing at
+`communityeventsproject.com`. Needed, in `docs/CUTOVER_PLAN.md` under "Inbound
+mail": Email Routing on the apex, a route for `calendar-stage@` to the email
+Worker, and `STAGE_API_URL` plus a matching `CLOUDFLARE_EMAIL_SECRET`. Confirm
+the address by reading one real invite's `ORGANIZER` line, because it resolves
+from that community's own `mail_domain`. Test the other four fixes first; they
+need nothing from Cloudflare.
+
 **What landed (2026-10-15), and how each wrinkle was answered:**
 
 - **#41** — `common/utils/event-location-snapshot.util.ts` is the one helper;
