@@ -729,7 +729,7 @@ address whose deployment has no URL is dropped with a log line.
 |---|---|---|
 | `communityevents_calendar` | `STAGE_API_URL` | `https://stage.communityeventsproject.com` |
 | | `API_URL` | **unset on purpose** — production does not exist; a non-`calendar-stage@` address is dropped, not posted |
-| | `CLOUDFLARE_EMAIL_SECRET` | **not yet set** — must match the stage container; store as a *secret*, not plain text |
+| | `CLOUDFLARE_EMAIL_SECRET` | a **secret** (not plain text), copied from v1's value on 2026-10-15 with Rob's OK — one value now authenticates to both v1 and v2 stage, so rotating it is a change on both sides |
 
 v1's Worker holds its `CLOUDFLARE_EMAIL_SECRET` as a **plain-text variable**,
 so any API token that can read Worker settings can read it. Worth moving to a
@@ -756,11 +756,14 @@ secret in the v1 repo's terms; not changed from here.
   Apex, so no subdomain onboarding. Only the **root** community was checked;
   stage's second community resolves its own `mail_domain`, and its replies need
   a route in *that* domain's zone.
-- **Pending:** route `calendar-stage@communityeventsproject.com` →
-  `communityevents_calendar`, created **together with** the secret — a route
-  without it drops replies that currently at least reach Gmail.
+- **Routed 2026-10-15:** `calendar-stage@communityeventsproject.com` →
+  `communityevents_calendar` (literal rule, listed ahead of the Gmail catch-all).
   **`calendar@communityeventsproject.com` is not routed** and must not be until
   `API_URL` names a real production host.
+- **Still needed on the stage container:** `CLOUDFLARE_EMAIL_SECRET` set to the
+  same value. It was never set there, and `rsvp-reply` refuses everything when
+  the env value is empty — fails closed, so until it is set every reply reaches
+  the API and is answered 401, visible in the Worker's logs and nowhere else.
 
 **`tippenhauerworks.com`:** set up from a separate session; not recorded here
 yet. As audited it had no wildcard, no MX, Email Routing never configured, and
