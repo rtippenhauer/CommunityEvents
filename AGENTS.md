@@ -7,6 +7,9 @@ read the sections you need: "V2 Rewrite Status", "Stack", "Database",
 Release Workflow". Work items, their order and their definitions of done are
 in `V2_PHASES.md`; requirements are in `docs/REQ-*.md`.
 
+**Codex:** work only on items whose `V2_PHASES.md` entry has an
+`**Agent:** Codex` line, and follow `docs/CODEX.md`.
+
 ## Stack (current main)
 Angular 22 standalone components + Angular Material; NestJS; **Prisma 7** on
 MySQL (not TypeORM — that was v1); Vitest for API unit and e2e

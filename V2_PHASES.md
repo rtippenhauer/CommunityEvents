@@ -3111,6 +3111,7 @@ private BookOfShadows repo and never enters this one.
 
 ### v2-36 — Private journal pages (REQ-JOURNAL-01.1)
 **Status:** Not started. Depends on v2-6 (tenant scoping).
+**Agent:** Codex — the first Codex trial. See `docs/CODEX.md`.
 
 `journal_pages` + `journal_page_revisions`, owner-only access **even against
 tenant and system admins** (the one new rule here), and autosave with a 409 on
@@ -3121,6 +3122,7 @@ without changing the stored content.
 
 ### v2-37 — Journal apps: page templates (REQ-JOURNAL-01.2)
 **Status:** Not started. Depends on v2-36.
+**Agent:** Codex — next in the queue, only if v2-36 goes well. See `docs/CODEX.md`.
 
 A template registry (backend settings schema + frontend component), the same
 shape as v2-19's block registry so the templates can become blocks later.
