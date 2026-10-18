@@ -67,7 +67,7 @@ their invite" at DinnerBears' volume on about day two.
 ### Post-cutover — everything else
 
 `v2-15`, `v2-16`, `v2-17`, `v2-18` … `v2-23`, `v2-26`, `v2-28`, `v2-30`,
-`v2-34`, `v2-35`, and the rest of `v2-27`. Eleven of these are either net-new
+`v2-34`, `v2-35`, the journal track (`v2-36` … `v2-41`), and the rest of `v2-27`. Most of these are either net-new
 features v1 never had, or operator tooling that matters only once somebody
 other than Rob runs an instance. **None of them is a parity requirement**, which is the test for
 whether something belongs on the critical path: DinnerBears runs without it
@@ -3096,3 +3096,63 @@ reporter — from root for any community, and by a community's own admin for its
 own members — the reporter renders exactly as a self-filed one does for all
 three audiences, the recorded-by-proxy distinction is visible on the board, and
 the root-tenant audit entry names the actor.
+
+## Journal & reference library track (REQ-JOURNAL-01)
+
+Added 2026-10-18. The standalone `BookOfShadows` app was folded into this repo
+as a coven-shaped community: private journals for each member, a shared
+reference library with AI-drafted pages, and ordinary events for meetings. All
+of it is **post-cutover** by the parity test. It is new tables and new modules
+behind `feature_journal` / `feature_library`, so it can be built on a branch in
+parallel with the cutover. It is **not** stage-tested while a cutover item
+occupies `v2-stage`, because that image has one slot. Full requirements are in
+`docs/REQ-JOURNAL-01.md`. Personal content for the first coven stays in the
+private BookOfShadows repo and never enters this one.
+
+### v2-36 — Private journal pages (REQ-JOURNAL-01.1)
+**Status:** Not started. Depends on v2-6 (tenant scoping).
+
+`journal_pages` + `journal_page_revisions`, owner-only access **even against
+tenant and system admins** (the one new rule here), and autosave with a 409 on
+a stale revision. Only the `freeform` template ships. **Definition of done:**
+REQ-JOURNAL-01.1's — two members plus a member of another tenant, every
+journal route 404s for a non-owner including admins, and a stale save 409s
+without changing the stored content.
+
+### v2-37 — Journal apps: page templates (REQ-JOURNAL-01.2)
+**Status:** Not started. Depends on v2-36.
+
+A template registry (backend settings schema + frontend component), the same
+shape as v2-19's block registry so the templates can become blocks later.
+Templates: gratitude prayer, monthly intentions, guided prompts. Starter pages
+are copied into a member's journal and never rewritten afterwards.
+
+### v2-38 — Reference library with enrich-then-review (REQ-JOURNAL-01.3)
+**Status:** Not started. Depends on v2-36 (members' notes are journal pages).
+
+A shared wiki for each tenant with search and revisions. Enrich drafts a page
+with Claude (`claude-opus-5-5`, web search for real citations, the tenant's
+`anthropic_api_key`). A draft is private to its creator until they publish it.
+`enrichment_requests` is logged now; the per-member daily cap (about 5% of a
+tenant budget) is deferred.
+
+### v2-39 — Library illustrations (REQ-JOURNAL-01.4)
+**Status:** Not started. Depends on v2-38; prefers v2-18 (media pipeline).
+The image provider is undecided — Claude doesn't generate images.
+
+### v2-40 — Calendar app + repeating events (REQ-JOURNAL-01.5)
+**Status:** Not started. Depends on v2-37. The only item in this track that
+touches existing event code, which is why it comes last.
+
+### v2-41 — Location descriptions on Haiku 5.5
+**Status:** Not started. Independent; small enough to ride along with another
+item.
+
+`enrichment.service.ts`'s `generateDescription` uses `claude-haiku-4-5`.
+`claude-haiku-5-5` costs about a tenth as much, but **a bare model swap
+breaks it silently**: Haiku 5.5 thinks by default, so the thinking eats the
+`max_tokens: 150`, and `message.content[0]` becomes a thinking block, so the
+function returns `null` and no description is written. The change needs
+`thinking: { type: "disabled" }` (accepted at effort high or below), a search
+for the text block instead of `content[0]`, more headroom in `max_tokens`, and a
+unit test asserting a description comes back.
