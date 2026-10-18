@@ -28,5 +28,5 @@ MySQL (not TypeORM — that was v1); Vitest for API unit and e2e
   private material lives in the private BookOfShadows repo.
 - **Tests prove isolation:** new tenant-data routes need e2e coverage with two
   users in one tenant plus a user in another tenant.
-- Claude API code: default model `claude-opus-5-5`; see V2_PHASES.md v2-41 for
-  why a bare model swap on Haiku 5.5 breaks `content[0]` parsing.
+- AI providers: the journal track uses Gemini (free tier) — see REQ-JOURNAL-01.3;
+  only title, topic and public text may be sent to it, never journal content.
