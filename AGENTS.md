@@ -1,71 +1,32 @@
-# DinnerBears.com — Codex Project Context
+# CommunityEvents v2 — Agent Context (Codex and others)
 
-## Project Overview
-Community dining platform that organizes weekly group dinners across multiple cities.
-Initial cities: Cincinnati and Dayton (cincinnati.dinnerbears.com, dayton.dinnerbears.com).
-Self-hosted on Unraid using Docker Compose. Invite-only membership.
+This file replaced a stale v1 "DinnerBears / TypeORM / Phase 3.5" context on
+2026-10-18. **CLAUDE.md is the authoritative project context.** It is long, so
+read the sections you need: "V2 Rewrite Status", "Stack", "Database",
+"Multi-Tenancy", "Angular Conventions", "NestJS Conventions", "Branching &
+Release Workflow". Work items, their order and their definitions of done are
+in `V2_PHASES.md`; requirements are in `docs/REQ-*.md`.
 
-## Full Stack
-- **Frontend:** Angular 19, standalone components (NO NgModules), Angular Material (MDC), SCSS
-- **Backend:** NestJS (Node.js, TypeScript), TypeORM, Passport.js
-- **Database:** MySQL 8.x
-- **Auth:** JWT sessions + Google OAuth + Facebook OAuth (Passport strategies)
-- **Email:** Brevo SDK (primary) + Nodemailer/Gmail SMTP (overflow fallback)
-- **Push:** Web Push API with VAPID keys (@angular/pwa service worker)
-- **Proxy:** NGINX Proxy Manager (Docker)
-- **Containers:** Docker Compose — api and mysql have NO public ports
+## Stack (current main)
+Angular 22 standalone components + Angular Material; NestJS; **Prisma 7** on
+MySQL (not TypeORM — that was v1); Vitest for API unit and e2e
+(`api/vitest.config.mts`, `api/vitest.config.e2e.mts`); Playwright in `e2e/`.
 
-## Repository Structure
-```
-dinnerbears/
-├── AGENTS.md                  ← Root context file (Codex reads this first)
-├── PHASES.md                  ← Phase breakdown with definitions of done
-├── README.md                  ← Full setup instructions
-├── .env.example               ← All required env vars documented
-├── .gitignore
-├── .Codex/                   ← Codex settings
-├── .vscode/                   ← VS Code settings
-├── docs/                      ← Requirements, schema, setup guides
-├── frontend/                  ← Angular 19 app
-│   └── public/                ← Static assets; the landing page is an Angular route (v2-13)
-├── api/                       ← NestJS API
-└── docker/                    ← Docker Compose and NGINX config
-```
-
-## Current Development Phase
-**Phase 3.5 — Historical Restaurant Import**
-See PHASES.md for full phase breakdown and definitions of done.
-
-## Completed Phases
-- **Phase 1** — Docker scaffold, Angular shell, NestJS + TypeORM, health check, ESLint/Prettier ✓
-- **Phase 2** — Google OAuth, invite system, JWT sessions, profile page, photo upload ✓
-- **Phase 3** — Restaurant database, CRUD UI, photo upload, geocoding, city/search filter ✓
-
-## Angular Conventions (STRICT)
-- **Standalone components only** — never use NgModules
-- **Reactive Forms only** — never use template-driven forms
-- **Typed services for all HTTP** — never call HttpClient directly in components
-- **Angular Signals** for local state
-- **Functional route guards** — use `CanActivateFn`
-- **Lazy-loaded routes** — each feature is a lazy route group
-- **Angular Material** — use Mat components wherever one exists
-
-## NestJS Conventions (STRICT)
-- **One module per feature** — AuthModule, UsersModule, RestaurantsModule, etc.
-- **DTOs with class-validator** for all request bodies
-- **Guards for all protected routes** — never trust client role state
-- **TypeORM repositories** — no raw SQL except in migrations
-- **Global prefix** `/api/v1` set in main.ts
-- **Never expose stack traces** — GlobalExceptionFilter handles all errors
-
-## Database
-- MySQL 8.x via TypeORM
-- `synchronize: false` always — migrations only
-- Migrations in `api/src/database/migrations/` with timestamp prefix
-- See `docs/DATABASE_SCHEMA.md` for full schema
-
-## Key Files for Context
-- `docs/REQUIREMENTS.md` — all 107 product requirements
-- `docs/DATABASE_SCHEMA.md` — all 25 tables with columns and indexes
-- `docs/PHASES.md` — phase breakdown (same as root PHASES.md)
-- `docs/FACEBOOK_APP_SETUP.md` — Facebook OAuth setup guide
+## Rules that are easy to break
+- **Never build or push Docker tags.** `:stage`/`:latest` belong to the live
+  v1 deployment. `v2-stage` is a single shared slot, published only by Rob via
+  `scripts/publish-v2-stage.sh`, and is in use for the DinnerBears cutover.
+- **Branches:** `v2-<N>-<slug>` off `main` for a work item. Open a PR and never
+  merge it yourself — Rob merges with a real merge commit (never squash).
+- **Tenant scoping:** tenant comes from the request host via the Prisma tenant
+  extension; never from client input. Owner comes from the session. Don't use
+  `runUnscoped` in new code without a stated reason.
+- **Prisma migrations:** generate with `prisma migrate dev`. Before a PR is
+  merged, rebase on `main` and regenerate your migration if `main` gained one,
+  so the folders apply in order.
+- **Public repository:** no secrets, no personal content. The coven tenant's
+  private material lives in the private BookOfShadows repo.
+- **Tests prove isolation:** new tenant-data routes need e2e coverage with two
+  users in one tenant plus a user in another tenant.
+- Claude API code: default model `claude-opus-5-5`; see V2_PHASES.md v2-41 for
+  why a bare model swap on Haiku 5.5 breaks `content[0]` parsing.
