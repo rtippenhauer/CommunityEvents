@@ -79,47 +79,75 @@ copies untouched (tested).
 
 A shared wiki for each tenant: `library_pages` (`tenant_id`, `slug`, `title`,
 `topic`, `body` as markdown, `status` draft/published, `sources` JSON,
-`created_by`, `revision`) plus `library_page_revisions`. Every member can read
-it. Full-text search over title and body.
+`image` JSON, `created_by`, `revision`) plus `library_page_revisions`. Every
+member can read it. Full-text search over title and body.
 
-**Enrich, then review.** A member creates a page with a title and a topic and
-presses Enrich. The API asks Claude for a draft. The draft is saved with
-`status = draft` and is visible only to its creator until they edit and
-publish it — an AI page never appears in the shared library unreviewed.
+**Three layers, each working without the next** (decided with Rob 2026-10-18;
+there is no paid AI key):
 
-- Model: `claude-opus-5-5` by default (configurable). Web search
-  (`web_search_20260209`, with a small `max_uses`) so drafts cite real sources;
-  `sources` stores each source's URL and title.
-- Credentials: the tenant's `anthropic_api_key` from `tenant_secrets`, the same
-  way enrichment resolves it today. With no key set, the Enrich button is
-  hidden.
-- **Editorial rules sent to the model on every request:** keep observable
-  fact, traditional association (with a source) and personal meaning
-  separate; make no medical or healing claims; never present one culture's
-  practice as universal, or claim authority for Indigenous or closed
-  traditions; mark anything that is uncertain as uncertain.
+- **A — Manual.** Create, write, edit, publish and search with no external
+  service at all. This is always available.
+- **B — Wikipedia lookup (free, no key).** Enrich searches the Wikipedia API
+  for the topic, lets the member pick the right article, and pulls its summary
+  extract, its article URL as a source, and its lead image from Wikimedia
+  Commons with the license and attribution stored in `image`. The page shows
+  the attribution wherever the image appears. No AI is involved, so nothing is
+  invented.
+- **C — Gemini draft (free tier).** When a `gemini_api_key` is set, Enrich
+  passes the Wikipedia extract from B to Gemini and asks for a draft in the
+  library's format, **grounded in that extract**. It doesn't write from the
+  model's memory, and `sources` keeps the Wikipedia citation. Default model:
+  the current Gemini Flash-Lite, a setting rather than hard-coded, because
+  free-tier limits change often (in Sept 2026, Flash-Lite was reported at
+  about 500 requests/day and Flash at about 20). If the key is missing, the
+  quota is used up (429), or the call fails, Enrich falls back to B and says
+  so. It never fails silently.
+
+Rules for every layer:
+
+- **Enrich, then review.** Enrich output is saved as `status = draft`, visible
+  only to its creator until they edit and publish it. Nothing from B or C
+  appears in the shared library unreviewed.
+- **Topic only leaves the server.** The free Gemini tier's terms allow Google
+  to use submitted content to improve its products, with human review, and
+  say not to send personal information. So the request carries only the
+  page's title, topic and the public Wikipedia extract — **never** journal
+  content, members' notes or a member's name. The Enrich button says that the
+  topic is sent to Google.
+- **Editorial rules sent to Gemini on every request:** keep observable fact,
+  traditional association (with a source) and personal meaning separate; make
+  no medical or healing claims; never present one culture's practice as
+  universal, or claim authority for Indigenous or closed traditions; mark
+  anything that is uncertain as uncertain.
+- **Provider behind an interface** (`LibraryEnrichProvider`) so a paid Gemini
+  or Anthropic key can replace it later without touching the page flow.
 - **Members' notes on a library page** are journal content: a member's
   annotation is a `journal_pages` row (`template_key = library-note`, with the
   `library_page_id` in `settings`), so it is owner-private under 01.1 and is
   never touched when the library page is edited or re-enriched.
-- Any member can enrich. **Per-member daily limits are deferred.** The intended
-  rule is a per-tenant daily budget, with each member capped at about 5% of
-  it. The `enrichment_requests` log row (tenant, user, timestamp, tokens)
-  ships in this item so the limit can be added later without a migration.
+- **Quota.** Any member can enrich. Each Gemini call writes an
+  `enrichment_requests` row (tenant, user, provider, model, timestamp,
+  outcome). The per-member daily cap — about 5% of the tenant's daily budget —
+  is deferred, but the log ships now so the cap needs no migration. Free-tier
+  limits apply to the whole Google project, so every tenant sharing one key
+  shares one budget.
 
-**Definition of done:** create → enrich → edit → publish works end to end; a
+**Definition of done:** A, B and C each work end to end through to publish; a
 draft is invisible to other members (tested); a re-enrich or edit leaves
-members' notes untouched (tested); missing key → no Enrich button, and the
-manual page still works.
+members' notes untouched (tested); a test asserts the Gemini request body
+contains only the title, topic and extract; with no key, or with a mocked 429,
+Enrich falls back to B and the UI says so; Commons attribution renders with
+the image.
 
 ## 01.4 Library illustrations (`v2-39`)
 
-Generated illustrations for library pages, in the tenant's chosen style (for
-the first coven: graphite pencil on white). Claude does not generate images,
-so this needs an image-generation provider and its key in `tenant_secrets` —
-**the provider is chosen when this item starts**. Images go into the shared
-media pipeline (`v2-18`) if it exists by then, otherwise into private tenant
-storage. The same draft → review rule applies to illustrations.
+Free images come with 01.3's layer B (Wikimedia Commons, licensed, attributed).
+This item covers **generated** illustrations in the tenant's chosen style (for
+the first coven: graphite pencil on white). Candidates: Gemini's image models,
+whose free-tier image limit is low or unpublished — check the project's AI
+Studio rate-limit page when this item starts. Images go into the shared media
+pipeline (`v2-18`) if it exists by then, otherwise into private tenant storage.
+The same draft → review rule and the topic-only rule apply.
 
 ## 01.5 Calendar app and repeating events (`v2-40`)
 

@@ -3127,32 +3127,35 @@ shape as v2-19's block registry so the templates can become blocks later.
 Templates: gratitude prayer, monthly intentions, guided prompts. Starter pages
 are copied into a member's journal and never rewritten afterwards.
 
-### v2-38 — Reference library with enrich-then-review (REQ-JOURNAL-01.3)
+### v2-38 — Reference library: manual, Wikipedia, Gemini (REQ-JOURNAL-01.3)
 **Status:** Not started. Depends on v2-36 (members' notes are journal pages).
 
-A shared wiki for each tenant with search and revisions. Enrich drafts a page
-with Claude (`claude-opus-5-5`, web search for real citations, the tenant's
-`anthropic_api_key`). A draft is private to its creator until they publish it.
-`enrichment_requests` is logged now; the per-member daily cap (about 5% of a
-tenant budget) is deferred.
+A shared wiki for each tenant with search and revisions, in three layers that
+each work without the next: **manual** pages; **Wikipedia lookup** (free, no
+key: summary, citation, Commons image with attribution); **Gemini Flash-Lite
+draft** grounded in that Wikipedia text when the tenant has a
+`gemini_api_key`, falling back to the Wikipedia lookup on a 429 or a missing
+key. Every Enrich result is a draft private to its creator until they publish
+it. **Only the title, topic and public extract are sent to Google** (the free
+tier's terms allow training on submitted content and human review), never
+journal content. `enrichment_requests` is logged now; the per-member cap
+(about 5% of the daily budget) is deferred. No paid AI key exists, by Rob's
+decision (2026-10-18).
 
 ### v2-39 — Library illustrations (REQ-JOURNAL-01.4)
 **Status:** Not started. Depends on v2-38; prefers v2-18 (media pipeline).
-The image provider is undecided — Claude doesn't generate images.
+Commons images already come with v2-38. This item is for *generated*
+graphite-style illustrations; Gemini image models are the candidate, with free
+limits to check when the item starts.
 
 ### v2-40 — Calendar app + repeating events (REQ-JOURNAL-01.5)
 **Status:** Not started. Depends on v2-37. The only item in this track that
 touches existing event code, which is why it comes last.
 
 ### v2-41 — Location descriptions on Haiku 5.5
-**Status:** Not started. Independent; small enough to ride along with another
-item.
-
-`enrichment.service.ts`'s `generateDescription` uses `claude-haiku-4-5`.
-`claude-haiku-5-5` costs about a tenth as much, but **a bare model swap
-breaks it silently**: Haiku 5.5 thinks by default, so the thinking eats the
-`max_tokens: 150`, and `message.content[0]` becomes a thinking block, so the
-function returns `null` and no description is written. The change needs
-`thinking: { type: "disabled" }` (accepted at effort high or below), a search
-for the text block instead of `content[0]`, more headroom in `max_tokens`, and a
-unit test asserting a description comes back.
+**Status:** Not needed (2026-10-18). No Anthropic key has ever been configured,
+so `generateDescription` has never run and location enrichment is Google Places
+only. Kept for the record in case a key is ever added: a bare swap to
+`claude-haiku-5-5` breaks silently, because thinking is on by default and
+`content[0]` becomes a thinking block. It would need thinking disabled, a
+search for the text block, and more `max_tokens`.
