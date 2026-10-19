@@ -3338,8 +3338,49 @@ a community rotating on a Tuesday evening is not down until they finish.
 `webhookSecretPrevious`/`webhookRotatedAt` on `email_provider_config` are the
 existing precedent for that overlap.
 
+**Warnings are specified, not left to the builder** (Rob, 2026-10-18). A
+community whose inbound mail does **not** run through the operator's Cloudflare
+account gets:
+
+- **A warning at setup time**, when the external arrangement is configured —
+  naming the expiry date and saying plainly that rotating before it is their
+  job, since the deployment cannot do it for them.
+- **An email at 2 weeks, 1 week and 1 day before expiry**, to **that
+  community's admins and the root tenant's admins both**. The operator is on
+  the list because the failure is invisible from the member's side and the
+  community that owns the key is exactly the party who may have stopped reading
+  their admin mail.
+
+**Four things that decide whether this works, all of them already rules here:**
+
+- **The sweep finds across tenants and composes inside one.** `runUnscoped` to
+  select expiring keys, then `runWithTenant` per community to render — and
+  again for the root copy, in the *root* tenant's context. Rendering the
+  operator's copy inside the customer's context would mail root admins wearing
+  the customer's branding and From address, which is the exact trap recorded
+  against the seats reminder in `events.service.ts`.
+- **Record what was sent, or a daily sweep sends it daily.** Three notices
+  means three marks, not one `warnedAt` — and they must survive a rotation
+  resetting the clock.
+- **Give it its own `category`** (`v2-31`), so the email log says *why* it went
+  out. Not a `templateId`, which is a dispatch instruction.
+- **Exclude demo communities**, per `v2-32` — `demo.service` makes every demo
+  requester an `ADMIN`, so "mail the community's admins" otherwise means
+  "mail whoever filled in the demo form". They cannot send mail at all
+  (`sendingIsBlocked` on `is_demo`), so the only effect would be noise in the
+  operator's copy.
+
+**One question left open deliberately:** whether a **fourth** email goes out on
+the day a key actually lapses. The argument for it is that this is the only
+message anybody receives *after* the thing has broken — until then every notice
+is a prediction, and the lapse itself is silent on both sides. The argument
+against is that three warnings were already ignored. Not decided here.
+
 **Definition of done:** a community can be issued an inbound key, shown once
-and stored as a hash, with an expiry date and an overlap window on rotation; a
+and stored as a hash, with an expiry date and an overlap window on rotation;
+external setup warns at configuration time and mails that community's admins
+and the root tenant's admins 2 weeks, 1 week and 1 day before expiry, once
+each; a
 Worker's POST authenticates against that community's key or, where none exists,
 the deployment default; a reply whose UID names another community is refused
 with the reason logged; expiry is visible to that community's admins and to the
