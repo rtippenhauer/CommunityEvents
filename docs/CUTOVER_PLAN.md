@@ -765,10 +765,68 @@ secret in the v1 repo's terms; not changed from here.
   the env value is empty — fails closed, so until it is set every reply reaches
   the API and is answered 401, visible in the Worker's logs and nowhere else.
 
-**`tippenhauerworks.com`:** set up from a separate session; not recorded here
-yet. As audited it had no wildcard, no MX, Email Routing never configured, and
-an apex on GoDaddy's site-builder addresses — so a wildcard copying the apex
-would send every subdomain to GoDaddy.
+#### Every base URL needs a route, not a Worker (Rob, 2026-10-18)
+
+**Any domain a CommunityEvents deployment serves must be able to receive
+calendar replies**, so each one needs Email Routing and a `calendar-stage@`
+rule. It does **not** need its own Worker: a Worker is account-level, routing
+rules are per zone, and they can all target the same script. Three zones point
+at `communityevents_calendar` today and a fourth costs one rule.
+
+**The Worker does not identify the community, and must not try.** It branches
+on the address prefix only, to choose a *deployment* —
+`calendar-stage@` → `STAGE_API_URL`, anything else → `API_URL` (unset, so
+dropped). Which **community** a reply belongs to is resolved at the API from
+the event UID inside the iCal, with the host only narrowing it (`v2-33`'s #45).
+So a new domain changes no code and no Worker variable.
+
+**The local part is per deployment, not per tenant.** `calendarLocalPart()`
+keys on whether `APP_URL` contains `stage`, so every community on the stage
+deployment replies to `calendar-stage@<its own mail domain>`, whatever that
+domain is. `calendar@<domain>` stays unrouted everywhere until a production
+deployment exists to point `API_URL` at.
+
+**Every Worker must hold the deployment's one `CLOUDFLARE_EMAIL_SECRET`, so
+every Worker has to be ours.** The endpoint compares a single env value, which
+is safe while the operator runs every Cloudflare account involved and unsafe
+the moment one community runs its own: handing them that secret hands them a
+credential that authenticates RSVP replies for *every* community on the
+deployment. **So until `v2-42` makes the key per-community, inbound mail is
+supported only for domains in the operator's own Cloudflare account** (Rob,
+2026-10-18). A community that would route its own replies gets no
+RSVP-by-reply until then — it is a missing feature for them, not a broken one.
+
+**Standing shape for every zone** (Rob, 2026-10-18): `calendar-stage@` → the
+Worker, `admin@<domain>` → `rtippenhauer+<domain>@gmail.com`, `noreply@` →
+**drop**, **catch-all drops**. A forwarding catch-all is what previously let a
+stage RSVP reply land in an inbox instead of reaching the API, so dropping is
+both the quieter and the more honest default — an address nobody configured
+should not silently work.
+
+#### Configured 2026-10-18
+
+- **`rtippenhauer.com`** was Email Routing `enabled` but
+  **`misconfigured/locked`**: MX and DKIM present, **apex SPF missing**. Added
+  as a **merged** record, not Cloudflare's verbatim one, because the zone's
+  `brevo-code` TXT shows it also sends through Brevo and a domain may hold only
+  one SPF record: `v=spf1 include:_spf.mx.cloudflare.net include:spf.brevo.com
+  ~all`. Status is now `ready`.
+- **`tippenhauerworks.com`** had Email Routing `unconfigured`, no MX, no SPF, no
+  DKIM. Enabling it added all of them; status is now `ready`. **Nothing was
+  displaced** — with no MX at all, mail to that domain was bouncing, GoDaddy
+  included, despite a GoDaddy DMARC record suggesting otherwise.
+- **Both** gained `calendar-stage@<domain>` → `communityevents_calendar`, an
+  `admin@` forward to Gmail (`tippenhauerworks.com`'s added by Rob), and an
+  explicit **drop** catch-all.
+- **`communityeventsproject.com`'s catch-all changed from forward-to-Gmail to
+  drop.** Its literal rules (`calendar-stage@`, `noreply@`, `admin@`) are
+  unaffected; everything else at that domain is now discarded rather than
+  landing in an inbox.
+
+**`tippenhauerworks.com` web DNS:** as audited it had no wildcard and an apex on
+GoDaddy's site-builder addresses — so a wildcard copying the apex would send
+every subdomain to GoDaddy. Mail is now configured; the web side is not, and a
+tenant served from this domain still needs its own DNS and an NPM host.
 
 **`dinnerbears.com`:** read, not changed. Literal routes for `calendar@` and
 `calendar-stage@` → `dinnerbear_calendar`; `support@`, `hello@`, `admin@`,
