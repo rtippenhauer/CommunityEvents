@@ -798,7 +798,28 @@ RSVP-by-reply until then — it is a missing feature for them, not a broken one.
 
 **Standing shape for every zone** (Rob, 2026-10-18): `calendar-stage@` → the
 Worker, `admin@<domain>` → `rtippenhauer+<domain>@gmail.com`, `noreply@` →
-**drop**, **catch-all drops**. A forwarding catch-all is what previously let a
+**drop**, **catch-all drops**.
+
+**Verified end to end 2026-10-18**, by a tenant at `stage.rtippenhauer.com`
+whose mail domain is `rtippenhauer.com`: a real Gmail Accept on a real invite
+routed through *that* zone, reached the one shared Worker, posted to stage, and
+recorded the RSVP. So the design holds where it had only been reasoned about —
+a second domain needed one routing rule, no Worker change, and no code change,
+because the community is resolved from the event UID rather than from the host
+the mail arrived on. It is also the first live exercise of `v2-33`'s #45 Gmail
+decode.
+
+**And it found the failure mode that makes this worth writing down.** The first
+attempt produced no logs anywhere, on either domain. The tenant had **no
+`mail_domain` set**, so `calendarOrganizerEmail()` fell through every step —
+no `contact_calendar_email`, no `mail_domain`, a blank `CALENDAR_ORGANIZER_EMAIL`
+on the container — and derived from the deployment domain, addressing the
+invite's `ORGANIZER` to `calendar-stage@stage.communityeventsproject.com`. That
+is a **subdomain**, Email Routing is apex-only, and there is no MX there: the
+reply bounced before Cloudflare ever saw it. **A community on any domain other
+than the deployment's own must have its `mail_domain` set explicitly**, or its
+mail identity silently becomes an address that cannot receive. Nothing warns;
+the invite looks perfect and the reply dies at the sender. A forwarding catch-all is what previously let a
 stage RSVP reply land in an inbox instead of reaching the API, so dropping is
 both the quieter and the more honest default — an address nobody configured
 should not silently work.
