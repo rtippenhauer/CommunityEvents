@@ -2143,6 +2143,74 @@ What is **not** optional is the dead code: `findBySubdomainOrNull`,
 go with the column, or they stay as a lookup against a field that no longer
 exists.
 
+#### Retiring a city: deactivate, never delete (Rob, 2026-10-18)
+
+**A city is never deleted. Deactivating hides it from selection and nothing
+else** — `is_active` stays, the row stays, and every foreign key pointing at it
+stays valid. Rob is explicit that he does not plan to delete one.
+
+**This came out of a live failure on stage**, which is why the rule is written
+down at all. Rob deactivated the day-named cities the root community had been
+seeded with and restored Cincinnati and Dayton — and every location and event
+still pointing at a retired city **lost its city in the UI**. Nothing was
+corrupted: `CitiesService` filters `isActive: true` on every read *including
+lookup by id*, while `events`/`locations` load the city through the FK relation,
+which ignores the flag. So the row kept its city, the API kept returning it, and
+every `mat-select` built from `GET /cities` had no matching option and rendered
+blank. The event form then refuses to save at all, because `cityId` carries
+`Validators.min(1)` and the control is empty.
+
+**The rule, keyed on the tenant's toggle:**
+
+- **Turning `feature_cities` OFF** — deactivate every city. Clear `city_id` on
+  **future events, all locations and all users**, and **leave past events
+  alone**. Only possible because every `city_id` column becomes nullable in
+  this item (already specified above for the toggle's sake; this is a second
+  reason for the same change).
+- **`feature_cities` ON** — before a city is deactivated, **future events,
+  locations and users on it move to an active city**, because with the toggle
+  on a city is required for those to function. Past events stay where they are.
+
+**Past events deliberately keep their retired city.** That is the whole reason
+deletion is the wrong verb: a dinner that happened in Indiana happened in
+Indiana, and a community that stops meeting there should not retroactively have
+met in Cincinnati. It also makes this item consistent with `v2-33`'s #41 one
+layer over, where a past event keeps the location name it had rather than
+following a rename.
+
+**So an inactive city must stay resolvable, and that is the part the current
+code gets wrong.** Three consequences, all required for the above to work:
+
+1. **`CitiesService` must stop filtering `isActive: true` on lookup by id.**
+   Hiding a city from a *chooser* and hiding it from *resolution* are different
+   questions, and conflating them is what blanked the screens.
+2. **A picker lists active cities, plus the row's own current value when that is
+   inactive**, labelled as such. Otherwise editing anything about a past event
+   silently drops its city, and `Validators.min(1)` blocks a save that has
+   nothing to do with cities.
+3. **Display paths read the city from the row**, which `include: { city: true }`
+   already does — so a past event's city still renders once (1) stops hiding it.
+
+**Deactivation is not destructive, so it does not need the retype-the-name
+confirmation that deleting a community uses** — but it should show what it is
+about to move, per table, and derive those counts from the relation list rather
+than a hand-written one. The next model to gain a `city_id` is otherwise missed,
+the same way an unclassified Prisma model is caught only because
+`tenant-scoped-models.ts` is exhaustive at the type level.
+
+**Six tables carry `city_id`:** `events`, `locations` and `users` (`NOT NULL`
+today, nullable after this item), plus `announcements`, `invites` and
+`facebook_group_config` (nullable already; the last is dropped by this item).
+Every FK is `onDelete: NoAction`, which is correct and should stay — nothing
+deletes a city, so nothing needs a cascade or a `SET NULL`, and the key remains
+a backstop that would refuse an unplanned delete rather than quietly emptying
+columns.
+
+**Turning the toggle back ON backfills nulls to the tenant's first city** (as
+already specified), which picks up exactly the future events, locations and
+users that the OFF path cleared. Past events are untouched by that backfill
+because they were never nulled.
+
 **Definition of done:** `cities` is tenant-scoped with no cross-tenant
 name collisions; the feature toggle correctly makes cities either fully
 required or fully invisible; a new member still lands in the first city and can
