@@ -13,9 +13,13 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { QuillModule } from 'ngx-quill';
-import { ReleasesService, Release } from '../../../core/services/releases.service';
+import {
+  ReleasesService,
+  Release,
+  ReportCandidate,
+} from '../../../core/services/releases.service';
 import { normalizeNbsp } from '../../../shared/utils/normalize-nbsp';
-import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.service';
+import { CATEGORY_LABELS } from '../../../core/services/feedback.service';
 
 @Component({
   selector: 'app-admin-releases',
@@ -97,50 +101,51 @@ import { FeedbackItem, CATEGORY_LABELS } from '../../../core/services/feedback.s
               ></quill-editor>
             </div>
 
-            <!-- Link resolved feedback -->
+            <!--
+              Bugs and requests, not community feedback (v2-43, Rob 2026-10-19).
+              A release note is the product's artifact and system_reports is
+              the product's board; tenant-scoped feedback belongs to one
+              community and used to make credit depend on which host you
+              happened to compose from. Ticking a box NEVER writes the note.
+            -->
             <div class="feedback-linker">
               <div class="linker-header">
-                <h3>Link Resolved Feedback</h3>
-                @if (linkedIds().size > 0) {
-                  <button
-                    mat-button
-                    type="button"
-                    class="refresh-btn"
-                    (click)="refreshNotes()"
-                    matTooltip="Overwrite notes with bullet list from linked items"
-                  >
-                    <mat-icon>refresh</mat-icon> Refresh notes
-                  </button>
-                }
+                <h3>Link Bugs &amp; Requests</h3>
+                <button
+                  mat-button
+                  type="button"
+                  class="refresh-btn"
+                  (click)="loadReportCandidates()"
+                  matTooltip="Re-read the list — reports you resolved since opening this page"
+                >
+                  <mat-icon>refresh</mat-icon> Refresh list
+                </button>
               </div>
-              @if (loadingFeedback()) {
+              @if (!editingId()) {
+                <p class="empty-resolved">Save the draft first, then link reports to it.</p>
+              } @else if (loadingFeedback()) {
                 <mat-spinner diameter="20" />
-              } @else if (resolvedFeedback().length === 0) {
-                <p class="empty-resolved">No resolved feedback tickets available.</p>
+              } @else if (reportCandidates().length === 0) {
+                <p class="empty-resolved">No resolved or shipped reports available.</p>
               } @else {
                 <div class="feedback-checkboxes">
-                  @for (fb of resolvedFeedback(); track fb.id) {
-                    <label class="fb-checkbox-row" [class.checked]="isLinked(fb.id)">
+                  @for (rep of reportCandidates(); track rep.id) {
+                    <label class="fb-checkbox-row" [class.checked]="isLinked(rep.id)">
                       <input
                         type="checkbox"
-                        [checked]="isLinked(fb.id)"
-                        (change)="toggleLink(fb.id)"
+                        [checked]="isLinked(rep.id)"
+                        [disabled]="togglingId() === rep.id"
+                        (change)="toggleLink(rep.id)"
                       />
                       <span class="fb-row-content">
-                        <span class="fb-cat" [style.color]="catColor(fb.category)">{{
-                          catLabel(fb.category)
+                        <span class="fb-cat" [style.color]="catColor(rep.category)">{{
+                          catLabel(rep.category)
                         }}</span>
-                        <span class="fb-title">{{ fb.title ?? '(no title)' }}</span>
-                        <span class="fb-user">— {{ fb.user?.fullName ?? 'Unknown' }}</span>
-                        @if (fb.isPrivate) {
-                          <mat-icon class="lock-icon" matTooltip="Private">lock</mat-icon>
-                        }
-                        @if (fb.releaseNote) {
-                          <span class="fb-release-note" matTooltip="Release note text"
-                            >→ {{ fb.releaseNote }}</span
+                        <span class="fb-title">{{ rep.title }}</span>
+                        @if (rep.shippedInReleaseId && rep.shippedInReleaseId !== editingId()) {
+                          <span class="fb-release-note" matTooltip="Linked to another release"
+                            >on v{{ rep.shippedInVersion }}</span
                           >
-                        } @else {
-                          <span class="fb-release-note missing">no release note</span>
                         }
                       </span>
                     </label>
@@ -519,7 +524,8 @@ export class AdminReleasesComponent implements OnInit {
   readonly loadingReleases = signal(true);
   readonly publishingId = signal<number | null>(null);
   readonly editingId = signal<number | null>(null);
-  readonly resolvedFeedback = signal<FeedbackItem[]>([]);
+  readonly reportCandidates = signal<ReportCandidate[]>([]);
+  readonly togglingId = signal<number | null>(null);
   readonly releases = signal<Release[]>([]);
   readonly linkedIds = signal<Set<number>>(new Set());
 
@@ -540,13 +546,7 @@ export class AdminReleasesComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    this.releasesService.getResolvedFeedback().subscribe({
-      next: (data) => {
-        this.resolvedFeedback.set(data);
-        this.loadingFeedback.set(false);
-      },
-      error: () => this.loadingFeedback.set(false),
-    });
+    this.loadReportCandidates();
     this.releasesService.getAll().subscribe({
       next: (data) => {
         this.releases.set(data);
@@ -556,50 +556,86 @@ export class AdminReleasesComponent implements OnInit {
     });
   }
 
-  private lastAutoBody = '';
+
+  /** Reloaded on demand: a report resolved after this page opened is not in the list. */
+  loadReportCandidates(): void {
+    this.loadingFeedback.set(true);
+    this.releasesService.getReportCandidates().subscribe({
+      next: (data) => {
+        this.reportCandidates.set(data);
+        this.syncLinkedFromCandidates();
+        this.loadingFeedback.set(false);
+      },
+      error: () => this.loadingFeedback.set(false),
+    });
+  }
+
+  /** Which candidates sit on the release being edited. */
+  private syncLinkedFromCandidates(): void {
+    const releaseId = this.editingId();
+    this.linkedIds.set(
+      new Set(
+        releaseId === null
+          ? []
+          : this.reportCandidates()
+              .filter((r) => r.shippedInReleaseId === releaseId)
+              .map((r) => r.id),
+      ),
+    );
+  }
 
   isLinked(id: number): boolean {
     return this.linkedIds().has(id);
   }
 
-  toggleLink(id: number): void {
-    const bodyBeforeChange = this.generateBody();
-    this.linkedIds.update((set) => {
-      const next = new Set(set);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+  /**
+   * Link or unlink immediately, and **never write the note**.
+   *
+   * The previous version regenerated the body from the ticked items on every
+   * toggle, which overwrote notes that had been typed by hand (Rob,
+   * 2026-10-19). Linking records that a report shipped in this release; the
+   * words are the operator's.
+   */
+  toggleLink(reportId: number): void {
+    const releaseId = this.editingId();
+    if (releaseId === null || this.togglingId() !== null) return;
+
+    const linked = this.isLinked(reportId);
+    this.togglingId.set(reportId);
+    const call = linked
+      ? this.releasesService.unlinkReport(reportId)
+      : this.releasesService.linkReport(releaseId, reportId);
+
+    call.subscribe({
+      next: () => {
+        this.reportCandidates.update((rows) =>
+          rows.map((r) =>
+            r.id === reportId
+              ? { ...r, shippedInReleaseId: linked ? null : releaseId, status: 'shipped' }
+              : r,
+          ),
+        );
+        this.syncLinkedFromCandidates();
+        this.togglingId.set(null);
+      },
+      error: () => {
+        this.snackBar.open('Could not update the link', 'Dismiss', { duration: 4000 });
+        this.togglingId.set(null);
+      },
     });
-    const currentBody = this.form.controls.body.value;
-    if (!currentBody || currentBody === bodyBeforeChange || currentBody === this.lastAutoBody) {
-      this.refreshNotes();
-    }
   }
 
-  refreshNotes(): void {
-    const body = this.generateBody();
-    this.lastAutoBody = body;
-    this.form.controls.body.setValue(body);
-  }
-
-  private generateBody(): string {
-    const linked = this.resolvedFeedback().filter(
-      (fb) => this.linkedIds().has(fb.id) && (fb.releaseNote || fb.title),
-    );
-    if (linked.length === 0) return '';
-    return '<ul>' + linked.map((fb) => `<li>${fb.releaseNote ?? fb.title}</li>`).join('') + '</ul>';
-  }
-
+  /**
+   * How many reports this release credits. Deliberately a COUNT and not names:
+   * a report's reporter belongs to whichever community filed it, and the note
+   * renders their name only for readers in that community (v2-32). The
+   * composer is one screen for every community, so it must not preview a name
+   * it has no right to show here.
+   */
   creditPreview(): string {
-    const linked = this.resolvedFeedback().filter((fb) => this.linkedIds().has(fb.id));
-    const names = linked.map((fb) =>
-      fb.isPrivate ? 'a community member' : (fb.user?.fullName ?? 'Unknown'),
-    );
-    const unique = [...new Set(names)];
-    if (unique.length === 0) return '';
-    if (unique.length === 1) return unique[0];
-    if (unique.length === 2) return `${unique[0]} and ${unique[1]}`;
-    return `${unique.slice(0, -1).join(', ')}, and ${unique[unique.length - 1]}`;
+    const n = this.linkedIds().size;
+    if (n === 0) return '';
+    return n === 1 ? '1 report credited' : `${n} reports credited`;
   }
 
   versionLabel(release: Release): string {
@@ -625,8 +661,9 @@ export class AdminReleasesComponent implements OnInit {
       title: release.title,
       body: release.body,
     });
-    const ids = new Set((release.linkedFeedback ?? []).map((fb) => fb.id));
-    this.linkedIds.set(ids);
+    // Which reports sit on this release is a property of the reports, not of
+    // the release payload -- `shipped_in_release_id` is the single source.
+    this.syncLinkedFromCandidates();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -645,7 +682,9 @@ export class AdminReleasesComponent implements OnInit {
       version: val.version.trim(),
       title: val.title.trim(),
       body: normalizeNbsp(val.body),
-      feedbackIds: [...this.linkedIds()],
+      // No feedbackIds: community feedback is no longer linkable from here
+      // (v2-43). Reports are linked one at a time against their own release,
+      // so a save never changes who is credited.
     };
 
     const editId = this.editingId();
@@ -658,6 +697,10 @@ export class AdminReleasesComponent implements OnInit {
         this.releases.update((list) =>
           editId ? list.map((r) => (r.id === release.id ? release : r)) : [release, ...list],
         );
+        // A new draft becomes the one being edited, so reports can be linked
+        // to it straight away -- linking needs a release id to point at.
+        if (!editId) this.editingId.set(release.id);
+        this.syncLinkedFromCandidates();
         this.saving.set(false);
         this.editingId.set(null);
         this.form.reset();

@@ -3161,3 +3161,54 @@ only. Kept for the record in case a key is ever added: a bare swap to
 `claude-haiku-5-5` breaks silently, because thinking is on by default and
 `content[0]` becomes a thinking block. It would need thinking disabled, a
 search for the text block, and more `max_tokens`.
+
+### v2-43 — Link bugs & requests to a release
+
+**Status:** Complete (2026-10-19). Built out of a stage session where Rob tried
+to credit a bug he had filed and found there was no way to do it.
+
+**v2-32's credit was unreachable by a human.** Credit is
+`system_reports.shipped_in_release_id`, the read path renders it per community,
+and the API accepted `shippedInVersion` on the triage PATCH — but **no screen
+ever sent it**. Marking a report *Shipped* set a status and created no link, so
+no credit line could appear. The release composer offered only `feedback`,
+which is a different board: tenant-scoped, and therefore crediting whoever
+happened to share the host the operator composed from.
+
+**Feedback linking is gone from the composer** (Rob, 2026-10-19). A release
+note is the product's artifact and `system_reports` is the product's board —
+exactly the split v2-32 drew when it put bugs and requests on a shared board
+and left general comments on the community's own.
+
+**Linking never writes the note.** The old picker regenerated the body from the
+ticked items on every toggle and overwrote notes typed by hand. Reports carry
+no curated `releaseNote` field, and `addReportCredits` deliberately selects ids
+only — a member's words must not become text every community reads — so there
+is nothing to generate and the body is the operator's alone.
+
+**What it adds:** `GET /admin/releases/report-candidates` (`resolved` **or**
+`shipped`, each showing which release holds it), `POST
+/admin/releases/:id/reports/:reportId` to link or move, `DELETE
+/admin/releases/reports/:reportId` to unlink, and publishing stamps linked
+reports `shipped` so status follows from linking rather than being set by hand
+and stranded. All behind `OperatorGuard` — root tenant plus `system_admin` or
+the service account, never the role alone — which is narrower than the rest of
+`ReleasesAdminController` because this board carries every community's reports.
+
+**`shipped` is a candidate on purpose.** A report marked shipped by hand had
+left `resolved` and could never be offered again; including it also makes
+"unlink from 2.0.0, link to 1.6.3" work, since the report stays shipped
+throughout.
+
+**Migration, not deletion** (`npm run credits:migrate`, dry-run by default).
+Six credited feedback rows existed in DinnerBears and Rob confirmed by query
+that all six are his own, which settles the consent question v2-32 would
+otherwise raise about moving a member's words onto a shared board. Each becomes
+a report pointing at the same release and the join row is deleted — a move, or
+the same contribution is credited twice on one note. Private feedback is listed
+and skipped regardless.
+
+**Definition of done:** an operator can link, unlink and move a report between
+releases from the composer; the note is never rewritten; a hand-marked shipped
+report is still reachable; publishing ships what is linked; the migration runs
+twice safely. Verified by `test/release-report-links.e2e-spec.ts` (6 cases).

@@ -3,6 +3,15 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { FeedbackItem } from './feedback.service';
 
+export interface ReportCandidate {
+  id: number;
+  title: string;
+  category: string;
+  status: string;
+  shippedInReleaseId: number | null;
+  shippedInVersion: string | null;
+}
+
 export interface Release {
   id: number;
   version: string;
@@ -46,6 +55,25 @@ export class ReleasesService {
 
   getAll(): Observable<Release[]> {
     return this.http.get<Release[]>('/api/v1/admin/releases');
+  }
+
+  /**
+   * Bugs & requests this release may credit (v2-43). Returns `resolved` and
+   * `shipped` reports both, each carrying the release that currently holds it,
+   * so an operator can see where a report sits and move it.
+   */
+  getReportCandidates(): Observable<ReportCandidate[]> {
+    return this.http.get<ReportCandidate[]>('/api/v1/admin/releases/report-candidates');
+  }
+
+  /** Credit a report on this release, moving it off whichever release holds it. */
+  linkReport(releaseId: number, reportId: number): Observable<void> {
+    return this.http.post<void>(`/api/v1/admin/releases/${releaseId}/reports/${reportId}`, {});
+  }
+
+  /** Remove a report's credit. Its status stays shipped. */
+  unlinkReport(reportId: number): Observable<void> {
+    return this.http.delete<void>(`/api/v1/admin/releases/reports/${reportId}`);
   }
 
   getResolvedFeedback(): Observable<FeedbackItem[]> {

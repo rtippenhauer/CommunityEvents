@@ -459,6 +459,22 @@ export class ReleasesService {
       data: { publishedAt: new Date() },
     });
 
+    // Reports credited on this release ship with it. Status becomes a
+    // CONSEQUENCE of linking rather than something set by hand and then
+    // impossible to connect to anything (v2-43). `system_reports` is global,
+    // so this is a waiver, and `resolved_at` keeps whatever it already had for
+    // the same reason the feedback statement below does.
+    await runUnscoped('reports credited on a release ship with it', async () => {
+      await this.prisma.system_reports.updateMany({
+        where: { shippedInReleaseId: id, status: { not: FeedbackStatus.SHIPPED } },
+        data: { status: FeedbackStatus.SHIPPED },
+      });
+      await this.prisma.system_reports.updateMany({
+        where: { shippedInReleaseId: id, resolvedAt: null },
+        data: { resolvedAt: new Date() },
+      });
+    });
+
     // Mark linked resolved feedback as shipped
     const ids = release.release_feedback.map((rf) => rf.feedbackId);
     if (ids.length) {
@@ -512,6 +528,103 @@ export class ReleasesService {
       where: { status: FeedbackStatus.RESOLVED },
       include: { user: true },
       orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  // ── Bugs & requests linked to a release (v2-43) ───────────────────────────
+
+  /**
+   * What an operator may attach to a release: `resolved` or `shipped` reports.
+   *
+   * **`shipped` is in the list on purpose.** Marking a report shipped by hand
+   * sets a status and nothing else, so before this existed such a report could
+   * never be credited -- it had left `resolved` and no screen could reach it
+   * again. Including it also makes "unlink from 2.0.0, link to 1.6.3" work,
+   * since the report stays shipped throughout.
+   *
+   * Reports are global, so this is an explicit waiver. The title comes back
+   * because the operator is choosing between rows and needs to tell them
+   * apart -- it is never copied into the note by this code; see
+   * `addReportCredits` for why a member's words stay off a shared artifact.
+   */
+  async getReportCandidates(): Promise<
+    {
+      id: number;
+      title: string;
+      category: string;
+      status: string;
+      shippedInReleaseId: number | null;
+      shippedInVersion: string | null;
+    }[]
+  > {
+    return runUnscoped('choosing which reports a release closes', async () => {
+      const reports = await this.prisma.system_reports.findMany({
+        where: { status: { in: [FeedbackStatus.RESOLVED, FeedbackStatus.SHIPPED] } },
+        select: {
+          id: true,
+          title: true,
+          category: true,
+          status: true,
+          shippedInReleaseId: true,
+          shippedInRelease: { select: { version: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+      return reports.map((r) => ({
+        id: r.id,
+        title: r.title,
+        category: r.category,
+        status: r.status,
+        shippedInReleaseId: r.shippedInReleaseId,
+        shippedInVersion: r.shippedInRelease?.version ?? null,
+      }));
+    });
+  }
+
+  /**
+   * Attach a report to a release, or move it from whichever release holds it.
+   *
+   * `shipped_in_release_id` is a plain column, so moving is one write and
+   * nothing has to be unlinked first -- but the UI offers unlink separately
+   * because "take it off 2.0.0" and "put it on 1.6.3" are two decisions an
+   * operator makes at different moments.
+   *
+   * It does NOT touch the release's body. Linking records that a report was
+   * part of a release; writing the note is the operator's job, and an earlier
+   * design that regenerated the body on every toggle overwrote notes people
+   * had typed (Rob, 2026-10-19).
+   */
+  async linkReport(releaseId: number, reportId: number): Promise<void> {
+    await runUnscoped('crediting a report on a release', async () => {
+      const release = await this.prisma.releases.findUnique({ where: { id: releaseId } });
+      if (!release) throw new NotFoundException(`Release ${releaseId} not found`);
+      const report = await this.prisma.system_reports.findUnique({ where: { id: reportId } });
+      if (!report) throw new NotFoundException(`Report ${reportId} not found`);
+
+      await this.prisma.system_reports.update({
+        where: { id: reportId },
+        data: {
+          shippedInReleaseId: releaseId,
+          status: FeedbackStatus.SHIPPED,
+          resolvedAt: report.resolvedAt ?? new Date(),
+        },
+      });
+    });
+  }
+
+  /**
+   * Detach a report. Its status stays `shipped`: the work did ship, and the
+   * next thing the operator does is usually link it somewhere else. It remains
+   * a candidate either way, which is what `getReportCandidates` is for.
+   */
+  async unlinkReport(reportId: number): Promise<void> {
+    await runUnscoped('removing a report from a release', async () => {
+      const report = await this.prisma.system_reports.findUnique({ where: { id: reportId } });
+      if (!report) throw new NotFoundException(`Report ${reportId} not found`);
+      await this.prisma.system_reports.update({
+        where: { id: reportId },
+        data: { shippedInReleaseId: null },
+      });
     });
   }
 }
