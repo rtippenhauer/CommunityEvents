@@ -3091,6 +3091,34 @@ admin on the same screen as outbound, each failure exit above distinguishable
 from the others, a message matching no community visible to the operator, and a
 retention position taken deliberately with its reasoning recorded.
 
+**A reply-to on outgoing invites belongs with this item, not before it**
+(Rob, 2026-10-18). Today an invite is sent from `noreply@<mail domain>` with no
+`Reply-To` at all, and that address has no routing rule, so the catch-all
+drops it: **a member who presses Reply instead of Accept is discarded at the
+edge, with no bounce and no record.** Setting `Reply-To` to the same
+`calendar-stage@` address the `ORGANIZER` already names would route those
+replies to the Worker and into the API, which is where someone could see them.
+
+**But doing that before this item makes the failure worse, not better.**
+`processRsvpReply` returns early on "no iCal block" and on "not a
+`METHOD:REPLY`", so a human sentence would be accepted by our API, answered
+`200`, and dropped — no bounce to the sender, no record for anyone. Dropping at
+Cloudflare at least keeps the lie simple. So: inbound log first, reply-to
+second.
+
+**Expect non-RSVP traffic and treat it as ordinary**, which is Rob's condition
+("not a problem if we handle them"): out-of-office autoreplies, mailer-daemon
+bounces, and people answering the invite in prose. The parser already ignores
+all three safely; what is missing is somewhere for them to show up, and a
+decision about whether a genuine human reply should be forwarded to that
+community's `admin@` rather than only logged.
+
+**Implementation note:** no `replyTo` exists anywhere in the email module —
+`BrevoService` builds `sender` only (`brevo.service.ts`). Brevo's send API
+supports `replyTo: { email, name }`, so this is a field threaded from the
+invite call site through `EmailService` to the payload, defaulting to unset so
+every other message is unchanged.
+
 ### v2-35 — Record a report on behalf of a member
 
 **Status:** Not started. **Post-cutover** by the parity test — DinnerBears has
