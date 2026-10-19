@@ -124,6 +124,24 @@ function toPublicRelease(release: ReleaseWithRelations, credits: ResolvedCredits
   };
 }
 
+/**
+ * Admin list order: unpublished drafts first, then published newest-first,
+ * with `id` descending as the tiebreaker. See `findAll`.
+ */
+export function compareForAdminList(
+  a: { publishedAt: Date | null; id: number },
+  b: { publishedAt: Date | null; id: number },
+): number {
+  const aDraft = a.publishedAt === null;
+  const bDraft = b.publishedAt === null;
+  if (aDraft !== bDraft) return aDraft ? -1 : 1;
+  if (!aDraft && !bDraft) {
+    const diff = b.publishedAt!.getTime() - a.publishedAt!.getTime();
+    if (diff !== 0) return diff;
+  }
+  return b.id - a.id;
+}
+
 @Injectable()
 export class ReleasesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -246,8 +264,25 @@ export class ReleasesService {
           });
     const byUser = new Map(mine.map((u) => [u.id, u]));
 
+    /**
+     * Anonymous credit counts PEOPLE, not rows -- one set per release.
+     *
+     * Found on stage 2026-10-18: two reports filed by the same member of one
+     * community read as that member's name **once** at home (the visible list
+     * is keyed by user) and as "2 community members" everywhere else, because
+     * this branch used to do `anonymous += 1` per report. The same two rows
+     * described one contributor or two depending on who was looking, which
+     * undermines the one thing this method exists to get right.
+     *
+     * A null `reportedByUserId` is a different case and is NOT deduped: the
+     * account is gone, so two such reports are two unknowable people rather
+     * than one, and collapsing them would undercount instead.
+     */
+    const unresolvedByRelease = new Map<number, Set<number>>();
+
     for (const report of reports) {
-      const credits = byRelease.get(report.shippedInReleaseId!);
+      const releaseId = report.shippedInReleaseId!;
+      const credits = byRelease.get(releaseId);
       if (!credits) continue;
 
       const user = report.reportedByUserId ? byUser.get(report.reportedByUserId) : undefined;
@@ -260,9 +295,23 @@ export class ReleasesService {
           isPrivate: false,
           user: { id: user.id, fullName: user.fullName, profilePhotoPath: user.profilePhotoPath },
         });
+      } else if (report.reportedByUserId !== null) {
+        // A reporter the scoped lookup could not see: another community's
+        // member. Count the person once, however many reports they filed.
+        let seen = unresolvedByRelease.get(releaseId);
+        if (!seen) {
+          seen = new Set<number>();
+          unresolvedByRelease.set(releaseId, seen);
+        }
+        seen.add(report.reportedByUserId);
       } else {
         credits.anonymous += 1;
       }
+    }
+
+    for (const [releaseId, people] of unresolvedByRelease) {
+      const credits = byRelease.get(releaseId);
+      if (credits) credits.anonymous += people.size;
     }
   }
 
@@ -312,11 +361,25 @@ export class ReleasesService {
 
   // ── Admin ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Drafts first, then published newest-first (Rob, 2026-10-19).
+   *
+   * This used to order by `createdAt` while the screen *displays*
+   * `publishedAt`, so the column shown and the column sorted disagreed: a
+   * release drafted weeks ago and published today sat below notes imported
+   * after it, with the dates reading 15th, 15th, 15th, 18th. Found on stage
+   * 2026-10-18.
+   *
+   * Sorted here rather than in `orderBy` because MySQL puts NULL **last** on
+   * `DESC` and Prisma's `nulls: 'first'` is not supported on MySQL -- and a
+   * draft belongs at the top, being the thing an admin came to finish. The
+   * list is every release, so there is no pagination to push this into SQL.
+   * `id` breaks the `DATETIME(0)` ties the notes importer creates, exactly as
+   * the member-facing queries above do.
+   */
   async findAll(): Promise<ReturnType<typeof toPublicRelease>[]> {
-    const releases = await this.prisma.releases.findMany({
-      include: RELEASE_INCLUDE,
-      orderBy: { createdAt: 'desc' },
-    });
+    const releases = await this.prisma.releases.findMany({ include: RELEASE_INCLUDE });
+    releases.sort(compareForAdminList);
     return this.toPublicReleases(releases);
   }
 
