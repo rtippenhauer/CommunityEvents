@@ -7,6 +7,38 @@ Every credential CommunityEvents stores in its database is encrypted. This
 describes where the key comes from, what happens when it has to change, and what
 an operator has to do in each case.
 
+## Where a secret actually goes, on Unraid
+
+**Put every secret in the appdata `.env`, not in the container template.** Two
+separate failures have cost time here, and they look identical from the app's
+side — the variable arrives empty and nothing says why:
+
+1. **A duplicate row.** Unraid happily holds *two* entries for the same
+   variable, and a container started with `-e VAR='real' -e VAR=''` takes the
+   **last** one. Found 2026-10-18 after `CLOUDFLARE_EMAIL_SECRET` had a
+   populated row and a blank one; deleting the blank fixed it. Check the
+   container's own `docker run` command for repeats before anything else.
+2. **Masked fields not persisting.** A variable marked `Mask="true"` has failed
+   to save its value more than once in this deployment's history.
+
+The file is
+`/mnt/user/appdata/communityevents-v2-stage/appdata/.env` on the host,
+`/app/appdata/.env` in the container, and the API loads it first:
+`envFilePath: ['/app/appdata/.env', '.env']`.
+
+The template still declares masked fields for `DB_PASSWORD`, `JWT_SECRET`,
+`BREVO_API_KEY`, `CLOUDFLARE_EMAIL_SECRET` and a dozen more. Treat them as
+documentation of *which* variables exist, not as a place to type values.
+
+**Set each one in exactly one place.** dotenv does not override a variable that
+is already in the environment, so a blank template field that still passes
+`VAR=""` silently shadows the file — and the symptom is identical to never
+having set it. Confirm rather than assume:
+
+```
+docker exec CommunityEvents-v2-Stage printenv CLOUDFLARE_EMAIL_SECRET
+```
+
 ## The short version
 
 | | |
