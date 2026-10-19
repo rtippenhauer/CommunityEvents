@@ -2967,7 +2967,19 @@ repo and is part of this item, not an afterthought.
 **No schema changes**, in v1 or here, which is what makes this one branch rather
 than five.
 
-**#45 cannot be stage-tested until Cloudflare is set up for this deployment**
+**#45 verified on stage 2026-10-18** — a real Gmail Accept, on a tenant at
+`stage.rtippenhauer.com` whose mail domain is `rtippenhauer.com`, routed
+through that zone to the shared `communityevents_calendar` Worker and recorded
+the RSVP against the right community. That exercises the decode fix, the UID's
+tenant resolution and a second domain at once. Two things had to be true first
+and both cost time: `CLOUDFLARE_EMAIL_SECRET` present and non-empty on the
+container (it was passed twice, once blank, and the blank won), and the
+tenant's `mail_domain` set — without it the invite's `ORGANIZER` derives from
+the deployment domain and lands on a subdomain with no MX, so the reply dies at
+the sender with no log anywhere. See `docs/CUTOVER_PLAN.md`.
+
+**The original note, kept because it was true until that day:** #45 could not
+be stage-tested until Cloudflare was set up for this deployment
 (2026-10-15). The decode fix is necessary and not sufficient: a reply has to
 reach the API first, and nothing has ever pointed Email Routing at
 `communityeventsproject.com`. Needed, in `docs/CUTOVER_PLAN.md` under "Inbound
