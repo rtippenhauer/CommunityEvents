@@ -839,8 +839,9 @@ dispatcher claim step carved out of `v2-27`, `v2-33` (v1's five bugfixes),
 `v2-29` (port Phase 39), `v2-24` (cities, which the import depends on), `v2-25`
 (the import) — plus a production deployment that does not exist yet. The test for whether anything else belongs
 on that path is **"does DinnerBears have it today?"**; if not, going live
-without it is parity rather than regression, which defers eleven of the sixteen
-open items.
+without it is parity rather than regression, which defers most of the backlog.
+(Do not restate a total here -- the one that used to be written in this spot
+was stale within a day of `REQ-JOURNAL-01` adding six items.)
 
 ## Stack (current `main`)
 Mostly the inherited v1 snapshot, with the data layer already replaced by

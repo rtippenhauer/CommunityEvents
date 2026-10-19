@@ -3229,3 +3229,70 @@ only. Kept for the record in case a key is ever added: a bare swap to
 `claude-haiku-5-5` breaks silently, because thinking is on by default and
 `content[0]` becomes a thinking block. It would need thinking disabled, a
 search for the text block, and more `max_tokens`.
+
+### v2-42 — A per-community key for inbound mail
+
+**Status:** Not started. **Decided by Rob 2026-10-18**, with the interim
+position stated as part of the decision: *until this exists, we do not support
+inbound mail from outside the operator's own Cloudflare account.*
+
+**What it is.** A community may hold its own key for posting inbound email to
+`POST /api/v1/calendar/rsvp-reply`; a community with none falls back to the
+deployment's `CLOUDFLARE_EMAIL_SECRET`. The same most-specific-first shape as
+`TenantSecretsService.resolve()`, the contact addresses and
+`email_provider_config`.
+
+**Why it is needed.** The endpoint compares a single env value today
+(`calendar.controller.ts`), so **every Worker that posts to us must hold the
+same secret**. That is fine while every Worker is the operator's. The moment a
+community runs its own Cloudflare account, handing them that secret hands them
+a credential that authenticates RSVP replies for *every* community on the
+deployment — the same mistake as a platform-wide Brevo key (`v2-9`) or a
+platform-wide OAuth app (REQ-TENANT-01.9), both already rejected here.
+
+**The exposure is bounded but real**, and worth stating so nobody reasons from
+"it's only RSVPs": the secret is the only check, and the **event UID decides
+which community a reply is about** while the host merely narrows it (`v2-33`'s
+#45). So a secret-holder can post a reply naming any event id in any community.
+The attendee must still be a member of that community at that address, so it is
+not arbitrary forgery — it is a cross-tenant write path gated by one shared
+value.
+
+**The fallback's condition is NOT `isOnDeploymentDomain`.** That predicate
+answers "whose domain is this", which decides Brevo and Google fallbacks
+(`v2-12`). This one asks **"who runs the Worker"** — a different question with a
+different answer: a community on its *own* domain whose zone sits in the
+operator's Cloudflare account is perfectly safe on the shared key, because the
+key never leaves the operator. Nothing in the database answers that today. A
+stored flag is defensible here for exactly the reason it was *not* in `v2-12`:
+there, the domain already answered the question and a flag would have been a
+second answer free to disagree. Here there is no first answer.
+
+**Mint it, do not accept it.** `v2-9`'s lesson, in its own words: the Brevo
+webhook token is *ours*, which is the only reason rotation can be automatic,
+while Brevo's API key is theirs and gets a warning instead. Same here —
+generate, show once, rotate on a schedule, and honour the previous value for a
+grace window so a Worker updated minutes later is not rejected mid-flight.
+`email_provider_config` already carries that exact shape in `webhookSecret`,
+`webhookSecretPrevious` and `webhookRotatedAt`; this is a fourth column beside
+them, registered in `encrypted-columns.ts`.
+
+**Resolve the tenant FROM the key, then make the UID agree.** That is the part
+that earns the work beyond key hygiene: with a per-community key the endpoint
+knows which community is posting before it parses anything, so a reply whose
+UID names a *different* community can be refused. Defence in depth — the key
+says who, the UID has to agree.
+
+**The usual encrypted-column trap applies:** a randomised cipher cannot be
+filtered on, so the lookup cannot be `where: { inboundKey: <value> }`. Carry a
+non-secret key id in the request (or on the Worker's URL) and compare after
+decryption — the same shape as `v2-9`'s grace sweep keying on
+`webhookRotatedAt` alone.
+
+**Definition of done:** a community can be issued an inbound key and rotate it
+with a grace window; a Worker's POST authenticates against that community's key
+or, where none exists, the deployment default; a reply whose UID names another
+community is refused with the reason logged; `docs/TENANT_ONBOARDING.md` states
+which Cloudflare arrangement a community needs and that bringing its own
+account requires its own key; and `docs/CUTOVER_PLAN.md`'s interim restriction
+is removed in the same change.
