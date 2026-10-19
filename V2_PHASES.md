@@ -3296,31 +3296,54 @@ stored flag is defensible here for exactly the reason it was *not* in `v2-12`:
 there, the domain already answered the question and a flag would have been a
 second answer free to disagree. Here there is no first answer.
 
-**Mint it, do not accept it.** `v2-9`'s lesson, in its own words: the Brevo
-webhook token is *ours*, which is the only reason rotation can be automatic,
-while Brevo's API key is theirs and gets a warning instead. Same here —
-generate, show once, rotate on a schedule, and honour the previous value for a
-grace window so a Worker updated minutes later is not rejected mid-flight.
-`email_provider_config` already carries that exact shape in `webhookSecret`,
-`webhookSecretPrevious` and `webhookRotatedAt`; this is a fourth column beside
-them, registered in `encrypted-columns.ts`.
+**We mint it and hand it over; it expires; they rotate it** (Rob,
+2026-10-18). The community does not supply a key of their own — the deployment
+generates one, shows it once, and the tenant pastes it into their own Worker.
+
+**That puts it in `v2-9`'s *second* category, not its first**, and the
+distinction is the whole reason rotation is manual here. The Brevo webhook
+token rotates automatically because we hand it to Brevo *through Brevo's API*;
+Brevo's own API key cannot, because they mint it and offer no reissue endpoint,
+so it gets a **warning** rather than a schedule. This key is the second shape
+for a different reason: the consumer is a Worker in somebody else's Cloudflare
+account, and there is no API to push a new value into. **So the deployment can
+expire a key but cannot replace one** — which makes the warning, not the
+schedule, the load-bearing part.
+
+**Reuse v1's Muse token shape rather than inventing a second idiom.** Phase 39
+(`v2-29`) brings `cet_` + 32 random bytes, base64url, **stored as SHA-256
+only**, shown once, 60-day expiry, with issuing or rotating revoking the rest.
+The same deployment should not grow two different kinds of handed-out token.
+
+**Storing a hash also removes the trap I would otherwise have to warn about
+here.** An encrypted column cannot be filtered on, so a key kept in
+`encrypted-columns.ts` could not be looked up by value; a SHA-256 is
+deterministic, so `where: { inboundKeyHash }` resolves the community in one
+query. Hash it, do not encrypt it.
 
 **Resolve the tenant FROM the key, then make the UID agree.** That is the part
-that earns the work beyond key hygiene: with a per-community key the endpoint
-knows which community is posting before it parses anything, so a reply whose
-UID names a *different* community can be refused. Defence in depth — the key
-says who, the UID has to agree.
+that earns the work beyond key hygiene: the endpoint knows which community is
+posting before it parses anything, so a reply whose UID names a *different*
+community can be refused. Defence in depth — the key says who, the UID has to
+agree.
 
-**The usual encrypted-column trap applies:** a randomised cipher cannot be
-filtered on, so the lookup cannot be `where: { inboundKey: <value> }`. Carry a
-non-secret key id in the request (or on the Worker's URL) and compare after
-decryption — the same shape as `v2-9`'s grace sweep keying on
-`webhookRotatedAt` alone.
+**Expiry is invisible to the people it affects, so the warnings matter more
+than the term.** When a key lapses the Worker keeps posting and the API keeps
+answering 401; nothing reaches a member, nothing bounces, and the only evidence
+is in somebody else's Worker logs — the `v2-34` problem in a new place. So:
+the expiry date on the community's own Admin → Email screen, the operator's
+list showing every key and its age, warnings well before the date rather than
+on it, and an **overlap window where the previous key still authenticates**, so
+a community rotating on a Tuesday evening is not down until they finish.
+`webhookSecretPrevious`/`webhookRotatedAt` on `email_provider_config` are the
+existing precedent for that overlap.
 
-**Definition of done:** a community can be issued an inbound key and rotate it
-with a grace window; a Worker's POST authenticates against that community's key
-or, where none exists, the deployment default; a reply whose UID names another
-community is refused with the reason logged; `docs/TENANT_ONBOARDING.md` states
-which Cloudflare arrangement a community needs and that bringing its own
-account requires its own key; and `docs/CUTOVER_PLAN.md`'s interim restriction
-is removed in the same change.
+**Definition of done:** a community can be issued an inbound key, shown once
+and stored as a hash, with an expiry date and an overlap window on rotation; a
+Worker's POST authenticates against that community's key or, where none exists,
+the deployment default; a reply whose UID names another community is refused
+with the reason logged; expiry is visible to that community's admins and to the
+operator, and warned about before it bites; `docs/TENANT_ONBOARDING.md` states
+which Cloudflare arrangement a community needs, that bringing its own account
+requires its own key, and that rotating before expiry is their job; and
+`docs/CUTOVER_PLAN.md`'s interim restriction is removed in the same change.
