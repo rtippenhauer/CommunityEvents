@@ -848,3 +848,28 @@ people.
 **Release notes are listed in the order they were published**, with anything
 still being drafted at the top, so the dates on the screen read the way you
 expect.
+
+## Fixes carried over from DinnerBears
+
+**Upcoming events follow their venue.** Rename one of our locations, or correct
+its address, and upcoming events there show the change straight away. Past
+events keep the name and address they had on the day.
+
+**Creating an event as Published sends the invites.** Before, an event created
+straight as Published skipped the automatic invitations that an event published
+later would have sent.
+
+**Accepting a calendar invite from Gmail now records your RSVP.** Gmail sends
+its replies in an encoding the site misread, so pressing Accept, Maybe or
+Decline appeared to do nothing. Replies land against the right community even
+where a community uses its own domain.
+
+**"I Made the Reservation" works for the member who was asked.** The button was
+only ever usable by organizers, which is the opposite of who it was for.
+Reservation times also display correctly now — a 6:30pm dinner no longer reads
+as 12:30.
+
+**Release notes read in your community's own words.** Where a note mentions
+points, events or locations, it now uses whatever your community calls them,
+everywhere the note appears rather than on one page only. Notes are also
+listed in the order they were published.
