@@ -2815,7 +2815,9 @@ without it is parity rather than regression — the test the running order uses.
 
 ### v2-33 — Port v1's five outstanding bugfixes
 
-**Status:** Implemented 2026-10-15, PR open, **not yet on stage**. **On the cutover path**, by the running order's own
+**Status:** **Complete** (2026-10-19). Implemented 2026-10-15, merged
+2026-10-16, and all six stage checks passed 2026-10-19 — #45 by a real Gmail
+Accept routed through a second domain. **On the cutover path**, by the running order's own
 test: every one of these is fixed in DinnerBears production today, so shipping
 v2 without them is a regression rather than parity. They were previously
 treated as "bugfixes may still land in v1, they port cheaply" and never written
