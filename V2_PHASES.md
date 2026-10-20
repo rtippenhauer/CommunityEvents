@@ -3189,12 +3189,56 @@ cover:
   the parser's seven in one place instead of three.
 
 **The endpoint is unauthenticated, so logging its failures lets an anonymous
-caller write rows**, and that needs answering in the same change: it sits under
-the global 60/minute throttler with no route-specific limit (the feed next to it
-takes 10/minute), and **the body of a bad-token request should not be stored at
-all** — record that one arrived, its size and its source, never attacker-supplied
-content. A log built to make failures visible must not become the way to fill the
-disk.
+caller write rows**, and that needs answering in the same change. **The answer
+is a bound, not a block** (Rob raised it 2026-10-20; worked through below), and
+most of it already exists:
+
+- **It is already throttled at 30/minute per IP, not the global 60.**
+  `ThrottlerAuditGuard` rewrites any *mutating* route that relies on the
+  module default to `WRITE_LIMIT`, and this route declares no `@Throttle()`.
+  (An earlier draft of this section said 60/minute with no route limit. Wrong,
+  and worth stating because the number is the whole argument: worst-case growth
+  is ~30 rows/min/IP.)
+- **Suppress repeats, and leave a row saying so.** The pattern to copy is in
+  `throttler-audit.guard.ts` itself: an in-memory `IP → last hit` map that
+  writes an audit entry only when the source is new or unseen for 30 minutes.
+  Log the first failure from a source, then one "N further suppressed" row.
+  **Never silence it entirely** — a log that goes quiet under load rebuilds the
+  invisible failure this item exists to kill, which is the one mistake that
+  would make the feature worse than nothing.
+- **Never store the body of a bad-token request.** Record that one arrived, its
+  size and its source; never attacker-supplied content. A log built to make
+  failures visible must not become the way to fill the disk.
+
+**Do not block by IP at the application layer.** The only legitimate caller of
+this endpoint is a Cloudflare Worker, and its egress address belongs to
+Cloudflare and is shared with everything else on that network — so the
+realistic victim of an IP block is **our own inbound mail path**, failing
+exactly the silent way this item exists to eliminate. There is also form here:
+`v2-14` found `trust proxy` unset, so every request in the deployment reported
+`::ffff:127.0.0.1` and the per-IP demo cap became a deployment-wide cap of two.
+That is fixed (`main.ts`), but per-IP logic in this codebase has been wrong
+before in a way nothing noticed.
+
+**And there is nothing to unblock today, deliberately.** The throttler is
+in-memory with a 60-second TTL and the dedupe map is in-memory too, so a
+"block" self-clears in a minute and no state can get stuck. Building persistent
+blocking means building a block list, an expiry, an unblock path and an audit
+trail for both directions — a new product surface, and one whose failure mode is
+locking out the Worker with no way in. **If blocking is wanted, it belongs at
+Cloudflare**, in front of the origin: stateful, visible in the dashboard,
+reversible without a deploy, and never having to guess the client IP.
+
+**Two fixes to the visibility that already exists.** A throttle trip writes
+`auth.rate_limited` to `audit_log` with the IP, path and limit — but
+`audit_log` is **tenant-scoped**, so the entry lands in whichever community owns
+the Host header and the operator never sees it unless they look inside that
+community. Write operator-relevant entries on the **root** tenant, as `v2-32`
+already does for system-admin actions. And the 30-minute dedupe map is
+in-memory, so it resets on restart and is not shared between containers: the
+same source can produce one entry per container per restart, which is
+acceptable for an audit trail and should be said out loud rather than
+discovered.
 
 **Also in scope:** the Worker catches its own POST failures and returns, so
 Cloudflare's Email Routing activity log shows every message as **Handled** even
@@ -3210,7 +3254,10 @@ community is visible to the operator alone; a refused Muse sync RSVP appears on
 the same screen with its reason once `v2-29` lands; **a request that fails
 before the parser — bad secret, malformed body — leaves a row, while a request
 that never arrives is accepted as unknowable**; nothing an unauthenticated
-caller sends can grow the table without bound or store its content; and the
+caller sends can grow the table without bound or store its content, and the
+suppression that bounds it leaves a row rather than going quiet; a rate-limit
+trip on this endpoint is visible to the **operator**, not only to the community
+whose host it arrived on; and the
 retention position (keep everything, for now) is stated where the table is
 defined so it reads as provisional.
 
