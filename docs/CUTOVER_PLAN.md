@@ -857,7 +857,46 @@ the invite looks perfect and the reply dies at the sender.
 > and reads as unset, restoring the broken derivation. Check
 > `docker exec CommunityEvents-v2-Stage env | grep BASE_DOMAIN` after restarting.
 > Per-tenant `mail_domain` at Admin → Site Settings needs no restart at all —
-> it is a database row, uncached, and beats the env step in the chain. A forwarding catch-all is what previously let a
+> it is a database row, uncached, and beats the env step in the chain.
+>
+> **Fixed and verified live, 2026-10-20.** `BASE_DOMAIN=communityeventsproject.com`
+> was set on the container (one row, no duplicate) and the feed now reads
+> `ORGANIZER;CN=…:mailto:calendar-stage@communityeventsproject.com` — the apex,
+> which holds the MX and the routing rule. Confirmed by fetching a real
+> `calendar/feed.ics` from stage rather than by reading the code: the chain has
+> four steps and only the live value proves which one answered.
+>
+> **It went in the container's own template field, not the appdata `.env`, and
+> that is the right place.** The appdata `.env` exists because Unraid does not
+> persist **masked** fields — that is a secrets problem. `BASE_DOMAIN` is not a
+> secret, it is already declared as an advanced template field, and a template
+> row beats the file, so putting it in the file while the field exists is the
+> arrangement most likely to look configured and not be.
+
+#### The live container's paths have drifted from this template (2026-10-20)
+
+Found while looking for the appdata `.env`: **there is no `.env` there at all**,
+and the folder holding `secret-encryption.key` is
+`/mnt/user/appdata/communityevents_stage/` — underscore, no `appdata`
+subfolder, with uploads in `upload/` beside it. The checked-in template defaults
+to `/mnt/user/appdata/communityevents-v2-stage/appdata` and `uploads`, and
+`docs/SECRETS.md` names the same hyphenated path. So the running container was
+not created from this template, and the deployment is configured through
+template variables rather than a file.
+
+**Why this is not cosmetic.** Re-adding the container from the template — which
+is exactly what picks up the `sh` shell fix and the XML fix — would point
+`/app/appdata` at an empty folder. The app would find no key, generate a fresh
+one, and then **refuse to start**, because the database holds secrets encrypted
+under the key still sitting in the old folder. That is one of `v2-7`'s three
+deliberate startup refusals working correctly, and it would read as an unrelated
+outage.
+
+Before any re-add: reconcile the template's two path defaults with the live
+container (`docker inspect CommunityEvents-v2-Stage --format '{{json .Mounts}}'`
+is the authority), or copy `secret-encryption.key` to the new path first. Fixing
+the template is the better direction, since the live paths are the ones with the
+data in them. A forwarding catch-all is what previously let a
 stage RSVP reply land in an inbox instead of reaching the API, so dropping is
 both the quieter and the more honest default — an address nobody configured
 should not silently work.
