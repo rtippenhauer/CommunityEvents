@@ -2143,6 +2143,74 @@ What is **not** optional is the dead code: `findBySubdomainOrNull`,
 go with the column, or they stay as a lookup against a field that no longer
 exists.
 
+#### Retiring a city: deactivate, never delete (Rob, 2026-10-18)
+
+**A city is never deleted. Deactivating hides it from selection and nothing
+else** — `is_active` stays, the row stays, and every foreign key pointing at it
+stays valid. Rob is explicit that he does not plan to delete one.
+
+**This came out of a live failure on stage**, which is why the rule is written
+down at all. Rob deactivated the day-named cities the root community had been
+seeded with and restored Cincinnati and Dayton — and every location and event
+still pointing at a retired city **lost its city in the UI**. Nothing was
+corrupted: `CitiesService` filters `isActive: true` on every read *including
+lookup by id*, while `events`/`locations` load the city through the FK relation,
+which ignores the flag. So the row kept its city, the API kept returning it, and
+every `mat-select` built from `GET /cities` had no matching option and rendered
+blank. The event form then refuses to save at all, because `cityId` carries
+`Validators.min(1)` and the control is empty.
+
+**The rule, keyed on the tenant's toggle:**
+
+- **Turning `feature_cities` OFF** — deactivate every city. Clear `city_id` on
+  **future events, all locations and all users**, and **leave past events
+  alone**. Only possible because every `city_id` column becomes nullable in
+  this item (already specified above for the toggle's sake; this is a second
+  reason for the same change).
+- **`feature_cities` ON** — before a city is deactivated, **future events,
+  locations and users on it move to an active city**, because with the toggle
+  on a city is required for those to function. Past events stay where they are.
+
+**Past events deliberately keep their retired city.** That is the whole reason
+deletion is the wrong verb: a dinner that happened in Indiana happened in
+Indiana, and a community that stops meeting there should not retroactively have
+met in Cincinnati. It also makes this item consistent with `v2-33`'s #41 one
+layer over, where a past event keeps the location name it had rather than
+following a rename.
+
+**So an inactive city must stay resolvable, and that is the part the current
+code gets wrong.** Three consequences, all required for the above to work:
+
+1. **`CitiesService` must stop filtering `isActive: true` on lookup by id.**
+   Hiding a city from a *chooser* and hiding it from *resolution* are different
+   questions, and conflating them is what blanked the screens.
+2. **A picker lists active cities, plus the row's own current value when that is
+   inactive**, labelled as such. Otherwise editing anything about a past event
+   silently drops its city, and `Validators.min(1)` blocks a save that has
+   nothing to do with cities.
+3. **Display paths read the city from the row**, which `include: { city: true }`
+   already does — so a past event's city still renders once (1) stops hiding it.
+
+**Deactivation is not destructive, so it does not need the retype-the-name
+confirmation that deleting a community uses** — but it should show what it is
+about to move, per table, and derive those counts from the relation list rather
+than a hand-written one. The next model to gain a `city_id` is otherwise missed,
+the same way an unclassified Prisma model is caught only because
+`tenant-scoped-models.ts` is exhaustive at the type level.
+
+**Six tables carry `city_id`:** `events`, `locations` and `users` (`NOT NULL`
+today, nullable after this item), plus `announcements`, `invites` and
+`facebook_group_config` (nullable already; the last is dropped by this item).
+Every FK is `onDelete: NoAction`, which is correct and should stay — nothing
+deletes a city, so nothing needs a cascade or a `SET NULL`, and the key remains
+a backstop that would refuse an unplanned delete rather than quietly emptying
+columns.
+
+**Turning the toggle back ON backfills nulls to the tenant's first city** (as
+already specified), which picks up exactly the future events, locations and
+users that the OFF path cleared. Past events are untouched by that backfill
+because they were never nulled.
+
 **Definition of done:** `cities` is tenant-scoped with no cross-tenant
 name collisions; the feature toggle correctly makes cities either fully
 required or fully invisible; a new member still lands in the first city and can
@@ -2901,7 +2969,19 @@ repo and is part of this item, not an afterthought.
 **No schema changes**, in v1 or here, which is what makes this one branch rather
 than five.
 
-**#45 cannot be stage-tested until Cloudflare is set up for this deployment**
+**#45 verified on stage 2026-10-18** — a real Gmail Accept, on a tenant at
+`stage.rtippenhauer.com` whose mail domain is `rtippenhauer.com`, routed
+through that zone to the shared `communityevents_calendar` Worker and recorded
+the RSVP against the right community. That exercises the decode fix, the UID's
+tenant resolution and a second domain at once. Two things had to be true first
+and both cost time: `CLOUDFLARE_EMAIL_SECRET` present and non-empty on the
+container (it was passed twice, once blank, and the blank won), and the
+tenant's `mail_domain` set — without it the invite's `ORGANIZER` derives from
+the deployment domain and lands on a subdomain with no MX, so the reply dies at
+the sender with no log anywhere. See `docs/CUTOVER_PLAN.md`.
+
+**The original note, kept because it was true until that day:** #45 could not
+be stage-tested until Cloudflare was set up for this deployment
 (2026-10-15). The decode fix is necessary and not sufficient: a reply has to
 reach the API first, and nothing has ever pointed Email Routing at
 `communityeventsproject.com`. Needed, in `docs/CUTOVER_PLAN.md` under "Inbound
@@ -3024,6 +3104,34 @@ side, and an inbound log is the only place it could.
 admin on the same screen as outbound, each failure exit above distinguishable
 from the others, a message matching no community visible to the operator, and a
 retention position taken deliberately with its reasoning recorded.
+
+**A reply-to on outgoing invites belongs with this item, not before it**
+(Rob, 2026-10-18). Today an invite is sent from `noreply@<mail domain>` with no
+`Reply-To` at all, and that address has no routing rule, so the catch-all
+drops it: **a member who presses Reply instead of Accept is discarded at the
+edge, with no bounce and no record.** Setting `Reply-To` to the same
+`calendar-stage@` address the `ORGANIZER` already names would route those
+replies to the Worker and into the API, which is where someone could see them.
+
+**But doing that before this item makes the failure worse, not better.**
+`processRsvpReply` returns early on "no iCal block" and on "not a
+`METHOD:REPLY`", so a human sentence would be accepted by our API, answered
+`200`, and dropped — no bounce to the sender, no record for anyone. Dropping at
+Cloudflare at least keeps the lie simple. So: inbound log first, reply-to
+second.
+
+**Expect non-RSVP traffic and treat it as ordinary**, which is Rob's condition
+("not a problem if we handle them"): out-of-office autoreplies, mailer-daemon
+bounces, and people answering the invite in prose. The parser already ignores
+all three safely; what is missing is somewhere for them to show up, and a
+decision about whether a genuine human reply should be forwarded to that
+community's `admin@` rather than only logged.
+
+**Implementation note:** no `replyTo` exists anywhere in the email module —
+`BrevoService` builds `sender` only (`brevo.service.ts`). Brevo's send API
+supports `replyTo: { email, name }`, so this is a field threaded from the
+invite call site through `EmailService` to the payload, defaulting to unset so
+every other message is unchanged.
 
 ### v2-35 — Record a report on behalf of a member
 
@@ -3163,6 +3271,137 @@ only. Kept for the record in case a key is ever added: a bare swap to
 `claude-haiku-5-5` breaks silently, because thinking is on by default and
 `content[0]` becomes a thinking block. It would need thinking disabled, a
 search for the text block, and more `max_tokens`.
+
+### v2-42 — A per-community key for inbound mail
+
+**Status:** Not started. **Decided by Rob 2026-10-18**, with the interim
+position stated as part of the decision: *until this exists, we do not support
+inbound mail from outside the operator's own Cloudflare account.*
+
+**What it is.** A community may hold its own key for posting inbound email to
+`POST /api/v1/calendar/rsvp-reply`; a community with none falls back to the
+deployment's `CLOUDFLARE_EMAIL_SECRET`. The same most-specific-first shape as
+`TenantSecretsService.resolve()`, the contact addresses and
+`email_provider_config`.
+
+**Why it is needed.** The endpoint compares a single env value today
+(`calendar.controller.ts`), so **every Worker that posts to us must hold the
+same secret**. That is fine while every Worker is the operator's. The moment a
+community runs its own Cloudflare account, handing them that secret hands them
+a credential that authenticates RSVP replies for *every* community on the
+deployment — the same mistake as a platform-wide Brevo key (`v2-9`) or a
+platform-wide OAuth app (REQ-TENANT-01.9), both already rejected here.
+
+**The exposure is bounded but real**, and worth stating so nobody reasons from
+"it's only RSVPs": the secret is the only check, and the **event UID decides
+which community a reply is about** while the host merely narrows it (`v2-33`'s
+#45). So a secret-holder can post a reply naming any event id in any community.
+The attendee must still be a member of that community at that address, so it is
+not arbitrary forgery — it is a cross-tenant write path gated by one shared
+value.
+
+**The fallback's condition is NOT `isOnDeploymentDomain`.** That predicate
+answers "whose domain is this", which decides Brevo and Google fallbacks
+(`v2-12`). This one asks **"who runs the Worker"** — a different question with a
+different answer: a community on its *own* domain whose zone sits in the
+operator's Cloudflare account is perfectly safe on the shared key, because the
+key never leaves the operator. Nothing in the database answers that today. A
+stored flag is defensible here for exactly the reason it was *not* in `v2-12`:
+there, the domain already answered the question and a flag would have been a
+second answer free to disagree. Here there is no first answer.
+
+**We mint it and hand it over; it expires; they rotate it** (Rob,
+2026-10-18). The community does not supply a key of their own — the deployment
+generates one, shows it once, and the tenant pastes it into their own Worker.
+
+**That puts it in `v2-9`'s *second* category, not its first**, and the
+distinction is the whole reason rotation is manual here. The Brevo webhook
+token rotates automatically because we hand it to Brevo *through Brevo's API*;
+Brevo's own API key cannot, because they mint it and offer no reissue endpoint,
+so it gets a **warning** rather than a schedule. This key is the second shape
+for a different reason: the consumer is a Worker in somebody else's Cloudflare
+account, and there is no API to push a new value into. **So the deployment can
+expire a key but cannot replace one** — which makes the warning, not the
+schedule, the load-bearing part.
+
+**Reuse v1's Muse token shape rather than inventing a second idiom.** Phase 39
+(`v2-29`) brings `cet_` + 32 random bytes, base64url, **stored as SHA-256
+only**, shown once, 60-day expiry, with issuing or rotating revoking the rest.
+The same deployment should not grow two different kinds of handed-out token.
+
+**Storing a hash also removes the trap I would otherwise have to warn about
+here.** An encrypted column cannot be filtered on, so a key kept in
+`encrypted-columns.ts` could not be looked up by value; a SHA-256 is
+deterministic, so `where: { inboundKeyHash }` resolves the community in one
+query. Hash it, do not encrypt it.
+
+**Resolve the tenant FROM the key, then make the UID agree.** That is the part
+that earns the work beyond key hygiene: the endpoint knows which community is
+posting before it parses anything, so a reply whose UID names a *different*
+community can be refused. Defence in depth — the key says who, the UID has to
+agree.
+
+**Expiry is invisible to the people it affects, so the warnings matter more
+than the term.** When a key lapses the Worker keeps posting and the API keeps
+answering 401; nothing reaches a member, nothing bounces, and the only evidence
+is in somebody else's Worker logs — the `v2-34` problem in a new place. So:
+the expiry date on the community's own Admin → Email screen, the operator's
+list showing every key and its age, warnings well before the date rather than
+on it, and an **overlap window where the previous key still authenticates**, so
+a community rotating on a Tuesday evening is not down until they finish.
+`webhookSecretPrevious`/`webhookRotatedAt` on `email_provider_config` are the
+existing precedent for that overlap.
+
+**Warnings are specified, not left to the builder** (Rob, 2026-10-18). A
+community whose inbound mail does **not** run through the operator's Cloudflare
+account gets:
+
+- **A warning at setup time**, when the external arrangement is configured —
+  naming the expiry date and saying plainly that rotating before it is their
+  job, since the deployment cannot do it for them.
+- **An email at 2 weeks, 1 week and 1 day before expiry**, to **that
+  community's admins and the root tenant's admins both**. The operator is on
+  the list because the failure is invisible from the member's side and the
+  community that owns the key is exactly the party who may have stopped reading
+  their admin mail.
+
+**Four things that decide whether this works, all of them already rules here:**
+
+- **The sweep finds across tenants and composes inside one.** `runUnscoped` to
+  select expiring keys, then `runWithTenant` per community to render — and
+  again for the root copy, in the *root* tenant's context. Rendering the
+  operator's copy inside the customer's context would mail root admins wearing
+  the customer's branding and From address, which is the exact trap recorded
+  against the seats reminder in `events.service.ts`.
+- **Record what was sent, or a daily sweep sends it daily.** Three notices
+  means three marks, not one `warnedAt` — and they must survive a rotation
+  resetting the clock.
+- **Give it its own `category`** (`v2-31`), so the email log says *why* it went
+  out. Not a `templateId`, which is a dispatch instruction.
+- **Exclude demo communities**, per `v2-32` — `demo.service` makes every demo
+  requester an `ADMIN`, so "mail the community's admins" otherwise means
+  "mail whoever filled in the demo form". They cannot send mail at all
+  (`sendingIsBlocked` on `is_demo`), so the only effect would be noise in the
+  operator's copy.
+
+**One question left open deliberately:** whether a **fourth** email goes out on
+the day a key actually lapses. The argument for it is that this is the only
+message anybody receives *after* the thing has broken — until then every notice
+is a prediction, and the lapse itself is silent on both sides. The argument
+against is that three warnings were already ignored. Not decided here.
+
+**Definition of done:** a community can be issued an inbound key, shown once
+and stored as a hash, with an expiry date and an overlap window on rotation;
+external setup warns at configuration time and mails that community's admins
+and the root tenant's admins 2 weeks, 1 week and 1 day before expiry, once
+each; a
+Worker's POST authenticates against that community's key or, where none exists,
+the deployment default; a reply whose UID names another community is refused
+with the reason logged; expiry is visible to that community's admins and to the
+operator, and warned about before it bites; `docs/TENANT_ONBOARDING.md` states
+which Cloudflare arrangement a community needs, that bringing its own account
+requires its own key, and that rotating before expiry is their job; and
+`docs/CUTOVER_PLAN.md`'s interim restriction is removed in the same change.
 
 ### v2-43 — Link bugs & requests to a release
 
