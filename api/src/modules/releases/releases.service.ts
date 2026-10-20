@@ -616,6 +616,11 @@ export class ReleasesService {
    * Detach a report. Its status stays `shipped`: the work did ship, and the
    * next thing the operator does is usually link it somewhere else. It remains
    * a candidate either way, which is what `getReportCandidates` is for.
+   *
+   * **Unlinking never changes a status, and re-triaging never changes a link.**
+   * The status is a workflow state the operator sets; the link is a fact about
+   * history. A published release note must not silently lose a credit because
+   * somebody moved a ticket back to `open` (v2-43).
    */
   async unlinkReport(reportId: number): Promise<void> {
     await runUnscoped('removing a report from a release', async () => {

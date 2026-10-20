@@ -761,6 +761,12 @@ contributors are now counted and thanked as "a community member", while their
 own community still sees them by name. Members who marked their report private
 are unchanged: they were already thanked anonymously.
 
+**A release you have already read stays read.** Taking a release note back off
+the site used to re-announce the previous one to everybody, so every member saw
+a "what's new" splash for an update they had already dismissed weeks earlier.
+Announcements behaved the same way when the newest was deleted. Both now
+remember how far you have read rather than which note was last shown.
+
 **The release-note editor is now reachable only by the deployment operator.**
 Release notes apply to every community, so they were never a community's screen
 to edit — but any community's admin was still offered the link and could open
