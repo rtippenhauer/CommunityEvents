@@ -66,11 +66,17 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** **`v2-33`** — porting v1's five outstanding bugfixes.
-Branch `v2-33-port-v1-bugfixes`, cut off `main` 2026-10-14. **All five
-implemented 2026-10-15 and open as a PR, awaiting `/v2-testing 33`** — the visual
-half (splash and Updates wording, the assignee's button) has not been seen on
-stage. See V2_PHASES.md's v2-33 section for what landed and what is unverified.
+**Current v2 work item:** **none in progress.** `v2-33`'s code merged on
+2026-10-16 and **all six of its stage checks passed on 2026-10-19** — including
+#45, exercised by a real Gmail reply across a second domain — so what is left
+of it is bookkeeping: `/v2-done 33` for the tag and the release-note entry.
+Next on the cutover path after that is **`v2-29`** (port v1's Phase 39).
+
+**One known defect is open and reaches members**, found during that pass:
+unpublishing a release re-announces an older one, because `whats-new.service`
+compares `latestRelease.id !== user.lastSeenReleaseId` rather than a
+watermark — dismiss 2.0.0 and, if 1.6.3 becomes latest again, it reads as
+unseen. Recorded here rather than in a branch because nothing is fixing it yet.
 
 **`v2-33` + `v2-29` is what "caught up to prod DinnerBears" means** — the
 bugfixes and Phase 39 (MUSE) respectively. `v2-24` (cities) is *not* catch-up;
@@ -98,6 +104,43 @@ deployment that does not exist yet. `v2-31` and `v2-32` were not on that path;
 both were pulled forward by Rob and are done.
 
 **Completed v2 items:**
+- **`v2-43` — Linking bugs & requests to a release** (2026-10-19). v2-32 made
+  credit a **link** and the read path rendered it per community — but **no
+  screen ever wrote one.** Marking a report *Shipped* set a status and nothing
+  else, and the release composer offered only `feedback`, a different and
+  tenant-scoped board. So the feature was unreachable by a human, and last
+  night's successful stage test of it worked only because the links had been
+  set through the API.
+
+  **Feedback linking is gone from the composer.** A release note is the
+  product's artifact and `system_reports` is the product's board, which is the
+  split `v2-32` already drew; crediting a tenant-scoped ticket on a
+  deployment-wide note made credit depend on which host the operator happened
+  to be composing from.
+
+  **Linking never writes the note.** The old picker regenerated the body from
+  the ticked items on every toggle and overwrote notes typed by hand. Reports
+  carry no curated note text and `addReportCredits` selects ids only — a
+  member's words must not become copy every community reads — so there is
+  nothing to generate.
+
+  **`shipped` is an offered candidate on purpose**: a report marked shipped by
+  hand had left `resolved` and could never be offered again, and keeping it
+  listed is also what makes "unlink from 2.0.0, link to 1.6.3" work.
+
+  **The link and the status are deliberately independent.** A published note
+  must not silently lose a credit because somebody re-triaged a ticket, so the
+  link is a fact about history and the status is a workflow state — and each
+  report now *says* which release holds it, because the only real flaw in that
+  rule was that it was invisible.
+
+  Shipped alongside, both found on stage and both pre-dating this item: the
+  anonymous credit count counted **rows rather than people**, so two reports
+  from one member read as "2 community members" abroad and as one name at home;
+  and the admin release list **sorted by `createdAt` while displaying
+  `publishedAt`**, the third instance of the ordering bug `v2-33` fixed twice.
+  `npm run credits:migrate` moves the six existing feedback credits across,
+  dry-run by default.
 - **`v2-32` — A channel from a community to the operator** (2026-10-09). Two
   global tables, because `feedback` stays tenant-scoped: a member wrote that
   having consented to their own community's admins reading it, and forwarding it
