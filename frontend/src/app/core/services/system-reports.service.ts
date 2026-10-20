@@ -34,6 +34,14 @@ export interface SystemBug {
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
+  /**
+   * The release crediting this report, or null. Independent of `status` on
+   * purpose (v2-43): a published note must not silently lose a credit because
+   * someone re-triaged the ticket, so the link is a fact about history and the
+   * status is a workflow state. Shown as text so the two cannot disagree
+   * invisibly.
+   */
+  shippedInVersion: string | null;
 }
 
 export type DemoWouldUse = 'yes' | 'maybe' | 'no';
