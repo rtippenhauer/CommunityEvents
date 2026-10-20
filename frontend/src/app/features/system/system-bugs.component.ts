@@ -205,6 +205,8 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
               <span>{{ describe(bug.reporter) }}</span>
               <span class="dot">·</span>
               <span>{{ bug.createdAt | date: 'mediumDate' }}</span>
+              <span class="dot">·</span>
+              <span [class.release-linked]="bug.shippedInVersion">{{ releaseLink(bug) }}</span>
             </div>
 
             @if (isOperator()) {
@@ -290,6 +292,12 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
         color: var(--ce-text-muted);
         display: flex;
         gap: 6px;
+        flex-wrap: wrap;
+      }
+      /* A linked report reads as a statement of fact, not muted chrome. */
+      .bug-meta .release-linked {
+        color: var(--ce-text);
+        font-weight: 500;
       }
       .chips {
         display: flex;
@@ -592,6 +600,17 @@ export class SystemBugsComponent implements OnInit {
    * The only place a reporter is turned into words, and it has no fallback that
    * could invent one: each arm renders exactly what the server chose to send.
    */
+  /**
+   * Said in words rather than implied by a status, because the two are
+   * deliberately independent (v2-43) and "Resolved" on a report a release
+   * still credits otherwise reads as a bug rather than a decision.
+   */
+  releaseLink(bug: SystemBug): string {
+    return bug.shippedInVersion
+      ? `Linked to release ${bug.shippedInVersion}`
+      : 'Not linked to a release';
+  }
+
   describe(reporter: Reporter): string {
     switch (reporter.kind) {
       case 'self':

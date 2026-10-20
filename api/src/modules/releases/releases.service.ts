@@ -124,6 +124,24 @@ function toPublicRelease(release: ReleaseWithRelations, credits: ResolvedCredits
   };
 }
 
+/**
+ * Admin list order: unpublished drafts first, then published newest-first,
+ * with `id` descending as the tiebreaker. See `findAll`.
+ */
+export function compareForAdminList(
+  a: { publishedAt: Date | null; id: number },
+  b: { publishedAt: Date | null; id: number },
+): number {
+  const aDraft = a.publishedAt === null;
+  const bDraft = b.publishedAt === null;
+  if (aDraft !== bDraft) return aDraft ? -1 : 1;
+  if (!aDraft && !bDraft) {
+    const diff = b.publishedAt!.getTime() - a.publishedAt!.getTime();
+    if (diff !== 0) return diff;
+  }
+  return b.id - a.id;
+}
+
 @Injectable()
 export class ReleasesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -246,8 +264,25 @@ export class ReleasesService {
           });
     const byUser = new Map(mine.map((u) => [u.id, u]));
 
+    /**
+     * Anonymous credit counts PEOPLE, not rows -- one set per release.
+     *
+     * Found on stage 2026-10-18: two reports filed by the same member of one
+     * community read as that member's name **once** at home (the visible list
+     * is keyed by user) and as "2 community members" everywhere else, because
+     * this branch used to do `anonymous += 1` per report. The same two rows
+     * described one contributor or two depending on who was looking, which
+     * undermines the one thing this method exists to get right.
+     *
+     * A null `reportedByUserId` is a different case and is NOT deduped: the
+     * account is gone, so two such reports are two unknowable people rather
+     * than one, and collapsing them would undercount instead.
+     */
+    const unresolvedByRelease = new Map<number, Set<number>>();
+
     for (const report of reports) {
-      const credits = byRelease.get(report.shippedInReleaseId!);
+      const releaseId = report.shippedInReleaseId!;
+      const credits = byRelease.get(releaseId);
       if (!credits) continue;
 
       const user = report.reportedByUserId ? byUser.get(report.reportedByUserId) : undefined;
@@ -260,9 +295,23 @@ export class ReleasesService {
           isPrivate: false,
           user: { id: user.id, fullName: user.fullName, profilePhotoPath: user.profilePhotoPath },
         });
+      } else if (report.reportedByUserId !== null) {
+        // A reporter the scoped lookup could not see: another community's
+        // member. Count the person once, however many reports they filed.
+        let seen = unresolvedByRelease.get(releaseId);
+        if (!seen) {
+          seen = new Set<number>();
+          unresolvedByRelease.set(releaseId, seen);
+        }
+        seen.add(report.reportedByUserId);
       } else {
         credits.anonymous += 1;
       }
+    }
+
+    for (const [releaseId, people] of unresolvedByRelease) {
+      const credits = byRelease.get(releaseId);
+      if (credits) credits.anonymous += people.size;
     }
   }
 
@@ -312,11 +361,25 @@ export class ReleasesService {
 
   // ── Admin ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Drafts first, then published newest-first (Rob, 2026-10-19).
+   *
+   * This used to order by `createdAt` while the screen *displays*
+   * `publishedAt`, so the column shown and the column sorted disagreed: a
+   * release drafted weeks ago and published today sat below notes imported
+   * after it, with the dates reading 15th, 15th, 15th, 18th. Found on stage
+   * 2026-10-18.
+   *
+   * Sorted here rather than in `orderBy` because MySQL puts NULL **last** on
+   * `DESC` and Prisma's `nulls: 'first'` is not supported on MySQL -- and a
+   * draft belongs at the top, being the thing an admin came to finish. The
+   * list is every release, so there is no pagination to push this into SQL.
+   * `id` breaks the `DATETIME(0)` ties the notes importer creates, exactly as
+   * the member-facing queries above do.
+   */
   async findAll(): Promise<ReturnType<typeof toPublicRelease>[]> {
-    const releases = await this.prisma.releases.findMany({
-      include: RELEASE_INCLUDE,
-      orderBy: { createdAt: 'desc' },
-    });
+    const releases = await this.prisma.releases.findMany({ include: RELEASE_INCLUDE });
+    releases.sort(compareForAdminList);
     return this.toPublicReleases(releases);
   }
 
@@ -396,6 +459,22 @@ export class ReleasesService {
       data: { publishedAt: new Date() },
     });
 
+    // Reports credited on this release ship with it. Status becomes a
+    // CONSEQUENCE of linking rather than something set by hand and then
+    // impossible to connect to anything (v2-43). `system_reports` is global,
+    // so this is a waiver, and `resolved_at` keeps whatever it already had for
+    // the same reason the feedback statement below does.
+    await runUnscoped('reports credited on a release ship with it', async () => {
+      await this.prisma.system_reports.updateMany({
+        where: { shippedInReleaseId: id, status: { not: FeedbackStatus.SHIPPED } },
+        data: { status: FeedbackStatus.SHIPPED },
+      });
+      await this.prisma.system_reports.updateMany({
+        where: { shippedInReleaseId: id, resolvedAt: null },
+        data: { resolvedAt: new Date() },
+      });
+    });
+
     // Mark linked resolved feedback as shipped
     const ids = release.release_feedback.map((rf) => rf.feedbackId);
     if (ids.length) {
@@ -449,6 +528,103 @@ export class ReleasesService {
       where: { status: FeedbackStatus.RESOLVED },
       include: { user: true },
       orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  // ── Bugs & requests linked to a release (v2-43) ───────────────────────────
+
+  /**
+   * What an operator may attach to a release: `resolved` or `shipped` reports.
+   *
+   * **`shipped` is in the list on purpose.** Marking a report shipped by hand
+   * sets a status and nothing else, so before this existed such a report could
+   * never be credited -- it had left `resolved` and no screen could reach it
+   * again. Including it also makes "unlink from 2.0.0, link to 1.6.3" work,
+   * since the report stays shipped throughout.
+   *
+   * Reports are global, so this is an explicit waiver. The title comes back
+   * because the operator is choosing between rows and needs to tell them
+   * apart -- it is never copied into the note by this code; see
+   * `addReportCredits` for why a member's words stay off a shared artifact.
+   */
+  async getReportCandidates(): Promise<
+    {
+      id: number;
+      title: string;
+      category: string;
+      status: string;
+      shippedInReleaseId: number | null;
+      shippedInVersion: string | null;
+    }[]
+  > {
+    return runUnscoped('choosing which reports a release closes', async () => {
+      const reports = await this.prisma.system_reports.findMany({
+        where: { status: { in: [FeedbackStatus.RESOLVED, FeedbackStatus.SHIPPED] } },
+        select: {
+          id: true,
+          title: true,
+          category: true,
+          status: true,
+          shippedInReleaseId: true,
+          shippedInRelease: { select: { version: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+      return reports.map((r) => ({
+        id: r.id,
+        title: r.title,
+        category: r.category,
+        status: r.status,
+        shippedInReleaseId: r.shippedInReleaseId,
+        shippedInVersion: r.shippedInRelease?.version ?? null,
+      }));
+    });
+  }
+
+  /**
+   * Attach a report to a release, or move it from whichever release holds it.
+   *
+   * `shipped_in_release_id` is a plain column, so moving is one write and
+   * nothing has to be unlinked first -- but the UI offers unlink separately
+   * because "take it off 2.0.0" and "put it on 1.6.3" are two decisions an
+   * operator makes at different moments.
+   *
+   * It does NOT touch the release's body. Linking records that a report was
+   * part of a release; writing the note is the operator's job, and an earlier
+   * design that regenerated the body on every toggle overwrote notes people
+   * had typed (Rob, 2026-10-19).
+   */
+  async linkReport(releaseId: number, reportId: number): Promise<void> {
+    await runUnscoped('crediting a report on a release', async () => {
+      const release = await this.prisma.releases.findUnique({ where: { id: releaseId } });
+      if (!release) throw new NotFoundException(`Release ${releaseId} not found`);
+      const report = await this.prisma.system_reports.findUnique({ where: { id: reportId } });
+      if (!report) throw new NotFoundException(`Report ${reportId} not found`);
+
+      await this.prisma.system_reports.update({
+        where: { id: reportId },
+        data: {
+          shippedInReleaseId: releaseId,
+          status: FeedbackStatus.SHIPPED,
+          resolvedAt: report.resolvedAt ?? new Date(),
+        },
+      });
+    });
+  }
+
+  /**
+   * Detach a report. Its status stays `shipped`: the work did ship, and the
+   * next thing the operator does is usually link it somewhere else. It remains
+   * a candidate either way, which is what `getReportCandidates` is for.
+   */
+  async unlinkReport(reportId: number): Promise<void> {
+    await runUnscoped('removing a report from a release', async () => {
+      const report = await this.prisma.system_reports.findUnique({ where: { id: reportId } });
+      if (!report) throw new NotFoundException(`Report ${reportId} not found`);
+      await this.prisma.system_reports.update({
+        where: { id: reportId },
+        data: { shippedInReleaseId: null },
+      });
     });
   }
 }

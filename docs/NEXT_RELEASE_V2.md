@@ -832,3 +832,19 @@ Attachments appear as thumbnails that open full size, and a note on the form is
 worth repeating: **a screenshot shows everything on it**, so crop out member
 names and addresses before attaching one — the platform board is read by the
 administrators of every community.
+
+## Credit where it is due, on the right release
+
+**The people who report things now get credited accurately.** When a bug or
+request you filed ships, the release note in your own community thanks you by
+name — and the same note, read in another community, says only that a community
+member asked for it. One note, written once, reading correctly everywhere.
+
+**Two people are two people; one person is one person.** A release that fixed
+two things reported by the same member used to thank "2 community members" when
+read elsewhere, which made one contributor look like a crowd. It now counts
+people.
+
+**Release notes are listed in the order they were published**, with anything
+still being drafted at the top, so the dates on the screen read the way you
+expect.
