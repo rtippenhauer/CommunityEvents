@@ -72,11 +72,17 @@ largest remaining item on it. Read the spec in v1's
 `docs/PORT_TO_COMMUNITYEVENTS.md` (sibling checkout `../DinnerBears`), not this
 repo's summaries of it.
 
-**One known defect is open and reaches members**, found during that pass:
-unpublishing a release re-announces an older one, because `whats-new.service`
-compares `latestRelease.id !== user.lastSeenReleaseId` rather than a
-watermark — dismiss 2.0.0 and, if 1.6.3 becomes latest again, it reads as
-unseen. Recorded here rather than in a branch because nothing is fixing it yet.
+**No known defect reaching members is open.** The last one — unpublishing a
+release re-announced an older one to everybody — was fixed and stage-verified
+2026-10-20 (PR #36). What it leaves behind as a rule: **a "have you seen this"
+check compares a watermark, never row identity.** `whats-new.service` asked
+`latestRelease.id !== user.lastSeenReleaseId`, which is the same question only
+while the latest row can never change to an older one — and `unpublish` sets
+`published_at` back to NULL, while ids follow import order, so the release that
+resurfaces has the *higher* id. Each pointer now stores the publish date beside
+the id and the comparison is the `(published_at, id)` tuple the member-facing
+queries already order by, so the id still breaks `DATETIME(0)` ties without
+deciding anything on its own.
 
 **`v2-33` + `v2-29` is what "caught up to prod DinnerBears" means** — the
 bugfixes and Phase 39 (MUSE) respectively. `v2-24` (cities) is *not* catch-up;
@@ -132,11 +138,15 @@ both were pulled forward by Rob and are done.
   newest when several import in one second, and the notes importer relied on
   unsorted `readdir` order, which stops being alphabetical at `1.6.10`.
 
-  **Open and unfixed**, found during the pass: unpublishing a release
-  re-announces an older one to every member, because `whats-new.service`
-  compares `latestRelease.id !== user.lastSeenReleaseId` rather than a
-  watermark. It needs a publish-date comparison; the announcements query two
-  lines below has the same shape.
+  **A third defect found during the pass, fixed separately** (2026-10-20, PR
+  #36): unpublishing a release re-announced an older one to every member, from
+  the same `whats-new.service` comparing row identity rather than a watermark.
+  The announcements query two lines below had the identical shape and moved
+  with it. Its migration is also **the first in this repo run against populated
+  data** rather than only the empty e2e database — the gap recorded against
+  `v2-10` — by dropping the columns on the test database, inserting members
+  pointing at a published release, an unpublished one and nothing at all, and
+  re-running `migrate deploy`.
 
   v1's port doc rows for #41, #42, #43, #45 and #47 still read `Ported: No` —
   that edit lives in the other repo.
