@@ -55,10 +55,11 @@ Two decisions bound it:
 | 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
 | 2 | ~~bugfix — dispatcher claim~~ | **Done and merged** (PR #25, `b06cfc3`, 2026-10-14). Stage found it was a *live* defect, not a latent one: 40 queued rows produced 57 sends on the pre-fix image, reproduced by pressing Send Now in two browser tabs. 40 → 40 after. v2-27's first half, carved out. The dispatcher had no claim step and Admin → Send Now dispatches from a request, so it could double-send *today*. See v2-27's section for what the claim settled and what is left of that item. |
 | 3 | **v2-33 — port v1's five bugfixes** | Every one is fixed in DinnerBears today, so shipping without them is regression, not parity — the same test this table uses. No schema changes, one branch. Verified as live defects here on 2026-10-14. |
-| 4 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. |
-| 5 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
-| 6 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
-| 7 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
+| 4 | **v2-34 — an inbound email log** | **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
+| 5 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. Its sync refusals write to v2-34's log — see both sections. |
+| 6 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
+| 7 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
+| 8 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
 `v2-31` (a real email log) is not a blocker but is wanted early: the current
 screen is 100 rows with no search, which stops answering "did this member get
@@ -67,7 +68,8 @@ their invite" at DinnerBears' volume on about day two.
 ### Post-cutover — everything else
 
 `v2-15`, `v2-16`, `v2-17`, `v2-18` … `v2-23`, `v2-26`, `v2-28`, `v2-30`,
-`v2-34`, `v2-35`, the journal track (`v2-36` … `v2-41`), and the rest of `v2-27`. Most of these are either net-new
+`v2-35`, the journal track (`v2-36` … `v2-41`), and the rest of `v2-27`.
+(`v2-34` was here until 2026-10-20 and is now item 4 on the path above.) Most of these are either net-new
 features v1 never had, or operator tooling that matters only once somebody
 other than Rob runs an instance. **None of them is a parity requirement**, which is the test for
 whether something belongs on the critical path: DinnerBears runs without it
@@ -2575,9 +2577,12 @@ configured.
 
 ### v2-29 — Port v1's Phase 39 (Muse API + Facebook RSVP sync)
 
-**Status:** Not started. **On the cutover critical path** — see the running
-order at the top. Depends on v2-5 (scoping), v2-6 (users scoped) and v2-9
-(per-community email, for the sync's confirmation mail).
+**Status:** Not started. **On the cutover critical path, item 5** — see the
+running order at the top. Depends on v2-5 (scoping), v2-6 (users scoped) and
+v2-9 (per-community email, for the sync's confirmation mail). **`v2-34` now
+runs ahead of it** (Rob, 2026-10-20) so the sync's refusals write to the
+inbound log from the start rather than being retrofitted — see that section for
+the record's shape, and the bullet below for what this item owes it.
 
 v1 shipped this on 2026-09-29 as v1.6.0, after this repo forked. **Muse is an
 outside app that creates the community's Facebook events**, reads their Going
@@ -3041,10 +3046,35 @@ makes a wrong RSVP unlikely rather than impossible.
 
 ### v2-34 — An inbound email log
 
-**Status:** Not started. **Post-cutover** (Rob, 2026-10-14: "future phase").
-Asked for as "email logs for incoming emails and any errors" — and it should
-have been written down when `v2-31` built the log, because what that item built
-is only half of one.
+**Status:** Not started. **On the cutover critical path, item 4 — pulled
+forward 2026-10-20 (Rob), reversing the "post-cutover / future phase" call of
+2026-10-14.** Asked for as "email logs for incoming emails and any errors" —
+and it should have been written down when `v2-31` built the log, because what
+that item built is only half of one.
+
+**Why it moved, and why the parity test does not apply.** This is an
+*instrument for the cutover*, not a feature: inbound mail fails silently seven
+ways (below), and the import and the first production deployment are precisely
+when nobody can afford a member whose RSVP vanished with no trace. Its second
+job is to surface **multi-tenant faults nobody has found yet** — a message
+resolving to the wrong community, or to none — while there is still time to fix
+them rather than during the week DinnerBears moves. The usual test ("does
+DinnerBears have it today?") says no, and is overruled deliberately: parity
+measures what *members* lose, and this is diagnostics for the operator.
+
+**It runs ahead of `v2-29`** so the Muse sync writes to the log from the start
+instead of being retrofitted. That is the combination Rob asked for on
+2026-10-20: the two paths that change an RSVP without the member touching the
+website — a calendar reply and a Facebook Going list — fail the same way today,
+a return-early and a `logger.warn`, and an admin asking "why isn't this person
+on the list" has no answer for either. One record, two writers, one screen.
+
+**Muse's half needs no new decision**, which is why the order is this way
+round: a Muse call resolves its tenant from its own `api_tokens` row, so its
+rows are never the unresolvable case below. What `v2-29` adds is a write at
+each refusal in the sync (banned or deleted member, unmatched Facebook person,
+unknown event) carrying the reason — the rules its `warnings[]` array already
+computes and currently returns only to Muse, which no human reads.
 
 **What exists today is outbound-only, and the table name says so.** The screen
 reads `email_queue`: a row is a message *this deployment decided to send*, with
@@ -3077,15 +3107,34 @@ condition that recurs forever and needs somewhere to be seen.
   forced `system_reports` to be its own table in `v2-32`: a predicate that
   applies to some rows of a table and not others is a boundary nobody can
   confirm by reading a query.
-- **A message that resolves to no tenant is the most important row to keep,
-  and a scoped table cannot hold it.** The handler runs outside any request, so
-  there is no ambient tenant; the tenant has to be derived from the recipient
-  address or the UID *before* anything can be written scoped. But "this reply
-  arrived and matched no community" is precisely the case an operator needs to
-  see. So either the table is global with a nullable tenant id —
-  `ON DELETE SET NULL`, like `v2-32`'s two tables, for the same reason — or
-  unresolvable messages are dropped, which defeats the item. Decide this first;
-  it decides the schema.
+- ~~**A message that resolves to no tenant is the most important row to keep,
+  and a scoped table cannot hold it.**~~ **Decided 2026-10-20 (Rob): a global
+  table with a nullable tenant id**, `ON DELETE SET NULL` like `v2-32`'s two
+  tables and for the same reason — these are global rows pointing at scoped
+  `tenants`, and `purgeTenantRows` walks only the scoped list, so a restrictive
+  key would make deleting a community fail on a message one of its members
+  once sent. The handler runs outside any request, so there is no ambient
+  tenant; the tenant is derived from the recipient address or the UID, and when
+  neither resolves the row is still written with a null one. "This reply
+  arrived and matched no community" is the single most valuable row on the
+  screen, and it is also the shape a multi-tenant fault takes.
+
+  **Visibility follows from that, and is the rule to implement first** (Rob,
+  2026-10-20): **the root tenant sees every row, each showing which community
+  it belongs to; a community's admins see only their own.** Two consequences
+  worth stating before anybody writes a query:
+
+  - **The scoping extension will not do this for you.** The table is global, so
+    nothing is injected — every read must carry its own `tenantId` predicate by
+    hand, the same hazard CLAUDE.md records for raw SQL against scoped tables.
+    A forgotten predicate here does not throw; it shows one community another's
+    mail. Build the tenant-facing read as a single method that cannot be called
+    without a tenant id, rather than a filter applied at the controller.
+  - **Null-tenant rows are operator-only, and not merely unlabelled.** A
+    community admin must not see them at all: a message that matched no
+    community may name a *different* community's address, which is the customer
+    list `v2-32` is careful never to disclose. The operator view names the
+    tenant; the tenant view never names another.
 - **Retention is a fresh decision, not `v2-31`'s.** That item clears the
   rendered body after 30 days and keeps the envelope, on the grounds that the
   envelope answers the question cheaply. A raw inbound email is larger, is
@@ -3093,6 +3142,19 @@ condition that recurs forever and needs somewhere to be seen.
   exactly the part that is expensive. `deepest_open_age_days` was built to
   decide the outbound window on evidence; the same instrument should decide
   this one rather than inheriting a number.
+
+**The case that settled this item's priority, 2026-10-20.** Stage's invites
+carried `ORGANIZER: calendar-stage@stage.communityeventsproject.com` — a
+subdomain with no MX, because no tenant `mail_domain` was set and the
+deployment-wide fallback derives from the deployment's own host, which on stage
+is below the apex. Senders fall back to the A record, which is Cloudflare's web
+proxy, so replies **time out rather than being refused**: Gmail retried for 48
+hours and warned the sender every few hours. **It was loud for the member and
+entirely silent for us** — and the only reason anybody found out is that the
+member was Rob. On a production deployment that is a member whose RSVP never
+registered and who received a day of mailer-daemon warnings, with nothing on
+our side to look at. The full record and the widened rule are in
+`docs/CUTOVER_PLAN.md`'s inbound-mail section.
 
 **Also in scope:** the Worker catches its own POST failures and returns, so
 Cloudflare's Email Routing activity log shows every message as **Handled** even
@@ -3102,8 +3164,20 @@ side, and an inbound log is the only place it could.
 
 **Definition of done:** inbound messages and their outcome are visible to an
 admin on the same screen as outbound, each failure exit above distinguishable
-from the others, a message matching no community visible to the operator, and a
-retention position taken deliberately with its reasoning recorded.
+from the others; a community's admins see their own rows and nothing else, the
+operator sees every row with the community named, and a row matching no
+community is visible to the operator alone; a refused Muse sync RSVP appears on
+the same screen with its reason once `v2-29` lands; a POST the Worker could not
+deliver is visible on our side; and a retention position is taken deliberately
+with its reasoning recorded.
+
+**One cutover-specific check belongs in its stage pass**, since diagnosing the
+cutover is why this item moved: two communities on the stage deployment, a
+reply sent to each, and the log read as each community's admin *and* as the
+operator — confirming the three visibility cases against real rows rather than
+against the query. `v2-32` is the precedent for why that is the test that
+matters: its operator check keyed on the role twice before it was right, and
+the second attempt reached stage.
 
 **A reply-to on outgoing invites belongs with this item, not before it**
 (Rob, 2026-10-18). Today an invite is sent from `noreply@<mail domain>` with no

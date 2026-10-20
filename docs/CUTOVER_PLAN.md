@@ -819,10 +819,45 @@ no `contact_calendar_email`, no `mail_domain`, a blank `CALENDAR_ORGANIZER_EMAIL
 on the container — and derived from the deployment domain, addressing the
 invite's `ORGANIZER` to `calendar-stage@stage.communityeventsproject.com`. That
 is a **subdomain**, Email Routing is apex-only, and there is no MX there: the
-reply bounced before Cloudflare ever saw it. **A community on any domain other
+reply never reached Cloudflare at all. **A community on any domain other
 than the deployment's own must have its `mail_domain` set explicitly**, or its
 mail identity silently becomes an address that cannot receive. Nothing warns;
-the invite looks perfect and the reply dies at the sender. A forwarding catch-all is what previously let a
+the invite looks perfect and the reply dies at the sender.
+
+> **Corrected and widened 2026-10-20, after Rob was buried in bounces.** Two
+> things above were wrong.
+>
+> **It does not "bounce".** With no MX, a sender falls back to the A/AAAA record
+> as an implicit MX — and `stage.communityeventsproject.com`'s A records are
+> Cloudflare's *web* proxy (104.21.77.246, 172.67.213.85), which does not answer
+> on port 25. A refusal would be one hard bounce; a **timeout is a temporary
+> failure**, so Gmail queues the message and warns the sender every few hours for
+> 48 hours. One reply produces a stream of mail, and the failure is loud for the
+> *member* and still invisible to us.
+>
+> **The rule is stronger than "a community on another domain".** The derived
+> address here was on the deployment's own domain, and it was still dead,
+> because the stage deployment *is itself* a subdomain. So: **a deployment whose
+> host is below the apex must set `BASE_DOMAIN` to the apex**, or the last step
+> of the chain — the deployment-wide fallback every tenant inherits — produces an
+> address that cannot receive. Every stage deployment is in this position by
+> construction, and `calendar-stage@`, `hello@` and `noreply@` are all derived
+> from it.
+>
+> `instance-contact.ts` already strips a leading `www.` because `www.<domain>`
+> has no MX, and `AppConfigService.mailDomain()` already refuses to derive from a
+> *tenant's* host for the same reason — both guards are written out at length in
+> the code. Neither covers the deployment's own host, which is the one case
+> nobody thought to doubt.
+>
+> **Setting it needs a restart, not a deploy** — `ConfigModule` reads
+> `/app/appdata/.env` at boot (`app.module.ts`). But **dotenv does not override a
+> key already in the environment**, and the Unraid template declares
+> `BASE_DOMAIN` as an advanced field: a blank row on the container beats the file
+> and reads as unset, restoring the broken derivation. Check
+> `docker exec CommunityEvents-v2-Stage env | grep BASE_DOMAIN` after restarting.
+> Per-tenant `mail_domain` at Admin → Site Settings needs no restart at all —
+> it is a database row, uncached, and beats the env step in the chain. A forwarding catch-all is what previously let a
 stage RSVP reply land in an inbox instead of reaching the API, so dropping is
 both the quieter and the more honest default — an address nobody configured
 should not silently work.
