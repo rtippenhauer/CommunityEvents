@@ -3120,9 +3120,15 @@ condition that recurs forever and needs somewhere to be seen.
   screen, and it is also the shape a multi-tenant fault takes.
 
   **Visibility follows from that, and is the rule to implement first** (Rob,
-  2026-10-20): **the root tenant sees every row, each showing which community
-  it belongs to; a community's admins see only their own.** Two consequences
-  worth stating before anybody writes a query:
+  2026-10-20): **the root tenant sees every row — including the ones that belong
+  to no tenant at all — with the community named wherever there is one; a
+  community's admins see only their own.** "Every row" is literal and the
+  null-tenant ones are the point of it, not an exception to it: a message that
+  resolved to no community is both the most valuable row on the screen and the
+  only row no tenant-facing query can ever return, so if the operator view
+  filtered them out the log would be blind precisely where it was built to see.
+  The operator view therefore has **no** `tenantId` predicate rather than a
+  clever one. Two consequences worth stating before anybody writes a query:
 
   - **The scoping extension will not do this for you.** The table is global, so
     nothing is injected — every read must carry its own `tenantId` predicate by
@@ -3135,13 +3141,23 @@ condition that recurs forever and needs somewhere to be seen.
     community may name a *different* community's address, which is the customer
     list `v2-32` is careful never to disclose. The operator view names the
     tenant; the tenant view never names another.
-- **Retention is a fresh decision, not `v2-31`'s.** That item clears the
-  rendered body after 30 days and keeps the envelope, on the grounds that the
-  envelope answers the question cheaply. A raw inbound email is larger, is
-  written by a member rather than by us, and the part worth keeping may be
-  exactly the part that is expensive. `deepest_open_age_days` was built to
-  decide the outbound window on evidence; the same instrument should decide
-  this one rather than inheriting a number.
+- ~~**Retention is a fresh decision, not `v2-31`'s.**~~ **Decided 2026-10-20
+  (Rob): keep everything, for now.** That item clears the rendered body after 30
+  days and keeps the envelope; this one keeps both, because inbound volume is a
+  handful of messages a week and the cost of keeping them is nil next to the
+  cost of having deleted the one that explains a cutover fault. **"For now" is
+  load-bearing, not hedging**: the same instrument `v2-31` built
+  (`deepest_open_age_days`) should decide the eventual window on evidence, which
+  is the whole reason that number exists. Record the position where the table is
+  defined so the next reader knows it is provisional rather than considered
+  permanent.
+
+- ~~**Whether a genuine human reply is forwarded** to the community's `admin@`
+  or only logged.~~ **Decided 2026-10-20 (Rob): log it.** A reply in prose
+  becomes a row like any other, with the body kept. No forwarding, which also
+  means no second delivery path to configure, no second place for it to fail
+  silently, and no question about which community's `admin@` a message that
+  resolved to no community would go to.
 
 **The case that settled this item's priority, 2026-10-20.** Stage's invites
 carried `ORGANIZER: calendar-stage@stage.communityeventsproject.com` — a
@@ -3156,6 +3172,105 @@ registered and who received a day of mailer-daemon warnings, with nothing on
 our side to look at. The full record and the widened rule are in
 `docs/CUTOVER_PLAN.md`'s inbound-mail section.
 
+**Log every request that reaches us, including the ones that fail before the
+parser** (Rob, 2026-10-20): *"If they can't reach us, we will never know, but if
+they do and we have an issue processing it, I want to know."* That draws the
+line in the right place and **retires the one line of this item's scope that was
+not achievable** — "a POST the Worker could not deliver is visible on our side"
+cannot be built, because if the API is unreachable there is nothing on our side
+to write to. What is achievable is everything from the TCP connection inwards,
+and that now explicitly includes two failures the seven exits below do not
+cover:
+
+- **An invalid or missing `X-Cloudflare-Secret`.** Today it is an inline compare
+  in `calendar.controller.rsvpReply` that throws `UnauthorizedException` and
+  leaves nothing behind. This is the failure `v2-33`'s stage pass hit for two
+  days — the secret arrived empty because the container held two rows for it —
+  and a single logged row would have ended it in minutes.
+- **A malformed request body.** Note *where* this one happens: `@Body() dto:
+  RsvpReplyDto` is validated by the global pipe **before** the handler runs, so
+  nothing inside the method ever sees it. Either an interceptor or exception
+  filter scoped to the route, or — simpler and probably right — accept the body
+  loosely and validate inside the handler, which puts both of these writes and
+  the parser's seven in one place instead of three.
+
+**The endpoint is unauthenticated, so logging its failures lets an anonymous
+caller write rows**, and that needs answering in the same change. **The answer
+is a bound, not a block** (Rob raised it 2026-10-20; worked through below), and
+most of it already exists:
+
+- **It is already throttled at 30/minute per IP, not the global 60.**
+  `ThrottlerAuditGuard` rewrites any *mutating* route that relies on the
+  module default to `WRITE_LIMIT`, and this route declares no `@Throttle()`.
+  (An earlier draft of this section said 60/minute with no route limit. Wrong,
+  and worth stating because the number is the whole argument: worst-case growth
+  is ~30 rows/min/IP.)
+- **Suppress repeats, and leave a row saying so.** The pattern to copy is in
+  `throttler-audit.guard.ts` itself: an in-memory `IP → last hit` map that
+  writes an audit entry only when the source is new or unseen for 30 minutes.
+  Log the first failure from a source, then one "N further suppressed" row.
+  **Never silence it entirely** — a log that goes quiet under load rebuilds the
+  invisible failure this item exists to kill, which is the one mistake that
+  would make the feature worse than nothing.
+- **Never store the body of a bad-token request.** Record that one arrived, its
+  size and its source; never attacker-supplied content. A log built to make
+  failures visible must not become the way to fill the disk.
+
+**Do not block by IP at the application layer.** The only legitimate caller of
+this endpoint is a Cloudflare Worker, and its egress address belongs to
+Cloudflare and is shared with everything else on that network — so the
+realistic victim of an IP block is **our own inbound mail path**, failing
+exactly the silent way this item exists to eliminate. There is also form here:
+`v2-14` found `trust proxy` unset, so every request in the deployment reported
+`::ffff:127.0.0.1` and the per-IP demo cap became a deployment-wide cap of two.
+That is fixed (`main.ts`), but per-IP logic in this codebase has been wrong
+before in a way nothing noticed.
+
+**And there is nothing to unblock today, deliberately.** The throttler is
+in-memory with a 60-second TTL and the dedupe map is in-memory too, so a
+"block" self-clears in a minute and no state can get stuck. Building persistent
+blocking means building a block list, an expiry, an unblock path and an audit
+trail for both directions — a new product surface, and one whose failure mode is
+locking out the Worker with no way in. **If blocking is wanted, it belongs at
+Cloudflare**, in front of the origin: stateful, visible in the dashboard,
+reversible without a deploy, and never having to guess the client IP.
+
+**A throttle trip on this endpoint is a row in THIS log, not an `audit_log`
+entry** (Rob, 2026-10-20). A throttle trip already writes `auth.rate_limited`
+to `audit_log` with the IP, path and limit, and a draft of this section said to
+write the inbound ones on the **root** tenant so the operator could see them.
+**That was wrong**, and it was wrong by importing `v2-32`'s pattern without
+checking it against the rule already decided here. In `v2-32` an entry written
+against the community would have disclosed the *operator's* actions to that
+community, so root was right. Here the event is that community's own inbound
+traffic, there is nothing to withhold, and routing it to root would hide from a
+community's admins the one thing they were given this screen for — **tracking
+down issues with their own email setup**, which is the reason tenant-level
+visibility exists at all.
+
+So it needs no second mechanism and no new policy: **the log's own visibility
+rule already answers it.** A trip is a row with the tenant resolved from the
+host, so that community's admins see it and the operator sees it with the
+community named — operator sees all, tenant sees theirs, one rule for
+everything on the screen.
+
+Two notes for whoever builds it:
+
+- **A throttle row always has a tenant, and that simplifies things.**
+  `TenantMiddleware` runs ahead of the guards and 404s an unknown host, so
+  anything that reaches the throttler has already resolved one. The
+  **null-tenant** rows come from the *message* resolving to no community — the
+  parser's case — never from the throttler's.
+- **The write has to happen in the guard or a filter, not the controller**,
+  because a throttled request never reaches the handler.
+  `ThrottlerAuditGuard` already overrides `throwThrottlingException`, which is
+  the natural place to branch on the path. Leave its generic `audit_log`
+  behaviour alone for every other route rather than changing deployment-wide
+  behaviour to serve one endpoint.
+- **The 30-minute dedupe map is in-memory**, so it resets on restart and is not
+  shared between containers: the same source can produce one row per container
+  per restart. Acceptable, and better said here than discovered later.
+
 **Also in scope:** the Worker catches its own POST failures and returns, so
 Cloudflare's Email Routing activity log shows every message as **Handled** even
 when nothing was delivered — which is how v1's apex-host misconfiguration went
@@ -3165,11 +3280,18 @@ side, and an inbound log is the only place it could.
 **Definition of done:** inbound messages and their outcome are visible to an
 admin on the same screen as outbound, each failure exit above distinguishable
 from the others; a community's admins see their own rows and nothing else, the
-operator sees every row with the community named, and a row matching no
-community is visible to the operator alone; a refused Muse sync RSVP appears on
-the same screen with its reason once `v2-29` lands; a POST the Worker could not
-deliver is visible on our side; and a retention position is taken deliberately
-with its reasoning recorded.
+operator sees **every** row — those belonging to a community, with it named, and
+those belonging to none — and a row matching no community is visible to the
+operator alone; a refused Muse sync RSVP appears on
+the same screen with its reason once `v2-29` lands; **a request that fails
+before the parser — bad secret, malformed body — leaves a row, while a request
+that never arrives is accepted as unknowable**; nothing an unauthenticated
+caller sends can grow the table without bound or store its content, and the
+suppression that bounds it leaves a row rather than going quiet; a rate-limit
+trip on this endpoint is visible to the **operator**, not only to the community
+whose host it arrived on; and the
+retention position (keep everything, for now) is stated where the table is
+defined so it reads as provisional.
 
 **One cutover-specific check belongs in its stage pass**, since diagnosing the
 cutover is why this item moved: two communities on the stage deployment, a
