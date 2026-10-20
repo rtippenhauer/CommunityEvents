@@ -942,10 +942,11 @@ refusals write to the log from the start instead of being retrofitted; those two
 paths are the only ways an RSVP changes without the member touching the site,
 and they fail identically today. The log is global with a **nullable** tenant id
 (a message matching no community is the most valuable row and a scoped table
-cannot hold one), the **root tenant sees every row with its community named, and
-a community's admins see only their own** — and because the table is global the
+cannot hold one), the **root tenant sees every row — the tenantless ones
+included, with the community named wherever there is one — and a community's
+admins see only their own** — and because the table is global the
 scoping extension injects nothing, so every tenant-facing read carries its own
-predicate by hand. The test for whether anything else belongs
+predicate by hand while the operator's read carries none. The test for whether anything else belongs
 on that path is **"does DinnerBears have it today?"**; if not, going live
 without it is parity rather than regression, which defers most of the backlog.
 (Do not restate a total here -- the one that used to be written in this spot

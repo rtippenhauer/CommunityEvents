@@ -3120,9 +3120,15 @@ condition that recurs forever and needs somewhere to be seen.
   screen, and it is also the shape a multi-tenant fault takes.
 
   **Visibility follows from that, and is the rule to implement first** (Rob,
-  2026-10-20): **the root tenant sees every row, each showing which community
-  it belongs to; a community's admins see only their own.** Two consequences
-  worth stating before anybody writes a query:
+  2026-10-20): **the root tenant sees every row — including the ones that belong
+  to no tenant at all — with the community named wherever there is one; a
+  community's admins see only their own.** "Every row" is literal and the
+  null-tenant ones are the point of it, not an exception to it: a message that
+  resolved to no community is both the most valuable row on the screen and the
+  only row no tenant-facing query can ever return, so if the operator view
+  filtered them out the log would be blind precisely where it was built to see.
+  The operator view therefore has **no** `tenantId` predicate rather than a
+  clever one. Two consequences worth stating before anybody writes a query:
 
   - **The scoping extension will not do this for you.** The table is global, so
     nothing is injected — every read must carry its own `tenantId` predicate by
@@ -3229,16 +3235,41 @@ locking out the Worker with no way in. **If blocking is wanted, it belongs at
 Cloudflare**, in front of the origin: stateful, visible in the dashboard,
 reversible without a deploy, and never having to guess the client IP.
 
-**Two fixes to the visibility that already exists.** A throttle trip writes
-`auth.rate_limited` to `audit_log` with the IP, path and limit — but
-`audit_log` is **tenant-scoped**, so the entry lands in whichever community owns
-the Host header and the operator never sees it unless they look inside that
-community. Write operator-relevant entries on the **root** tenant, as `v2-32`
-already does for system-admin actions. And the 30-minute dedupe map is
-in-memory, so it resets on restart and is not shared between containers: the
-same source can produce one entry per container per restart, which is
-acceptable for an audit trail and should be said out loud rather than
-discovered.
+**A throttle trip on this endpoint is a row in THIS log, not an `audit_log`
+entry** (Rob, 2026-10-20). A throttle trip already writes `auth.rate_limited`
+to `audit_log` with the IP, path and limit, and a draft of this section said to
+write the inbound ones on the **root** tenant so the operator could see them.
+**That was wrong**, and it was wrong by importing `v2-32`'s pattern without
+checking it against the rule already decided here. In `v2-32` an entry written
+against the community would have disclosed the *operator's* actions to that
+community, so root was right. Here the event is that community's own inbound
+traffic, there is nothing to withhold, and routing it to root would hide from a
+community's admins the one thing they were given this screen for — **tracking
+down issues with their own email setup**, which is the reason tenant-level
+visibility exists at all.
+
+So it needs no second mechanism and no new policy: **the log's own visibility
+rule already answers it.** A trip is a row with the tenant resolved from the
+host, so that community's admins see it and the operator sees it with the
+community named — operator sees all, tenant sees theirs, one rule for
+everything on the screen.
+
+Two notes for whoever builds it:
+
+- **A throttle row always has a tenant, and that simplifies things.**
+  `TenantMiddleware` runs ahead of the guards and 404s an unknown host, so
+  anything that reaches the throttler has already resolved one. The
+  **null-tenant** rows come from the *message* resolving to no community — the
+  parser's case — never from the throttler's.
+- **The write has to happen in the guard or a filter, not the controller**,
+  because a throttled request never reaches the handler.
+  `ThrottlerAuditGuard` already overrides `throwThrottlingException`, which is
+  the natural place to branch on the path. Leave its generic `audit_log`
+  behaviour alone for every other route rather than changing deployment-wide
+  behaviour to serve one endpoint.
+- **The 30-minute dedupe map is in-memory**, so it resets on restart and is not
+  shared between containers: the same source can produce one row per container
+  per restart. Acceptable, and better said here than discovered later.
 
 **Also in scope:** the Worker catches its own POST failures and returns, so
 Cloudflare's Email Routing activity log shows every message as **Handled** even
@@ -3249,8 +3280,9 @@ side, and an inbound log is the only place it could.
 **Definition of done:** inbound messages and their outcome are visible to an
 admin on the same screen as outbound, each failure exit above distinguishable
 from the others; a community's admins see their own rows and nothing else, the
-operator sees every row with the community named, and a row matching no
-community is visible to the operator alone; a refused Muse sync RSVP appears on
+operator sees **every** row — those belonging to a community, with it named, and
+those belonging to none — and a row matching no community is visible to the
+operator alone; a refused Muse sync RSVP appears on
 the same screen with its reason once `v2-29` lands; **a request that fails
 before the parser — bad secret, malformed body — leaves a row, while a request
 that never arrives is accepted as unknowable**; nothing an unauthenticated
