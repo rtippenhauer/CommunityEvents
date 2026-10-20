@@ -22,9 +22,26 @@ side — the variable arrives empty and nothing says why:
    to save its value more than once in this deployment's history.
 
 The file is
-`/mnt/user/appdata/communityevents-v2-stage/appdata/.env` on the host,
+`/mnt/user/appdata/communityevents_stage/.env` on the host,
 `/app/appdata/.env` in the container, and the API loads it first:
 `envFilePath: ['/app/appdata/.env', '.env']`.
+
+**That host path is the live stage container's, confirmed from its own mounts on
+2026-10-20** (`docker inspect CommunityEvents-v2-Stage --format
+'{{json .Mounts}}'`), and it is **not** what this file said until then — it named
+`communityevents-v2-stage/appdata`, copied from the template's default, which
+the running container was never created from. Read the mounts rather than this
+paragraph if the two ever disagree again; the container is the authority and a
+documented path is a copy.
+
+**Only a non-secret belongs in the template instead.** `BASE_DOMAIN` went there
+on 2026-10-20 and that was right: the reason secrets live in this file is that
+Unraid does not persist `Mask="true"` fields, which says nothing about ordinary
+variables. It matters which way round you get it, because **a template row beats
+this file** — dotenv does not override a key already in the environment, and a
+*blank* row still counts as present. So a value in the file while an empty field
+exists on the container is the arrangement most likely to look configured and
+not be.
 
 The template still declares masked fields for `DB_PASSWORD`, `JWT_SECRET`,
 `BREVO_API_KEY`, `CLOUDFLARE_EMAIL_SECRET` and a dozen more. Treat them as

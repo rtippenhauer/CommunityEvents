@@ -892,11 +892,27 @@ under the key still sitting in the old folder. That is one of `v2-7`'s three
 deliberate startup refusals working correctly, and it would read as an unrelated
 outage.
 
-Before any re-add: reconcile the template's two path defaults with the live
-container (`docker inspect CommunityEvents-v2-Stage --format '{{json .Mounts}}'`
-is the authority), or copy `secret-encryption.key` to the new path first. Fixing
-the template is the better direction, since the live paths are the ones with the
-data in them. A forwarding catch-all is what previously let a
+**Reconciled the same day.** The live mounts, read from the container itself:
+
+```
+/app/uploads  <-  /mnt/user/appdata/communityevents_stage/upload
+/app/appdata  <-  /mnt/user/appdata/communityevents_stage
+```
+
+The template and `docs/SECRETS.md` now carry those, so a re-add keeps the key.
+The template was fixed rather than the container, because the live paths are the
+ones with the data in them.
+
+**Note `/app/uploads` is a subfolder of the `/app/appdata` mount**, which is not
+what two sibling entries in the template look like: backing up the appdata path
+to preserve `secret-encryption.key` therefore also copies every uploaded file,
+and anybody sizing that backup from the key alone will be surprised.
+
+**The rule the drift leaves behind:** the container's own mounts are the
+authority, `docker inspect CommunityEvents-v2-Stage --format '{{json .Mounts}}'`
+is how to ask, and a path written in a doc or a template is a *copy* that can
+be wrong. This one was wrong from the day it was written and nothing noticed,
+because the only operation that reads it is the one nobody had performed yet. A forwarding catch-all is what previously let a
 stage RSVP reply land in an inbox instead of reaching the API, so dropping is
 both the quieter and the more honest default — an address nobody configured
 should not silently work.
