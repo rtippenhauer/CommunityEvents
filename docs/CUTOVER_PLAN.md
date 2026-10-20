@@ -819,10 +819,100 @@ no `contact_calendar_email`, no `mail_domain`, a blank `CALENDAR_ORGANIZER_EMAIL
 on the container — and derived from the deployment domain, addressing the
 invite's `ORGANIZER` to `calendar-stage@stage.communityeventsproject.com`. That
 is a **subdomain**, Email Routing is apex-only, and there is no MX there: the
-reply bounced before Cloudflare ever saw it. **A community on any domain other
+reply never reached Cloudflare at all. **A community on any domain other
 than the deployment's own must have its `mail_domain` set explicitly**, or its
 mail identity silently becomes an address that cannot receive. Nothing warns;
-the invite looks perfect and the reply dies at the sender. A forwarding catch-all is what previously let a
+the invite looks perfect and the reply dies at the sender.
+
+> **Corrected and widened 2026-10-20, after Rob was buried in bounces.** Two
+> things above were wrong.
+>
+> **It does not "bounce".** With no MX, a sender falls back to the A/AAAA record
+> as an implicit MX — and `stage.communityeventsproject.com`'s A records are
+> Cloudflare's *web* proxy (104.21.77.246, 172.67.213.85), which does not answer
+> on port 25. A refusal would be one hard bounce; a **timeout is a temporary
+> failure**, so Gmail queues the message and warns the sender every few hours for
+> 48 hours. One reply produces a stream of mail, and the failure is loud for the
+> *member* and still invisible to us.
+>
+> **The rule is stronger than "a community on another domain".** The derived
+> address here was on the deployment's own domain, and it was still dead,
+> because the stage deployment *is itself* a subdomain. So: **a deployment whose
+> host is below the apex must set `BASE_DOMAIN` to the apex**, or the last step
+> of the chain — the deployment-wide fallback every tenant inherits — produces an
+> address that cannot receive. Every stage deployment is in this position by
+> construction, and `calendar-stage@`, `hello@` and `noreply@` are all derived
+> from it.
+>
+> `instance-contact.ts` already strips a leading `www.` because `www.<domain>`
+> has no MX, and `AppConfigService.mailDomain()` already refuses to derive from a
+> *tenant's* host for the same reason — both guards are written out at length in
+> the code. Neither covers the deployment's own host, which is the one case
+> nobody thought to doubt.
+>
+> **Setting it needs a restart, not a deploy** — `ConfigModule` reads
+> `/app/appdata/.env` at boot (`app.module.ts`). But **dotenv does not override a
+> key already in the environment**, and the Unraid template declares
+> `BASE_DOMAIN` as an advanced field: a blank row on the container beats the file
+> and reads as unset, restoring the broken derivation. Check
+> `docker exec CommunityEvents-v2-Stage env | grep BASE_DOMAIN` after restarting.
+> Per-tenant `mail_domain` at Admin → Site Settings needs no restart at all —
+> it is a database row, uncached, and beats the env step in the chain.
+>
+> **Fixed and verified live, 2026-10-20.** `BASE_DOMAIN=communityeventsproject.com`
+> was set on the container (one row, no duplicate) and the feed now reads
+> `ORGANIZER;CN=…:mailto:calendar-stage@communityeventsproject.com` — the apex,
+> which holds the MX and the routing rule. Confirmed by fetching a real
+> `calendar/feed.ics` from stage rather than by reading the code: the chain has
+> four steps and only the live value proves which one answered.
+>
+> **It went in the container's own template field, not the appdata `.env`, and
+> that is the right place.** The appdata `.env` exists because Unraid does not
+> persist **masked** fields — that is a secrets problem. `BASE_DOMAIN` is not a
+> secret, it is already declared as an advanced template field, and a template
+> row beats the file, so putting it in the file while the field exists is the
+> arrangement most likely to look configured and not be.
+
+#### The live container's paths have drifted from this template (2026-10-20)
+
+Found while looking for the appdata `.env`: **there is no `.env` there at all**,
+and the folder holding `secret-encryption.key` is
+`/mnt/user/appdata/communityevents_stage/` — underscore, no `appdata`
+subfolder, with uploads in `upload/` beside it. The checked-in template defaults
+to `/mnt/user/appdata/communityevents-v2-stage/appdata` and `uploads`, and
+`docs/SECRETS.md` names the same hyphenated path. So the running container was
+not created from this template, and the deployment is configured through
+template variables rather than a file.
+
+**Why this is not cosmetic.** Re-adding the container from the template — which
+is exactly what picks up the `sh` shell fix and the XML fix — would point
+`/app/appdata` at an empty folder. The app would find no key, generate a fresh
+one, and then **refuse to start**, because the database holds secrets encrypted
+under the key still sitting in the old folder. That is one of `v2-7`'s three
+deliberate startup refusals working correctly, and it would read as an unrelated
+outage.
+
+**Reconciled the same day.** The live mounts, read from the container itself:
+
+```
+/app/uploads  <-  /mnt/user/appdata/communityevents_stage/upload
+/app/appdata  <-  /mnt/user/appdata/communityevents_stage
+```
+
+The template and `docs/SECRETS.md` now carry those, so a re-add keeps the key.
+The template was fixed rather than the container, because the live paths are the
+ones with the data in them.
+
+**Note `/app/uploads` is a subfolder of the `/app/appdata` mount**, which is not
+what two sibling entries in the template look like: backing up the appdata path
+to preserve `secret-encryption.key` therefore also copies every uploaded file,
+and anybody sizing that backup from the key alone will be surprised.
+
+**The rule the drift leaves behind:** the container's own mounts are the
+authority, `docker inspect CommunityEvents-v2-Stage --format '{{json .Mounts}}'`
+is how to ask, and a path written in a doc or a template is a *copy* that can
+be wrong. This one was wrong from the day it was written and nothing noticed,
+because the only operation that reads it is the one nobody had performed yet. A forwarding catch-all is what previously let a
 stage RSVP reply land in an inbox instead of reaching the API, so dropping is
 both the quieter and the more honest default — an address nobody configured
 should not silently work.

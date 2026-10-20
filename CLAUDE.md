@@ -67,8 +67,11 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 ## V2 Rewrite Status
 
 **Current v2 work item:** **none in progress.** Next on the cutover path is
-**`v2-29`** — porting v1's Phase 39 (Muse API + Facebook RSVP sync), the
-largest remaining item on it. Read the spec in v1's
+**`v2-34`** — an inbound email log, pulled forward from post-cutover on
+2026-10-20 (see the running order below for why, and `V2_PHASES.md` for the
+schema and visibility decisions taken with it). Then **`v2-29`** — porting v1's
+Phase 39 (Muse API + Facebook RSVP sync), the largest remaining item on the
+path, whose sync refusals write to that log. Read Phase 39's spec in v1's
 `docs/PORT_TO_COMMUNITYEVENTS.md` (sibling checkout `../DinnerBears`), not this
 repo's summaries of it.
 
@@ -923,10 +926,26 @@ plausible-sounding problem in a planning doc costs more than a missing one.
 `REQ-IMPORT-01` is still marked superseded in part, now only for the
 one-tenant-per-source-database framing.
 
-Six things stand between here and a live DinnerBears — `/v2-done 14`, the
+What stands between here and a live DinnerBears — `/v2-done 14`, the
 dispatcher claim step carved out of `v2-27`, `v2-33` (v1's five bugfixes),
-`v2-29` (port Phase 39), `v2-24` (cities, which the import depends on), `v2-25`
-(the import) — plus a production deployment that does not exist yet. The test for whether anything else belongs
+**`v2-34` (an inbound email log)**, `v2-29` (port Phase 39), `v2-24` (cities,
+which the import depends on), `v2-25` (the import) — plus a production
+deployment that does not exist yet.
+
+**`v2-34` was pulled onto this path on 2026-10-20 and the parity test below is
+deliberately overruled for it.** It is an instrument *for* the cutover rather
+than a feature: inbound mail fails silently seven ways, the import and first
+production deployment are when that is least affordable, and its second job is
+finding multi-tenant faults nobody has found yet — a reply resolving to the
+wrong community, or to none. It runs **ahead of `v2-29`** so the Muse sync's
+refusals write to the log from the start instead of being retrofitted; those two
+paths are the only ways an RSVP changes without the member touching the site,
+and they fail identically today. The log is global with a **nullable** tenant id
+(a message matching no community is the most valuable row and a scoped table
+cannot hold one), the **root tenant sees every row with its community named, and
+a community's admins see only their own** — and because the table is global the
+scoping extension injects nothing, so every tenant-facing read carries its own
+predicate by hand. The test for whether anything else belongs
 on that path is **"does DinnerBears have it today?"**; if not, going live
 without it is parity rather than regression, which defers most of the backlog.
 (Do not restate a total here -- the one that used to be written in this spot
@@ -1352,6 +1371,17 @@ authoritative (per REQ-TENANT-01.3).
   `hello@dayton.example.com` would bounce silently. Same failure the `www.` strip
   guards against, one level down. Pass an explicit tenant id inside a
   `runUnscoped` sweep, as with `baseUrlFor()`.
+- **And a deployment below the apex must set `BASE_DOMAIN` to the apex** — the
+  gap both guards above leave open, found 2026-10-20. The last step of the chain
+  derives from the *deployment's* own host, and stage is
+  `stage.communityeventsproject.com`, where Email Routing is apex-only and no MX
+  exists, so every tenant inheriting the default got
+  `calendar-stage@stage.…` and `noreply@stage.…`. **With no MX a sender falls
+  back to the A record**, which is Cloudflare's web proxy: replies time out
+  instead of being refused, so the sender's mail server retries for 48 hours and
+  warns them repeatedly. Loud for the member, silent for us. Every stage
+  deployment is in this position by construction. See `docs/CUTOVER_PLAN.md`'s
+  inbound-mail section; `v2-34` exists to make this class of failure visible.
 - **A credential still never goes in `app_config`** — but the reason changed in
   `v2-7`. It is no longer that nowhere is safe; it is that `app_config` rows are
   served to unauthenticated visitors (the branding payload, the public
