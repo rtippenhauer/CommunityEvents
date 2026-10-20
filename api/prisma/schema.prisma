@@ -1407,6 +1407,16 @@ model users {
   lastQualifyingLoginAt                                        DateTime?                  @map("last_qualifying_login_at") @db.DateTime(0)
   lastSeenReleaseId                                            Int?                       @map("last_seen_release_id") @db.UnsignedInt
   lastSeenAnnouncementId                                       Int?                       @map("last_seen_announcement_id") @db.UnsignedInt
+  /// Publish date of the newest release this member has dismissed -- the
+  /// watermark the "what's new" splash compares against. The id beside it is
+  /// NOT enough on its own: unpublishing a release makes an older one latest
+  /// again, and a different id reads as unseen, so the whole community is
+  /// re-announced a release they already dismissed. Written only together with
+  /// `lastSeenReleaseId`, and only ever forwards.
+  lastSeenReleaseAt                                            DateTime?                  @map("last_seen_release_at") @db.DateTime(0)
+  /// Same watermark for announcements. An announcement cannot be unpublished
+  /// today, but deleting the newest one has the identical effect.
+  lastSeenAnnouncementAt                                       DateTime?                  @map("last_seen_announcement_at") @db.DateTime(0)
   announcement_comments                                        announcement_comments[]
   announcements_announcements_created_byTousers                announcements[]            @relation("announcements_created_byTousers")
   content_flags_content_flags_reported_byTousers               content_flags[]            @relation("content_flags_reported_byTousers")

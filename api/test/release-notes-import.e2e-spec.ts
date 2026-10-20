@@ -163,6 +163,43 @@ describe('Release notes boot-time import (e2e)', () => {
       expect(release?.version).toBe('1.6.10');
     });
 
+    // The defect this rides on: unpublishing a release re-announced an older
+    // one to every member. Run against a real database because the watermark
+    // and its backfill are columns, and because the ordering that makes the
+    // bug possible (publish date, not id) is the database's.
+    it('does not re-announce an older release after the newest is unpublished', async () => {
+      await importer.importAll();
+      const rows = await prisma.releases.findMany({ orderBy: { id: 'asc' } });
+      const oldest = rows[0]; // 1.6.1 -- the LOWEST id
+
+      // Publish dates that disagree with the ids, which is the stage case: a
+      // note drafted first and published last. Every other note keeps the
+      // importer's NOW(), so they are moved back together first.
+      await prisma.releases.updateMany({ data: { publishedAt: new Date('2026-10-15T12:00:00Z') } });
+      await prisma.releases.update({
+        where: { id: oldest.id },
+        data: { publishedAt: new Date('2026-10-19T12:00:00Z') },
+      });
+
+      const member = await seedUser(prisma, city.id, { email: 'member@example.test' });
+      const whatsNew = app.get(WhatsNewService);
+
+      const first = await whatsNew.getUnseen(member.id);
+      expect(first.release?.id).toBe(oldest.id);
+      await whatsNew.markReleaseSeen(member.id, oldest.id);
+      expect((await whatsNew.getUnseen(member.id)).release).toBeNull();
+
+      // Unpublished the way `ReleasesService.unpublish` does it -- straight to
+      // NULL. That service is not used here because publishing also walks
+      // tenant-scoped feedback, which is not what this is about.
+      await prisma.releases.update({ where: { id: oldest.id }, data: { publishedAt: null } });
+
+      // An older release is latest again, with a HIGHER id than the watermark:
+      // the exact shape `id !== lastSeenReleaseId` got wrong.
+      const after = await whatsNew.getUnseen(member.id);
+      expect(after.release).toBeNull();
+    });
+
     it('lists them newest first on the Updates page', async () => {
       await importer.importAll();
       await prisma.releases.updateMany({ data: { publishedAt: new Date('2026-10-15T12:00:00Z') } });
