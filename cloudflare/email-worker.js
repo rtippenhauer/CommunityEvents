@@ -1,31 +1,26 @@
 /**
- * Cloudflare Email Worker — DinnerBears calendar reply handler
+ * Cloudflare Email Worker — CommunityEvents calendar reply handler
  *
- * Receives inbound email sent to calendar@dinnerbears.com (prod) or
- * calendar@stage.dinnerbears.com (stage) when a member taps Accept/Maybe/Decline
- * on a calendar invite, then forwards the raw message to the correct API.
+ * Receives inbound email sent to a community's calendar organizer address when
+ * a member taps Accept/Maybe/Decline on a calendar invite, then forwards the raw
+ * message to the deployment that sent the invite.
  *
- * Deploy steps:
- *  1. Enable Email Routing for dinnerbears.com in the Cloudflare dashboard.
- *  2. Create routes:
- *       calendar@dinnerbears.com       → this Worker  (prod)
- *       calendar-stage@dinnerbears.com → this Worker  (stage)
- *  3. Set Worker environment variables (Workers > Settings > Variables & Secrets):
- *       CLOUDFLARE_EMAIL_SECRET  — shared secret, must match API container env
- *       API_URL                  — https://dinnerbears.com
- *       STAGE_API_URL            — https://stage.dinnerbears.com  (optional)
- *  4. Set the same CLOUDFLARE_EMAIL_SECRET in both prod and stage API containers.
- *  5. In stage docker-compose / env, set:
- *       CALENDAR_ORGANIZER_EMAIL=calendar@stage.dinnerbears.com
- *     (so stage .ics invites reply to the stage address, not prod)
+ * Deployed as `communityevents_calendar`. v1's `dinnerbear_calendar` is a
+ * separate Worker running v1's copy of this file — do not point this one at
+ * dinnerbears.com, and do not edit that one from here.
  *
- * wrangler.toml:
- *   name = "dinnerbears-calendar-reply"
- *   main = "email-worker.js"
- *   compatibility_date = "2024-01-01"
- *   [vars]
- *   API_URL = "https://dinnerbears.com"
- *   STAGE_API_URL = "https://stage.dinnerbears.com"
+ * The route list is the access control: this Worker forwards whatever is
+ * routed to it. See docs/CUTOVER_PLAN.md, "Inbound mail — calendar replies".
+ *
+ * Variables (Workers > Settings > Variables & Secrets):
+ *   CLOUDFLARE_EMAIL_SECRET  — secret, must match the API container's env
+ *   STAGE_API_URL            — https://stage.communityeventsproject.com
+ *   API_URL                  — production; deliberately unset until it exists
+ *
+ * There is no hardcoded fallback host. An address whose deployment has no URL
+ * set is dropped with a log line, rather than posted to a guess — v1's copy
+ * fell back to the dinnerbears.com apex, which has no A record, so an unset
+ * variable failed silently while Cloudflare reported the message as Handled.
  */
 
 export default {
@@ -38,11 +33,10 @@ export default {
 
     // Route to prod or stage based on which address received the email
     const to = (message.to ?? '').toLowerCase();
-    let apiUrl;
-    if (to.startsWith('calendar-stage@')) {
-      apiUrl = env.STAGE_API_URL ?? env.API_URL ?? 'https://dinnerbears.com';
-    } else {
-      apiUrl = env.API_URL ?? 'https://dinnerbears.com';
+    const apiUrl = to.startsWith('calendar-stage@') ? env.STAGE_API_URL : env.API_URL;
+    if (!apiUrl) {
+      console.error(`No API URL configured for ${to} — dropping email`);
+      return;
     }
 
     let raw;
