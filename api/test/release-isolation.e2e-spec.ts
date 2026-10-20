@@ -270,6 +270,91 @@ describe('Release isolation (e2e)', () => {
      * somebody else's report credited nobody at all. The fix keeps the identity
      * behind the boundary and lets the *fact* of a contributor cross it.
      */
+    /**
+     * Two reports from ONE member of another community are ONE contributor.
+     *
+     * Found on stage 2026-10-18: the visible list is keyed by user, so two
+     * reports by the same person read as their name once at home -- while this
+     * branch did `anonymous += 1` per row and said "2 community members"
+     * everywhere else. The same two rows described one contributor or two
+     * depending on who was asking.
+     */
+    const seedTwoReportsFromOnePerson = async (): Promise<number> =>
+      await unscoped('seeding reports filed across communities', async () => {
+        const release = await prisma.releases.create({
+          data: {
+            version: '2.0.1',
+            title: 'Shipped',
+            body: 'notes',
+            publishedAt: new Date(),
+            createdBy: rootAdminId,
+          },
+        });
+        const theirMember = (await prisma.users.findFirst({
+          where: { email: 'otheradmin@example.test' },
+        }))!;
+
+        await prisma.system_reports.createMany({
+          data: [
+            {
+              category: 'bug',
+              title: 'first',
+              body: 'one',
+              status: 'shipped',
+              reportedByUserId: theirMember.id,
+              reportedByTenantId: otherTenantId,
+              shippedInReleaseId: release.id,
+            },
+            {
+              category: 'bug',
+              title: 'second',
+              body: 'two',
+              status: 'shipped',
+              reportedByUserId: theirMember.id,
+              reportedByTenantId: otherTenantId,
+              shippedInReleaseId: release.id,
+            },
+          ],
+        });
+        return release.id;
+      });
+
+    it('counts one contributor, not two reports, when both are from the same member', async () => {
+      await seedTwoReportsFromOnePerson();
+
+      const res = await request(server)
+        .get('/api/v1/releases')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', rootMemberCookie)
+        .expect(200);
+
+      const release = res.body.find((r: { version: string }) => r.version === '2.0.1');
+      expect(release.linkedFeedback).toHaveLength(0);
+      expect(release.anonymousCredits).toBe(1);
+    });
+
+    /**
+     * The same two reports, read at home, name that member once -- which is the
+     * half that was always right and the reason the count abroad had to change
+     * rather than the list at home.
+     */
+    it('names that member once in their own community', async () => {
+      await seedTwoReportsFromOnePerson();
+
+      const res = await request(server)
+        .get('/api/v1/releases')
+        .set('Host', otherDomain)
+        .set('Cookie', otherAdminCookie)
+        .expect(200);
+
+      const release = res.body.find((r: { version: string }) => r.version === '2.0.1');
+      const names = new Set(
+        release.linkedFeedback.map((f: { user: { fullName: string } }) => f.user.fullName),
+      );
+      expect(names.size).toBe(1);
+      expect(release.anonymousCredits).toBe(0);
+    });
+
     it("counts the other community's contributors without naming them", async () => {
       await seedCrossTenantRelease();
 

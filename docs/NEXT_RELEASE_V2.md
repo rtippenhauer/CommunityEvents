@@ -832,3 +832,44 @@ Attachments appear as thumbnails that open full size, and a note on the form is
 worth repeating: **a screenshot shows everything on it**, so crop out member
 names and addresses before attaching one — the platform board is read by the
 administrators of every community.
+
+## Credit where it is due, on the right release
+
+**The people who report things now get credited accurately.** When a bug or
+request you filed ships, the release note in your own community thanks you by
+name — and the same note, read in another community, says only that a community
+member asked for it. One note, written once, reading correctly everywhere.
+
+**Two people are two people; one person is one person.** A release that fixed
+two things reported by the same member used to thank "2 community members" when
+read elsewhere, which made one contributor look like a crowd. It now counts
+people.
+
+**Release notes are listed in the order they were published**, with anything
+still being drafted at the top, so the dates on the screen read the way you
+expect.
+
+## Fixes carried over from DinnerBears
+
+**Upcoming events follow their venue.** Rename one of our locations, or correct
+its address, and upcoming events there show the change straight away. Past
+events keep the name and address they had on the day.
+
+**Creating an event as Published sends the invites.** Before, an event created
+straight as Published skipped the automatic invitations that an event published
+later would have sent.
+
+**Accepting a calendar invite from Gmail now records your RSVP.** Gmail sends
+its replies in an encoding the site misread, so pressing Accept, Maybe or
+Decline appeared to do nothing. Replies land against the right community even
+where a community uses its own domain.
+
+**"I Made the Reservation" works for the member who was asked.** The button was
+only ever usable by organizers, which is the opposite of who it was for.
+Reservation times also display correctly now — a 6:30pm dinner no longer reads
+as 12:30.
+
+**Release notes read in your community's own words.** Where a note mentions
+points, events or locations, it now uses whatever your community calls them,
+everywhere the note appears rather than on one page only. Notes are also
+listed in the order they were published.

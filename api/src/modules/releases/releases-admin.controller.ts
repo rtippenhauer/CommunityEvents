@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseIntPipe,
   Patch,
@@ -14,6 +16,7 @@ import { UpdateReleaseDto } from './dto/update-release.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { RootTenantGuard } from '../../common/guards/root-tenant.guard';
+import { OperatorGuard } from '../../common/guards/operator.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '../../database/enums';
@@ -59,6 +62,40 @@ export class ReleasesAdminController {
   @Roles(UserRole.ADMIN)
   getResolvedFeedback() {
     return this.releasesService.getResolvedFeedback();
+  }
+
+  /**
+   * Bugs & requests an operator may credit on a release (v2-43).
+   *
+   * `OperatorGuard` rather than `@Roles(ADMIN)` alone: `system_reports` is the
+   * shared board across every community, so this is the operator's list, not
+   * any one community admin's -- and the guard keys on `is_service_account`,
+   * never on the role, which is deliberately flipped for testing.
+   */
+  @Get('report-candidates')
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.AUTOMATION)
+  @UseGuards(OperatorGuard)
+  getReportCandidates() {
+    return this.releasesService.getReportCandidates();
+  }
+
+  @Post(':id/reports/:reportId')
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.AUTOMATION)
+  @UseGuards(OperatorGuard)
+  @HttpCode(204)
+  async linkReport(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('reportId', ParseIntPipe) reportId: number,
+  ): Promise<void> {
+    await this.releasesService.linkReport(id, reportId);
+  }
+
+  @Delete('reports/:reportId')
+  @Roles(UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.AUTOMATION)
+  @UseGuards(OperatorGuard)
+  @HttpCode(204)
+  async unlinkReport(@Param('reportId', ParseIntPipe) reportId: number): Promise<void> {
+    await this.releasesService.unlinkReport(reportId);
   }
 
   @Get(':id')

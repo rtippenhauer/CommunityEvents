@@ -66,11 +66,17 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 
 ## V2 Rewrite Status
 
-**Current v2 work item:** **`v2-33`** — porting v1's five outstanding bugfixes.
-Branch `v2-33-port-v1-bugfixes`, cut off `main` 2026-10-14. **All five
-implemented 2026-10-15 and open as a PR, awaiting `/v2-testing 33`** — the visual
-half (splash and Updates wording, the assignee's button) has not been seen on
-stage. See V2_PHASES.md's v2-33 section for what landed and what is unverified.
+**Current v2 work item:** **none in progress.** Next on the cutover path is
+**`v2-29`** — porting v1's Phase 39 (Muse API + Facebook RSVP sync), the
+largest remaining item on it. Read the spec in v1's
+`docs/PORT_TO_COMMUNITYEVENTS.md` (sibling checkout `../DinnerBears`), not this
+repo's summaries of it.
+
+**One known defect is open and reaches members**, found during that pass:
+unpublishing a release re-announces an older one, because `whats-new.service`
+compares `latestRelease.id !== user.lastSeenReleaseId` rather than a
+watermark — dismiss 2.0.0 and, if 1.6.3 becomes latest again, it reads as
+unseen. Recorded here rather than in a branch because nothing is fixing it yet.
 
 **`v2-33` + `v2-29` is what "caught up to prod DinnerBears" means** — the
 bugfixes and Phase 39 (MUSE) respectively. `v2-24` (cities) is *not* catch-up;
@@ -98,6 +104,79 @@ deployment that does not exist yet. `v2-31` and `v2-32` were not on that path;
 both were pulled forward by Rob and are done.
 
 **Completed v2 items:**
+- **`v2-33` — v1's five outstanding bugfixes, ported** (2026-10-19; code
+  2026-10-15, stage pass 2026-10-19). All five verified as live defects here
+  before porting, rather than taken on trust from v1's port doc — and all six
+  stage checks passed, which is what "caught up to prod DinnerBears" means for
+  the bugfix half.
+
+  **#45 is the one worth remembering.** v2 did not lack the reasoning; it had a
+  long, confident comment arguing that a readable `BEGIN:VCALENDAR` proves the
+  block was never quoted-printable. True of most senders, false of Gmail, which
+  sends a readable marker *and* `=3D` escapes. Neither "always decode" nor
+  "never decode" is right, which is why the wrong answer looked reasoned.
+
+  **Its stage pass cost two days of infrastructure, not code.** Nothing about
+  the inbound path had ever been pointed at this deployment: Email Routing was
+  unconfigured on `communityeventsproject.com`, and `CLOUDFLARE_EMAIL_SECRET`
+  arrived empty because the container held **two rows for it, one blank** —
+  `docker run` takes the last. A tenant then produced no reply at all because
+  it had **no `mail_domain`**, so its invite's `ORGANIZER` derived from the
+  deployment domain and landed on a subdomain with no MX. Each failure is
+  silent on both sides: no bounce to the member, nothing an admin can see.
+  See `docs/CUTOVER_PLAN.md`'s inbound-mail section, which is now the record of
+  what is live in Cloudflare.
+
+  **Two ride-along defects of our own**, both the same `DATETIME(0)` tie as
+  `v2-31`'s pagination bug: `whats-new.service` could call the wrong release
+  newest when several import in one second, and the notes importer relied on
+  unsorted `readdir` order, which stops being alphabetical at `1.6.10`.
+
+  **Open and unfixed**, found during the pass: unpublishing a release
+  re-announces an older one to every member, because `whats-new.service`
+  compares `latestRelease.id !== user.lastSeenReleaseId` rather than a
+  watermark. It needs a publish-date comparison; the announcements query two
+  lines below has the same shape.
+
+  v1's port doc rows for #41, #42, #43, #45 and #47 still read `Ported: No` —
+  that edit lives in the other repo.
+- **`v2-43` — Linking bugs & requests to a release** (2026-10-19). v2-32 made
+  credit a **link** and the read path rendered it per community — but **no
+  screen ever wrote one.** Marking a report *Shipped* set a status and nothing
+  else, and the release composer offered only `feedback`, a different and
+  tenant-scoped board. So the feature was unreachable by a human, and last
+  night's successful stage test of it worked only because the links had been
+  set through the API.
+
+  **Feedback linking is gone from the composer.** A release note is the
+  product's artifact and `system_reports` is the product's board, which is the
+  split `v2-32` already drew; crediting a tenant-scoped ticket on a
+  deployment-wide note made credit depend on which host the operator happened
+  to be composing from.
+
+  **Linking never writes the note.** The old picker regenerated the body from
+  the ticked items on every toggle and overwrote notes typed by hand. Reports
+  carry no curated note text and `addReportCredits` selects ids only — a
+  member's words must not become copy every community reads — so there is
+  nothing to generate.
+
+  **`shipped` is an offered candidate on purpose**: a report marked shipped by
+  hand had left `resolved` and could never be offered again, and keeping it
+  listed is also what makes "unlink from 2.0.0, link to 1.6.3" work.
+
+  **The link and the status are deliberately independent.** A published note
+  must not silently lose a credit because somebody re-triaged a ticket, so the
+  link is a fact about history and the status is a workflow state — and each
+  report now *says* which release holds it, because the only real flaw in that
+  rule was that it was invisible.
+
+  Shipped alongside, both found on stage and both pre-dating this item: the
+  anonymous credit count counted **rows rather than people**, so two reports
+  from one member read as "2 community members" abroad and as one name at home;
+  and the admin release list **sorted by `createdAt` while displaying
+  `publishedAt`**, the third instance of the ordering bug `v2-33` fixed twice.
+  `npm run credits:migrate` moves the six existing feedback credits across,
+  dry-run by default.
 - **`v2-32` — A channel from a community to the operator** (2026-10-09). Two
   global tables, because `feedback` stays tenant-scoped: a member wrote that
   having consented to their own community's admins reading it, and forwarding it
