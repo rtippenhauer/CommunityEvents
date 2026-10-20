@@ -3271,11 +3271,45 @@ Two notes for whoever builds it:
   shared between containers: the same source can produce one row per container
   per restart. Acceptable, and better said here than discovered later.
 
-**Also in scope:** the Worker catches its own POST failures and returns, so
-Cloudflare's Email Routing activity log shows every message as **Handled** even
-when nothing was delivered — which is how v1's apex-host misconfiguration went
-unnoticed. A rejected or unreachable POST currently surfaces nowhere on either
-side, and an inbound log is the only place it could.
+**Also in scope, and done 2026-10-20:** the Worker caught its own POST failures
+and returned, and **returning normally is what makes Cloudflare mark the message
+Handled** — so a message we never processed looked delivered on their side and
+left nothing on ours. That is how v1's apex-host misconfiguration went
+unnoticed.
+
+**It forwards to a human instead of rejecting.** `message.setReject()` would
+make the failure visible, but the docs are explicit that it is a *permanent*
+SMTP error: the member who pressed Accept gets a bounce for an outage that is
+ours. `message.forward()` keeps the entire payload, puts it in a mailbox the
+operator reads, and tells the member nothing — which is right, because from
+their side the Accept worked and the only person who can act is the operator.
+This is Cloudflare's own documented fallback order (log, stash, forward, reject
+last), stopping before the reject. A new Worker variable
+`FALLBACK_FORWARD_TO` holds the destination and **must be a verified
+destination address**; unset, the Worker behaves exactly as before.
+
+**It forwards only when nobody has a record of the message.** A 4xx is the API
+answering deliberately — a rejected secret, a malformed body — and each of those
+now writes a row, which is a better record than a copy in an inbox and is
+already on the screen. A 5xx or a network failure may have happened before any
+row was written, so those forward: a duplicate notice costs a glance, a lost
+reply costs a member their seat.
+
+Two limits recorded rather than discovered: Cloudflare **refuses to forward mail
+that fails SPF/DKIM** (since July 2025), so the fallback can itself be
+impossible — `canBeForwarded` is checked and the log line then says the message
+was lost, rather than implying it was handled. And the forwarded copy lands in
+an inbox with no pointer back to the log, so it is a parallel channel rather
+than part of the screen.
+
+**Deliberately not built, noted so it is not forgotten:** stashing the raw
+message in KV or R2 and replaying it when the API returns. That is the only
+option that recovers the RSVP without somebody retyping it, and it is worth
+having if inbound volume ever makes hand-replay impractical. `message.reply()`
+is also available and is deliberately unused — telling the member is
+defensible, but it is a member-facing message with its own copy, threading and
+loop concerns, and the first version of this feature should not be inventing
+outbound mail from the Worker.
 
 **Definition of done:** inbound messages and their outcome are visible to an
 admin on the same screen as outbound, each failure exit above distinguishable

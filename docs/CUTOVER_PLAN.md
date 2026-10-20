@@ -733,6 +733,7 @@ address whose deployment has no URL is dropped with a log line.
 | `communityevents_calendar` | `STAGE_API_URL` | `https://stage.communityeventsproject.com` |
 | | `API_URL` | **unset on purpose** — production does not exist; a non-`calendar-stage@` address is dropped, not posted |
 | | `CLOUDFLARE_EMAIL_SECRET` | a **secret** (not plain text), copied from v1's value on 2026-10-15 with Rob's OK — one value now authenticates to both v1 and v2 stage, so rotating it is a change on both sides |
+| | `FALLBACK_FORWARD_TO` | added by `v2-34`. Where a message the Worker could not hand to the API is forwarded instead, so the payload survives an outage without bouncing to the member. **Must be a verified destination address** (Email Routing → Destination addresses) — an address on one of our own zones is a *routing rule*, not a destination, and forwarding to one fails. Leave unset and the Worker behaves exactly as before, logging and dropping. |
 
 v1's Worker holds its `CLOUDFLARE_EMAIL_SECRET` as a **plain-text variable**,
 so any API token that can read Worker settings can read it. Worth moving to a
