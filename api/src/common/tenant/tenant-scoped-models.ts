@@ -123,6 +123,22 @@ export const GLOBAL_MODELS = [
   'demo_requests',
   'email_suppressions',
   'facebook_deletion_requests',
+  /**
+   * The inbound mail log (v2-34) is global so that it can hold the row that
+   * matters most: a message that resolved to **no** community.
+   *
+   * The handler runs outside any request, so the tenant is derived from the
+   * event the reply's UID names -- and when nothing resolves, `tenant_id` is
+   * left NULL. A scoped table cannot store that row at all, and it is both the
+   * most valuable row on the screen and the shape a multi-tenant fault takes.
+   *
+   * The cost of being here is that the extension injects nothing, so **every
+   * tenant-facing read must carry its own `tenant_id` predicate** and a
+   * forgotten one shows a community somebody else's mail. The operator's read
+   * carries none, deliberately. Not a hole in the isolation -- the rows are
+   * reports about the deployment's own plumbing, held by whoever operates it.
+   */
+  'inbound_emails',
   'merch_config',
   'release_feedback',
   'releases',
