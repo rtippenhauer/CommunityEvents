@@ -66,6 +66,16 @@ CREATE TABLE `inbound_emails` (
     `from_address` VARCHAR(255) NULL,
     `to_address` VARCHAR(255) NULL,
     `subject` VARCHAR(500) NULL,
+    -- **What the message CLAIMED, and deliberately NOT a foreign key.**
+    -- `unknown_uid` and `event_not_found` are outcomes about an event that is
+    -- missing, so a key here would make the two most diagnostic rows in this
+    -- table physically impossible to write. Found by the e2e spec: it asserted
+    -- a row for a reply naming event 999999 and got none, because the insert
+    -- failed the constraint and the log -- which must never fail a request --
+    -- swallowed the error. Same reasoning as v2-30's ban records holding values
+    -- rather than keys: a log records a claim; a key asserts the claim is true.
+    -- It also keeps a later event deletion from erasing which event a failure
+    -- was about, which SET NULL would do.
     `event_id` INTEGER UNSIGNED NULL,
     `user_id` INTEGER UNSIGNED NULL,
     -- Plain text, not the `event_rsvps_status` enum: a log records what
@@ -98,7 +108,9 @@ CREATE TABLE `inbound_emails` (
     INDEX `idx_inbound_emails_tenant_received`(`tenant_id`, `received_at`),
     -- "Show me only the failures", on either read.
     INDEX `idx_inbound_emails_outcome_received`(`outcome`, `received_at`),
-    INDEX `fk_inbound_emails_event`(`event_id`),
+    -- Indexed without a constraint behind it: "what happened to replies about
+    -- this event" is a question worth answering either way.
+    INDEX `idx_inbound_emails_event`(`event_id`),
     INDEX `fk_inbound_emails_user`(`user_id`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -106,7 +118,5 @@ CREATE TABLE `inbound_emails` (
 ALTER TABLE `inbound_emails`
   ADD CONSTRAINT `fk_inbound_emails_tenant` FOREIGN KEY (`tenant_id`)
     REFERENCES `tenants`(`id`) ON DELETE SET NULL ON UPDATE NO ACTION,
-  ADD CONSTRAINT `fk_inbound_emails_event` FOREIGN KEY (`event_id`)
-    REFERENCES `events`(`id`) ON DELETE SET NULL ON UPDATE NO ACTION,
   ADD CONSTRAINT `fk_inbound_emails_user` FOREIGN KEY (`user_id`)
     REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE NO ACTION;

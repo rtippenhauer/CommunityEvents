@@ -150,6 +150,29 @@ export type TenantScopedModel = (typeof TENANT_SCOPED_MODELS)[number];
 export type GlobalModel = (typeof GLOBAL_MODELS)[number];
 
 /**
+ * Global models that nevertheless carry a `tenantId`, and may only carry a
+ * **nullable** one.
+ *
+ * Normally a `tenant_id` on a global model is a bug with a specific shape: a
+ * model that was meant to be scoped, classified global by mistake, leaving a
+ * column that looks filtered in the schema and is filtered by nothing. The spec
+ * enforces that, and it is why this list exists rather than the check simply
+ * being relaxed -- an exception nobody declared is indistinguishable from that
+ * mistake.
+ *
+ * What makes `inbound_emails` legitimate is the **nullability**, which the spec
+ * also enforces. A scoped model's `tenantId` is non-null precisely so a row
+ * cannot belong to nobody; this table's whole purpose includes the row that
+ * belongs to nobody -- a message that arrived and matched no community, which is
+ * the most valuable row on its screen and the shape a multi-tenant fault takes.
+ * A required column could not express it and a scoped table could not hold it.
+ *
+ * Adding to this list is a deliberate act with a cost: every tenant-facing read
+ * of that model must carry its own predicate, because the extension will not.
+ */
+export const GLOBAL_MODELS_WITH_OPTIONAL_TENANT = ['inbound_emails'] as const satisfies readonly GlobalModel[];
+
+/**
  * Compile-time proof that the two lists cover `Prisma.ModelName` exactly.
  *
  * `Unclassified` is the set of models in neither list and `Duplicated` the set

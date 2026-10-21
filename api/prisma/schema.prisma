@@ -543,10 +543,21 @@ model inbound_emails {
   fromAddress String?                @map("from_address") @db.VarChar(255)
   toAddress   String?                @map("to_address") @db.VarChar(255)
   subject     String?                @db.VarChar(500)
-  /// What the reply was about and who sent it, once resolved. Both are nullable
-  /// because most failure outcomes never get this far.
+  /// **What the message CLAIMED, not a reference to something that exists.**
+  /// No foreign key, deliberately: `unknown_uid` and `event_not_found` are
+  /// outcomes about an event that is missing, so a key would make the two most
+  /// diagnostic rows in the table physically impossible to write -- found by
+  /// the e2e spec, which asserted a row for a reply naming event 999999 and got
+  /// none, because the insert failed the constraint and the log swallowed it.
+  /// Same reasoning as `v2-30`'s ban records holding values rather than keys: a
+  /// log records a claim, and a key asserts the claim is true. It also means a
+  /// later event deletion cannot erase which event a failure was about.
   eventId     Int?                   @map("event_id") @db.UnsignedInt
   userId      Int?                   @map("user_id") @db.UnsignedInt
+  /// Who we resolved it to, where we got that far. This one IS a key, unlike
+  /// `event_id` above, because it is only ever set to a member we just read --
+  /// and losing the link when that account is deleted is right, which is the
+  /// `v2-32` reporter argument.
   /// The RSVP this reply asked for, as plain text rather than the
   /// `event_rsvps_status` enum. A log records what happened; coupling it to a
   /// live enum would mean a future status change rewriting history's meaning.
@@ -573,7 +584,6 @@ model inbound_emails {
   receivedAt  DateTime               @default(now()) @map("received_at") @db.DateTime(3)
 
   tenant      tenants?               @relation(fields: [tenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_inbound_emails_tenant")
-  event       events?                @relation(fields: [eventId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_inbound_emails_event")
   user        users?                 @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_inbound_emails_user")
 
   /// The operator's read: every row, newest first, no tenant predicate.
@@ -582,7 +592,9 @@ model inbound_emails {
   @@index([tenantId, receivedAt], map: "idx_inbound_emails_tenant_received")
   /// "Show me only the failures", on either read.
   @@index([outcome, receivedAt], map: "idx_inbound_emails_outcome_received")
-  @@index([eventId], map: "fk_inbound_emails_event")
+  /// Still indexed, for "what happened to replies about this event" -- the
+  /// index is useful whether or not a constraint backs it.
+  @@index([eventId], map: "idx_inbound_emails_event")
   @@index([userId], map: "fk_inbound_emails_user")
 }
 
@@ -709,7 +721,6 @@ model events {
   achievements              achievements[]
   event_comments            event_comments[]
   event_guest_links         event_guest_links[]
-  inbound_emails            inbound_emails[]
   rsvps                     event_rsvps[]
   city                      cities              @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
   createdByUser             users               @relation("events_created_byTousers", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_created_by")

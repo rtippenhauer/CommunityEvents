@@ -7,7 +7,7 @@ import { TEST_TENANT_ID } from './setup-env';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { TenantResolutionService } from '../src/common/tenant/tenant-resolution.service';
 import { runUnscoped, runWithTenant } from '../src/common/tenant/tenant-store';
-import { EventStatus, RsvpStatus, UserRole } from '../src/database/enums';
+import { EventStatus, InboundEmailOutcome, RsvpStatus, UserRole } from '../src/database/enums';
 import { toDateColumn, toTimeColumn } from '../src/common/utils/prisma-date.util';
 
 const CLOUDFLARE_SECRET = 'test-cloudflare-email-secret-not-for-real-use';
@@ -197,5 +197,182 @@ describe('Calendar email replies (e2e)', () => {
     const rsvps = await rsvpsFor(eventB.id);
     expect(rsvps).toHaveLength(1);
     expect(rsvps[0]).toMatchObject({ userId: memberB.id, status: RsvpStatus.NOT_GOING });
+  });
+
+  /**
+   * v2-34: every exit below used to be a `logger.warn` and a bare `return`, so
+   * the entire failure mode was "a member pressed Accept and nothing happened".
+   * These assert the log *row*, not the log line — the point of the item is
+   * that the outcome now lands somewhere a human looks.
+   *
+   * Read unscoped because `inbound_emails` is global, which is precisely why
+   * every tenant-facing read in the API has to carry its own predicate.
+   */
+  describe('writes an inbound log row for every outcome', () => {
+    const logRows = () =>
+      runUnscoped('test: the inbound log is global', async () =>
+        prisma.inbound_emails.findMany({ orderBy: { id: 'asc' } }),
+      );
+
+    const onlyRow = async () => {
+      const all = await logRows();
+      expect(all).toHaveLength(1);
+      return all[0];
+    };
+
+    it('records a successful reply, with the event and member on the row', async () => {
+      const event = await seedEvent();
+      await send(gmailReply(event.id, 'ACCEPTED', SHARED_EMAIL));
+
+      const row = await onlyRow();
+      expect(row).toMatchObject({
+        outcome: InboundEmailOutcome.RECORDED,
+        tenantId: TEST_TENANT_ID,
+        eventId: event.id,
+        userId: member.id,
+        rsvpStatus: RsvpStatus.GOING,
+      });
+      // The envelope is parsed so the list reads without opening a row.
+      expect(row.fromAddress).toContain(SHARED_EMAIL);
+      expect(row.subject).toContain('Accepted');
+      expect(row.rawBody).toContain('BEGIN:VCALENDAR');
+    });
+
+    it('distinguishes a reply that changed nothing from one that was recorded', async () => {
+      const event = await seedEvent();
+      await send(gmailReply(event.id, 'ACCEPTED', SHARED_EMAIL));
+      await send(gmailReply(event.id, 'ACCEPTED', SHARED_EMAIL));
+
+      const all = await logRows();
+      expect(all.map((r) => r.outcome)).toEqual([
+        InboundEmailOutcome.RECORDED,
+        InboundEmailOutcome.UNCHANGED,
+      ]);
+    });
+
+    it('records a message with no calendar part, which is what a human reply looks like', async () => {
+      await send(['From: someone@example.test', 'Subject: thanks!', '', 'See you there'].join('\r\n'));
+
+      expect(await onlyRow()).toMatchObject({ outcome: InboundEmailOutcome.NO_ICAL });
+    });
+
+    it('records an unrecognised UID', async () => {
+      const raw = gmailReply(123, 'ACCEPTED', SHARED_EMAIL).replace(
+        'UID:communityevents-event-123@communityeventsproject.com',
+        'UID:not-one-of-ours@example.test',
+      );
+      await send(raw);
+
+      expect(await onlyRow()).toMatchObject({ outcome: InboundEmailOutcome.UNKNOWN_UID });
+    });
+
+    it('records an event that does not exist', async () => {
+      await send(gmailReply(999999, 'ACCEPTED', SHARED_EMAIL));
+
+      expect(await onlyRow()).toMatchObject({
+        outcome: InboundEmailOutcome.EVENT_NOT_FOUND,
+        eventId: 999999,
+      });
+    });
+
+    it('records a PARTSTAT we do not handle, and says which', async () => {
+      const event = await seedEvent();
+      await send(gmailReply(event.id, 'DELEGATED', SHARED_EMAIL));
+
+      const row = await onlyRow();
+      expect(row.outcome).toBe(InboundEmailOutcome.UNHANDLED_PARTSTAT);
+      expect(row.detail).toContain('DELEGATED');
+    });
+
+    it('records an address that belongs to no member of that community', async () => {
+      const event = await seedEvent();
+      await send(gmailReply(event.id, 'ACCEPTED', 'stranger@example.test'));
+
+      const row = await onlyRow();
+      expect(row.outcome).toBe(InboundEmailOutcome.MEMBER_NOT_FOUND);
+      expect(row.detail).toContain('stranger@example.test');
+    });
+
+    /**
+     * **The multi-tenant fault**, and the reason the operator view exists.
+     * Recorded against the community that OWNS the event rather than the host
+     * the reply arrived on: the community missing an RSVP is the one whose
+     * event it was. Both ends of the mismatch are on the row.
+     */
+    it('records a reply that arrived on the wrong community host', async () => {
+      const event = await seedEvent(TEST_TENANT_ID);
+      await inTenant(TENANT_B_ID, () => seedUser(prisma, city.id, { email: SHARED_EMAIL }));
+
+      await send(gmailReply(event.id, 'ACCEPTED', SHARED_EMAIL), TENANT_B_DOMAIN);
+
+      const row = await onlyRow();
+      expect(row.outcome).toBe(InboundEmailOutcome.TENANT_MISMATCH);
+      expect(row.tenantId).toBe(TEST_TENANT_ID);
+      expect(row.detail).toContain(`tenant ${TENANT_B_ID}`);
+    });
+
+    it('records a bad secret, keeping the size and source but not the body', async () => {
+      await request(server)
+        .post('/api/v1/calendar/rsvp-reply')
+        .set('X-Cloudflare-Secret', 'wrong')
+        .send({ raw: 'secret-probe-body' })
+        .expect(401);
+
+      const row = await onlyRow();
+      expect(row.outcome).toBe(InboundEmailOutcome.INVALID_SECRET);
+      // The body of an unauthenticated request is attacker-supplied content.
+      expect(row.rawBody).toBeNull();
+      expect(row.sizeBytes).toBe('secret-probe-body'.length);
+      expect(row.sourceIp).not.toBeNull();
+    });
+
+    /**
+     * The failure the global `ValidationPipe` would have swallowed: it rejects
+     * a malformed body before the handler runs, which is why `rsvpReply` takes
+     * an `unknown` body and validates it itself. Without that, this row could
+     * not exist — and it is the one most likely to mean somebody is probing us.
+     */
+    it('records a malformed body, which a DTO would have rejected before the handler', async () => {
+      await request(server)
+        .post('/api/v1/calendar/rsvp-reply')
+        .set('X-Cloudflare-Secret', CLOUDFLARE_SECRET)
+        .send({ notRaw: 42 })
+        .expect(400);
+
+      const row = await onlyRow();
+      expect(row.outcome).toBe(InboundEmailOutcome.MALFORMED_REQUEST);
+      expect(row.rawBody).toBeNull();
+    });
+
+    /**
+     * Repeats from one source fold into the row they repeat rather than each
+     * writing their own, because this endpoint is unauthenticated and the log
+     * has to stay bounded. It must not go *quiet* to do it, which is what the
+     * counter is for: a row that climbs is visible, a row never written is not.
+     */
+    it('folds repeated identical failures into one row with a counter', async () => {
+      for (let i = 0; i < 3; i++) {
+        await request(server)
+          .post('/api/v1/calendar/rsvp-reply')
+          .set('X-Cloudflare-Secret', 'wrong')
+          .send({ raw: 'probe' })
+          .expect(401);
+      }
+
+      const all = await logRows();
+      expect(all).toHaveLength(1);
+      expect(all[0].suppressedCount).toBe(2);
+    });
+
+    it('never folds a successful reply, however many arrive', async () => {
+      const first = await seedEvent();
+      const second = await seedEvent();
+      await send(gmailReply(first.id, 'ACCEPTED', SHARED_EMAIL));
+      await send(gmailReply(second.id, 'ACCEPTED', SHARED_EMAIL));
+
+      const all = await logRows();
+      expect(all).toHaveLength(2);
+      expect(all.every((r) => r.suppressedCount === 0)).toBe(true);
+    });
   });
 });

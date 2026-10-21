@@ -30,6 +30,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { AdminInboundMailComponent } from './admin-inbound-mail.component';
 
 /**
  * One row of the email log (v2-31).
@@ -183,6 +184,7 @@ interface EmailConfig {
   selector: 'app-admin-email',
   standalone: true,
   imports: [
+    AdminInboundMailComponent,
     DatePipe,
     JsonPipe,
     ReactiveFormsModule,
@@ -818,6 +820,11 @@ interface EmailConfig {
             }
           </mat-card-content>
         </mat-card>
+
+        <!-- The other half of the log (v2-34). A separate component because it
+             also renders on the operator's deployment-wide screen, and because
+             this file is long enough already. -->
+        <app-admin-inbound-mail />
       } @else {
         <mat-spinner diameter="40" />
         <p class="loading-note">Loading email settings…</p>

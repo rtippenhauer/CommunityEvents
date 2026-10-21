@@ -372,6 +372,16 @@ export const routes: Routes = [
     canActivate: [authGuard, nonDemoTenantGuard],
   },
   {
+    // The operator's inbound-mail log (v2-34). `systemAdminGuard` because this
+    // screen carries every community's mail, including messages that matched
+    // none -- the same reason the API route sits under `system/` behind
+    // OperatorGuard rather than under `admin/`.
+    path: 'system/inbound-mail',
+    loadComponent: () =>
+      import('./features/system/inbound-mail.component').then((m) => m.SystemInboundMailComponent),
+    canActivate: [authGuard, systemAdminGuard],
+  },
+  {
     // One component, two sides: the form inside a demo, the operator's list on
     // the root tenant. `demoFeedbackGuard` allows exactly those two.
     path: 'demo/feedback',

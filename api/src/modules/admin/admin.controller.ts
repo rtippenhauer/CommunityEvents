@@ -17,6 +17,8 @@ import { Throttle } from '@nestjs/throttler';
 import { AdminService, AuditLogFilter } from './admin.service';
 import { EmailService } from '../email/email.service';
 import { EmailLogQueryDto } from '../email/dto/email-log-query.dto';
+import { InboundEmailLogQueryDto } from '../email/dto/inbound-email-log-query.dto';
+import { InboundEmailLogService } from '../email/inbound-email-log.service';
 import { EmailDispatcherService } from '../email/email-dispatcher.service';
 import { BrevoWebhookService } from '../email/brevo-webhook.service';
 import { BrevoService } from '../email/brevo.service';
@@ -48,6 +50,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly emailService: EmailService,
+    private readonly inboundLog: InboundEmailLogService,
     private readonly emailDispatcher: EmailDispatcherService,
     private readonly brevoWebhook: BrevoWebhookService,
     private readonly brevo: BrevoService,
@@ -184,6 +187,42 @@ export class AdminController {
   @Roles(UserRole.ADMIN)
   getEmailLog(@Query() query: EmailLogQueryDto) {
     return this.emailService.getLog(query);
+  }
+
+  /**
+   * This community's **inbound** mail (v2-34) — the other half of the log.
+   *
+   * `requireTenantId` rather than a filter the service might forget, because
+   * `inbound_emails` is a global model: the scoping extension injects nothing,
+   * so a read with no predicate returns every community's mail. The id is
+   * passed as a required argument to `listForTenant`, which cannot be called
+   * without one — see that service's class comment for why there is no single
+   * `list()` that could be called either way by accident.
+   *
+   * A community never sees a row that resolved to no community either. That is
+   * not an oversight: such a message may name a *different* community's
+   * address, which is the customer list v2-32 is careful never to disclose, and
+   * those rows are the operator's view (`/system/email/inbound`).
+   */
+  @Get('email/inbound')
+  @Roles(UserRole.ADMIN)
+  getInboundLog(@Query() query: InboundEmailLogQueryDto) {
+    return this.inboundLog.listForTenant(requireTenantId('inbound email log'), query);
+  }
+
+  /**
+   * One inbound message's stored body, for this community only.
+   *
+   * Takes the tenant id exactly as the list does, so the detail view cannot
+   * become the hole in the isolation the list closed — fetching row 9 by id is
+   * otherwise the obvious way to read another community's mail.
+   */
+  @Get('email/inbound/:id')
+  @Roles(UserRole.ADMIN)
+  async getInboundBody(@Param('id', ParseIntPipe) id: number) {
+    const body = await this.inboundLog.getBody(id, requireTenantId('inbound email log'));
+    if (!body) throw new NotFoundException('No such inbound message');
+    return body;
   }
 
   /**
