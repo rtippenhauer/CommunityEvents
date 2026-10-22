@@ -136,6 +136,11 @@
             <a mat-list-item routerLink="/admin/email" (click)="sidenav.close()">
               <mat-icon matListItemIcon>mail</mat-icon> Email
             </a>
+            <!-- Inbound mail is a log, so it is something you go and look at
+                 rather than a section of the settings page (Rob, 2026-10-21). -->
+            <a mat-list-item routerLink="/admin/email/inbound" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>move_to_inbox</mat-icon> Inbound mail
+            </a>
             <a mat-list-item routerLink="/admin/secrets" (click)="sidenav.close()">
               <mat-icon matListItemIcon>key</mat-icon> API Keys
             </a>
@@ -173,6 +178,14 @@
                  2026-10-04). -->
             <a mat-list-item routerLink="/system/bugs" (click)="sidenav.close()">
               <mat-icon matListItemIcon>bug_report</mat-icon> Bugs &amp; requests
+            </a>
+            <!-- Inbound mail across every community (v2-34). Deployment-level
+                 and not under Settings: a community's admins see their own
+                 inbound mail inside Email, while this view also carries the
+                 messages that matched no community, which is where a reply
+                 that went astray actually shows up. -->
+            <a mat-list-item routerLink="/system/inbound-mail" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>move_to_inbox</mat-icon> Inbound mail
             </a>
             <a mat-list-item routerLink="/demo/feedback" (click)="sidenav.close()">
               <mat-icon matListItemIcon>reviews</mat-icon> Demo feedback
@@ -391,6 +404,9 @@
               <a mat-menu-item routerLink="/admin/email">
                 <mat-icon>mail</mat-icon> Email
               </a>
+              <a mat-menu-item routerLink="/admin/email/inbound">
+                <mat-icon>move_to_inbox</mat-icon> Inbound mail
+              </a>
               <a mat-menu-item routerLink="/admin/secrets">
                 <mat-icon>key</mat-icon> API Keys
               </a>
@@ -419,6 +435,9 @@
                 </a>
                 <a mat-menu-item routerLink="/system/bugs">
                   <mat-icon>bug_report</mat-icon> Bugs &amp; requests
+                </a>
+                <a mat-menu-item routerLink="/system/inbound-mail">
+                  <mat-icon>move_to_inbox</mat-icon> Inbound mail
                 </a>
                 <a mat-menu-item routerLink="/demo/feedback">
                   <mat-icon>reviews</mat-icon> Demo feedback

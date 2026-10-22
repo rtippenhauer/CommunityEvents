@@ -67,13 +67,16 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 ## V2 Rewrite Status
 
 **Current v2 work item:** **none in progress.** Next on the cutover path is
-**`v2-34`** — an inbound email log, pulled forward from post-cutover on
-2026-10-20 (see the running order below for why, and `V2_PHASES.md` for the
-schema and visibility decisions taken with it). Then **`v2-29`** — porting v1's
-Phase 39 (Muse API + Facebook RSVP sync), the largest remaining item on the
-path, whose sync refusals write to that log. Read Phase 39's spec in v1's
-`docs/PORT_TO_COMMUNITYEVENTS.md` (sibling checkout `../DinnerBears`), not this
-repo's summaries of it.
+**`v2-29`** — porting v1's Phase 39 (Muse API + Facebook RSVP sync), the largest
+remaining item on it. Read the spec in v1's `docs/PORT_TO_COMMUNITYEVENTS.md`
+(sibling checkout `../DinnerBears`), not this repo's summaries of it. Its sync
+refusals write to `v2-34`'s inbound log, which is why that item ran first.
+
+**Two things `v2-34` left open, neither a blocker:** `FALLBACK_FORWARD_TO` is
+still unset on the Cloudflare Worker, so the forward-on-failure path is dormant
+until a verified destination address is configured; and the
+operator-vs-community visibility split is covered by e2e across two communities
+but has not been read by a human on stage.
 
 **No known defect reaching members is open.** The last one — unpublishing a
 release re-announced an older one to everybody — was fixed and stage-verified
@@ -113,6 +116,63 @@ deployment that does not exist yet. `v2-31` and `v2-32` were not on that path;
 both were pulled forward by Rob and are done.
 
 **Completed v2 items:**
+- **`v2-34` — An inbound email log** (2026-10-22). Pulled onto the cutover path
+  from post-cutover, as an instrument *for* the cutover rather than a feature:
+  inbound mail failed silently and the import is when that is least affordable.
+
+  **Thirteen outcomes, and reading the code found two the item's own list
+  omitted.** `tenant_mismatch` — the UID names an event in one community while
+  the reply arrived on another's host — is precisely the multi-tenant fault the
+  item was pulled forward to catch, and it was a `logger.warn` and nothing else.
+  `unchanged` is not a failure and answers a different question from
+  `recorded`. A fourteenth, `counter_proposal`, came out of stage testing: "Propose
+  new time" sends `METHOD:COUNTER`, was filed `not_a_reply`, and that is a
+  correct classification and a useless row — the label reads as "not calendar
+  mail" and the one actionable fact was discarded.
+
+  **`inbound_emails` is global with a NULLABLE tenant id**, which is the shape
+  of the table rather than a detail: the handler runs outside any request, and a
+  message that matched no community is both the most valuable row on the screen
+  and one a scoped table cannot hold. The cost is that the extension injects
+  nothing, so `listForTenant(tenantId, …)` cannot be called without one while
+  `listAll()` carries no predicate at all. **Two methods, never one with an
+  optional filter** — a forgotten predicate here does not throw, it shows one
+  community another's mail.
+
+  **The classification spec refused it, correctly.** A `tenant_id` on a global
+  model is normally a scoped model misclassified. Rather than relax the check,
+  the exception is declared in `GLOBAL_MODELS_WITH_OPTIONAL_TENANT` and held
+  narrow by two new assertions: the column must be **nullable** (a required one
+  is the actual mistake), and an exception may not also be scoped.
+
+  **Three defects found by testing rather than by review.** `event_id` was a
+  foreign key, which made `unknown_uid` and `event_not_found` — the two most
+  diagnostic rows — *physically impossible to write*, since the insert failed the
+  constraint and `record()`, which must never fail a request, swallowed it; it is
+  a plain column now, as `v2-30`'s ban records are. Subjects displayed as raw
+  RFC 2047 encoded words (`=?UTF-8?Q?Proposed_new_time=3A_…`) on every row. And
+  `source_ip` recorded the Cloudflare edge rather than the caller, the same
+  family as `v2-14`'s unset `trust proxy`.
+
+  **A bound must not depend on a value the caller chooses.** Folding was keyed
+  on the source address, which could not collapse Worker mail at all (five
+  consecutive stage messages, five Cloudflare addresses) and could be widened by
+  rotating or spoofing the source. It keys on the **outcome** now, and only for
+  `invalid_secret`, `malformed_request` and `rate_limited` — a parse failure is
+  about one member's message, and folding two people's proposals into "+1 more"
+  would hide the second person. Measured on stage: 30 probes gave one row with
+  `folded=29`, and the 5 throttled ones one `rate_limited` row with `folded=4`.
+
+  **The Worker forwards instead of rejecting.** `setReject` is a *permanent*
+  SMTP error, so the member who pressed Accept would get a bounce for an outage
+  that is ours. It forwards the payload to the operator and tells the member
+  nothing — and only when nobody has a record: a 4xx is the API answering
+  deliberately and already writes a row, while a 5xx or a dead connection may
+  have failed before one existed.
+
+  Deployed to Cloudflare by API (content-only upload, which preserves bindings —
+  a full upload or `wrangler deploy` with no config in the repo would have wiped
+  `CLOUDFLARE_EMAIL_SECRET` and `STAGE_API_URL` and silently killed inbound mail).
 - **`v2-33` — v1's five outstanding bugfixes, ported** (2026-10-19; code
   2026-10-15, stage pass 2026-10-19). All five verified as live defects here
   before porting, rather than taken on trust from v1's port doc — and all six

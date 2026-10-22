@@ -315,6 +315,17 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    // This community's inbound mail. Its own screen rather than a card at the
+    // foot of Email Admin, which is a long page -- reaching the log meant
+    // scrolling past every setting (Rob, 2026-10-21).
+    path: 'admin/email/inbound',
+    loadComponent: () =>
+      import('./features/admin/email/admin-inbound-mail-page.component').then(
+        (m) => m.AdminInboundMailPageComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/oauth',
     loadComponent: () =>
       import('./features/admin/oauth/admin-oauth.component').then((m) => m.AdminOAuthComponent),
@@ -370,6 +381,16 @@ export const routes: Routes = [
     // No `adminGuard`: any member of a real community may file a report, and
     // the component shows the shared board only to those who may read it.
     canActivate: [authGuard, nonDemoTenantGuard],
+  },
+  {
+    // The operator's inbound-mail log (v2-34). `systemAdminGuard` because this
+    // screen carries every community's mail, including messages that matched
+    // none -- the same reason the API route sits under `system/` behind
+    // OperatorGuard rather than under `admin/`.
+    path: 'system/inbound-mail',
+    loadComponent: () =>
+      import('./features/system/inbound-mail.component').then((m) => m.SystemInboundMailComponent),
+    canActivate: [authGuard, systemAdminGuard],
   },
   {
     // One component, two sides: the form inside a demo, the operator's list on

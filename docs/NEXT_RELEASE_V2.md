@@ -751,6 +751,36 @@ the provider's address and this account's, so the mismatch is visible rather
 than inferred. Facebook's refusal also opens as a dialog now, the same as
 Google's, instead of a message that fades at the bottom of the page.
 
+## When someone replies to an invitation
+
+**You can now see every reply that comes back.** When a member taps Accept,
+Maybe or Decline on a calendar invitation, their answer travels back to us as an
+email — and until now, if anything about that reply could not be read, it simply
+vanished. The member saw their answer go; nothing changed on the site; and there
+was nothing anywhere to explain why. Admin → Inbound mail is the record of what
+arrived and what became of it.
+
+**Every outcome says what it was, in words.** A recorded RSVP, a reply that
+changed nothing because the member had already answered the same way, an address
+belonging to nobody in your community, an invitation that no longer exists — each
+reads as itself instead of as silence.
+
+**"Propose a new time" is no longer lost.** Some calendar apps let a guest
+suggest a different time instead of answering. That is a real request from a real
+member, and it now appears with the time they asked for, so somebody can answer
+them. Nothing is changed automatically: a different time is a different event,
+and that is the organiser's decision.
+
+**Replies that match no community reach the person who runs the deployment.** A
+message that cannot be matched to any community is the one most likely to mean
+something is misconfigured, so it is visible to the operator — who can see every
+community's inbound mail — while each community sees only its own.
+
+**A reply we cannot deliver is handed to a person instead of being dropped.** If
+the site is unreachable at the moment a reply arrives, the message is forwarded
+to the operator rather than discarded, so the RSVP can still be honoured by hand.
+Nobody gets a bounce for an outage that is ours.
+
 ## Updates and release notes
 
 **The thanks line now credits members from other communities too, without

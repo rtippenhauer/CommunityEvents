@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import type { Prisma, users as User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
-import { EventStatus, RsvpStatus } from '../../database/enums';
+import { EventStatus, InboundEmailOutcome, RsvpStatus } from '../../database/enums';
 import { asDateString, asTimeString } from '../../common/utils/prisma-date.util';
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS, eventUid, parseEventUid } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
@@ -12,6 +12,28 @@ import { TenantResolutionService } from '../../common/tenant/tenant-resolution.s
 import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import type { TenantContext } from '../../common/tenant/tenant-context';
 import { extractIcalFromEmail } from './ical-extract.util';
+
+/**
+ * What an inbound calendar reply turned out to mean (v2-34).
+ *
+ * `processRsvpReply` returns one of these instead of logging and returning
+ * `void`, so its caller can write a single row to the inbound log. Everything
+ * but `outcome` is best-effort: most failure outcomes stop before there is an
+ * event or a member to name, and the screen is honest about that rather than
+ * inventing values.
+ *
+ * `tenantId` is **the community the message turned out to belong to**, which is
+ * not necessarily the host it arrived on — see `TENANT_MISMATCH`, where they
+ * differ and that difference is the whole finding.
+ */
+export interface RsvpReplyOutcome {
+  outcome: InboundEmailOutcome;
+  detail?: string;
+  tenantId?: number | null;
+  eventId?: number | null;
+  userId?: number | null;
+  rsvpStatus?: string | null;
+}
 
 /**
  * The minimum an event needs to expose to be rendered into an .ics entry.
@@ -474,22 +496,55 @@ export class CalendarService {
    * host only narrows: a reply POSTed to a non-root community's own host is
    * accepted only for that community's events.
    */
-  async processRsvpReply(rawEmail: string, requestTenant?: TenantContext): Promise<void> {
+  /**
+   * Work out what an inbound reply means, and say so.
+   *
+   * **Returns an outcome rather than logging one** (v2-34). Every exit below
+   * used to be a `logger.warn` and a bare `return`, which made the failure mode
+   * "a member pressed Accept and their RSVP did not change", with a container
+   * log line as the only evidence. The caller records what comes back, so the
+   * thirteen places this can stop all reach the log through one write — Rob's
+   * call (2026-10-20) and the reason this signature is not `void`.
+   *
+   * The logger lines stay. They cost nothing and the log row is a database
+   * write that can itself fail, which is exactly when you want the old
+   * evidence.
+   */
+  async processRsvpReply(
+    rawEmail: string,
+    requestTenant?: TenantContext,
+  ): Promise<RsvpReplyOutcome> {
     const ical = extractIcalFromEmail(rawEmail);
     if (!ical) {
       this.logger.warn('rsvp-reply: no iCal block found in email');
-      return;
+      return { outcome: InboundEmailOutcome.NO_ICAL };
     }
 
     if (!/METHOD:REPLY/i.test(ical)) {
+      // "Propose new time" in Google Calendar sends METHOD:COUNTER, and it is
+      // the one non-reply a member sends on purpose. Reported as itself rather
+      // than lumped in below: a counter-proposal is somebody asking for a
+      // different time, and an admin can act on that -- where "not a calendar
+      // reply" reads as though the message were irrelevant (Rob, stage,
+      // 2026-10-21). Nothing automates it; a different time is a different
+      // event, which is the organiser's call.
+      if (/METHOD:COUNTER/i.test(ical)) {
+        const proposed = this.proposedTimeFrom(ical);
+        this.logger.log(`rsvp-reply: counter-proposal${proposed ? ` for ${proposed}` : ''}`);
+        return {
+          outcome: InboundEmailOutcome.COUNTER_PROPOSAL,
+          detail: proposed ? `proposed ${proposed}` : 'proposed a different time',
+          eventId: parseEventUid(ical) ?? undefined,
+        };
+      }
       this.logger.debug('rsvp-reply: not a METHOD:REPLY, ignoring');
-      return;
+      return { outcome: InboundEmailOutcome.NOT_A_REPLY };
     }
 
     const eventId = parseEventUid(ical);
     if (eventId === null) {
       this.logger.warn('rsvp-reply: unrecognized UID format');
-      return;
+      return { outcome: InboundEmailOutcome.UNKNOWN_UID };
     }
 
     // Unfold RFC 5545 line continuations then parse ATTENDEE
@@ -501,7 +556,13 @@ export class CalendarService {
     if (!partstatMatch || !emailMatch) {
       this.logger.warn(`rsvp-reply: could not parse ATTENDEE line: ${attendeeLine || '(not found)'}`);
       this.logger.debug(`rsvp-reply: iCal snippet: ${ical.slice(0, 400)}`);
-      return;
+      return {
+        outcome: InboundEmailOutcome.UNPARSEABLE_ATTENDEE,
+        // The line itself, because this is the one failure where the fix
+        // depends on what the sender actually wrote.
+        detail: attendeeLine || '(no ATTENDEE line found)',
+        eventId,
+      };
     }
 
     const partstat = partstatMatch[1].toUpperCase();
@@ -515,7 +576,11 @@ export class CalendarService {
     const rsvpStatus = statusMap[partstat];
     if (!rsvpStatus) {
       this.logger.debug(`rsvp-reply: unhandled PARTSTAT=${partstat}, ignoring`);
-      return;
+      return {
+        outcome: InboundEmailOutcome.UNHANDLED_PARTSTAT,
+        detail: `PARTSTAT=${partstat}`,
+        eventId,
+      };
     }
 
     const event = await runUnscoped(
@@ -528,22 +593,65 @@ export class CalendarService {
     );
     if (!event || event.status !== EventStatus.PUBLISHED) {
       this.logger.warn(`rsvp-reply: event ${eventId} not found or not published`);
-      return;
+      return {
+        outcome: InboundEmailOutcome.EVENT_NOT_FOUND,
+        detail: event ? `event ${eventId} is ${event.status}, not published` : undefined,
+        eventId,
+      };
     }
     if (requestTenant && !requestTenant.isRoot && requestTenant.id !== event.tenantId) {
       this.logger.warn(
         `rsvp-reply: event ${eventId} belongs to tenant ${event.tenantId}, but the reply was posted to tenant ${requestTenant.id}'s host`,
       );
-      return;
+      // **The multi-tenant fault.** Recorded against the tenant that OWNS the
+      // event, not the host the reply landed on: the question an operator is
+      // answering is "whose reply went astray", and the event's community is
+      // the one missing an RSVP. The host is in the detail so both ends of the
+      // mismatch are on the row.
+      return {
+        outcome: InboundEmailOutcome.TENANT_MISMATCH,
+        detail: `event belongs to tenant ${event.tenantId}, reply arrived on tenant ${requestTenant.id}'s host`,
+        tenantId: event.tenantId,
+        eventId,
+      };
     }
 
-    await runWithTenant(event.tenantId, async () => {
-      await this.recordRsvpReply(eventId, attendeeEmail, rsvpStatus);
-    });
+    return runWithTenant(event.tenantId, async () =>
+      this.recordRsvpReply(eventId, attendeeEmail, rsvpStatus, event.tenantId),
+    );
   }
 
   /** The write half of a reply, run inside the event's own community. */
-  private async recordRsvpReply(eventId: number, attendeeEmail: string, rsvpStatus: RsvpStatus): Promise<void> {
+  /**
+   * The time a counter-proposal is asking for, in words, or null.
+   *
+   * Best-effort on purpose: this decorates a log row, so an unparseable DTSTART
+   * costs the detail and nothing else — `processRsvpReply` still reports the
+   * outcome. Formatted in UTC with the offset spelled out, because the row is
+   * read by an operator who may be in a different zone from the community and a
+   * bare wall-clock time would be a guess about which.
+   */
+  private proposedTimeFrom(ical: string): string | null {
+    // The COUNTER's VEVENT carries the proposed start. `DTSTART;TZID=...:` and
+    // the bare UTC `DTSTART:...Z` form are both in the wild.
+    const match = ical.match(/^DTSTART[^:\r\n]*:(\d{8}T\d{6})Z?/im);
+    if (!match) return null;
+    const [, stamp] = match;
+    const iso = `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(
+      9,
+      11,
+    )}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`;
+    const when = new Date(iso);
+    if (Number.isNaN(when.getTime())) return null;
+    return `${when.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+  }
+
+  private async recordRsvpReply(
+    eventId: number,
+    attendeeEmail: string,
+    rsvpStatus: RsvpStatus,
+    tenantId: number,
+  ): Promise<RsvpReplyOutcome> {
     // findFirst: the address is only unique within a tenant. The extension
     // supplies the tenant, which processRsvpReply has just set to the event's
     // own -- so this finds the member the invitation was sent to, not a
@@ -551,14 +659,32 @@ export class CalendarService {
     const user = await this.prisma.users.findFirst({ where: { email: attendeeEmail } });
     if (!user) {
       this.logger.warn(`rsvp-reply: no user found for ${attendeeEmail}`);
-      return;
+      return {
+        outcome: InboundEmailOutcome.MEMBER_NOT_FOUND,
+        detail: `no member of this community holds ${attendeeEmail}`,
+        tenantId,
+        eventId,
+        rsvpStatus,
+      };
     }
 
     const existing = await this.prisma.event_rsvps.findFirst({
       where: { eventId, userId: user.id },
     });
     if (existing) {
-      if (existing.status === rsvpStatus) return;
+      // Understood, and it already said this. Reported as its own outcome
+      // rather than as `recorded`: "we changed nothing" answers a different
+      // question than "it worked", and a member asking why their reply did
+      // nothing deserves the honest one.
+      if (existing.status === rsvpStatus) {
+        return {
+          outcome: InboundEmailOutcome.UNCHANGED,
+          tenantId,
+          eventId,
+          userId: user.id,
+          rsvpStatus,
+        };
+      }
       await this.prisma.event_rsvps.update({
         where: { id: existing.id },
         data: { status: rsvpStatus },
@@ -571,5 +697,12 @@ export class CalendarService {
 
     this.invalidateForUser(user.id);
     this.logger.log(`rsvp-reply: ${attendeeEmail} → ${rsvpStatus} for event ${eventId}`);
+    return {
+      outcome: InboundEmailOutcome.RECORDED,
+      tenantId,
+      eventId,
+      userId: user.id,
+      rsvpStatus,
+    };
   }
 }

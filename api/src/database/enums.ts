@@ -35,6 +35,40 @@ export const ProgressType = {
 } as const;
 export type ProgressType = (typeof ProgressType)[keyof typeof ProgressType];
 
+// v2-34. What became of an inbound message -- every value is a place the
+// inbound handler can stop, so the screen can say which one. Mirrors
+// `inbound_emails_outcome` in schema.prisma; the two must stay in step.
+export const InboundEmailOutcome = {
+  RECORDED: 'recorded',
+  UNCHANGED: 'unchanged',
+  INVALID_SECRET: 'invalid_secret',
+  MALFORMED_REQUEST: 'malformed_request',
+  NO_ICAL: 'no_ical',
+  NOT_A_REPLY: 'not_a_reply',
+  UNKNOWN_UID: 'unknown_uid',
+  UNPARSEABLE_ATTENDEE: 'unparseable_attendee',
+  UNHANDLED_PARTSTAT: 'unhandled_partstat',
+  EVENT_NOT_FOUND: 'event_not_found',
+  /**
+   * The UID named an event in one community while the reply arrived on
+   * another's host. The multi-tenant fault, and the reason the operator view
+   * exists -- it was a `logger.warn` and nothing else, and was missing from
+   * v2-34's own list of exits until the code was read.
+   */
+  TENANT_MISMATCH: 'tenant_mismatch',
+  MEMBER_NOT_FOUND: 'member_not_found',
+  RATE_LIMITED: 'rate_limited',
+  /**
+   * A member proposed a different time (Google's "Propose new time", which
+   * sends `METHOD:COUNTER`). Split out of `NOT_A_REPLY` on 2026-10-22: that
+   * label read as "this was not calendar mail" and discarded the one actionable
+   * fact in the message.
+   */
+  COUNTER_PROPOSAL: 'counter_proposal',
+} as const;
+export type InboundEmailOutcome =
+  (typeof InboundEmailOutcome)[keyof typeof InboundEmailOutcome];
+
 // from announcement.entity.ts
 export const AnnouncementStatus = {
   DRAFT: 'draft',

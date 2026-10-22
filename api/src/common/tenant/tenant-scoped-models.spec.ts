@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import {
   GLOBAL_MODELS,
+  GLOBAL_MODELS_WITH_OPTIONAL_TENANT,
   isTenantScopedModel,
   TENANT_ID_FIELD,
   TENANT_SCOPED_MODELS,
@@ -43,9 +44,47 @@ describe('tenant model classification', () => {
     expect(missing).toEqual([]);
   });
 
-  it('gives no global model a tenantId field', () => {
-    const unexpected = GLOBAL_MODELS.filter((model) => modelsWithTenantId.has(model));
+  it('gives no global model a tenantId field, unless declared as an exception', () => {
+    const allowed = new Set<string>(GLOBAL_MODELS_WITH_OPTIONAL_TENANT);
+    const unexpected = GLOBAL_MODELS.filter(
+      (model) => modelsWithTenantId.has(model) && !allowed.has(model),
+    );
     expect(unexpected).toEqual([]);
+  });
+
+  /**
+   * The exception is only safe because the column is OPTIONAL, so that half is
+   * enforced too.
+   *
+   * A global model with a *required* `tenant_id` is the mistake the test above
+   * exists to catch -- a model meant to be scoped, carrying a column nothing
+   * filters on. What makes `inbound_emails` legitimate is precisely that its
+   * tenant may be absent: the row that belongs to no community is the one its
+   * screen is for. Declaring an exception must therefore not become a way to
+   * smuggle a would-be scoped model into the global list.
+   */
+  it('allows a tenantId on a global model only when it is nullable', () => {
+    const schema = readFileSync(join(process.cwd(), 'prisma', 'schema.prisma'), 'utf8');
+    const required = GLOBAL_MODELS_WITH_OPTIONAL_TENANT.filter((model) => {
+      const block = schema.match(new RegExp(`^model ${model} \\{([\\s\\S]*?)^\\}`, 'm'))?.[1];
+      // `Int?` is the nullable form; `Int ` (with no question mark) is not.
+      return block === undefined || !/^\s*tenantId\s+Int\?\s/m.test(block);
+    });
+    expect(required).toEqual([]);
+  });
+
+  /**
+   * And the declared exceptions must actually be reachable without the
+   * extension's help, which is the cost of being on that list: every
+   * tenant-facing read carries its own predicate. Nothing can test "the
+   * developer remembered" directly, so this asserts the narrower thing that
+   * made the exception necessary -- the model is global, so the extension does
+   * not scope it.
+   */
+  it('keeps every declared exception out of the scoped list', () => {
+    const scoped = new Set<string>(TENANT_SCOPED_MODELS);
+    const overlap = GLOBAL_MODELS_WITH_OPTIONAL_TENANT.filter((model) => scoped.has(model));
+    expect(overlap).toEqual([]);
   });
 
   it('requires the tenant relation on scoped models, so the FK exists', () => {

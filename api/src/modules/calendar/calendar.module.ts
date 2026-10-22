@@ -4,9 +4,10 @@ import { CalendarService } from './calendar.service';
 import { CalendarController } from './calendar.controller';
 import { LocationsModule } from '../locations/locations.module';
 import { AppConfigModule } from '../app-config/app-config.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
-  imports: [ConfigModule, LocationsModule, AppConfigModule],
+  imports: [ConfigModule, LocationsModule, AppConfigModule, EmailModule],
   providers: [CalendarService],
   controllers: [CalendarController],
   exports: [CalendarService],

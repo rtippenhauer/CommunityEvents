@@ -4,6 +4,8 @@ import { TenantsAdminController } from './tenants-admin.controller';
 import { TenantsAdminService } from './tenants-admin.service';
 import { TenantUsersController } from './tenant-users.controller';
 import { TenantUsersService } from './tenant-users.service';
+import { InboundMailController } from './inbound-mail.controller';
+import { EmailModule } from '../email/email.module';
 
 /**
  * Deployment-level administration, as opposed to the per-community
@@ -15,8 +17,10 @@ import { TenantUsersService } from './tenant-users.service';
  * invalidation on write to mean anything.
  */
 @Module({
-  imports: [AuditModule],
+  // EmailModule for the one writer/reader of `inbound_emails`: the operator's
+  // view is a second reader of the same service, never a second query (v2-34).
+  imports: [AuditModule, EmailModule],
   providers: [TenantsAdminService, TenantUsersService],
-  controllers: [TenantsAdminController, TenantUsersController],
+  controllers: [TenantsAdminController, TenantUsersController, InboundMailController],
 })
 export class SystemModule {}

@@ -503,6 +503,101 @@ model email_suppressions {
   createdAt DateTime                  @default(now()) @map("created_at") @db.DateTime(0)
 }
 
+/// A message that arrived (v2-34), and what became of it.
+///
+/// **Global, with a NULLABLE tenant id**, which is the whole shape of this
+/// table rather than a detail. The handler runs outside any request, so there
+/// is no ambient tenant: the community is derived from the event the reply's
+/// UID names. When nothing resolves, the row is written with a null
+/// `tenant_id` anyway -- "this arrived and matched no community" is the single
+/// most valuable row on the screen, it is the shape a multi-tenant fault takes,
+/// and a scoped table cannot hold it at all.
+///
+/// So the scoping extension injects nothing here. **Every tenant-facing read
+/// must carry its own `tenant_id` predicate by hand**, and a forgotten one does
+/// not throw -- it shows one community another's mail. The operator's read
+/// carries no predicate at all, deliberately, because it must return exactly
+/// the rows no tenant-facing query can.
+///
+/// `ON DELETE SET NULL` on all three keys, like `v2-32`'s two tables and for
+/// the same reason: these are global rows pointing at scoped ones, and
+/// `purgeTenantRows` walks only the scoped list, so a restrictive key would
+/// make deleting a community fail on a reply one of its members sent.
+///
+/// **Retention: keep everything, for now** (Rob, 2026-10-20). `v2-31` clears a
+/// rendered body after 30 days and keeps the envelope; this keeps both, because
+/// inbound volume is a handful of messages a week and the cost of keeping them
+/// is nil next to the cost of having deleted the one that explains a cutover
+/// fault. "For now" is deliberate: `email_queue`'s `deepest_open_age_days`
+/// instrument should decide the eventual window on evidence. This is a
+/// provisional position, not a considered permanent one.
+model inbound_emails {
+  id          Int                    @id @default(autoincrement()) @db.UnsignedInt
+  /// NULL means the message resolved to no community. Operator-only.
+  tenantId    Int?                   @map("tenant_id") @db.UnsignedInt
+  outcome     inbound_emails_outcome
+  /// The specific reason, when the outcome alone is not enough to act on: the
+  /// unparseable ATTENDEE line, the PARTSTAT we do not handle, the id of the
+  /// community a cross-tenant reply actually belonged to. Never a stack trace.
+  detail      String?                @db.VarChar(500)
+  fromAddress String?                @map("from_address") @db.VarChar(255)
+  toAddress   String?                @map("to_address") @db.VarChar(255)
+  subject     String?                @db.VarChar(500)
+  /// **What the message CLAIMED, not a reference to something that exists.**
+  /// No foreign key, deliberately: `unknown_uid` and `event_not_found` are
+  /// outcomes about an event that is missing, so a key would make the two most
+  /// diagnostic rows in the table physically impossible to write -- found by
+  /// the e2e spec, which asserted a row for a reply naming event 999999 and got
+  /// none, because the insert failed the constraint and the log swallowed it.
+  /// Same reasoning as `v2-30`'s ban records holding values rather than keys: a
+  /// log records a claim, and a key asserts the claim is true. It also means a
+  /// later event deletion cannot erase which event a failure was about.
+  eventId     Int?                   @map("event_id") @db.UnsignedInt
+  userId      Int?                   @map("user_id") @db.UnsignedInt
+  /// Who we resolved it to, where we got that far. This one IS a key, unlike
+  /// `event_id` above, because it is only ever set to a member we just read --
+  /// and losing the link when that account is deleted is right, which is the
+  /// `v2-32` reporter argument.
+  /// The RSVP this reply asked for, as plain text rather than the
+  /// `event_rsvps_status` enum. A log records what happened; coupling it to a
+  /// live enum would mean a future status change rewriting history's meaning.
+  rsvpStatus  String?                @map("rsvp_status") @db.VarChar(20)
+  /// The raw message. NULL where we deliberately did not keep it -- see
+  /// `size_bytes`. Never populated for a request that failed authentication.
+  rawBody     String?                @map("raw_body") @db.LongText
+  /// Always recorded, even when `raw_body` is not. An unauthenticated caller
+  /// can reach this endpoint, so the body of a request with a bad secret is
+  /// attacker-supplied content and is not stored -- but its size and source
+  /// still answer "what is hitting us", which is the question that matters then.
+  sizeBytes   Int                    @map("size_bytes") @db.UnsignedInt
+  sourceIp    String?                @map("source_ip") @db.VarChar(45)
+  /// How many further identical failures from this source were folded into this
+  /// row instead of writing their own (v2-34). The log must stay bounded
+  /// against an anonymous caller, and it must not go *quiet* to do it: a
+  /// counter that climbs is visible, where a missing row is not.
+  suppressedCount Int                @default(0) @map("suppressed_count") @db.UnsignedInt
+  /// DATETIME(3), unlike the DATETIME(0) columns elsewhere. Whole seconds have
+  /// now produced three separate ordering bugs in this codebase -- `v2-31`'s
+  /// unstable pagination, and two in `v2-33` -- and this table is written in
+  /// bursts by definition, since a mail server retrying delivers several in one
+  /// second. The `id` tiebreaker in `orderBy` stays regardless.
+  receivedAt  DateTime               @default(now()) @map("received_at") @db.DateTime(3)
+
+  tenant      tenants?               @relation(fields: [tenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_inbound_emails_tenant")
+  user        users?                 @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_inbound_emails_user")
+
+  /// The operator's read: every row, newest first, no tenant predicate.
+  @@index([receivedAt], map: "idx_inbound_emails_received")
+  /// A community's own read, and the operator's filter by community.
+  @@index([tenantId, receivedAt], map: "idx_inbound_emails_tenant_received")
+  /// "Show me only the failures", on either read.
+  @@index([outcome, receivedAt], map: "idx_inbound_emails_outcome_received")
+  /// Still indexed, for "what happened to replies about this event" -- the
+  /// index is useful whether or not a constraint backs it.
+  @@index([eventId], map: "idx_inbound_emails_event")
+  @@index([userId], map: "fk_inbound_emails_user")
+}
+
 model event_comment_replies {
   id        Int            @id @default(autoincrement()) @db.UnsignedInt
   commentId Int            @map("comment_id") @db.UnsignedInt
@@ -1353,6 +1448,7 @@ model tenants {
   demo_request             demo_requests?
   system_reports           system_reports[]
   demo_feedback            demo_feedback[]
+  inbound_emails           inbound_emails[]
 
   @@index([status], map: "idx_tenant_status")
 }
@@ -1433,6 +1529,7 @@ model users {
   feedback                                                     feedback[]
   system_reports                                               system_reports[]
   demo_feedback                                                demo_feedback[]
+  inbound_emails                                               inbound_emails[]
   feedback_notes                                               feedback_notes[]
   feedback_upvotes                                             feedback_upvotes[]
   invites_invites_created_byTousers                            invites[]                  @relation("invites_created_byTousers")
@@ -1620,6 +1717,60 @@ enum event_rsvps_status {
   going
   maybe
   not_going
+}
+
+/// What became of an inbound message (v2-34). Every value is a place the
+/// handler can stop, so the screen can say which one -- the point of the item
+/// is that these were all a `logger.warn` and a bare `return`.
+enum inbound_emails_outcome {
+  /// The RSVP was recorded or changed.
+  recorded
+  /// Understood, and the member's RSVP already said this. Not a failure, and
+  /// distinct from `recorded` because "nothing happened" is the answer to a
+  /// different question than "it worked".
+  unchanged
+  /// The `X-Cloudflare-Secret` header was missing or wrong. Reaches us, so it
+  /// is logged; the body is NOT stored. This is the failure that cost `v2-33`'s
+  /// stage pass two days, when the container held two rows for the secret and
+  /// docker took the blank one.
+  invalid_secret
+  /// The request body was not the shape the endpoint accepts.
+  malformed_request
+  /// No iCalendar block in the message. An out-of-office or a human sentence
+  /// lands here, and both are ordinary rather than alarming.
+  no_ical
+  /// An iCalendar block that is not a `METHOD:REPLY`.
+  not_a_reply
+  /// The UID did not name an event of ours.
+  unknown_uid
+  /// The ATTENDEE line could not be parsed for an address and a PARTSTAT.
+  unparseable_attendee
+  /// A PARTSTAT outside ACCEPTED/TENTATIVE/DECLINED.
+  unhandled_partstat
+  /// The event in the UID does not exist, or is not published.
+  event_not_found
+  /// **The multi-tenant fault, and the reason the operator view exists.** The
+  /// UID named an event belonging to one community while the reply arrived on
+  /// another community's host. Was a `logger.warn` and nothing else, and was
+  /// missing from this item's own list of exits until the code was read.
+  tenant_mismatch
+  /// No member of that community holds the replying address.
+  member_not_found
+  /// The endpoint's rate limit refused the request. Written from the guard,
+  /// because a throttled request never reaches the handler.
+  rate_limited
+  /// **A member proposed a different time** (Google's "Propose new time", which
+  /// sends `METHOD:COUNTER`). Split out of `not_a_reply` on 2026-10-22 after
+  /// Rob tried it on stage: the classification was right and the row was
+  /// useless, because "Not a calendar reply" reads as "this was not calendar
+  /// mail" and threw away the one fact worth having -- somebody is asking for a
+  /// different time. Nothing automates it; the point is that an admin can see
+  /// it was asked.
+  ///
+  /// Appended, not placed next to the other calendar outcomes: declaration
+  /// order is the MySQL ENUM order, and appending is the one change InnoDB
+  /// makes in place. See `20261010100000_email_queue_claim`.
+  counter_proposal
 }
 
 enum email_queue_status {

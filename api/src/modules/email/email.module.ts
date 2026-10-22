@@ -5,6 +5,7 @@ import { BrevoService } from './brevo.service';
 import { ResendService } from './resend.service';
 import { EmailDispatcherService } from './email-dispatcher.service';
 import { BrevoWebhookService } from './brevo-webhook.service';
+import { InboundEmailLogService } from './inbound-email-log.service';
 import { EmailWebhookController } from './email-webhook.controller';
 
 @Module({
@@ -18,10 +19,20 @@ import { EmailWebhookController } from './email-webhook.controller';
     ResendService,
     EmailDispatcherService,
     BrevoWebhookService,
+    InboundEmailLogService,
   ],
   // BrevoService is exported for the admin screen's quota cross-check, which
   // asks Brevo what is left of the account's daily allowance. Sending still
   // goes through EmailService.
-  exports: [EmailService, EmailDispatcherService, BrevoWebhookService, BrevoService],
+  exports: [
+    EmailService,
+    EmailDispatcherService,
+    BrevoWebhookService,
+    BrevoService,
+    // Exported because the inbound path lives in CalendarModule and the
+    // throttler guard is global: the one writer of this table is reached from
+    // both, which is what keeps it the only writer (v2-34).
+    InboundEmailLogService,
+  ],
 })
 export class EmailModule {}

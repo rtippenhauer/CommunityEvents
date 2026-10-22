@@ -55,8 +55,8 @@ Two decisions bound it:
 | 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
 | 2 | ~~bugfix — dispatcher claim~~ | **Done and merged** (PR #25, `b06cfc3`, 2026-10-14). Stage found it was a *live* defect, not a latent one: 40 queued rows produced 57 sends on the pre-fix image, reproduced by pressing Send Now in two browser tabs. 40 → 40 after. v2-27's first half, carved out. The dispatcher had no claim step and Admin → Send Now dispatches from a request, so it could double-send *today*. See v2-27's section for what the claim settled and what is left of that item. |
 | 3 | **v2-33 — port v1's five bugfixes** | Every one is fixed in DinnerBears today, so shipping without them is regression, not parity — the same test this table uses. No schema changes, one branch. Verified as live defects here on 2026-10-14. |
-| 4 | **v2-34 — an inbound email log** | **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
-| 5 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. Its sync refusals write to v2-34's log — see both sections. |
+| 4 | ~~**v2-34 — an inbound email log**~~ | **Done 2026-10-22** (tag `v2-34`). **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
+| 5 | **v2-29 — port Phase 39** | **Next up.** Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. Its sync refusals write to v2-34's log — see both sections. |
 | 6 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
 | 7 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
 | 8 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
@@ -2577,8 +2577,8 @@ configured.
 
 ### v2-29 — Port v1's Phase 39 (Muse API + Facebook RSVP sync)
 
-**Status:** Not started. **On the cutover critical path, item 5** — see the
-running order at the top. Depends on v2-5 (scoping), v2-6 (users scoped) and
+**Status:** **In progress — next up** (2026-10-22, now that `v2-34` is done).
+**On the cutover critical path, item 5** — see the running order at the top. Depends on v2-5 (scoping), v2-6 (users scoped) and
 v2-9 (per-community email, for the sync's confirmation mail). **`v2-34` now
 runs ahead of it** (Rob, 2026-10-20) so the sync's refusals write to the
 inbound log from the start rather than being retrofitted — see that section for
@@ -3046,9 +3046,42 @@ makes a wrong RSVP unlikely rather than impossible.
 
 ### v2-34 — An inbound email log
 
-**Status:** Not started. **On the cutover critical path, item 4 — pulled
-forward 2026-10-20 (Rob), reversing the "post-cutover / future phase" call of
-2026-10-14.** Asked for as "email logs for incoming emails and any errors" —
+**Status:** **Complete (2026-10-22).** Was item 4 on the cutover critical path,
+**pulled forward 2026-10-20 (Rob)**, reversing the "post-cutover / future
+phase" call of 2026-10-14.
+
+**What shipped beyond the definition of done**, all of it from stage:
+`counter_proposal` as its own outcome (Google's "Propose new time" sends
+`METHOD:COUNTER`, was filed `not_a_reply`, and that label reads as "not calendar
+mail" while discarding the one actionable fact); RFC 2047 subject decoding,
+because every row displayed its subject as a raw encoded word; and
+`clientIpFrom`, because `source_ip` recorded the Cloudflare edge rather than the
+caller — the same family as `v2-14`'s unset `trust proxy`.
+
+**Three defects were found by tests rather than by review**, which is the part
+worth carrying forward. `event_id` as a foreign key made `unknown_uid` and
+`event_not_found` impossible to write at all, since the insert failed the
+constraint and the log — which must never fail a request — swallowed the error.
+The tenant classification spec refused a global model carrying a `tenant_id`,
+correctly; the exception is declared in `GLOBAL_MODELS_WITH_OPTIONAL_TENANT` and
+held narrow by two new assertions rather than the check being relaxed. And the
+fold was keyed on the source address, which could neither collapse Worker mail
+(five consecutive stage messages arrived from five Cloudflare addresses) nor
+resist a caller who rotates it.
+
+**Left open deliberately, neither blocking:** `FALLBACK_FORWARD_TO` is unset, so
+the Worker's forward-on-failure path is dormant until a verified destination
+address exists; and the operator-vs-community visibility split is covered by 16
+e2e cases across two communities but has not been read by a human on stage.
+
+**Verified live on stage:** `recorded`, `unchanged`, `counter_proposal`,
+`invalid_secret`, `rate_limited`, the fold counter (30 probes → one row,
+`folded=29`; 5 throttled → one row, `folded=4`), both reads, the screen and its
+nav. The rate-limited row matters more than it looks: it is written from a
+**globally registered guard** via property injection, so a mistake there would
+have broken throttling for every route in the deployment.
+
+Original scope follows. Asked for as "email logs for incoming emails and any errors" —
 and it should have been written down when `v2-31` built the log, because what
 that item built is only half of one.
 
@@ -3271,11 +3304,45 @@ Two notes for whoever builds it:
   shared between containers: the same source can produce one row per container
   per restart. Acceptable, and better said here than discovered later.
 
-**Also in scope:** the Worker catches its own POST failures and returns, so
-Cloudflare's Email Routing activity log shows every message as **Handled** even
-when nothing was delivered — which is how v1's apex-host misconfiguration went
-unnoticed. A rejected or unreachable POST currently surfaces nowhere on either
-side, and an inbound log is the only place it could.
+**Also in scope, and done 2026-10-20:** the Worker caught its own POST failures
+and returned, and **returning normally is what makes Cloudflare mark the message
+Handled** — so a message we never processed looked delivered on their side and
+left nothing on ours. That is how v1's apex-host misconfiguration went
+unnoticed.
+
+**It forwards to a human instead of rejecting.** `message.setReject()` would
+make the failure visible, but the docs are explicit that it is a *permanent*
+SMTP error: the member who pressed Accept gets a bounce for an outage that is
+ours. `message.forward()` keeps the entire payload, puts it in a mailbox the
+operator reads, and tells the member nothing — which is right, because from
+their side the Accept worked and the only person who can act is the operator.
+This is Cloudflare's own documented fallback order (log, stash, forward, reject
+last), stopping before the reject. A new Worker variable
+`FALLBACK_FORWARD_TO` holds the destination and **must be a verified
+destination address**; unset, the Worker behaves exactly as before.
+
+**It forwards only when nobody has a record of the message.** A 4xx is the API
+answering deliberately — a rejected secret, a malformed body — and each of those
+now writes a row, which is a better record than a copy in an inbox and is
+already on the screen. A 5xx or a network failure may have happened before any
+row was written, so those forward: a duplicate notice costs a glance, a lost
+reply costs a member their seat.
+
+Two limits recorded rather than discovered: Cloudflare **refuses to forward mail
+that fails SPF/DKIM** (since July 2025), so the fallback can itself be
+impossible — `canBeForwarded` is checked and the log line then says the message
+was lost, rather than implying it was handled. And the forwarded copy lands in
+an inbox with no pointer back to the log, so it is a parallel channel rather
+than part of the screen.
+
+**Deliberately not built, noted so it is not forgotten:** stashing the raw
+message in KV or R2 and replaying it when the API returns. That is the only
+option that recovers the RSVP without somebody retyping it, and it is worth
+having if inbound volume ever makes hand-replay impractical. `message.reply()`
+is also available and is deliberately unused — telling the member is
+defensible, but it is a member-facing message with its own copy, threading and
+loop concerns, and the first version of this feature should not be inventing
+outbound mail from the Worker.
 
 **Definition of done:** inbound messages and their outcome are visible to an
 admin on the same screen as outbound, each failure exit above distinguishable
