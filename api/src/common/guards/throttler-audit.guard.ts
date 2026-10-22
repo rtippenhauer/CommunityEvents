@@ -4,6 +4,7 @@ import type { ThrottlerRequest } from '@nestjs/throttler';
 import { AuditService } from '../../modules/audit/audit.service';
 import { InboundEmailLogService } from '../../modules/email/inbound-email-log.service';
 import { InboundEmailOutcome } from '../../database/enums';
+import { clientIpFrom } from '../utils/client-ip.util';
 
 interface ThrottlerDetail {
   limit: number;
@@ -70,10 +71,14 @@ export class ThrottlerAuditGuard extends ThrottlerGuard {
       ip?: string;
       url?: string;
       originalUrl?: string;
+      headers?: Record<string, string | string[] | undefined>;
       socket?: { remoteAddress?: string };
       tenant?: { id: number };
     }>();
-    const ip = req.ip ?? req.socket?.remoteAddress ?? 'unknown';
+    // `clientIpFrom` rather than `req.ip`: behind Cloudflare the latter is the
+    // edge node, so every caller looked like the same one. The audit entry
+    // below gets the better value too -- it has always meant "who did this".
+    const ip = clientIpFrom(req) ?? 'unknown';
     const now = Date.now();
 
     // The inbound mail endpoint gets its row in the inbound log as well as the

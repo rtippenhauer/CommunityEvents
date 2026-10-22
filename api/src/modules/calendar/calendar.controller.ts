@@ -8,6 +8,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CalendarService, CalendarSettingsResponse } from './calendar.service';
 import { InboundEmailLogService } from '../email/inbound-email-log.service';
 import { InboundEmailOutcome } from '../../database/enums';
+import { clientIpFrom } from '../../common/utils/client-ip.util';
 import type { users as User } from '@prisma/client';
 
 class UpdateCalendarSettingsDto {
@@ -120,7 +121,7 @@ export class CalendarController {
     @Body() body: unknown,
     @Req() req: Request,
   ): Promise<{ ok: boolean }> {
-    const sourceIp = req.ip ?? req.socket?.remoteAddress ?? null;
+    const sourceIp = clientIpFrom(req);
     const raw = typeof (body as { raw?: unknown })?.raw === 'string'
       ? (body as { raw: string }).raw
       : null;

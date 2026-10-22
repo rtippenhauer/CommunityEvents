@@ -436,6 +436,31 @@ describe('Calendar email replies (e2e)', () => {
       expect(all[0].suppressedCount).toBe(2);
     });
 
+    /**
+     * The fix for what stage showed on 2026-10-22. The fold used to key on the
+     * source address, which meant a caller could widen the bound simply by
+     * arriving from somewhere else — and behind Cloudflare the recorded address
+     * was the edge node anyway, so it was both spoofable and wrong. Keyed on
+     * the outcome, the bound holds no matter who is calling.
+     */
+    it('folds abuse regardless of where it claims to come from', async () => {
+      for (const ip of ['203.0.113.1', '203.0.113.2', '198.51.100.9']) {
+        await request(server)
+          .post('/api/v1/calendar/rsvp-reply')
+          .set('X-Cloudflare-Secret', 'wrong')
+          .set('CF-Connecting-IP', ip)
+          .send({ raw: 'probe' })
+          .expect(401);
+      }
+
+      const all = await logRows();
+      expect(all).toHaveLength(1);
+      expect(all[0].suppressedCount).toBe(2);
+      // The row keeps the first caller's address as a label — it just no longer
+      // decides anything.
+      expect(all[0].sourceIp).toBe('203.0.113.1');
+    });
+
     it('never folds a successful reply, however many arrive', async () => {
       const first = await seedEvent();
       const second = await seedEvent();

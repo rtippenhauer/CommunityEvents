@@ -35,6 +35,22 @@ const SUCCESS_OUTCOMES: readonly string[] = [
  * addresses are shared and rotating, so a block would miss the prober and
  * eventually catch our own mail path.)
  */
+/**
+ * **Folded on the outcome alone, never on the source address.**
+ *
+ * The first version keyed on `${sourceIp}|${outcome}`, which was wrong twice
+ * over. It could not collapse Worker-delivered mail at all, since Cloudflare
+ * egresses from a different edge node per invocation (five consecutive stage
+ * messages, five addresses). And for the case it *was* for -- an anonymous
+ * caller hammering the endpoint -- it made the bound depend on a value the
+ * caller influences: rotate the source, or spoof `CF-Connecting-IP` on a
+ * deployment not behind Cloudflare, and every request opens its own row. A
+ * bound an attacker can widen is not a bound.
+ *
+ * Keyed on the outcome, at most three rows per window exist however many
+ * sources are involved. The cost is that two simultaneous probers share a row;
+ * the counter still shows the volume, and the first row keeps an address.
+ */
 const FOLDABLE_OUTCOMES: readonly string[] = [
   InboundEmailOutcome.INVALID_SECRET,
   InboundEmailOutcome.MALFORMED_REQUEST,
@@ -73,6 +89,12 @@ export interface RecordInboundInput {
    */
   storeBody?: boolean;
   sizeBytes: number;
+  /**
+   * A label on the row, and nothing that depends on being true -- resolve it
+   * with `clientIpFrom`, which explains why. It stopped being the fold key on
+   * 2026-10-22, because a bound keyed on a value the caller influences is not
+   * a bound.
+   */
   sourceIp?: string | null;
 }
 
@@ -181,7 +203,7 @@ export class InboundEmailLogService {
         }),
       );
 
-      if (FOLDABLE_OUTCOMES.includes(input.outcome) && input.sourceIp) {
+      if (FOLDABLE_OUTCOMES.includes(input.outcome)) {
         this.suppression.set(this.suppressionKey(input), { rowId: row.id, since: Date.now() });
       }
     } catch (err) {
@@ -342,14 +364,14 @@ export class InboundEmailLogService {
    * *quiet* to do it: a counter that climbs is visible on the screen, where a
    * row that was never written is not. So repeats are folded, never dropped.
    *
-   * Only `FOLDABLE_OUTCOMES` fold, and only from a known source -- see that
-   * list for why it is three values and not "every failure". A parse failure is
-   * about one member's message and is never collapsed: "did this member's reply
-   * arrive" is a question about one message, and answering it with a count
-   * would defeat the log.
+   * Only `FOLDABLE_OUTCOMES` fold -- see that list for why it is three values
+   * and not "every failure", and why the key is the outcome rather than the
+   * caller. A parse failure is about one member's message and is never
+   * collapsed: "did this member's reply arrive" is a question about one
+   * message, and answering it with a count would defeat the log.
    */
   private async foldIntoRecent(input: RecordInboundInput): Promise<boolean> {
-    if (!FOLDABLE_OUTCOMES.includes(input.outcome) || !input.sourceIp) return false;
+    if (!FOLDABLE_OUTCOMES.includes(input.outcome)) return false;
 
     const key = this.suppressionKey(input);
     const seen = this.suppression.get(key);
@@ -373,7 +395,8 @@ export class InboundEmailLogService {
   }
 
   private suppressionKey(input: RecordInboundInput): string {
-    return `${input.sourceIp}|${input.outcome}`;
+    // The outcome, and deliberately not the source -- see FOLDABLE_OUTCOMES.
+    return input.outcome;
   }
 
   /**
