@@ -136,6 +136,11 @@
             <a mat-list-item routerLink="/admin/email" (click)="sidenav.close()">
               <mat-icon matListItemIcon>mail</mat-icon> Email
             </a>
+            <!-- Inbound mail is a log, so it is something you go and look at
+                 rather than a section of the settings page (Rob, 2026-10-21). -->
+            <a mat-list-item routerLink="/admin/email/inbound" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>move_to_inbox</mat-icon> Inbound mail
+            </a>
             <a mat-list-item routerLink="/admin/secrets" (click)="sidenav.close()">
               <mat-icon matListItemIcon>key</mat-icon> API Keys
             </a>
@@ -398,6 +403,9 @@
             <mat-menu #settingsMenu="matMenu" panelClass="nav-menu">
               <a mat-menu-item routerLink="/admin/email">
                 <mat-icon>mail</mat-icon> Email
+              </a>
+              <a mat-menu-item routerLink="/admin/email/inbound">
+                <mat-icon>move_to_inbox</mat-icon> Inbound mail
               </a>
               <a mat-menu-item routerLink="/admin/secrets">
                 <mat-icon>key</mat-icon> API Keys

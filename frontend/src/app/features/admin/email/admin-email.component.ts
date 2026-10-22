@@ -7,6 +7,7 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
+import { RouterLink } from '@angular/router';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -30,7 +31,6 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AdminInboundMailComponent } from './admin-inbound-mail.component';
 
 /**
  * One row of the email log (v2-31).
@@ -184,7 +184,7 @@ interface EmailConfig {
   selector: 'app-admin-email',
   standalone: true,
   imports: [
-    AdminInboundMailComponent,
+    RouterLink,
     DatePipe,
     JsonPipe,
     ReactiveFormsModule,
@@ -208,7 +208,17 @@ interface EmailConfig {
   ],
   template: `
     <div class="email-admin-container">
-      <h2 class="page-title">Email Admin</h2>
+      <div class="page-head">
+        <h2 class="page-title">Email Admin</h2>
+        <!-- A link, not the list itself (Rob, 2026-10-21). The inbound log was
+             a card at the foot of this page, which is a long page: reaching it
+             meant scrolling past every setting. It has its own screen now, and
+             this is how you get there from here. -->
+        <a mat-stroked-button routerLink="/admin/email/inbound">
+          <mat-icon>move_to_inbox</mat-icon>
+          Inbound mail
+        </a>
+      </div>
 
       @if (config(); as cfg) {
         <!-- Send counts card -->
@@ -820,11 +830,6 @@ interface EmailConfig {
             }
           </mat-card-content>
         </mat-card>
-
-        <!-- The other half of the log (v2-34). A separate component because it
-             also renders on the operator's deployment-wide screen, and because
-             this file is long enough already. -->
-        <app-admin-inbound-mail />
       } @else {
         <mat-spinner diameter="40" />
         <p class="loading-note">Loading email settings…</p>
@@ -852,6 +857,13 @@ interface EmailConfig {
         display: flex;
         flex-direction: column;
         gap: 24px;
+      }
+      .page-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
       }
       .page-title {
         margin: 0;

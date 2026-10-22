@@ -3,12 +3,42 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { runUnscoped } from '../../common/tenant/tenant-store';
 import { InboundEmailOutcome } from '../../database/enums';
+import { decodeEncodedWords } from '../../common/utils/mime-header.util';
 import type { InboundEmailLogQueryDto } from './dto/inbound-email-log-query.dto';
 
 /** Outcomes that mean we understood the message and acted (or correctly did not). */
 const SUCCESS_OUTCOMES: readonly string[] = [
   InboundEmailOutcome.RECORDED,
   InboundEmailOutcome.UNCHANGED,
+];
+
+/**
+ * The only outcomes that fold, and the reason the list is this short.
+ *
+ * **Measured on stage, 2026-10-22, not reasoned about.** Five consecutive
+ * messages arrived from five different Cloudflare addresses -- 198.41.227.70,
+ * 104.22.191.63, 172.71.167.42, 172.70.94.90, 172.71.167.42 -- because a Worker
+ * egresses from whichever edge node ran it. So a fold keyed on the source
+ * address can never collapse Worker-delivered mail, and the first draft of this
+ * list, which folded every failure, was ineffective for the one caller that
+ * actually exists.
+ *
+ * That turns out to be the right behaviour anyway, which is why this is a
+ * narrowed list rather than a different key. **A parse failure is about one
+ * member's message** -- `no_ical` from two different people proposing two
+ * different times are two things an operator wants to see, and collapsing them
+ * into "+1 more" would hide the second member entirely. What needs bounding is
+ * the unauthenticated surface: a prober hitting the endpoint has a stable
+ * address and no legitimate reason to be counted twice.
+ *
+ * (The same measurement is why blocking by IP was refused: Cloudflare's egress
+ * addresses are shared and rotating, so a block would miss the prober and
+ * eventually catch our own mail path.)
+ */
+const FOLDABLE_OUTCOMES: readonly string[] = [
+  InboundEmailOutcome.INVALID_SECRET,
+  InboundEmailOutcome.MALFORMED_REQUEST,
+  InboundEmailOutcome.RATE_LIMITED,
 ];
 
 /**
@@ -151,7 +181,7 @@ export class InboundEmailLogService {
         }),
       );
 
-      if (!SUCCESS_OUTCOMES.includes(input.outcome) && input.sourceIp) {
+      if (FOLDABLE_OUTCOMES.includes(input.outcome) && input.sourceIp) {
         this.suppression.set(this.suppressionKey(input), { rowId: row.id, since: Date.now() });
       }
     } catch (err) {
@@ -312,12 +342,14 @@ export class InboundEmailLogService {
    * *quiet* to do it: a counter that climbs is visible on the screen, where a
    * row that was never written is not. So repeats are folded, never dropped.
    *
-   * Only failures fold, and only from a known source. A successful RSVP is
-   * never collapsed -- "did this member's reply arrive" is a question about one
-   * message, and answering it with a count would defeat the log.
+   * Only `FOLDABLE_OUTCOMES` fold, and only from a known source -- see that
+   * list for why it is three values and not "every failure". A parse failure is
+   * about one member's message and is never collapsed: "did this member's reply
+   * arrive" is a question about one message, and answering it with a count
+   * would defeat the log.
    */
   private async foldIntoRecent(input: RecordInboundInput): Promise<boolean> {
-    if (SUCCESS_OUTCOMES.includes(input.outcome) || !input.sourceIp) return false;
+    if (!FOLDABLE_OUTCOMES.includes(input.outcome) || !input.sourceIp) return false;
 
     const key = this.suppressionKey(input);
     const seen = this.suppression.get(key);
@@ -363,7 +395,13 @@ export class InboundEmailLogService {
     const unfolded = headerBlock.replace(/\r?\n[ \t]+/g, ' ');
     const header = (name: string): string | null => {
       const match = unfolded.match(new RegExp(`^${name}:\\s*(.+)$`, 'im'));
-      return match ? match[1].trim().slice(0, 500) : null;
+      if (!match) return null;
+      // Decoded, because every row on stage showed its subject as
+      // `=?UTF-8?Q?Proposed_new_time=3A_...` — a log that displays the raw
+      // header is unreadable exactly when the subject matters. Sliced after
+      // decoding, so the limit applies to characters a person will read rather
+      // than to the escapes.
+      return decodeEncodedWords(match[1].trim()).slice(0, 500);
     };
     return { from: header('From'), to: header('To'), subject: header('Subject') };
   }

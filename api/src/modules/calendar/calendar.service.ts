@@ -521,6 +521,22 @@ export class CalendarService {
     }
 
     if (!/METHOD:REPLY/i.test(ical)) {
+      // "Propose new time" in Google Calendar sends METHOD:COUNTER, and it is
+      // the one non-reply a member sends on purpose. Reported as itself rather
+      // than lumped in below: a counter-proposal is somebody asking for a
+      // different time, and an admin can act on that -- where "not a calendar
+      // reply" reads as though the message were irrelevant (Rob, stage,
+      // 2026-10-21). Nothing automates it; a different time is a different
+      // event, which is the organiser's call.
+      if (/METHOD:COUNTER/i.test(ical)) {
+        const proposed = this.proposedTimeFrom(ical);
+        this.logger.log(`rsvp-reply: counter-proposal${proposed ? ` for ${proposed}` : ''}`);
+        return {
+          outcome: InboundEmailOutcome.COUNTER_PROPOSAL,
+          detail: proposed ? `proposed ${proposed}` : 'proposed a different time',
+          eventId: parseEventUid(ical) ?? undefined,
+        };
+      }
       this.logger.debug('rsvp-reply: not a METHOD:REPLY, ignoring');
       return { outcome: InboundEmailOutcome.NOT_A_REPLY };
     }
@@ -606,6 +622,30 @@ export class CalendarService {
   }
 
   /** The write half of a reply, run inside the event's own community. */
+  /**
+   * The time a counter-proposal is asking for, in words, or null.
+   *
+   * Best-effort on purpose: this decorates a log row, so an unparseable DTSTART
+   * costs the detail and nothing else — `processRsvpReply` still reports the
+   * outcome. Formatted in UTC with the offset spelled out, because the row is
+   * read by an operator who may be in a different zone from the community and a
+   * bare wall-clock time would be a guess about which.
+   */
+  private proposedTimeFrom(ical: string): string | null {
+    // The COUNTER's VEVENT carries the proposed start. `DTSTART;TZID=...:` and
+    // the bare UTC `DTSTART:...Z` form are both in the wild.
+    const match = ical.match(/^DTSTART[^:\r\n]*:(\d{8}T\d{6})Z?/im);
+    if (!match) return null;
+    const [, stamp] = match;
+    const iso = `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(
+      9,
+      11,
+    )}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`;
+    const when = new Date(iso);
+    if (Number.isNaN(when.getTime())) return null;
+    return `${when.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+  }
+
   private async recordRsvpReply(
     eventId: number,
     attendeeEmail: string,

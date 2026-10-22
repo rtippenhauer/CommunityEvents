@@ -275,6 +275,78 @@ describe('Calendar email replies (e2e)', () => {
       });
     });
 
+    /**
+     * Google Calendar's "Propose new time" (Rob, stage, 2026-10-21). It sends
+     * `METHOD:COUNTER`, which failed the REPLY check and was filed as
+     * `not_a_reply` — a correct classification and a useless row, since the
+     * screen's label for it reads as "this was not calendar mail" and the one
+     * actionable fact, that somebody wants a different time, was discarded.
+     */
+    it('records a proposed new time as itself, with the time asked for', async () => {
+      const event = await seedEvent();
+      const counter = [
+        `From: Larry <${SHARED_EMAIL}>`,
+        'To: calendar@communityeventsproject.com',
+        'Subject: =?UTF-8?Q?Proposed_new_time=3A_Dinner?=',
+        'Content-Type: text/calendar; charset="UTF-8"; method=COUNTER',
+        '',
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'METHOD:COUNTER',
+        'BEGIN:VEVENT',
+        'DTSTART:20261103T230000Z',
+        `ATTENDEE;PARTSTAT=TENTATIVE:mailto:${SHARED_EMAIL}`,
+        `UID:communityevents-event-${event.id}@communityeventsproject.com`,
+        'END:VEVENT',
+        'END:VCALENDAR',
+      ].join('\r\n');
+
+      await send(counter);
+
+      const row = await onlyRow();
+      expect(row.outcome).toBe(InboundEmailOutcome.COUNTER_PROPOSAL);
+      expect(row.eventId).toBe(event.id);
+      expect(row.detail).toContain('2026-11-03 23:00');
+      // And the subject is readable, rather than the raw encoded word that
+      // showed on stage.
+      expect(row.subject).toBe('Proposed new time: Dinner');
+      // No RSVP is invented from a counter-proposal: a different time is a
+      // different event, which is the organiser's decision.
+      expect(await rsvpsFor(event.id)).toHaveLength(0);
+    });
+
+    /**
+     * Two proposals from two members are two things to answer. This is the case
+     * that made the folding rule wrong: keyed on the source address it would
+     * never have folded anyway (Cloudflare egresses from a different node each
+     * time), and folding it would have hidden the second member entirely.
+     */
+    it('keeps each proposed time as its own row rather than folding them', async () => {
+      const event = await seedEvent();
+      const counter = (minute: string) =>
+        [
+          `From: Larry <${SHARED_EMAIL}>`,
+          'Subject: Proposed new time',
+          'Content-Type: text/calendar; method=COUNTER',
+          '',
+          'BEGIN:VCALENDAR',
+          'METHOD:COUNTER',
+          'BEGIN:VEVENT',
+          `DTSTART:20261103T23${minute}00Z`,
+          `UID:communityevents-event-${event.id}@communityeventsproject.com`,
+          'END:VEVENT',
+          'END:VCALENDAR',
+        ].join('\r\n');
+
+      await send(counter('00'));
+      await send(counter('30'));
+
+      const all = await logRows();
+      expect(all).toHaveLength(2);
+      expect(all.every((r) => r.suppressedCount === 0)).toBe(true);
+      expect(all[1].detail).toContain('23:30');
+    });
+
     it('records a PARTSTAT we do not handle, and says which', async () => {
       const event = await seedEvent();
       await send(gmailReply(event.id, 'DELEGATED', SHARED_EMAIL));

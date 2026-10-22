@@ -58,6 +58,13 @@ export const InboundEmailOutcome = {
   TENANT_MISMATCH: 'tenant_mismatch',
   MEMBER_NOT_FOUND: 'member_not_found',
   RATE_LIMITED: 'rate_limited',
+  /**
+   * A member proposed a different time (Google's "Propose new time", which
+   * sends `METHOD:COUNTER`). Split out of `NOT_A_REPLY` on 2026-10-22: that
+   * label read as "this was not calendar mail" and discarded the one actionable
+   * fact in the message.
+   */
+  COUNTER_PROPOSAL: 'counter_proposal',
 } as const;
 export type InboundEmailOutcome =
   (typeof InboundEmailOutcome)[keyof typeof InboundEmailOutcome];

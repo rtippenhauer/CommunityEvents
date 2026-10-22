@@ -10,6 +10,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
+  ATTENTION_OUTCOMES,
   GOOD_OUTCOMES,
   InboundMailRow,
   InboundMailService,
@@ -120,9 +121,13 @@ import {
         } @else {
           <ul class="rows">
             @for (row of rows(); track row.id) {
-              <li [class.bad]="isFailure(row.outcome)">
+              <li [class.bad]="isFailure(row.outcome)" [class.attention]="needsAnswer(row.outcome)">
                 <div class="line">
-                  <span class="badge" [class.bad]="isFailure(row.outcome)">
+                  <span
+                    class="badge"
+                    [class.bad]="isFailure(row.outcome)"
+                    [class.attention]="needsAnswer(row.outcome)"
+                  >
                     {{ label(row.outcome) }}
                   </span>
                   @if (row.suppressedCount > 0) {
@@ -262,6 +267,16 @@ import {
         background: var(--ce-error-overlay);
         color: #fff;
       }
+      /* A row somebody should answer, in the community's own accent rather than
+         in red: a member proposing a different time is not a fault, and
+         colouring it like one would teach an operator to ignore the colour. */
+      ul.rows > li.attention {
+        border-left: 3px solid var(--ce-accent);
+      }
+      .badge.attention {
+        background: var(--ce-accent);
+        color: var(--ce-on-accent);
+      }
       .folded,
       .community,
       .when {
@@ -356,7 +371,12 @@ export class AdminInboundMailComponent {
   }
 
   isFailure(outcome: InboundOutcome): boolean {
-    return !GOOD_OUTCOMES.includes(outcome);
+    return !GOOD_OUTCOMES.includes(outcome) && !ATTENTION_OUTCOMES.includes(outcome);
+  }
+
+  /** Somebody asked for something: not a fault, but not nothing either. */
+  needsAnswer(outcome: InboundOutcome): boolean {
+    return ATTENTION_OUTCOMES.includes(outcome);
   }
 
   reload(page: number): void {

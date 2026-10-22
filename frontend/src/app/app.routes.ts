@@ -315,6 +315,17 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    // This community's inbound mail. Its own screen rather than a card at the
+    // foot of Email Admin, which is a long page -- reaching the log meant
+    // scrolling past every setting (Rob, 2026-10-21).
+    path: 'admin/email/inbound',
+    loadComponent: () =>
+      import('./features/admin/email/admin-inbound-mail-page.component').then(
+        (m) => m.AdminInboundMailPageComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/oauth',
     loadComponent: () =>
       import('./features/admin/oauth/admin-oauth.component').then((m) => m.AdminOAuthComponent),

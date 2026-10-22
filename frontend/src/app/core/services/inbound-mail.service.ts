@@ -22,7 +22,8 @@ export type InboundOutcome =
   | 'event_not_found'
   | 'tenant_mismatch'
   | 'member_not_found'
-  | 'rate_limited';
+  | 'rate_limited'
+  | 'counter_proposal';
 
 export interface InboundMailRow {
   id: number;
@@ -129,7 +130,18 @@ export const OUTCOME_LABELS: Record<InboundOutcome, string> = {
   tenant_mismatch: 'Arrived on the wrong community',
   member_not_found: 'No member with that address',
   rate_limited: 'Refused — rate limited',
+  counter_proposal: 'Proposed a different time',
 };
 
 /** The outcomes that are not failures, so the screen can stop shouting about them. */
 export const GOOD_OUTCOMES: readonly InboundOutcome[] = ['recorded', 'unchanged'];
+
+/**
+ * Neither a success nor a fault: somebody asked for something.
+ *
+ * A counter-proposal is a member asking for a different time. Rendering it red
+ * would say the deployment broke, and rendering it grey would bury the one row
+ * on this screen that somebody should actually answer — so it gets its own
+ * treatment, and still appears under "Problems only" because it needs a human.
+ */
+export const ATTENTION_OUTCOMES: readonly InboundOutcome[] = ['counter_proposal'];

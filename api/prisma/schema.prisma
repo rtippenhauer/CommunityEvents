@@ -1759,6 +1759,18 @@ enum inbound_emails_outcome {
   /// The endpoint's rate limit refused the request. Written from the guard,
   /// because a throttled request never reaches the handler.
   rate_limited
+  /// **A member proposed a different time** (Google's "Propose new time", which
+  /// sends `METHOD:COUNTER`). Split out of `not_a_reply` on 2026-10-22 after
+  /// Rob tried it on stage: the classification was right and the row was
+  /// useless, because "Not a calendar reply" reads as "this was not calendar
+  /// mail" and threw away the one fact worth having -- somebody is asking for a
+  /// different time. Nothing automates it; the point is that an admin can see
+  /// it was asked.
+  ///
+  /// Appended, not placed next to the other calendar outcomes: declaration
+  /// order is the MySQL ENUM order, and appending is the one change InnoDB
+  /// makes in place. See `20261010100000_email_queue_claim`.
+  counter_proposal
 }
 
 enum email_queue_status {
