@@ -55,8 +55,8 @@ Two decisions bound it:
 | 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
 | 2 | ~~bugfix — dispatcher claim~~ | **Done and merged** (PR #25, `b06cfc3`, 2026-10-14). Stage found it was a *live* defect, not a latent one: 40 queued rows produced 57 sends on the pre-fix image, reproduced by pressing Send Now in two browser tabs. 40 → 40 after. v2-27's first half, carved out. The dispatcher had no claim step and Admin → Send Now dispatches from a request, so it could double-send *today*. See v2-27's section for what the claim settled and what is left of that item. |
 | 3 | **v2-33 — port v1's five bugfixes** | Every one is fixed in DinnerBears today, so shipping without them is regression, not parity — the same test this table uses. No schema changes, one branch. Verified as live defects here on 2026-10-14. |
-| 4 | **v2-34 — an inbound email log** | **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
-| 5 | **v2-29 — port Phase 39** | Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. Its sync refusals write to v2-34's log — see both sections. |
+| 4 | ~~**v2-34 — an inbound email log**~~ | **Done 2026-10-22** (tag `v2-34`). **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
+| 5 | **v2-29 — port Phase 39** | **Next up.** Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. Its sync refusals write to v2-34's log — see both sections. |
 | 6 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
 | 7 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
 | 8 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
@@ -2577,8 +2577,8 @@ configured.
 
 ### v2-29 — Port v1's Phase 39 (Muse API + Facebook RSVP sync)
 
-**Status:** Not started. **On the cutover critical path, item 5** — see the
-running order at the top. Depends on v2-5 (scoping), v2-6 (users scoped) and
+**Status:** **In progress — next up** (2026-10-22, now that `v2-34` is done).
+**On the cutover critical path, item 5** — see the running order at the top. Depends on v2-5 (scoping), v2-6 (users scoped) and
 v2-9 (per-community email, for the sync's confirmation mail). **`v2-34` now
 runs ahead of it** (Rob, 2026-10-20) so the sync's refusals write to the
 inbound log from the start rather than being retrofitted — see that section for
@@ -3046,9 +3046,42 @@ makes a wrong RSVP unlikely rather than impossible.
 
 ### v2-34 — An inbound email log
 
-**Status:** Not started. **On the cutover critical path, item 4 — pulled
-forward 2026-10-20 (Rob), reversing the "post-cutover / future phase" call of
-2026-10-14.** Asked for as "email logs for incoming emails and any errors" —
+**Status:** **Complete (2026-10-22).** Was item 4 on the cutover critical path,
+**pulled forward 2026-10-20 (Rob)**, reversing the "post-cutover / future
+phase" call of 2026-10-14.
+
+**What shipped beyond the definition of done**, all of it from stage:
+`counter_proposal` as its own outcome (Google's "Propose new time" sends
+`METHOD:COUNTER`, was filed `not_a_reply`, and that label reads as "not calendar
+mail" while discarding the one actionable fact); RFC 2047 subject decoding,
+because every row displayed its subject as a raw encoded word; and
+`clientIpFrom`, because `source_ip` recorded the Cloudflare edge rather than the
+caller — the same family as `v2-14`'s unset `trust proxy`.
+
+**Three defects were found by tests rather than by review**, which is the part
+worth carrying forward. `event_id` as a foreign key made `unknown_uid` and
+`event_not_found` impossible to write at all, since the insert failed the
+constraint and the log — which must never fail a request — swallowed the error.
+The tenant classification spec refused a global model carrying a `tenant_id`,
+correctly; the exception is declared in `GLOBAL_MODELS_WITH_OPTIONAL_TENANT` and
+held narrow by two new assertions rather than the check being relaxed. And the
+fold was keyed on the source address, which could neither collapse Worker mail
+(five consecutive stage messages arrived from five Cloudflare addresses) nor
+resist a caller who rotates it.
+
+**Left open deliberately, neither blocking:** `FALLBACK_FORWARD_TO` is unset, so
+the Worker's forward-on-failure path is dormant until a verified destination
+address exists; and the operator-vs-community visibility split is covered by 16
+e2e cases across two communities but has not been read by a human on stage.
+
+**Verified live on stage:** `recorded`, `unchanged`, `counter_proposal`,
+`invalid_secret`, `rate_limited`, the fold counter (30 probes → one row,
+`folded=29`; 5 throttled → one row, `folded=4`), both reads, the screen and its
+nav. The rate-limited row matters more than it looks: it is written from a
+**globally registered guard** via property injection, so a mistake there would
+have broken throttling for every route in the deployment.
+
+Original scope follows. Asked for as "email logs for incoming emails and any errors" —
 and it should have been written down when `v2-31` built the log, because what
 that item built is only half of one.
 
