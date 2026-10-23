@@ -406,10 +406,37 @@ export class AdminService {
     if (hasAdminRights(target.role) && !target.isServiceAccount) {
       throw new ForbiddenException("Cannot change another admin's role");
     }
+
+    // **Only a non-person account may hold an integration role** (v2-29),
+    // matching v1's Phase 39: "only an automation account can hold it".
+    //
+    // This is the half of the rule that protects a person rather than the
+    // deployment. `automation` and `muse` are the two roles whose accounts are
+    // hidden from the member directory, the leaderboard and member search, and
+    // excluded from every scheduled sweep -- so granting one to a real member
+    // would quietly make them disappear from their own community rather than
+    // raise an error. The Muse role additionally authenticates by bearer token,
+    // and a token standing in for a human's identity would bypass every
+    // notification preference and consent decision attached to it.
+    if (
+      (role === UserRole.AUTOMATION || role === UserRole.MUSE) &&
+      !target.isServiceAccount
+    ) {
+      throw new ForbiddenException('Only an integration account can hold that role');
+    }
+
     // Humans still need a database edit to become admin. A service account may
     // be flipped up and back down freely, whatever role it currently holds --
-    // browsing role-gated pages is what the account is for.
-    if (role === UserRole.ADMIN && !target.isServiceAccount && target.role !== UserRole.AUTOMATION) {
+    // browsing role-gated pages is what the account is for, and for a Muse
+    // account the flip is also its documented off switch: MuseTokenGuard
+    // requires the `muse` role as currently held, so moving the account to
+    // `automation` disables its token until it is moved back.
+    if (
+      role === UserRole.ADMIN &&
+      !target.isServiceAccount &&
+      target.role !== UserRole.AUTOMATION &&
+      target.role !== UserRole.MUSE
+    ) {
       throw new ForbiddenException('Cannot promote to admin — set directly in the database');
     }
     const previousRole = target.role;

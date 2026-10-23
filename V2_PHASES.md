@@ -2625,6 +2625,43 @@ Four tables arrive: `api_tokens`, `event_facebook_links`, `facebook_accounts`,
   added or counted) — v2 inherited `UserStatus.SUSPENDED` and the admin ban
   path. `v2-30` enriches that later and is not a prerequisite.
 
+**Onboarding docs are part of this item, not a follow-up** (Rob, 2026-10-23).
+`docs/TENANT_ONBOARDING.md` gains a Muse section: how a community gets an
+integration account and a token, what to do with them, and a ready-to-paste
+**Muse setup prompt** so whoever runs Muse can configure it without reverse
+engineering the API doc. `docs/MUSE_API.md` is the contract and is not that --
+it tells you what the routes are, not how to get started.
+
+**The Facebook account is Muse's, never ours** -- confirmed against v1's code
+rather than assumed. Nothing in these four tables holds a Facebook credential:
+the only token here is our own `cet_` token so Muse can call us, and the sole
+Graph API calls in all of v1 are Facebook *Login* verifying a sign-in. We store
+Facebook *people* (`facebook_user_id`, `profile_url`) and group names as free
+text, and never a way to act as anybody.
+
+That is what makes per-community Muse work without the operator joining
+everybody's Facebook groups (Rob's concern, 2026-10-23): because the token
+identifies the tenant rather than the Host header, a community's own admin runs
+their own Muse against their own Facebook account and their own groups, reaching
+only their own data. One shared Muse would be the arrangement that requires the
+operator inside every community's groups, and nothing here pushes toward it.
+**Put no Facebook credential in the schema.** If app-level credentials are ever
+genuinely needed, `tenant_secrets` is already the right shape -- scoped,
+encrypted, resolved most-specific-first -- so it is a row rather than a
+migration. Worth knowing the ceiling, though: Facebook's Groups API does not
+really let an app create events in a group, which is *why* Muse drives a human
+account, so "one Muse across every community" is probably not reachable by any
+schema choice.
+
+**Not blocking for the cutover.** DinnerBears is the only production community
+and Rob is already in its groups; a couple of others may exist on stage for
+testing. Parity is "DinnerBears has Muse", so the multi-community Facebook
+question does not have to be answered here.
+
+**Today's scope is the account and its token** (Rob, 2026-10-23) -- the `muse`
+role, the integration account, `api_tokens` and the guard. A setup *wizard* is
+explicitly out, and is filed as `v2-44`.
+
 **Definition of done:** the Muse API answers identically to v1's contract on a
 community's own host; a token opens only the Muse routes and only for an active
 account holding that role; the sync's rules are pinned by the ported e2e suite;
@@ -3740,3 +3777,43 @@ and skipped regardless.
 releases from the composer; the note is never rewritten; a hand-marked shipped
 report is still reachable; publishing ships what is linked; the migration runs
 twice safely. Verified by `test/release-report-links.e2e-spec.ts` (6 cases).
+
+---
+
+### v2-44 — Feature setup guides with a live checklist
+
+**Status:** Not started. Raised by Rob 2026-10-23 while scoping `v2-29`'s Muse
+setup, and deliberately **not** built there: that item ships an account and a
+token, and this is the pattern that would have made turning Muse on pleasant.
+
+The idea is an instruction book per optional feature plus **an online checklist
+that knows where you actually are**, with a way to verify each step rather than
+asserting it. "If you want this feature, here is how, here is what is done, and
+here is proof it works."
+
+**Distinct from `v2-15` and `v2-16`, and the difference is what makes it worth
+its own item.** `v2-15` is the operator's one-time fresh-install wizard
+(deployment-level: Google, Meta, DNS, email) and `v2-16` is the handbook read
+beforehand. This is per-*feature*, per-*community*, opt-in, and **stateful** --
+a community admin turning one thing on, months after install, who needs to know
+which of six steps they have completed. v2-15's prompting happens in the moment
+of install; this persists and is returned to.
+
+**Verification is the substance, not the checklist.** A checkbox an admin ticks
+themselves records an intention and is worth little; the value is the deployment
+*checking* -- is a token live and unexpired, does the mail domain publish an MX,
+did an inbound message ever arrive, has Muse called us. Every v2 item that
+reached stage found its real defects in exactly this gap between configured and
+working: `v2-33` cost two days to unconfigured Email Routing and a blank
+`CLOUDFLARE_EMAIL_SECRET`, and `v2-13`'s own notes record an afternoon lost to
+a missing edge certificate. Each was silent on both sides.
+
+Candidates to cover, in rough order of how badly they fail silently today: Muse
+and the Facebook mirror, inbound mail (the `mail_domain`/MX trap recorded in
+CLAUDE.md), per-community email sending and its templates, per-tenant OAuth,
+and a community's own domain.
+
+**Definition of done:** a community admin can open an optional feature, read
+what it needs, see which steps are genuinely done as judged by the deployment
+rather than by their own ticking, and be told what is wrong when something is
+half-configured.

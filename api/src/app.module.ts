@@ -37,6 +37,10 @@ import { CommunityModule } from './modules/community/community.module';
 import { MerchModule } from './modules/merch/merch.module';
 import { AppConfigModule } from './modules/app-config/app-config.module';
 import { AvatarsModule } from './modules/avatars/avatars.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
+import { MuseModule } from './modules/muse/muse.module';
+import { FacebookModule } from './modules/facebook/facebook.module';
+import { FacebookHeadcountModule } from './modules/facebook/facebook-headcount.module';
 
 @Module({
   imports: [
@@ -78,6 +82,10 @@ import { AvatarsModule } from './modules/avatars/avatars.module';
     MerchModule,
     AppConfigModule,
     AvatarsModule,
+    IntegrationsModule,
+    FacebookHeadcountModule,
+    FacebookModule,
+    MuseModule,
   ],
   controllers: [AppController],
   providers: [

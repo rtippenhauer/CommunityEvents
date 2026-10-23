@@ -26,15 +26,25 @@ export interface Comment {
 }
 
 export interface AttendanceEntry {
-  type: 'member' | 'guest';
+  type: 'member' | 'guest' | 'facebook';
   userId?: number;
   guestLinkId?: number;
+  /** v2-29: identifies a Facebook-only person for the attendance write. */
+  facebookAccountId?: number;
   memberName: string;
   recipientEmail?: string | null;
   attended: boolean | null;
   isWalkin: boolean;
   fromOtherCity: boolean;
   linkUsed: boolean;
+  /**
+   * v2-29. Who created a member's RSVP, so the dialog can say why somebody is
+   * on the list. A member added by the Facebook sync never pressed anything
+   * here and would otherwise look as though they had.
+   */
+  source?: 'member' | 'admin' | 'facebook_sync';
+  /** A Facebook-only person's merged +1s. */
+  plusOnes?: number;
 }
 
 export interface MemberSearchResult {
@@ -75,6 +85,11 @@ export class EventCommentsService {
 
   deleteReply(eventId: number, commentId: number, replyId: number): Observable<void> {
     return this.http.delete<void>(`/api/v1/events/${eventId}/comments/${commentId}/replies/${replyId}`);
+  }
+
+  /** v2-29: an organiser putting an existing member on the Going list. */
+  addToGoing(eventId: number, userId: number): Observable<unknown> {
+    return this.http.post(`/api/v1/events/${eventId}/attendance/add-to-going`, { userId });
   }
 
   getAttendance(eventId: number): Observable<AttendanceEntry[]> {

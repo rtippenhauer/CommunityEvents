@@ -155,6 +155,19 @@ export const RsvpStatus = {
 } as const;
 export type RsvpStatus = (typeof RsvpStatus)[keyof typeof RsvpStatus];
 
+/**
+ * Who created an RSVP (v2-29). What makes the Facebook sync's removal safe:
+ * rule 8 lets it delete only an RSVP it made itself, so without this column
+ * every imported RSVP looks website-made and the sync must either remove what
+ * members entered or never remove anything.
+ */
+export const RsvpSource = {
+  MEMBER: 'member',
+  ADMIN: 'admin',
+  FACEBOOK_SYNC: 'facebook_sync',
+} as const;
+export type RsvpSource = (typeof RsvpSource)[keyof typeof RsvpSource];
+
 // from event.entity.ts
 export const EventStatus = {
   DRAFT: 'draft',
@@ -258,6 +271,23 @@ export const UserRole = {
    */
   SYSTEM_ADMIN: 'system_admin',
   AUTOMATION: 'automation',
+  /**
+   * The Muse Facebook-event sync (v2-29).
+   *
+   * Authenticates **only** with an `api_tokens` bearer token and only on the
+   * `/muse` routes -- never through the session guards, because nothing can
+   * mint a session for it: `password_hash` is NULL, there is no OAuth link, and
+   * `automationLogin` admits one specific address. A token opens nothing but
+   * `/muse`, and a cookie opens no `/muse` route.
+   *
+   * Like AUTOMATION, only an account flagged `is_service_account` may hold it
+   * (see admin.service.setRole), so no human can be given it. Also like
+   * AUTOMATION, the role is deliberately switchable for testing -- and
+   * MuseTokenGuard requires the role *currently*, so flipping the account to
+   * `automation` disables its token until it is flipped back. That is the
+   * intended off switch, not a side effect.
+   */
+  MUSE: 'muse',
   /**
    * No privileges whatsoever. RolesGuard is an allowlist, so this matches no
    * @Roles() and reaches nothing role-gated.

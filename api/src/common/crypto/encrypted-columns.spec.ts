@@ -43,6 +43,16 @@ const NOT_A_STORED_SECRET: Readonly<Record<string, string>> = {
     'Already a SHA-256 digest, and the ticket it stands for lives about two ' +
     'minutes. Encrypting a hash would let anyone holding the key recover... a ' +
     'hash -- and it is looked up by value, which a randomised cipher cannot do.',
+  'api_tokens.tokenHash':
+    'As oauth_handoffs.tokenHash (v2-29): already a SHA-256 digest, and the ' +
+    'guard looks it up by value on every integration call -- which a ' +
+    'randomised cipher cannot do. Hashing rather than encrypting is also the ' +
+    'stronger choice here, because nothing ever needs the plaintext back: a ' +
+    'lost token is reissued, not recovered.',
+  'api_tokens.tokenPrefix':
+    'The leading `cet_` plus eight characters, kept so a screen can say WHICH ' +
+    'token without holding one. Deliberately not enough to authenticate, so ' +
+    'there is no secret here to protect.',
 };
 
 /** Names that suggest a credential, whatever the column turns out to hold. */

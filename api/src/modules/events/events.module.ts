@@ -7,6 +7,8 @@ import { CalendarModule } from '../calendar/calendar.module';
 import { CommunityModule } from '../community/community.module';
 import { LocationsModule } from '../locations/locations.module';
 import { AppConfigModule } from '../app-config/app-config.module';
+import { FacebookHeadcountModule } from '../facebook/facebook-headcount.module';
+import { AuditModule } from '../audit/audit.module';
 import type { events as EventRow, event_guest_links as EventGuestLink, event_rsvps as EventRsvp, invites as Invite, locations as LocationRow, users as User } from '@prisma/client';
 
 @Module({
@@ -17,6 +19,12 @@ import type { events as EventRow, event_guest_links as EventGuestLink, event_rsv
     CommunityModule,
     LocationsModule,
     AppConfigModule,
+    // The merged headcount for `goingCount` (v2-29). Its own module, which
+    // imports nothing but Prisma -- FacebookModule needs EventsModule for the
+    // sync's RSVP confirmation, so defining the headcount there would close a
+    // cycle.
+    FacebookHeadcountModule,
+    AuditModule,
   ],
   providers: [EventsService],
   controllers: [EventsController],

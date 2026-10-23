@@ -531,7 +531,153 @@ Two consequences worth knowing before somebody reports them as bugs: a demo admi
 who forgets their password cannot reset it (they ask for a new demo), and invites
 sent from inside a demo generate a link but deliver no mail.
 
-## Checklist## Checklist
+## 8. The Muse Facebook sync (optional)
+
+Muse is an outside app that creates a community's Facebook events, reads their
+Going lists, posts the invite links, and pushes the lists back so the website
+holds a merged headcount. It is entirely optional: a community that does not
+mirror to Facebook needs none of this.
+
+### The Facebook account is Muse's, never ours
+
+Nothing in CommunityEvents holds a Facebook credential, and nothing here ever
+calls Facebook. Muse reads Facebook with **its own** Facebook login and posts
+its extraction to us; we store Facebook *people* (their numeric id, their vanity
+URL) and group names as free text, never a way to act as anybody.
+
+That is what makes this per-community without the operator in the middle: each
+community runs its own Muse, signed in as one of **its own** admins, in **its
+own** groups. The operator never joins anybody's Facebook groups and never holds
+their credentials. A single shared Muse is the arrangement that would require
+that, and nothing here pushes toward it.
+
+Worth knowing the ceiling: Facebook's Groups API does not really let an app
+create events in a group, which is *why* Muse drives a human account rather
+than an app. So "one Muse across every community" is probably not reachable at
+all, by any amount of configuration here.
+
+### What the operator or admin does
+
+1. **Create the integration account.** Admin -> Automation Accounts -> Add an
+   account, named `Muse`. It becomes `muse@integration.invalid` — a reserved TLD
+   that can never receive mail. The account cannot sign in (no password, no
+   OAuth), is hidden from the member directory and the leaderboard, and is
+   excluded from every deletion and re-engagement sweep.
+2. **Issue a token.** Same screen, "Issue token". It is shown **once**: only its
+   SHA-256 is stored, so it cannot be shown again and a lost one is reissued
+   rather than recovered. 60-day expiry; Muse rotates its own before then.
+3. **Give Muse the base URL and the token.** The base URL is the community's own
+   host plus `/api/v1/muse`.
+4. **Work the review queue.** After the first sync, Admin -> Facebook Accounts
+   lists everybody seen. Nothing is linked automatically — two people can share
+   a name, and a wrong link marks the wrong member Going and emails them about a
+   dinner they never chose. Link each person to a member, or mark them "Not a
+   member" (still counted in the headcount, just out of the queue).
+
+### A setup prompt for Muse
+
+Paste this into Muse, filling in the two values from step 3. It is deliberately
+self-contained: the full contract is `docs/MUSE_API.md`, and this is what gets a
+run working without reading it.
+
+```
+You are syncing Facebook event Going lists into CommunityEvents.
+
+Base URL: https://<the community's host>/api/v1/muse
+Auth:     Authorization: Bearer <the cet_ token>    (on EVERY request;
+          never as a query parameter and never as a cookie)
+Format:   JSON in and out. Rate limit 120 requests/minute.
+
+The token identifies which community you are talking to. Do not infer the
+community from anything else, and keep one token per community.
+
+Each run:
+
+1.  GET /me  -> { userId, name, tokenExpiresAt, community }
+    If tokenExpiresAt is less than 14 days away, POST /token/rotate and STORE
+    THE NEW TOKEN BEFORE ANY OTHER CALL — the old one dies the moment that
+    response is returned. If it has already expired, an admin must issue a new
+    one; you cannot recover it.
+
+2.  GET /events  -> upcoming events, drafts included, each with facebookEvents[].
+    An empty facebookEvents means no Facebook event exists for that dinner yet.
+
+3.  For each dinner with no Facebook event, create one on Facebook (the
+    community's groups), then record it:
+      PUT /events/:id/facebook-events/:facebookEventId   body { "group": "<group name>" }
+    409 means that Facebook event is already mirroring a different dinner.
+    Safe to repeat; repeating updates the group.
+
+4.  GET /events/:id/invite-links -> { member, nonValidated, all }.
+    Create any missing flavour with POST /events/:id/invite-links
+    body { "flavor": "member" | "non_validated" }, and post the URLs to Facebook.
+    Default is non_validated, which is the safe one for a public group.
+
+5.  Read every linked Facebook event's Going tab (NOT "Interested"), then send
+    them all in ONE call:
+
+      POST /facebook-sync
+      {
+        "events": [
+          {
+            "dinnerbears_event_id": 21,
+            "facebook_event_id": "1617936020344888",
+            "facebook_group": "Cincinnati Tuesday Night Bear Dinners",
+            "going_count": 3,
+            "guests": [
+              { "name": "Don Weaver",
+                "profile_url": "https://www.facebook.com/don.weaver.718",
+                "facebook_user_id": "100000000000002",
+                "plus_one_names": ["Pat Lee"],
+                "plus_ones": 2 }
+            ]
+          }
+        ],
+        "extracted_at": "2026-10-23T10:13:00-04:00"
+      }
+
+    - One call for every Facebook event, so each dinner is reconciled against
+      all of its lists together and every Facebook event gets its dinner's
+      FINAL headcount back.
+    - facebook_user_id is the permanent key and must be the numeric profile id.
+      A changed vanity URL just updates the record.
+    - going_count is Facebook's own number. If it disagrees with the guests you
+      sent, the list is treated as partial and NOBODY is removed for that
+      Facebook event. Send it; it is the guard against a truncated scrape
+      emptying a dinner.
+    - plus_ones is the total from the comment; plus_one_names are the ones you
+      could name. Send plus_ones alone for "+2" with no names. A repeated name
+      is two different people.
+    - extracted_at is when you READ the lists, not when you send them. A run
+      whose extraction is older than one already applied is skipped.
+    - guests: [] means nobody is Going. That is a real statement and is what
+      removes people.
+    - title, facebook_event_url and note are accepted and ignored.
+
+6.  Write each returned events[].totalGoing into that Facebook event's
+      description, e.g. "Currently we have 5 going (as of 10:13 AM)".
+
+7.  Log the response's `unmatched` and `warnings` every run. `unmatched` is
+    people an admin still has to link; `warnings` includes anybody Going on
+    Facebook who is banned here (kept linked, never added, never counted).
+
+You never decide who a Facebook person is. The server suggests name matches;
+an admin confirms them on the website.
+```
+
+### What can go wrong, and how it looks
+
+| Symptom | Cause |
+|---|---|
+| Every call 401s | Token revoked, expired, or the account was switched to Claude Automation. Switching the role back re-enables the same token. |
+| 401 right after a rotation | The old token was used after `POST /token/rotate` returned. Store the new one first. |
+| 409 on linking | That Facebook event already mirrors a different dinner. |
+| Sync returns `status: skipped` | `extracted_at` is older than the last applied list for that Facebook event. |
+| `complete: false` and a warning | `going_count` did not match the guests sent, so nobody was removed. Usually a partial scrape. |
+| Nobody is ever marked Going | The Facebook accounts are not linked to members yet. Admin -> Facebook Accounts. |
+| A member appears with no +1s you expected | A named website guest already covered that +1 — deliberate, so a guest is not counted twice. |
+
+## Checklist
 
 ```
 [ ] A/CNAME for the web host resolves
@@ -544,6 +690,13 @@ sent from inside a demo generate a link but deliver no mail.
 [ ] Google OAuth client created, deployment redirect URI matched (if wanted)
 [ ] Client ID + secret saved at Admin -> Sign-in Providers (if wanted)
 [ ] Community created with a first admin; sign-in confirmed at its own host
+
+Only if the community mirrors to Facebook (section 8):
+[ ] Integration account created at Admin -> Automation Accounts
+[ ] Token issued and stored in Muse (shown once; reissue if lost)
+[ ] Muse pointed at https://<host>/api/v1/muse with that token
+[ ] GET /me returns the right community
+[ ] First sync run; Admin -> Facebook Accounts queue worked through
 ```
 
 Demo communities need none of the above — no DNS, no certificate, no Brevo

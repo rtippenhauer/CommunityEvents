@@ -7,6 +7,7 @@ import {
   Header,
   Param,
   ParseIntPipe,
+  HttpCode,
   Patch,
   Post,
   Query,
@@ -25,6 +26,7 @@ import { CreatePublicRsvpDto } from './dto/create-public-rsvp.dto';
 import { UseGuestLinkDto } from './dto/use-guest-link.dto';
 import { CreateEventInviteDto } from './dto/create-event-invite.dto';
 import { MarkAttendanceDto } from './dto/mark-attendance.dto';
+import { AddToGoingDto } from './dto/add-to-going.dto';
 import { AddWalkinDto } from './dto/add-walkin.dto';
 import { SetReservationDto } from './dto/set-reservation.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -263,6 +265,26 @@ export class EventsController {
   @Roles(UserRole.MODERATOR, UserRole.ADMIN)
   resendGuestInvite(@Param('guestLinkId', ParseIntPipe) guestLinkId: number) {
     return this.eventsService.resendGuestInvite(guestLinkId);
+  }
+
+  /**
+   * An organiser putting an existing member on the Going list (v2-29).
+   *
+   * Admin and moderator, from the attendance dialog. Skips the RSVP cutoff and
+   * the membership gate -- see `addToGoing` for why those do not apply to an
+   * organiser -- and writes `source: admin`, which is what stops the Facebook
+   * sync from ever removing it.
+   */
+  @Post(':id/attendance/add-to-going')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+  @HttpCode(200)
+  addToGoing(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddToGoingDto,
+    @CurrentUser() actor: User,
+  ) {
+    return this.eventsService.addToGoing(id, dto.userId, actor.id);
   }
 
   @Post(':id/attendance/walkin')

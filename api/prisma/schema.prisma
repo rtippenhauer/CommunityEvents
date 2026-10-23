@@ -186,6 +186,160 @@ model tenant_secrets {
   @@index([tenantId], map: "idx_tenant_secrets_tenant")
 }
 
+/// Bearer tokens for outside integrations -- today only Muse (v2-29).
+///
+/// **The token identifies the community, not the Host header.** An integration
+/// call carries no session and no cookie, so `tenant_id` lives here and
+/// `MuseTenantMiddleware` enters that community's scope from the token's own
+/// row before any handler runs. This is the one part of v1's Phase 39 that
+/// could not be ported literally: v1 is single-tenant and had nothing to
+/// resolve.
+///
+/// Only the SHA-256 of a token is stored, so a database dump cannot be replayed
+/// against the API and a lost token cannot be recovered -- only reissued.
+/// `token_prefix` exists so a screen can say *which* token without holding one.
+///
+/// Not an encrypted column: a hash is already irreversible, and
+/// `encrypted-columns.ts` values cannot be filtered on (the cipher is
+/// randomised), which is exactly what the guard's lookup has to do.
+model api_tokens {
+  id          Int       @id @default(autoincrement()) @db.UnsignedInt
+  userId      Int       @map("user_id") @db.UnsignedInt
+  /// SHA-256 of the presented token, hex. Unique so a lookup by hash is a
+  /// single indexed read rather than a scan.
+  tokenHash   String    @unique(map: "uq_api_tokens_token_hash") @map("token_hash") @db.Char(64)
+  /// The leading `cet_xxxxxxxx`, for display only. Never enough to authenticate.
+  tokenPrefix String    @map("token_prefix") @db.VarChar(16)
+  expiresAt   DateTime  @map("expires_at") @db.DateTime(0)
+  lastUsedAt  DateTime? @map("last_used_at") @db.DateTime(0)
+  revokedAt   DateTime? @map("revoked_at") @db.DateTime(0)
+  /// The admin who issued it. A plain column with **no foreign key**, matching
+  /// v1 -- and for the reason v2-34 found by testing: a restrictive key would
+  /// make deleting that admin fail, and a cascade would revoke a live
+  /// integration because somebody left the community. Nothing joins on it; it
+  /// is provenance for a screen.
+  createdBy   Int?      @map("created_by") @db.UnsignedInt
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(6)
+  tenantId    Int       @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant      tenants   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_api_tokens_tenant")
+  /// Cascade: a deleted account's tokens must not outlive it. Integration
+  /// accounts cannot be deleted anyway (`assertNotServiceAccount`), so this
+  /// fires only if that protection is ever removed.
+  user        users     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_api_tokens_user")
+
+  @@index([userId], map: "idx_api_tokens_user")
+  @@index([tenantId], map: "idx_api_tokens_tenant")
+}
+
+/// A dinner's Facebook events -- which Facebook event mirrors which dinner
+/// (v2-29). CommunityEvents is the source of truth for this mapping.
+///
+/// One dinner may have any number (one per Facebook group); one Facebook event
+/// may mirror only one dinner **per community**, which is the 409 the Muse
+/// contract promises.
+model event_facebook_links {
+  id              Int       @id @default(autoincrement()) @db.UnsignedInt
+  eventId         Int       @map("event_id") @db.UnsignedInt
+  /// Facebook's own id, the digits from `facebook.com/events/<id>`. A string
+  /// because it exceeds 32 bits and is an identifier, not a quantity.
+  facebookEventId String    @map("facebook_event_id") @db.VarChar(32)
+  /// Free text, never a foreign key -- `v2-24` drops `facebook_group_config`,
+  /// and a group is a label on this link rather than an entity we model.
+  facebookGroup   String?   @map("facebook_group") @db.VarChar(200)
+  /// When the list we last applied was READ from Facebook, not when we applied
+  /// it. Rule 12's replay guard turns on exactly that difference: a slow run
+  /// whose extraction predates one already applied must be skipped, and a
+  /// received-at timestamp cannot tell.
+  lastExtractedAt DateTime? @map("last_extracted_at") @db.DateTime(0)
+  lastSyncedAt    DateTime? @map("last_synced_at") @db.DateTime(0)
+  lastGoingCount  Int?      @map("last_going_count") @db.UnsignedInt
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(6)
+  tenantId        Int       @default(0) @map("tenant_id") @db.UnsignedInt
+  event           events    @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_event_facebook_links_event")
+  tenant          tenants   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_event_facebook_links_tenant")
+
+  @@unique([tenantId, facebookEventId], map: "uq_event_facebook_links_fb_event")
+  @@index([eventId], map: "idx_event_facebook_links_event")
+  @@index([tenantId], map: "idx_event_facebook_links_tenant")
+}
+
+/// A Facebook person seen on a community's Going lists (v2-29).
+///
+/// **Matching is never automatic** (rule 5). An admin links an account to a
+/// member, several per member if they have several Facebook accounts; the server
+/// only ever *suggests* name matches. Both uniques are scoped, so one Facebook
+/// person may exist as a row in several communities -- the link is a judgement
+/// one community's admin made and must not bind another's.
+model facebook_accounts {
+  id             Int                        @id @default(autoincrement()) @db.UnsignedInt
+  /// The vanity URL, refreshed on every sync. Nullable because the numeric id
+  /// is the real key; if another row holds this vanity it is released to the
+  /// new holder (rule 4).
+  profileUrl     String?                    @map("profile_url") @db.VarChar(255)
+  /// The permanent key. A changed vanity URL merely updates the row.
+  facebookUserId String?                    @map("facebook_user_id") @db.VarChar(32)
+  displayName    String                     @map("display_name") @db.VarChar(200)
+  /// `not_member` keeps somebody counted in the headcount while taking them out
+  /// of the review queue: a real attendee with no account here, which is a
+  /// different thing from one nobody has looked at yet.
+  status         facebook_accounts_status   @default(unmatched)
+  userId         Int?                       @map("user_id") @db.UnsignedInt
+  linkedAt       DateTime?                  @map("linked_at") @db.DateTime(0)
+  linkedBy       Int?                       @map("linked_by") @db.UnsignedInt
+  lastSeenAt     DateTime?                  @map("last_seen_at") @db.DateTime(0)
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.DateTime(6)
+  updatedAt      DateTime                   @default(now()) @map("updated_at") @db.DateTime(6)
+  tenantId       Int                        @default(0) @map("tenant_id") @db.UnsignedInt
+  /// SET NULL, not CASCADE: the Facebook person outlives the member. Deleting
+  /// the member unlinks them (rule 13) and leaves the row to be seen again as
+  /// unmatched -- erasing it would silently re-add a departed member's +1s.
+  user           users?                     @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_facebook_accounts_user")
+  tenant         tenants                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_facebook_accounts_tenant")
+  attendees      facebook_event_attendees[]
+
+  @@unique([tenantId, facebookUserId], map: "uq_facebook_accounts_fb_user_id")
+  @@unique([tenantId, profileUrl], map: "uq_facebook_accounts_profile_url")
+  @@index([userId], map: "idx_facebook_accounts_user")
+  @@index([tenantId], map: "idx_facebook_accounts_tenant")
+}
+
+/// One Facebook person's Going status for one dinner, merged across that
+/// dinner's Facebook events (v2-29).
+///
+/// `sources` is keyed by Facebook event id and holds the +1s read from each
+/// list. Rule 3 turns on it: somebody stops being Going only when **no** list
+/// of that dinner has them, so the per-list record is the mechanism rather than
+/// a detail. Facebook's ids are stored as-is and never remapped.
+model facebook_event_attendees {
+  id                Int               @id @default(autoincrement()) @db.UnsignedInt
+  eventId           Int               @map("event_id") @db.UnsignedInt
+  facebookAccountId Int               @map("facebook_account_id") @db.UnsignedInt
+  sources           Json
+  /// Tri-state: NULL is "not marked yet", which is not the same as marked
+  /// no-show. A boolean would make an unreviewed dinner read as a room full of
+  /// no-shows.
+  attended          Boolean?
+  updatedAt         DateTime          @default(now()) @map("updated_at") @db.DateTime(6)
+  tenantId          Int               @default(0) @map("tenant_id") @db.UnsignedInt
+  event             events            @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fb_attendee_event")
+  account           facebook_accounts @relation(fields: [facebookAccountId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fb_attendee_account")
+  tenant            tenants           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_fb_attendee_tenant")
+
+  /// No tenant in this key, deliberately: both halves are AUTO_INCREMENT ids of
+  /// tenant-owned rows, so the pair already names one community. The uniques on
+  /// `facebook_accounts` need the tenant because those are **Facebook's**
+  /// identifiers, which two communities can legitimately both hold.
+  @@unique([eventId, facebookAccountId], map: "uq_fb_attendee_event_account")
+  @@index([facebookAccountId], map: "idx_fb_attendee_account")
+  @@index([tenantId], map: "idx_fb_attendee_tenant")
+}
+
+enum facebook_accounts_status {
+  unmatched
+  linked
+  not_member
+}
+
 model audit_log {
   id         Int      @id @default(autoincrement()) @db.UnsignedInt
   userId     Int?     @map("user_id") @db.UnsignedInt
@@ -299,24 +453,24 @@ model custom_icons {
 /// deleted with the demo it created, so an address and an IP are retained only
 /// as long as the community they provisioned.
 model demo_requests {
-  id           Int       @id @default(autoincrement()) @db.UnsignedInt
+  id              Int       @id @default(autoincrement()) @db.UnsignedInt
   /// Where the confirmation link is sent, and the address the demo's first admin
   /// is created with. Not unique: a previous demo of theirs may have expired,
   /// and one person is allowed another (subject to the per-IP cap).
-  email        String    @db.VarChar(255)
-  fullName     String    @map("full_name") @db.VarChar(200)
+  email           String    @db.VarChar(255)
+  fullName        String    @map("full_name") @db.VarChar(200)
   /// Hashed at request time, so the confirmation step has no password to carry
   /// in a URL and nothing here is reversible if the table leaks.
-  passwordHash String    @map("password_hash") @db.VarChar(255)
+  passwordHash    String    @map("password_hash") @db.VarChar(255)
   /// Stored in the clear, matching `invites.token` and
   /// `users.email_verification_token`. Consistency with the two existing
   /// single-use link tokens is worth more here than a lone hashed one that the
   /// next person to touch this has to notice is different.
-  token        String    @unique(map: "uq_demo_request_token") @db.VarChar(64)
+  token           String    @unique(map: "uq_demo_request_token") @db.VarChar(64)
   /// Retained for abuse control only -- it is what makes "two live demos per
   /// IP" answerable -- and deleted along with the demo. Kept here rather than on
   /// `tenants` so the community registry holds no personal data.
-  ipAddress    String?   @map("ip_address") @db.VarChar(64)
+  ipAddress       String?   @map("ip_address") @db.VarChar(64)
   /// NULL until confirmed; afterwards the demo this request created.
   ///
   /// Deliberately NOT called `tenantId`. That name means "the tenant this row
@@ -324,14 +478,14 @@ model demo_requests {
   /// extension keys on -- this is the opposite, a forward reference to a tenant
   /// this row produced. `tenant-scoped-models.spec.ts` rejects a global model
   /// carrying a `tenantId`, which caught the original spelling.
-  createdTenantId Int?   @unique(map: "uq_demo_request_tenant") @map("created_tenant_id") @db.UnsignedInt
-  confirmedAt  DateTime? @map("confirmed_at") @db.DateTime(0)
+  createdTenantId Int?      @unique(map: "uq_demo_request_tenant") @map("created_tenant_id") @db.UnsignedInt
+  confirmedAt     DateTime? @map("confirmed_at") @db.DateTime(0)
   /// When the unconfirmed request lapses. Short -- a confirmation link is acted
   /// on in minutes or not at all -- so an abandoned request stops counting
   /// against the caps quickly.
-  expiresAt    DateTime  @map("expires_at") @db.DateTime(0)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  createdTenant tenants? @relation(fields: [createdTenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_demo_request_tenant")
+  expiresAt       DateTime  @map("expires_at") @db.DateTime(0)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  createdTenant   tenants?  @relation(fields: [createdTenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_demo_request_tenant")
 
   @@index([expiresAt], map: "idx_demo_request_expires")
   @@index([ipAddress], map: "idx_demo_request_ip")
@@ -347,72 +501,72 @@ model demo_requests {
 /// One row per community per day. A request-level record would be noise -- the
 /// debounced search fires on every pause in typing.
 model email_log_views {
-  id             Int      @id @default(autoincrement()) @db.UnsignedInt
-  tenantId       Int      @default(0) @map("tenant_id") @db.UnsignedInt
-  viewedOn       DateTime @map("viewed_on") @db.Date
+  id                 Int      @id @default(autoincrement()) @db.UnsignedInt
+  tenantId           Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  viewedOn           DateTime @map("viewed_on") @db.Date
   /// Requests for the list. Includes filter changes and search keystrokes, so
   /// it measures "is this screen used" rather than "was this message needed".
-  views          Int      @default(0) @db.UnsignedInt
+  views              Int      @default(0) @db.UnsignedInt
   /// Rows expanded to read the body -- a deliberate act with one message behind
   /// it, which is the stronger signal of the two.
-  opens          Int      @default(0) @db.UnsignedInt
+  opens              Int      @default(0) @db.UnsignedInt
   /// Age, in days, of the oldest message reached on this day.
-  deepestAgeDays Int      @default(0) @map("deepest_age_days") @db.UnsignedInt
+  deepestAgeDays     Int      @default(0) @map("deepest_age_days") @db.UnsignedInt
   /// Age, in days, of the oldest message actually OPENED. This is the column a
   /// retention window should be decided on.
-  deepestOpenAgeDays Int  @default(0) @map("deepest_open_age_days") @db.UnsignedInt
-  lastViewedAt   DateTime @map("last_viewed_at") @db.DateTime(0)
-  tenant         tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_log_views_tenant")
+  deepestOpenAgeDays Int      @default(0) @map("deepest_open_age_days") @db.UnsignedInt
+  lastViewedAt       DateTime @map("last_viewed_at") @db.DateTime(0)
+  tenant             tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_log_views_tenant")
 
   @@unique([tenantId, viewedOn], map: "uq_email_log_view_day")
   @@index([tenantId], map: "idx_email_log_view_tenant")
 }
 
 model email_provider_config {
-  id                        Int      @id @default(autoincrement()) @db.UnsignedInt
-  brevoEnabled              Boolean  @default(true) @map("brevo_enabled")
-  resendOverflowEnabled     Boolean  @default(false) @map("resend_overflow_enabled")
-  brevoDailyLimit           Int      @default(300) @map("brevo_daily_limit")
-  resendDailyLimit          Int      @default(1000) @map("resend_daily_limit")
-  brevoSentToday            Int      @default(0) @map("brevo_sent_today")
-  resendSentToday           Int      @default(0) @map("resend_sent_today")
-  brevoApiKey               String?  @map("brevo_api_key") @db.VarChar(500)
-  brevoFromEmail            String?  @map("brevo_from_email") @db.VarChar(255)
-  brevoFromName             String?  @map("brevo_from_name") @db.VarChar(200)
-  resendApiKey              String?  @map("resend_api_key") @db.VarChar(500)
-  resendFromEmail           String?  @map("resend_from_email") @db.VarChar(255)
-  resendFromName            String?  @map("resend_from_name") @db.VarChar(200)
-  tmplInvite                Int?     @map("tmpl_invite") @db.UnsignedInt
-  tmplSecurityAlert         Int?     @map("tmpl_security_alert") @db.UnsignedInt
-  tmplEventPublished        Int?     @map("tmpl_event_published") @db.UnsignedInt
-  tmplRsvpConfirmation      Int?     @map("tmpl_rsvp_confirmation") @db.UnsignedInt
-  tmplEventReminder         Int?     @map("tmpl_event_reminder") @db.UnsignedInt
-  tmplAccountDeletion       Int?     @map("tmpl_account_deletion") @db.UnsignedInt
-  tmplReengagement60        Int?     @map("tmpl_reengagement_60") @db.UnsignedInt
-  tmplReengagement90        Int?     @map("tmpl_reengagement_90") @db.UnsignedInt
-  tmplGuestRsvpConfirmation Int?     @map("tmpl_guest_rsvp_confirmation") @db.UnsignedInt
-  tmplEmailVerification     Int?     @map("tmpl_email_verification") @db.UnsignedInt
-  tmplPasswordReset         Int?     @map("tmpl_password_reset") @db.UnsignedInt
-  tmplProviderDisconnected  Int?     @map("tmpl_provider_disconnected") @db.UnsignedInt
-  tmplAccountDeleted        Int?     @map("tmpl_account_deleted") @db.UnsignedInt
+  id                        Int       @id @default(autoincrement()) @db.UnsignedInt
+  brevoEnabled              Boolean   @default(true) @map("brevo_enabled")
+  resendOverflowEnabled     Boolean   @default(false) @map("resend_overflow_enabled")
+  brevoDailyLimit           Int       @default(300) @map("brevo_daily_limit")
+  resendDailyLimit          Int       @default(1000) @map("resend_daily_limit")
+  brevoSentToday            Int       @default(0) @map("brevo_sent_today")
+  resendSentToday           Int       @default(0) @map("resend_sent_today")
+  brevoApiKey               String?   @map("brevo_api_key") @db.VarChar(500)
+  brevoFromEmail            String?   @map("brevo_from_email") @db.VarChar(255)
+  brevoFromName             String?   @map("brevo_from_name") @db.VarChar(200)
+  resendApiKey              String?   @map("resend_api_key") @db.VarChar(500)
+  resendFromEmail           String?   @map("resend_from_email") @db.VarChar(255)
+  resendFromName            String?   @map("resend_from_name") @db.VarChar(200)
+  tmplInvite                Int?      @map("tmpl_invite") @db.UnsignedInt
+  tmplSecurityAlert         Int?      @map("tmpl_security_alert") @db.UnsignedInt
+  tmplEventPublished        Int?      @map("tmpl_event_published") @db.UnsignedInt
+  tmplRsvpConfirmation      Int?      @map("tmpl_rsvp_confirmation") @db.UnsignedInt
+  tmplEventReminder         Int?      @map("tmpl_event_reminder") @db.UnsignedInt
+  tmplAccountDeletion       Int?      @map("tmpl_account_deletion") @db.UnsignedInt
+  tmplReengagement60        Int?      @map("tmpl_reengagement_60") @db.UnsignedInt
+  tmplReengagement90        Int?      @map("tmpl_reengagement_90") @db.UnsignedInt
+  tmplGuestRsvpConfirmation Int?      @map("tmpl_guest_rsvp_confirmation") @db.UnsignedInt
+  tmplEmailVerification     Int?      @map("tmpl_email_verification") @db.UnsignedInt
+  tmplPasswordReset         Int?      @map("tmpl_password_reset") @db.UnsignedInt
+  tmplProviderDisconnected  Int?      @map("tmpl_provider_disconnected") @db.UnsignedInt
+  tmplAccountDeleted        Int?      @map("tmpl_account_deleted") @db.UnsignedInt
   /// When the daily counters beside it were last zeroed -- an instant, not a
   /// calendar day. It was a DATE column, which forced the rollover test to be a
   /// UTC day comparison and so drew the deployment's sending day in a zone the
   /// provider does not use. See `quota-day.ts`: the boundary is now
   /// `EMAIL_QUOTA_TIMEZONE`'s midnight, which the database can compare directly
   /// against this.
-  lastResetDate             DateTime @map("last_reset_date") @db.DateTime(3)
-  updatedAt                 DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+  lastResetDate             DateTime  @map("last_reset_date") @db.DateTime(3)
+  updatedAt                 DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
   /// Authenticates Brevo's deliverability callbacks for THIS community's Brevo
   /// account. Encrypted like the keys beside it, so it cannot be looked up by
   /// value -- the tenant is resolved from the Host header first and the token
   /// compared after decryption.
-  webhookSecret             String?  @map("webhook_secret") @db.VarChar(500)
+  webhookSecret             String?   @map("webhook_secret") @db.VarChar(500)
   /// The token this one replaced, accepted for a grace window after a rotation
   /// so callbacks already in flight are not rejected. Same idea as
   /// SECRET_ENCRYPTION_KEYS_RETIRED: the old value still verifies while the new
   /// one takes over. Cleared once the window passes.
-  webhookSecretPrevious     String?  @map("webhook_secret_previous") @db.VarChar(500)
+  webhookSecretPrevious     String?   @map("webhook_secret_previous") @db.VarChar(500)
   /// When the current token was minted. Rotation is scheduled off this, and it
   /// is what the grace window for `webhookSecretPrevious` is measured from.
   webhookRotatedAt          DateTime? @map("webhook_rotated_at") @db.DateTime(0)
@@ -420,7 +574,7 @@ model email_provider_config {
   /// not. Kept so the admin screen can say what went wrong rather than showing
   /// an unregistered webhook with no explanation -- a revoked API key and a
   /// Brevo outage need different responses from the operator.
-  webhookError              String?  @map("webhook_error") @db.VarChar(500)
+  webhookError              String?   @map("webhook_error") @db.VarChar(500)
   /// When this community's Brevo key was last replaced. Not an expiry -- Brevo
   /// keys do not expire unless one is chosen at creation, and choosing one for
   /// a key nothing can auto-rotate schedules an outage. It is here so the screen
@@ -436,9 +590,9 @@ model email_provider_config {
   /// Stored as a string although Brevo returns a number: a BIGINT column comes
   /// back from Prisma as a JS BigInt, which `JSON.stringify` throws on, and
   /// nothing here does arithmetic on it.
-  webhookId                 String?  @map("webhook_id") @db.VarChar(64)
-  tenantId                  Int      @default(0) @map("tenant_id") @db.UnsignedInt
-  tenant                    tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_provider_config_tenant")
+  webhookId                 String?   @map("webhook_id") @db.VarChar(64)
+  tenantId                  Int       @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant                    tenants   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_provider_config_tenant")
 
   @@unique([tenantId], map: "uq_email_provider_config_tenant")
 }
@@ -532,17 +686,17 @@ model email_suppressions {
 /// instrument should decide the eventual window on evidence. This is a
 /// provisional position, not a considered permanent one.
 model inbound_emails {
-  id          Int                    @id @default(autoincrement()) @db.UnsignedInt
+  id              Int                    @id @default(autoincrement()) @db.UnsignedInt
   /// NULL means the message resolved to no community. Operator-only.
-  tenantId    Int?                   @map("tenant_id") @db.UnsignedInt
-  outcome     inbound_emails_outcome
+  tenantId        Int?                   @map("tenant_id") @db.UnsignedInt
+  outcome         inbound_emails_outcome
   /// The specific reason, when the outcome alone is not enough to act on: the
   /// unparseable ATTENDEE line, the PARTSTAT we do not handle, the id of the
   /// community a cross-tenant reply actually belonged to. Never a stack trace.
-  detail      String?                @db.VarChar(500)
-  fromAddress String?                @map("from_address") @db.VarChar(255)
-  toAddress   String?                @map("to_address") @db.VarChar(255)
-  subject     String?                @db.VarChar(500)
+  detail          String?                @db.VarChar(500)
+  fromAddress     String?                @map("from_address") @db.VarChar(255)
+  toAddress       String?                @map("to_address") @db.VarChar(255)
+  subject         String?                @db.VarChar(500)
   /// **What the message CLAIMED, not a reference to something that exists.**
   /// No foreign key, deliberately: `unknown_uid` and `event_not_found` are
   /// outcomes about an event that is missing, so a key would make the two most
@@ -552,8 +706,8 @@ model inbound_emails {
   /// Same reasoning as `v2-30`'s ban records holding values rather than keys: a
   /// log records a claim, and a key asserts the claim is true. It also means a
   /// later event deletion cannot erase which event a failure was about.
-  eventId     Int?                   @map("event_id") @db.UnsignedInt
-  userId      Int?                   @map("user_id") @db.UnsignedInt
+  eventId         Int?                   @map("event_id") @db.UnsignedInt
+  userId          Int?                   @map("user_id") @db.UnsignedInt
   /// Who we resolved it to, where we got that far. This one IS a key, unlike
   /// `event_id` above, because it is only ever set to a member we just read --
   /// and losing the link when that account is deleted is right, which is the
@@ -561,30 +715,30 @@ model inbound_emails {
   /// The RSVP this reply asked for, as plain text rather than the
   /// `event_rsvps_status` enum. A log records what happened; coupling it to a
   /// live enum would mean a future status change rewriting history's meaning.
-  rsvpStatus  String?                @map("rsvp_status") @db.VarChar(20)
+  rsvpStatus      String?                @map("rsvp_status") @db.VarChar(20)
   /// The raw message. NULL where we deliberately did not keep it -- see
   /// `size_bytes`. Never populated for a request that failed authentication.
-  rawBody     String?                @map("raw_body") @db.LongText
+  rawBody         String?                @map("raw_body") @db.LongText
   /// Always recorded, even when `raw_body` is not. An unauthenticated caller
   /// can reach this endpoint, so the body of a request with a bad secret is
   /// attacker-supplied content and is not stored -- but its size and source
   /// still answer "what is hitting us", which is the question that matters then.
-  sizeBytes   Int                    @map("size_bytes") @db.UnsignedInt
-  sourceIp    String?                @map("source_ip") @db.VarChar(45)
+  sizeBytes       Int                    @map("size_bytes") @db.UnsignedInt
+  sourceIp        String?                @map("source_ip") @db.VarChar(45)
   /// How many further identical failures from this source were folded into this
   /// row instead of writing their own (v2-34). The log must stay bounded
   /// against an anonymous caller, and it must not go *quiet* to do it: a
   /// counter that climbs is visible, where a missing row is not.
-  suppressedCount Int                @default(0) @map("suppressed_count") @db.UnsignedInt
+  suppressedCount Int                    @default(0) @map("suppressed_count") @db.UnsignedInt
   /// DATETIME(3), unlike the DATETIME(0) columns elsewhere. Whole seconds have
   /// now produced three separate ordering bugs in this codebase -- `v2-31`'s
   /// unstable pagination, and two in `v2-33` -- and this table is written in
   /// bursts by definition, since a mail server retrying delivers several in one
   /// second. The `id` tiebreaker in `orderBy` stays regardless.
-  receivedAt  DateTime               @default(now()) @map("received_at") @db.DateTime(3)
+  receivedAt      DateTime               @default(now()) @map("received_at") @db.DateTime(3)
 
-  tenant      tenants?               @relation(fields: [tenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_inbound_emails_tenant")
-  user        users?                 @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_inbound_emails_user")
+  tenant tenants? @relation(fields: [tenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_inbound_emails_tenant")
+  user   users?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_inbound_emails_user")
 
   /// The operator's read: every row, newest first, no tenant predicate.
   @@index([receivedAt], map: "idx_inbound_emails_received")
@@ -663,23 +817,35 @@ model event_guest_links {
 }
 
 model event_rsvps {
-  id               Int                 @id @default(autoincrement()) @db.UnsignedInt
-  eventId          Int                 @map("event_id") @db.UnsignedInt
-  userId           Int                 @map("user_id") @db.UnsignedInt
-  additionalGuests Int                 @default(0) @map("additional_guests") @db.UnsignedTinyInt
-  guestNames       Json?               @map("guest_names")
-  bringingItem     String?             @map("bringing_item") @db.VarChar(200)
-  createdAt        DateTime            @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt        DateTime            @default(now()) @map("updated_at") @db.DateTime(0)
-  status           event_rsvps_status  @default(going)
-  attended         Boolean?
-  isWalkin         Boolean             @default(false) @map("is_walkin")
-  fromOtherCity    Boolean             @default(false) @map("from_other_city")
-  guestLinks       event_guest_links[]
-  event            events              @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_event")
-  user             users               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_user")
-  tenantId         Int                 @default(0) @map("tenant_id") @db.UnsignedInt
-  tenant           tenants             @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_event_rsvps_tenant")
+  id                 Int                 @id @default(autoincrement()) @db.UnsignedInt
+  eventId            Int                 @map("event_id") @db.UnsignedInt
+  userId             Int                 @map("user_id") @db.UnsignedInt
+  additionalGuests   Int                 @default(0) @map("additional_guests") @db.UnsignedTinyInt
+  guestNames         Json?               @map("guest_names")
+  bringingItem       String?             @map("bringing_item") @db.VarChar(200)
+  /// Who created this RSVP. What makes removal safe (rule 8): the sync may only
+  /// delete an RSVP it made itself. Without it every imported RSVP looks
+  /// website-made, so the sync either removes what members entered or can never
+  /// remove anything.
+  source             event_rsvps_source  @default(member)
+  /// A linked member's Facebook +1 names, kept BESIDE `guestNames` and never
+  /// merged into it (rule 10). Replaced on every sync and allowed to go down;
+  /// `guestNames` is the member's own and is never touched by the sync.
+  facebookGuestNames Json?               @map("facebook_guest_names")
+  /// Total Facebook +1s including unnamed ones, so `count - names.length` is
+  /// how many the comment gave no name for.
+  facebookGuestCount Int                 @default(0) @map("facebook_guest_count") @db.UnsignedTinyInt
+  createdAt          DateTime            @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt          DateTime            @default(now()) @map("updated_at") @db.DateTime(0)
+  status             event_rsvps_status  @default(going)
+  attended           Boolean?
+  isWalkin           Boolean             @default(false) @map("is_walkin")
+  fromOtherCity      Boolean             @default(false) @map("from_other_city")
+  guestLinks         event_guest_links[]
+  event              events              @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_event")
+  user               users               @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_rsvp_user")
+  tenantId           Int                 @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant             tenants             @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_event_rsvps_tenant")
 
   @@unique([eventId, userId], map: "uq_event_member")
   @@index([eventId], map: "idx_event")
@@ -688,47 +854,49 @@ model event_rsvps {
 }
 
 model events {
-  id                        Int                 @id @default(autoincrement()) @db.UnsignedInt
-  cityId                    Int                 @map("city_id") @db.UnsignedInt
-  locationId                Int?                @map("location_id") @db.UnsignedInt
-  locationName              String              @map("location_name") @db.VarChar(255)
-  locationAddress           String              @map("location_address") @db.VarChar(500)
-  locationLat               Decimal?            @map("location_lat") @db.Decimal(10, 7)
-  locationLng               Decimal?            @map("location_lng") @db.Decimal(10, 7)
-  title                     String              @db.VarChar(255)
-  description               String?             @db.Text
-  additionalInfo            String?             @map("additional_info") @db.Text
-  eventDate                 DateTime            @map("event_date") @db.Date
-  eventTime                 DateTime            @map("event_time") @db.Time(0)
-  status                    events_status       @default(draft)
-  publishedAt               DateTime?           @map("published_at") @db.DateTime(0)
-  cancelledAt               DateTime?           @map("cancelled_at") @db.DateTime(0)
-  cancelledReason           String?             @map("cancelled_reason") @db.Text
-  facebookShareText         String?             @map("facebook_share_text") @db.Text
-  reservationAssigneeId     Int?                @map("reservation_assignee_id") @db.UnsignedInt
-  reservationContactName    String?             @map("reservation_contact_name") @db.VarChar(150)
-  reservationContactEmail   String?             @map("reservation_contact_email") @db.VarChar(255)
-  reservationConfirmed      Boolean             @default(false) @map("reservation_confirmed")
-  reservationConfirmedBy    String?             @map("reservation_confirmed_by") @db.VarChar(255)
-  reservationConfirmedAt    DateTime?           @map("reservation_confirmed_at") @db.DateTime(0)
-  reservationConfirmedNote  String?             @map("reservation_confirmed_note") @db.VarChar(500)
-  reservationSeatsEmailSent Boolean             @default(false) @map("reservation_seats_email_sent")
-  reservationConfirmToken   String?             @unique(map: "uq_events_reservation_token") @map("reservation_confirm_token") @db.VarChar(64)
-  createdById               Int                 @map("created_by") @db.UnsignedInt
-  createdAt                 DateTime            @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt                 DateTime            @default(now()) @map("updated_at") @db.DateTime(0)
-  isSecret                  Boolean             @default(false) @map("is_secret")
+  id                        Int                        @id @default(autoincrement()) @db.UnsignedInt
+  cityId                    Int                        @map("city_id") @db.UnsignedInt
+  locationId                Int?                       @map("location_id") @db.UnsignedInt
+  locationName              String                     @map("location_name") @db.VarChar(255)
+  locationAddress           String                     @map("location_address") @db.VarChar(500)
+  locationLat               Decimal?                   @map("location_lat") @db.Decimal(10, 7)
+  locationLng               Decimal?                   @map("location_lng") @db.Decimal(10, 7)
+  title                     String                     @db.VarChar(255)
+  description               String?                    @db.Text
+  additionalInfo            String?                    @map("additional_info") @db.Text
+  eventDate                 DateTime                   @map("event_date") @db.Date
+  eventTime                 DateTime                   @map("event_time") @db.Time(0)
+  status                    events_status              @default(draft)
+  publishedAt               DateTime?                  @map("published_at") @db.DateTime(0)
+  cancelledAt               DateTime?                  @map("cancelled_at") @db.DateTime(0)
+  cancelledReason           String?                    @map("cancelled_reason") @db.Text
+  facebookShareText         String?                    @map("facebook_share_text") @db.Text
+  reservationAssigneeId     Int?                       @map("reservation_assignee_id") @db.UnsignedInt
+  reservationContactName    String?                    @map("reservation_contact_name") @db.VarChar(150)
+  reservationContactEmail   String?                    @map("reservation_contact_email") @db.VarChar(255)
+  reservationConfirmed      Boolean                    @default(false) @map("reservation_confirmed")
+  reservationConfirmedBy    String?                    @map("reservation_confirmed_by") @db.VarChar(255)
+  reservationConfirmedAt    DateTime?                  @map("reservation_confirmed_at") @db.DateTime(0)
+  reservationConfirmedNote  String?                    @map("reservation_confirmed_note") @db.VarChar(500)
+  reservationSeatsEmailSent Boolean                    @default(false) @map("reservation_seats_email_sent")
+  reservationConfirmToken   String?                    @unique(map: "uq_events_reservation_token") @map("reservation_confirm_token") @db.VarChar(64)
+  createdById               Int                        @map("created_by") @db.UnsignedInt
+  createdAt                 DateTime                   @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt                 DateTime                   @default(now()) @map("updated_at") @db.DateTime(0)
+  isSecret                  Boolean                    @default(false) @map("is_secret")
   achievements              achievements[]
   event_comments            event_comments[]
   event_guest_links         event_guest_links[]
   rsvps                     event_rsvps[]
-  city                      cities              @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
-  createdByUser             users               @relation("events_created_byTousers", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_created_by")
-  location                  locations?          @relation(fields: [locationId], references: [id], onUpdate: NoAction, map: "fk_event_location")
-  reservationAssignee       users?              @relation("events_reservation_assignee_idTousers", fields: [reservationAssigneeId], references: [id], onUpdate: NoAction, map: "fk_events_reservation_assignee")
+  city                      cities                     @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
+  createdByUser             users                      @relation("events_created_byTousers", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_created_by")
+  location                  locations?                 @relation(fields: [locationId], references: [id], onUpdate: NoAction, map: "fk_event_location")
+  reservationAssignee       users?                     @relation("events_reservation_assignee_idTousers", fields: [reservationAssigneeId], references: [id], onUpdate: NoAction, map: "fk_events_reservation_assignee")
   location_ratings          location_ratings[]
-  tenantId                  Int                 @default(0) @map("tenant_id") @db.UnsignedInt
-  tenant                    tenants             @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_events_tenant")
+  tenantId                  Int                        @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant                    tenants                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_events_tenant")
+  eventFacebookLinks        event_facebook_links[]
+  facebookEventAttendees    facebook_event_attendees[]
 
   @@index([createdById], map: "fk_event_created_by")
   @@index([locationId], map: "fk_event_location")
@@ -1250,24 +1418,24 @@ model releases {
 /// window, which is the kind of retention that should be chosen rather than
 /// inherited.
 model demo_feedback {
-  id                 Int       @id @default(autoincrement()) @db.UnsignedInt
+  id                  Int             @id @default(autoincrement()) @db.UnsignedInt
   /// "Anything else" -- nullable since v2-32's survey pass, because a visitor
   /// who answers the structured questions and skips the box has still told us
   /// something. The service requires at least one answer overall.
-  body               String?   @db.Text
+  body                String?         @db.Text
   /// 1-5 where the visitor gave one; the form does not require it.
-  rating             Int?      @db.UnsignedTinyInt
+  rating              Int?            @db.UnsignedTinyInt
   /// The question the whole survey exists to answer.
-  wouldUse           demo_would_use? @map("would_use")
-  whatWorked         String?   @map("what_worked") @db.Text
-  whatDidnt          String?   @map("what_didnt") @db.Text
+  wouldUse            demo_would_use? @map("would_use")
+  whatWorked          String?         @map("what_worked") @db.Text
+  whatDidnt           String?         @map("what_didnt") @db.Text
   /// The demo's own host label, which is unique per demo.
   ///
   /// **Not the brand name**, which is what this held until 2026-10-09 and was
   /// the same string on every row: a demo is seeded from one fixture, so every
   /// one of them is called "Riverside Community Events". It identified the
   /// template, not the visit.
-  demoLabel          String    @map("demo_label") @db.VarChar(120)
+  demoLabel           String          @map("demo_label") @db.VarChar(120)
   /// The requester's address, kept so the team can follow up.
   ///
   /// Denormalised for the same reason as the label: `submitted_by_user_id` goes
@@ -1275,10 +1443,10 @@ model demo_feedback {
   /// would leave every surviving row anonymous. This is the only personal
   /// detail that outlives a demo, it is kept deliberately, and the form says so
   /// where somebody is deciding whether to write anything.
-  submittedByEmail   String?   @map("submitted_by_email") @db.VarChar(255)
-  submittedByUserId  Int?      @map("submitted_by_user_id") @db.UnsignedInt
-  submittedByTenantId Int?     @map("submitted_by_tenant_id") @db.UnsignedInt
-  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  submittedByEmail    String?         @map("submitted_by_email") @db.VarChar(255)
+  submittedByUserId   Int?            @map("submitted_by_user_id") @db.UnsignedInt
+  submittedByTenantId Int?            @map("submitted_by_tenant_id") @db.UnsignedInt
+  createdAt           DateTime        @default(now()) @map("created_at") @db.DateTime(0)
 
   submitter users?   @relation(fields: [submittedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_demo_feedback_user")
   tenant    tenants? @relation(fields: [submittedByTenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_demo_feedback_tenant")
@@ -1289,20 +1457,20 @@ model demo_feedback {
 }
 
 model system_reports {
-  id                 Int             @id @default(autoincrement()) @db.UnsignedInt
+  id                 Int                    @id @default(autoincrement()) @db.UnsignedInt
   /// Defaults to `bug` because every row that existed before this column did
   /// was one -- the table was called `system_bugs`.
   category           system_report_category @default(bug)
-  title              String          @db.VarChar(200)
-  body               String          @db.Text
-  status             feedback_status @default(open)
-  adminNote          String?         @map("admin_note") @db.Text
+  title              String                 @db.VarChar(200)
+  body               String                 @db.Text
+  status             feedback_status        @default(open)
+  adminNote          String?                @map("admin_note") @db.Text
   /// A JSON array of upload paths, never arbitrary URLs -- see
   /// `SCREENSHOT_PATH` in the DTO for why that distinction is load-bearing.
-  screenshots        String?         @db.Text
-  reportedByUserId   Int?            @map("reported_by_user_id") @db.UnsignedInt
-  reportedByTenantId Int?            @map("reported_by_tenant_id") @db.UnsignedInt
-  resolvedAt         DateTime?       @map("resolved_at") @db.DateTime(0)
+  screenshots        String?                @db.Text
+  reportedByUserId   Int?                   @map("reported_by_user_id") @db.UnsignedInt
+  reportedByTenantId Int?                   @map("reported_by_tenant_id") @db.UnsignedInt
+  resolvedAt         DateTime?              @map("resolved_at") @db.DateTime(0)
   /// The release this shipped in, set when the status becomes `shipped`.
   ///
   /// A plain foreign key rather than a join table: a report ships once, so this
@@ -1313,10 +1481,10 @@ model system_reports {
   /// note body is imported identically into every community from the repo, so a
   /// name written into it would be fixed text naming a stranger to all but one
   /// of them. The link is data, so each community renders it for itself.
-  shippedInReleaseId Int?            @map("shipped_in_release_id") @db.UnsignedInt
-  shippedInRelease   releases?       @relation(fields: [shippedInReleaseId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_report_release")
-  createdAt          DateTime        @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt          DateTime        @default(now()) @map("updated_at") @db.DateTime(0)
+  shippedInReleaseId Int?                   @map("shipped_in_release_id") @db.UnsignedInt
+  shippedInRelease   releases?              @relation(fields: [shippedInReleaseId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_report_release")
+  createdAt          DateTime               @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt          DateTime               @default(now()) @map("updated_at") @db.DateTime(0)
 
   reporter users?   @relation(fields: [reportedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_bug_reporter")
   tenant   tenants? @relation(fields: [reportedByTenantId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_system_bug_tenant")
@@ -1449,6 +1617,10 @@ model tenants {
   system_reports           system_reports[]
   demo_feedback            demo_feedback[]
   inbound_emails           inbound_emails[]
+  api_tokens               api_tokens[]
+  event_facebook_links     event_facebook_links[]
+  facebook_accounts        facebook_accounts[]
+  facebook_event_attendees facebook_event_attendees[]
 
   @@index([status], map: "idx_tenant_status")
 }
@@ -1514,6 +1686,8 @@ model users {
   /// today, but deleting the newest one has the identical effect.
   lastSeenAnnouncementAt                                       DateTime?                  @map("last_seen_announcement_at") @db.DateTime(0)
   announcement_comments                                        announcement_comments[]
+  api_tokens                                                   api_tokens[]
+  facebook_accounts                                            facebook_accounts[]
   announcements_announcements_created_byTousers                announcements[]            @relation("announcements_created_byTousers")
   content_flags_content_flags_reported_byTousers               content_flags[]            @relation("content_flags_reported_byTousers")
   content_flags_content_flags_reviewed_byTousers               content_flags[]            @relation("content_flags_reviewed_byTousers")
@@ -1815,6 +1989,14 @@ enum users_role {
   /// needing a second account. See the hierarchy note in roles.guard.ts.
   system_admin
   automation
+  /// The Muse Facebook-event sync (v2-29). Authenticates only with an
+  /// `api_tokens` bearer token, only on the `/muse` routes. Only an account
+  /// flagged `is_service_account` may hold it, so no human can be given it.
+  ///
+  /// MuseTokenGuard requires this role *currently held*, so switching the
+  /// account to `automation` for testing disables its token until it is
+  /// switched back -- a deliberate off switch.
+  muse
   /// Holds no privileges at all. RolesGuard is an allowlist, so a `disabled`
   /// account matches no @Roles() and can reach nothing role-gated.
   ///
@@ -1824,6 +2006,12 @@ enum users_role {
   /// an `automation` account be promoted to admin on purpose (see the note
   /// there), and that exception is only safe on the tenant the operator owns.
   disabled
+}
+
+enum event_rsvps_source {
+  member
+  admin
+  facebook_sync
 }
 
 enum events_status {

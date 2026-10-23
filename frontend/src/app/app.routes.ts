@@ -340,6 +340,22 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
   },
   {
+    path: 'admin/integrations',
+    loadComponent: () =>
+      import('./features/admin/integrations/admin-integrations.component').then(
+        (m) => m.AdminIntegrationsComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
+    path: 'admin/facebook-accounts',
+    loadComponent: () =>
+      import('./features/admin/facebook-accounts/admin-facebook-accounts.component').then(
+        (m) => m.AdminFacebookAccountsComponent,
+      ),
+    canActivate: [authGuard, adminGuard],
+  },
+  {
     path: 'admin/legal',
     loadComponent: () =>
       import('./features/admin/legal/admin-legal.component').then(
