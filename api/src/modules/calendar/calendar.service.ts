@@ -12,6 +12,7 @@ import { TenantResolutionService } from '../../common/tenant/tenant-resolution.s
 import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import type { TenantContext } from '../../common/tenant/tenant-context';
 import { extractIcalFromEmail } from './ical-extract.util';
+import { resolveQuotaTimeZone } from '../../common/email/quota-day';
 
 /**
  * What an inbound calendar reply turned out to mean (v2-34).
@@ -627,9 +628,16 @@ export class CalendarService {
    *
    * Best-effort on purpose: this decorates a log row, so an unparseable DTSTART
    * costs the detail and nothing else — `processRsvpReply` still reports the
-   * outcome. Formatted in UTC with the offset spelled out, because the row is
-   * read by an operator who may be in a different zone from the community and a
-   * bare wall-clock time would be a guess about which.
+   * outcome.
+   *
+   * **Rendered in the deployment's configured zone, not UTC** (Rob, stage,
+   * 2026-10-22). The first version printed "proposed 2026-10-27 21:00 UTC",
+   * which is correct and reads as wrong: every other time on that screen is
+   * rendered in the viewer's own zone by the date pipe, so the one line a
+   * human has to act on was the only one in a different zone — five hours out
+   * from the time the member actually asked for. `EMAIL_QUOTA_TIMEZONE` is the
+   * existing answer to "the operator's calendar", so it answers this too, and
+   * the zone is named in the text rather than left to be assumed.
    */
   private proposedTimeFrom(ical: string): string | null {
     // The COUNTER's VEVENT carries the proposed start. `DTSTART;TZID=...:` and
@@ -643,7 +651,24 @@ export class CalendarService {
     )}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`;
     const when = new Date(iso);
     if (Number.isNaN(when.getTime())) return null;
-    return `${when.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+
+    const { timeZone } = resolveQuotaTimeZone(this.config.get<string>('EMAIL_QUOTA_TIMEZONE'));
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short',
+      }).format(when);
+    } catch {
+      // A container built without full ICU knows only UTC. Falling back to the
+      // instant is better than losing the detail, and saying so is better than
+      // printing a local-looking time that is not local.
+      return `${when.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+    }
   }
 
   private async recordRsvpReply(

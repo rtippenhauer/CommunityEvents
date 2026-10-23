@@ -15,6 +15,23 @@ const CLOUDFLARE_SECRET = 'test-cloudflare-email-secret-not-for-real-use';
 const inTenant = <T>(tenantId: number, fn: () => Promise<T>): Promise<T> =>
   runWithTenant(tenantId, async () => await fn());
 
+/**
+ * How a counter-proposal's time should read, worked out the way the service
+ * does: in `EMAIL_QUOTA_TIMEZONE` (UTC by default), never as a raw instant.
+ * Computed rather than hardcoded so this asserts the rule and not one zone.
+ */
+function expectedProposedTime(iso: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: process.env.EMAIL_QUOTA_TIMEZONE?.trim() || 'UTC',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(new Date(iso));
+}
+
 // Port of v1's calendar-reply.e2e-spec.ts (PR #45, v1.6.2), plus the tenancy
 // v1 never had.
 //
@@ -306,7 +323,13 @@ describe('Calendar email replies (e2e)', () => {
       const row = await onlyRow();
       expect(row.outcome).toBe(InboundEmailOutcome.COUNTER_PROPOSAL);
       expect(row.eventId).toBe(event.id);
-      expect(row.detail).toContain('2026-11-03 23:00');
+      // Rendered in the deployment's configured zone rather than UTC, so the
+      // one line a human acts on matches every other time on the screen. The
+      // expectation is computed the same way rather than hardcoded, so the test
+      // states the rule instead of pinning one zone's output.
+      expect(row.detail).toContain(
+        expectedProposedTime('2026-11-03T23:00:00Z'),
+      );
       // And the subject is readable, rather than the raw encoded word that
       // showed on stage.
       expect(row.subject).toBe('Proposed new time: Dinner');
@@ -344,7 +367,7 @@ describe('Calendar email replies (e2e)', () => {
       const all = await logRows();
       expect(all).toHaveLength(2);
       expect(all.every((r) => r.suppressedCount === 0)).toBe(true);
-      expect(all[1].detail).toContain('23:30');
+      expect(all[1].detail).toContain(expectedProposedTime('2026-11-03T23:30:00Z'));
     });
 
     it('records a PARTSTAT we do not handle, and says which', async () => {
