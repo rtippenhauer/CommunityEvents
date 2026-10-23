@@ -51,6 +51,27 @@ const SUCCESS_OUTCOMES: readonly string[] = [
  * sources are involved. The cost is that two simultaneous probers share a row;
  * the counter still shows the volume, and the first row keeps an address.
  */
+/**
+ * Outcomes whose body we deliberately never store, so the screen can stop
+ * offering to show one.
+ *
+ * These are exactly the requests that failed authentication or validation: the
+ * body is attacker-supplied content on an unauthenticated endpoint. Found on
+ * stage -- the rows read "0 bytes" and still carried a "Show message" link that
+ * could only ever say "nothing was stored", which reads as a fault in the log
+ * rather than as the policy it is.
+ *
+ * Derived here rather than selected from the database on purpose: `raw_body` is
+ * LONGTEXT, and selecting it for every row to learn whether it is null would
+ * make the list response grow with the deployment's mail instead of with the
+ * page -- the lesson `v2-31` already paid for.
+ */
+const BODYLESS_OUTCOMES: readonly string[] = [
+  InboundEmailOutcome.INVALID_SECRET,
+  InboundEmailOutcome.MALFORMED_REQUEST,
+  InboundEmailOutcome.RATE_LIMITED,
+];
+
 const FOLDABLE_OUTCOMES: readonly string[] = [
   InboundEmailOutcome.INVALID_SECRET,
   InboundEmailOutcome.MALFORMED_REQUEST,
@@ -275,9 +296,10 @@ export class InboundEmailLogService {
             sourceIp: true,
             suppressedCount: true,
             receivedAt: true,
-            // Whether a body was kept, never the body itself: it is LongText,
-            // and sending it with every row would make the response grow with
-            // the deployment's mail rather than with the page (v2-31's lesson).
+            // Never the body itself: it is LongText, and sending it with every
+            // row would make the response grow with the deployment's mail
+            // rather than with the page (v2-31's lesson). Whether one exists is
+            // derived from the outcome -- see BODYLESS_OUTCOMES.
             rawBody: false,
             // The community's name, for the operator's view only.
             tenant: namesTenants ? { select: { slug: true } } : false,
@@ -306,7 +328,7 @@ export class InboundEmailLogService {
           sizeBytes: r.sizeBytes,
           sourceIp: namesTenants ? r.sourceIp : null,
           suppressedCount: r.suppressedCount,
-          hasBody: false,
+          hasBody: !BODYLESS_OUTCOMES.includes(r.outcome),
           receivedAt: r.receivedAt,
         })),
         total,

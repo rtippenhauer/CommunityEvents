@@ -44,6 +44,14 @@ export interface InboundMailRow {
   sourceIp: string | null;
   /** Further identical failures from this source, folded into this row. */
   suppressedCount: number;
+  /**
+   * Whether a message was stored for this row.
+   *
+   * False for anything that failed authentication or validation — that body is
+   * attacker-supplied content on an unauthenticated endpoint and is never kept,
+   * so the screen does not offer to show one.
+   */
+  hasBody: boolean;
   receivedAt: string;
 }
 

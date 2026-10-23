@@ -53,18 +53,11 @@ import {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <!-- No card header: both screens that host this already carry the title and
+         the description, and rendering them again inside the card showed
+         "Inbound Mail" twice with two near-identical subtitles (stage,
+         2026-10-22). The card is the frame, not a second heading. -->
     <mat-card>
-      <mat-card-header>
-        <mat-card-title>Inbound Mail</mat-card-title>
-        <mat-card-subtitle>
-          @if (operator()) {
-            Every message that reached this deployment, across all communities.
-          } @else {
-            Calendar replies from this community's members, and what happened to them.
-          }
-        </mat-card-subtitle>
-      </mat-card-header>
-
       <mat-card-content>
         <div class="filters">
           <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search">
@@ -151,7 +144,11 @@ import {
                 </div>
 
                 <div class="who">
-                  <strong>{{ row.fromAddress || 'unknown sender' }}</strong>
+                  @if (row.fromAddress) {
+                    <strong>{{ row.fromAddress }}</strong>
+                  } @else {
+                    <span class="nobody">no sender — a direct request, not an email</span>
+                  }
                   @if (row.subject) {
                     <span class="subject">{{ row.subject }}</span>
                   }
@@ -172,9 +169,19 @@ import {
                   @if (operator() && row.sourceIp) {
                     <span>from {{ row.sourceIp }}</span>
                   }
-                  <button mat-button type="button" (click)="toggleBody(row.id)">
-                    {{ openBodyId() === row.id ? 'Hide message' : 'Show message' }}
-                  </button>
+                  <!-- Offered only where something was kept. A request that
+                       failed authentication has no stored body by design, and a
+                       link that can only ever say "nothing was stored" reads as
+                       a fault in the log rather than as that policy. -->
+                  @if (row.hasBody) {
+                    <button mat-button type="button" (click)="toggleBody(row.id)">
+                      {{ openBodyId() === row.id ? 'Hide message' : 'Show message' }}
+                    </button>
+                  } @else {
+                    <span class="nobody" matTooltip="Nothing is stored for a request that failed authentication">
+                      no message stored
+                    </span>
+                  }
                 </div>
 
                 @if (openBodyId() === row.id) {
@@ -276,6 +283,10 @@ import {
       .badge.attention {
         background: var(--ce-accent);
         color: var(--ce-on-accent);
+      }
+      .nobody {
+        color: var(--ce-text-muted);
+        font-style: italic;
       }
       .folded,
       .community,
