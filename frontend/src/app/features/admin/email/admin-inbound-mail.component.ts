@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, OnInit, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -349,7 +349,7 @@ import {
     `,
   ],
 })
-export class AdminInboundMailComponent {
+export class AdminInboundMailComponent implements OnInit {
   private readonly service = inject(InboundMailService);
 
   /** True for the operator's deployment-wide view; false for one community's. */
@@ -373,7 +373,21 @@ export class AdminInboundMailComponent {
 
   readonly outcomes = Object.keys(OUTCOME_LABELS) as InboundOutcome[];
 
-  constructor() {
+  /**
+   * **`ngOnInit`, never the constructor.** Signal inputs are not set while the
+   * constructor runs, so `operator()` there returns its declared default of
+   * `false` -- and this component's whole behaviour hangs off that input.
+   *
+   * Loading in the constructor therefore fetched the *community* endpoint on
+   * the operator's screen, while the template, which renders after the input
+   * is set, drew the operator-only controls over it. The screen showed the
+   * deployment-wide title and the "Matched no community" filter above one
+   * community's rows, every one labelled "no community" because the
+   * per-community endpoint does not name tenants. Found on stage 2026-10-22,
+   * and it looked like a server bug for a while because the API was returning
+   * the right thing to anyone who asked it directly.
+   */
+  ngOnInit(): void {
     this.reload(1);
   }
 
