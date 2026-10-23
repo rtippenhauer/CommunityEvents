@@ -72,11 +72,35 @@ remaining item on it. Read the spec in v1's `docs/PORT_TO_COMMUNITYEVENTS.md`
 (sibling checkout `../DinnerBears`), not this repo's summaries of it. Its sync
 refusals write to `v2-34`'s inbound log, which is why that item ran first.
 
-**Two things `v2-34` left open, neither a blocker:** `FALLBACK_FORWARD_TO` is
-still unset on the Cloudflare Worker, so the forward-on-failure path is dormant
-until a verified destination address is configured; and the
-operator-vs-community visibility split is covered by e2e across two communities
-but has not been read by a human on stage.
+**One thing `v2-34` left open, not a blocker:** `FALLBACK_FORWARD_TO` is still
+unset on the Cloudflare Worker, so the forward-on-failure path is dormant until
+a verified destination address is configured.
+
+**The visibility split was confirmed on stage, 2026-10-22, in two halves.**
+Rob checked the per-community screen on both hosts: the root community's admin
+saw only root's rows, and `rtippenhauer.com`'s admin saw only its own. The
+deployment-wide read was confirmed separately against the API, which returned
+16 rows — 15 root, 1 `stagertippenhauer` — each with its community named.
+
+**The counts are what make it conclusive rather than suggestive**: each
+community's admin had rows belonging to the other available to leak and leaked
+none. A check where one side happens to be empty looks identical to a passing
+one and proves nothing, which is the trap when re-testing this after a change.
+
+**Note the two screens are not the same permission.** `Admin → Inbound mail` is
+one community's own, and the root tenant is a community like any other there —
+its admin seeing only root's rows is that screen working. The deployment-wide
+view is `System → Inbound mail` behind `OperatorGuard`, which needs the root
+tenant **and** `system_admin` or the service account, never a root-community
+admin alone.
+
+**The "matched no community" rows will be empty on a healthy deployment, and
+that is not a defect.** `TenantMiddleware` 404s an unknown host before the route
+runs, so every request reaching the handler has already resolved a community and
+every freshly written row has a tenant. The nullable column earns its place
+elsewhere: the keys are `ON DELETE SET NULL`, so **deleting a community turns
+its rows tenantless** rather than failing the delete or erasing the history, and
+those rows remain visible to the operator alone.
 
 **No known defect reaching members is open.** The last one — unpublishing a
 release re-announced an older one to everybody — was fixed and stage-verified
