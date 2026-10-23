@@ -2662,6 +2662,48 @@ question does not have to be answered here.
 role, the integration account, `api_tokens` and the guard. A setup *wizard* is
 explicitly out, and is filed as `v2-44`.
 
+**Two rules settled by Rob, 2026-10-23, after the first build.**
+
+**The headcount subtracts cancelled guest links, and the two totals must
+match.** The event page had always subtracted them; the API's `totalGoing` had
+not, so the page could read one lower than the number Muse writes into a
+Facebook description. They are the same claim about the same dinner and a
+restaurant booking is made from one of them. The rule as Rob put it: the count
+is *website members going + Facebook-only people going*, and a cancelled guest
+is neither. If Facebook drops by one, the API drops by one.
+
+Note what this does **not** change: Muse still cannot remove a member who
+marked themselves Going (rule 8). It removes only RSVPs the sync itself made,
+and strips the Facebook +1s from the rest. A member who drops off Facebook but
+said yes on the website stays, which is why "the totals match" is about
+cancelled guests rather than about the sync gaining removal powers.
+
+**Linking carries over immediately (rule 14), in two halves.** The moment an
+admin links a Facebook person to a member, upcoming dinners that person is
+Going to on Facebook become Going RSVPs, and past dinners where they were
+marked *Attended* become attended RSVPs **through the normal attendance path**
+-- so points, the coordinator award, event achievements and Secret Dinner all
+land exactly as if they had been a member on the night. The attendance already
+happened; it should count.
+
+Three guards, each of which was a way to get this wrong: a NULL `attended` is
+"not marked" and earns nothing (it is not "did not come"); a member already
+marked attended is skipped rather than credited twice; and the +1 merge reads
+**every** account the member has, not just the one being linked, because
+somebody with two Facebook profiles is one person at one table.
+
+`applyMemberRsvp` is shared by the sync and the carry-over deliberately -- they
+are the same question asked at two moments, and the ways they could drift are
+the expensive ones: a +1 counted twice, or a member's own guest list
+overwritten. The carry-over runs **after** the link is committed and its
+failure does not undo the link: an admin who pressed Link must not be told it
+failed when the mapping was saved and only the back-fill broke.
+
+**Muse is stage/prod aware and holds a schedule per tenant** (Rob,
+2026-10-23), which is what the per-community token design assumed -- it changes
+only its base URL and token per community. So the stage pass can be a real Muse
+run rather than curl.
+
 **Definition of done:** the Muse API answers identically to v1's contract on a
 community's own host; a token opens only the Muse routes and only for an active
 account holding that role; the sync's rules are pinned by the ported e2e suite;

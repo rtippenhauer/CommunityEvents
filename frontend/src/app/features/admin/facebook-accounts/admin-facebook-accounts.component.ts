@@ -307,7 +307,34 @@ export class AdminFacebookAccountsComponent implements OnInit {
 
   link(account: FacebookAccount, userId: number | null): void {
     if (userId === null) return;
-    this.act(this.accountsService.link(account.id, userId), 'Linked');
+
+    // Linking carries over (rule 14), so the message says what it did: an
+    // admin who links somebody and sees only "Linked" has no way to know that
+    // three dinners just gained an RSVP and a past attendance earned points.
+    this.accountsService.link(account.id, userId).subscribe({
+      next: (result) => {
+        this.snackBar.open(this.linkMessage(result), undefined, { duration: 4000 });
+        this.load();
+      },
+      error: (error: { error?: { message?: string } }) => {
+        this.snackBar.open(error.error?.message ?? 'That did not work', 'Dismiss', {
+          duration: 6000,
+        });
+      },
+    });
+  }
+
+  private linkMessage(result: { upcoming: number; attended: number }): string {
+    const parts: string[] = [];
+    if (result.upcoming > 0) {
+      parts.push(`${result.upcoming} upcoming ${result.upcoming === 1 ? 'event' : 'events'}`);
+    }
+    if (result.attended > 0) {
+      parts.push(
+        `${result.attended} past ${result.attended === 1 ? 'attendance' : 'attendances'} credited`,
+      );
+    }
+    return parts.length === 0 ? 'Linked' : `Linked — ${parts.join(', ')}`;
   }
 
   unlink(account: FacebookAccount): void {

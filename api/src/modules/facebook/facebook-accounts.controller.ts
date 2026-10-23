@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Logger,
   Get,
   HttpCode,
   Param,
@@ -17,6 +18,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { users as User } from '@prisma/client';
 import { UserRole } from '../../database/enums';
 import { FacebookAccountsService, type FacebookAccountView } from './facebook-accounts.service';
+import { FacebookSyncService } from './facebook-sync.service';
 import { LinkFacebookAccountDto } from './dto/link-facebook-account.dto';
 import { FacebookAccountsQueryDto } from './dto/facebook-accounts-query.dto';
 import { MarkFacebookAttendanceDto } from './dto/mark-facebook-attendance.dto';
@@ -41,7 +43,12 @@ import { MarkFacebookAttendanceDto } from './dto/mark-facebook-attendance.dto';
 @Controller('admin/facebook-accounts')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FacebookAccountsController {
-  constructor(private readonly accounts: FacebookAccountsService) {}
+  private readonly logger = new Logger(FacebookAccountsController.name);
+
+  constructor(
+    private readonly accounts: FacebookAccountsService,
+    private readonly sync: FacebookSyncService,
+  ) {}
 
   /**
    * The review queue, filterable by status.
@@ -56,15 +63,39 @@ export class FacebookAccountsController {
     return this.accounts.list(query.status);
   }
 
+  /**
+   * Ties a Facebook person to a member, and carries over what that already
+   * implies (rule 14).
+   *
+   * The carry-over is a second call rather than part of `link` because the two
+   * services would otherwise be circular: the sync needs the accounts service
+   * to record who it saw. Orchestrating here keeps both dependencies pointing
+   * one way and makes the order visible at the call site.
+   *
+   * It runs **after** the link is committed and its failure does not undo the
+   * link: an admin who pressed Link must not be told it failed when the
+   * mapping was saved and only the back-fill broke. The counts come back so
+   * the screen can say what happened.
+   */
   @Post(':id/link')
   @Roles(UserRole.ADMIN)
-  @HttpCode(204)
-  link(
+  @HttpCode(200)
+  async link(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: LinkFacebookAccountDto,
     @CurrentUser() actor: User,
-  ): Promise<void> {
-    return this.accounts.link(id, body.userId, actor.id);
+  ): Promise<{ upcoming: number; attended: number }> {
+    await this.accounts.link(id, body.userId, actor.id);
+
+    try {
+      return await this.sync.carryOverLinkedAccount(id, body.userId, actor.id);
+    } catch (error) {
+      this.logger.error(
+        `Linked Facebook account ${id} to member ${body.userId}, but the ` +
+          `carry-over failed: ${String(error)}`,
+      );
+      return { upcoming: 0, attended: 0 };
+    }
   }
 
   /**

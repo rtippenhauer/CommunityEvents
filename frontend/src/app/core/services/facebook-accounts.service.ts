@@ -35,6 +35,12 @@ export interface FacebookAccount {
   suggestions: { id: number; fullName: string }[];
 }
 
+/** What linking carried over (rule 14). */
+export interface LinkResult {
+  upcoming: number;
+  attended: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class FacebookAccountsService {
   private readonly http = inject(HttpClient);
@@ -45,8 +51,19 @@ export class FacebookAccountsService {
     });
   }
 
-  link(accountId: number, userId: number): Observable<void> {
-    return this.http.post<void>(`/api/v1/admin/facebook-accounts/${accountId}/link`, { userId });
+  /**
+   * Ties a Facebook person to a member.
+   *
+   * Returns what the carry-over did (rule 14): upcoming dinners that became
+   * Going RSVPs, and past ones where a marked attendance was credited with
+   * points. Both are the immediate consequence of the link, so the screen says
+   * so rather than leaving an admin to wonder whether anything happened.
+   */
+  link(accountId: number, userId: number): Observable<LinkResult> {
+    return this.http.post<LinkResult>(
+      `/api/v1/admin/facebook-accounts/${accountId}/link`,
+      { userId },
+    );
   }
 
   /** Returns the person to the queue. Leaves any synced RSVP in place. */

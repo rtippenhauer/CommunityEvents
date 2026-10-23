@@ -15,8 +15,17 @@ import { mergePlusOnes, toSource, type PlusOneSource } from './plus-ones.util';
  * members" and another read one name.
  *
  *   totalGoing = for each Going RSVP: 1 + website guests + Facebook +1s
+ *                                      - that member's cancelled guest links
  *              + public guest signups
  *              + Facebook-only attendees and their +1s
+ *
+ * **Cancelled guest links are subtracted** (Rob, 2026-10-23). A guest who
+ * cancelled is neither a website member going nor a Facebook-only person, so
+ * they are not one of the two things this count is made of. The event page has
+ * always subtracted them; this did not, so the page could read one lower than
+ * the number Muse writes into a Facebook description. The two totals have to
+ * match -- they are the same claim about the same dinner, and a restaurant
+ * booking is made from one of them.
  *
  * `goingCount` on the event list is the same minus public guest signups, which
  * is the one difference the Muse contract calls out explicitly.
@@ -87,7 +96,10 @@ export class FacebookHeadcountService {
           userId: true,
           additionalGuests: true,
           facebookGuestCount: true,
-          user: { select: { fullName: true, status: true } },
+          // Only the cancelled ones are needed, so the filter is in the query:
+          // a member with no cancellations brings back an empty array.
+          guestLinks: { where: { cancelledAt: { not: null } }, select: { id: true } },
+          user: { select: { fullName: true, status: true, deletedAt: true } },
         },
       }),
       this.prisma.event_guest_links.count({
@@ -121,7 +133,14 @@ export class FacebookHeadcountService {
         if (rsvp.user?.fullName) excludedByBan.push(rsvp.user.fullName);
         continue;
       }
-      members += 1 + rsvp.additionalGuests + rsvp.facebookGuestCount;
+      // Never below the member themselves: a row with more cancelled links
+      // than `additionalGuests` is inconsistent data, and letting it go
+      // negative would silently eat somebody else's seat.
+      const guests = Math.max(
+        0,
+        rsvp.additionalGuests + rsvp.facebookGuestCount - rsvp.guestLinks.length,
+      );
+      members += 1 + guests;
     }
 
     const facebookOnly: Headcount['facebookOnly'] = [];
@@ -181,6 +200,7 @@ export class FacebookHeadcountService {
           eventId: true,
           additionalGuests: true,
           facebookGuestCount: true,
+          guestLinks: { where: { cancelledAt: { not: null } }, select: { id: true } },
           user: { select: { status: true, deletedAt: true } },
         },
       }),
@@ -196,8 +216,11 @@ export class FacebookHeadcountService {
 
     for (const rsvp of rsvps) {
       if (isBannedOrDeleted(rsvp.user)) continue;
-      const seats = 1 + rsvp.additionalGuests + rsvp.facebookGuestCount;
-      counts.set(rsvp.eventId, (counts.get(rsvp.eventId) ?? 0) + seats);
+      const guests = Math.max(
+        0,
+        rsvp.additionalGuests + rsvp.facebookGuestCount - rsvp.guestLinks.length,
+      );
+      counts.set(rsvp.eventId, (counts.get(rsvp.eventId) ?? 0) + 1 + guests);
     }
 
     for (const attendee of attendees) {

@@ -418,12 +418,46 @@ export class FacebookSyncService {
     }
 
     for (const [userId, rows] of byMember) {
-      const member = rows[0].account.user;
+      await this.applyMemberRsvp(
+        eventId,
+        userId,
+        rows[0].account.user,
+        rows.flatMap((row) => sourcesToPlusOnes(row.sources)),
+        actorId,
+        report,
+      );
+    }
 
+    // Removal (rule 8). Only RSVPs the sync made, and only for members on no
+    // list of this dinner -- and only if every list was complete, since a
+    // partial read is not evidence that anybody left.
+    if (lists.some((list) => !list.complete)) return;
+
+    await this.removeDepartedMembers(eventId, byMember, actorId, report);
+  }
+
+  /**
+   * Brings one member's RSVP into line with what the Facebook lists say.
+   *
+   * Extracted so the sync and the **link carry-over** (rule 14) apply exactly
+   * the same rules. They are the same question asked at two moments -- "given
+   * what Facebook says about this person, what should their RSVP be" -- and the
+   * ways they could drift are the expensive ones: a +1 counted twice, or a
+   * member's own guest list quietly overwritten.
+   */
+  private async applyMemberRsvp(
+    eventId: number,
+    userId: number,
+    member: { fullName: string; status: string; deletedAt: Date | null } | null,
+    plusOneSources: ReturnType<typeof sourcesToPlusOnes>,
+    actorId: number,
+    report: SyncReport,
+  ): Promise<void> {
+    {
       // Rule 13: banned or deleted members keep their link, are reported, and
       // are never added or counted. The warning is raised by the headcount
       // pass, which sees every such row rather than only the ones synced now.
-      if (member == null || isBannedOrDeleted(member)) continue;
+      if (member == null || isBannedOrDeleted(member)) return;
 
       const rsvp = await this.prisma.event_rsvps.findFirst({
         where: { eventId, userId },
@@ -437,9 +471,7 @@ export class FacebookSyncService {
         },
       });
 
-      const merged = mergePlusOnes(
-        rows.flatMap((row) => sourcesToPlusOnes(row.sources)),
-      );
+      const merged = mergePlusOnes(plusOneSources);
       // Rule 10: a Facebook +1 is skipped when a named website guest already
       // covers it. Only ever applied to the Facebook side; the website guests
       // are never altered.
@@ -479,7 +511,7 @@ export class FacebookSyncService {
 
         // The usual confirmation, noting that the sync added them.
         void this.events.sendSyncedRsvpConfirmation(eventId, userId);
-        continue;
+        return;
       }
 
       // An existing RSVP: only the Facebook +1s may change, never the member's
@@ -514,13 +546,6 @@ export class FacebookSyncService {
       // A member Going on Facebook whose site RSVP says otherwise is left
       // alone: their own answer wins. Only the +1s above are mirrored.
     }
-
-    // Removal (rule 8). Only RSVPs the sync made, and only for members on no
-    // list of this dinner -- and only if every list was complete, since a
-    // partial read is not evidence that anybody left.
-    if (lists.some((list) => !list.complete)) return;
-
-    await this.removeDepartedMembers(eventId, byMember, actorId, report);
   }
 
   /**
@@ -582,6 +607,134 @@ export class FacebookSyncService {
         });
       }
     }
+  }
+
+
+  /**
+   * Rule 14: linking carries over, immediately (Rob, 2026-10-23).
+   *
+   * The moment an admin ties a Facebook person to a member, everything that
+   * person's Facebook presence already implied becomes true of the member --
+   * without waiting for the next sync, which may be a day away and is driven
+   * from outside.
+   *
+   * Two halves, and they are different operations:
+   *
+   *  - **Upcoming dinners** they are Going to on Facebook become Going RSVPs,
+   *    through the same `applyMemberRsvp` the sync uses. Same rules, including
+   *    the +1 merge across every account this member has and the refusal to
+   *    touch their own website guests.
+   *  - **Past dinners** where the Facebook-only person was marked *Attended*
+   *    become attended RSVPs **through the normal attendance path**, so points,
+   *    the coordinator award, event achievements and Secret Dinner all land
+   *    exactly as they would have if they had been a member on the night. That
+   *    is the whole point of doing this rather than only fixing the future:
+   *    the attendance already happened, and it should count.
+   *
+   * The merge reads every account the member has, not just the one being
+   * linked: somebody with two Facebook profiles on two groups' lists is one
+   * person at one table, and counting the account in isolation would be the
+   * double-count rule 9 exists to prevent.
+   */
+  async carryOverLinkedAccount(
+    accountId: number,
+    userId: number,
+    actorId: number,
+  ): Promise<{ upcoming: number; attended: number }> {
+    const member = await this.prisma.users.findFirst({
+      where: { id: userId },
+      select: { fullName: true, status: true, deletedAt: true },
+    });
+    if (member === null || isBannedOrDeleted(member)) return { upcoming: 0, attended: 0 };
+
+    // Every event this account appears on. `attended` is the Facebook-only
+    // row's mark, which is what the past half turns into a real RSVP.
+    const rows = await this.prisma.facebook_event_attendees.findMany({
+      where: { facebookAccountId: accountId },
+      select: { eventId: true, attended: true },
+    });
+    if (rows.length === 0) return { upcoming: 0, attended: 0 };
+
+    // Discarded afterwards: this runs outside a sync, so there is no report to
+    // return. It exists because `applyMemberRsvp` writes into one.
+    const report: SyncReport = {
+      extractedAt: null,
+      events: [],
+      added: [],
+      guestsChanged: [],
+      removed: [],
+      unmatched: [],
+      warnings: [],
+    };
+
+    let upcoming = 0;
+    let attended = 0;
+
+    for (const row of rows) {
+      const event = await this.prisma.events.findFirst({
+        where: { id: row.eventId },
+        select: { id: true, status: true, eventDate: true },
+      });
+      // A cancelled or draft dinner acquires nobody, in either direction.
+      if (event === null || event.status !== EventStatus.PUBLISHED) continue;
+
+      // Every one of this member's accounts, so the +1 merge sees them all.
+      const allRows = await this.prisma.facebook_event_attendees.findMany({
+        where: { eventId: event.id, account: { userId } },
+        select: { sources: true },
+      });
+      const sources = allRows.flatMap((candidate) => sourcesToPlusOnes(candidate.sources));
+
+      if (!isPast(event.eventDate)) {
+        await this.applyMemberRsvp(event.id, userId, member, sources, actorId, report);
+        upcoming += 1;
+        continue;
+      }
+
+      // Past, and only where somebody actually marked them present. A NULL
+      // `attended` is "not marked", not "did not come", so it earns nothing.
+      if (row.attended !== true) continue;
+
+      const existing = await this.prisma.event_rsvps.findFirst({
+        where: { eventId: event.id, userId },
+        select: { id: true, status: true, attended: true },
+      });
+
+      if (existing === null) {
+        await this.prisma.event_rsvps.create({
+          data: {
+            eventId: event.id,
+            userId,
+            status: RsvpStatus.GOING,
+            source: RsvpSource.FACEBOOK_SYNC,
+            additionalGuests: 0,
+          },
+        });
+      } else if (existing.attended === true) {
+        // Already credited. Awarding again would double their points.
+        continue;
+      }
+
+      // The normal path, so points and achievements are awarded exactly as a
+      // moderator marking the register would have done.
+      await this.events.markAttendance(event.id, [{ userId, attended: true }]);
+      attended += 1;
+
+      await this.audit.log({
+        userId: actorId,
+        action: 'rsvp.facebook_sync',
+        entityType: 'event',
+        entityId: event.id,
+        metadata: { targetUserId: userId, change: 'attended_on_link', facebookAccountId: accountId },
+      });
+    }
+
+    this.logger.log(
+      `Linked Facebook account ${accountId} to member ${userId}: ` +
+        `${upcoming} upcoming RSVP(s), ${attended} past attendance(s) credited.`,
+    );
+
+    return { upcoming, attended };
   }
 
   /**

@@ -323,7 +323,9 @@ describe('Facebook sync (e2e)', () => {
         .set('Host', TEST_TENANT_DOMAIN)
         .set('Cookie', adminCookie)
         .send({ userId })
-        .expect(204);
+        // 200 now, not 204: linking carries over (rule 14) and returns what it
+        // did, so the screen can say so.
+        .expect(200);
       return account.id;
     };
 
@@ -343,14 +345,17 @@ describe('Facebook sync (e2e)', () => {
 
       await sync(payload);
       await linkTo('100000000000005', member.id);
-      const res = await sync(payload);
 
+      // The RSVP exists as soon as the link is made -- rule 14 carries over
+      // immediately rather than waiting for the next run, which may be a day
+      // away and is driven from outside.
       const rsvp = await rsvpFor(event.id, member.id);
       expect(rsvp?.status).toBe(RsvpStatus.GOING);
       expect(rsvp?.source).toBe(RsvpSource.FACEBOOK_SYNC);
-      expect(res.body.added).toEqual([
-        expect.objectContaining({ eventId: event.id, userId: member.id }),
-      ]);
+
+      // And the next sync does not add them a second time.
+      const res = await sync(payload);
+      expect(res.body.added).toEqual([]);
     });
 
     it('keeps Facebook +1s beside the website guests, never merged', async () => {
@@ -612,14 +617,19 @@ describe('Facebook sync (e2e)', () => {
         ],
       };
       await sync(payload);
-      await linkTo('100000000000015', banned.id);
 
+      // Banned BEFORE the link, which is the order that actually happens: an
+      // admin linking somebody who is already banned. Banning afterwards is a
+      // different question -- it does not retract RSVPs anywhere else in the
+      // system either, and the headcount excludes them regardless.
       await inTenant(() =>
         prisma.users.updateMany({
           where: { id: banned.id },
           data: { status: UserStatus.SUSPENDED },
         }),
       );
+
+      await linkTo('100000000000015', banned.id);
 
       const res = await sync(payload);
 
@@ -862,4 +872,281 @@ describe('Facebook sync (e2e)', () => {
       expect(res.body.events[0].error).toContain('No such event');
     });
   });
+
+  describe('cancelled guest links (Rob, 2026-10-23)', () => {
+    it('stops counting a guest who cancelled, so both totals agree', async () => {
+      const event = await seedEvent();
+      const member = await seedUser(prisma, city.id, { email: 'cancelled@example.test' });
+
+      const rsvp = await inTenant(() =>
+        prisma.event_rsvps.create({
+          data: {
+            eventId: event.id,
+            userId: member.id,
+            status: RsvpStatus.GOING,
+            source: RsvpSource.MEMBER,
+            additionalGuests: 2,
+            guestNames: ['Coming', 'Cancelling'],
+          },
+        }),
+      );
+
+      // One of the two guests cancels their link.
+      await inTenant(() =>
+        prisma.event_guest_links.create({
+          data: {
+            eventId: event.id,
+            memberRsvpId: rsvp.id,
+            createdById: member.id,
+            token: 'cancelled-link-token',
+            expiresAt: new Date(Date.now() + 86_400_000),
+            cancelledAt: new Date(),
+            recipientName: 'Cancelling',
+          },
+        }),
+      );
+
+      const res = await sync({
+        events: [
+          { dinnerbears_event_id: event.id, facebook_event_id: FB_CINCY, guests: [] },
+        ],
+      });
+
+      // The member plus the one guest still coming -- not two.
+      expect(res.body.events[0].totalGoing).toBe(2);
+
+      // And the event list agrees, which is the whole point: these are the
+      // same claim about the same dinner.
+      const list = await request(server)
+        .get('/api/v1/events')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', adminCookie)
+        .expect(200);
+      expect(list.body.find((e: { id: number }) => e.id === event.id).goingCount).toBe(2);
+    });
+
+    it('never counts a member below one, however many links cancelled', async () => {
+      const event = await seedEvent();
+      const member = await seedUser(prisma, city.id, { email: 'overcancelled@example.test' });
+
+      const rsvp = await inTenant(() =>
+        prisma.event_rsvps.create({
+          data: {
+            eventId: event.id,
+            userId: member.id,
+            status: RsvpStatus.GOING,
+            source: RsvpSource.MEMBER,
+            additionalGuests: 0,
+          },
+        }),
+      );
+
+      // Inconsistent data: a cancelled link with no guest to match it.
+      await inTenant(() =>
+        prisma.event_guest_links.create({
+          data: {
+            eventId: event.id,
+            memberRsvpId: rsvp.id,
+            createdById: member.id,
+            token: 'stray-cancelled-token',
+            expiresAt: new Date(Date.now() + 86_400_000),
+            cancelledAt: new Date(),
+          },
+        }),
+      );
+
+      const res = await sync({
+        events: [
+          { dinnerbears_event_id: event.id, facebook_event_id: FB_CINCY, guests: [] },
+        ],
+      });
+
+      // The member is still at the table, not subtracted out of existence.
+      expect(res.body.events[0].totalGoing).toBe(1);
+    });
+  });
+
+  describe('linking carries over immediately (rule 14)', () => {
+    const linkAccount = async (facebookUserId: string, userId: number) => {
+      const account = await inTenant(() =>
+        prisma.facebook_accounts.findFirstOrThrow({ where: { facebookUserId } }),
+      );
+      const res = await request(server)
+        .post(`/api/v1/admin/facebook-accounts/${account.id}/link`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', adminCookie)
+        .send({ userId })
+        .expect(200);
+      return res.body;
+    };
+
+    it('turns an upcoming Going list into an RSVP without waiting for a sync', async () => {
+      const event = await seedEvent();
+      const member = await seedUser(prisma, city.id, { email: 'carry@example.test' });
+
+      await sync({
+        events: [
+          {
+            dinnerbears_event_id: event.id,
+            facebook_event_id: FB_CINCY,
+            guests: [guest('Carry Over', '100000000000030', { plus_one_names: ['Plus One'] })],
+          },
+        ],
+      });
+
+      expect(await rsvpFor(event.id, member.id)).toBeNull();
+
+      const result = await linkAccount('100000000000030', member.id);
+
+      // No second sync -- the link alone did it.
+      const rsvp = await rsvpFor(event.id, member.id);
+      expect(rsvp?.status).toBe(RsvpStatus.GOING);
+      expect(rsvp?.source).toBe(RsvpSource.FACEBOOK_SYNC);
+      expect(rsvp?.facebookGuestCount).toBe(1);
+      expect(result.upcoming).toBe(1);
+    });
+
+    it('credits a past attendance with points, through the normal path', async () => {
+      const past = await seedEvent({ eventDate: dateOffset(-7), title: 'Last Week' });
+      const member = await seedUser(prisma, city.id, { email: 'past@example.test' });
+
+      // Seed the Facebook-only attendance directly: the sync refuses a past
+      // event, which is exactly why this history exists only as an attendee row.
+      const account = await inTenant(() =>
+        prisma.facebook_accounts.create({
+          data: {
+            facebookUserId: '100000000000031',
+            profileUrl: 'https://www.facebook.com/past.person',
+            displayName: 'Past Person',
+          },
+        }),
+      );
+      await inTenant(() =>
+        prisma.facebook_event_attendees.create({
+          data: {
+            eventId: past.id,
+            facebookAccountId: account.id,
+            sources: { [FB_CINCY]: { names: [], total: 0 } },
+            attended: true,
+          },
+        }),
+      );
+
+      const result = await linkAccount('100000000000031', member.id);
+
+      const rsvp = await rsvpFor(past.id, member.id);
+      expect(rsvp?.attended).toBe(true);
+      expect(result.attended).toBe(1);
+
+      // The normal attendance path ran, so the points landed.
+      const points = await inTenant(() =>
+        prisma.member_points.findMany({ where: { userId: member.id, referenceId: past.id } }),
+      );
+      expect(points.length).toBeGreaterThan(0);
+    });
+
+    it('does not credit a past dinner nobody marked them present at', async () => {
+      const past = await seedEvent({ eventDate: dateOffset(-7), title: 'Unmarked' });
+      const member = await seedUser(prisma, city.id, { email: 'unmarked@example.test' });
+
+      const account = await inTenant(() =>
+        prisma.facebook_accounts.create({
+          data: {
+            facebookUserId: '100000000000032',
+            profileUrl: 'https://www.facebook.com/unmarked.person',
+            displayName: 'Unmarked Person',
+          },
+        }),
+      );
+      await inTenant(() =>
+        prisma.facebook_event_attendees.create({
+          data: {
+            eventId: past.id,
+            facebookAccountId: account.id,
+            sources: { [FB_CINCY]: { names: [], total: 0 } },
+            // NULL: "not marked", which is not the same as "did not come" --
+            // and earns nothing either way.
+            attended: null,
+          },
+        }),
+      );
+
+      const result = await linkAccount('100000000000032', member.id);
+
+      expect(await rsvpFor(past.id, member.id)).toBeNull();
+      expect(result.attended).toBe(0);
+    });
+
+    it('does not double-credit a member already marked attended', async () => {
+      const past = await seedEvent({ eventDate: dateOffset(-7), title: 'Already Credited' });
+      const member = await seedUser(prisma, city.id, { email: 'already@example.test' });
+
+      await inTenant(() =>
+        prisma.event_rsvps.create({
+          data: {
+            eventId: past.id,
+            userId: member.id,
+            status: RsvpStatus.GOING,
+            source: RsvpSource.MEMBER,
+            attended: true,
+          },
+        }),
+      );
+      const before = await inTenant(() =>
+        prisma.member_points.count({ where: { userId: member.id, referenceId: past.id } }),
+      );
+
+      const account = await inTenant(() =>
+        prisma.facebook_accounts.create({
+          data: {
+            facebookUserId: '100000000000033',
+            profileUrl: 'https://www.facebook.com/already.person',
+            displayName: 'Already Person',
+          },
+        }),
+      );
+      await inTenant(() =>
+        prisma.facebook_event_attendees.create({
+          data: {
+            eventId: past.id,
+            facebookAccountId: account.id,
+            sources: { [FB_CINCY]: { names: [], total: 0 } },
+            attended: true,
+          },
+        }),
+      );
+
+      const result = await linkAccount('100000000000033', member.id);
+
+      const after = await inTenant(() =>
+        prisma.member_points.count({ where: { userId: member.id, referenceId: past.id } }),
+      );
+      expect(after).toBe(before);
+      expect(result.attended).toBe(0);
+    });
+
+    it('carries over nothing for a banned member', async () => {
+      const event = await seedEvent();
+      const banned = await seedUser(prisma, city.id, {
+        email: 'bannedlink@example.test',
+        status: UserStatus.SUSPENDED,
+      });
+
+      await sync({
+        events: [
+          {
+            dinnerbears_event_id: event.id,
+            facebook_event_id: FB_CINCY,
+            guests: [guest('Banned Link', '100000000000034')],
+          },
+        ],
+      });
+
+      const result = await linkAccount('100000000000034', banned.id);
+
+      expect(await rsvpFor(event.id, banned.id)).toBeNull();
+      expect(result).toEqual({ upcoming: 0, attended: 0 });
+    });
+  });
 });
+
