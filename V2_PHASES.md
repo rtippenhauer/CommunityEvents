@@ -3069,10 +3069,34 @@ fold was keyed on the source address, which could neither collapse Worker mail
 (five consecutive stage messages arrived from five Cloudflare addresses) nor
 resist a caller who rotates it.
 
-**Left open deliberately, neither blocking:** `FALLBACK_FORWARD_TO` is unset, so
-the Worker's forward-on-failure path is dormant until a verified destination
-address exists; and the operator-vs-community visibility split is covered by 16
-e2e cases across two communities but has not been read by a human on stage.
+**Left open deliberately, not blocking:** `FALLBACK_FORWARD_TO` is unset, so the
+Worker's forward-on-failure path is dormant until a verified destination address
+exists.
+
+**The visibility split was confirmed on stage, 2026-10-22, in two halves.**
+Rob checked the per-community screen on both hosts — the root community's admin
+saw only root's rows, `rtippenhauer.com`'s admin only its own — and the
+deployment-wide read was confirmed against the API, which returned 16 rows (15
+root, 1 `stagertippenhauer`) each with its community named.
+
+The counts are worth recording because they are what make it conclusive: each
+community's admin had rows belonging to the other available to leak and leaked
+none. A check where one side happens to be empty looks identical to a passing
+one and proves nothing; that is the trap when re-testing after a change.
+
+**The two screens are not the same permission**, which is easy to misread as a
+bug. `Admin → Inbound mail` is one community's own mail, and the root tenant is
+a community like any other there. The deployment-wide view is `System → Inbound
+mail`, behind `OperatorGuard` — root tenant **and** `system_admin` or the
+service account, never a root-community admin alone.
+
+**A note for whoever wonders why "matched no community" is always empty.**
+`TenantMiddleware` 404s an unknown host before the route runs, so every request
+that reaches the handler has resolved a community and every freshly written row
+has a tenant. The nullable column is not dead weight: the keys are `ON DELETE
+SET NULL`, so deleting a community turns its rows tenantless rather than failing
+the delete or erasing the evidence, and those rows stay visible to the operator
+alone. That is the realistic source of a tenantless row, not a parse failure.
 
 **Verified live on stage:** `recorded`, `unchanged`, `counter_proposal`,
 `invalid_secret`, `rate_limited`, the fold counter (30 probes → one row,
