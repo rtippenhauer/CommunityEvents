@@ -67,10 +67,15 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 ## V2 Rewrite Status
 
 **Current v2 work item:** **none in progress.** Next on the cutover path is
-**`v2-29`** — porting v1's Phase 39 (Muse API + Facebook RSVP sync), the largest
-remaining item on it. Read the spec in v1's `docs/PORT_TO_COMMUNITYEVENTS.md`
-(sibling checkout `../DinnerBears`), not this repo's summaries of it. Its sync
-refusals write to `v2-34`'s inbound log, which is why that item ran first.
+**`v2-24`** — cities (`REQ-CITIES-01`). Not catch-up: it is new v2 work that
+`v2-25`'s import depends on, and it carries the `CitiesAdminController` gap
+`v2-12` left open deliberately (`@Roles(ADMIN)` over a global table). After it,
+`v2-25` (the import) and a production deployment that does not exist yet.
+
+**With `v2-29` done, this repo is caught up to prod DinnerBears** — `v2-33` was
+the bugfix half and `v2-29` the Phase 39 half. The next v1 reconciliation point
+is unchanged: this repo was last reconciled against v1 **v1.6.3**; if v1's
+`package.json` is ahead, read its port doc for the delta before planning.
 
 **One thing `v2-34` left open, not a blocker:** `FALLBACK_FORWARD_TO` is still
 unset on the Cloudflare Worker, so the forward-on-failure path is dormant until
@@ -140,6 +145,73 @@ deployment that does not exist yet. `v2-31` and `v2-32` were not on that path;
 both were pulled forward by Rob and are done.
 
 **Completed v2 items:**
+- **`v2-29` — v1's Phase 39 ported: Muse API + Facebook RSVP sync**
+  (2026-10-24). The last catch-up item; with `v2-33`'s bugfixes this repo is
+  level with prod DinnerBears.
+
+  **The one thing that could not be ported literally is the tenant.** v1 is
+  single-tenant, so its Muse routes take the caller from a session. Here the
+  **token names the community** — `MuseTenantMiddleware` establishes it from the
+  token rather than the Host header, and on a mismatch the token wins and logs a
+  warning. That is what lets one Muse instance serve several communities with
+  nothing but a base URL and a key per community, and it is why the stage pass
+  had to run **two** communities before the item could be called done.
+
+  **Hand-writing a query that v1 delegated is how the contract drifts.** v1
+  reads events through `EventsService.findOne(id, UserRole.MUSE, …)`, which
+  loads `location.photos` ordered by id. The port wrote its own narrow queries,
+  and `include: { location: true }` pulls **scalars only** — so `photos` was
+  silently absent and Muse could not set a Facebook event's cover. Reported from
+  stage, invisible to 1178 passing specs because **neither `/muse/events` nor
+  `/muse/events/:id` had a single test**.
+
+  **The same omission was also leaking private addresses.** The detail endpoint
+  applied no redaction at all, where v1's `muse` role — not elevated, holding no
+  RSVP — lands on the branch that blanks `address`, `lat`, `lng` and `photos`.
+  Adding the photos without noticing would have published pictures of members'
+  houses as Facebook event covers. Both endpoints share one `redactPrivateVenue`
+  now, reusing `LocationVisibilityService` rather than re-deriving the rule.
+
+  **Publishing a private venue is a per-community choice**
+  (`muse_share_private_venues`, default **false**, Admin → Automation Accounts),
+  following `feature_ratings_residences`. Deliberately not a `FEATURE_KEY`:
+  those render on Site Settings and go out in the public branding payload.
+
+  **`enableImplicitConversion: true` makes `@IsBoolean()` accept any non-empty
+  string.** `{"sharePrivateVenues":"yes"}` validated cleanly as `true`, because
+  the pipe coerces to the declared type *before* validation runs. Fixed here
+  with `@Transform(({ obj }) => obj.field)`, which reads the raw value. **This
+  is deployment-wide, not local to this DTO** — every boolean DTO in the
+  codebase has it, and nothing else has been swept.
+
+  **Four surfaces nobody could reach without them**: Automation Accounts (the
+  API was complete and every route needed a key only this screen can mint),
+  Facebook Accounts (the server never links anybody, so without the queue no
+  member is ever marked Going), the base URL beside the key, and the role
+  picker. The role is the **off switch** — `verify` requires `muse` *as
+  currently held* — so it belongs with the integration, not in the member admin.
+  Its endpoint admits only the two integration roles, which makes escalation
+  unexpressible rather than guarded.
+
+  **Linking carries over immediately** (rule 14): upcoming events become RSVPs
+  and a past event marked *Attended* is credited **through the normal attendance
+  path**, so points, the coordinator award and achievements all land. Three
+  guards: a NULL `attended` earns nothing, an already-attended member is not
+  credited twice, and the +1 merge reads **every** account the member has.
+
+  **The headcount is one number** (Rob): website members going plus their
+  guests, minus cancelled guest links, plus Facebook-only attendees. The page
+  and the API disagreeing by one is a table booked from the wrong figure.
+
+  **Stage found what the suite could not, five times**, and three were found
+  only by opening the page: a warning box rendered dark-on-dark
+  (`--ce-error-overlay` is a 75% overlay wanting white text, with no
+  `--ce-on-error` to pair), a missing `MatSelectModule`, and copy that said
+  "Dinners at a private home" in a product where every community names its own
+  events and locations. The copy fix reached for `brand.aDinnerLower()`, which
+  does not exist — the same invented-API mistake as the CSS tokens, and one the
+  build cannot catch, since a missing method on a signal call is not a template
+  type error.
 - **`v2-34` — An inbound email log** (2026-10-22). Pulled onto the cutover path
   from post-cutover, as an instrument *for* the cutover rather than a feature:
   inbound mail failed silently and the import is when that is least affordable.
@@ -1147,6 +1219,14 @@ frontend work unless/until a future requirements doc says otherwise.
   re-exporting at the HTTP edge would put the value in an access log, a proxy
   buffer and a browser cache. The write direction is unchanged: an omitted key
   means "leave it alone", an explicit null clears it.
+- **A boolean DTO accepts any non-empty string as `true`** (found in `v2-29`).
+  The global pipe sets `transformOptions: { enableImplicitConversion: true }`,
+  which coerces a value to its declared type *before* `class-validator` runs, so
+  `@IsBoolean()` sees `true` and passes. Where getting it wrong matters — a flag
+  that publishes members' home addresses, say — read the raw value with
+  `@Transform(({ obj }) => obj.field)` so a non-boolean is a 400 rather than a
+  guess. Every boolean DTO in the codebase has this behaviour; only the one in
+  `muse-settings.dto.ts` is guarded so far.
 - **Never compare a role with `===` when asking "is this an admin"** — use
   `hasAdminRights`/`isElevatedRole` from `api/src/common/utils/roles.util.ts`
   (and the mirrored `frontend/src/app/core/utils/roles.util.ts`). `RolesGuard`
@@ -1378,16 +1458,34 @@ authoritative (per REQ-TENANT-01.3).
   community's own admin may change its role (it is inert — NULL password hash, so
   nothing can authenticate as it, and the actor is already an admin there).
   `system_admin` is the exception and stays guarded on both sides.
-- **`users.is_service_account` marks the one non-human account per tenant.**
-  Guards key on that column, never on the role (deliberately mutable — the root
-  account gets flipped to admin and back for testing) and never on the
-  address, which `v2-10` duly renamed to `automation@communityevents.internal`
-  without anything breaking — that rename is the proof the column is the real
-  key. It still needed a migration, because `createServiceAccount` upserts
-  `ON DUPLICATE KEY UPDATE` against `(tenant_id, email)`, so an unrenamed
-  deployment would have grown a *second* service account rather than updating
-  its own. Service accounts cannot be deleted by any path and are hidden from
-  the member directory and the leaderboard.
+- **`users.is_service_account` marks a non-human account.** Guards key on that
+  column, never on the role (deliberately mutable — the root account gets
+  flipped to admin and back for testing) and never on the address. Service
+  accounts cannot be deleted by any path and are hidden from the member
+  directory and the leaderboard.
+
+  **Not "the one" per tenant since `v2-29`**: a community may hold several, its
+  own `automation` account plus an integration account per outside service. Any
+  guard that assumes a single row per community is wrong, and `OperatorGuard`
+  is the one that matters — it grants deployment-wide rights on this column, so
+  what keeps a Muse token away from it is that the token authenticates nothing
+  outside `/api/v1/muse`.
+- **A non-person account's address names its own community** (`v2-29`):
+  `<local>@<tenant slug>.internal`, built by `automationAccountEmail()` /
+  `integrationAccountEmail()` in `service-account.util.ts`, with the slug read
+  through `TenantResolutionService.slugFor()`. The slug and not the domain —
+  a community can move host, and an address built from the old one silently
+  stops saying whose it is.
+
+  It was one deployment-wide constant until `v2-29`, so every community's
+  service account read `automation@communityevents.internal` — byte-identical
+  across communities, which is exactly how a correctly-scoped row came to be
+  reported as a cross-tenant leak on stage. **The address is still not an
+  identifier**, but `createServiceAccount` upserts `ON DUPLICATE KEY UPDATE`
+  against `(tenant_id, email)`, so changing what it computes without migrating
+  the stored rows grows a *second* service account per community rather than
+  renaming the one there. That has now been the trap twice (`v2-10`, `v2-29`):
+  the code change and the rename migration ship together, always.
 - **Nothing is deleted on a timer if it is an `admin`, a `system_admin` or a
   service account** (`AUTO_DELETE_ELIGIBLE`). The interactive paths already
   refused them; the scheduled sweeps were the gap, and `inactivityCheck`

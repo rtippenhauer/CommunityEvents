@@ -909,3 +909,61 @@ as 12:30.
 points, events or locations, it now uses whatever your community calls them,
 everywhere the note appears rather than on one page only. Notes are also
 listed in the order they were published.
+
+## Your Facebook group and your site stay in step
+
+If your community organises on Facebook as well as here, the two no longer have
+to be kept in line by hand. Events created here are mirrored to your Facebook
+group, and people who say they are Going on Facebook are counted here — with
+their +1s, whether or not they have an account on the site.
+
+**One headcount, from both places.** An event's total counts members who said
+yes here, the guests they are bringing, and everyone Going on Facebook. A guest
+who cancels stops being counted. The number you see on the event page is the
+same number written into the Facebook event description, so a table is booked
+from one figure rather than two that disagree.
+
+**Facebook people are matched to members by a human, never automatically.** Two
+people can share a name, and a wrong match would mark the wrong member as going
+and email them about an event they never chose. A new screen lists everyone
+seen on your Facebook Going lists, suggests exact name matches for you to
+confirm, and lets you mark someone as having no account here — they are still
+counted, just no longer waiting on a decision.
+
+**Matching someone takes effect straight away.** The moment you link a Facebook
+person to a member, the events they are Going to become their RSVPs, and any
+past event they were marked as having attended is credited to them properly —
+points, awards and achievements included, exactly as if they had been a member
+on the night.
+
+**Members who have left are never quietly re-added.** Someone banned or removed
+stays linked so you can see who they were, but is never added to an event and
+never counted.
+
+## Events at a private home stay private
+
+A Facebook event is public far beyond your membership. When one of your events
+is at a location marked private — usually somebody's home — its address, its
+map and its photographs are **not** published to Facebook. A photograph of a
+house gives the address away just as surely as the address does.
+
+If your private locations are places you are happy to publish, an admin can
+turn this off for the community on the Automation Accounts screen. It is off by
+default, and the setting belongs to each community separately.
+
+## Connecting an outside service
+
+**Automation Accounts** is a new admin screen for the accounts that outside
+services act as. It creates the account, issues its access key — shown once,
+and stored only as a fingerprint, so a lost key is replaced rather than
+recovered — and shows the web address to point the service at, which is
+specific to your community.
+
+**Each account says which community it belongs to.** These accounts are not
+people: they cannot sign in, never receive email, and do not appear in the
+member directory. Their addresses now name your own community rather than the
+platform, so two communities' accounts can be told apart at a glance.
+
+**Turning an integration off takes one change.** Each account has a setting for
+which service it acts as. Switch it away and its key stops working immediately;
+switch it back and the same key works again, with nothing to reissue.

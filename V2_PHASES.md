@@ -54,10 +54,10 @@ Two decisions bound it:
 |---|---|---|
 | 1 | ~~`/v2-done 14`~~ | Done. (`v2-31` and `v2-32` have since been completed too — neither is on this path.) |
 | 2 | ~~bugfix — dispatcher claim~~ | **Done and merged** (PR #25, `b06cfc3`, 2026-10-14). Stage found it was a *live* defect, not a latent one: 40 queued rows produced 57 sends on the pre-fix image, reproduced by pressing Send Now in two browser tabs. 40 → 40 after. v2-27's first half, carved out. The dispatcher had no claim step and Admin → Send Now dispatches from a request, so it could double-send *today*. See v2-27's section for what the claim settled and what is left of that item. |
-| 3 | **v2-33 — port v1's five bugfixes** | Every one is fixed in DinnerBears today, so shipping without them is regression, not parity — the same test this table uses. No schema changes, one branch. Verified as live defects here on 2026-10-14. |
+| 3 | ~~**v2-33 — port v1's five bugfixes**~~ | **Done 2026-10-19** (tag `v2-33`). Every one was verified as a live defect here rather than taken on trust from v1's port doc, and all six stage checks passed. Its stage pass cost two days of inbound-mail infrastructure, not code — see that section and `docs/CUTOVER_PLAN.md`. |
 | 4 | ~~**v2-34 — an inbound email log**~~ | **Done 2026-10-22** (tag `v2-34`). **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
-| 5 | **v2-29 — port Phase 39** | **Next up.** Without it the cutover kills the Facebook mirror DinnerBears now depends on. The largest item on this path. Its sync refusals write to v2-34's log — see both sections. |
-| 6 | **v2-24 — cities** | REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. |
+| 5 | ~~**v2-29 — port Phase 39**~~ | **Done 2026-10-24** (tag `v2-29`). With v2-33 this repo is level with prod DinnerBears. Stage ran **two** communities mirroring independently, which is the clause of the definition of done a single-community run cannot test. Stage also found the cover photos missing and private venue addresses unredacted — both from hand-writing queries v1 delegated to `EventsService`, and both invisible to the suite because neither event endpoint had a test. |
+| 6 | **v2-24 — cities** | **Next up** (2026-10-24, now that v2-29 is done). REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. Also carries the `CitiesAdminController` gap v2-12 left open deliberately: `@Roles(ADMIN)` over a global table. |
 | 7 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
 | 8 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
@@ -2577,8 +2577,19 @@ configured.
 
 ### v2-29 — Port v1's Phase 39 (Muse API + Facebook RSVP sync)
 
-**Status:** **In progress — next up** (2026-10-22, now that `v2-34` is done).
-**On the cutover critical path, item 5** — see the running order at the top. Depends on v2-5 (scoping), v2-6 (users scoped) and
+**Status:** **Complete** (2026-10-24, tag `v2-29`). **On the cutover critical
+path, item 5** — see the running order at the top. Verified on stage with a
+full Muse run, the role off switch, and **two communities mirroring Facebook
+independently**, which is the definition-of-done clause a single-community run
+cannot exercise.
+
+**Not exercised on stage, recorded rather than implied:** the private-venue
+redaction (e2e only — a dinner at a private location withholding its address
+and photos, and showing them once the community opts in), the link carry-over
+crediting a past attendance with points, the page/API headcount agreeing where a
+guest cancelled, and the 120/min throttle. Each is covered by the suite; none
+has been seen on the deployment, and this item's own history is that stage
+found what the suite could not five separate times. Depends on v2-5 (scoping), v2-6 (users scoped) and
 v2-9 (per-community email, for the sync's confirmation mail). **`v2-34` now
 runs ahead of it** (Rob, 2026-10-20) so the sync's refusals write to the
 inbound log from the start rather than being retrofitted — see that section for
