@@ -56,6 +56,26 @@ import {
         hidden from the member directory and the leaderboard.
       </p>
 
+      <mat-card class="endpoint-card" appearance="outlined">
+        <mat-card-content>
+          <h3><mat-icon>link</mat-icon> Point Muse at this community</h3>
+          <p class="hint">
+            This address is specific to this community. Muse holds one base URL
+            and one token per community it syncs.
+          </p>
+          <div class="token-row">
+            <code>{{ museBaseUrl }}</code>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="copy(museBaseUrl, 'Address')"
+            >
+              <mat-icon>content_copy</mat-icon> Copy
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
+
       @if (issued(); as token) {
         <mat-card class="token-card" appearance="outlined">
           <mat-card-content>
@@ -71,6 +91,9 @@ import {
               </button>
             </div>
             <p class="expiry">Expires {{ token.expiresAt | date: 'medium' }}</p>
+            <p class="hint">
+              Give Muse this token together with the address above.
+            </p>
             <button mat-button type="button" (click)="issued.set(null)">Done</button>
           </mat-card-content>
         </mat-card>
@@ -196,6 +219,18 @@ import {
       }
       .token-card {
         border-color: var(--ce-primary);
+      }
+      .endpoint-card h3,
+      .token-card h3 {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .hint {
+        color: var(--ce-text-muted);
+        font-size: 0.85rem;
+        margin: 0.25rem 0 0.75rem;
+        max-width: 42rem;
       }
       .token-card h3 {
         display: flex;
@@ -333,6 +368,18 @@ export class AdminIntegrationsComponent implements OnInit {
   /** The one and only sighting of a plaintext token. */
   readonly issued = signal<{ token: string; expiresAt: string } | null>(null);
 
+  /**
+   * Derived from the browser's own origin, which is correct per community by
+   * construction: an admin editing this screen is already on their own
+   * community's host, and that host is what the token resolves against.
+   *
+   * Reading it from `window` rather than from config is deliberate -- `APP_URL`
+   * is one value for the whole deployment, so it would hand every community the
+   * root tenant's address and send Muse to the wrong one. The same reasoning as
+   * `baseUrlFor()` on the API side.
+   */
+  readonly museBaseUrl = `${window.location.origin}/api/v1/muse`;
+
   readonly form = this.fb.group({
     name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(80)]],
   });
@@ -395,9 +442,9 @@ export class AdminIntegrationsComponent implements OnInit {
     });
   }
 
-  copy(token: string): void {
-    this.clipboard.copy(token);
-    this.snackBar.open('Token copied', undefined, { duration: 2500 });
+  copy(value: string, label = 'Token'): void {
+    this.clipboard.copy(value);
+    this.snackBar.open(`${label} copied`, undefined, { duration: 2500 });
   }
 
   private load(): void {

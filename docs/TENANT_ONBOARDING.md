@@ -566,8 +566,10 @@ all, by any amount of configuration here.
 2. **Issue a token.** Same screen, "Issue token". It is shown **once**: only its
    SHA-256 is stored, so it cannot be shown again and a lost one is reissued
    rather than recovered. 60-day expiry; Muse rotates its own before then.
-3. **Give Muse the base URL and the token.** The base URL is the community's own
-   host plus `/api/v1/muse`.
+3. **Give Muse the base URL and the token.** Both are on that same screen: the
+   "Point Muse at this community" card shows the address with a copy button, and
+   it is derived from the host you are on, so it is right for this community by
+   construction. Muse holds one base URL and one token per community.
 4. **Work the review queue.** After the first sync, Admin -> Facebook Accounts
    lists everybody seen. Nothing is linked automatically — two people can share
    a name, and a wrong link marks the wrong member Going and emails them about a
