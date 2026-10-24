@@ -57,7 +57,7 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
 import { coerceRawRow } from './common/utils/prisma-raw.util';
 import { resolveRootTenantDomain } from './common/utils/tenant-domain.util';
-import { AUTOMATION_ACCOUNT_EMAIL } from './common/utils/service-account.util';
+import { automationAccountEmail } from './common/utils/service-account.util';
 import { LEGAL_DEFAULT_ROWS } from './common/legal/legal-defaults';
 import { achievementDefaultRows } from './common/achievements/achievement-defaults';
 import {
@@ -387,10 +387,10 @@ Config:
     // ---- Service account -------------------------------------------------
     // The root tenant's, so role `automation`. Created before the admin because
     // system writes (release-notes import in particular) attribute to it.
-    await createServiceAccount(tx, tenantRow.id, cityId);
+    await createServiceAccount(tx, tenantRow.id, cityId, rootTenantSlug);
     console.log(`
 Service account:
-  - ${AUTOMATION_ACCOUNT_EMAIL} (automation)`);
+  - ${automationAccountEmail(rootTenantSlug)} (automation)`);
 
     // ---- First admin (email + password) -----------------------------------
     // `system_admin`, not `admin`: this is the root tenant, and its admin is the

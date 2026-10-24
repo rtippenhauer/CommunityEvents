@@ -2,6 +2,10 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AppConfigService } from '../app-config/app-config.service';
+import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
+import { INTEGRATION_ROLES } from './dto/set-integration-role.dto';
+import { requireTenantId } from '../../common/tenant/tenant-store';
+import { integrationAccountEmail } from '../../common/utils/service-account.util';
 import { ApiTokenService, type ApiTokenView, type IssuedToken } from './api-token.service';
 import { UserRole, UserStatus } from '../../database/enums';
 
@@ -56,7 +60,7 @@ export interface IntegrationAccountView {
 }
 
 /** RFC 2606 reserved TLD: guaranteed never to resolve. */
-const INTEGRATION_EMAIL_DOMAIN = 'integration.invalid';
+
 
 function slugify(name: string): string {
   return name
@@ -72,12 +76,23 @@ export class IntegrationsService {
     private readonly tokens: ApiTokenService,
     private readonly audit: AuditService,
     private readonly appConfig: AppConfigService,
+    private readonly tenants: TenantResolutionService,
   ) {}
 
-  /** What this community currently lets Muse publish. */
-  async getMuseSettings(): Promise<{ sharePrivateVenues: boolean }> {
-    const value = await this.appConfig.getSiteSetting('muse_share_private_venues');
-    return { sharePrivateVenues: value === 'true' };
+  /**
+   * What this community currently lets Muse publish, plus its own slug.
+   *
+   * The slug rides along because the screen needs it to show what address a
+   * new account will get (`muse@<slug>.internal`), and this is the one request
+   * it already makes. It is not a secret -- an admin of this community is
+   * being told the name of this community.
+   */
+  async getMuseSettings(): Promise<{ sharePrivateVenues: boolean; communitySlug: string }> {
+    const [value, slug] = await Promise.all([
+      this.appConfig.getSiteSetting('muse_share_private_venues'),
+      this.tenants.slugFor(requireTenantId('muse settings')),
+    ]);
+    return { sharePrivateVenues: value === 'true', communitySlug: slug ?? '' };
   }
 
   /**
@@ -92,7 +107,7 @@ export class IntegrationsService {
   async setMuseSettings(
     sharePrivateVenues: boolean,
     actorId: number,
-  ): Promise<{ sharePrivateVenues: boolean }> {
+  ): Promise<{ sharePrivateVenues: boolean; communitySlug: string }> {
     await this.appConfig.updateConfigValue(
       'muse_share_private_venues',
       sharePrivateVenues ? 'true' : 'false',
@@ -106,7 +121,10 @@ export class IntegrationsService {
       metadata: { sharePrivateVenues },
     });
 
-    return { sharePrivateVenues };
+    return {
+      sharePrivateVenues,
+      communitySlug: (await this.tenants.slugFor(requireTenantId('muse settings'))) ?? '',
+    };
   }
 
   /**
@@ -128,11 +146,20 @@ export class IntegrationsService {
       throw new BadRequestException('Name must contain at least one letter or digit.');
     }
 
-    const email = `${slug}@${INTEGRATION_EMAIL_DOMAIN}`;
+    // `<name>@<community slug>.internal` (v2-29). It was `@integration.invalid`
+    // for every community, which named the platform rather than the owner --
+    // so an admin saw an address that looked like somebody else's and read a
+    // correctly-scoped row as a leak. `.internal` is reserved and unroutable,
+    // so this can never receive mail.
+    const tenantSlug = await this.tenants.slugFor(requireTenantId('integration account'));
+    if (tenantSlug === null) {
+      throw new BadRequestException('This community could not be resolved.');
+    }
+    const email = integrationAccountEmail(slug, tenantSlug);
 
     // findFirst, not findUnique: email is unique per *tenant* since v2-6, and
     // the extension injects this community. Two communities may each have a
-    // `muse@integration.invalid` and they are different accounts.
+    // `muse@<slug>.internal` and they are different accounts.
     const clash = await this.prisma.users.findFirst({ where: { email } });
     if (clash !== null) {
       throw new BadRequestException(`An account already exists at ${email}.`);
@@ -177,6 +204,73 @@ export class IntegrationsService {
     });
 
     return { ...created, tokens: [] };
+  }
+
+  /**
+   * Switch an integration account between the two automation roles.
+   *
+   * **This is the off switch, not a label.** `ApiTokenService.verify` requires
+   * `muse` *as currently held*, so moving an account to `automation` stops its
+   * token opening `/muse` until it is moved back -- v1's behaviour, kept
+   * deliberately. Putting it on this screen means disabling an integration no
+   * longer means going to find the account in the member admin.
+   *
+   * Narrow by construction: the DTO admits only the two integration roles, so
+   * unlike `admin.service.setRole` there is no path from here to `admin` or
+   * `system_admin` to guard against. What still has to be checked is the
+   * *target* -- an admin must not be able to point this at a human and change
+   * their role, so a non-service account is refused.
+   */
+  async setRole(
+    userId: number,
+    role: (typeof INTEGRATION_ROLES)[number],
+    actorId: number,
+  ): Promise<IntegrationAccountView> {
+    // Scoped, so this cannot reach another community's account.
+    const target = await this.prisma.users.findFirst({
+      where: { id: userId },
+      select: { id: true, isServiceAccount: true, role: true },
+    });
+    if (target === null) throw new NotFoundException('No such account.');
+    if (!target.isServiceAccount) {
+      throw new BadRequestException('That is not an automation account.');
+    }
+    if (target.role === role) {
+      const unchanged = await this.findAccount(userId);
+      if (unchanged === null) throw new NotFoundException('No such account.');
+      return unchanged;
+    }
+
+    await this.prisma.users.update({ where: { id: userId }, data: { role } });
+
+    await this.audit.log({
+      userId: actorId,
+      action: 'integration.role_change',
+      entityType: 'user',
+      entityId: userId,
+      metadata: { from: target.role, to: role },
+    });
+
+    const updated = await this.findAccount(userId);
+    if (updated === null) throw new NotFoundException('No such account.');
+    return updated;
+  }
+
+  /** One account in the list's own shape, so a write answers what a read would. */
+  private async findAccount(userId: number): Promise<IntegrationAccountView | null> {
+    const account = await this.prisma.users.findFirst({
+      where: { id: userId },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+    if (account === null) return null;
+    return { ...account, tokens: await this.tokens.listForUser(account.id) };
   }
 
   /** Every integration account in this community, with its token history. */

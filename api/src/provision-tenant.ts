@@ -160,7 +160,7 @@ async function main(): Promise<void> {
       if (!city) {
         throw new Error('No city exists -- run the seed step before provisioning a tenant.');
       }
-      await createServiceAccount(prisma, tenant.id, city.id);
+      await createServiceAccount(prisma, tenant.id, city.id, tenant.slug);
     }
 
     console.log(

@@ -4,6 +4,8 @@ import { Observable } from 'rxjs';
 
 export interface MuseSettings {
   sharePrivateVenues: boolean;
+  /** This community's slug, which its non-person accounts are addressed at. */
+  communitySlug: string;
 }
 
 /** A token as the screen may know it: a prefix and whether it works. */
@@ -73,6 +75,14 @@ export class IntegrationsService {
     return this.http.patch<MuseSettings>('/api/v1/admin/integrations/muse-settings', {
       sharePrivateVenues,
     });
+  }
+
+  /** Which automation an account acts as; `automation` disables its token. */
+  setRole(userId: number, role: 'muse' | 'automation'): Observable<IntegrationAccount> {
+    return this.http.patch<IntegrationAccount>(
+      `/api/v1/admin/integrations/${userId}/role`,
+      { role },
+    );
   }
 
   revokeToken(tokenId: number): Observable<void> {

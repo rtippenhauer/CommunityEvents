@@ -18,6 +18,7 @@ import type { users as User } from '@prisma/client';
 import { UserRole } from '../../database/enums';
 import { CreateIntegrationAccountDto } from './dto/create-integration-account.dto';
 import { UpdateMuseSettingsDto } from './dto/muse-settings.dto';
+import { SetIntegrationRoleDto } from './dto/set-integration-role.dto';
 import { IntegrationsService, type IntegrationAccountView } from './integrations.service';
 import type { IssuedToken } from './api-token.service';
 
@@ -59,7 +60,7 @@ export class IntegrationsController {
    */
   @Get('muse-settings')
   @Roles(UserRole.ADMIN)
-  museSettings(): Promise<{ sharePrivateVenues: boolean }> {
+  museSettings(): Promise<{ sharePrivateVenues: boolean; communitySlug: string }> {
     return this.integrations.getMuseSettings();
   }
 
@@ -68,7 +69,7 @@ export class IntegrationsController {
   updateMuseSettings(
     @Body() body: UpdateMuseSettingsDto,
     @CurrentUser() actor: User,
-  ): Promise<{ sharePrivateVenues: boolean }> {
+  ): Promise<{ sharePrivateVenues: boolean; communitySlug: string }> {
     return this.integrations.setMuseSettings(body.sharePrivateVenues, actor.id);
   }
 
@@ -79,6 +80,22 @@ export class IntegrationsController {
     @CurrentUser() actor: User,
   ): Promise<IntegrationAccountView> {
     return this.integrations.createAccount(body.name, actor.id);
+  }
+
+  /**
+   * Which automation this account acts as.
+   *
+   * On this screen rather than the member admin because it is the integration's
+   * on/off switch: a token only opens `/muse` while its account holds `muse`.
+   */
+  @Patch(':userId/role')
+  @Roles(UserRole.ADMIN)
+  setRole(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body() body: SetIntegrationRoleDto,
+    @CurrentUser() actor: User,
+  ): Promise<IntegrationAccountView> {
+    return this.integrations.setRole(userId, body.role, actor.id);
   }
 
   /**

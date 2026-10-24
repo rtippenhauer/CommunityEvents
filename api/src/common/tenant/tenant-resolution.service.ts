@@ -54,7 +54,7 @@ export class TenantResolutionService {
    */
   private readonly domainCache = new Map<
     number,
-    { domain: string; isRoot: boolean; isDemo: boolean; expiresAt: number }
+    { domain: string; slug: string; isRoot: boolean; isDemo: boolean; expiresAt: number }
   >();
   private readonly ttlMs: number;
 
@@ -188,20 +188,34 @@ export class TenantResolutionService {
    * cached together because each caller below needs one of the three and none is
    * worth a second query.
    */
+  /**
+   * The community's slug, which is what its non-person accounts are addressed
+   * at (`automation@<slug>.internal`). Off the same cached row as the domain,
+   * so naming an account costs no extra query.
+   *
+   * The slug and not the domain, deliberately: a community can move host, and
+   * an address derived from the old one would silently stop saying whose it is
+   * -- the same staleness the mail-domain rule guards against one level up.
+   */
+  async slugFor(tenantId: number): Promise<string | null> {
+    return (await this.identityFor(tenantId))?.slug ?? null;
+  }
+
   private async identityFor(
     tenantId: number,
-  ): Promise<{ domain: string; isRoot: boolean; isDemo: boolean } | null> {
+  ): Promise<{ domain: string; slug: string; isRoot: boolean; isDemo: boolean } | null> {
     const cached = this.domainCache.get(tenantId);
     if (cached && cached.expiresAt > Date.now()) return cached;
 
     const tenant = await this.prisma.tenants.findUnique({
       where: { id: tenantId },
-      select: { domain: true, isRoot: true, isDemo: true },
+      select: { domain: true, slug: true, isRoot: true, isDemo: true },
     });
     if (!tenant) return null;
 
     this.domainCache.set(tenantId, {
       domain: tenant.domain,
+      slug: tenant.slug,
       isRoot: tenant.isRoot,
       isDemo: tenant.isDemo,
       expiresAt: Date.now() + this.ttlMs,

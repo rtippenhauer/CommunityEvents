@@ -46,7 +46,7 @@ describe('Release notes boot-time import (e2e)', () => {
     city = await seedCity(prisma);
     await seedUser(prisma, city.id, {
       role: UserRole.AUTOMATION,
-      email: 'automation@communityevents.internal',
+      email: 'automation@test-root.internal',
       fullName: 'Claude Automation',
     });
   });
@@ -127,7 +127,7 @@ describe('Release notes boot-time import (e2e)', () => {
   // name + email instead (role can be any level) fixes this.
   it('still finds the automation account by name+email when its role has been temporarily elevated', async () => {
     await prisma.users.updateMany({
-      where: { email: 'automation@communityevents.internal' },
+      where: { email: 'automation@test-root.internal' },
       data: { role: UserRole.ADMIN },
     });
 

@@ -559,8 +559,9 @@ all, by any amount of configuration here.
 ### What the operator or admin does
 
 1. **Create the integration account.** Admin -> Automation Accounts -> Add an
-   account, named `Muse`. It becomes `muse@integration.invalid` — a reserved TLD
-   that can never receive mail. The account cannot sign in (no password, no
+   account, named `Muse`. It becomes `muse@<this community's slug>.internal` —
+   a reserved TLD that can never receive mail, at an address naming the
+   community that owns it rather than the platform. The account cannot sign in (no password, no
    OAuth), is hidden from the member directory and the leaderboard, and is
    excluded from every deletion and re-engagement sweep.
 2. **Issue a token.** Same screen, "Issue token". It is shown **once**: only its

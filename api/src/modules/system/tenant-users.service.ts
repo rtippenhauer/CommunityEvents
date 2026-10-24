@@ -3,7 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
-import { AUTOMATION_ACCOUNT_EMAIL } from '../../common/utils/service-account.util';
+import { automationAccountEmail } from '../../common/utils/service-account.util';
 import { AuditService } from '../audit/audit.service';
 import {
   CreateTenantUserDto,
@@ -98,7 +98,13 @@ export class TenantUsersService {
     await this.assertTenantExists(tenantId);
 
     const email = dto.email.trim().toLowerCase();
-    if (email === AUTOMATION_ACCOUNT_EMAIL) {
+    // Reserved per community now (v2-29), so the comparison needs that
+    // community's own address rather than one platform-wide string.
+    const reserved = await this.prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { slug: true },
+    });
+    if (reserved !== null && email === automationAccountEmail(reserved.slug)) {
       throw new BadRequestException('That address is reserved for the community service account.');
     }
 

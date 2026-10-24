@@ -10,6 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatSelectModule } from '@angular/material/select';
 import { Clipboard } from '@angular/cdk/clipboard';
 import {
   IntegrationsService,
@@ -47,6 +48,7 @@ import {
     MatSnackBarModule,
     MatTooltipModule,
     MatSlideToggleModule,
+    MatSelectModule,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -135,7 +137,7 @@ import {
             <mat-form-field appearance="outline">
               <mat-label>Name</mat-label>
               <input matInput formControlName="name" placeholder="Muse" />
-              <mat-hint>Becomes the address, e.g. muse&#64;integration.invalid</mat-hint>
+              <mat-hint>Becomes an address in this community, e.g. muse&#64;{{ tenantSlug() }}.internal</mat-hint>
             </mat-form-field>
             <button mat-flat-button type="submit" [disabled]="form.invalid || busy()">
               Create
@@ -157,8 +159,26 @@ import {
                   <h3>{{ account.fullName }}</h3>
                   <p class="email">{{ account.email }}</p>
                 </div>
-                <mat-chip [class.muse]="account.role === 'muse'">{{ account.role }}</mat-chip>
+                <mat-form-field appearance="outline" class="role-field">
+                  <mat-label>Acts as</mat-label>
+                  <mat-select
+                    [value]="account.role"
+                    [disabled]="roleBusy() === account.id"
+                    (valueChange)="setRole(account, $event)"
+                  >
+                    <mat-option value="muse">Muse — Facebook sync</mat-option>
+                    <mat-option value="automation">Claude Automation</mat-option>
+                  </mat-select>
+                </mat-form-field>
               </div>
+
+              @if (account.role !== 'muse' && liveToken(account)) {
+                <p class="role-note">
+                  <mat-icon>pause_circle</mat-icon>
+                  This account has a live token, but it will not work until the
+                  account acts as Muse again.
+                </p>
+              }
 
               <div class="actions">
                 <button mat-stroked-button type="button" (click)="issue(account)">
@@ -363,6 +383,23 @@ import {
       mat-chip.live {
         background: color-mix(in srgb, var(--ce-success) 35%, transparent);
       }
+      .role-field {
+        width: 14rem;
+        max-width: 100%;
+      }
+      .role-note {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin: 0 0 0.5rem;
+        color: var(--ce-text-muted);
+        font-size: 0.85rem;
+      }
+      .role-note mat-icon {
+        font-size: 1.05rem;
+        width: 1.05rem;
+        height: 1.05rem;
+      }
       .actions {
         display: flex;
         gap: 1rem;
@@ -443,6 +480,10 @@ export class AdminIntegrationsComponent implements OnInit {
 
   /** Off until this community opts in; the API is the authority, not this. */
   readonly sharePrivateVenues = signal(false);
+  /** Empty until the settings call answers; the hint simply omits it until then. */
+  readonly tenantSlug = signal('');
+  /** The account mid-change, so only its own picker is disabled. */
+  readonly roleBusy = signal<number | null>(null);
   readonly policyBusy = signal(false);
 
   readonly form = this.fb.group({
@@ -452,7 +493,10 @@ export class AdminIntegrationsComponent implements OnInit {
   ngOnInit(): void {
     this.load();
     this.integrations.museSettings().subscribe({
-      next: (settings) => this.sharePrivateVenues.set(settings.sharePrivateVenues),
+      next: (settings) => {
+        this.sharePrivateVenues.set(settings.sharePrivateVenues);
+        this.tenantSlug.set(settings.communitySlug);
+      },
       error: () => this.sharePrivateVenues.set(false),
     });
   }
@@ -482,6 +526,38 @@ export class AdminIntegrationsComponent implements OnInit {
         this.snackBar.open(error.error?.message ?? 'Could not save that', 'Dismiss', {
           duration: 6000,
         });
+      },
+    });
+  }
+
+  /**
+   * The picker reflects what the API confirmed. On a failure the list is
+   * reloaded rather than the old value restored by hand -- this one decides
+   * whether an integration works at all, so the screen must not be able to
+   * show a role the server did not accept.
+   */
+  setRole(account: IntegrationAccount, role: 'muse' | 'automation'): void {
+    if (account.role === role) return;
+    this.roleBusy.set(account.id);
+
+    this.integrations.setRole(account.id, role).subscribe({
+      next: () => {
+        this.roleBusy.set(null);
+        this.snackBar.open(
+          role === 'muse'
+            ? `${account.fullName} is acting as Muse`
+            : `${account.fullName} is no longer acting as Muse — its token is inactive`,
+          undefined,
+          { duration: 4000 },
+        );
+        this.load();
+      },
+      error: (error: { error?: { message?: string } }) => {
+        this.roleBusy.set(null);
+        this.snackBar.open(error.error?.message ?? 'Could not change that', 'Dismiss', {
+          duration: 6000,
+        });
+        this.load();
       },
     });
   }

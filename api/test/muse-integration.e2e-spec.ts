@@ -147,7 +147,7 @@ describe('Muse integration (e2e)', () => {
       expect(row.isServiceAccount).toBe(true);
       // The address can never receive mail (RFC 2606 reserved TLD), and the
       // NULL hash is what makes a session impossible -- see claim 1 above.
-      expect(row.email).toBe('muse@integration.invalid');
+      expect(row.email).toBe('muse@test-root.internal');
       expect(row.passwordHash).toBeNull();
     });
 
@@ -161,16 +161,18 @@ describe('Muse integration (e2e)', () => {
         .expect(200);
 
       const emails = JSON.stringify(res.body);
-      expect(emails).not.toContain('integration.invalid');
+      expect(emails).not.toContain('muse@test-root.internal');
     });
 
-    it('lets two communities each hold their own, with the same address', async () => {
+    it('addresses each community account at its own slug', async () => {
       const mine = await createAccount('Muse');
       const theirs = await createAccount('Muse', otherDomain, otherAdminCookie);
 
-      // Email is unique per tenant since v2-6, so the same local part is two
-      // different accounts rather than a clash.
-      expect(mine.email).toBe(theirs.email);
+      // Until v2-29 both were `muse@integration.invalid`: one address naming
+      // the platform, identical in every community. That is what made a
+      // correctly-scoped row read as another community's account on stage.
+      expect(mine.email).toBe('muse@test-root.internal');
+      expect(theirs.email).toBe('muse@other-muse.internal');
       expect(mine.id).not.toBe(theirs.id);
     });
 
@@ -221,7 +223,7 @@ describe('Muse integration (e2e)', () => {
       // `is_service_account` column and was seeded first. Indexing position 0
       // asserted the wrong account, which is how this test first failed.
       const muse = res.body.find(
-        (a: { email: string }) => a.email === 'muse@integration.invalid',
+        (a: { email: string }) => a.email === 'muse@test-root.internal',
       );
       expect(muse.tokens).toHaveLength(1);
       expect(muse.tokens[0].prefix).toBe(token.slice(0, 12));
@@ -315,7 +317,7 @@ describe('Muse integration (e2e)', () => {
       await request(server)
         .post('/api/v1/auth/login')
         .set('Host', TEST_TENANT_DOMAIN)
-        .send({ email: 'muse@integration.invalid', password: 'anything' })
+        .send({ email: 'muse@test-root.internal', password: 'anything' })
         .expect(401);
     });
 
@@ -792,6 +794,141 @@ describe('Muse integration (e2e)', () => {
 
       expect(res.body.location.photos).toEqual([]);
       expect(res.body.location.address).toBeNull();
+    });
+  });
+
+  /**
+   * Reported from stage 2026-10-24: one community's Automation Accounts screen
+   * appeared to be showing another's Muse account.
+   *
+   * Both sides are seeded deliberately. A check where the other community has
+   * no account of its own looks identical to a passing one -- the trap v2-34
+   * recorded -- and here it would be worse than useless, because the two
+   * communities' accounts share an email by design (unique per tenant since
+   * v2-6), so an isolation failure and a correct result look the same unless
+   * the ids are compared.
+   */
+  describe('one community cannot see another integration accounts', () => {
+    it('lists only its own when both are named Muse', async () => {
+      const mine = await createAccount('Muse');
+      const theirs = await createAccount('Muse', otherDomain, otherAdminCookie);
+
+      // Different addresses since v2-29, and different rows regardless --
+      // the id is what proves isolation, since a shared address would make a
+      // leak and a correct result look identical.
+      expect(mine.email).not.toBe(theirs.email);
+      expect(mine.id).not.toBe(theirs.id);
+
+      const here = await request(server)
+        .get('/api/v1/admin/integrations')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', adminCookie)
+        .expect(200);
+
+      const there = await request(server)
+        .get('/api/v1/admin/integrations')
+        .set('Host', otherDomain)
+        .set('Cookie', otherAdminCookie)
+        .expect(200);
+
+      const ids = (body: { id: number }[]) => body.map((a) => a.id);
+
+      expect(ids(here.body)).toContain(mine.id);
+      expect(ids(here.body)).not.toContain(theirs.id);
+      expect(ids(there.body)).toContain(theirs.id);
+      expect(ids(there.body)).not.toContain(mine.id);
+    });
+
+    it('does not show another community tokens', async () => {
+      const mine = await createAccount('Muse');
+      const theirs = await createAccount('Muse', otherDomain, otherAdminCookie);
+      await issueToken(mine.id);
+      await issueToken(theirs.id, otherDomain, otherAdminCookie);
+
+      const there = await request(server)
+        .get('/api/v1/admin/integrations')
+        .set('Host', otherDomain)
+        .set('Cookie', otherAdminCookie)
+        .expect(200);
+
+      const prefixes = there.body.flatMap(
+        (a: { tokens: { prefix: string }[] }) => a.tokens.map((t) => t.prefix),
+      );
+      expect(prefixes).toHaveLength(1);
+    });
+  });
+
+  /**
+   * Setting which automation an account acts as, from the screen that owns it
+   * (Rob, 2026-10-24). The role is the integration's on/off switch rather than
+   * a label -- `verify` requires `muse` as currently held -- so this endpoint
+   * is what disables an integration without going to find the account in the
+   * member admin.
+   */
+  describe('choosing which automation an account acts as', () => {
+    const setRole = (userId: number, role: string, expected = 200) =>
+      request(server)
+        .patch(`/api/v1/admin/integrations/${userId}/role`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', adminCookie)
+        .send({ role })
+        .expect(expected);
+
+    it('turns the token off and on again', async () => {
+      const account = await createAccount('Muse');
+      const token = await issueToken(account.id);
+
+      const callMuse = (expected: number) =>
+        request(server)
+          .get('/api/v1/muse/me')
+          .set('Host', TEST_TENANT_DOMAIN)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(expected);
+
+      await callMuse(200);
+
+      // The same token, unrevoked and unexpired -- only the role moved.
+      await setRole(account.id, UserRole.AUTOMATION);
+      await callMuse(401);
+
+      await setRole(account.id, UserRole.MUSE);
+      await callMuse(200);
+    });
+
+    it('refuses any role but the two integration ones', async () => {
+      const account = await createAccount('Muse');
+
+      // The escalation this endpoint exists to make unexpressible.
+      for (const role of [UserRole.ADMIN, UserRole.SYSTEM_ADMIN, UserRole.MEMBER]) {
+        await setRole(account.id, role, 400);
+      }
+
+      const row = await inTenant(TEST_TENANT_ID, () =>
+        prisma.users.findUniqueOrThrow({ where: { id: account.id } }),
+      );
+      expect(row.role).toBe(UserRole.MUSE);
+    });
+
+    it('refuses a human, however the id is obtained', async () => {
+      const human = await seedUser(prisma, city.id, { email: 'person@example.test' });
+
+      await setRole(human.id, UserRole.MUSE, 400);
+
+      const row = await inTenant(TEST_TENANT_ID, () =>
+        prisma.users.findUniqueOrThrow({ where: { id: human.id } }),
+      );
+      expect(row.role).toBe(UserRole.MEMBER);
+    });
+
+    it('cannot reach another community account', async () => {
+      const theirs = await createAccount('Muse', otherDomain, otherAdminCookie);
+
+      await setRole(theirs.id, UserRole.AUTOMATION, 404);
+
+      const row = await unscoped('reading the other community account', () =>
+        prisma.users.findUniqueOrThrow({ where: { id: theirs.id } }),
+      );
+      expect(row.role).toBe(UserRole.MUSE);
     });
   });
 });

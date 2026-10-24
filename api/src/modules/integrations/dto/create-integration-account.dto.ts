@@ -3,7 +3,7 @@ import { IsString, Length, Matches } from 'class-validator';
 export class CreateIntegrationAccountDto {
   /**
    * The display name, which also derives the local part of the address
-   * (`Muse` -> `muse@integration.invalid`).
+   * (`Muse` -> `muse@<community slug>.internal`).
    *
    * Constrained to letters, digits, spaces, hyphens and underscores rather than
    * left free: the name is slugified into an email address, and `v2-12` found

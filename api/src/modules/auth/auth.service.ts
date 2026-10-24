@@ -29,7 +29,8 @@ import { AchievementsService } from '../community/achievements.service';
 import { RsvpStatus } from '../../database/enums';
 import type { event_rsvps as EventRsvp } from '@prisma/client';
 import { ELEVATED_ROLES } from '../../common/utils/roles.util';
-import { AUTOMATION_ACCOUNT_EMAIL } from '../../common/utils/service-account.util';
+import { automationAccountEmail } from '../../common/utils/service-account.util';
+import { requireTenantId } from '../../common/tenant/tenant-store';
 import { isStageDeployment } from '../../common/config/deployment.util';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { AppConfigService } from '../app-config/app-config.service';
@@ -820,8 +821,15 @@ export class AuthService {
     // security-relevant half -- CLAUDE_AUTOMATION_SECRET is a single
     // platform-wide value, so without the tenant in the lookup a valid secret
     // presented to any community's host would mint a session there.
+    // The address names the community since v2-29, so it is built from the
+    // resolved tenant's slug rather than being one platform-wide constant. The
+    // scoping below is unchanged and still the security-relevant half.
+    const tenantId = requireTenantId('automation login');
+    const slug = await this.tenantResolution.slugFor(tenantId);
+    if (slug === null) throw new UnauthorizedException('Automation account not found or inactive');
+
     const user = await this.prisma.users.findFirst({
-      where: { email: AUTOMATION_ACCOUNT_EMAIL },
+      where: { email: automationAccountEmail(slug) },
     });
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Automation account not found or inactive');
