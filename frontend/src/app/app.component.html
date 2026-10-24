@@ -144,6 +144,16 @@
             <a mat-list-item routerLink="/admin/secrets" (click)="sidenav.close()">
               <mat-icon matListItemIcon>key</mat-icon> API Keys
             </a>
+            <!-- v2-29. Two entries rather than one "integrations" section: the
+                 accounts page is where a token is minted and the Facebook page
+                 is a review queue somebody works through, which are different
+                 jobs done at different times. -->
+            <a mat-list-item routerLink="/admin/integrations" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>smart_toy</mat-icon> Automation Accounts
+            </a>
+            <a mat-list-item routerLink="/admin/facebook-accounts" (click)="sidenav.close()">
+              <mat-icon matListItemIcon>groups</mat-icon> Facebook Accounts
+            </a>
             <a mat-list-item routerLink="/admin/cities" (click)="sidenav.close()">
               <mat-icon matListItemIcon>location_city</mat-icon> Cities
             </a>
@@ -409,6 +419,12 @@
               </a>
               <a mat-menu-item routerLink="/admin/secrets">
                 <mat-icon>key</mat-icon> API Keys
+              </a>
+              <a mat-menu-item routerLink="/admin/integrations">
+                <mat-icon>smart_toy</mat-icon> Automation Accounts
+              </a>
+              <a mat-menu-item routerLink="/admin/facebook-accounts">
+                <mat-icon>groups</mat-icon> Facebook Accounts
               </a>
               <a mat-menu-item routerLink="/admin/cities">
                 <mat-icon>location_city</mat-icon> Cities

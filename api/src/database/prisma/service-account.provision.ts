@@ -1,6 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import {
-  AUTOMATION_ACCOUNT_EMAIL,
+  automationAccountEmail,
   AUTOMATION_ACCOUNT_NAME,
 } from '../../common/utils/service-account.util';
 import { isStageDeployment } from '../../common/config/deployment.util';
@@ -82,6 +82,7 @@ export async function createServiceAccount(
   tx: SqlExecutor,
   tenantId: number,
   cityId: number,
+  tenantSlug: string,
 ): Promise<void> {
   await tx.$executeRawUnsafe(
     `INSERT INTO users
@@ -91,7 +92,7 @@ export async function createServiceAccount(
      ON DUPLICATE KEY UPDATE is_service_account = 1`,
     tenantId,
     AUTOMATION_ACCOUNT_NAME,
-    AUTOMATION_ACCOUNT_EMAIL,
+    automationAccountEmail(tenantSlug),
     cityId,
     'automation',
   );

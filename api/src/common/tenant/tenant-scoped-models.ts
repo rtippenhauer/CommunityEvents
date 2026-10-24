@@ -29,6 +29,18 @@ import { Prisma } from '@prisma/client';
  */
 export const TENANT_SCOPED_MODELS = [
   'achievements',
+  /**
+   * An integration's bearer tokens (v2-29). Scoped, and the scoping is what
+   * makes the token meaningful: it is `api_tokens.tenant_id` that tells
+   * `MuseTenantMiddleware` which community a call belongs to, since an
+   * integration presents no cookie and we deliberately do not trust the Host
+   * header for it.
+   *
+   * The guard's own lookup is therefore the one read that cannot be scoped --
+   * it happens *before* a tenant is known, so it runs under an explicit
+   * `runUnscoped` and then enters the tenant the row names.
+   */
+  'api_tokens',
   'announcement_comments',
   'app_config',
   'announcements',
@@ -42,8 +54,15 @@ export const TENANT_SCOPED_MODELS = [
   'event_comment_replies',
   'event_comments',
   'event_guest_links',
+  'event_facebook_links',
   'event_rsvps',
   'events',
+  /// The Facebook mirror's three tables (v2-29). All scoped: a Facebook event,
+  /// a Facebook person and their Going status all belong to the community whose
+  /// dinner they mirror. Two communities may hold rows for the SAME Facebook
+  /// event or person, which is why those uniques carry the tenant.
+  'facebook_accounts',
+  'facebook_event_attendees',
   'facebook_group_config',
   'feedback',
   'feedback_notes',

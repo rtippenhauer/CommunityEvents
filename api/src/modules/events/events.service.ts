@@ -15,11 +15,14 @@ import type {
   users as User,
 } from '@prisma/client';
 import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
+import { FacebookHeadcountService } from '../facebook/facebook-headcount.service';
+import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import {
   EventStatus,
   InviteFlavor,
   InviteType,
+  RsvpSource,
   RsvpStatus,
   UserRole,
   UserStatus,
@@ -100,6 +103,8 @@ export class EventsService {
     private readonly locationVisibility: LocationVisibilityService,
     private readonly appConfig: AppConfigService,
     private readonly tenantResolution: TenantResolutionService,
+    private readonly facebookHeadcount: FacebookHeadcountService,
+    private readonly auditService: AuditService,
   ) {}
 
   // Per-instance branding for transactional emails / calendar files. Reads the
@@ -224,7 +229,13 @@ export class EventsService {
       profilePhotoPath: r.user?.profilePhotoPath ?? null,
     }));
 
-    const goingCountMap = new Map<number, number>();
+    // `goingCount` comes from the shared headcount, not from the loop below:
+    // the Muse contract defines it as members Going plus their website guests
+    // and Facebook +1s, plus Facebook-only attendees and their +1s. Computing
+    // it here as well would be the same number implemented twice, which is how
+    // `v2-43` ended up reporting "2 community members" in one community and one
+    // name in another.
+    const goingCountMap = await this.facebookHeadcount.goingCountsFor(ids);
     const totalMap = new Map<number, number>();
     const snippetMap = new Map<number, { fullName: string; profilePhotoPath: string | null }[]>();
 
@@ -233,9 +244,9 @@ export class EventsService {
       const guests = Number(row.additionalGuests) || 0;
       const seats = row.status === RsvpStatus.GOING ? 1 + guests : 1;
 
-      if (row.status === RsvpStatus.GOING) {
-        goingCountMap.set(eid, (goingCountMap.get(eid) ?? 0) + seats);
-      }
+      // Deliberately does not touch goingCountMap -- see above. `totalMap`
+      // (going + maybe) and the avatar snippet have nothing to do with
+      // Facebook and stay here.
       totalMap.set(eid, (totalMap.get(eid) ?? 0) + seats);
 
       const snippet = snippetMap.get(eid) ?? [];
@@ -369,7 +380,21 @@ export class EventsService {
       orderBy: { createdAt: 'asc' },
     });
 
-    return Object.assign(event, { publicRsvps });
+    // The Facebook mirror (v2-29): people Going on Facebook who are not linked
+    // to a member, and the merged headcount that includes them. Served to every
+    // caller who can see the event, because the event page shows them beside
+    // the member RSVPs -- a seat count that excluded them would disagree with
+    // what Muse writes into the Facebook description.
+    //
+    // A linked member's Facebook +1s need nothing here: they are columns on
+    // their own RSVP row, which this query already returns whole.
+    const counted = await this.facebookHeadcount.forEvent(id);
+
+    return Object.assign(event, {
+      publicRsvps,
+      facebookAttendees: counted.facebookOnly,
+      totalGoing: counted.totalGoing,
+    });
   }
 
   async create(dto: CreateEventDto, userId: number): Promise<EventRow> {
@@ -725,6 +750,86 @@ export class EventsService {
     await this.prisma.events.delete({ where: { id: event.id } });
   }
 
+  /**
+   * An admin putting somebody on the Going list from the attendance dialog
+   * (v2-29, "admin Add to Going").
+   *
+   * Deliberately **not** `upsertRsvp` with an admin role, because it has to
+   * skip two gates that exist to govern what a *member* may do to their own
+   * RSVP: the 2.5-hour cutoff and the membership-fee requirement. An organiser
+   * adding somebody who turned up, or who said yes in person, is not the case
+   * either gate is about -- and the dialog is open precisely when the cutoff
+   * has passed.
+   *
+   * What it does not skip: the event must be published and must not be in the
+   * past. Those are not permissions, they are statements about whether the
+   * dinner is a thing anybody can be Going to.
+   *
+   * `source` is `admin`, which is what keeps the Facebook sync from ever
+   * removing this RSVP (rule 8) -- it may only delete its own.
+   */
+  async addToGoing(eventId: number, userId: number, actorId: number): Promise<EventRsvp> {
+    const event = await this.prisma.events.findFirst({ where: { id: eventId } });
+    if (!event) throw new NotFoundException(`Event ${eventId} not found`);
+    if (event.status !== EventStatus.PUBLISHED) {
+      throw new BadRequestException('Can only add someone to a published event');
+    }
+    if (toDateString(event.eventDate) < toDateString(new Date())) {
+      throw new BadRequestException('Cannot add someone to a past event');
+    }
+
+    const member = await this.prisma.users.findFirst({
+      where: { id: userId },
+      select: { id: true, isServiceAccount: true },
+    });
+    if (member === null) throw new NotFoundException('No such member');
+    if (member.isServiceAccount) {
+      throw new BadRequestException('An integration account cannot be added to an event');
+    }
+
+    const existing = await this.prisma.event_rsvps.findFirst({
+      where: { eventId, userId },
+      select: { id: true, status: true },
+    });
+
+    if (existing !== null) {
+      // Already here. Move them to Going and leave `source` alone -- rewriting
+      // a member's own RSVP as `admin` would make the sync's removal rule treat
+      // it as the organiser's rather than theirs.
+      const updated = await this.prisma.event_rsvps.update({
+        where: { id: existing.id },
+        data: { status: RsvpStatus.GOING },
+      });
+      return updated;
+    }
+
+    const created = await this.prisma.event_rsvps.create({
+      data: {
+        eventId,
+        userId,
+        status: RsvpStatus.GOING,
+        source: RsvpSource.ADMIN,
+        additionalGuests: 0,
+      },
+    });
+
+    await this.auditService.log({
+      userId: actorId,
+      action: 'rsvp.admin_add',
+      entityType: 'event',
+      entityId: eventId,
+      metadata: { targetUserId: userId },
+    });
+
+    // The confirmation says an organiser did it, so somebody who never pressed
+    // anything is not left wondering why they are on a list.
+    void this.sendRsvpConfirmation(event as EventRow, userId, {
+      note: 'An organizer added you to this event.',
+    });
+
+    return created;
+  }
+
   async upsertRsvp(
     eventId: number,
     userId: number,
@@ -931,7 +1036,34 @@ export class EventsService {
     }
   }
 
-  private async sendRsvpConfirmation(event: EventRow, userId: number): Promise<void> {
+  /**
+   * The Facebook sync's entry point into the ordinary RSVP confirmation
+   * (v2-29, rule 7).
+   *
+   * Public, and it loads the event itself, because the sync has an event id
+   * rather than a row -- and because the alternative was a second template.
+   * `v2-10` and `v2-43` both found what happens when one message exists twice:
+   * the copies drift and only one gets fixed.
+   *
+   * The note is what tells the member why they are getting it. Somebody who
+   * pressed Going on Facebook and has never used the website would otherwise
+   * receive an unexplained confirmation for a dinner they do not remember
+   * signing up to here.
+   */
+  async sendSyncedRsvpConfirmation(eventId: number, userId: number): Promise<void> {
+    const event = await this.prisma.events.findFirst({ where: { id: eventId } });
+    if (event === null) return;
+
+    await this.sendRsvpConfirmation(event as EventRow, userId, {
+      note: 'We added you because you marked yourself Going on Facebook.',
+    });
+  }
+
+  private async sendRsvpConfirmation(
+    event: EventRow,
+    userId: number,
+    options?: { note?: string },
+  ): Promise<void> {
     const user = await this.prisma.users.findFirst({ where: { id: userId } });
     if (!user?.email) return;
 
@@ -969,6 +1101,7 @@ export class EventsService {
         <span style="color:${colors.primary};margin-right:8px">📍</span>${event.locationAddress}
       </td></tr>` : ''}
     </table>
+    ${options?.note ? `<p style="margin:0 0 20px;font-size:0.9rem;color:#555;padding:12px 16px;background:${colors.surfaceAlt};border-left:3px solid ${colors.primary};border-radius:4px">${options.note}</p>` : ''}
     <p style="margin:0 0 24px;font-size:0.9rem;color:#555">A calendar invite is attached — open it to add this ${eventSingularLower} to your calendar. You can Accept, Maybe, or Decline directly from the invite.</p>
     <p style="text-align:center;margin:0 0 24px">
       <a href="${eventUrl}" style="background:${colors.primary};color:${colors.onPrimary};padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:0.95rem;display:inline-block">View Event</a>
@@ -1573,15 +1706,25 @@ export class EventsService {
   }
 
   async getAttendance(eventId: number): Promise<{
-    type: 'member' | 'guest';
+    type: 'member' | 'guest' | 'facebook';
     userId?: number;
     guestLinkId?: number;
+    /** v2-29: identifies a Facebook-only row for the attendance write. */
+    facebookAccountId?: number;
     memberName: string;
     recipientEmail?: string | null;
     attended: boolean | null;
     isWalkin: boolean;
     fromOtherCity: boolean;
     linkUsed: boolean;
+    /**
+     * v2-29. Who created a member's RSVP, so the dialog can say why somebody is
+     * on the list -- a member who never pressed anything on the website
+     * otherwise looks like they did.
+     */
+    source?: string;
+    /** A Facebook-only person's merged +1s, for the row's label. */
+    plusOnes?: number;
   }[]> {
     const event = await this.prisma.events.findFirst({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
@@ -1612,6 +1755,7 @@ export class EventsService {
       isWalkin: r.isWalkin,
       fromOtherCity: r.fromOtherCity,
       linkUsed: false,
+      source: r.source,
     }));
 
     const guests = guestLinks
@@ -1627,7 +1771,27 @@ export class EventsService {
         linkUsed: !!l.usedAt,
       }));
 
-    return [...members, ...guests];
+    // v2-29: people Going on Facebook whose account nobody has linked to a
+    // member. They are at the table and the headcount counts them, so the
+    // attendance dialog has to be able to mark them -- otherwise an organiser
+    // can record attendance for everyone except the people the mirror brought.
+    //
+    // No points or achievements follow from this: those attach to an account,
+    // and a Facebook-only person has none. Linking them later is what turns
+    // this history into attended RSVPs through the normal path (rule 14).
+    const counted = await this.facebookHeadcount.forEvent(eventId);
+    const facebookOnly = counted.facebookOnly.map((person) => ({
+      type: 'facebook' as const,
+      facebookAccountId: person.facebookAccountId,
+      memberName: person.name,
+      attended: person.attended,
+      isWalkin: false,
+      fromOtherCity: false,
+      linkUsed: false,
+      plusOnes: person.plusOnes,
+    }));
+
+    return [...members, ...guests, ...facebookOnly];
   }
 
   async markAttendance(eventId: number, attendances: { userId: number; attended: boolean; fromOtherCity?: boolean }[]): Promise<void> {

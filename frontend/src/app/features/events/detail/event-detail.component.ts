@@ -655,7 +655,11 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
                 <mat-divider class="rsvp-divider" />
 
                 <!-- Attendee list -->
-                @if (event()!.rsvps.length === 0 && event()!.publicRsvps.length === 0) {
+                @if (
+                  event()!.rsvps.length === 0 &&
+                  event()!.publicRsvps.length === 0 &&
+                  (event()!.facebookAttendees ?? []).length === 0
+                ) {
                   <p class="no-rsvps">No RSVPs yet — be the first!</p>
                 } @else if (!isLoggedIn()) {
                   <p class="no-rsvps"><a routerLink="/login">Sign in</a> to see who's going.</p>
@@ -700,6 +704,24 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
                               }
                             </span>
                           }
+                          <!-- v2-29: a linked member's Facebook +1s sit on
+                               their OWN line, never merged into the website
+                               guests above. The two have opposite lifetimes --
+                               Facebook +1s follow the comments on every sync and
+                               may go down, website guests are the member's own
+                               entry -- so showing them as one number would make
+                               a member's count appear to change by itself. -->
+                          @if (r.status === 'going' && (r.facebookGuestCount ?? 0) > 0) {
+                            <span class="attendee-guests attendee-fb-guests">
+                              <span class="fb-badge" aria-label="From Facebook">f</span>
+                              +{{ r.facebookGuestCount }}
+                              @if (namedGuests(r.facebookGuestNames)) {
+                                <span class="guest-names-inline"
+                                  >({{ namedGuests(r.facebookGuestNames) }})</span
+                                >
+                              }
+                            </span>
+                          }
                           @if (r.status === 'going' && isResidenceEvent() && r.bringingItem) {
                             <span class="attendee-bringing">🍴 {{ r.bringingItem }}</span>
                           }
@@ -714,6 +736,35 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
                         <div class="attendee-info">
                           <span class="attendee-name">{{ p.recipientName || 'Guest' }}</span>
                           <span class="attendee-guest-badge">guest</span>
+                        </div>
+                      </li>
+                    }
+                    <!-- v2-29: people Going on Facebook whose account nobody has
+                         linked to a member yet. Shown with their +1 names, like
+                         a member's, because they are real people coming to a
+                         real dinner -- and the seat count includes them, so
+                         leaving them off the list would make the number
+                         disagree with the names under it. -->
+                    @for (f of event()!.facebookAttendees ?? []; track f.facebookAccountId) {
+                      <li class="attendee-row">
+                        <div class="attendee-avatar attendee-avatar-facebook">
+                          <span class="fb-avatar-mark" aria-hidden="true">f</span>
+                        </div>
+                        <div class="attendee-info">
+                          <div class="attendee-name-row">
+                            <span class="attendee-name">{{ f.name }}</span>
+                            <span class="fb-badge" aria-label="From Facebook">Facebook</span>
+                          </div>
+                          @if (f.plusOnes > 0) {
+                            <span class="attendee-guests">
+                              +{{ f.plusOnes }}
+                              @if (f.plusOneNames.length > 0) {
+                                <span class="guest-names-inline"
+                                  >({{ f.plusOneNames.join(', ') }})</span
+                                >
+                              }
+                            </span>
+                          }
                         </div>
                       </li>
                     }
@@ -1845,6 +1896,47 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
         align-self: flex-start;
       }
 
+      // ── Facebook mirror (v2-29) ──────────────────────────────────────────
+      // Facebook blue is a third-party brand colour, which CLAUDE.md names as a
+      // deliberate exception to the "never a colour literal" rule: it means
+      // "this came from Facebook" and must not change with a community's
+      // palette. On-colour is white, which is Facebook's own pairing and clears
+      // AA against #1877F2 (4.6:1).
+      $facebook-blue: #1877f2;
+
+      .fb-badge {
+        font-size: 0.68rem;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 8px;
+        background: $facebook-blue;
+        color: #fff;
+        align-self: flex-start;
+        line-height: 1.5;
+      }
+      .attendee-fb-guests {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        // The +1 line wraps on a phone rather than pushing the row wide.
+        flex-wrap: wrap;
+      }
+      .attendee-avatar-facebook {
+        background: $facebook-blue;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .fb-avatar-mark {
+        color: #fff;
+        font-weight: 700;
+        font-size: 1.05rem;
+        // Facebook's wordmark lowercase f, so the stand-in avatar reads as a
+        // source rather than as somebody's initial.
+        font-family: var(--ce-font-display), serif;
+        line-height: 1;
+      }
+
       // ── RSVP toggle ──────────────────────────────────────────────────────────
 
       .rsvp-counts {
@@ -2538,10 +2630,21 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
       .filter((r) => r.status === 'going')
       .reduce((sum, r) => {
         const cancelled = (r.guestLinks ?? []).filter((l) => l.cancelledAt).length;
-        return sum + 1 + r.additionalGuests - cancelled;
+        // v2-29: a member's Facebook +1s are seats at the same table. They are
+        // a separate column because the sync owns them and the member owns
+        // `additionalGuests`, but the restaurant does not care which is which.
+        const facebookGuests = r.facebookGuestCount ?? 0;
+        return sum + 1 + r.additionalGuests + facebookGuests - cancelled;
       }, 0);
     const publicSeats = (e.publicRsvps ?? []).length;
-    return memberSeats + publicSeats;
+    // v2-29: people Going on Facebook whom nobody has linked to a member, plus
+    // their +1s. Without this the page said "1 seat needed" for a dinner with
+    // six people coming -- the names were listed right underneath it.
+    const facebookSeats = (e.facebookAttendees ?? []).reduce(
+      (sum, person) => sum + 1 + person.plusOnes,
+      0,
+    );
+    return memberSeats + publicSeats + facebookSeats;
   });
 
   readonly maybeCount = computed<number>(() => {
@@ -2718,7 +2821,7 @@ export class EventDetailComponent implements OnInit, OnDestroy, HasUnsavedChange
     return sharedInitials(name);
   }
 
-  namedGuests(names: string[] | null): string {
+  namedGuests(names: string[] | null | undefined): string {
     if (!names) return '';
     return names.filter((n) => n.trim()).join(', ');
   }

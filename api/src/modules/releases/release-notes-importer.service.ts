@@ -12,7 +12,7 @@ import sanitizeHtml from 'sanitize-html';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { runWithTenant } from '../../common/tenant/tenant-store';
 import {
-  AUTOMATION_ACCOUNT_EMAIL,
+  automationAccountEmail,
   AUTOMATION_ACCOUNT_NAME,
 } from '../../common/utils/service-account.util';
 import { ALLOWED_HTML } from './releases.service';
@@ -109,7 +109,9 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
     // tenant.
     const rootTenant = await this.prisma.tenants.findFirst({
       where: { isRoot: true },
-      select: { id: true },
+      // The slug too: the automation account's address names its community
+      // since v2-29, so attributing a note means knowing which one this is.
+      select: { id: true, slug: true },
     });
     if (!rootTenant) {
       // Migrated and seeded but never bootstrapped. Skipping is right: without
@@ -135,7 +137,10 @@ export class ReleaseNotesImporterService implements OnApplicationBootstrap {
     // it outside (see runWithTenant's docs).
     const user = await runWithTenant(rootTenant.id, async () =>
       await this.prisma.users.findFirst({
-        where: { email: AUTOMATION_ACCOUNT_EMAIL, fullName: AUTOMATION_ACCOUNT_NAME },
+        where: {
+          email: automationAccountEmail(rootTenant.slug),
+          fullName: AUTOMATION_ACCOUNT_NAME,
+        },
       }),
     );
     if (!user) {

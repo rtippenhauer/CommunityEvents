@@ -309,7 +309,16 @@ interface AchievementGroup {
                          automation are its documented testing flip. -->
                     @if (profile()!.isAutomationAccount) {
                       <mat-option value="admin">Admin</mat-option>
-                      <mat-option value="automation">Automation</mat-option>
+                      <mat-option value="automation">Claude Automation</mat-option>
+                      <!-- v2-29. Offered only here, like the rest of this
+                           block: admin.service.setRole refuses either
+                           integration role for a human, so a member seeing it
+                           would be an option that always fails.
+                           Switching a Muse account to Claude Automation is
+                           also its documented off switch -- MuseTokenGuard
+                           requires the muse role as currently held, so the
+                           token stops working until it is switched back. -->
+                      <mat-option value="muse">Muse Automation</mat-option>
                       <!-- Root community only, and only to someone who already
                            holds the role. It used to be offered wherever the
                            service account appeared, which put a System Admin

@@ -178,7 +178,7 @@ describe('System tenant user management (e2e)', () => {
         .set('Cookie', systemAdminCookie)
         .send({
           fullName: 'Impostor',
-          email: 'automation@communityevents.internal',
+          email: 'automation@dayton.internal',
           password: 'P@ssw0rd-Test!',
         })
         .expect(400);

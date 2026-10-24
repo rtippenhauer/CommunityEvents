@@ -18,7 +18,7 @@ import { SITE_SETTING_DEFAULTS } from '../app-config/app-config.service';
 import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import {
-  AUTOMATION_ACCOUNT_EMAIL,
+  automationAccountEmail,
   AUTOMATION_ACCOUNT_NAME,
 } from '../../common/utils/service-account.util';
 import { AuditService } from '../audit/audit.service';
@@ -204,7 +204,7 @@ export class TenantsAdminService {
             tenantId: created.id,
             cityId: city.id,
             fullName: AUTOMATION_ACCOUNT_NAME,
-            email: AUTOMATION_ACCOUNT_EMAIL,
+            email: automationAccountEmail(created.slug),
             role: UserRole.AUTOMATION,
             status: UserStatus.ACTIVE,
             emailStatus: EmailStatus.ACTIVE,
@@ -231,7 +231,7 @@ export class TenantsAdminService {
     // runUnscoped for the same reason as the service account above -- the row
     // belongs to the new tenant while the request is scoped to the root one.
     if (dto.adminEmail && dto.adminPassword && city) {
-      if (dto.adminEmail.toLowerCase() === AUTOMATION_ACCOUNT_EMAIL) {
+      if (dto.adminEmail.toLowerCase() === automationAccountEmail(created.slug)) {
         throw new BadRequestException(
           'That address is reserved for the community service account.',
         );

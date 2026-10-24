@@ -41,12 +41,33 @@ import { ADMIN_ROLES } from './roles.util';
  *
  * v2-9 rebrands this. Grep for the constant, not the string.
  */
-// Renamed from automation@dinnerbears.internal in v2-10. The address is not
-// an identifier -- guards key on `users.is_service_account`, never on this
-// string (see the note in CLAUDE.md) -- but bootstrap upserts ON DUPLICATE KEY
-// against it, so an existing deployment would grow a SECOND service account
-// rather than update its own. The v2-10 migration renames the stored rows.
-export const AUTOMATION_ACCOUNT_EMAIL = 'automation@communityevents.internal';
+/**
+ * The non-person account address domain: `<local>@<tenant slug>.internal`.
+ *
+ * Per community since v2-29. It was one deployment-wide constant
+ * (`automation@communityevents.internal`), which meant every community's
+ * service account carried the *platform's* name -- so an admin looking at
+ * their own Automation Accounts screen saw an address belonging to somebody
+ * else's community and reasonably read it as a leak. It was not one; the row
+ * was correctly scoped and merely mislabelled.
+ *
+ * `.internal` is reserved and unroutable, so these can never receive mail.
+ *
+ * Still not an identifier: guards key on `users.is_service_account`. But
+ * `createServiceAccount` upserts ON DUPLICATE KEY against `(tenant_id, email)`,
+ * so changing what this returns without migrating the stored rows grows a
+ * SECOND service account per community rather than renaming the one there --
+ * the trap v2-10 recorded when it last changed this. The v2-29 migration
+ * renames both these and the integration accounts.
+ */
+export function automationAccountEmail(tenantSlug: string): string {
+  return `automation@${tenantSlug}.internal`;
+}
+
+/** The same shape for an integration account (`muse@<slug>.internal`). */
+export function integrationAccountEmail(nameSlug: string, tenantSlug: string): string {
+  return `${nameSlug}@${tenantSlug}.internal`;
+}
 export const AUTOMATION_ACCOUNT_NAME = 'Claude Automation';
 
 export function assertNotServiceAccount(

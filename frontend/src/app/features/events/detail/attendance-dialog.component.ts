@@ -21,6 +21,7 @@ import {
   EventCommentsService,
   MemberSearchResult,
 } from '../../../core/services/event-comments.service';
+import { FacebookAccountsService } from '../../../core/services/facebook-accounts.service';
 
 export interface AttendanceDialogData {
   eventId: number;
@@ -49,9 +50,13 @@ export interface AttendanceDialogData {
         <div class="attendance-list">
           @for (
             entry of attendanceList();
-            track entry.type === 'member' ? 'm' + entry.userId : 'g' + entry.guestLinkId
+            track rowKey(entry)
           ) {
-            <div class="attendance-row" [class.att-guest-row]="entry.type === 'guest'">
+            <div
+              class="attendance-row"
+              [class.att-guest-row]="entry.type === 'guest'"
+              [class.att-facebook-row]="entry.type === 'facebook'"
+            >
               <span class="att-name">
                 {{ entry.memberName }}
                 @if (entry.isWalkin) {
@@ -62,6 +67,27 @@ export interface AttendanceDialogData {
                   @if (!entry.linkUsed) {
                     <span class="guest-pending-badge">Link not used</span>
                   }
+                }
+                <!-- v2-29. The source badge answers "why is this person
+                     here", which is a real question once a mirror can add
+                     somebody: a member marked Going by the sync never
+                     pressed anything on the website. 'member' is the
+                     ordinary case and is deliberately unbadged. -->
+                @if (entry.type === 'facebook') {
+                  <span class="fb-badge">Facebook</span>
+                  @if (entry.plusOnes) {
+                    <span class="att-plus-ones">+{{ entry.plusOnes }}</span>
+                  }
+                }
+                @if (entry.type === 'member' && entry.source === 'facebook_sync') {
+                  <span class="fb-badge" matTooltip="Marked Going by the Facebook sync">
+                    via Facebook
+                  </span>
+                }
+                @if (entry.type === 'member' && entry.source === 'admin') {
+                  <span class="guest-badge" matTooltip="An organizer added them">
+                    Added by organizer
+                  </span>
                 }
               </span>
               @if (entry.type === 'member') {
@@ -85,6 +111,23 @@ export interface AttendanceDialogData {
                     mat-stroked-button
                     [class.att-no]="entry.attended === false"
                     (click)="setAttended(entry.userId!, false)"
+                  >
+                    <mat-icon>close</mat-icon> No-show
+                  </button>
+                </div>
+              } @else if (entry.type === 'facebook') {
+                <div class="att-btns">
+                  <button
+                    mat-stroked-button
+                    [class.att-yes]="entry.attended === true"
+                    (click)="setFacebookAttended(entry, true)"
+                  >
+                    <mat-icon>check</mat-icon> Attended
+                  </button>
+                  <button
+                    mat-stroked-button
+                    [class.att-no]="entry.attended === false"
+                    (click)="setFacebookAttended(entry, false)"
                   >
                     <mat-icon>close</mat-icon> No-show
                   </button>
@@ -123,7 +166,9 @@ export interface AttendanceDialogData {
         @if (showWalkinForm()) {
           <div class="walkin-form" #walkinFormEl>
             <mat-form-field appearance="outline" class="walkin-search-field">
-              <mat-label>Search member by name</mat-label>
+              <mat-label>
+                {{ addMode() === 'going' ? 'Add to Going — search' : 'Add walk-in — search' }}
+              </mat-label>
               <input
                 matInput
                 [value]="walkinSearch()"
@@ -152,8 +197,16 @@ export interface AttendanceDialogData {
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       @if (!attendanceLoading() && attendanceList().length > 0) {
-        <button mat-stroked-button (click)="showWalkinForm.set(!showWalkinForm())">
+        <button mat-stroked-button (click)="openWalkinForm('walkin')">
           <mat-icon>person_add</mat-icon> Add Walk-in
+        </button>
+        <!-- v2-29. Same member search, different outcome: a walk-in is somebody
+             who turned up unannounced, while Add to Going records that they
+             are coming. It skips the RSVP cutoff and the membership gate,
+             because those govern what a member may do to their own RSVP and
+             this dialog is open precisely after the cutoff has passed. -->
+        <button mat-stroked-button (click)="openWalkinForm('going')">
+          <mat-icon>event_available</mat-icon> Add to Going
         </button>
       }
       <button mat-button mat-dialog-close>Close</button>
@@ -231,7 +284,13 @@ export interface AttendanceDialogData {
       }
       .walkin-badge,
       .guest-badge,
-      .guest-pending-badge {
+      .guest-pending-badge,
+      /* v2-29. Added to the shared rule rather than restyled: these two only
+         declared colours, so they rendered as a coloured text run flush
+         against the name instead of as chips. Found by looking at the dialog,
+         not by reading it. */
+      .fb-badge,
+      .att-plus-ones {
         display: inline-block;
         font-size: 0.68rem;
         font-weight: 700;
@@ -258,6 +317,23 @@ export interface AttendanceDialogData {
         border-radius: 4px;
         padding-left: 6px;
       }
+      /* Facebook blue is a third-party brand colour, one of the deliberate
+         exceptions CLAUDE.md names to the "no colour literals" rule: it means
+         "this came from Facebook" and must not follow a community's palette.
+         White on #1877F2 is Facebook's own pairing and clears AA at 4.6:1. */
+      .fb-badge {
+        background: #1877f2;
+        color: #fff;
+      }
+      .att-facebook-row {
+        background: #f3f8ff;
+        border-radius: 4px;
+        padding-left: 6px;
+      }
+      .att-plus-ones {
+        background: var(--ce-surface-variant);
+        color: var(--ce-text-muted);
+      }
       .walkin-form {
         margin-top: 12px;
         border-top: 1px dashed var(--ce-rule);
@@ -283,6 +359,7 @@ export class AttendanceDialogComponent {
   private readonly dialogRef = inject(MatDialogRef<AttendanceDialogComponent>);
   private readonly commentsService = inject(EventCommentsService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly facebookAccounts = inject(FacebookAccountsService);
   readonly data = inject<AttendanceDialogData>(MAT_DIALOG_DATA);
 
   readonly attendanceList = signal<AttendanceEntry[]>([]);
@@ -292,6 +369,14 @@ export class AttendanceDialogComponent {
   readonly walkinSearch = signal('');
   readonly walkinResults = signal<MemberSearchResult[]>([]);
   readonly addingWalkin = signal(false);
+  /**
+   * What the shared member search will do (v2-29).
+   *
+   * One search panel, two outcomes: a walk-in is somebody who turned up
+   * unannounced, Add to Going records that they are coming. Keeping one panel
+   * avoids two near-identical searches on a dialog that is already dense.
+   */
+  readonly addMode = signal<'walkin' | 'going'>('walkin');
   private readonly walkinSearch$ = new Subject<string>();
 
   private readonly walkinFormEl = viewChild<ElementRef<HTMLElement>>('walkinFormEl');
@@ -369,7 +454,68 @@ export class AttendanceDialogComponent {
     this.walkinSearch$.next(value);
   }
 
+  /**
+   * A stable track key across the three row types.
+   *
+   * The ids come from different tables, so a bare id would collide -- member 3
+   * and Facebook account 3 are different rows, and Angular would reuse the DOM
+   * node of one for the other.
+   */
+  rowKey(entry: AttendanceEntry): string {
+    if (entry.type === 'member') return 'm' + entry.userId;
+    if (entry.type === 'guest') return 'g' + entry.guestLinkId;
+    return 'f' + entry.facebookAccountId;
+  }
+
+  openWalkinForm(mode: 'walkin' | 'going'): void {
+    // Re-pressing the same button closes the panel; pressing the other one
+    // switches mode and leaves it open, which is what somebody who picked the
+    // wrong button expects.
+    if (this.showWalkinForm() && this.addMode() === mode) {
+      this.showWalkinForm.set(false);
+      return;
+    }
+    this.addMode.set(mode);
+    this.showWalkinForm.set(true);
+  }
+
+  /**
+   * Attendance for a Facebook-only person.
+   *
+   * Written immediately rather than batched into Save: these rows are not part
+   * of the member/guest payload `saveAttendance` sends, and silently dropping
+   * them at save time would be worse than a round trip per tap.
+   */
+  setFacebookAttended(entry: AttendanceEntry, attended: boolean): void {
+    const accountId = entry.facebookAccountId;
+    if (accountId === undefined) return;
+
+    // Tapping the active state again clears it back to "not marked", which is
+    // the third state and the way out of a mistaken tap.
+    const next = entry.attended === attended ? null : attended;
+
+    this.facebookAccounts.markAttendance(accountId, this.data.eventId, next).subscribe({
+      next: () => {
+        this.attendanceList.update((list) =>
+          list.map((row) =>
+            row.type === 'facebook' && row.facebookAccountId === accountId
+              ? { ...row, attended: next }
+              : row,
+          ),
+        );
+      },
+      error: () => {
+        this.snackBar.open('Could not save that', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
   selectWalkin(member: MemberSearchResult): void {
+    if (this.addMode() === 'going') {
+      this.addToGoing(member);
+      return;
+    }
+
     this.addingWalkin.set(true);
     this.commentsService.addWalkin(this.data.eventId, member.id).subscribe({
       next: (entry) => {
@@ -391,6 +537,35 @@ export class AttendanceDialogComponent {
       error: () => {
         this.addingWalkin.set(false);
         this.snackBar.open('Failed to add walk-in', 'OK', { duration: 3000 });
+      },
+    });
+  }
+
+  /**
+   * An organiser putting an existing member on the Going list (v2-29).
+   *
+   * Reloads rather than patching the list in place: the API decides the row's
+   * `source`, and an existing RSVP is moved to Going rather than replaced, so
+   * guessing the resulting row here would sometimes be wrong.
+   */
+  private addToGoing(member: MemberSearchResult): void {
+    this.addingWalkin.set(true);
+    this.commentsService.addToGoing(this.data.eventId, member.id).subscribe({
+      next: () => {
+        this.showWalkinForm.set(false);
+        this.walkinSearch.set('');
+        this.walkinResults.set([]);
+        this.addingWalkin.set(false);
+        this.snackBar.open(`${member.fullName} added to Going`, 'OK', { duration: 3000 });
+        this.loadAttendance();
+      },
+      error: (error: { error?: { message?: string } }) => {
+        this.addingWalkin.set(false);
+        this.snackBar.open(
+          error.error?.message ?? 'Failed to add them to Going',
+          'OK',
+          { duration: 5000 },
+        );
       },
     });
   }

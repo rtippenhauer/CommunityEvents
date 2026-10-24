@@ -47,7 +47,36 @@ export interface Rsvp {
   guestNames: string[] | null;
   bringingItem: string | null;
   guestLinks: GuestLink[] | undefined;
+  /**
+   * Who created this RSVP (v2-29). `facebook_sync` is the only one the sync
+   * will ever remove -- an RSVP a member or an admin made is never touched.
+   */
+  source?: 'member' | 'admin' | 'facebook_sync';
+  /**
+   * The member's Facebook +1s, kept **beside** `guestNames` and never merged
+   * into it. These follow the Facebook comments on every sync and may go down;
+   * `guestNames` is the member's own entry and the sync never touches it. Shown
+   * on their own line for that reason.
+   */
+  facebookGuestNames?: string[] | null;
+  facebookGuestCount?: number;
   createdAt: string;
+}
+
+/**
+ * Somebody Going on Facebook whose account nobody has linked to a member yet
+ * (v2-29).
+ *
+ * Counted in the headcount with their +1s, and shown on the event page beside
+ * the members -- the count includes them, so omitting the names would make the
+ * number disagree with the list under it.
+ */
+export interface FacebookAttendee {
+  facebookAccountId: number;
+  name: string;
+  plusOnes: number;
+  plusOneNames: string[];
+  attended: boolean | null;
 }
 
 interface PublicRsvp {
@@ -90,6 +119,13 @@ export interface Event {
   createdByUser: { id: number; fullName: string; profilePhotoPath: string | null };
   rsvps: Rsvp[];
   publicRsvps: PublicRsvp[];
+  /** Present on the detail response only (v2-29), not on the list. */
+  facebookAttendees?: FacebookAttendee[];
+  /**
+   * The merged headcount: members and their guests and Facebook +1s, plus
+   * public guest signups, plus Facebook-only people and their +1s. Detail only.
+   */
+  totalGoing?: number;
   goingCount: number;
   totalAttending?: number;
   attendeeSnippet?: Array<{ fullName: string; profilePhotoPath: string | null }>;

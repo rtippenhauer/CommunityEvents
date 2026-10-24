@@ -128,7 +128,15 @@ export async function seedDemoTenant(
   await seedAchievements(prisma, tenantId);
 
   if (tenantGetsServiceAccount(opts.isRoot ?? false)) {
-    await createServiceAccount(prisma, tenantId, cityId);
+    // The address names the community (v2-29), so the slug has to be read
+    // rather than assumed -- a demo's is generated at creation time.
+    const tenant = await prisma.tenants.findUnique({
+      where: { id: tenantId },
+      select: { slug: true },
+    });
+    if (tenant) {
+      await createServiceAccount(prisma, tenantId, cityId, tenant.slug);
+    }
   }
 
   const members = await seedMembers(prisma, tenantId, cityId);

@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../src/database/prisma/prisma.service';
 import { UserRole, UserStatus } from '../../src/database/enums';
 import { AuthService } from '../../src/modules/auth/auth.service';
+import { automationAccountEmail } from '../../src/common/utils/service-account.util';
 
 // Overrides are typed against Prisma's *Unchecked* create inputs rather than
 // the checked ones so specs can keep passing plain FK scalars (cityId,
@@ -76,15 +77,21 @@ export async function seedUser(
  * member directory and the leaderboard all key on. A spec that seeds the email
  * alone is seeding an ordinary member that happens to be called automation.
  */
+/**
+ * `tenantSlug` matters since v2-29: the address names its own community
+ * (`automation@<slug>.internal`), so a suite seeding two communities must pass
+ * each one's slug or both accounts collide on the shape the code looks up.
+ */
 export async function seedServiceAccount(
   prisma: PrismaService,
   cityId: number,
   overrides: UserOverrides = {},
+  tenantSlug = 'test-root',
 ): Promise<User> {
   return seedUser(prisma, cityId, {
     isServiceAccount: true,
     role: UserRole.AUTOMATION,
-    email: 'automation@communityevents.internal',
+    email: automationAccountEmail(tenantSlug),
     fullName: 'Claude Automation',
     ...overrides,
   });
