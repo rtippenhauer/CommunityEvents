@@ -106,7 +106,10 @@ import {
 
       <mat-card class="policy-card" appearance="outlined">
         <mat-card-content>
-          <h3><mat-icon>home</mat-icon> Private {{ brand.locationPlural() }}</h3>
+          <h3>
+            <mat-icon>home</mat-icon>
+            {{ brand.dinnerPlural() }} at private {{ brand.locationPluralLower() }}
+          </h3>
           <p class="hint">
             A Facebook event is public far beyond your membership. Some
             {{ brand.locationPluralLower() }} are marked private — usually
