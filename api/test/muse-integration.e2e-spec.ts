@@ -6,7 +6,8 @@ import {
   resetThrottler,
   TEST_TENANT_DOMAIN,
 } from './utils/test-app';
-import { seedCity, seedUser, seedServiceAccount, loginAs } from './utils/seed';
+import { seedCity, seedUser, seedServiceAccount, seedLocation, loginAs } from './utils/seed';
+import { toDateColumn, toTimeColumn } from '../src/common/utils/prisma-date.util';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { runUnscoped, runWithTenant } from '../src/common/tenant/tenant-store';
 import { UserRole, UserStatus } from '../src/database/enums';
@@ -622,6 +623,175 @@ describe('Muse integration (e2e)', () => {
         .set('Cookie', adminCookie)
         .send()
         .expect(400);
+    });
+  });
+
+  /**
+   * The cover photo (found on stage, 2026-10-24).
+   *
+   * Muse sets a Facebook event's cover from `location.photos[0]`, and neither
+   * event endpoint returned `photos` at all: the list used a narrow `select`
+   * and the detail read used `include: { location: true }`, which pulls scalars
+   * only. v1 loads `location.photos` on both, ordered by id, so this was a
+   * divergence from a contract the item is meant to match exactly.
+   *
+   * Neither endpoint had a test. That is the reason it shipped, so the fix
+   * comes with both the happy path and the private-venue case -- the detail
+   * read was also skipping the address redaction v1 applies for `muse`.
+   */
+  describe('event cover photos', () => {
+    const seedEventAt = async (locationId: number, isPrivate: boolean) =>
+      inTenant(TEST_TENANT_ID, async () => {
+        const location = await prisma.locations.update({
+          where: { id: locationId },
+          data: { isPrivate },
+        });
+        const admin = await prisma.users.findFirstOrThrow({
+          where: { role: UserRole.ADMIN },
+        });
+        return prisma.events.create({
+          data: {
+            cityId: city.id,
+            locationId: location.id,
+            locationName: location.name,
+            locationAddress: location.address,
+            createdById: admin.id,
+            title: 'Cover Photo Dinner',
+            status: 'published',
+            eventDate: toDateColumn('2099-01-01'),
+            eventTime: toTimeColumn('18:30'),
+          },
+        });
+      });
+
+    const seedLocationWithPhotos = async () =>
+      inTenant(TEST_TENANT_ID, async () => {
+        const location = await seedLocation(prisma, city.id, { name: 'Cover Photo Cafe' });
+        const admin = await prisma.users.findFirstOrThrow({
+          where: { role: UserRole.ADMIN },
+        });
+        // Two photos, created newest-id-last, so ordering is observable.
+        for (const name of ['first.jpg', 'second.jpg']) {
+          await prisma.location_photos.create({
+            data: {
+              locationId: location.id,
+              filePath: `/api/uploads/locations/${name}`,
+              fileName: name,
+              mimeType: 'image/jpeg',
+              uploadedBy: admin.id,
+            },
+          });
+        }
+        return location;
+      });
+
+    it('serves the location photos on both event endpoints, cover first', async () => {
+      const account = await createAccount('Muse');
+      const token = await issueToken(account.id);
+      const location = await seedLocationWithPhotos();
+      const event = await seedEventAt(location.id, false);
+
+      const list = await request(server)
+        .get('/api/v1/muse/events')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const listed = list.body.find((e: { id: number }) => e.id === event.id);
+      expect(listed.location.photos.map((p: { fileName: string }) => p.fileName)).toEqual([
+        'first.jpg',
+        'second.jpg',
+      ]);
+
+      const detail = await request(server)
+        .get(`/api/v1/muse/events/${event.id}`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      // photos[0] is the cover, and it is the same one on both calls -- an
+      // unordered join would let the same dinner change cover between them.
+      expect(detail.body.location.photos[0].fileName).toBe('first.jpg');
+      expect(detail.body.location.photos[0].filePath).toBe(
+        '/api/uploads/locations/first.jpg',
+      );
+    });
+
+    it('withholds a private venue photos and address, on both', async () => {
+      const account = await createAccount('Muse');
+      const token = await issueToken(account.id);
+      const location = await seedLocationWithPhotos();
+      const event = await seedEventAt(location.id, true);
+
+      for (const url of ['/api/v1/muse/events', `/api/v1/muse/events/${event.id}`]) {
+        const res = await request(server)
+          .get(url)
+          .set('Host', TEST_TENANT_DOMAIN)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+
+        const body = Array.isArray(res.body)
+          ? res.body.find((e: { id: number }) => e.id === event.id)
+          : res.body;
+
+        // A picture of somebody's house gives away what the address withholds,
+        // and Muse would publish it as a Facebook cover.
+        expect(body.location.photos).toEqual([]);
+        expect(body.location.address).toBeNull();
+        expect(body.locationAddress).toBeNull();
+      }
+    });
+
+    it('serves a private venue once the community opts in', async () => {
+      const account = await createAccount('Muse');
+      const token = await issueToken(account.id);
+      const location = await seedLocationWithPhotos();
+      const event = await seedEventAt(location.id, true);
+
+      // Opt in through the admin API, not by writing the row -- the point of
+      // the test is that the screen's switch reaches the Muse read.
+      await request(server)
+        .patch('/api/v1/admin/integrations/muse-settings')
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', adminCookie)
+        .send({ sharePrivateVenues: true })
+        .expect(200);
+
+      const res = await request(server)
+        .get(`/api/v1/muse/events/${event.id}`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(res.body.location.photos).toHaveLength(2);
+      expect(res.body.location.address).not.toBeNull();
+    });
+
+    it('does not let one community opt in on another behalf', async () => {
+      // The setting is an app_config row and app_config is tenant-scoped, so
+      // this should hold by construction -- which is exactly the kind of claim
+      // worth a test, since a global row would look identical until the day a
+      // second community turned it on.
+      const account = await createAccount('Muse');
+      const token = await issueToken(account.id);
+      const location = await seedLocationWithPhotos();
+      const event = await seedEventAt(location.id, true);
+
+      await request(server)
+        .patch('/api/v1/admin/integrations/muse-settings')
+        .set('Host', otherDomain)
+        .set('Cookie', otherAdminCookie)
+        .send({ sharePrivateVenues: true })
+        .expect(200);
+
+      const res = await request(server)
+        .get(`/api/v1/muse/events/${event.id}`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(res.body.location.photos).toEqual([]);
+      expect(res.body.location.address).toBeNull();
     });
   });
 });

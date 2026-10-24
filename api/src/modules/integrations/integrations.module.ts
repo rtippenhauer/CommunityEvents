@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
+import { AppConfigModule } from '../app-config/app-config.module';
 import { ApiTokenService } from './api-token.service';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationsService } from './integrations.service';
@@ -16,7 +17,7 @@ import { IntegrationsService } from './integrations.service';
  * that `tsc` passes clean.
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, AppConfigModule],
   controllers: [IntegrationsController],
   providers: [ApiTokenService, IntegrationsService],
   exports: [ApiTokenService, IntegrationsService],

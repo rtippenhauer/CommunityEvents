@@ -6,6 +6,7 @@ import { LocationsModule } from '../locations/locations.module';
 import { InvitesModule } from '../invites/invites.module';
 import { AuditModule } from '../audit/audit.module';
 import { MuseController } from './muse.controller';
+import { AppConfigModule } from '../app-config/app-config.module';
 import { MuseService } from './muse.service';
 import { MuseTenantMiddleware } from './muse-tenant.middleware';
 import { MuseTokenGuard } from './muse-token.guard';
@@ -37,6 +38,9 @@ import { MuseTokenGuard } from './muse-token.guard';
     LocationsModule,
     InvitesModule,
     AuditModule,
+    // Not @Global, unlike PrismaModule: leaving this out is a runtime boot
+    // failure that compiles clean (v2-10).
+    AppConfigModule,
   ],
   controllers: [MuseController],
   providers: [MuseService, MuseTokenGuard],

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AppConfigService } from '../app-config/app-config.service';
 import { ApiTokenService, type ApiTokenView, type IssuedToken } from './api-token.service';
 import { UserRole, UserStatus } from '../../database/enums';
 
@@ -70,7 +71,43 @@ export class IntegrationsService {
     private readonly prisma: PrismaService,
     private readonly tokens: ApiTokenService,
     private readonly audit: AuditService,
+    private readonly appConfig: AppConfigService,
   ) {}
+
+  /** What this community currently lets Muse publish. */
+  async getMuseSettings(): Promise<{ sharePrivateVenues: boolean }> {
+    const value = await this.appConfig.getSiteSetting('muse_share_private_venues');
+    return { sharePrivateVenues: value === 'true' };
+  }
+
+  /**
+   * Opt into (or back out of) publishing a private venue to Facebook.
+   *
+   * Audited, and deliberately so: this is the switch that decides whether a
+   * member's home address and photographs of it leave the site for a public
+   * Facebook event. Who turned it on and when is worth being able to answer
+   * later -- the same reason a role change is audited and a text setting is
+   * not.
+   */
+  async setMuseSettings(
+    sharePrivateVenues: boolean,
+    actorId: number,
+  ): Promise<{ sharePrivateVenues: boolean }> {
+    await this.appConfig.updateConfigValue(
+      'muse_share_private_venues',
+      sharePrivateVenues ? 'true' : 'false',
+      actorId,
+    );
+
+    await this.audit.log({
+      userId: actorId,
+      action: 'integration.muse_private_venues',
+      entityType: 'app_config',
+      metadata: { sharePrivateVenues },
+    });
+
+    return { sharePrivateVenues };
+  }
 
   /**
    * Creates an integration account in the calling admin's own community.

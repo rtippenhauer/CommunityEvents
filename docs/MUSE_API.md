@@ -179,6 +179,13 @@ ignore any you don't need.
   Facebook-only attendees plus their +1s. The sync's `totalGoing` also adds
   public guest signups, so use `totalGoing` for the Facebook description.
 - An empty `facebookEvents` means Muse hasn't created the Facebook event yet.
+- **The cover photo** is `location.photos[0]`, on both the list and the detail
+  endpoint, ordered so the same dinner does not change cover between calls.
+  `filePath` is root-relative (`/api/uploads/locations/<file>`), so prepend the
+  community's own host. A **private venue** (someone's home) returns
+  `photos: []` along with a null `address`, `lat` and `lng` — a picture of a
+  house gives away the address those fields withhold, so there is no cover to
+  set and the dinner's Facebook event goes without one.
 
 ### `GET /events?cityId=1&fromDate=2026-10-01`
 

@@ -110,6 +110,16 @@ export const SITE_SETTING_KEYS = [
   // read them. Public like every other site setting — it says a review
   // happened, not what was reviewed.
   'legal_reviewed_at',
+  // May Muse publish a private venue's address and photos to Facebook?
+  // Off by default and opted into per community (Rob, 2026-10-24). A private
+  // venue is normally somebody's home, and a Facebook event is public well
+  // beyond the membership -- so the default withholds the address, the
+  // coordinates and the photos, since a picture of a house gives away what the
+  // address withholds. A community that meets at a venue it is happy to
+  // publish can turn it on. Deliberately NOT a FEATURE_KEY: it belongs on
+  // Admin -> Automation Accounts beside the integration it governs, not among
+  // the member-facing toggles.
+  'muse_share_private_venues',
 ] as const;
 export type SiteSettingKey = (typeof SITE_SETTING_KEYS)[number];
 
@@ -244,6 +254,9 @@ export const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   // Empty until a human confirms the seeded legal copy. Never defaulted to a
   // date: the whole value of the flag is that it cannot be true by accident.
   legal_reviewed_at: '',
+  // Fail closed. Publishing a member's home address is not something a
+  // community should find itself doing because nobody set a row.
+  muse_share_private_venues: 'false',
 };
 
 @Injectable()

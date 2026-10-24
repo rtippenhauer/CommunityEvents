@@ -2,6 +2,10 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
+export interface MuseSettings {
+  sharePrivateVenues: boolean;
+}
+
 /** A token as the screen may know it: a prefix and whether it works. */
 export interface ApiTokenRow {
   id: number;
@@ -58,6 +62,17 @@ export class IntegrationsService {
   /** Mints a token, revoking every other live one for that account. */
   issueToken(userId: number): Observable<IssuedToken> {
     return this.http.post<IssuedToken>(`/api/v1/admin/integrations/${userId}/tokens`, {});
+  }
+
+  /** What this community lets Muse publish to Facebook. */
+  museSettings(): Observable<MuseSettings> {
+    return this.http.get<MuseSettings>('/api/v1/admin/integrations/muse-settings');
+  }
+
+  setMuseSettings(sharePrivateVenues: boolean): Observable<MuseSettings> {
+    return this.http.patch<MuseSettings>('/api/v1/admin/integrations/muse-settings', {
+      sharePrivateVenues,
+    });
   }
 
   revokeToken(tokenId: number): Observable<void> {

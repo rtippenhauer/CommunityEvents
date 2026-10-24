@@ -5,6 +5,8 @@ import type { IssuedToken } from '../integrations/api-token.service';
 import { FacebookHeadcountService } from '../facebook/facebook-headcount.service';
 import { FacebookSyncService, type SyncReport } from '../facebook/facebook-sync.service';
 import { LocationsService } from '../locations/locations.service';
+import { LocationVisibilityService } from '../../common/services/location-visibility.service';
+import { AppConfigService } from '../app-config/app-config.service';
 import { InvitesService } from '../invites/invites.service';
 import { AuditService } from '../audit/audit.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
@@ -55,6 +57,8 @@ export class MuseService {
     private readonly headcount: FacebookHeadcountService,
     private readonly facebookSync: FacebookSyncService,
     private readonly locations: LocationsService,
+    private readonly locationVisibility: LocationVisibilityService,
+    private readonly appConfig: AppConfigService,
     private readonly invites: InvitesService,
     private readonly audit: AuditService,
     private readonly tenants: TenantResolutionService,
@@ -161,21 +165,41 @@ export class MuseService {
         cityId: true,
         locationId: true,
         locationName: true,
+        locationAddress: true,
+        locationLat: true,
+        locationLng: true,
         title: true,
         eventDate: true,
         eventTime: true,
         status: true,
+        location: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            lat: true,
+            lng: true,
+            cityId: true,
+            isPrivate: true,
+            isResidence: true,
+            // photos[0] is "the cover photo" Muse sets on the Facebook event.
+            // Ordered by id so the same dinner does not change cover between
+            // calls -- the ordering v1 spells out in both of its queries.
+            photos: { orderBy: { id: 'asc' as const } },
+          },
+        },
       },
     });
 
     const ids = events.map((event) => event.id);
-    const [links, counts] = await Promise.all([
+    const [links, counts, sharePrivate] = await Promise.all([
       this.linksFor(ids),
       this.headcount.goingCountsFor(ids),
+      this.mayPublishPrivateVenues(),
     ]);
 
     return events.map((event) => ({
-      ...event,
+      ...this.redactPrivateVenue(event, sharePrivate),
       // Date strings, never ISO timestamps. The trap `v2-11` found: the write
       // endpoints returned ISO where the reads returned date strings, and
       // publishing an event redrew 6:30pm as 12:30.
@@ -190,17 +214,21 @@ export class MuseService {
   async event(id: number) {
     const event = await this.prisma.events.findFirst({
       where: { id },
-      include: { location: true, city: true },
+      include: {
+        city: true,
+        location: { include: { photos: { orderBy: { id: 'asc' } } } },
+      },
     });
     if (event === null) throw new NotFoundException('No such event.');
 
-    const [links, attendees] = await Promise.all([
+    const [links, attendees, sharePrivate] = await Promise.all([
       this.linksFor([id]),
       this.attendees(id),
+      this.mayPublishPrivateVenues(),
     ]);
 
     return {
-      ...event,
+      ...this.redactPrivateVenue(event, sharePrivate),
       eventDate: toDateString(event.eventDate),
       eventTime: toTimeString(event.eventTime),
       facebookEvents: links.get(id) ?? [],
@@ -208,6 +236,45 @@ export class MuseService {
       publicRsvps: attendees.publicGuests,
       facebookAttendees: attendees.facebookOnly,
       goingCount: attendees.totalGoing,
+    };
+  }
+
+  /**
+   * Blank a private venue's address, coordinates and photos.
+   *
+   * `muse` is not an elevated role and the integration holds no RSVP, so this
+   * always fires for a private venue -- which is what v1 does, since it reads
+   * events through `findOne(id, UserRole.MUSE, …)` and lands on the same
+   * branch. Worth stating rather than assuming: the photos go too, because a
+   * picture of somebody's house reveals the address the other three fields
+   * withhold, and Muse would publish it as a Facebook event cover.
+   */
+  /**
+   * Whether this community lets Muse publish a private venue to Facebook.
+   *
+   * Off unless an admin opted in on Admin -> Automation Accounts. Read per
+   * request rather than cached on the service: the answer belongs to the
+   * community the token resolved, and this service is a singleton.
+   */
+  private async mayPublishPrivateVenues(): Promise<boolean> {
+    return (await this.appConfig.getSiteSetting('muse_share_private_venues')) === 'true';
+  }
+
+  private redactPrivateVenue<T extends { location?: unknown }>(
+    event: T,
+    sharePrivate: boolean,
+  ): T {
+    if (sharePrivate) return event;
+    const location = event.location as { isPrivate?: boolean } | null | undefined;
+    if (!location || this.locationVisibility.canViewAddressSync(location as never, false, false)) {
+      return event;
+    }
+    return {
+      ...event,
+      locationAddress: null,
+      locationLat: null,
+      locationLng: null,
+      location: { ...location, address: null, lat: null, lng: null, photos: [] },
     };
   }
 

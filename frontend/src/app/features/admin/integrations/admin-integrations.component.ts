@@ -9,6 +9,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { Clipboard } from '@angular/cdk/clipboard';
 import {
   IntegrationsService,
@@ -45,6 +46,7 @@ import {
     MatIconModule,
     MatSnackBarModule,
     MatTooltipModule,
+    MatSlideToggleModule,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -98,6 +100,33 @@ import {
           </mat-card-content>
         </mat-card>
       }
+
+      <mat-card class="policy-card" appearance="outlined">
+        <mat-card-content>
+          <h3><mat-icon>home</mat-icon> Dinners at a private home</h3>
+          <p class="hint">
+            A Facebook event is public far beyond your membership. When a dinner
+            is at someone's home, Muse normally posts it without the address,
+            the map or the venue photos — a picture of a house gives away the
+            address just as well as the address does.
+          </p>
+          <mat-slide-toggle
+            [checked]="sharePrivateVenues()"
+            [disabled]="policyBusy()"
+            (change)="setSharePrivateVenues($event.checked)"
+          >
+            Let Muse post the address and photos of private venues
+          </mat-slide-toggle>
+          @if (sharePrivateVenues()) {
+            <p class="policy-warn">
+              <mat-icon>warning</mat-icon>
+              Private venue addresses and photos will appear on public Facebook
+              events. Turn this on only if your private venues are places you
+              are happy to publish.
+            </p>
+          }
+        </mat-card-content>
+      </mat-card>
 
       <mat-card class="create-card" appearance="outlined">
         <mat-card-header><mat-card-title>Add an account</mat-card-title></mat-card-header>
@@ -222,6 +251,38 @@ import {
       }
       .endpoint-card h3,
       .token-card h3 {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      /* --ce-error-overlay is platform-fixed (v2-11): red means warning in
+         every community. It is a 75%-opacity overlay meant to carry WHITE
+         text, and there is no --ce-on-error token to pair with it -- so it is
+         used here as a pale tint under ordinary --ce-text, the same way the
+         success chip below does, with the full-strength colour kept for the
+         rule that gives the block its weight. Using it as a solid background
+         under --ce-text is dark-on-dark, which is what it was on first
+         render. */
+      .policy-warn {
+        border-left: 3px solid var(--ce-error-overlay);
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        margin: 1rem 0 0;
+        padding: 0.75rem;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--ce-error-overlay) 20%, transparent);
+        color: var(--ce-text);
+        font-size: 0.85rem;
+        max-width: 42rem;
+      }
+      .policy-warn mat-icon {
+        font-size: 1.15rem;
+        width: 1.15rem;
+        height: 1.15rem;
+        flex: none;
+      }
+      .policy-card h3 {
         display: flex;
         align-items: center;
         gap: 0.4rem;
@@ -380,12 +441,49 @@ export class AdminIntegrationsComponent implements OnInit {
    */
   readonly museBaseUrl = `${window.location.origin}/api/v1/muse`;
 
+  /** Off until this community opts in; the API is the authority, not this. */
+  readonly sharePrivateVenues = signal(false);
+  readonly policyBusy = signal(false);
+
   readonly form = this.fb.group({
     name: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(80)]],
   });
 
   ngOnInit(): void {
     this.load();
+    this.integrations.museSettings().subscribe({
+      next: (settings) => this.sharePrivateVenues.set(settings.sharePrivateVenues),
+      error: () => this.sharePrivateVenues.set(false),
+    });
+  }
+
+  /**
+   * The toggle reflects what the API confirmed, never what was clicked -- on a
+   * failure it snaps back, so the screen cannot show "on" for a community that
+   * is still withholding addresses.
+   */
+  setSharePrivateVenues(checked: boolean): void {
+    this.policyBusy.set(true);
+    this.integrations.setMuseSettings(checked).subscribe({
+      next: (settings) => {
+        this.sharePrivateVenues.set(settings.sharePrivateVenues);
+        this.policyBusy.set(false);
+        this.snackBar.open(
+          settings.sharePrivateVenues
+            ? 'Muse may now post private venue addresses and photos'
+            : 'Private venue addresses and photos will be withheld',
+          undefined,
+          { duration: 4000 },
+        );
+      },
+      error: (error: { error?: { message?: string } }) => {
+        this.sharePrivateVenues.set(!checked);
+        this.policyBusy.set(false);
+        this.snackBar.open(error.error?.message ?? 'Could not save that', 'Dismiss', {
+          duration: 6000,
+        });
+      },
+    });
   }
 
   liveToken(account: IntegrationAccount): ApiTokenRow | undefined {

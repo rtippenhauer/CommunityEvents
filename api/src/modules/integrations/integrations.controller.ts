@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { users as User } from '@prisma/client';
 import { UserRole } from '../../database/enums';
 import { CreateIntegrationAccountDto } from './dto/create-integration-account.dto';
+import { UpdateMuseSettingsDto } from './dto/muse-settings.dto';
 import { IntegrationsService, type IntegrationAccountView } from './integrations.service';
 import type { IssuedToken } from './api-token.service';
 
@@ -44,6 +46,30 @@ export class IntegrationsController {
   @Roles(UserRole.ADMIN)
   list(): Promise<IntegrationAccountView[]> {
     return this.integrations.listAccounts();
+  }
+
+  /**
+   * What this community lets Muse publish.
+   *
+   * Lives here rather than on Site Settings because it governs the integration
+   * and is meaningless without one -- an admin deciding what Muse may post is
+   * already on this screen. Stored as an ordinary `app_config` row, so it is
+   * tenant-scoped like every other setting and a community answers only for
+   * itself.
+   */
+  @Get('muse-settings')
+  @Roles(UserRole.ADMIN)
+  museSettings(): Promise<{ sharePrivateVenues: boolean }> {
+    return this.integrations.getMuseSettings();
+  }
+
+  @Patch('muse-settings')
+  @Roles(UserRole.ADMIN)
+  updateMuseSettings(
+    @Body() body: UpdateMuseSettingsDto,
+    @CurrentUser() actor: User,
+  ): Promise<{ sharePrivateVenues: boolean }> {
+    return this.integrations.setMuseSettings(body.sharePrivateVenues, actor.id);
   }
 
   @Post()
