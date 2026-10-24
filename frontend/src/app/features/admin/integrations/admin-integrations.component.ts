@@ -12,6 +12,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSelectModule } from '@angular/material/select';
 import { Clipboard } from '@angular/cdk/clipboard';
+import { BrandConfigService } from '../../../core/services/brand-config.service';
 import {
   IntegrationsService,
   type ApiTokenRow,
@@ -105,26 +106,30 @@ import {
 
       <mat-card class="policy-card" appearance="outlined">
         <mat-card-content>
-          <h3><mat-icon>home</mat-icon> Dinners at a private home</h3>
+          <h3><mat-icon>home</mat-icon> Private {{ brand.locationPlural() }}</h3>
           <p class="hint">
-            A Facebook event is public far beyond your membership. When a dinner
-            is at someone's home, Muse normally posts it without the address,
-            the map or the venue photos — a picture of a house gives away the
-            address just as well as the address does.
+            A Facebook event is public far beyond your membership. Some
+            {{ brand.locationPluralLower() }} are marked private — usually
+            someone's home. For those, Muse normally posts the
+            {{ brand.dinnerSingularLower() }} without the address, the map or
+            the photos, because a picture of a house gives away the address
+            just as well as the address does.
           </p>
           <mat-slide-toggle
             [checked]="sharePrivateVenues()"
             [disabled]="policyBusy()"
             (change)="setSharePrivateVenues($event.checked)"
           >
-            Let Muse post the address and photos of private venues
+            Let Muse post the address and photos of private
+            {{ brand.locationPluralLower() }}
           </mat-slide-toggle>
           @if (sharePrivateVenues()) {
             <p class="policy-warn">
               <mat-icon>warning</mat-icon>
-              Private venue addresses and photos will appear on public Facebook
-              events. Turn this on only if your private venues are places you
-              are happy to publish.
+              Private {{ brand.locationSingularLower() }} addresses and photos
+              will appear on public Facebook events. Turn this on only if your
+              private {{ brand.locationPluralLower() }} are places you are happy
+              to publish.
             </p>
           }
         </mat-card-content>
@@ -458,6 +463,8 @@ export class AdminIntegrationsComponent implements OnInit {
   private readonly integrations = inject(IntegrationsService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly clipboard = inject(Clipboard);
+  /** Public: the template reads the community's own words for these things. */
+  readonly brand = inject(BrandConfigService);
   private readonly fb = inject(NonNullableFormBuilder);
 
   readonly accounts = signal<IntegrationAccount[]>([]);
@@ -514,8 +521,8 @@ export class AdminIntegrationsComponent implements OnInit {
         this.policyBusy.set(false);
         this.snackBar.open(
           settings.sharePrivateVenues
-            ? 'Muse may now post private venue addresses and photos'
-            : 'Private venue addresses and photos will be withheld',
+            ? `Muse may now post private ${this.brand.locationSingularLower()} addresses and photos`
+            : `Private ${this.brand.locationSingularLower()} addresses and photos will be withheld`,
           undefined,
           { duration: 4000 },
         );
