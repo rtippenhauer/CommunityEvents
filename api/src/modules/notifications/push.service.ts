@@ -56,10 +56,31 @@ export class PushService implements OnModuleInit {
     await this.sendToSubscriptions(subs, payload);
   }
 
+  /**
+   * Everyone who asked to hear about this city.
+   *
+   * **Which is not the same as everyone filed under it** — that is what this
+   * targeted before v2-24, and it was wrong in both directions once members
+   * could name a set: it missed a Cincinnati member who had asked for Dayton
+   * too, and it notified a Dayton member who had narrowed to Cincinnati.
+   *
+   * The rule is the same one the event list, the iCal feed and the auto-invite
+   * targeting use, which is the point of there being one set: **no rows means
+   * every city**, so a member who never touched the setting still hears about
+   * everything.
+   */
   async sendToCity(cityId: number, payload: PushPayload): Promise<void> {
     if (!this.enabled) return;
     const subs = await this.prisma.push_subscriptions.findMany({
-      where: { user: { cityId, status: UserStatus.ACTIVE } },
+      where: {
+        user: {
+          status: UserStatus.ACTIVE,
+          OR: [
+            { userCityPreferences: { none: {} } },
+            { userCityPreferences: { some: { cityId } } },
+          ],
+        },
+      },
     });
     await this.sendToSubscriptions(subs, payload);
   }

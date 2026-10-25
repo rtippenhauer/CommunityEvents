@@ -5,6 +5,7 @@ import type {
   location_photos as LocationPhoto,
   users as User,
 } from '@prisma/client';
+import { CitiesService } from '../cities/cities.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { ImportSource } from '../../database/enums';
 import { GeocodingService } from './geocoding.service';
@@ -84,6 +85,7 @@ export class LocationsService {
     private readonly geocodingService: GeocodingService,
     private readonly locationVisibility: LocationVisibilityService,
     private readonly appConfigService: AppConfigService,
+    private readonly cities: CitiesService,
   ) {}
 
   async findAll(query: LocationQuery): Promise<LocationListRow[]> {
@@ -173,9 +175,15 @@ export class LocationsService {
     const coords = await this.geocodingService.geocode(dto.address);
     const isPrivate =
       dto.isPrivate ?? (await this.appConfigService.getSiteSetting('location_privacy_default')) === 'private';
+    // `locations.city_id` became nullable in v2-24 so the feature can be
+    // turned off; the requirement moved here, which is the only layer that
+    // sees the community's flag. Resolves to null when cities are off,
+    // whatever the client sent.
+    const cityId = await this.cities.resolveRequiredCityId(dto.cityId);
     const saved = await this.prisma.locations.create({
       data: {
         ...dto,
+        cityId,
         isPrivate,
         lat: coords?.lat ?? null,
         lng: coords?.lng ?? null,
@@ -200,6 +208,10 @@ export class LocationsService {
     };
 
     if (userId) data.updatedById = userId;
+
+    if ((dto as UpdateLocationDto).cityId !== undefined) {
+      data.cityId = await this.cities.resolveRequiredCityId((dto as UpdateLocationDto).cityId);
+    }
 
     if (addressChanged) {
       const coords = await this.geocodingService.geocode((dto as UpdateLocationDto).address!);
@@ -272,7 +284,12 @@ export class LocationsService {
 
   // ─── Facebook import ──────────────────────────────────────────────────────
 
-  async importFacebookEvents(buffer: Buffer, cityId: number): Promise<ImportResult> {
+  /**
+   * `cityId` is the fallback for a venue whose address names no city, and is
+   * null when the community does not use cities at all (v2-24) — in which case
+   * `detectCity` is skipped entirely rather than guessing.
+   */
+  async importFacebookEvents(buffer: Buffer, cityId: number | null): Promise<ImportResult> {
     let json: unknown;
     try {
       json = JSON.parse(buffer.toString('utf-8')) as unknown;
@@ -351,7 +368,7 @@ export class LocationsService {
         }
       }
 
-      const resolvedCityId = this.detectCity(address, cities, cityId);
+      const resolvedCityId = cityId === null ? null : this.detectCity(address, cities, cityId);
       const websiteUrl = this.extractLocationUrl(event.description);
       const description = event.description?.trim().slice(0, 2000) || null;
 

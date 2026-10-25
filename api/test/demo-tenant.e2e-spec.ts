@@ -15,7 +15,6 @@ import { BrevoService } from '../src/modules/email/brevo.service';
 import { TenantsAdminService } from '../src/modules/system/tenants-admin.service';
 import { UserRole } from '../src/database/enums';
 import { createTestApp, truncateAllTables, resetThrottler, TEST_TENANT_DOMAIN } from './utils/test-app';
-import { seedCity } from './utils/seed';
 import { TEST_TENANT_ID } from './setup-env';
 
 const unscoped = <T>(reason: string, fn: () => Promise<T>): Promise<T> =>
@@ -49,7 +48,10 @@ describe('Demo tenants (e2e)', () => {
     await truncateAllTables(prisma); // re-seeds the root tenant at TEST_TENANT_ID
     tenants.clearCache();
     resetThrottler(app);
-    await unscoped('seeding the shared city fixture', () => seedCity(prisma));
+    // No shared city fixture any more (v2-24). `cities` is tenant-scoped, so
+    // an unscoped create takes the sentinel tenant id and the foreign key
+    // rejects it -- and nothing in the demo path needs one: a demo starts as
+    // a new community does, with no cities and the feature off.
   });
 
   const askForDemo = (email: string) =>
@@ -590,7 +592,10 @@ describe('Demo tenants (e2e)', () => {
         await prisma.users.create({
           data: {
             tenantId: demo.id,
-            cityId: 1,
+            // No city (v2-24). `users.city_id` is nullable, `cities` is scoped,
+            // and a demo has none -- so the literal 1 this used to carry is now
+            // a foreign key pointing at another community's row, if it exists
+            // at all.
             fullName: 'Invited Person',
             email: 'invited@example.test',
             role: UserRole.MEMBER,
@@ -1073,15 +1078,25 @@ describe('Demo tenants (e2e)', () => {
 
       // Fails after the tenant exists, which is the state worth testing -- a
       // failure before it leaves nothing to tidy.
-      const original = demoService['firstCityId'].bind(demoService);
-      (demoService as unknown as { firstCityId: () => Promise<number> }).firstCityId = async () => {
-        throw new Error('no city');
-      };
+      // `firstCityId` was the stub point until v2-24 removed it -- a demo has
+      // no city, because a new community has none.
+      //
+      // **Where the failure is injected is load-bearing**, which is why this
+      // is not simply the next convenient method. `abandonConfirmation`
+      // deliberately refuses to un-confirm a request that already produced a
+      // community (`createdTenantId: null` guards the update), so a stub
+      // placed after that link is written tests the opposite behaviour from
+      // the one this case is about. Writing the link is therefore the thing
+      // that fails: the tenant exists, nothing points at it yet, and the
+      // claim must come back.
+      const spy = vi
+        .spyOn(prisma.demo_requests, 'update')
+        .mockRejectedValueOnce(new Error('provisioning blew up'));
 
       const failed = await confirm(token);
       expect(failed.status).toBeGreaterThanOrEqual(400);
 
-      (demoService as unknown as { firstCityId: () => Promise<number> }).firstCityId = original;
+      spy.mockRestore();
 
       const [demos, row] = await unscoped('checking nothing was left behind', async () =>
         await Promise.all([

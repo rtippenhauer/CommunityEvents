@@ -31,7 +31,6 @@
  *                                 app's own URL, which so far it never has
  *   ROOT_TENANT_SLUG              (optional) defaults to "root"
  *   INSTANCE_CITY_NAME            (required) e.g. "Southwest Ohio"
- *   INSTANCE_CITY_SUBDOMAIN       (optional) defaults to a slug of the name
  *   INSTANCE_BRAND_NAME           (optional) e.g. "Sons"
  *   INSTANCE_BRAND_TAGLINE        (optional)
  *   INSTANCE_THEME_PRIMARY        (optional) #RRGGBB
@@ -91,14 +90,6 @@ function requireEnv(key: string): string {
     process.exit(1);
   }
   return value.trim();
-}
-
-function slugify(input: string): string {
-  const slug = input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug || 'main';
 }
 
 async function upsertSiteSetting(
@@ -186,7 +177,10 @@ async function main(): Promise<void> {
   const rootTenantSlug = (process.env.ROOT_TENANT_SLUG?.trim() || 'root').toLowerCase();
 
   const cityName = requireEnv('INSTANCE_CITY_NAME');
-  const citySubdomain = (process.env.INSTANCE_CITY_SUBDOMAIN || slugify(cityName)).toLowerCase();
+  // INSTANCE_CITY_SUBDOMAIN is gone with `cities.subdomain` (v2-24): a city is
+  // a row, not a hostname. An install that still sets it is ignored rather
+  // than refused -- it named a web host that no longer exists, and failing a
+  // bootstrap over a stale variable helps nobody.
   const adminEmail = requireEnv('INSTANCE_ADMIN_EMAIL').toLowerCase();
   const adminName = process.env.INSTANCE_ADMIN_NAME?.trim() || 'Admin';
   const adminPassword = requireEnv('INSTANCE_ADMIN_PASSWORD');
@@ -248,34 +242,52 @@ async function main(): Promise<void> {
     console.log(`  - ${rootTenantDomain} (slug "${rootTenantSlug}", id ${tenantRow.id})`);
 
     // ── City: one active city for this single-region instance ───────────────
+    //
+    // Written here rather than in seed.ts since v2-24, for the same reason the
+    // app_config defaults moved in v2-6 and the achievement catalogue in
+    // v2-10: `cities` is tenant-scoped, and seed.ts runs before any tenant
+    // exists, so a row it wrote would take the `tenant_id` sentinel and be
+    // rejected by that table's foreign key.
+    //
+    // Raw SQL like everything else here -- this is a plain node process with
+    // no Nest container, so there is no scoping extension to inject the tenant
+    // and the predicate is written out. The key it upserts on is the compound
+    // (tenant_id, name) the migration created, replacing the globally-unique
+    // subdomain this used to key on.
     console.log(`\nCity:`);
     await tx.$executeRawUnsafe(
-      `INSERT INTO cities (name, subdomain, is_active)
+      `INSERT INTO cities (tenant_id, name, is_active)
        VALUES (?, ?, 1)
-       ON DUPLICATE KEY UPDATE name = VALUES(name), is_active = 1`,
+       ON DUPLICATE KEY UPDATE is_active = 1`,
+      tenantRow.id,
       cityName,
-      citySubdomain,
     );
     const [cityRow] = (
       await tx.$queryRawUnsafe<[{ id: number }]>(
-        `SELECT id FROM cities WHERE subdomain = ?`,
-        citySubdomain,
+        `SELECT id FROM cities WHERE tenant_id = ? AND name = ?`,
+        tenantRow.id,
+        cityName,
       )
     ).map(coerceRawRow) as [{ id: number }];
     const cityId = cityRow.id;
-    // Deactivate any other cities (e.g. the seeded Cincinnati/Dayton defaults)
-    // so the single-city UX + root-domain fallback kick in. Deactivated, not
-    // deleted, to keep any existing FK references (e.g. the automation user)
-    // valid.
+    // Retire any other city this community holds, so a single-region install
+    // ends up with exactly one. Retired, never deleted -- every foreign key
+    // pointing at it stays valid, which is the rule for cities generally
+    // (Rob, 2026-10-18) rather than a special case for bootstrap.
+    //
+    // Scoped to this tenant, where it used to be every row in the table: the
+    // old statement would now retire other communities' cities.
+    //
     // $executeRawUnsafe returns the affected-row count directly, where TypeORM
     // handed back a ResultSetHeader to read .affectedRows from.
     const deactivated = await tx.$executeRawUnsafe(
-      `UPDATE cities SET is_active = 0 WHERE id <> ?`,
+      `UPDATE cities SET is_active = 0 WHERE tenant_id = ? AND id <> ?`,
+      tenantRow.id,
       cityId,
     );
-    console.log(`  • ${cityName} (${citySubdomain}) → active [id ${cityId}]`);
+    console.log(`  • ${cityName} → active [id ${cityId}]`);
     if (deactivated) {
-      console.log(`  • deactivated ${deactivated} other city row(s)`);
+      console.log(`  • retired ${deactivated} other city row(s)`);
     }
 
     // ── Runtime config defaults ─────────────────────────────────────────────
@@ -387,7 +399,7 @@ Config:
     // ---- Service account -------------------------------------------------
     // The root tenant's, so role `automation`. Created before the admin because
     // system writes (release-notes import in particular) attribute to it.
-    await createServiceAccount(tx, tenantRow.id, cityId, rootTenantSlug);
+    await createServiceAccount(tx, tenantRow.id, rootTenantSlug);
     console.log(`
 Service account:
   - ${automationAccountEmail(rootTenantSlug)} (automation)`);

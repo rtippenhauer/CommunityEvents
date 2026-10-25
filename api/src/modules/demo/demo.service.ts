@@ -471,8 +471,6 @@ export class DemoService {
       );
       createdTenantId = tenant.id;
 
-      const cityId = await this.firstCityId();
-
       // The requester, as the community's first admin. Created verified: they
       // just proved the address by following the link that got them here, which
       // is the same evidence email verification collects.
@@ -480,7 +478,8 @@ export class DemoService {
         await this.prisma.users.create({
           data: {
             tenantId: tenant.id,
-            cityId,
+            // No city: a demo starts as a new community does, with none and
+            // `feature_cities` off (v2-24). `users.city_id` is nullable now.
             fullName: request.fullName,
             email: request.email,
             passwordHash: request.passwordHash,
@@ -1026,15 +1025,6 @@ export class DemoService {
     } catch {
       return 'https:';
     }
-  }
-
-  private async firstCityId(): Promise<number> {
-    const city = await this.prisma.cities.findFirst({
-      where: { isActive: true },
-      orderBy: { id: 'asc' },
-    });
-    if (!city) throw new BadRequestException('This deployment has no active city configured.');
-    return city.id;
   }
 
   /**

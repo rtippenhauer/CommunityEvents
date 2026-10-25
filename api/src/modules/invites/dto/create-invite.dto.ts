@@ -37,11 +37,6 @@ export class CreateInviteDto {
   cityId?: number;
 
   @IsInt()
-  @IsPositive()
-  @IsOptional()
-  facebookGroupId?: number;
-
-  @IsInt()
   @Min(2)
   @IsOptional()
   maxUses?: number;

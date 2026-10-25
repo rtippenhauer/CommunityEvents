@@ -104,6 +104,18 @@ export const SITE_SETTING_KEYS = [
   // depends on, unlike the Phase 33 toggles which defaulted on for
   // backward-compat.
   'feature_require_membership',
+  // Does this community file its events, venues and members under cities
+  // (v2-24)? Off by default: a brand-new community meets in one place, and a
+  // single-city community is better served by cities being invisible than by
+  // every form carrying a select with one option in it.
+  //
+  // **Never written through the ordinary settings path** -- both directions
+  // move rows (on backfills every null `city_id`, off clears them and retires
+  // every city), so `updateConfigValue` refuses it and `CitiesService
+  // .setEnabled` is the only way in. A plain PATCH would leave a community
+  // with cities required and rows that have none, which the event form cannot
+  // save from.
+  'feature_cities',
   // When this community last confirmed its Terms and Privacy Policy (ISO
   // timestamp; empty = never). A community is seeded with platform templates so
   // its legal pages are never blank, and this is what says a human has since
@@ -133,6 +145,7 @@ export const FEATURE_KEYS = [
   'feature_merch',
   'feature_members',
   'feature_require_membership',
+  'feature_cities',
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -144,6 +157,7 @@ export interface FeatureFlags {
   merch: boolean;
   members: boolean;
   requireMembership: boolean;
+  cities: boolean;
 }
 
 /**
@@ -171,6 +185,29 @@ function assertValidConfigValue(key: string, value: string): void {
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new BadRequestException('theme_palette_overrides must be a JSON object');
+  }
+}
+
+/**
+ * `feature_cities` is a site setting that cannot be written like one (v2-24).
+ *
+ * Both directions move rows: turning it on backfills every null `city_id` so a
+ * community is never "cities required, rows have none" -- a state the event
+ * form refuses to save from -- and turning it off retires every city and
+ * clears the column. A plain PATCH would flip the flag and leave the data
+ * behind it untouched, which looks like it worked and is not recoverable by
+ * pressing the switch again.
+ *
+ * So the flag and the data move together in one transaction, in
+ * `CitiesService.setEnabled`, and every other write of this key is refused
+ * here rather than being quietly dropped -- an admin who finds the switch
+ * somewhere it should not be gets told where the real one is.
+ */
+function assertCitiesToggleGoesThroughItsOwnRoute(key: string, allowed: boolean): void {
+  if (key === 'feature_cities' && !allowed) {
+    throw new BadRequestException(
+      'Use PUT /admin/cities/feature to turn city filtering on or off — it moves rows as well as the flag',
+    );
   }
 }
 
@@ -251,6 +288,9 @@ export const SITE_SETTING_DEFAULTS: Record<SiteSettingKey, string> = {
   // Off by default — a fresh instance never enforces membership until an
   // admin explicitly opts in.
   feature_require_membership: 'false',
+  // Off for a new community; v2-24's migration turns it on for any that was
+  // already using more than one city.
+  feature_cities: 'false',
   // Empty until a human confirms the seeded legal copy. Never defaulted to a
   // date: the whole value of the flag is that it cannot be true by accident.
   legal_reviewed_at: '',
@@ -537,15 +577,17 @@ export class AppConfigService {
   }
 
   async getFeatureFlags(): Promise<FeatureFlags> {
-    const [ratings, ratingsResidences, leaderboard, merch, members, requireMembership] = await Promise.all([
-      this.isFeatureEnabled('feature_ratings'),
-      this.isFeatureEnabled('feature_ratings_residences'),
-      this.isFeatureEnabled('feature_leaderboard'),
-      this.isFeatureEnabled('feature_merch'),
-      this.isFeatureEnabled('feature_members'),
-      this.isFeatureEnabled('feature_require_membership'),
-    ]);
-    return { ratings, ratingsResidences, leaderboard, merch, members, requireMembership };
+    const [ratings, ratingsResidences, leaderboard, merch, members, requireMembership, cities] =
+      await Promise.all([
+        this.isFeatureEnabled('feature_ratings'),
+        this.isFeatureEnabled('feature_ratings_residences'),
+        this.isFeatureEnabled('feature_leaderboard'),
+        this.isFeatureEnabled('feature_merch'),
+        this.isFeatureEnabled('feature_members'),
+        this.isFeatureEnabled('feature_require_membership'),
+        this.isFeatureEnabled('feature_cities'),
+      ]);
+    return { ratings, ratingsResidences, leaderboard, merch, members, requireMembership, cities };
   }
 
   // Bundled for the public GET /config/branding endpoint — one request for
@@ -760,10 +802,20 @@ export class AppConfigService {
     };
   }
 
-  async updateConfigValue(key: string, value: string, userId: number): Promise<AppConfig> {
+  /**
+   * `options.allowCitiesToggle` is `CitiesService.setEnabled` identifying
+   * itself. Nothing else may write `feature_cities` -- see the guard below.
+   */
+  async updateConfigValue(
+    key: string,
+    value: string,
+    userId: number,
+    options?: { allowCitiesToggle?: boolean },
+  ): Promise<AppConfig> {
     if (!isKnownConfigKey(key)) {
       throw new NotFoundException('Unknown config key');
     }
+    assertCitiesToggleGoesThroughItsOwnRoute(key, options?.allowCitiesToggle === true);
     assertValidConfigValue(key, value);
     // find-or-create then assign becomes one upsert on the unique key.
     //
@@ -812,6 +864,7 @@ export class AppConfigService {
       if (!isKnownConfigKey(key)) {
         throw new NotFoundException(`Unknown config key: ${key}`);
       }
+      assertCitiesToggleGoesThroughItsOwnRoute(key, false);
       assertValidConfigValue(key, value);
     }
     // Wrapped in a transaction: the admin settings form submits every field

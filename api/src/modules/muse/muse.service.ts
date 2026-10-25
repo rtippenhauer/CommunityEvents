@@ -114,7 +114,7 @@ export class MuseService {
    * would be a mailing list handed to an outside app for display purposes.
    * Service and integration accounts are excluded -- they are not people.
    */
-  async members(): Promise<{ id: number; fullName: string; cityId: number; role: string }[]> {
+  async members(): Promise<{ id: number; fullName: string; cityId: number | null; role: string }[]> {
     return this.prisma.users.findMany({
       where: {
         status: UserStatus.ACTIVE,

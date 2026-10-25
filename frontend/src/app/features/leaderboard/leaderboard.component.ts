@@ -293,14 +293,9 @@ export class LeaderboardComponent implements OnInit {
 
   readonly myId = computed(() => this.authService.currentUser()?.id ?? null);
 
-  private citySeeded = false;
-  private readonly seedCityEffect = effect(() => {
-    const current = this.cityService.currentCity();
-    if (current && !this.citySeeded && this.cityFilter() === null) {
-      this.citySeeded = true;
-      this.setCityFilter(current.id);
-    }
-  });
+  // Starts on All since v2-24. This used to seed itself from the host's
+  // subdomain, which is not where a city lives any more -- and a leaderboard
+  // silently showing one city is the kind of default that reads as a bug.
 
   ngOnInit(): void {
     this.load();

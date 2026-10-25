@@ -50,6 +50,12 @@ function toDateString(d: Date): string {
 interface City {
   id: number;
   name: string;
+  /**
+   * Absent for the active cities; false for the one entry `?include=` adds —
+   * the row's own current city, kept in the list after it has been retired so
+   * the select has something to show rather than rendering blank.
+   */
+  isActive?: boolean;
 }
 interface Location {
   id: number;
@@ -76,12 +82,12 @@ interface Location {
 
     <mat-dialog-content>
       <form [formGroup]="form" class="event-form">
-        @if (cities().length > 1) {
+        @if (brand.features().cities && cities().length > 1) {
           <mat-form-field appearance="outline">
             <mat-label>City</mat-label>
             <mat-select formControlName="cityId">
               @for (city of cities(); track city.id) {
-                <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                <mat-option [value]="city.id">{{ city.name }}{{ city.isActive === false ? ' (retired)' : '' }}</mat-option>
               }
             </mat-select>
             <mat-error>City is required</mat-error>
@@ -236,7 +242,15 @@ export class EventFormDialogComponent implements OnInit {
   readonly saving = signal(false);
 
   readonly form = this.fb.group({
-    cityId: [0, [Validators.required, Validators.min(1)]],
+    // No validator on the city (v2-24). It used to carry
+    // `Validators.required + min(1)`, which is wrong in two situations this
+    // item creates: a community with city filtering off has no city to pick,
+    // and editing a past event whose city has since been retired left the
+    // select empty and blocked a save that had nothing to do with cities.
+    // The requirement belongs to the server, which is the only side that can
+    // see the community's toggle; the load below re-applies it here when the
+    // toggle is actually on.
+    cityId: [0],
     locationId: [0, [Validators.required, Validators.min(1)]],
     title: ['', Validators.required],
     eventDate: [nextWeekdayDate(DEFAULT_CADENCE_WEEKDAY), Validators.required],
@@ -249,8 +263,17 @@ export class EventFormDialogComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    this.http.get<City[]>('/api/v1/cities').subscribe((c) => {
+    // `include` keeps this event's own city in the list even when it has
+    // since been retired, labelled rather than silently dropped.
+    const include = this.data.event?.cityId ?? this.data.preset?.cityId;
+    this.http
+      .get<City[]>(`/api/v1/cities${include ? `?include=${include}` : ''}`)
+      .subscribe((c) => {
       this.cities.set(c);
+      if (this.brand.features().cities) {
+        this.form.controls.cityId.addValidators([Validators.required, Validators.min(1)]);
+        this.form.controls.cityId.updateValueAndValidity({ emitEvent: false });
+      }
       // Single-region fork: there's only one city and its selector is hidden
       // (see template), so auto-select it for new events. The guard leaves an
       // already-set value alone — edit mode patches cityId synchronously below
@@ -296,7 +319,10 @@ export class EventFormDialogComponent implements OnInit {
     if (this.data.event) {
       const e = this.data.event;
       this.form.patchValue({
-        cityId: e.cityId,
+        // 0 rather than null: the control is seeded with 0 and the city is
+        // nullable since v2-24 (an event in a community that does not use
+        // cities has none).
+        cityId: e.cityId ?? 0,
         locationId: e.locationId ?? 0,
         title: e.title,
         eventDate: parseLocalDate(e.eventDate),

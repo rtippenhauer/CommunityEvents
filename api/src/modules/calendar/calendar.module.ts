@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CitiesModule } from '../cities/cities.module';
 import { ConfigModule } from '@nestjs/config';
 import { CalendarService } from './calendar.service';
 import { CalendarController } from './calendar.controller';
@@ -7,7 +8,7 @@ import { AppConfigModule } from '../app-config/app-config.module';
 import { EmailModule } from '../email/email.module';
 
 @Module({
-  imports: [ConfigModule, LocationsModule, AppConfigModule, EmailModule],
+  imports: [ConfigModule, LocationsModule, AppConfigModule, EmailModule, CitiesModule],
   providers: [CalendarService],
   controllers: [CalendarController],
   exports: [CalendarService],

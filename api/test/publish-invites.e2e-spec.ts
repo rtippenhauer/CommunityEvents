@@ -3,7 +3,8 @@ import request from 'supertest';
 import type { MockInstance } from 'vitest';
 import type { cities as City, locations as Location } from '@prisma/client';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
-import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs, enableCities } from './utils/seed';
+import { TEST_TENANT_ID } from './setup-env';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { EmailService } from '../src/modules/email/email.service';
 import { CalendarService } from '../src/modules/calendar/calendar.service';
@@ -35,6 +36,11 @@ describe('Auto-invites on publish (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAllTables(prisma);
+    // `feature_cities` defaults OFF (v2-24), and with it off the service layer
+    // writes `city_id` as null whatever the request carried -- the requirement
+    // moved out of the database, so a spec that seeds a city and never turns
+    // the feature on is testing a community that does not use cities.
+    await enableCities(prisma, TEST_TENANT_ID);
     resetThrottler(app);
     city = await seedCity(prisma);
     otherCity = await seedCity(prisma);
@@ -44,25 +50,38 @@ describe('Auto-invites on publish (e2e)', () => {
       email: 'admin@example.test',
     });
     adminCookie = await loginAs(app, admin);
+    // Auto-invite is an on/off since v2-24; which cities it covers is the
+    // member's `user_city_preferences` set, where **no rows means every city**.
+    //
+    // So the four fixtures are: opted in with no preferences (every city),
+    // opted in and narrowed to the event's city, opted in and narrowed to a
+    // different city, and opted out. The third is the one the old enum could
+    // express only by accident -- it is the member who must NOT be mailed.
     await seedUser(prisma, otherCity.id, {
       fullName: 'Larry All',
       email: 'larry@example.test',
-      calendarAutoInvite: 'all',
+      calendarAutoInvite: true,
     });
-    await seedUser(prisma, city.id, {
+    const cindy = await seedUser(prisma, city.id, {
       fullName: 'Cindy City',
       email: 'cindy@example.test',
-      calendarAutoInvite: 'city',
+      calendarAutoInvite: true,
     });
-    await seedUser(prisma, otherCity.id, {
+    const other = await seedUser(prisma, otherCity.id, {
       fullName: 'Other City',
       email: 'other@example.test',
-      calendarAutoInvite: 'city',
+      calendarAutoInvite: true,
     });
     await seedUser(prisma, city.id, {
       fullName: 'No Invites',
       email: 'none@example.test',
-      calendarAutoInvite: 'none',
+      calendarAutoInvite: false,
+    });
+    await prisma.user_city_preferences.createMany({
+      data: [
+        { userId: cindy.id, cityId: city.id },
+        { userId: other.id, cityId: otherCity.id },
+      ],
     });
     sendNow = vi.spyOn(app.get(EmailService), 'sendNow').mockResolvedValue(undefined as never);
     invalidateAll = vi.spyOn(app.get(CalendarService), 'invalidateAll');

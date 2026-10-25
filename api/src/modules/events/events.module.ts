@@ -9,6 +9,7 @@ import { LocationsModule } from '../locations/locations.module';
 import { AppConfigModule } from '../app-config/app-config.module';
 import { FacebookHeadcountModule } from '../facebook/facebook-headcount.module';
 import { AuditModule } from '../audit/audit.module';
+import { CitiesModule } from '../cities/cities.module';
 import type { events as EventRow, event_guest_links as EventGuestLink, event_rsvps as EventRsvp, invites as Invite, locations as LocationRow, users as User } from '@prisma/client';
 
 @Module({
@@ -25,6 +26,7 @@ import type { events as EventRow, event_guest_links as EventGuestLink, event_rsv
     // cycle.
     FacebookHeadcountModule,
     AuditModule,
+    CitiesModule,
   ],
   providers: [EventsService],
   controllers: [EventsController],

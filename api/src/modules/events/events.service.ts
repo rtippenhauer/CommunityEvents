@@ -17,6 +17,8 @@ import type {
 import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import { FacebookHeadcountService } from '../facebook/facebook-headcount.service';
 import { AuditService } from '../audit/audit.service';
+import { CitiesService } from '../cities/cities.service';
+import { CityPreferencesService } from '../cities/city-preferences.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import {
   EventStatus,
@@ -81,6 +83,15 @@ import { TenantResolutionService } from '../../common/tenant/tenant-resolution.s
 
 export interface EventFilters {
   cityId?: number;
+  /**
+   * Cities the caller wants, when that is a *set* rather than one id — the
+   * signed-in member's own preferences, applied as the list's default (v2-24).
+   *
+   * Separate from `cityId` because they come from different places and the
+   * explicit one wins: `cityId` is a filter the member just chose on the
+   * screen, `cityIds` is the standing preference the screen opens with.
+   */
+  cityIds?: number[];
   upcoming?: boolean;
   fromDate?: string;
   status?: EventStatus;
@@ -105,6 +116,8 @@ export class EventsService {
     private readonly tenantResolution: TenantResolutionService,
     private readonly facebookHeadcount: FacebookHeadcountService,
     private readonly auditService: AuditService,
+    private readonly cities: CitiesService,
+    private readonly cityPreferences: CityPreferencesService,
   ) {}
 
   // Per-instance branding for transactional emails / calendar files. Reads the
@@ -158,7 +171,15 @@ export class EventsService {
 
   async findAll(filters: EventFilters): Promise<(EventRow & { goingCount: number; totalAttending: number; attendeeSnippet: { fullName: string; profilePhotoPath: string | null }[]; myRsvpStatus: string | null })[]> {
     const where: Prisma.eventsWhereInput = {};
-    if (filters.cityId) where.cityId = filters.cityId;
+    if (filters.cityId) {
+      where.cityId = filters.cityId;
+    } else if (filters.cityIds?.length) {
+      // An event with no city is always included. With the feature on every
+      // event has one, so this only bites in the window between a community
+      // turning cities on and filing everything -- and in that window hiding
+      // events from members is worse than showing one they did not ask for.
+      where.OR = [{ cityId: { in: filters.cityIds } }, { cityId: null }];
+    }
     if (filters.status) {
       where.status = filters.status;
     } else if (!filters.isAdminOrMod) {
@@ -406,8 +427,14 @@ export class EventsService {
     });
     if (!location) throw new NotFoundException(`Restaurant ${dto.locationId} not found`);
 
+    // The database stopped requiring a city in v2-24 (every `city_id` is
+    // nullable, so the toggle can turn cities off at all), so the requirement
+    // lives here -- this is the only layer that can see the community's flag.
+    // With cities off this resolves to null whatever the client sent.
+    const cityId = await this.cities.resolveRequiredCityId(dto.cityId);
+
     const data: Prisma.eventsUncheckedCreateInput = ({
-      cityId: dto.cityId,
+      cityId,
       locationId: location.id,
       locationName: location.name,
       locationAddress: location.address,
@@ -464,7 +491,9 @@ export class EventsService {
       dto.eventTime !== undefined && dto.eventTime !== toTimeString(event.eventTime).substring(0, 5);
     const changedLocation = dto.locationId !== undefined && dto.locationId !== event.locationId;
 
-    if (dto.cityId !== undefined) event.cityId = dto.cityId;
+    if (dto.cityId !== undefined) {
+      event.cityId = await this.cities.resolveRequiredCityId(dto.cityId);
+    }
 
     if (dto.locationId && dto.locationId !== event.locationId) {
       const location = await this.prisma.locations.findUnique({
@@ -941,9 +970,14 @@ export class EventsService {
     const addressVisible = !event.location?.isPrivate;
     const locationAddress = addressVisible ? event.locationAddress : null;
 
-    // Auto-invite opt-in: 'all' takes every event, 'city' only this event's
-    // city. The grouping matters -- flattening it would send city-only members
-    // invitations for other cities.
+    // Auto-invite opt-in. A single on/off since v2-24, where it used to be
+    // `none | city | all`; which cities a member wants is their
+    // `user_city_preferences` set, and **no rows means every city**.
+    //
+    // So the targeting is "opted in, AND (has no preferences OR one of them
+    // names this event's city)". The second arm is not an optimisation: a
+    // member who named Dayton must not be mailed about Cincinnati, which is
+    // exactly what the old flattened filter would have done.
     const members = await this.prisma.users.findMany({
       where: {
         // The original filtered `status IN ('active','non_validated')`, but
@@ -954,10 +988,15 @@ export class EventsService {
         // deliberate change against users.role, not something to slip into a
         // refactor.
         status: UserStatus.ACTIVE,
-        OR: [
-          { calendarAutoInvite: 'all' },
-          { calendarAutoInvite: 'city', cityId: event.cityId },
-        ],
+        calendarAutoInvite: true,
+        ...(event.cityId === null
+          ? {}
+          : {
+              OR: [
+                { userCityPreferences: { none: {} } },
+                { userCityPreferences: { some: { cityId: event.cityId } } },
+              ],
+            }),
       },
     });
 

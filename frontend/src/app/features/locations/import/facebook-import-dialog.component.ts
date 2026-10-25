@@ -52,6 +52,7 @@ type DialogStep = 'form' | 'importing' | 'done';
           <li>Select that file and the city below, then click Import</li>
         </ol>
 
+        @if (brand.features().cities) {
         <mat-form-field appearance="outline" class="city-select">
           <mat-label>City for this group</mat-label>
           <mat-select [formControl]="cityCtrl">
@@ -60,6 +61,7 @@ type DialogStep = 'form' | 'importing' | 'done';
             }
           </mat-select>
         </mat-form-field>
+        }
 
         <!-- File drop zone -->
         <div
@@ -150,7 +152,7 @@ type DialogStep = 'form' | 'importing' | 'done';
           mat-raised-button
           color="primary"
           (click)="startImport()"
-          [disabled]="!selectedFile() || !cityCtrl.value"
+          [disabled]="!selectedFile() || (brand.features().cities && !cityCtrl.value)"
         >
           Import
         </button>
@@ -409,12 +411,16 @@ export class FacebookImportDialogComponent implements OnInit {
 
   startImport(): void {
     const file = this.selectedFile();
+    // The city is required only while the community uses cities (v2-24).
+    // With the feature off there is nothing to file the venues under, and
+    // demanding one would make the importer unusable rather than safe.
+    const citiesOn = this.brand.features().cities;
     const cityId = this.cityCtrl.value;
-    if (!file || !cityId) return;
+    if (!file || (citiesOn && !cityId)) return;
 
     this.step.set('importing');
 
-    this.locationsService.importFacebook(file, cityId).subscribe({
+    this.locationsService.importFacebook(file, citiesOn ? cityId : null).subscribe({
       next: (res) => {
         this.result.set(res);
         this.step.set('done');

@@ -20,6 +20,7 @@ import type { Request } from 'express';
 import type { FileFilterCallback } from 'multer';
 import { extname, join } from 'path';
 import { mkdirSync } from 'fs';
+import { CitiesService } from '../cities/cities.service';
 import { LocationsService } from './locations.service';
 import { RatingsService } from './ratings.service';
 import { EnrichmentService } from './enrichment.service';
@@ -84,6 +85,7 @@ export class LocationsController {
     private readonly locationsService: LocationsService,
     private readonly ratingsService: RatingsService,
     private readonly enrichmentService: EnrichmentService,
+    private readonly cities: CitiesService,
   ) {}
 
   // Must be declared before :id routes to avoid route collision
@@ -97,14 +99,20 @@ export class LocationsController {
       fileFilter: jsonFilter,
     }),
   )
-  importFacebook(
+  async importFacebook(
     @UploadedFile() file: Express.Multer.File,
     @Query('cityId') cityId: string,
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
+    // Required only while the community uses cities. With the feature off
+    // there is no city to ask for and nothing to file the venues under, so
+    // demanding one would make the importer unusable rather than safe.
+    const citiesEnabled = await this.cities.isEnabled();
     const id = parseInt(cityId, 10);
-    if (!id) throw new BadRequestException('cityId query parameter is required');
-    return this.locationsService.importFacebookEvents(file.buffer, id);
+    if (citiesEnabled && !id) {
+      throw new BadRequestException('cityId query parameter is required');
+    }
+    return this.locationsService.importFacebookEvents(file.buffer, citiesEnabled ? id : null);
   }
 
   @Get('place-search')

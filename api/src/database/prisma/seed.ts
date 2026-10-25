@@ -19,7 +19,6 @@ function load(table: string): Record<string, unknown>[] {
 }
 
 const avatar = load('avatar');
-const cities = load('cities');
 const merchConfig = load('merch_config');
 
 dotenv.config({ path: path.join(__dirname, '../../../../.env') });
@@ -29,7 +28,7 @@ dotenv.config({ path: path.join(__dirname, '../../../../.env') });
  *
  * v2 starts from a blank database and imports real records from production
  * separately, so this file covers only the rows the application itself
- * assumes exist -- the avatar set, the city list --
+ * assumes exist -- the avatar set --
  * not user-generated data.
  *
  * **Everything here is tenant-independent, and that is now a hard rule rather
@@ -103,20 +102,14 @@ async function main() {
     }),
   });
 
-  // Ordered by foreign-key dependency: cities before users (users.city_id).
+  // The achievements catalogue used to be seeded here, and so did the city
+  // list. v2-10 scoped the first and v2-24 the second, so both belong to a
+  // community and neither can be written before one exists -- they moved to
+  // bootstrap.ts and tenants-admin.service.create, the same move v2-6 made for
+  // the app_config defaults and v2-9 for email_provider_config.
   //
-  // The achievements catalogue used to be seeded here. v2-10 scoped it, so it
-  // belongs to a community and cannot be written before one exists -- it moved
-  // to bootstrap.ts and tenants-admin.service.create, the same move v2-6 made
-  // for the app_config defaults and v2-9 for email_provider_config.
-  for (const row of cities) {
-    const data = normalize(row);
-    await prisma.cities.upsert({
-      where: { subdomain: row.subdomain as string },
-      update: data as never,
-      create: data as never,
-    });
-  }
+  // Nothing left here has a foreign key to anything, which is what makes it
+  // safe to run before any tenant exists at all.
 
   for (const row of avatar) {
     const data = normalize(row);

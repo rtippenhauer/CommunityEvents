@@ -1,8 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
-import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs, enableCities } from './utils/seed';
 import { CalendarService, IcsEventLike } from '../src/modules/calendar/calendar.service';
+import { TEST_TENANT_ID } from './setup-env';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { cities as City, event_rsvps as EventRsvp, events as Event, locations as Location, users as User } from '@prisma/client';
 import { EventStatus, RsvpStatus, UserRole } from '../src/database/enums';
@@ -40,6 +41,11 @@ describe('Calendar / ICS Feed (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAllTables(prisma);
+    // `feature_cities` defaults OFF (v2-24), and with it off the service layer
+    // writes `city_id` as null whatever the request carried -- the requirement
+    // moved out of the database, so a spec that seeds a city and never turns
+    // the feature on is testing a community that does not use cities.
+    await enableCities(prisma, TEST_TENANT_ID);
     resetThrottler(app);
     city = await seedCity(prisma);
     location = await seedLocation(prisma, city.id);
@@ -158,7 +164,11 @@ describe('Calendar / ICS Feed (e2e)', () => {
           status: EventStatus.PUBLISHED,
         }, });
       await seedEvent({ title: 'My City Dinner' });
-      await prisma.users.update({ where: { id: member.id }, data: { calendarCityFilter: 'city' } });
+      // "My city only" is a row in the preference set now, not an enum value
+      // on the member (v2-24). No rows means every city.
+      await prisma.user_city_preferences.create({
+        data: { userId: member.id, cityId: city.id },
+      });
 
       const token = await calendarService.getOrCreateToken(member.id);
       calendarService.invalidateForUser(member.id);
@@ -171,7 +181,8 @@ describe('Calendar / ICS Feed (e2e)', () => {
   describe('GET/PATCH /calendar/settings', () => {
     it('returns default settings with a feed URL', async () => {
       const res = await request(server).get('/api/v1/calendar/settings').set('Cookie', memberCookie).expect(200);
-      expect(res.body.cityFilter).toBe('all');
+      // No cities named is the default and means every city.
+      expect(res.body.cityIds).toEqual([]);
       expect(res.body.rsvpOnly).toBeFalsy();
       expect(res.body.url).toContain('/calendar/feed.ics?token=');
     });
@@ -184,12 +195,18 @@ describe('Calendar / ICS Feed (e2e)', () => {
       await request(server)
         .patch('/api/v1/calendar/settings')
         .set('Cookie', memberCookie)
-        .send({ rsvpOnly: true, cityFilter: 'city' })
+        .send({ rsvpOnly: true, cityIds: [city.id] })
         .expect(200);
 
       const updated = await prisma.users.findFirst({ where: { id: member.id } });
       expect(updated!.calendarRsvpOnly).toBeTruthy();
-      expect(updated!.calendarCityFilter).toBe('city');
+
+      // Stored as NO rows, not as one row naming this city. The community has
+      // exactly one city, so naming it is naming all of them -- and "every
+      // city" is stored as an empty set so that a city added next month is
+      // included automatically rather than silently excluded (v2-24).
+      const prefs = await prisma.user_city_preferences.findMany({ where: { userId: member.id } });
+      expect(prefs).toEqual([]);
 
       // Cache should be invalidated — the event we RSVP'd to nothing for should now be filtered out
       const res = await request(server).get('/api/v1/calendar/feed.ics').query({ token }).expect(200);

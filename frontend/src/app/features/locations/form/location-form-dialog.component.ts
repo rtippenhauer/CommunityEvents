@@ -29,6 +29,12 @@ export interface LocationFormDialogData {
 interface City {
   id: number;
   name: string;
+  /**
+   * Absent for the active cities; false for the one entry `?include=` adds —
+   * the row's own current city, kept in the list after it has been retired so
+   * the select has something to show rather than rendering blank.
+   */
+  isActive?: boolean;
 }
 
 @Component({
@@ -159,12 +165,12 @@ interface City {
             (e.g. "Rob &amp; Terry's").
           </p>
 
-          @if (cities.length > 1) {
+          @if (brand.features().cities && cities.length > 1) {
             <mat-form-field appearance="outline">
               <mat-label>City</mat-label>
               <mat-select formControlName="cityId">
                 @for (city of cities; track city.id) {
-                  <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                  <mat-option [value]="city.id">{{ city.name }}{{ city.isActive === false ? ' (retired)' : '' }}</mat-option>
                 }
               </mat-select>
               <mat-error>City is required</mat-error>
@@ -454,7 +460,9 @@ export class LocationFormDialogComponent implements OnInit {
     address: ['', [Validators.required, Validators.maxLength(500)]],
     isPrivate: [false],
     isResidence: [false],
-    cityId: [0, [Validators.required, Validators.min(1)]],
+    // Unvalidated here, required by the server when the community has city
+    // filtering on -- see the note in event-form-dialog, same reasoning.
+    cityId: [0],
     phone: [''],
     websiteUrl: [''],
     description: [''],
@@ -470,8 +478,15 @@ export class LocationFormDialogComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.http.get<City[]>('/api/v1/cities').subscribe((cities) => {
+    const include = this.data.location?.cityId;
+    this.http
+      .get<City[]>(`/api/v1/cities${include ? `?include=${include}` : ''}`)
+      .subscribe((cities) => {
       this.cities = cities;
+      if (this.brand.features().cities) {
+        this.form.controls.cityId.addValidators([Validators.required, Validators.min(1)]);
+        this.form.controls.cityId.updateValueAndValidity({ emitEvent: false });
+      }
       // Single-region fork: the city selector is hidden (see template), so
       // auto-select the sole city for new locations. Edit mode patches cityId
       // synchronously below before this async callback resolves.
@@ -486,7 +501,8 @@ export class LocationFormDialogComponent implements OnInit {
         address: r.address ?? '',
         isPrivate: r.isPrivate,
         isResidence: r.isResidence,
-        cityId: r.cityId,
+        // Nullable since v2-24; the control is seeded with 0.
+        cityId: r.cityId ?? 0,
         phone: r.phone ?? '',
         websiteUrl: r.websiteUrl ?? '',
         description: r.description ?? '',

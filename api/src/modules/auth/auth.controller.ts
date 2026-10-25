@@ -22,7 +22,6 @@ import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { AuthService } from './auth.service';
-import { CitiesService } from '../cities/cities.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { FacebookAuthDto } from './dto/facebook-auth.dto';
@@ -56,7 +55,6 @@ export class AuthController {
 
   constructor(
     private readonly authService: AuthService,
-    private readonly citiesService: CitiesService,
     private readonly tenantResolution: TenantResolutionService,
     private readonly googleOAuth: GoogleOAuthService,
     private readonly handoffService: OAuthHandoffService,
@@ -127,27 +125,6 @@ export class AuthController {
     const params = new URLSearchParams({ reason });
     if (email) params.set('email', email);
     res.redirect(`${base}/auth/error?${params.toString()}`);
-  }
-
-  /**
-   * The city a new member lands in, from the community's own subdomain.
-   *
-   * v1 read this off the request's Host header, which cannot work at a callback
-   * that always arrives on one fixed host -- it would file every OAuth
-   * registration under the root community's default city. The tenant's
-   * registered domain is the same information, available at the point it is
-   * actually needed. Returns undefined when nothing matches, which is what
-   * `resolveCityId` already treats as "use the default".
-   */
-  private async cityForTenant(tenantId: number): Promise<number | undefined> {
-    try {
-      const baseUrl = await this.tenantResolution.baseUrlFor(tenantId);
-      const subdomain = new URL(baseUrl).hostname.split('.')[0];
-      const city = await this.citiesService.findBySubdomainOrNull(subdomain);
-      return city?.id;
-    } catch {
-      return undefined;
-    }
   }
 
   // --- Google OAuth ---
@@ -361,7 +338,6 @@ export class AuthController {
           profile.displayName ?? email,
           state.inviteToken,
           profile.photos?.[0]?.value ?? null,
-          await this.cityForTenant(state.tenantId),
         );
 
         // `login_sessions` is scoped, so issuing tokens belongs inside this
@@ -464,7 +440,6 @@ export class AuthController {
     // whole point once apps are per community.
     const fbUser = await this.facebookOAuth.profileFor(tenant.id, dto.accessToken);
     const fbPhoto = fbUser.picture?.data?.url ?? null;
-    const city = await this.cityForTenant(tenant.id);
 
     let user;
     try {
@@ -475,7 +450,6 @@ export class AuthController {
         dto.inviteToken,
         fbPhoto,
         fbUser.link ?? null,
-        city,
       );
     } catch (err) {
       if (err instanceof AuthFlowError) {
@@ -605,18 +579,18 @@ export class AuthController {
     @Body() dto: RegisterDto,
     @Req() req: Request,
   ): Promise<{ message: string }> {
-    const subdomain = req.headers['x-subdomain'];
-    const city = await this.citiesService.findBySubdomainOrNull(
-      typeof subdomain === 'string' ? subdomain : undefined,
-    );
-
+    // The `x-subdomain` header this used to read named a city, looked up
+    // against `cities.subdomain`. Both are gone (v2-24): a city is a row, not
+    // a hostname, and the header was a client-supplied value deciding which
+    // city a member was filed under. `registerWithPassword` falls back to the
+    // community's first city exactly as it did whenever the header was absent,
+    // which was the common case.
     try {
       await this.authService.registerWithPassword(
         dto.inviteToken,
         dto.fullName,
         dto.email,
         dto.password,
-        city?.id,
       );
     } catch (err) {
       if (err instanceof AuthFlowError) {

@@ -45,8 +45,8 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         <div class="card-date">
           {{ event().eventDate | date: 'EEE, MMM d' }} &middot; {{ formatTime(event().eventTime) }}
         </div>
-        @if (!compact()) {
-          <div class="card-city">{{ event().city.name }}</div>
+        @if (!compact() && event().city) {
+          <div class="card-city">{{ event().city!.name }}</div>
         }
         <div class="card-location" [class.muted]="event().status === 'cancelled'">
           {{ event().locationName }}

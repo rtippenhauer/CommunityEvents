@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createTestApp, truncateAllTables, resetThrottler } from './utils/test-app';
 import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
 import { PrismaService } from '../src/database/prisma/prisma.service';
-import type { cities as City, event_rsvps as EventRsvp, facebook_group_config as FacebookGroupConfig, invites as Invite, locations as Location, users as User } from '@prisma/client';
+import type { cities as City, event_rsvps as EventRsvp, invites as Invite, locations as Location, users as User } from '@prisma/client';
 import { InviteFlavor, InviteType, RsvpStatus, UserRole } from '../src/database/enums';
 import { daysFromNowLocal } from './utils/dates';
 
@@ -95,22 +95,20 @@ describe('Invites (e2e)', () => {
       expect(Math.abs(expiresAt - expected30d)).toBeLessThan(5 * 60 * 1000);
     });
 
-    it('creates a CAMPAIGN_FACEBOOK invite tied to a Facebook group', async () => {
-      const group = await prisma.facebook_group_config.create({ data: {
-        name: 'Test Group',
-        url: 'https://facebook.com/groups/test',
-        cityId: city.id,
-      } });
-
+    it('creates a CAMPAIGN_FACEBOOK invite, which no longer names a group', async () => {
+      // The invite *type* survives v2-24 and the group id does not: the type
+      // is attribution (it is what `users.invite_source` records), while the
+      // id pointed into `facebook_group_config`, a table built for automated
+      // group posting that Meta's API already blocks. Nothing is required in
+      // its place.
       const res = await request(server)
         .post('/api/v1/invites')
         .set('Cookie', adminCookie)
-        .send({ type: 'campaign_facebook', facebookGroupId: group.id, maxUses: 50, noExpiry: true })
+        .send({ type: 'campaign_facebook', maxUses: 50, noExpiry: true })
         .expect(201);
 
-      expect(res.body.facebookGroupId).toBe(group.id);
+      expect(res.body.type).toBe('campaign_facebook');
       expect(res.body.maxUses).toBe(50);
-      expect(new Date(res.body.expiresAt).getFullYear()).toBe(2099);
     });
 
     it('forces the invite type to MEMBER for a non-elevated creator regardless of requested type', async () => {
@@ -138,8 +136,17 @@ describe('Invites (e2e)', () => {
       await request(server).post('/api/v1/invites').set('Cookie', adminCookie).send({ type: 'member' }).expect(400);
     });
 
-    it('rejects a CAMPAIGN_FACEBOOK invite with no facebookGroupId', async () => {
-      await request(server).post('/api/v1/invites').set('Cookie', adminCookie).send({ type: 'campaign_facebook' }).expect(400);
+it('accepts a CAMPAIGN_FACEBOOK invite with no city, which is the common case', async () => {
+      // This used to assert a 400 for a campaign invite naming no Facebook
+      // group. v2-24 dropped the group, and the city that replaced its picker
+      // is deliberately optional: a campaign that is not about one place
+      // names none, and the invite type still records where the member came
+      // from either way.
+      await request(server)
+        .post('/api/v1/invites')
+        .set('Cookie', adminCookie)
+        .send({ type: 'campaign_facebook' })
+        .expect(201);
     });
 
     it('rejects a MEMBER invite for an email that already belongs to an active member', async () => {

@@ -131,7 +131,9 @@ interface City {
                   <mat-icon class="private-icon" matTooltip="Private location">lock</mat-icon>
                 }
               </h3>
-              <p class="location-city">{{ r.city.name }}</p>
+              @if (r.city) {
+                <p class="location-city">{{ r.city!.name }}</p>
+              }
               @if (r.address) {
                 <p class="location-address">{{ r.address }}</p>
               } @else {
@@ -302,14 +304,8 @@ export class LocationsListComponent implements OnInit {
   readonly searchCtrl = new FormControl('');
   readonly cityCtrl = new FormControl<number | null>(null);
 
-  private citySeeded = false;
-  private readonly seedCityEffect = effect(() => {
-    const current = this.cityService.currentCity();
-    if (current && !this.citySeeded && this.cityCtrl.value === null) {
-      this.citySeeded = true;
-      this.cityCtrl.setValue(current.id);
-    }
-  });
+  // Starts on All since v2-24 -- see the note in events-list: the subdomain
+  // this seeded itself from is gone, a city being a row rather than a host.
 
   ngOnInit(): void {
     this.http.get<City[]>('/api/v1/cities').subscribe((c) => this.cities.set(c));

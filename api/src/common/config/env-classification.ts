@@ -144,7 +144,6 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
   ADMIN_EMAIL: { cls: 'install', note: "The first system admin's address." },
   INSTANCE_ADMIN_NAME: { cls: 'install' },
   INSTANCE_CITY_NAME: { cls: 'install' },
-  INSTANCE_CITY_SUBDOMAIN: { cls: 'install' },
   INSTANCE_BRAND_NAME: { cls: 'install', note: 'Seeds the app_config row of the same name.' },
   INSTANCE_BRAND_TAGLINE: { cls: 'install', note: 'Seeds the app_config row of the same name.' },
   INSTANCE_THEME_PRIMARY: { cls: 'install', note: 'Seeds theme_color_primary.' },

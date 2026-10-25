@@ -27,13 +27,43 @@ function unique(prefix: string): string {
   return `${prefix}-${Date.now()}-${counter}`;
 }
 
+/**
+ * `cities` is tenant-scoped as of v2-24, so the tenant comes from the ambient
+ * context like any other scoped model -- a spec that seeds one outside
+ * `runWithTenant` gets the throw, which is the intended behaviour.
+ *
+ * The `subdomain` this used to generate is gone with the column: a city is a
+ * row, not a hostname.
+ */
 export async function seedCity(prisma: PrismaService, overrides: CityOverrides = {}): Promise<City> {
   return prisma.cities.create({
     data: {
       name: overrides.name ?? `Test City ${unique('city')}`,
-      subdomain: overrides.subdomain ?? unique('city').toLowerCase().replace(/[^a-z0-9-]/g, ''),
       isActive: overrides.isActive ?? true,
+      ...(overrides.tenantId !== undefined ? { tenantId: overrides.tenantId } : {}),
     },
+  });
+}
+
+/**
+ * Turns `feature_cities` on for the tenant in context.
+ *
+ * Needed by every spec that asserts anything about a city, because the flag
+ * defaults **off** (v2-24) and with it off the service layer writes `city_id`
+ * as null whatever the request carried -- the requirement moved out of the
+ * database, so a spec that seeds a city and never enables the feature is
+ * testing a community that does not use cities.
+ *
+ * Written straight to `app_config` rather than through
+ * `CitiesService.setEnabled`, deliberately: `setEnabled` backfills and refuses
+ * without a city, which is behaviour the cities spec tests directly and that
+ * every other spec would only have to work around.
+ */
+export async function enableCities(prisma: PrismaService, tenantId: number): Promise<void> {
+  await prisma.app_config.upsert({
+    where: { tenantId_configKey: { tenantId, configKey: 'feature_cities' } },
+    update: { configValue: 'true' },
+    create: { tenantId, configKey: 'feature_cities', configValue: 'true' },
   });
 }
 

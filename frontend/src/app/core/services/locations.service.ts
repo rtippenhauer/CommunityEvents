@@ -26,8 +26,9 @@ export interface Location {
   phone: string | null;
   websiteUrl: string | null;
   description: string | null;
-  cityId: number;
-  city: { id: number; name: string; subdomain: string };
+  cityId: number | null;
+  /** Null when the community does not use cities (v2-24). */
+  city: { id: number; name: string } | null;
   isActive: boolean;
   isPrivate: boolean;
   isResidence: boolean;
@@ -199,10 +200,18 @@ export class LocationsService {
     return this.http.post<{ placeFound: boolean; description: string | null; phone: string | null; website: string | null; address: string | null; photoAdded: boolean; location: Location }>(`${this.base}/${id}/enrich`, {});
   }
 
-  importFacebook(file: File, cityId: number): Observable<ImportResult> {
+  /**
+   * `cityId` is null for a community that does not use cities (v2-24), where
+   * there is nothing to file the imported venues under. The query parameter
+   * is left off entirely in that case rather than sent empty, so the API's
+   * "is one required" check sees the same thing a client that never knew
+   * about cities would have sent.
+   */
+  importFacebook(file: File, cityId: number | null): Observable<ImportResult> {
     const form = new FormData();
     form.append('file', file);
-    return this.http.post<ImportResult>(`${this.base}/import/facebook?cityId=${cityId}`, form);
+    const query = cityId === null ? '' : `?cityId=${cityId}`;
+    return this.http.post<ImportResult>(`${this.base}/import/facebook${query}`, form);
   }
 
   getRatings(locationId: number): Observable<RatingsResponse> {

@@ -22,7 +22,6 @@ No `synchronize: true`. No manual schema changes.
 | `oauth_accounts` | 2 | Linked Google/Facebook OAuth |
 | `login_sessions` | 2 | Device-level session tracking |
 | `invites` | 2 | All invite types |
-| `facebook_group_config` | 2 | Configured Facebook groups |
 | `audit_log` | 2 | Immutable action log |
 | `locations` | 3 | Location records |
 | `location_photos` | 3 | Photos per location |
@@ -64,12 +63,46 @@ No `synchronize: true`. No manual schema changes.
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 name            VARCHAR(100) NOT NULL           -- "Cincinnati"
-subdomain       VARCHAR(50) NOT NULL UNIQUE     -- "cincinnati"
 is_active       TINYINT(1) NOT NULL DEFAULT 1
 created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+tenant_id       INT UNSIGNED NOT NULL REFERENCES tenants(id)
+UNIQUE (tenant_id, name)
 ```
 
-Seed rows: Cincinnati (cincinnati), Dayton (dayton)
+Tenant-scoped as of `v2-24`, and no longer seeded: `bootstrap.ts` and
+`tenants-admin.service.create` write a community's cities, because `seed.ts`
+runs before any tenant exists.
+
+`subdomain` went with `v2-24` — a city is a row, not a hostname (Rob,
+2026-10-14). Its globally-unique index was also how one community could take a
+name from every other.
+
+**A city is never deleted, only retired** (`is_active = 0`). Every foreign key
+onto it is `NO ACTION` and stays that way, so a past event keeps the city it
+was actually held in.
+
+---
+
+## user_city_preferences
+
+```sql
+id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+user_id         INT UNSIGNED NOT NULL REFERENCES users(id) ON DELETE CASCADE
+city_id         INT UNSIGNED NOT NULL REFERENCES cities(id)
+created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+tenant_id       INT UNSIGNED NOT NULL REFERENCES tenants(id)
+UNIQUE (user_id, city_id)
+```
+
+Which cities a member wants to see and be invited to (`v2-24`). **No rows means
+every city**, which is why this replaced the single-valued
+`users.calendar_city_filter`: that enum could say "all" or "my city" and could
+not say "Dayton and Cincinnati but not Columbus".
+
+One set answers three questions — the event list's default filter, the personal
+iCal feed, and which new events earn an auto-invite email. It is never an
+access gate: a member whose set names one city can still RSVP to and rate an
+event in another.
 
 ---
 
@@ -124,9 +157,8 @@ last_seen_release_id             INT UNSIGNED NULL REFERENCES releases(id) ON DE
 last_seen_announcement_id        INT UNSIGNED NULL REFERENCES announcements(id) ON DELETE SET NULL
 -- Calendar integration (Phase 16 / 16c)
 calendar_token                  VARCHAR(36) NULL UNIQUE     -- iCal feed token; regenerable from Calendar Settings
-calendar_city_filter            ENUM('all','city') NOT NULL DEFAULT 'all'
 calendar_rsvp_only              TINYINT(1) NOT NULL DEFAULT 0
-calendar_auto_invite            ENUM('none','city','all') NOT NULL DEFAULT 'none'
+calendar_auto_invite            TINYINT(1) NOT NULL DEFAULT 0  -- v2-24: was ENUM('none','city','all')
                                 -- send .ics invite email when a new event is published
 created_at                      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 updated_at                      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -206,7 +238,6 @@ created_by          INT UNSIGNED NOT NULL REFERENCES users(id)
 city_id             INT UNSIGNED NULL REFERENCES cities(id)
 event_id            INT UNSIGNED NULL REFERENCES events(id)
                     -- populated for guest_rsvp, shareable_rsvp, event_invite
-facebook_group_id   INT UNSIGNED NULL REFERENCES facebook_group_config(id)
                     -- populated for campaign_facebook type
 -- Invitee binding (member type only)
 bound_to_email      VARCHAR(255) NULL
@@ -234,22 +265,12 @@ INDEX idx_facebook_group (facebook_group_id)
 
 ---
 
-## facebook_group_config
+## facebook_group_config — **dropped in `v2-24`**
 
-Up to 3 configured Facebook groups. Used for campaign links and share button
-reference. No API calls.
-
-```sql
-id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-name            VARCHAR(255) NOT NULL           -- "DinnerBears Cincinnati"
-url             VARCHAR(500) NOT NULL
-group_id        VARCHAR(50) NULL                -- Facebook numeric group ID
-city_id         INT UNSIGNED NULL REFERENCES cities(id)  -- NULL = not city-scoped
-group_role      ENUM('primary','secondary') NOT NULL DEFAULT 'primary'
-is_active       TINYINT(1) NOT NULL DEFAULT 1
-created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-```
+Meta's API already blocks automated group posting, so the table served a
+capability that barely worked. The `campaign_facebook` invite *type* survives —
+it drives `users.invite_source`, which is attribution rather than a group id —
+and its group picker became a city picker.
 
 ---
 
@@ -482,7 +503,7 @@ cancelled_at    DATETIME NULL
 invite_id       INT UNSIGNED NULL REFERENCES invites(id)
 invited_by      INT UNSIGNED NULL REFERENCES users(id)
                 -- NULL if came via admin campaign link
-invited_by_campaign INT UNSIGNED NULL REFERENCES facebook_group_config(id)
+invited_by_campaign INT UNSIGNED NULL  -- v2-24: facebook_group_config is gone
                 -- populated if came via campaign_facebook link
 -- Conversion
 converted_to    INT UNSIGNED NULL REFERENCES users(id)
@@ -1055,7 +1076,7 @@ these keys — see `LEGAL_CONFIG_KEYS` / `SITE_SETTING_KEYS` in
   a link may be generated but never used; they join only when
   `guest_rsvp_id` is populated on the link record
 - Campaign invite lineage: `users.invite_source = 'facebook_group'`,
-  `users.invite_source_name = facebook_group_config.name`
+  `users.invite_source_name` (free text; `facebook_group_config` went in `v2-24`)
 - Single-use member invites: check `bound_to_email` matches registering
   email before allowing redemption
 - `non_validated` is a **role** not a status — API responses and guards

@@ -193,16 +193,22 @@ export class TenantsAdminService {
     // runUnscoped because the write belongs to the *new* tenant while the
     // request is scoped to the root one -- without the waiver the extension
     // would stamp the root tenant's id onto it.
-    // Looked up unconditionally: the first admin below needs it too, and
-    // gating it on the service-account decision silently stopped creating that
-    // admin -- which is the whole reason a new community is reachable at all.
-    const city = await this.prisma.cities.findFirst({ orderBy: { id: 'asc' } });
-    if (city && tenantGetsServiceAccount(false)) {
+    // No city is looked up any more (v2-24). `users.city_id` is nullable now,
+    // and `cities` is tenant-scoped -- so the row this used to find belonged
+    // to whichever community happened to be first, and attaching a new
+    // community's accounts to another community's city is precisely the
+    // cross-tenant reference the scoping exists to prevent.
+    //
+    // A new community starts with no cities and `feature_cities` off, which is
+    // also why nothing is seeded here the way the achievement catalogue is: a
+    // catalogue is reference data every community is expected to have, a city
+    // list is one community's own geography. Its admin adds one and turns the
+    // feature on, in that order, which `CitiesService.setEnabled` enforces.
+    if (tenantGetsServiceAccount(false)) {
       await runUnscoped("creating the new tenant's own service account", async () => {
         await this.prisma.users.create({
           data: {
             tenantId: created.id,
-            cityId: city.id,
             fullName: AUTOMATION_ACCOUNT_NAME,
             email: automationAccountEmail(created.slug),
             role: UserRole.AUTOMATION,
@@ -213,12 +219,6 @@ export class TenantsAdminService {
           },
         });
       });
-    } else if (!city) {
-      // Only reachable on a database that was never seeded; the tenant itself is
-      // fine, so this is a warning rather than a failed create.
-      this.logger.warn(
-        `Tenant ${created.slug} created without a service account: no city exists to attach it to.`,
-      );
     }
 
     // The community's first admin.
@@ -230,7 +230,7 @@ export class TenantsAdminService {
     //
     // runUnscoped for the same reason as the service account above -- the row
     // belongs to the new tenant while the request is scoped to the root one.
-    if (dto.adminEmail && dto.adminPassword && city) {
+    if (dto.adminEmail && dto.adminPassword) {
       if (dto.adminEmail.toLowerCase() === automationAccountEmail(created.slug)) {
         throw new BadRequestException(
           'That address is reserved for the community service account.',
@@ -241,7 +241,6 @@ export class TenantsAdminService {
         await this.prisma.users.create({
           data: {
             tenantId: created.id,
-            cityId: city.id,
             fullName: dto.adminName?.trim() || 'Admin',
             email: dto.adminEmail!.toLowerCase(),
             passwordHash,

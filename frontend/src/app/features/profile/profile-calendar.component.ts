@@ -2,7 +2,8 @@ import { Component, OnInit, signal, inject, ChangeDetectionStrategy } from '@ang
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatRadioModule } from '@angular/material/radio';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -18,7 +19,8 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
     MatCardModule,
     MatButtonModule,
     MatIconModule,
-    MatRadioModule,
+    MatFormFieldModule,
+    MatSelectModule,
     MatSlideToggleModule,
     MatDividerModule,
     MatProgressSpinnerModule,
@@ -104,27 +106,39 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
             <mat-card-subtitle>Changes save automatically</mat-card-subtitle>
           </mat-card-header>
           <mat-card-content>
-            <div class="setting-group">
-              <div class="setting-label">Cities to include</div>
-              <mat-radio-group
-                class="radio-group"
-                [value]="settings()!.cityFilter"
-                (change)="saveCityFilter($event.value)"
-              >
-                <mat-radio-button value="all">
-                  <span class="radio-title">All cities</span>
-                  <span class="radio-desc">Show {{ brand.dinnerPluralLower() }} from every chapter</span>
-                </mat-radio-button>
-                <mat-radio-button value="city">
-                  <span class="radio-title">My city only</span>
-                  <span class="radio-desc"
-                    >Show only {{ settings()!.cityName }} {{ brand.dinnerPluralLower() }}</span
+            <!--
+              One set, three jobs: it filters this feed, the event list, and
+              which new events earn an invite email. Leaving it empty means
+              every city, which is why there is no separate "all" option to
+              pick — unticking everything IS that.
+            -->
+            @if (settings()!.citiesEnabled && settings()!.cities.length > 1) {
+              <div class="setting-group">
+                <div class="setting-label">Cities to include</div>
+                <mat-form-field appearance="outline" class="city-select">
+                  <mat-label>Cities</mat-label>
+                  <mat-select
+                    multiple
+                    [value]="selectedCityIds()"
+                    (selectionChange)="saveCities($event.value)"
                   >
-                </mat-radio-button>
-              </mat-radio-group>
-            </div>
+                    @for (city of settings()!.cities; track city.id) {
+                      <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                    }
+                  </mat-select>
+                  <mat-hint>
+                    @if (settings()!.cityIds.length === 0) {
+                      Showing every city
+                    } @else {
+                      Showing {{ settings()!.cityIds.length }} of
+                      {{ settings()!.cities.length }} cities
+                    }
+                  </mat-hint>
+                </mat-form-field>
+              </div>
 
-            <mat-divider />
+              <mat-divider />
+            }
 
             <div class="setting-group">
               <div class="setting-label">Event filter</div>
@@ -157,28 +171,24 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
                 calendar invite email. Accept to RSVP Going, Decline to mark yourself Not Going —
                 right from your calendar app.
               </p>
-              <mat-radio-group
-                class="radio-group"
-                [value]="settings()!.autoInvite"
-                (change)="saveAutoInvite($event.value)"
-              >
-                <mat-radio-button value="none">
-                  <span class="radio-title">Off</span>
-                  <span class="radio-desc">Don't send automatic calendar invites</span>
-                </mat-radio-button>
-                <mat-radio-button value="city">
-                  <span class="radio-title">My city only</span>
-                  <span class="radio-desc"
-                    >Send invites for {{ settings()!.cityName }} {{ brand.dinnerPluralLower() }} only</span
-                  >
-                </mat-radio-button>
-                <mat-radio-button value="all">
-                  <span class="radio-title">All cities</span>
-                  <span class="radio-desc"
-                    >Send invites for every new {{ brand.dinnerSingularLower() }} across all chapters</span
-                  >
-                </mat-radio-button>
-              </mat-radio-group>
+              <div class="toggle-row">
+                <mat-slide-toggle
+                  [checked]="settings()!.autoInvite"
+                  (change)="saveAutoInvite($event.checked)"
+                >
+                  Send me calendar invites
+                </mat-slide-toggle>
+              </div>
+              @if (settings()!.citiesEnabled && settings()!.cities.length > 1) {
+                <p class="setting-hint">
+                  @if (settings()!.cityIds.length === 0) {
+                    Covers every city. Narrow it with the cities setting above.
+                  } @else {
+                    Covers the {{ settings()!.cityIds.length }}
+                    {{ settings()!.cityIds.length === 1 ? 'city' : 'cities' }} chosen above.
+                  }
+                </p>
+              }
             </div>
           </mat-card-content>
         </mat-card>
@@ -277,25 +287,8 @@ import { BrandConfigService } from '../../core/services/brand-config.service';
         letter-spacing: 0.05em;
         margin-bottom: 12px;
       }
-      .radio-group {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-      mat-radio-button {
-        display: flex;
-        align-items: flex-start;
-      }
-      .radio-title {
-        display: block;
-        font-weight: 500;
-        font-size: 0.92rem;
-      }
-      .radio-desc {
-        display: block;
-        font-size: 0.8rem;
-        color: #888;
-        margin-top: 2px;
+      .city-select {
+        width: 100%;
       }
       .toggle-row {
         margin-bottom: 8px;
@@ -365,8 +358,23 @@ export class ProfileCalendarComponent implements OnInit {
     });
   }
 
-  saveCityFilter(value: 'all' | 'city'): void {
-    this.calendarService.updateSettings({ cityFilter: value }).subscribe({
+  /**
+   * What the multi-select shows.
+   *
+   * An empty stored set means **every** city, and the control has to render
+   * that as everything ticked rather than nothing: a member who has never
+   * touched this sees all their cities included, which is what is actually
+   * happening. Storing it as empty is what keeps a city added next month
+   * included for them automatically.
+   */
+  selectedCityIds(): number[] {
+    const s = this.settings();
+    if (!s) return [];
+    return s.cityIds.length ? s.cityIds : s.cities.map((c) => c.id);
+  }
+
+  saveCities(cityIds: number[]): void {
+    this.calendarService.updateSettings({ cityIds }).subscribe({
       next: (s) => {
         this.settings.set(s);
         this.snackBar.open('Saved', '', { duration: 1500 });
@@ -385,7 +393,7 @@ export class ProfileCalendarComponent implements OnInit {
     });
   }
 
-  saveAutoInvite(value: 'none' | 'city' | 'all'): void {
+  saveAutoInvite(value: boolean): void {
     this.calendarService.updateSettings({ autoInvite: value }).subscribe({
       next: (s) => {
         this.settings.set(s);

@@ -8,6 +8,8 @@ import { asDateString, asTimeString } from '../../common/utils/prisma-date.util'
 import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS, eventUid, parseEventUid } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { AppConfigService } from '../app-config/app-config.service';
+import { CitiesService } from '../cities/cities.service';
+import { CityPreferencesService } from '../cities/city-preferences.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import type { TenantContext } from '../../common/tenant/tenant-context';
@@ -61,10 +63,19 @@ export interface IcsEventLike {
 
 export interface CalendarSettingsResponse {
   url: string;
-  cityFilter: 'all' | 'city';
   rsvpOnly: boolean;
-  autoInvite: 'none' | 'city' | 'all';
-  cityName: string;
+  /**
+   * On/off since v2-24, where it used to be `none | city | all`. Which cities
+   * it covers is `cityIds` below, so the two "on" arms collapsed into one flag
+   * plus a set that can name more than one city.
+   */
+  autoInvite: boolean;
+  /** The member's chosen cities; **empty means every city**. */
+  cityIds: number[];
+  /** Active cities to choose from, so the screen needs one request, not two. */
+  cities: Array<{ id: number; name: string }>;
+  /** False when this community does not use cities at all. */
+  citiesEnabled: boolean;
 }
 
 interface CacheEntry {
@@ -95,6 +106,8 @@ export class CalendarService {
     private readonly locationVisibility: LocationVisibilityService,
     private readonly appConfig: AppConfigService,
     private readonly tenantResolution: TenantResolutionService,
+    private readonly cities: CitiesService,
+    private readonly cityPreferences: CityPreferencesService,
   ) {}
 
   // Per-instance branding for generated calendar files (Phase 32/33). Same
@@ -148,33 +161,46 @@ export class CalendarService {
   // ── Settings ─────────────────────────────────────────────────────────────────
 
   async getSettings(userId: number): Promise<CalendarSettingsResponse> {
-    const user = await this.prisma.users.findUnique({
-      where: { id: userId },
-      include: { city: true },
-    });
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const token = await this.getOrCreateToken(userId);
+    const citiesEnabled = await this.cities.isEnabled();
+    const [token, cityIds, cities] = await Promise.all([
+      this.getOrCreateToken(userId),
+      this.cityPreferences.getCityIds(userId),
+      citiesEnabled ? this.cities.findAll() : Promise.resolve([]),
+    ]);
+
     return {
       url: await this.feedUrl(token),
-      cityFilter: user.calendarCityFilter ?? 'all',
       rsvpOnly: user.calendarRsvpOnly ?? false,
-      autoInvite: user.calendarAutoInvite ?? 'none',
-      cityName: user.city?.name ?? 'My city',
+      autoInvite: user.calendarAutoInvite ?? false,
+      cityIds,
+      cities: cities.map((c) => ({ id: c.id, name: c.name })),
+      citiesEnabled,
     };
   }
 
+  /**
+   * `cityIds` is the whole set, not a delta — an omitted key leaves it alone
+   * and an empty array means "every city", which is a choice a member can make
+   * and not the same as not mentioning it.
+   */
   async updateSettings(
     userId: number,
-    dto: { cityFilter?: 'all' | 'city'; rsvpOnly?: boolean; autoInvite?: 'none' | 'city' | 'all' },
+    dto: { rsvpOnly?: boolean; autoInvite?: boolean; cityIds?: number[] },
   ): Promise<CalendarSettingsResponse> {
     const updates: Prisma.usersUpdateInput = {};
-    if (dto.cityFilter !== undefined) updates.calendarCityFilter = dto.cityFilter;
     if (dto.rsvpOnly !== undefined) updates.calendarRsvpOnly = dto.rsvpOnly;
     if (dto.autoInvite !== undefined) updates.calendarAutoInvite = dto.autoInvite;
 
     if (Object.keys(updates).length > 0) {
       await this.prisma.users.update({ where: { id: userId }, data: updates });
+    }
+    if (dto.cityIds !== undefined) {
+      await this.cityPreferences.setCityIds(userId, dto.cityIds);
+    }
+    if (Object.keys(updates).length > 0 || dto.cityIds !== undefined) {
       this.invalidateForUser(userId);
     }
 
@@ -233,7 +259,10 @@ export class CalendarService {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const cutoffDate = sevenDaysAgo.toISOString().split('T')[0];
 
-    const cityFilter = user.calendarCityFilter ?? 'all';
+    // The same preference set the event list and the auto-invite targeting
+    // read, which is what keeps the three from drifting apart. Empty means
+    // every city.
+    const cityFilter = await this.cityPreferences.eventFilter(user.id);
     const rsvpOnly = user.calendarRsvpOnly ?? false;
 
     // Published events from today on, plus cancelled ones for a week after --
@@ -247,7 +276,7 @@ export class CalendarService {
           { status: EventStatus.PUBLISHED, eventDate: { gte: new Date(`${today}T00:00:00Z`) } },
           { status: EventStatus.CANCELLED, eventDate: { gte: new Date(`${cutoffDate}T00:00:00Z`) } },
         ],
-        ...(cityFilter === 'city' ? { cityId: user.cityId } : {}),
+        ...cityFilter,
       },
       include: { location: true },
       orderBy: [{ eventDate: 'asc' }, { eventTime: 'asc' }],

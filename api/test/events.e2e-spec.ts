@@ -1,7 +1,8 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp, truncateAllTables } from './utils/test-app';
-import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs, enableCities } from './utils/seed';
+import { TEST_TENANT_ID } from './setup-env';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { cities as City, locations as Location } from '@prisma/client';
 import { UserRole } from '../src/database/enums';
@@ -27,6 +28,11 @@ describe('Events CRUD (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAllTables(prisma);
+    // `feature_cities` defaults OFF (v2-24), and with it off the service layer
+    // writes `city_id` as null whatever the request carried -- the requirement
+    // moved out of the database, so a spec that seeds a city and never turns
+    // the feature on is testing a community that does not use cities.
+    await enableCities(prisma, TEST_TENANT_ID);
     city = await seedCity(prisma);
     location = await seedLocation(prisma, city.id);
 

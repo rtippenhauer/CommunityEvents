@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CitiesModule } from '../cities/cities.module';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { ProfilePhotosController } from './profile-photos.controller';
@@ -13,6 +14,7 @@ import { AvatarsModule } from '../avatars/avatars.module';
     AppConfigModule,
     AuditModule,
     AvatarsModule,
+    CitiesModule,
   ],
   providers: [UsersService],
   controllers: [UsersController, ProfilePhotosController],

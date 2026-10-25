@@ -151,16 +151,13 @@ async function main(): Promise<void> {
     // A community other than the root one gets a service account on stage only,
     // because nothing in production can use it -- see tenantGetsServiceAccount.
     //
-    // `users.city_id` is NOT NULL and `cities` is a global model, so any city
-    // serves; the field is meaningless for a service account. Ordering by id
-    // keeps a re-run deterministic.
+    // No city: `users.city_id` is nullable as of v2-24 and the field was always
+    // meaningless for a service account. This used to take "any city", which
+    // became wrong the moment `cities` was scoped -- the first row in the table
+    // belongs to some other community now.
     const wantsServiceAccount = tenantGetsServiceAccount(false);
     if (wantsServiceAccount) {
-      const city = await prisma.cities.findFirst({ orderBy: { id: 'asc' } });
-      if (!city) {
-        throw new Error('No city exists -- run the seed step before provisioning a tenant.');
-      }
-      await createServiceAccount(prisma, tenant.id, city.id, tenant.slug);
+      await createServiceAccount(prisma, tenant.id, tenant.slug);
     }
 
     console.log(

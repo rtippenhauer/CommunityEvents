@@ -514,14 +514,8 @@ export class MembersComponent implements OnInit {
     return isElevatedRole(role);
   });
 
-  private citySeeded = false;
-  private readonly seedCityEffect = effect(() => {
-    const current = this.cityService.currentCity();
-    if (current && !this.citySeeded && this.cityFilter() === null) {
-      this.citySeeded = true;
-      this.cityFilter.set(current.id);
-    }
-  });
+  // Starts on All since v2-24 -- see the note in events-list: the subdomain
+  // this seeded itself from is gone, a city being a row rather than a host.
 
   readonly filtered = computed(() => {
     const q = this.query().toLowerCase();

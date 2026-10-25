@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
+import { CityPreferencesService } from '../cities/city-preferences.service';
 import { EventsService } from './events.service';
 import { InvitesService } from '../invites/invites.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -44,6 +45,7 @@ export class EventsController {
   constructor(
     private readonly eventsService: EventsService,
     private readonly invitesService: InvitesService,
+    private readonly cityPreferences: CityPreferencesService,
   ) {}
 
   @Get()
@@ -59,8 +61,25 @@ export class EventsController {
     const isAdminOrMod =
       isElevatedRole(user?.role);
 
+    // The list opens on the member's own cities and nothing else has to know
+    // that (v2-24). Three cases, kept apart on purpose:
+    //
+    //  - a numeric `cityId` is a filter the member just picked on the screen,
+    //    and it wins over their standing preference;
+    //  - `cityId=all` is them asking to see past it, which no empty-set
+    //    convention could express -- "no cities named" already means "all" in
+    //    storage, so without this there would be no way to say it in a query;
+    //  - anything else falls back to their preference set, which is empty for
+    //    most people and therefore no filter at all.
+    const explicitCityId = cityId && cityId !== 'all' ? parseInt(cityId, 10) : undefined;
+    const cityIds =
+      explicitCityId !== undefined || cityId === 'all' || !user
+        ? undefined
+        : await this.cityPreferences.getCityIds(user.id);
+
     const events = await this.eventsService.findAll({
-      cityId: cityId ? parseInt(cityId, 10) : undefined,
+      cityId: explicitCityId,
+      cityIds,
       fromDate: fromDate || undefined,
       upcoming: fromDate ? undefined : (upcoming === 'true' ? true : upcoming === 'false' ? false : undefined),
       status: isAdminOrMod ? status : undefined,

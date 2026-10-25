@@ -366,18 +366,72 @@ model avatar {
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(6)
 }
 
+/// A city a community meets in (v2-24, REQ-CITIES-01).
+///
+/// **A city is a row, not a hostname and not a URL** (Rob, 2026-10-14). The
+/// `subdomain` column this model used to carry made a city a web host, which
+/// nobody ever used; what is wanted is filtering events by city with no URL
+/// involved. Dropping it cost a registration *default*, not a capability --
+/// members pick their own city in Profile.
+///
+/// Scoped since v2-24, and the scoping is the point: `cities` was the one model
+/// the v2-6 pass never touched, so `CitiesAdminController` -- `@Roles(ADMIN)`
+/// over a global table -- let any community's admin rename or deactivate a city
+/// another community depended on, and `subdomain`'s global unique index let one
+/// community claim a name out from under the rest.
+///
+/// **A city is never deleted, only deactivated** (Rob, 2026-10-18). Every
+/// foreign key onto it is `NoAction` and stays that way: nothing deletes a city,
+/// so nothing needs a cascade or a `SET NULL`, and the key remains a backstop
+/// that refuses an unplanned delete rather than quietly emptying columns.
 model cities {
-  id                    Int                     @id @default(autoincrement()) @db.UnsignedInt
-  name                  String                  @db.VarChar(100)
-  subdomain             String                  @unique(map: "uq_subdomain") @db.VarChar(50)
-  isActive              Boolean                 @default(true) @map("is_active")
-  createdAt             DateTime                @default(now()) @map("created_at") @db.DateTime(0)
-  announcements         announcements[]
-  events                events[]
-  facebook_group_config facebook_group_config[]
-  invites               invites[]
-  locations             locations[]
-  users                 users[]
+  id                  Int                     @id @default(autoincrement()) @db.UnsignedInt
+  name                String                  @db.VarChar(100)
+  isActive            Boolean                 @default(true) @map("is_active")
+  createdAt           DateTime                @default(now()) @map("created_at") @db.DateTime(0)
+  announcements       announcements[]
+  events              events[]
+  invites             invites[]
+  locations           locations[]
+  users               users[]
+  userCityPreferences user_city_preferences[]
+  tenantId            Int                     @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant              tenants                 @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_cities_tenant")
+
+  /// Unique per community, not globally. Two communities may both meet in a
+  /// city called Springfield; before v2-24 the name was free but `subdomain`
+  /// was globally unique, so in practice the first community to claim one took
+  /// it from everybody else.
+  @@unique([tenantId, name], map: "uq_city_tenant_name")
+  @@index([tenantId], map: "idx_cities_tenant")
+}
+
+/// Which cities a member wants to see and be invited to (v2-24).
+///
+/// **No rows means All**, which is why this replaced the single-valued
+/// `users.calendar_city_filter` enum rather than sitting beside it: that enum
+/// could say "all" or "my city" and could not say "Dayton and Cincinnati but
+/// not Columbus".
+///
+/// One set answers three questions -- the event list's default filter, the
+/// personal iCal feed, and (when `users.calendar_auto_invite` is on) which new
+/// events earn an invite email. `calendar_auto_invite` deliberately did NOT
+/// fold into this table: it defaulted to `none` where the city filter defaulted
+/// to `all`, so reading "no rows" as All would have opted in every member who
+/// never touched it. It narrowed to an on/off and reads its cities from here.
+model user_city_preferences {
+  id        Int      @id @default(autoincrement()) @db.UnsignedInt
+  userId    Int      @map("user_id") @db.UnsignedInt
+  cityId    Int      @map("city_id") @db.UnsignedInt
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  user      users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ucp_user")
+  city      cities   @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ucp_city")
+  tenantId  Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant    tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_ucp_tenant")
+
+  @@unique([userId, cityId], map: "uq_ucp_user_city")
+  @@index([cityId], map: "fk_ucp_city")
+  @@index([tenantId], map: "idx_ucp_tenant")
 }
 
 model content_flags {
@@ -855,7 +909,7 @@ model event_rsvps {
 
 model events {
   id                        Int                        @id @default(autoincrement()) @db.UnsignedInt
-  cityId                    Int                        @map("city_id") @db.UnsignedInt
+  cityId                    Int?                       @map("city_id") @db.UnsignedInt
   locationId                Int?                       @map("location_id") @db.UnsignedInt
   locationName              String                     @map("location_name") @db.VarChar(255)
   locationAddress           String                     @map("location_address") @db.VarChar(500)
@@ -888,7 +942,7 @@ model events {
   event_comments            event_comments[]
   event_guest_links         event_guest_links[]
   rsvps                     event_rsvps[]
-  city                      cities                     @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
+  city                      cities?                    @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
   createdByUser             users                      @relation("events_created_byTousers", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_created_by")
   location                  locations?                 @relation(fields: [locationId], references: [id], onUpdate: NoAction, map: "fk_event_location")
   reservationAssignee       users?                     @relation("events_reservation_assignee_idTousers", fields: [reservationAssigneeId], references: [id], onUpdate: NoAction, map: "fk_events_reservation_assignee")
@@ -916,25 +970,6 @@ model facebook_deletion_requests {
   completedAt       DateTime?                         @map("completed_at") @db.DateTime(0)
 
   @@index([facebookUserId], map: "IDX_fb_deletion_user_id")
-}
-
-model facebook_group_config {
-  id        Int                              @id @default(autoincrement()) @db.UnsignedInt
-  name      String                           @db.VarChar(255)
-  url       String                           @db.VarChar(500)
-  groupId   String?                          @map("group_id") @db.VarChar(50)
-  cityId    Int?                             @map("city_id") @db.UnsignedInt
-  groupRole facebook_group_config_group_role @default(primary) @map("group_role")
-  isActive  Boolean                          @default(true) @map("is_active")
-  createdAt DateTime                         @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt DateTime                         @default(now()) @map("updated_at") @db.DateTime(0)
-  city      cities?                          @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_fbgroup_city")
-  invites   invites[]
-  tenantId  Int                              @default(0) @map("tenant_id") @db.UnsignedInt
-  tenant    tenants                          @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_facebook_group_config_tenant")
-
-  @@index([cityId], map: "fk_fbgroup_city")
-  @@index([tenantId], map: "idx_facebook_group_config_tenant")
 }
 
 model feedback {
@@ -1018,7 +1053,6 @@ model invites {
   createdBy                        Int                    @map("created_by") @db.UnsignedInt
   cityId                           Int?                   @map("city_id") @db.UnsignedInt
   eventId                          Int?                   @map("event_id") @db.UnsignedInt
-  facebookGroupId                  Int?                   @map("facebook_group_id") @db.UnsignedInt
   boundToEmail                     String?                @map("bound_to_email") @db.VarChar(255)
   boundToName                      String?                @map("bound_to_name") @db.VarChar(200)
   redeemedBy                       Int?                   @map("redeemed_by") @db.UnsignedInt
@@ -1032,7 +1066,6 @@ model invites {
   inviteFlavor                     invites_invite_flavor? @map("invite_flavor")
   city                             cities?                @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_city")
   creator                          users                  @relation("invites_created_byTousers", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_creator")
-  facebookGroup                    facebook_group_config? @relation(fields: [facebookGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_fbgroup")
   users_invites_redeemed_byTousers users?                 @relation("invites_redeemed_byTousers", fields: [redeemedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invite_redeemed_by")
   users_users_invite_idToinvites   users[]                @relation("users_invite_idToinvites")
   tenantId                         Int                    @default(0) @map("tenant_id") @db.UnsignedInt
@@ -1041,7 +1074,6 @@ model invites {
   @@index([cityId], map: "fk_invite_city")
   @@index([redeemedBy], map: "fk_invite_redeemed_by")
   @@index([createdBy], map: "idx_created_by")
-  @@index([facebookGroupId], map: "idx_facebook_group")
   @@index([token], map: "idx_token")
   @@index([type], map: "idx_type")
   @@index([tenantId], map: "idx_invites_tenant")
@@ -1099,7 +1131,7 @@ model locations {
   phone            String?                 @db.VarChar(30)
   websiteUrl       String?                 @map("website_url") @db.VarChar(500)
   description      String?                 @db.Text
-  cityId           Int                     @map("city_id") @db.UnsignedInt
+  cityId           Int?                    @map("city_id") @db.UnsignedInt
   isActive         Boolean                 @default(true) @map("is_active")
   isPrivate        Boolean                 @default(false) @map("is_private")
   isResidence      Boolean                 @default(false) @map("is_residence")
@@ -1116,7 +1148,7 @@ model locations {
   events           events[]
   photos           location_photos[]
   location_ratings location_ratings[]
-  city             cities                  @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_location_city")
+  city             cities?                 @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_location_city")
   createdByUser    users?                  @relation("locations_created_byTousers", fields: [createdById], references: [id], onUpdate: NoAction, map: "fk_location_created_by")
   updatedByUser    users?                  @relation("locations_updated_byTousers", fields: [updatedById], references: [id], onUpdate: NoAction, map: "fk_location_updated_by")
   tenantId         Int                     @default(0) @map("tenant_id") @db.UnsignedInt
@@ -1593,7 +1625,6 @@ model tenants {
   event_guest_links        event_guest_links[]
   event_rsvps              event_rsvps[]
   events                   events[]
-  facebook_group_config    facebook_group_config[]
   feedback                 feedback[]
   feedback_notes           feedback_notes[]
   feedback_upvotes         feedback_upvotes[]
@@ -1618,6 +1649,8 @@ model tenants {
   demo_feedback            demo_feedback[]
   inbound_emails           inbound_emails[]
   api_tokens               api_tokens[]
+  cities                   cities[]
+  user_city_preferences    user_city_preferences[]
   event_facebook_links     event_facebook_links[]
   facebook_accounts        facebook_accounts[]
   facebook_event_attendees facebook_event_attendees[]
@@ -1626,18 +1659,18 @@ model tenants {
 }
 
 model users {
-  id                                                           Int                        @id @default(autoincrement()) @db.UnsignedInt
-  fullName                                                     String                     @map("full_name") @db.VarChar(200)
-  email                                                        String                     @db.VarChar(255)
-  emailStatus                                                  users_email_status         @default(pending) @map("email_status")
-  emailVerifiedAt                                              DateTime?                  @map("email_verified_at") @db.DateTime(0)
-  passwordHash                                                 String?                    @map("password_hash") @db.VarChar(255)
-  emailVerificationToken                                       String?                    @map("email_verification_token") @db.VarChar(255)
-  emailVerificationExpiresAt                                   DateTime?                  @map("email_verification_expires_at") @db.DateTime(0)
-  passwordResetToken                                           String?                    @map("password_reset_token") @db.VarChar(255)
-  passwordResetExpiresAt                                       DateTime?                  @map("password_reset_expires_at") @db.DateTime(0)
-  cityId                                                       Int                        @map("city_id") @db.UnsignedInt
-  role                                                         users_role                 @default(member)
+  id                                                           Int                       @id @default(autoincrement()) @db.UnsignedInt
+  fullName                                                     String                    @map("full_name") @db.VarChar(200)
+  email                                                        String                    @db.VarChar(255)
+  emailStatus                                                  users_email_status        @default(pending) @map("email_status")
+  emailVerifiedAt                                              DateTime?                 @map("email_verified_at") @db.DateTime(0)
+  passwordHash                                                 String?                   @map("password_hash") @db.VarChar(255)
+  emailVerificationToken                                       String?                   @map("email_verification_token") @db.VarChar(255)
+  emailVerificationExpiresAt                                   DateTime?                 @map("email_verification_expires_at") @db.DateTime(0)
+  passwordResetToken                                           String?                   @map("password_reset_token") @db.VarChar(255)
+  passwordResetExpiresAt                                       DateTime?                 @map("password_reset_expires_at") @db.DateTime(0)
+  cityId                                                       Int?                      @map("city_id") @db.UnsignedInt
+  role                                                         users_role                @default(member)
   /// Marks a non-human account the deployment created for itself, never a
   /// member who signed up. Every tenant gets exactly one (see bootstrap.ts and
   /// provision-tenant.ts); it cannot be deleted, and it is excluded from the
@@ -1648,70 +1681,74 @@ model users {
   /// mutable (the root account gets flipped to admin and back for testing), and
   /// the email is branding that v2-9 will rewrite. This is set once at creation
   /// and nothing offers a way to change it.
-  isServiceAccount                                             Boolean                    @default(false) @map("is_service_account")
-  hasMembership                                                Boolean                    @default(false) @map("has_membership")
-  membershipExpiresAt                                          DateTime?                  @map("membership_expires_at") @db.DateTime(0)
-  profilePhotoPath                                             String?                    @map("profile_photo_path") @db.VarChar(500)
-  status                                                       users_status               @default(active)
-  invitedBy                                                    Int?                       @map("invited_by") @db.UnsignedInt
-  inviteId                                                     Int?                       @map("invite_id") @db.UnsignedInt
-  inviteSource                                                 users_invite_source?       @map("invite_source")
-  inviteSourceName                                             String?                    @map("invite_source_name") @db.VarChar(255)
-  lastLoginAt                                                  DateTime?                  @map("last_login_at") @db.DateTime(0)
-  loginCount                                                   Int                        @default(0) @map("login_count") @db.UnsignedInt
-  failedLoginAttempts                                          Int                        @default(0) @map("failed_login_attempts") @db.UnsignedTinyInt
-  loginLockedUntil                                             DateTime?                  @map("login_locked_until") @db.DateTime(0)
-  lastFailedLoginAt                                            DateTime?                  @map("last_failed_login_at") @db.DateTime(0)
-  deletedAt                                                    DateTime?                  @map("deleted_at") @db.DateTime(0)
-  hardDeleteAt                                                 DateTime?                  @map("hard_delete_at") @db.DateTime(0)
-  createdAt                                                    DateTime                   @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt                                                    DateTime                   @default(now()) @map("updated_at") @db.DateTime(0)
-  calendarToken                                                String?                    @unique(map: "calendar_token") @map("calendar_token") @db.VarChar(36)
-  calendarCityFilter                                           users_calendar_city_filter @default(all) @map("calendar_city_filter")
-  calendarRsvpOnly                                             Boolean                    @default(false) @map("calendar_rsvp_only")
-  calendarAutoInvite                                           users_calendar_auto_invite @default(none) @map("calendar_auto_invite")
-  selectedTitle                                                String?                    @map("selected_title") @db.VarChar(100)
-  qualifyingLoginCount                                         Int                        @default(0) @map("qualifying_login_count") @db.UnsignedInt
-  lastQualifyingLoginAt                                        DateTime?                  @map("last_qualifying_login_at") @db.DateTime(0)
-  lastSeenReleaseId                                            Int?                       @map("last_seen_release_id") @db.UnsignedInt
-  lastSeenAnnouncementId                                       Int?                       @map("last_seen_announcement_id") @db.UnsignedInt
+  isServiceAccount                                             Boolean                   @default(false) @map("is_service_account")
+  hasMembership                                                Boolean                   @default(false) @map("has_membership")
+  membershipExpiresAt                                          DateTime?                 @map("membership_expires_at") @db.DateTime(0)
+  profilePhotoPath                                             String?                   @map("profile_photo_path") @db.VarChar(500)
+  status                                                       users_status              @default(active)
+  invitedBy                                                    Int?                      @map("invited_by") @db.UnsignedInt
+  inviteId                                                     Int?                      @map("invite_id") @db.UnsignedInt
+  inviteSource                                                 users_invite_source?      @map("invite_source")
+  inviteSourceName                                             String?                   @map("invite_source_name") @db.VarChar(255)
+  lastLoginAt                                                  DateTime?                 @map("last_login_at") @db.DateTime(0)
+  loginCount                                                   Int                       @default(0) @map("login_count") @db.UnsignedInt
+  failedLoginAttempts                                          Int                       @default(0) @map("failed_login_attempts") @db.UnsignedTinyInt
+  loginLockedUntil                                             DateTime?                 @map("login_locked_until") @db.DateTime(0)
+  lastFailedLoginAt                                            DateTime?                 @map("last_failed_login_at") @db.DateTime(0)
+  deletedAt                                                    DateTime?                 @map("deleted_at") @db.DateTime(0)
+  hardDeleteAt                                                 DateTime?                 @map("hard_delete_at") @db.DateTime(0)
+  createdAt                                                    DateTime                  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt                                                    DateTime                  @default(now()) @map("updated_at") @db.DateTime(0)
+  calendarToken                                                String?                   @unique(map: "calendar_token") @map("calendar_token") @db.VarChar(36)
+  calendarRsvpOnly                                             Boolean                   @default(false) @map("calendar_rsvp_only")
+  /// Send this member a calendar invite email for every new event they are
+  /// eligible for. An on/off since v2-24, where it used to be
+  /// `none | city | all`: which cities it covers is now `user_city_preferences`
+  /// (no rows = every city), so the enum's two "on" arms became one flag plus a
+  /// set that can name more than one city.
+  calendarAutoInvite                                           Boolean                   @default(false) @map("calendar_auto_invite")
+  selectedTitle                                                String?                   @map("selected_title") @db.VarChar(100)
+  qualifyingLoginCount                                         Int                       @default(0) @map("qualifying_login_count") @db.UnsignedInt
+  lastQualifyingLoginAt                                        DateTime?                 @map("last_qualifying_login_at") @db.DateTime(0)
+  lastSeenReleaseId                                            Int?                      @map("last_seen_release_id") @db.UnsignedInt
+  lastSeenAnnouncementId                                       Int?                      @map("last_seen_announcement_id") @db.UnsignedInt
   /// Publish date of the newest release this member has dismissed -- the
   /// watermark the "what's new" splash compares against. The id beside it is
   /// NOT enough on its own: unpublishing a release makes an older one latest
   /// again, and a different id reads as unseen, so the whole community is
   /// re-announced a release they already dismissed. Written only together with
   /// `lastSeenReleaseId`, and only ever forwards.
-  lastSeenReleaseAt                                            DateTime?                  @map("last_seen_release_at") @db.DateTime(0)
+  lastSeenReleaseAt                                            DateTime?                 @map("last_seen_release_at") @db.DateTime(0)
   /// Same watermark for announcements. An announcement cannot be unpublished
   /// today, but deleting the newest one has the identical effect.
-  lastSeenAnnouncementAt                                       DateTime?                  @map("last_seen_announcement_at") @db.DateTime(0)
+  lastSeenAnnouncementAt                                       DateTime?                 @map("last_seen_announcement_at") @db.DateTime(0)
   announcement_comments                                        announcement_comments[]
   api_tokens                                                   api_tokens[]
   facebook_accounts                                            facebook_accounts[]
-  announcements_announcements_created_byTousers                announcements[]            @relation("announcements_created_byTousers")
-  content_flags_content_flags_reported_byTousers               content_flags[]            @relation("content_flags_reported_byTousers")
-  content_flags_content_flags_reviewed_byTousers               content_flags[]            @relation("content_flags_reviewed_byTousers")
-  content_reports_content_reports_reporter_idTousers           content_reports[]          @relation("content_reports_reporter_idTousers")
-  content_reports_content_reports_reviewed_byTousers           content_reports[]          @relation("content_reports_reviewed_byTousers")
+  announcements_announcements_created_byTousers                announcements[]           @relation("announcements_created_byTousers")
+  content_flags_content_flags_reported_byTousers               content_flags[]           @relation("content_flags_reported_byTousers")
+  content_flags_content_flags_reviewed_byTousers               content_flags[]           @relation("content_flags_reviewed_byTousers")
+  content_reports_content_reports_reporter_idTousers           content_reports[]         @relation("content_reports_reporter_idTousers")
+  content_reports_content_reports_reviewed_byTousers           content_reports[]         @relation("content_reports_reviewed_byTousers")
   custom_icons                                                 custom_icons[]
   event_comment_replies                                        event_comment_replies[]
   event_comments                                               event_comments[]
   event_guest_links                                            event_guest_links[]
   event_rsvps                                                  event_rsvps[]
-  events_events_created_byTousers                              events[]                   @relation("events_created_byTousers")
-  events_events_reservation_assignee_idTousers                 events[]                   @relation("events_reservation_assignee_idTousers")
+  events_events_created_byTousers                              events[]                  @relation("events_created_byTousers")
+  events_events_reservation_assignee_idTousers                 events[]                  @relation("events_reservation_assignee_idTousers")
   feedback                                                     feedback[]
   system_reports                                               system_reports[]
   demo_feedback                                                demo_feedback[]
   inbound_emails                                               inbound_emails[]
   feedback_notes                                               feedback_notes[]
   feedback_upvotes                                             feedback_upvotes[]
-  invites_invites_created_byTousers                            invites[]                  @relation("invites_created_byTousers")
-  invites_invites_redeemed_byTousers                           invites[]                  @relation("invites_redeemed_byTousers")
+  invites_invites_created_byTousers                            invites[]                 @relation("invites_created_byTousers")
+  invites_invites_redeemed_byTousers                           invites[]                 @relation("invites_redeemed_byTousers")
   location_photos                                              location_photos[]
   location_ratings                                             location_ratings[]
-  locations_locations_created_byTousers                        locations[]                @relation("locations_created_byTousers")
-  locations_locations_updated_byTousers                        locations[]                @relation("locations_updated_byTousers")
+  locations_locations_created_byTousers                        locations[]               @relation("locations_created_byTousers")
+  locations_locations_updated_byTousers                        locations[]               @relation("locations_updated_byTousers")
   login_sessions                                               login_sessions[]
   member_achievements                                          member_achievements[]
   member_points                                                member_points[]
@@ -1720,15 +1757,16 @@ model users {
   oauth_accounts                                               oauth_accounts[]
   oauth_handoffs                                               oauth_handoffs[]
   push_subscriptions                                           push_subscriptions[]
-  releases_releases_created_byTousers                          releases[]                 @relation("releases_created_byTousers")
-  city                                                         cities                     @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_city")
-  invites_users_invite_idToinvites                             invites?                   @relation("users_invite_idToinvites", fields: [inviteId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invite")
-  users                                                        users?                     @relation("usersTousers", fields: [invitedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invited_by")
-  other_users                                                  users[]                    @relation("usersTousers")
-  announcements_users_last_seen_announcement_idToannouncements announcements?             @relation("users_last_seen_announcement_idToannouncements", fields: [lastSeenAnnouncementId], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_announcement")
-  releases_users_last_seen_release_idToreleases                releases?                  @relation("users_last_seen_release_idToreleases", fields: [lastSeenReleaseId], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_release")
-  tenantId                                                     Int                        @default(0) @map("tenant_id") @db.UnsignedInt
-  tenant                                                       tenants                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_users_tenant")
+  userCityPreferences                                          user_city_preferences[]
+  releases_releases_created_byTousers                          releases[]                @relation("releases_created_byTousers")
+  city                                                         cities?                   @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_city")
+  invites_users_invite_idToinvites                             invites?                  @relation("users_invite_idToinvites", fields: [inviteId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invite")
+  users                                                        users?                    @relation("usersTousers", fields: [invitedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_invited_by")
+  other_users                                                  users[]                   @relation("usersTousers")
+  announcements_users_last_seen_announcement_idToannouncements announcements?            @relation("users_last_seen_announcement_idToannouncements", fields: [lastSeenAnnouncementId], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_announcement")
+  releases_users_last_seen_release_idToreleases                releases?                 @relation("users_last_seen_release_idToreleases", fields: [lastSeenReleaseId], references: [id], onUpdate: NoAction, map: "fk_users_last_seen_release")
+  tenantId                                                     Int                       @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant                                                       tenants                   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_users_tenant")
 
   /// Email is unique **within** a tenant, not globally (REQ-TENANT-01.5). The
   /// same person may hold an account in two communities under one address, and
@@ -1858,11 +1896,6 @@ enum content_reports_status {
 enum event_guest_links_source {
   member
   public
-}
-
-enum facebook_group_config_group_role {
-  primary
-  secondary
 }
 
 enum feedback_status {
@@ -2041,17 +2074,6 @@ enum users_invite_source {
   facebook_group
   google_oauth
   non_validated_link
-}
-
-enum users_calendar_city_filter {
-  all
-  city
-}
-
-enum users_calendar_auto_invite {
-  none
-  city
-  all
 }
 
 enum tenants_status {

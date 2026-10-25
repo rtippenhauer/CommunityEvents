@@ -196,14 +196,12 @@ export class EventsListComponent implements OnInit {
   readonly cityCtrl = new FormControl<number | null>(null);
   readonly myOnly = signal(false);
 
-  private citySeeded = false;
-  private readonly seedCityEffect = effect(() => {
-    const current = this.cityService.currentCity();
-    if (current && !this.citySeeded && this.cityCtrl.value === null) {
-      this.citySeeded = true;
-      this.cityCtrl.setValue(current.id);
-    }
-  });
+  // No city seeding here any more (v2-24). The subdomain this used to read
+  // is gone -- a city is a row, not a hostname -- and the default it stood in
+  // for is better answered by the server: with no cityId in the query, the
+  // events endpoint applies the signed-in member's own city preferences.
+  // Leaving the control null is therefore not "no filter", it is "whatever
+  // this member asked for", which is what the old effect was guessing at.
 
   readonly displayEvents = computed(() => {
     if (!this.myOnly()) return this.events();

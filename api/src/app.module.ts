@@ -17,7 +17,6 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
-import { FacebookGroupsModule } from './modules/facebook-groups/facebook-groups.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { EventsModule } from './modules/events/events.module';
 import { AdminModule } from './modules/admin/admin.module';
@@ -62,7 +61,6 @@ import { FacebookHeadcountModule } from './modules/facebook/facebook-headcount.m
     UsersModule,
     AuditModule,
     NotificationsModule,
-    FacebookGroupsModule,
     LocationsModule,
     EventsModule,
     AdminModule,

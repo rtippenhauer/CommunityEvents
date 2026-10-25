@@ -31,7 +31,12 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/c
 interface City {
   id: number;
   name: string;
-  subdomain: string;
+  /**
+   * Absent for the active cities; false for the one entry `?include=` adds —
+   * the row's own current city, kept in the list after it has been retired so
+   * the select has something to show rather than rendering blank.
+   */
+  isActive?: boolean;
 }
 interface NotifPrefs {
   emailInvite: boolean;
@@ -170,12 +175,12 @@ interface AvatarEntry {
                 <input matInput formControlName="fullName" />
                 <mat-error>Name is required</mat-error>
               </mat-form-field>
-              @if (cities().length > 1) {
+              @if (brand.features().cities && cities().length > 1) {
                 <mat-form-field appearance="outline">
                   <mat-label>City</mat-label>
                   <mat-select formControlName="cityId">
                     @for (city of cities(); track city.id) {
-                      <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                      <mat-option [value]="city.id">{{ city.name }}{{ city.isActive === false ? ' (retired)' : '' }}</mat-option>
                     }
                   </mat-select>
                 </mat-form-field>
@@ -671,10 +676,15 @@ export class ProfileSettingsComponent implements OnInit {
 
   readonly form = this.fb.group({
     fullName: ['', [Validators.required, Validators.maxLength(200)]],
-    cityId: [0, Validators.required],
+    // Unvalidated: a community with city filtering off has none to pick, and
+    // a member whose city was retired must still be able to save their name
+    // (v2-24). The server refuses a city that is not this community's.
+    cityId: [0],
   });
 
   ngOnInit(): void {
+    // Reloaded with `include` once the member's own city is known, so a
+    // retired one is still shown rather than leaving the select blank.
     this.http.get<City[]>('/api/v1/cities').subscribe((cities) => this.cities.set(cities));
     this.http.get<AvatarEntry[]>('/api/v1/avatars/manifest').subscribe({
       next: (avatars) => this.presetAvatars.set(avatars),
@@ -683,6 +693,11 @@ export class ProfileSettingsComponent implements OnInit {
     const user = this.authService.currentUser();
     if (user) {
       this.form.patchValue({ fullName: user.fullName, cityId: user.cityId });
+      if (user.cityId) {
+        this.http
+          .get<City[]>(`/api/v1/cities?include=${user.cityId}`)
+          .subscribe((cities) => this.cities.set(cities));
+      }
       this.photoUrl.set(user.profilePhotoPath ?? null);
     }
     this.loadNotifPrefs();

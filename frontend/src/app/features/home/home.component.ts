@@ -789,12 +789,12 @@ export class HomeComponent implements OnInit {
   readonly howItWorksContent = signal('');
 
   private readonly loadEventsEffect = effect(() => {
-    // Re-runs once currentCity() resolves from undefined -> a city (or stays
-    // undefined on www/apex/stage), so the very first fetch already reflects
-    // whichever subdomain the visitor is on.
-    const cityId = this.cityService.currentCity()?.id;
+    // No cityId (v2-24). It used to come from the host's subdomain, which is
+    // not where a city lives any more; and for a signed-in visitor the events
+    // endpoint already applies their own city preferences when the query
+    // names none, which is a better answer than the host could ever give.
     this.loading.set(true);
-    this.eventsService.getAll({ upcoming: true, cityId }).subscribe({
+    this.eventsService.getAll({ upcoming: true }).subscribe({
       next: (evts) => {
         this.events.set(evts.slice(0, 3));
         this.loading.set(false);
