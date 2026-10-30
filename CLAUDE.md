@@ -1,1786 +1,207 @@
 # CommunityEvents — Claude Code Project Context
 
-*Formerly DinnerBears.com.* This repo (`rtippenhauer/CommunityEvents`) was
-created specifically for the **CommunityEvents v2.0** rewrite — a genuinely
-separate GitHub repository from the one where v1 DinnerBears is actively
-developed and deployed (confirmed with Rob 2026-08-09). This repo's `main`
-started as a snapshot of the v1 codebase (Angular/NestJS/TypeORM/MySQL,
-through v1 Phase 38, `package.json` v1.5.1) and is being progressively
-replaced as v2 items land — `v2-1` has already swapped the data layer to
-Prisma, so `main` is no longer a pure v1 snapshot. That inherited code is
-**not** actively maintained here. Full v1 history, phase docs, and ongoing v1 fixes live in the old
-repo, not this one.
-
-**This matters operationally, not just organizationally:** `rtippenhauer/
-community-events:stage` and `:latest` on Docker Hub are the real, currently
-serving v1 deployment images. The old repo's tooling builds and pushes
-those tags. This repo must never build or push to `:stage`/`:latest` — the
-v1-era commands and scripts that could do that (`/phase-start`,
-`/phase-testing`, `/phase-done`, `/release`, `scripts/publish-stage.sh`,
-`scripts/publish-latest.sh`) have been deliberately removed from this repo
-for that reason. v2 work publishes to its own `v2-stage` tag instead (see
-"Branching & Release Workflow").
-
-## Project Overview
-Community dining platform that organizes weekly group dinners across
-multiple cities.
-
-**v1 runs ONE production deployment serving ONE community**, with
-`stage.dinnerbears.com` beside it for testing — stage and prod, each with its
-own database, which is the ordinary two-environment shape and **the same one v2
-has**. So there is exactly one production database, and one import source.
-**Cincinnati and Dayton are `cities` rows inside it**, seeded together by v1's
-own `CreateCitiesAndAppConfig` migration, and a member chooses all-cities or
-their-city-only from their profile. v1 has always been multi-city in one
-instance.
-
-> **Corrected 2026-10-14, and it had been wrong in five documents.** This said
-> "v1 runs Cincinnati and Dayton as two full duplicate deployments (separate
-> container, separate database)". The *architecture* half was true and the
-> *example* was not. Two cities were never two deployments. Somebody mapped
-> "two deployments" onto the two city names, and from there the cutover plan and
-> `REQ-IMPORT-01` spent weeks reasoning about merging two source databases that
-> do not exist. Checked against v1's own migration, not inferred.
-
-> **Corrected again 2026-10-15, on the other half.** The replacement text said
-> v1 runs "ONE deployment and ONE database", which overcorrected: v1 has stage
-> and prod exactly as v2 does, and that was never the anomaly. It also said the
-> second deployment was one Rob "stood up" for a customer "who never went
-> live", which reads as a thing that ran. **It never reached production** — it
-> was a duplicate stack being *developed* for a different group, and was
-> abandoned before go-live (Rob, 2026-10-15). What matters for the import is
-> unchanged: one production database, and the never-launched build holds no
-> data worth importing.
-
-So v2's premise is validated by the actual history rather than by analogy: a new
-community should not cost a new container and database, because duplicating the
-whole stack for a second group is what the project was already doing when it
-stopped and became this rewrite. That it never shipped is the point rather than
-a caveat — the duplication cost enough to kill the approach before it reached
-anybody. v2 replaces the pattern with a single deployment, single database, and
-tenant-scoped data — a new tenant (community) is a database row, not a new
-container/database pair. The underlying product (organizing recurring
-group dinners) isn't changing, only the deployment architecture; whether
-"tenant" ends up meaning strictly "city" or something broader isn't decided
-beyond what `docs/REQ-TENANT-01.md` specifies.
-
-## V2 Rewrite Status
-
-**Current v2 work item:** **none in progress.** Next on the cutover path is
-**`v2-24`** — cities (`REQ-CITIES-01`). Not catch-up: it is new v2 work that
-`v2-25`'s import depends on, and it carries the `CitiesAdminController` gap
-`v2-12` left open deliberately (`@Roles(ADMIN)` over a global table). After it,
-`v2-25` (the import) and a production deployment that does not exist yet.
-
-**With `v2-29` done, this repo is caught up to prod DinnerBears** — `v2-33` was
-the bugfix half and `v2-29` the Phase 39 half. The next v1 reconciliation point
-is unchanged: this repo was last reconciled against v1 **v1.6.3**; if v1's
-`package.json` is ahead, read its port doc for the delta before planning.
-
-**One thing `v2-34` left open, not a blocker:** `FALLBACK_FORWARD_TO` is still
-unset on the Cloudflare Worker, so the forward-on-failure path is dormant until
-a verified destination address is configured.
-
-**The visibility split was confirmed on stage, 2026-10-22, in two halves.**
-Rob checked the per-community screen on both hosts: the root community's admin
-saw only root's rows, and `rtippenhauer.com`'s admin saw only its own. The
-deployment-wide read was confirmed separately against the API, which returned
-16 rows — 15 root, 1 `stagertippenhauer` — each with its community named.
-
-**The counts are what make it conclusive rather than suggestive**: each
-community's admin had rows belonging to the other available to leak and leaked
-none. A check where one side happens to be empty looks identical to a passing
-one and proves nothing, which is the trap when re-testing this after a change.
-
-**Note the two screens are not the same permission.** `Admin → Inbound mail` is
-one community's own, and the root tenant is a community like any other there —
-its admin seeing only root's rows is that screen working. The deployment-wide
-view is `System → Inbound mail` behind `OperatorGuard`, which needs the root
-tenant **and** `system_admin` or the service account, never a root-community
-admin alone.
-
-**The "matched no community" rows will be empty on a healthy deployment, and
-that is not a defect.** `TenantMiddleware` 404s an unknown host before the route
-runs, so every request reaching the handler has already resolved a community and
-every freshly written row has a tenant. The nullable column earns its place
-elsewhere: the keys are `ON DELETE SET NULL`, so **deleting a community turns
-its rows tenantless** rather than failing the delete or erasing the history, and
-those rows remain visible to the operator alone.
-
-**No known defect reaching members is open.** The last one — unpublishing a
-release re-announced an older one to everybody — was fixed and stage-verified
-2026-10-20 (PR #36). What it leaves behind as a rule: **a "have you seen this"
-check compares a watermark, never row identity.** `whats-new.service` asked
-`latestRelease.id !== user.lastSeenReleaseId`, which is the same question only
-while the latest row can never change to an older one — and `unpublish` sets
-`published_at` back to NULL, while ids follow import order, so the release that
-resurfaces has the *higher* id. Each pointer now stores the publish date beside
-the id and the comparison is the `(published_at, id)` tuple the member-facing
-queries already order by, so the id still breaks `DATETIME(0)` ties without
-deciding anything on its own.
-
-**`v2-33` + `v2-29` is what "caught up to prod DinnerBears" means** — the
-bugfixes and Phase 39 (MUSE) respectively. `v2-24` (cities) is *not* catch-up;
-it is new v2 work the import depends on. Then `v2-25` (the import) and a
-production deployment.
-
-**Just merged:** the **dispatcher claim bugfix** — v2-27's first half, carved
-out. Stage-verified 2026-10-12 and merged to `main` 2026-10-14 as PR #25
-(`b06cfc3`); image `v2-stage` sits at `97388d5`, which is the same code —
-everything after that commit was markdown.
-
-It was a live defect, not a latent one. Rob reproduced the double-send on the
-pre-fix stage image by pressing Admin → Send Now in two browser tabs: 40
-queued rows produced **57 sends**. After the fix the same procedure sent 20 for
-a 20-row batch, 1:1. Worth keeping because `V2_PHASES.md` had called it "latent
-today", and it took two clicks.
-
-Then `v2-33` (v1's five bugfixes) and `v2-29` (port v1's Phase 39).
-
-**The running order is no longer the numbers** — see `docs/CUTOVER_PLAN.md` and
-V2_PHASES.md's "Running order". The critical path to a live DinnerBears is the
-dispatcher claim fix, `v2-33` (v1's five outstanding bugfixes), `v2-29` (port
-v1's Phase 39), `v2-24` (cities) and `v2-25` (the import), plus a production
-deployment that does not exist yet. `v2-31` and `v2-32` were not on that path;
-both were pulled forward by Rob and are done.
-
-**Completed v2 items:**
-- **`v2-29` — v1's Phase 39 ported: Muse API + Facebook RSVP sync**
-  (2026-10-24). The last catch-up item; with `v2-33`'s bugfixes this repo is
-  level with prod DinnerBears.
-
-  **The one thing that could not be ported literally is the tenant.** v1 is
-  single-tenant, so its Muse routes take the caller from a session. Here the
-  **token names the community** — `MuseTenantMiddleware` establishes it from the
-  token rather than the Host header, and on a mismatch the token wins and logs a
-  warning. That is what lets one Muse instance serve several communities with
-  nothing but a base URL and a key per community, and it is why the stage pass
-  had to run **two** communities before the item could be called done.
-
-  **Hand-writing a query that v1 delegated is how the contract drifts.** v1
-  reads events through `EventsService.findOne(id, UserRole.MUSE, …)`, which
-  loads `location.photos` ordered by id. The port wrote its own narrow queries,
-  and `include: { location: true }` pulls **scalars only** — so `photos` was
-  silently absent and Muse could not set a Facebook event's cover. Reported from
-  stage, invisible to 1178 passing specs because **neither `/muse/events` nor
-  `/muse/events/:id` had a single test**.
-
-  **The same omission was also leaking private addresses.** The detail endpoint
-  applied no redaction at all, where v1's `muse` role — not elevated, holding no
-  RSVP — lands on the branch that blanks `address`, `lat`, `lng` and `photos`.
-  Adding the photos without noticing would have published pictures of members'
-  houses as Facebook event covers. Both endpoints share one `redactPrivateVenue`
-  now, reusing `LocationVisibilityService` rather than re-deriving the rule.
-
-  **Publishing a private venue is a per-community choice**
-  (`muse_share_private_venues`, default **false**, Admin → Automation Accounts),
-  following `feature_ratings_residences`. Deliberately not a `FEATURE_KEY`:
-  those render on Site Settings and go out in the public branding payload.
-
-  **`enableImplicitConversion: true` makes `@IsBoolean()` accept any non-empty
-  string.** `{"sharePrivateVenues":"yes"}` validated cleanly as `true`, because
-  the pipe coerces to the declared type *before* validation runs. Fixed here
-  with `@Transform(({ obj }) => obj.field)`, which reads the raw value. **This
-  is deployment-wide, not local to this DTO** — every boolean DTO in the
-  codebase has it, and nothing else has been swept.
-
-  **Four surfaces nobody could reach without them**: Automation Accounts (the
-  API was complete and every route needed a key only this screen can mint),
-  Facebook Accounts (the server never links anybody, so without the queue no
-  member is ever marked Going), the base URL beside the key, and the role
-  picker. The role is the **off switch** — `verify` requires `muse` *as
-  currently held* — so it belongs with the integration, not in the member admin.
-  Its endpoint admits only the two integration roles, which makes escalation
-  unexpressible rather than guarded.
-
-  **Linking carries over immediately** (rule 14): upcoming events become RSVPs
-  and a past event marked *Attended* is credited **through the normal attendance
-  path**, so points, the coordinator award and achievements all land. Three
-  guards: a NULL `attended` earns nothing, an already-attended member is not
-  credited twice, and the +1 merge reads **every** account the member has.
-
-  **The headcount is one number** (Rob): website members going plus their
-  guests, minus cancelled guest links, plus Facebook-only attendees. The page
-  and the API disagreeing by one is a table booked from the wrong figure.
-
-  **Stage found what the suite could not, five times**, and three were found
-  only by opening the page: a warning box rendered dark-on-dark
-  (`--ce-error-overlay` is a 75% overlay wanting white text, with no
-  `--ce-on-error` to pair), a missing `MatSelectModule`, and copy that said
-  "Dinners at a private home" in a product where every community names its own
-  events and locations. The copy fix reached for `brand.aDinnerLower()`, which
-  does not exist — the same invented-API mistake as the CSS tokens, and one the
-  build cannot catch, since a missing method on a signal call is not a template
-  type error.
-- **`v2-34` — An inbound email log** (2026-10-22). Pulled onto the cutover path
-  from post-cutover, as an instrument *for* the cutover rather than a feature:
-  inbound mail failed silently and the import is when that is least affordable.
-
-  **Thirteen outcomes, and reading the code found two the item's own list
-  omitted.** `tenant_mismatch` — the UID names an event in one community while
-  the reply arrived on another's host — is precisely the multi-tenant fault the
-  item was pulled forward to catch, and it was a `logger.warn` and nothing else.
-  `unchanged` is not a failure and answers a different question from
-  `recorded`. A fourteenth, `counter_proposal`, came out of stage testing: "Propose
-  new time" sends `METHOD:COUNTER`, was filed `not_a_reply`, and that is a
-  correct classification and a useless row — the label reads as "not calendar
-  mail" and the one actionable fact was discarded.
-
-  **`inbound_emails` is global with a NULLABLE tenant id**, which is the shape
-  of the table rather than a detail: the handler runs outside any request, and a
-  message that matched no community is both the most valuable row on the screen
-  and one a scoped table cannot hold. The cost is that the extension injects
-  nothing, so `listForTenant(tenantId, …)` cannot be called without one while
-  `listAll()` carries no predicate at all. **Two methods, never one with an
-  optional filter** — a forgotten predicate here does not throw, it shows one
-  community another's mail.
-
-  **The classification spec refused it, correctly.** A `tenant_id` on a global
-  model is normally a scoped model misclassified. Rather than relax the check,
-  the exception is declared in `GLOBAL_MODELS_WITH_OPTIONAL_TENANT` and held
-  narrow by two new assertions: the column must be **nullable** (a required one
-  is the actual mistake), and an exception may not also be scoped.
-
-  **Three defects found by testing rather than by review.** `event_id` was a
-  foreign key, which made `unknown_uid` and `event_not_found` — the two most
-  diagnostic rows — *physically impossible to write*, since the insert failed the
-  constraint and `record()`, which must never fail a request, swallowed it; it is
-  a plain column now, as `v2-30`'s ban records are. Subjects displayed as raw
-  RFC 2047 encoded words (`=?UTF-8?Q?Proposed_new_time=3A_…`) on every row. And
-  `source_ip` recorded the Cloudflare edge rather than the caller, the same
-  family as `v2-14`'s unset `trust proxy`.
-
-  **A bound must not depend on a value the caller chooses.** Folding was keyed
-  on the source address, which could not collapse Worker mail at all (five
-  consecutive stage messages, five Cloudflare addresses) and could be widened by
-  rotating or spoofing the source. It keys on the **outcome** now, and only for
-  `invalid_secret`, `malformed_request` and `rate_limited` — a parse failure is
-  about one member's message, and folding two people's proposals into "+1 more"
-  would hide the second person. Measured on stage: 30 probes gave one row with
-  `folded=29`, and the 5 throttled ones one `rate_limited` row with `folded=4`.
-
-  **The Worker forwards instead of rejecting.** `setReject` is a *permanent*
-  SMTP error, so the member who pressed Accept would get a bounce for an outage
-  that is ours. It forwards the payload to the operator and tells the member
-  nothing — and only when nobody has a record: a 4xx is the API answering
-  deliberately and already writes a row, while a 5xx or a dead connection may
-  have failed before one existed.
-
-  Deployed to Cloudflare by API (content-only upload, which preserves bindings —
-  a full upload or `wrangler deploy` with no config in the repo would have wiped
-  `CLOUDFLARE_EMAIL_SECRET` and `STAGE_API_URL` and silently killed inbound mail).
-- **`v2-33` — v1's five outstanding bugfixes, ported** (2026-10-19; code
-  2026-10-15, stage pass 2026-10-19). All five verified as live defects here
-  before porting, rather than taken on trust from v1's port doc — and all six
-  stage checks passed, which is what "caught up to prod DinnerBears" means for
-  the bugfix half.
-
-  **#45 is the one worth remembering.** v2 did not lack the reasoning; it had a
-  long, confident comment arguing that a readable `BEGIN:VCALENDAR` proves the
-  block was never quoted-printable. True of most senders, false of Gmail, which
-  sends a readable marker *and* `=3D` escapes. Neither "always decode" nor
-  "never decode" is right, which is why the wrong answer looked reasoned.
-
-  **Its stage pass cost two days of infrastructure, not code.** Nothing about
-  the inbound path had ever been pointed at this deployment: Email Routing was
-  unconfigured on `communityeventsproject.com`, and `CLOUDFLARE_EMAIL_SECRET`
-  arrived empty because the container held **two rows for it, one blank** —
-  `docker run` takes the last. A tenant then produced no reply at all because
-  it had **no `mail_domain`**, so its invite's `ORGANIZER` derived from the
-  deployment domain and landed on a subdomain with no MX. Each failure is
-  silent on both sides: no bounce to the member, nothing an admin can see.
-  See `docs/CUTOVER_PLAN.md`'s inbound-mail section, which is now the record of
-  what is live in Cloudflare.
-
-  **Two ride-along defects of our own**, both the same `DATETIME(0)` tie as
-  `v2-31`'s pagination bug: `whats-new.service` could call the wrong release
-  newest when several import in one second, and the notes importer relied on
-  unsorted `readdir` order, which stops being alphabetical at `1.6.10`.
-
-  **A third defect found during the pass, fixed separately** (2026-10-20, PR
-  #36): unpublishing a release re-announced an older one to every member, from
-  the same `whats-new.service` comparing row identity rather than a watermark.
-  The announcements query two lines below had the identical shape and moved
-  with it. Its migration is also **the first in this repo run against populated
-  data** rather than only the empty e2e database — the gap recorded against
-  `v2-10` — by dropping the columns on the test database, inserting members
-  pointing at a published release, an unpublished one and nothing at all, and
-  re-running `migrate deploy`.
-
-  v1's port doc rows for #41, #42, #43, #45 and #47 still read `Ported: No` —
-  that edit lives in the other repo.
-- **`v2-43` — Linking bugs & requests to a release** (2026-10-19). v2-32 made
-  credit a **link** and the read path rendered it per community — but **no
-  screen ever wrote one.** Marking a report *Shipped* set a status and nothing
-  else, and the release composer offered only `feedback`, a different and
-  tenant-scoped board. So the feature was unreachable by a human, and last
-  night's successful stage test of it worked only because the links had been
-  set through the API.
-
-  **Feedback linking is gone from the composer.** A release note is the
-  product's artifact and `system_reports` is the product's board, which is the
-  split `v2-32` already drew; crediting a tenant-scoped ticket on a
-  deployment-wide note made credit depend on which host the operator happened
-  to be composing from.
-
-  **Linking never writes the note.** The old picker regenerated the body from
-  the ticked items on every toggle and overwrote notes typed by hand. Reports
-  carry no curated note text and `addReportCredits` selects ids only — a
-  member's words must not become copy every community reads — so there is
-  nothing to generate.
-
-  **`shipped` is an offered candidate on purpose**: a report marked shipped by
-  hand had left `resolved` and could never be offered again, and keeping it
-  listed is also what makes "unlink from 2.0.0, link to 1.6.3" work.
-
-  **The link and the status are deliberately independent.** A published note
-  must not silently lose a credit because somebody re-triaged a ticket, so the
-  link is a fact about history and the status is a workflow state — and each
-  report now *says* which release holds it, because the only real flaw in that
-  rule was that it was invisible.
-
-  Shipped alongside, both found on stage and both pre-dating this item: the
-  anonymous credit count counted **rows rather than people**, so two reports
-  from one member read as "2 community members" abroad and as one name at home;
-  and the admin release list **sorted by `createdAt` while displaying
-  `publishedAt`**, the third instance of the ordering bug `v2-33` fixed twice.
-  `npm run credits:migrate` moves the six existing feedback credits across,
-  dry-run by default.
-- **`v2-32` — A channel from a community to the operator** (2026-10-09). Two
-  global tables, because `feedback` stays tenant-scoped: a member wrote that
-  having consented to their own community's admins reading it, and forwarding it
-  would change the audience after the fact. What crosses a boundary is what its
-  author wrote *in order to* cross one.
-
-  **`system_reports`** holds bugs and feature requests — both are about the
-  *product*, so both belong to whoever builds it (Rob, 2026-10-04; general
-  comments stay on the community's own board). Any member may file; only admins
-  read the shared list; only the operator triages. **That had to be a table
-  boundary and could not be a flag**, because scoping here is per *model* — a
-  predicate applying to some rows of a table and not others is isolation nobody
-  can confirm by reading a query.
-
-  **The reporter is named three ways**: their own community sees the full name,
-  another community sees "a member of another community" with no name, no role
-  and **no community name** either (naming it would disclose the customer list
-  to anyone who obtains a tenant), and the operator sees both. The word is
-  deliberately "member" and not the more accurate "admin" — the role is
-  information about another community's structure.
-
-  **Demo communities are excluded at both ends**, which is the load-bearing
-  guard: `demo.service` makes every demo requester an `ADMIN`, so without it
-  "any tenant admin may read the board" means "anybody who filled in the demo
-  form". The v2-14 failure in a new place.
-
-  **`demo_feedback`** is the opposite audience — the demo's own admin and the
-  operator, never another community. Global because a demo is purged within a
-  week and a scoped row would be destroyed exactly when it became the only
-  record of the trial. It keeps the requester's **email**, the one personal
-  detail that outlives a demo, because once the community is gone there is no
-  other way to reply; the form says so before anybody writes.
-
-  **Every foreign key is `ON DELETE SET NULL`.** These are global tables
-  pointing at the scoped `users` and `tenants`, and `purgeTenantRows` walks only
-  the scoped list — a restrictive key would make deleting a community fail on a
-  report one of its members filed. `releases.created_by` is the same shape today
-  and merely unreachable.
-
-  **The credit for a shipped report is a LINK, never prose.** A release note is
-  authored in the repo and imported into every deployment keyed by version — one
-  blob of markdown, identical everywhere — so a name written into that text
-  would name one community's member to all the others. The link resolves per
-  reader instead: confirmed on stage, the same release reads as the contributor
-  by name in their own community and "a community member" in the next.
-
-  **Three mistakes worth not repeating.** The operator check keyed on the
-  *role* twice before it was right, and the second reached stage — the service
-  account is deliberately flipped to `admin` for testing, and CLAUDE.md says in
-  two places to key on `is_service_account` instead. Attachments uploaded,
-  stored, and 404'd, because only named subdirectories of the upload path are
-  served and both upload routes wrote to the root (the feedback board had the
-  same bug and is fixed with it). And `demo_label` was populated from
-  `brand_name`, which is one fixture string on every demo — it identified the
-  template, not the visit.
-
-  **Stage found what tests could not, repeatedly**, and every visual defect was
-  Rob's: remove buttons rendering outside their own circles, a pasted screenshot
-  shoving a card off-centre, and iOS inserting a photo into the description as a
-  data URI, where no paste event carries a file. Attachments are files on the
-  row now, not markup in the body, which is what made a two-screenshot ticket
-  too long and a screenshots-only one too short.
-- **`v2-31` — A real email log** (2026-10-03). Pagination, search by recipient
-  and subject, status and date filters, and categories that say *why* a message
-  was sent — deliberately **not** `templateId`, which is a dispatch instruction
-  that selects a Brevo template and gates notification preferences, so labelling
-  with it would let a screen change alter what members receive.
-
-  **Retention is decided, not inherited**: the rendered body is cleared after 30
-  days and the envelope kept, because the envelope answers "did this member get
-  their invite" for a few hundred bytes while the body is what makes keeping it
-  expensive. Deleting rows outright was deferred pending evidence, so the screen
-  counts how often it is reviewed and how far back — `deepest_open_age_days`,
-  the age of the oldest message anybody *opened* rather than merely scrolled
-  past, is the number that decision should turn on.
-
-  **`created_at` is `DATETIME(0)` and ties made pagination unstable**, so
-  `orderBy` carries an `id` tiebreaker; without it rows repeat or vanish between
-  pages under OFFSET/LIMIT. Found because a spec passed alone and failed after
-  its neighbours.
-
-  Also landed here: three Brevo sends that could never deliver (no body and no
-  template id, so the provider refused with `missing_parameter`), and a guard
-  that now refuses that combination outright rather than posting it.
-- **`v2-14` — Demo communities** (2026-10-02). One demo **per visitor**, asked
-  for on the marketing page and confirmed by email, at a generated host, with
-  the requester as its first admin, deleted after seven days or 48 idle hours.
-
-  **Retitled mid-item.** It was "the demo tenant" — one shared community,
-  self-registration granting admin, wiped nightly — and that design was built
-  before Rob found what was wrong with it: `admin.service` hands an admin every
-  member's email address, their linked OAuth addresses and a search box over
-  them, so the seventh visitor to a shared demo would have had a searchable
-  directory of the previous six visitors' real addresses.
-
-  **Per-visitor deleted a privilege escalation rather than guarding one.** The
-  shared design needed a carve-out in all three registration paths saying a
-  stranger who signs up here becomes an admin. No registration path promotes
-  anyone now; the requester is made admin at creation time, exactly as
-  `TenantsAdminService.create` does for any other community.
-
-  **Retention and isolation move together** (decided with Rob 2026-09-18): on a
-  shared demo anyone can break what every later visitor sees, so the cadence has
-  to be a day; isolation is what buys the week. Anything reintroducing sharing
-  brings the day back with it.
-
-  **A demo cannot send mail, and omitting its provider config would not have
-  achieved that** — v2-9 falls back to the deployment's Brevo credentials for a
-  community with none of its own, and a demo is on a subdomain of the
-  deployment, so the fallback would have let anyone create a community that
-  mails arbitrary addresses from the operator's sending domain.
-  `EmailService.sendingIsBlocked()` refuses on `is_demo` instead.
-
-  **Three caps, answering three different failures.** Ten live demos and two per
-  IP (Rob, 2026-09-18), plus one per email address. The last is not a second
-  opinion about the IP cap — it is the only one that survives a client changing
-  network, since an IPv4 and an IPv6 address for one person have nothing in
-  common. IPv6 is bucketed by its **/64**, because privacy extensions rotate the
-  host half as often as hourly and counting the full address means the cap never
-  binds. Caps are re-checked at confirmation, excluding the row being confirmed
-  — counting it made the effective caps N-1, which refused Rob's second demo on
-  stage.
-
-  **`purgeTenantRows` came out of this item and fixed a latent v2-6 defect.**
-  Several foreign keys onto `users` are restrictive, so a demo whose visitor had
-  redeemed an invite broke a straight walk of the model list. It walks
-  `TENANT_SCOPED_MODELS` with explicit `tenantId` filters and pre-clears the
-  columns that would otherwise block, and tenant deletion now shares it — so a
-  new scoped model is swept by both paths with no extra work.
-
-  **Stage found six things the suite could not.** The nav wordmark measured
-  1.05:1 live (a v2-10 defect the demo exposed); the cap off-by-one above; a
-  Delete button that did nothing, from a duplicated CSS rule; immediate sends
-  absent from the email log entirely, which turned out to be the same shape as
-  the counter bug v2-9 fixed one layer over; and `trust proxy` unset, so every
-  request in the deployment reported `::ffff:127.0.0.1` — making the per-IP cap a
-  deployment-wide cap of two and the rate limiter one shared bucket.
-
-  Also landed: an operator view of demo requests that never became communities
-  (previously invisible while still holding a slot), and demo/real filtering plus
-  expiry and last-used sorting on the Communities list.
-- **`v2-13` — The root tenant's public landing page** (2026-09-18). The
-  marketing front door at `www.communityeventsproject.com`. **`/` is answered by
-  two components now**, chosen at match time: `rootLandingGuard` takes the
-  landing page only for a signed-out visitor on the root tenant.
-
-  **Root is the database's `is_root`**, read off the branding payload — not an
-  nginx `server_name` for the marketing host, which would be a second answer to
-  "which tenant is root", free to disagree with the column that decides it, the
-  way v2-12's stored flag would have been. **Signed-out** because a member of
-  the root community has a home page; on stage that community is the operator's
-  own test data, and everywhere it is at least the system admin.
-
-  `canMatch`, not `canActivate` — a declined `canActivate` cancels the
-  navigation, where a declined `canMatch` falls through to the next route, which
-  is what lets one path render two components. Reading auth and branding
-  synchronously is safe **only** because both `init()`s are
-  `provideAppInitializer` promises, so no route is matched until they resolve.
-
-  **The demo's address is derived, never written down** — `demo.` on the
-  deployment's own domain, so stage and production each get their own. That is
-  also what keeps it a *subdomain* of the deployment domain, so
-  `isOnDeploymentDomain` is true and the demo inherits the deployment's Brevo and
-  Google credentials; a demo beside the deployment rather than under it is an
-  invite-gated community with no mail, which is one nobody can join.
-
-  **`robots.txt` is written by the entrypoint**, not checked in: one image serves
-  stage and production, so a static file would be identical on both and wrong on
-  one. `Disallow: /` when `IS_STAGE=true`. Before this it did not exist and
-  `try_files` fell through, so `/robots.txt` answered 200 with the SPA's HTML.
-  Per-tenant indexing and link-preview metadata are `v2-28` — and the trap
-  recorded there is that setting them from branding at runtime, the way `<title>`
-  works, is invisible to every link-preview crawler, since Slack, Facebook,
-  LinkedIn and iMessage fetch raw HTML and never run a script.
-
-  **Stage found no code defects** — the first item where it didn't. It cost an
-  afternoon of infrastructure instead, recorded against `v2-14`: Cloudflare's
-  Universal SSL wildcard covers one label, so `demo.stage.…` has no edge
-  certificate and must be grey-clouded, while production needs none of it.
-- **`v2-12` — OAuth callback on a community's own host** (2026-09-18,
-  REQ-TENANT-01.8). A community that owns its domain registers its own redirect
-  URI, so the callback lands on the right host, the tenant resolves from the
-  Host header, and the cookie is set directly — no `oauth_handoffs` hop.
-  Communities on a subdomain keep the single registered URI and the handoff,
-  because their operator cannot register a redirect URI on a domain they do not
-  own.
-
-  **There is no flag, and that is the item's real shape.** The design called for
-  a boolean on `tenants`; Rob extended the rule to email — a community on a
-  subdomain of this deployment may fall back to the deployment's credentials,
-  one on its own domain may not, for Google and Brevo alike — and that is the
-  same question the callback host asks. A stored flag would be a second answer
-  free to disagree with the domain, and the two disagreeing is a
-  `redirect_uri_mismatch` naming neither value. See the Multi-Tenancy section.
-
-  **The callback branches on where it landed**, `req.tenant?.id ===
-  state.tenantId`, never on what kind of community it is — which is also the
-  "check the state against `req.tenant`" the design asked for, so the host is
-  never trusted alone.
-
-  **Five defects, every one found by Rob on stage and none catchable by the
-  suite.** Google's Connect button had no working path at all since `v2-8`,
-  which removed the auto-link that had been the only linking mechanism while
-  leaving the button pointing at the sign-in start — it refuses whenever the
-  address already has an account, i.e. always. The footer built its copyright
-  line by appending a fixed suffix to a community's name, naming a company that
-  does not exist and disagreeing with that community's own Terms. Brevo template
-  ids crossed accounts, latent since `v2-9` and reachable only once a community
-  had its own key — which is the configuration this item made ordinary.
-  Credential fields accepted anything, and a password manager filled an email
-  address into a client id; the admin screen then discarded the API's
-  explanation, the same shape `v2-8` fixed in `exchange_failed`. And
-  `CitiesAdminController` is `@Roles(ADMIN)` over a global table — left open
-  deliberately, recorded against `v2-24`.
-
-  **Known gap:** the callback's handoff branch ships verified by unit tests
-  alone. Stage runs two communities and after this item both take the direct
-  path, so the branch that did not change is the one nobody runs. Recorded in
-  `V2_PHASES.md` rather than implied, with the third-tenant route written down.
-- **`v2-11` — A real colour system** (2026-09-08). Three seeds an admin sets
-  (`--ce-primary`, `--ce-accent`, `--ce-surface`) feed every other token;
-  overrides are laid on at *read* time so a later seed change cannot silently
-  discard or staleize them. `core/utils/palette.ts` is pure and DOM-free, which
-  is the whole reason a live preview is possible — the derivation used to write
-  straight to `document.documentElement.style`, so previewing meant mutating the
-  running page.
-
-  **Every `on-` colour is measured.** They were pinned to white, which failed on
-  the seeded amber itself: white on `#C9933A` is 2.72:1. `ON_LIGHT` is pure
-  black deliberately — swept over the whole HSL cube the worst achievable
-  contrast is 4.584:1 with black and 4.173:1 with a softened `#1a1a1a`, so only
-  black clears AA for *every* colour an admin can pick. A spec sweeps the cube
-  so it cannot be quietly re-softened.
-
-  **The tokens are named for their job now**, not their colour: 445 references
-  across 66 files went from `--db-*` (brown, cream, amber, whatever the source
-  said while holding a community's blue) to `--ce-*`, and three duplicate
-  aliases died with the rename.
-
-  **Two surface bugs found only on stage, and both are the same shape.**
-  `mat.theme()` is seeded with `mat.$orange-palette` and M3 tints its *neutrals*
-  from that, so every card and menu was amber cream for every community with
-  nothing able to change it — `materialSurfaceTokens` now derives the whole
-  `--mat-sys-surface` family. Then 44 declarations across 16 components named a
-  cream or brown outright, below where any theme token reaches. Mapping those
-  had to be property-aware: `#3d1c05` as a background is the nav, as a colour it
-  is body ink.
-
-  **Enumerating known-bad values only finds what you already knew.** The first
-  sweep took a list of twelve exact hexes; components had drifted to
-  near-neighbours (`#fffaf3` is not `#fdfaf5`) that looked identical on screen
-  and matched nothing. Detection is by *colour* now — light in every channel and
-  warmer than it is cool — which found the announcement splash and three more.
-
-  **A dark page background is refused, not supported** — see `v2-26`. The
-  derivation handles one correctly and the app cannot draw it.
-
-  Rob's stage testing found six defects no test caught, plus three unrelated
-  ones. The load-bearing one: **`POST /events` and `PATCH /events/:id` returned
-  ISO timestamps** where the GETs return date strings, so publishing an event
-  redrew 6:30pm as 12:30 and `cutoffTimeLabel` rendered `12:NaN AM`. Exactly the
-  trap `prisma-date.util.ts` warns about in its own doc comment. The existing
-  wire-format tests missed it because every one created a row and then *fetched*
-  it — asserting the GET, never the write response a client actually stores.
-- **`v2-10` — CommunityEvents branding replaces the DinnerBears defaults**
-  (2026-09-05). The reframe held — nothing needed to keep working as a
-  DinnerBears default — but **two of the three problems were solved by building
-  missing data, not by renaming**. `foundingLabel` compared `brand_name` against
-  the literal `'dinnerbears'` to choose a badge name, and the per-community
-  support address already existed on the API and was simply never served. Both
-  were guesses standing in for data that did not exist; renaming would have
-  preserved the guess in nicer words.
-
-  **The fallback marks are generated, not replacement artwork.** A compiled-in
-  image is one file for the whole deployment, but what it stands in for is one
-  community's identity — so a CommunityEvents PNG would only have changed *whose*
-  artwork an unbranded community wore. `brand-mark.util.ts` draws logo, icon and
-  splash from that community's own name and palette as `data:` URIs, so all ten
-  `[src]` consumers and the upload override were untouched and ~13MB of PNGs left
-  the bundle. **Email needs the opposite answer**: Gmail and Outlook strip SVG
-  and browsers will not reliably render one as a notification icon, so email and
-  push fall back to a raster from `scripts/generate-platform-logo.js` — a
-  deliberate stand-in, replaced by overwriting the PNG.
-
-  **`achievements` is tenant-scoped now** (see the Multi-Tenancy section), and
-  every transactional email derives its colours from the community's own primary
-  via a mirrored `color.util.ts`, with bare bodies wrapped in a shared shell at
-  enqueue time.
-
-  **The migration is the lesson.** It copied the catalogue per tenant *before*
-  dropping the unique index on `key` alone — and copying is precisely what makes
-  a key appear twice — so it died on `Duplicate entry` against any database with
-  a non-root tenant. **The suite could not have caught it**: the e2e harness
-  builds an empty database, so the copy selects zero rows and the constraint is
-  never exercised. That gap is still open, and every remaining v2 item ships
-  migrations. It surfaced an hour after deploy as an unrelated-looking 500
-  because the entrypoint starts Nest even when `migrate deploy` fails.
-
-  Two traps: `AppConfigModule` is not `@Global` like `PrismaModule`, so injecting
-  `AppConfigService` is a **boot** failure `tsc` passes clean; and a `` written
-  through a Python heredoc became a literal backspace (`0x08`), silently
-  disabling the guard against double-wrapping an email — invisible in an editor
-  and in `grep`, found only by the test for the "obvious" case.
-- **`v2-8` — Per-tenant OAuth apps** (2026-09-01, REQ-TENANT-01.9 and
-  REQ-TENANT-01.8). Each tenant supplies its own Google and/or Meta credentials
-  in the four columns reserved since `v2-3` and encrypted since `v2-7`; this is
-  what first writes them. A provider is offered only where that tenant has
-  credentials, and email/password always is — `GET /auth/methods` is
-  unauthenticated and tenant-resolved, and `TenantOAuthService.offeredProviders`
-  selects **only the two id columns** so a page load never decrypts a secret.
-  `GoogleStrategy` stopped being a singleton: it is constructed per request from
-  the resolved tenant, which is why the file and its callback guard are gone.
-
-  **The cross-host handoff is the substance, not the columns.** Google returns
-  to one fixed host and the host-only cookie `v2-6` introduced does not reach
-  any other tenant's host, so OAuth worked on the callback tenant and nowhere
-  else. `state` is now signed (HMAC-SHA256 over an HKDF-separated key, 15-minute
-  age limit, `timingSafeEqual` with a length pre-check) and names the
-  originating tenant; the callback mints a single-use `oauth_handoffs` ticket and
-  redirects to that tenant's own host, which redeems it and sets the cookie
-  there. `SameSite=strict` was expected to need loosening to `lax` and does
-  **not** — confirmed in a real browser, because SameSite governs whether a
-  cookie is *attached* to a request, not whether one can be *set* in a response.
-  Don't revert it.
-
-  Four defects found by stage testing, three of them behavioural. A cancelled
-  sign-in checked `query.error` **before** decoding `state`, discarding the
-  tenant Google had just returned, so Cancel landed on the wrong community.
-  Google silently re-linked on email match after Disconnect while Facebook
-  refused — opposite policies for the same gesture; Google now matches Facebook.
-  `POST /auth/facebook` never verified *which app* minted the token, latent with
-  one app and a cross-community hole with per-tenant ones — it now calls
-  `debug_token` and compares `app_id`. And `exchange_failed` logged nothing at
-  all, dropping `InternalOAuthError.oauthError` where the provider's actual
-  reason lives.
-
-  **Deferred deliberately, both recorded in `V2_PHASES.md` rather than lost:**
-  login CSRF (the signed `state` proves which *community*, not which *browser* —
-  the conventional nonce-cookie fix is unusually available here because
-  redemption happens back on the originating host), and `v2-12`'s callback on a
-  community's own host. The four-case table behind that second one lives in
-  v2-8's section because it was worked out against this code; the policy that
-  makes it simple is that a community bringing its own domain but not its own
-  Google project gets email/password, exactly as REQ-TENANT-01.9 already says.
-- **`v2-9` — Per-community email sending** (2026-08-29). `email_provider_config`
-  is tenant-scoped: each community holds its own Brevo key, From identity,
-  template ids and daily counter, and a community that sets none sends on the
-  deployment's env credentials exactly as before. Seeding moved out of `seed.ts`
-  into `bootstrap.ts` and `tenants-admin.service.create`, the four
-  `findUnique({ id: 1 })` reads became scoped `findFirst`s, and the dispatcher
-  groups its batch by `tenantId` and re-enters `runWithTenant` per community.
-
-  **The trigger was isolation, not the feature.** `/admin/email` is
-  `@Roles(ADMIN)` with no root check and acted on one global row, so any
-  community's admin could rewrite the whole deployment's sending credentials.
-
-  Webhooks are per-community and self-registering (`BrevoWebhookService`): the
-  token is **ours**, minted here and handed to Brevo through their API, which is
-  the only reason rotation can be automatic — 30 days, with the replaced token
-  honoured for a 7-day grace so callbacks in flight are not rejected. The API key
-  beside it is the opposite: Brevo mints it and offers no reissue endpoint, so it
-  gets a warning rather than a schedule. **The handler stays `runUnscoped`** — a
-  bounce is a property of the address, not of whichever community mailed it.
-
-  Five traps worth not re-discovering. Brevo's *registration* API names events in
-  camelCase (`hardBounce`) while the *payload* it posts uses snake_case
-  (`hard_bounce`), so a webhook registered with the payload spelling is accepted
-  and simply never fires. An encrypted column cannot be filtered on, which is why
-  the grace sweep keys on `webhookRotatedAt` alone and clears unconditionally.
-  `runUnscoped(reason, () => prisma.x.updateMany())` returns a lazy Prisma
-  promise that executes *outside* the context — it threw on stage on the first
-  hour boundary, and no test caught it because nothing ran a cron.
-  `GET /v3/account` carries no timezone field, so the provider's day cannot be
-  asked for. And **"mint a new token" is not "create a new webhook"** — conflating
-  them made the Re-register button POST every time, which Brevo rejects with
-  `duplicate_parameter` for a URL it already holds, so the button could only ever
-  work on a community that had none. `upsertWebhook` now updates, falls back to
-  creating on a 404, and adopts an existing webhook by URL on a duplicate.
-
-  **The counters were wrong twice, in opposite directions.** `sendNow` bypasses
-  the dispatcher by design, so password resets, verification and security alerts
-  were never counted; and the day ended at UTC midnight — 8pm Eastern — which is
-  not the operator's calendar day. `EMAIL_QUOTA_TIMEZONE` now draws the boundary
-  (`quota-day.ts`), `last_reset_date` widened from DATE to DATETIME(3) so it is
-  an instant SQL can compare, and both send paths do the rollover as a
-  conditional write rather than a read-modify-write.
-
-  **A provider's allowance belongs to the account, not the community**, which is
-  the rule that outlives this item — see the Multi-Tenancy section.
-
-  Stage found what tests could not, again: an idle community never advanced its
-  row, so the screen reported a window that had closed two days earlier, fixed by
-  deriving it at read time rather than writing on a GET; and the Re-register
-  button above, found by pressing it once before the merge. Also worth knowing —
-  a `prisma generate` skipped after a schema change left local tests running
-  against a client that still believed a column was a DATE. The image was never
-  affected, since the Dockerfile generates during the build.
-- **`v2-7` — Encrypted secrets at rest** (2026-08-23). Every credential in the
-  database is encrypted by a second Prisma Client Extension applied beside tenant
-  scoping — AES-256-GCM, random IV per value, the column name authenticated as
-  AAD so a ciphertext moved between columns fails instead of working in the wrong
-  place. Services read and write plaintext; adding a column means adding it to
-  `encrypted-columns.ts`. The rules it established are in the NestJS conventions
-  and Multi-Tenancy sections above.
-
-  The key is bootstrap config and never in the database. A fresh deployment
-  generates its own, writes it to the appdata volume and says loudly to back it
-  up — but only when the database holds no encrypted value, since every envelope
-  names the key that wrote it. Three startup refusals follow, all at boot rather
-  than at the first credential read. Rotation loses nothing
-  (`SECRET_ENCRYPTION_KEYS_RETIRED` + `secrets:rewrap`, serving throughout);
-  losing the key loses everything, so `secrets:reset` is guarded by a phrase.
-
-  Also landed: `tenant_secrets` makes `geocoding_api_key`, `places_api_key` and
-  `anthropic_api_key` per-community (Admin → API Keys), and
-  `GET /admin/email/config` stopped returning the operator's Brevo key in
-  plaintext on every page load — which would have undone the column encryption at
-  the last hop.
-
-  **Stage found what tests could not.** `/app/appdata` was unmapped in both the
-  compose file and the Unraid template, so three container recreates produced
-  three keys while the log said to back up a file that could not survive. Nothing
-  was lost only because nothing was encrypted under them yet. Four documentation
-  fixes came out of the same pass (an SMTP key is not an API key; an API key is
-  not tied to a domain; DNS commands that work on Windows).
-
-  Landed on this branch but belonging to other items: the invite auto-login fix,
-  and five commits of `v2-10` email/legal branding — see that item's notes.
-- **`v2-6` — Bootstrap/runtime config split + user tenant scoping**
-  (2026-08-19, REQ-TENANT-01.4/01.5). `users` and `app_config` are tenant-scoped;
-  email is unique per tenant, so one address holds a separate account in each
-  community and login resolves against the tenant owning the URL. Cookies are
-  host-only, `express-session` is gone, and every member-facing link resolves
-  through `baseUrlFor()` rather than `APP_URL`.
-
-  The config split turned out to be mostly *deciding*: which of ~45 variables is
-  bootstrap, install, deployment, runtime or a secret is now declared in
-  `env-classification.ts` with a spec holding it to `.env.example`. Three things
-  fell out of writing it — bootstrap config was already down to eleven variables,
-  `DB_MODE` is named by the requirement but was never implemented, and seventeen
-  variables were documented nowhere at all (`AUTO_PROVISION` among them, which is
-  why the first stage install needed it passed along out of band).
-
-  What actually moved is contact identity: a community's `hello@`, `calendar@`
-  and `noreply@` are its own, resolved most-specific-first with the env var as
-  the deployment default. Every credential stayed in env, because `app_config`
-  had no encryption at rest — which `v2-7` then built.
-
-  Stage testing drove the rest of the item and found gaps no test would have:
-  a newly created community had no way in at all, an adminless community was
-  unrecoverable, there was no way to delete one, and the tenant dialog's hints
-  rendered on top of the fields beneath them. Each is covered above.
-
-  Two corrections worth remembering, both from Rob pushing back on my reasoning:
-  a non-root service account was created `disabled` to prevent an escalation that
-  was never reachable, and was created *at all* on the claim that it owned the
-  deployment's writes in that community — which was false, since
-  `audit_log.user_id` is nullable and nothing looks one up.
-- **`v2-1` — Prisma data layer** (2026-08-09). TypeORM removed entirely:
-  entities deleted, `typeorm`/`@nestjs/typeorm` uninstalled, all 36 services
-  converted. `schema.prisma` is the single source of truth and one initial
-  migration replaces the 84 inherited TypeORM migrations.
-- **`v2-2` — Testing stack swap** (2026-08-11). Jest, ts-jest, Karma and
-  Jasmine uninstalled; Vitest everywhere, Playwright scaffolded. API unit 76,
-  API integration 623 across 28 files, frontend 91, Playwright 2.
-
-  Worth knowing beyond the tooling: `v2-1` had left all 28 e2e specs
-  uncompilable, so nothing had ever exercised the Prisma conversion. Restoring
-  them found four defects live on `v2-stage` — BigInt from raw queries, a
-  `delete()` that threw where TypeORM no-opped, an audit-log filter on a
-  non-existent relation, and event DATE/TIME columns serialised as ISO
-  timestamps — plus `import * as sanitizeHtml` being called as a function,
-  which only worked because tsc emits CommonJS. Details in `V2_PHASES.md`.
-- **`v2-3` — Tenants table** (2026-08-12). `tenants` table added; the root
-  tenant is created by `bootstrap.ts` (not `seed.ts` — its domain is
-  deployment-specific), and its domain defaults to `APP_URL` so stage and prod
-  still differ by one value.
-
-  Two invariants are enforced by the database rather than by convention, since
-  both are security-shaped: exactly one `is_root` tenant (via a unique index on
-  a nullable `root_marker`, because MySQL has no partial unique index), and a
-  `domain` column that cannot physically hold a `www.` prefix. Also fixed a
-  fourth P2025 regression here — five unguarded `update()` calls in scheduled
-  tasks.
-- **`v2-4` — Domain resolution middleware** (2026-08-14). `TenantMiddleware`
-  runs ahead of every route and attaches the resolved tenant to the request;
-  `TenantResolutionService` looks it up behind a short-TTL, size-bounded
-  in-memory cache that also caches misses (the key is an attacker-controlled
-  `Host` header).
-
-  Three outcomes are kept distinct rather than collapsed into one 404, because
-  they look identical to a visitor and mean opposite things to whoever fixes
-  them: unrecognized host -> 404 `TENANT_NOT_FOUND`; no tenants at all -> 503
-  `TENANT_NOT_CONFIGURED` plus a loud log (closing the gap `v2-3` left);
-  suspended tenant -> 503 `TENANT_SUSPENDED`. Health is exempt, always answers,
-  and reports which of those happened in a new `tenant` field — which paid off
-  on the first stage deploy, where one curl found a root-tenant row still
-  holding the pre-move `communityevents.rtippenhauer.com` domain.
-
-  Two traps worth not re-discovering: **Nest mounts module middleware at a
-  path and Express strips it**, so `req.path` is `/` for every request and only
-  `req.originalUrl` survives intact; and **middleware cannot rely on
-  `GlobalExceptionFilter`**, which wraps route handlers only — a thrown
-  exception unwinds to Express's stock HTML error page, so the middleware
-  writes its JSON body directly.
-- **`v2-5` — Tenant-scoping Prisma Client Extension** (2026-08-14). `tenant_id`
-  on 27 transactional models, 12 left global (28 and 11 as of `v2-10`, which
-  scoped `achievements`). The split is declared once in
-  `api/src/common/tenant/tenant-scoped-models.ts` and is exhaustive over
-  `Prisma.ModelName` at the type level, so a new model that nobody classified
-  does not compile. Verified by `test/tenant-isolation.e2e-spec.ts`: two tenants
-  on one client, at the Prisma level and over HTTP. Unit 146, e2e 670/31 files.
-
-  It fails closed three independent ways — no tenant context throws, the
-  sentinel `DEFAULT 0` on `tenant_id` is rejected by the foreign key so an
-  escaped create dies at the database, and the four `@Cron` sweeps carry
-  explicit `runUnscoped('<reason>')` waivers.
-
-  Four traps, all of which cost real time: **Prisma promises are lazy**, so
-  `runWithTenant(id, () => prisma.x.find())` builds the query in the context and
-  runs it outside (production shapes are safe; it bit the test helpers);
-  **Prisma rejects `where` on a to-one `include`**, so only to-many relations
-  can be filtered and to-one hops rely on the foreign key; **Vitest runs every
-  hook and test body in a sibling async context**, so no ALS store set in a
-  setup file or `beforeEach` reaches the `it()`; and **raw SQL is not routed
-  through extensions at all**.
-
-  Also fixed: `member_achievements`/`member_points` unique keys were built on
-  globally-unique ids, so one community's award blocked another's. And a
-  regression this item introduced — `HardDeleteTask`'s audit write failed the
-  new foreign key *silently*, since the task catches its own errors.
-
-  **Not verified on stage** — `/v2-testing` was skipped deliberately, because
-  the property needs two tenants and that needs v2-6. Its regression surface
-  (14 hand-edited raw SQL statements) should ride along with v2-6's stage pass.
-
-**Infra readiness (confirmed by Rob 2026-08-09):**
-- A dedicated database + `communityevents_user` exist on the Unraid MySQL
-  server (192.168.2.241), separate from `dinnerbears`. **The stage deployment's
-  database is `communityevents_stage`** -- this line said `communityevents`
-  until v2-10, which would have sent a recovery command at the wrong database.
-  Confirm the name from the container's own startup output rather than from
-  here: it prints `Datasource "db": MySQL database "<name>" at <host>`.
-- **Stage now lives at `https://stage.communityeventsproject.com`** — the
-  project's own domain, replacing the earlier
-  `communityevents.rtippenhauer.com`. Per REQ-TENANT-01.7 this deployment is
-  its own root tenant, not a tenant of production.
-- **The stage container is `CommunityEvents-v2-Stage`** on Unraid, defined by
-  `docker/communityevents-v2-stage-unraid.xml`. That template is the answer to
-  "what is it called" and "how do I get a shell" -- both have been asked more
-  than once and neither was written down here.
-
-  The runtime image is **Alpine**: it has `/bin/sh` and `/bin/ash` and **no
-  `bash`**, which is why Unraid's Console button used to open and close with no
-  error -- the template asked for a shell the image does not contain. Fixed to
-  `sh` in `v2-10`; an existing container keeps the old setting until its Shell
-  field is edited or it is re-added from the template. From a terminal:
-  `docker exec -it CommunityEvents-v2-Stage sh`.
-
-  One-off Prisma commands run through the same path the entrypoint uses --
-  `docker exec CommunityEvents-v2-Stage node /app/node_modules/prisma/build/index.js <cmd>`
-  -- rather than `npx`, which does not reliably resolve in that image.
-- **The entrypoint does not fail the container on a failed migration.** It runs
-  `migrate deploy ... || echo "WARNING: Migration failed"`, so Nest starts
-  anyway and a half-migrated database serves traffic. A failed migration blocks
-  every later one until it is resolved, so the symptom surfaces much later as an
-  unrelated-looking 500 -- which is exactly how `v2-10`'s achievements migration
-  reached stage testing. The line to look for on startup is
-  `[entrypoint] Migrations complete.`
-- The full v2 fresh-install sequence has been run against it successfully:
-  `prisma migrate deploy` (on container start) -> `seed.js` -> `bootstrap.js`.
-  That is the supported install path from `v2-1` onward; the v1-era
-  `typeorm migration:run` no longer exists.
-- `rtippenhauer/community-events:v2-stage` carries the `v2-1` work. Note the
-  image is built from the **working tree**, not from git, so never build with
-  uncommitted changes and never with a CRLF checkout of `docker/entrypoint.sh`
-  (`.gitattributes` now pins `*.sh` to LF — a CRLF shebang makes the container
-  restart-loop with a misleading "not found").
-
-V2 is being defined through a sequence of requirements docs. Only one exists
-so far: **`docs/REQ-TENANT-01.md` — Tenant Foundation** (status: Draft; **fully
-implemented as of `v2-8`** — `v2-1` through `v2-6` closed out every requirement
-except REQ-TENANT-01.8 and 01.9, both added later, and `v2-8` landed both). Four
-further requirements docs exist as of 2026-09-01 and are not implemented:
-`REQ-VALIDATE-01` (v2-17), `REQ-CMS-01` (v2-18 to v2-23), `REQ-CITIES-01`
-(v2-24) and `REQ-IMPORT-01` (v2-25). REQ-TENANT-01 remains the foundational doc
-everything else depends on and defines the conventions the rest of v2 follows. Key decisions it locks in:
-
-- **Prisma replaces TypeORM entirely** (not incrementally) — `schema.prisma`
-  becomes the single source of truth, TypeORM removed once Prisma is
-  confirmed working end-to-end against the existing schema.
-- **Tenant isolation via a single Prisma Client Extension** that
-  auto-injects `tenant_id` into `where` clauses and auto-sets it on create
-  for tenant-scoped models — not left to individual services to remember.
-  Global (non-tenant-scoped) models are excluded by explicit convention.
-- **Domain-based tenant resolution** (landed by `v2-4`): NestJS middleware
-  resolves `tenant_id` from the `Host` header before route handlers run, with
-  `www.<domain>` normalized to the same tenant as `<domain>`. Unrecognized
-  domains get a clear 404. Result is cached briefly (in-memory, short TTL).
-- **`users.tenant_id`** is a single FK (a user belongs to exactly one
-  tenant) and email uniqueness becomes per-tenant (`tenant_id`, `email`),
-  not global. Auth gains an **email/password** option alongside the
-  existing Google/Facebook OAuth.
-- **Bootstrap config** (env, set once at container start) shrinks to
-  `DB_MODE`, DB connection details, `ROOT_TENANT_URL`. Everything else,
-  including the existing `app_config` branding pattern, becomes
-  tenant-aware runtime config.
-- **Testing stack changes** (REQ-TENANT-01.6, landed by `v2-2`): Vitest +
-  Supertest for unit/integration, Playwright for e2e — replacing the
-  inherited codebase's Jest (`api/`) and Karma/Jasmine (`frontend/`).
-  A full replacement like the Prisma swap, not a side-by-side migration.
-
-Required build order (foundational tooling first, then the data layer —
-which has to exist before there's anything to scope): Prisma swap → testing
-stack swap → tenants table → domain resolution middleware → tenant-scoping
-Client Extension → bootstrap/runtime config split + user tenant scoping, in
-that order — tracked as `v2-1` through `v2-6` in `V2_PHASES.md`. The testing
-stack swap sits at `v2-2`, deliberately ahead of all tenant feature work, so
-tenant code is written against Vitest from the start rather than ported off
-Jest later (decided with Rob 2026-08-09; this shifted the old `v2-2`–`v2-5`
-each up by one, and no `v2-*` tags existed yet). Full requirement-level
-detail lives in `docs/REQ-TENANT-01.md`.
-
-**After `v2-6` come secrets and per-tenant OAuth** — `v2-7` (encrypted secrets
-at rest) then `v2-8` (per-tenant OAuth apps), moved ahead of the branding,
-demo and wizard work with Rob 2026-08-15 and renumbered from the old
-`v2-12`/`v2-13`.
-The branding, landing page, demo, setup wizard and handbook items each shifted
-down two, to `v2-9`–`v2-13`. Same reasoning as the `v2-2` move above: the
-number is meant to read as the running order, and it was still free to change
-because no `v2-*` tag above `v2-5` has been cut.
-
-**Then per-community email sending, inserted as `v2-9` on 2026-08-21**, shifting
-that same block down one more to `v2-10`–`v2-14`. Two more were inserted on
-2026-08-30 — `v2-11` (a real colour system, next to the branding item because
-they share a surface) and `v2-12` (OAuth callback on a community's own host, the
-follow-on v2-8 deferred) — shifting the landing page, demo, wizard and handbook
-down two again, to `v2-13`–`v2-16`. Still free: no `v2-*` tag above `v2-9`
-exists. It was briefly folded into
-`v2-7` and split back out: the encryption is what makes a per-tenant provider key
-storable, but storing it is the small part next to scoping
-`email_provider_config`, moving its seeding into `bootstrap.ts` and making the
-dispatcher cron re-enter `runWithTenant` per message. Its stage pass also needs
-real sends and real inbound webhooks, which `v2-7`'s does not.
-
-**`v2-9` runs before `v2-8`, decided 2026-08-23 with Rob.** The numbers stay as
-they are this time — `v2-7` is tagged, so renumbering around it would no longer
-be free, and the running order is stated here instead. Neither item depends on
-the other (`v2-8` needs `v2-6` and `v2-7`, both done; `v2-9` needs neither), and
-what decided it was stage: it now runs two communities on two Brevo accounts,
-which is precisely what `v2-9`'s stage pass needs. `v2-8`'s does not benefit —
-the second community is email/password-only until `v2-8` itself lands. The
-trigger was finding that a community admin on one host could rewrite the whole
-deployment's sending credentials, since `email_provider_config` was global —
-which `v2-9` then closed.
-
-Not yet decided/known: whether the frontend framework itself is changing.
-(Its testing choice is settled — `v2-2` put it on Vitest via Angular's
-`unit-test` builder.)
-
-**Domain scheme — decided 2026-08-09** (REQ-TENANT-01.7): the project owns
-`communityeventsproject.com`. `www.` (and the apex, same tenant row) is the
-root/system-admin tenant and the public landing page; other tenants are
-subdomains; `stage.` is a separate deployment that is its own root tenant, not
-a tenant of prod. Auth cookies must be scoped to the exact tenant host —
-scoping them to the apex would share one session across every tenant. See
-V2_PHASES.md's "Deferred: CommunityEvents domain, branding and demo" for the
-backlog items (branding defaults, landing page, demo tenant), all deliberately
-held until the tenant work is stable.
-
-**The running order changed on 2026-10-01: the DinnerBears cutover comes first,
-and the numbers no longer say what comes next.** Read `docs/CUTOVER_PLAN.md` and
-V2_PHASES.md's "Running order" section, not the item numbers — tags exist
-through `v2-13`, so renumbering stopped being free and the order is stated in
-prose, the same way v2-9-before-v2-8 and v2-26/27/28 already are.
-
-The reason is drift. This repo forked from v1 at Phase 38 / v1.5.1 on
-2026-08-08, and v1 has since shipped Phase 39 (Muse API + Facebook RSVP sync,
-v1.6.0) plus **five** bugfixes (v1.6.1 through v1.6.3) — all listed in **v1's
-`docs/PORT_TO_COMMUNITYEVENTS.md`**, which is the authoritative port spec and
-lives in the other repo. The port list was growing faster than it was
-shrinking, so **v1 takes no new phases**: its Phase 40 (Ban Records) moved here
-as `v2-30` before any v1 code was written. Bugfixes may still land in v1;
-phases may not. The bugfixes are `v2-33`, and all five were verified as live
-defects in this repo on 2026-10-14 rather than taken on trust.
-
-**Do not trust a count of them written here, and do not restate the list.**
-This paragraph said "three bugfixes (v1.6.1)" and called the drift list "final
-at four entries" until 2026-10-14, by which point v1 was at v1.6.3 and two
-fixes existed that nothing in this repo mentioned — while the sentence
-directly beside it said bugfixes may keep landing, so the list could never have
-been final. What is frozen is **phases**. A restated list rots silently; a
-version number rots visibly, so the rule is: **this repo was last reconciled
-against v1 v1.6.3**, and if v1's `package.json` is ahead, read its port doc for
-the delta before planning anything. The v1 repo is a sibling checkout
-(`../DinnerBears`), so that is a file read, not a question.
-
-**DinnerBears is ONE tenant; Cincinnati and Dayton are cities inside it**
-(Rob, 2026-10-03) — and as of 2026-10-14 this is simply a description of v1
-rather than a decision about v2. v1 has one production database and it holds
-both cities. The earlier justification here claimed v2 was correcting a v1
-limitation ("v1 runs two deployments only because v1 had no way to run two
-cities"); that was false in both halves, since v1 runs one production
-deployment and has had cities since its third migration. (v1's stage
-deployment is a second *environment*, not a second community — see the intro.)
-A tenant is a community; DinnerBears is one community meeting in two cities,
-which is what `REQ-CITIES-01`'s
-`feature_cities` generalizes. Rob's "a ban is community wide" (Phase 40 /
-`v2-30`) agrees: it is only coherent if the community spans both cities.
-
-**A city is a row, not a hostname, and not a URL** (Rob, 2026-10-14). He built
-the city-URL path in v1 and nobody uses it; what is wanted is filtering events
-by city with no URL involved, which is what `v2-24` already specifies. Members
-already pick their own city at Profile → Settings and All-vs-my-city at
-Profile → Calendar — so dropping `cities.subdomain` costs a registration
-*default*, not a capability.
-
-**One tenant means one host** (Rob, 2026-10-14):
-`cincinnati.dinnerbears.com` and `dayton.dinnerbears.com` are dropped, since a
-city is a row and does not get a hostname. Retire them as **301 redirects held
-for a long window**, not as deleted DNS — an iCal feed subscription and a web
-push registration are both bound to the host a member first used, and both fail
-*silently* when it vanishes. Push cannot be rescued by a redirect at all
-(endpoints are per-origin); feeds can, but only if the import preserves
-`users.calendar_token`, which `REQ-IMPORT-01` does not currently mention. See
-`docs/CUTOVER_PLAN.md`.
-
-**There is no account-merge problem, and the one recorded here was imaginary.**
-This paragraph said an address with an account in *both source databases* was
-two rows that had to become one, and set out a merge rule as the question most
-likely to stall the cutover. There is one source database, email is already
-unique in it, and nothing merges. Deleted rather than softened, because a
-plausible-sounding problem in a planning doc costs more than a missing one.
-`REQ-IMPORT-01` is still marked superseded in part, now only for the
-one-tenant-per-source-database framing.
-
-What stands between here and a live DinnerBears — `/v2-done 14`, the
-dispatcher claim step carved out of `v2-27`, `v2-33` (v1's five bugfixes),
-**`v2-34` (an inbound email log)**, `v2-29` (port Phase 39), `v2-24` (cities,
-which the import depends on), `v2-25` (the import) — plus a production
-deployment that does not exist yet.
-
-**`v2-34` was pulled onto this path on 2026-10-20 and the parity test below is
-deliberately overruled for it.** It is an instrument *for* the cutover rather
-than a feature: inbound mail fails silently seven ways, the import and first
-production deployment are when that is least affordable, and its second job is
-finding multi-tenant faults nobody has found yet — a reply resolving to the
-wrong community, or to none. It runs **ahead of `v2-29`** so the Muse sync's
-refusals write to the log from the start instead of being retrofitted; those two
-paths are the only ways an RSVP changes without the member touching the site,
-and they fail identically today. The log is global with a **nullable** tenant id
-(a message matching no community is the most valuable row and a scoped table
-cannot hold one), the **root tenant sees every row — the tenantless ones
-included, with the community named wherever there is one — and a community's
-admins see only their own** — and because the table is global the
-scoping extension injects nothing, so every tenant-facing read carries its own
-predicate by hand while the operator's read carries none. The test for whether anything else belongs
-on that path is **"does DinnerBears have it today?"**; if not, going live
-without it is parity rather than regression, which defers most of the backlog.
-(Do not restate a total here -- the one that used to be written in this spot
-was stale within a day of `REQ-JOURNAL-01` adding six items.)
-
-## Stack (current `main`)
-Mostly the inherited v1 snapshot, with the data layer already replaced by
-`v2-1`. The rest will be replaced piece by piece as v2 items land — do not
-assume everything here is the target architecture.
-- **Frontend:** Angular 22, standalone components (NO NgModules), Angular Material (MDC), SCSS
-- **Backend:** NestJS (Node.js, TypeScript), **Prisma 7**, Passport.js
-- **Database:** MySQL (stage runs 9.7 — the v1-era "8.x" note was wrong)
-- **Auth:** JWT sessions + email/password, plus Google and Facebook OAuth using
-  each tenant's own app credentials (`v2-8`). The Google Passport strategy is
-  built per request, not registered once at boot.
-- **Email:** Brevo SDK (primary) + Resend (overflow fallback)
-- **Push:** Web Push API with VAPID keys (@angular/pwa service worker)
-- **Proxy:** NGINX Proxy Manager (Docker)
-- **Containers:** Docker Compose — api and mysql have NO public ports
-- **Testing:** Vitest everywhere (landed in `v2-2`). `api/` runs two configs —
-  `vitest.config.mts` for unit specs under `src/`, `vitest.config.e2e.mts` for
-  the 28 Supertest suites in `api/test/`. `frontend/` runs Angular's own
-  `@angular/build:unit-test` builder with `runner: "vitest"`. Browser-level
-  e2e is Playwright, at the repo root in `e2e/`. Jest, ts-jest, Karma and
-  Jasmine are uninstalled.
-
-## Repository Structure
-```
-CommunityEvents/
-├── CLAUDE.md                  ← Root context file (Claude reads this first)
-├── V2_PHASES.md                ← v2 item breakdown with definitions of done
-├── README.md                  ← Full setup instructions
-├── .env.example               ← All required env vars documented
-├── .gitignore
-├── .claude/                   ← Claude Code settings (incl. /v2-* commands)
-├── .vscode/                   ← VS Code settings
-├── docs/                      ← Requirements (incl. REQ-TENANT-01.md), schema, setup guides
-├── frontend/                  ← Angular app (inherited v1 code, pre-v2)
-│   └── public/                ← Static assets (v1 `landing.html` removed in v2-13)
-├── api/                       ← NestJS API (inherited v1 code, pre-v2)
-├── docker/                    ← Docker Compose and NGINX config
-├── e2e/                       ← Playwright browser e2e (root-level: spans both workspaces)
-└── scripts/                   ← publish-v2-stage.sh (no v1 publish scripts here — see intro)
-```
-
-## Angular Conventions (STRICT)
-Unchanged by REQ-TENANT-01 (it doesn't touch the frontend); apply to v2
-frontend work unless/until a future requirements doc says otherwise.
-- **Standalone components only** — never use NgModules
-- **Reactive Forms only** — never use template-driven forms
-- **Typed services for all HTTP** — never call HttpClient directly in components
-- **Angular Signals** for local state
-- **Functional route guards** — use `CanActivateFn`
-- **Lazy-loaded routes** — each feature is a lazy route group
-- **Angular Material** — use Mat components wherever one exists
-- **Never write a colour literal in a component** (v2-11) — use a `--ce-*`
-  token. A hex in a component is a colour belonging to no community, and it
-  sits below where any theme setting reaches: 44 such declarations survived
-  two branding items precisely because nothing could see them. The tokens are
-  named for their job (`--ce-chrome` is the nav, `--ce-rule` is a hairline),
-  never for the colour they hold. Text on a coloured surface uses the matching
-  `--ce-on-*`, which is measured for contrast rather than assumed white.
-  Success and error tints are the deliberate exception — red means error
-  whatever a community has chosen — as are third-party brand colours.
+Community dining platform organising recurring group dinners. This repo is the
+**v2.0 rewrite** of DinnerBears, a separate GitHub repo from v1 (still deployed
+from the sibling checkout `../DinnerBears`).
+
+**Never build or push `rtippenhauer/community-events:stage` or `:latest`** —
+those are the live v1 deployment. This repo publishes **only** `:v2-stage`, via
+`scripts/publish-v2-stage.sh`.
+
+**Before reading a file over 300 lines, grep or Read with offset/limit; never
+load whole large files into context.**
+
+**Detail lives elsewhere and is not restated here.** `V2_PHASES.md` — per-item
+history, decisions, running order, current status, deferred work.
+`docs/REQ-TENANT-01.md` (foundational) and
+`docs/REQ-{VALIDATE,CMS,CITIES,IMPORT,JOURNAL}-01.md` — requirements.
+`docs/CUTOVER_PLAN.md` — cutover, v1 drift, inbound mail. `docs/SECRETS.md`,
+`docs/TENANT_ONBOARDING.md`, `docs/DATABASE_SCHEMA.md` (non-authoritative).
+
+## Product model
+
+- **One deployment, one database, tenant-scoped.** A tenant is a community and
+  is a database row — not a container or a database.
+- **A city is a row inside a tenant**, not a hostname and not a subdomain.
+- **Stage and prod are the only two environments**, each with its own database.
+
+## Stack
+
+Angular 22 (standalone components, no NgModules; Angular Material MDC; SCSS) ·
+NestJS with **Prisma 7** and Passport, global prefix `/api/v1` · MySQL (stage
+runs 9.7) · JWT + email/password plus per-tenant Google and Facebook OAuth ·
+Brevo email with Resend overflow · Web Push + VAPID · Docker Compose behind
+NGINX Proxy Manager, with no public ports on api or mysql.
+
+**Testing is Vitest everywhere** (Jest, ts-jest, Karma and Jasmine are
+uninstalled): `api/` has `vitest.config.mts` for unit specs and
+`vitest.config.e2e.mts` for the Supertest suites in `api/test/`; `frontend/`
+uses Angular's `unit-test` builder; `e2e/` is Playwright at the repo root.
+
+## Branching & release
+
+v2 work runs through `/v2-start <N>` → `/v2-testing <N>` → `/v2-done <N>`
+(branch `v2-<N>-<slug>`, tag `v2-<N>`; only `/v2-done` touches `main`). Ad hoc
+work still needs a branch — reuse the current item's, else `bugfix-<slug>` /
+`chore-<slug>` — merged by PR with a real merge commit, **never squashed**.
+`package.json`'s version is still v1's; routine v2 work does not bump it.
+
+**Stage lives at `stage.communityeventsproject.com` in the Unraid container
+`CommunityEvents-v2-Stage`. Run `/stage` before shelling in, deploying or
+diagnosing it** — the image is Alpine with no `bash`, and the entrypoint starts
+the app even when a migration fails.
+
+## Angular conventions (STRICT)
+
+- Standalone components only; Reactive Forms only; Signals for local state;
+  functional route guards (`CanActivateFn`); each feature a lazy route group;
+  an Angular Material component wherever one exists
+- Typed services for all HTTP — never call `HttpClient` from a component
+- **Never write a colour literal in a component** — use a `--ce-*` token, named
+  for its job (`--ce-chrome` is the nav) rather than its colour, with the
+  matching measured `--ce-on-*` for text on it. Success/error tints and
+  third-party brand colours are the only exceptions.
 - **`core/utils/palette.ts` is the only place colours are derived, and it is
-  pure** — no DOM. `BrandConfigService` writes what it returns and the admin
-  preview renders the same thing, so what an admin previews is by construction
-  what they get. A derivation that touches `document` cannot be previewed
-  without mutating the page being previewed on.
+  pure** — no DOM, so the admin preview renders exactly what it writes.
 
-## NestJS Conventions (STRICT)
-- **One module per feature** — AuthModule, UsersModule, RestaurantsModule, etc.
-- **DTOs with class-validator** for all request bodies
-- **Guards for all protected routes** — never trust client role state
-- **Prisma for all data access** (landed in `v2-1`). TypeORM is gone —
-  there are no entities and the packages are uninstalled. Raw SQL via
-  `$queryRaw`/`$executeRaw` is acceptable only where Prisma genuinely cannot
-  express the statement, and every such site in the codebase carries a comment
-  saying why (correlated subqueries, `ON DUPLICATE KEY UPDATE`,
-  `COALESCE(resolved_at, NOW())`, `TIMESTAMP(date, time)` window filters).
-  **Raw SQL is where scoping bugs hide** — it produces no compile error when a
-  model becomes scoped, so a statement against a scoped table must carry its own
-  predicate. A join hanging off an already-scoped row (a rating's member) does
-  not need one, but should say so.
-- **Global prefix** `/api/v1` set in main.ts
-- **Never expose stack traces** — GlobalExceptionFilter handles all errors
-- **Tenant scoping is automatic, not manual** (landed in `v2-5`) — never add a
-  `tenant_id` filter by hand in a service. The Prisma Client Extension injects
-  it, including into nested writes, nested `include`/`select`, relation counts
-  and `connect`. The exception is **raw SQL**, which Prisma does not route
-  through extensions: `$queryRaw`/`$executeRaw` against a scoped table must
-  carry their own predicate, taking the id from `requireTenantId('<usage>')`.
-- **System work that legitimately crosses tenants says so out loud** — wrap it
-  in `runUnscoped('<reason>', ...)`. Without a tenant in context the extension
-  throws rather than returning everything, so a forgotten context is a failure
-  and not a leak.
-- **Secrets are encrypted automatically, not manually** (landed in `v2-7`) —
-  never call `encryptSecret`/`decryptSecret` in a service. A second Prisma Client
-  Extension (`api/src/database/prisma/secret-encryption.extension.ts`) encrypts
-  every column declared in `api/src/common/crypto/encrypted-columns.ts` on write
-  and decrypts it on read, nested writes and relation includes included. Adding
-  an encrypted column means adding it to that list. **Raw SQL is again the
-  exception** — no `$queryRaw` site touches one today, and one that does must
-  call the cipher itself. `rewrap-secrets.ts` deliberately uses a bare client for
-  the opposite reason: rewrapping through the extension would be a no-op that
-  reported success.
-- **An encrypted column cannot be filtered, ordered, grouped or joined on** — the
-  cipher is randomised, so the extension throws rather than letting the query
-  return an empty result that reads as "no such key". Look the row up by another
-  column and compare after decryption.
-- **A stored credential never goes back out over HTTP.** `GET /admin/email/config`
-  answers `brevoApiKeySet: boolean` (`email-config.view.ts`) and `/admin/secrets`
-  reports only where each key resolves from. Decrypting at the database edge and
-  re-exporting at the HTTP edge would put the value in an access log, a proxy
-  buffer and a browser cache. The write direction is unchanged: an omitted key
-  means "leave it alone", an explicit null clears it.
-- **A boolean DTO accepts any non-empty string as `true`** (found in `v2-29`).
-  The global pipe sets `transformOptions: { enableImplicitConversion: true }`,
-  which coerces a value to its declared type *before* `class-validator` runs, so
-  `@IsBoolean()` sees `true` and passes. Where getting it wrong matters — a flag
-  that publishes members' home addresses, say — read the raw value with
-  `@Transform(({ obj }) => obj.field)` so a non-boolean is a 400 rather than a
-  guess. Every boolean DTO in the codebase has this behaviour; only the one in
-  `muse-settings.dto.ts` is guarded so far.
-- **Never compare a role with `===` when asking "is this an admin"** — use
-  `hasAdminRights`/`isElevatedRole` from `api/src/common/utils/roles.util.ts`
-  (and the mirrored `frontend/src/app/core/utils/roles.util.ts`). `RolesGuard`
-  knows `system_admin` implies `admin`, but it only guards *route access*; every
-  in-handler comparison has to be told separately, and getting it wrong hides
-  admin controls from the account with the most rights rather than erroring.
+## NestJS conventions (STRICT)
+
+- One module per feature; DTOs with class-validator; guards on every protected
+  route — never trust client role state. **Never expose stack traces**;
+  `GlobalExceptionFilter` handles all errors.
+- **Prisma for all data access.** Raw SQL only where Prisma cannot express the
+  statement, with a comment saying why.
+- **Tenant scoping is automatic — never add a `tenant_id` filter by hand.** The
+  Client Extension injects it, nested writes and includes included. **Raw SQL
+  is the exception** and must carry its own predicate from
+  `requireTenantId('<usage>')` — it produces no compile error when a model
+  becomes scoped, which is where scoping bugs hide.
+- **Work that crosses tenants says so** — `runUnscoped('<reason>', ...)`. No
+  context at all throws, so a forgotten context fails rather than leaks.
+- **Secrets are encrypted automatically** by a second extension — never call
+  `encryptSecret`/`decryptSecret`; a new encrypted column goes in
+  `common/crypto/encrypted-columns.ts`. **An encrypted column cannot be
+  filtered, ordered, grouped or joined on** (the cipher is randomised): look
+  the row up by another column and compare after.
+- **A stored credential never goes back out over HTTP** — answer
+  `<thing>Set: boolean`. On write, an omitted key means "leave it alone", an
+  explicit null clears it.
+- **A boolean DTO accepts any non-empty string as `true`**, because
+  `enableImplicitConversion` coerces before validation. Where it matters, read
+  the raw value with `@Transform(({ obj }) => obj.field)` so a non-boolean 400s.
+- **Never compare a role with `===`** — use `hasAdminRights`/`isElevatedRole`
+  from `common/utils/roles.util.ts` (mirrored in `core/utils/roles.util.ts`).
+  `RolesGuard` knows `system_admin` implies `admin`, but only for route access.
 
 ## Database
-MySQL via **Prisma 7**. `api/prisma/schema.prisma` is the single source of
-truth; `docs/DATABASE_SCHEMA.md` is now human-readable reference only, not
-authoritative (per REQ-TENANT-01.3).
 
-- **Migrations:** `prisma migrate dev` locally, `prisma migrate deploy` in the
-  container entrypoint. The 84 inherited TypeORM migrations are gone, replaced
-  by a single init migration — v2 starts from a blank database and imports
-  production data separately.
-- **Fresh install is three steps:** `prisma migrate deploy` (automatic on
-  container start) -> `node dist/database/prisma/seed.js` (tenant-independent
-  reference data only: avatars, cities, merch config) -> `node dist/bootstrap.js`
-  (this operator's city, branding, first admin, **and the achievement
-  catalogue**). Seed before bootstrap: bootstrap edits seeded data, so running it
-  first leaves the bear avatars and terminology in place.
+`api/prisma/schema.prisma` is the single source of truth.
 
-  The catalogue moved out of `seed.js` in `v2-10` for the reason `app_config`
-  did in `v2-6` and `email_provider_config` in `v2-9`: it is scoped now, and
-  seed runs before any tenant exists, so a row it wrote would take the
-  `tenant_id` sentinel and be rejected by the foreign key.
-- **Prisma 7 specifics:** no `url` in the schema's datasource block — the
-  connection string lives in `prisma.config.ts` (derived from the existing
-  `DB_*` vars) and the client takes a driver adapter,
-  `@prisma/adapter-mariadb`, which is the MySQL adapter despite the name.
-- **`allowPublicKeyRetrieval` is required**, not optional. MySQL 8/9 use
-  `caching_sha2_password`, and over a non-TLS connection the driver must fetch
-  the server's RSA public key to complete a first-time handshake. Without it
-  every query fails as a "pool timeout" that never mentions authentication.
-- **Field naming:** scalar fields are camelCase with `@map` to their
-  snake_case columns, and relation fields carry the old entity property names.
-  This is deliberate — controllers return rows straight to the client, so a
-  field name here IS the JSON key the frontend consumes.
-- **Four `locations` columns are hidden by a global `omit`** in
-  `PrismaService` (`moderatorNotes`, `contactName`, `contactPhone`,
-  `contactEmail`), standing in for TypeORM's `select: false`. Only
-  `findOneWithModFields` opts back in. Prisma returns every scalar by default,
-  so a new query is safe only because the omit is global.
-- **DATE/TIME columns come back as `Date`**, where the entities typed them as
-  strings. `api/src/common/utils/prisma-date.util.ts` converts both ways; use
-  it rather than string-slicing a Date.
+- **Fresh install is `migrate deploy` → `seed.js` → `bootstrap.js`, in that
+  order** (`docs/NEW_INSTANCE_SETUP.md`). **`seed.ts` may only write
+  tenant-independent data** — it runs before any tenant exists, so a row it
+  writes to a scoped table takes the `tenant_id` sentinel and is rejected by
+  the foreign key.
+- **Prisma 7:** no `url` in the datasource block (it is in `prisma.config.ts`),
+  and the client takes the `@prisma/adapter-mariadb` adapter — the MySQL one,
+  despite the name. **`allowPublicKeyRetrieval` is required**, or every query
+  fails as a "pool timeout" that never mentions authentication.
+- **Prisma promises are lazy** — `runWithTenant(id, () => prisma.x.find())`
+  builds the query in context and runs it outside. Await inside the callback.
+- **Scalar fields are camelCase with `@map`**; a field name here IS the JSON key
+  the frontend consumes. **DATE/TIME columns come back as `Date`** — convert
+  with `prisma-date.util.ts`, never by string-slicing, and check write
+  responses, not only the GETs that follow them.
+- **No migration here is tested against populated data** by the suite — the e2e
+  harness builds an empty database. Test data-moving migrations by hand.
 
-## Multi-Tenancy (per `docs/REQ-TENANT-01.md`)
-- **`tenants` table exists as of `v2-3`**: `id`, `slug`, `domain` (unique),
-  `is_root`, `root_marker`, `status` (active/suspended), `db_mode`
-  (shared/dedicated — reserved, defaults shared), `created_at`, plus four
-  reserved OAuth credential columns (nullable; the two `*_secret` ones are
-  registered in `encrypted-columns.ts` as of `v2-7`, and written since `v2-8`).
-- **NULL OAuth credentials mean that provider is OFF for the tenant**, which
-  then offers email/password only — there is no platform-wide fallback app
-  (REQ-TENANT-01.9, decided 2026-08-14; this *reversed* the original reading in
-  REQ-TENANT-01.1, so ignore any older phrasing that says NULL means "uses the
-  platform's own OAuth apps"). Live as of `v2-8`: the deployment-wide
-  `GOOGLE_CLIENT_*`/`FACEBOOK_APP_*` env vars are **gone**, not kept as a
-  fallback, so there is no configuration that can reintroduce one.
-- **Connecting a provider is a different route from signing in with one, and
-  it is guarded.** `GET /auth/google/link` and `POST /auth/facebook/link`
-  establish who is asking from the session, because that is the only place a
-  trustworthy answer exists — the callback lands with no usable session (host-
-  only, and on a different host entirely for a community on the deployment's
-  domain). Google carries the user id through the round trip in the **signed**
-  `state` (`linkUserId`), never a query parameter, or anyone could attach their
-  own Google account to somebody else's user.
+## Multi-tenancy
 
-  The reason this is a rule and not a detail: Google linking used to work as a
-  *side effect* of `findOrCreateGoogleUser` auto-linking on a matching email,
-  `v2-8` removed that correctly, and the Connect button was left pointing at the
-  sign-in start — which refuses whenever the address already has an account,
-  i.e. always. Aligning two providers' refusals while leaving their affordances
-  opposite is the same asymmetry in a new place. Linking never creates a user
-  and never requires the provider's address to match the account's.
-- **Which providers a tenant offers is answered by `GET /auth/methods`** —
-  unauthenticated and tenant-resolved, since the login page has no session yet.
-  `GET /auth/providers` cannot do it: it is `JwtAuthGuard`ed and reports the
-  signed-in user's *linked* accounts, a different question.
-  `TenantOAuthService.offeredProviders()` selects only `googleClientId` and
-  `facebookAppId` — never the secrets — so answering it decrypts nothing.
+**Resolution.** `TenantMiddleware` runs ahead of every route and sets
+`req.tenant` — read it rather than re-resolving.
+
+- `domain` is stored bare and lower-cased and **cannot hold a `www.` prefix**;
+  use `normalizeTenantDomain` for any Host-header lookup.
+- Exactly one tenant has `is_root`, enforced by a unique index on the nullable
+  `root_marker`. **Write `is_root` and `root_marker` together, always.**
+- A route that must answer without a tenant goes in `UNSCOPED_PATHS` — a string
+  compare on `req.originalUrl`, because a wrong `exclude()` pattern fails open.
+  Inside middleware `GlobalExceptionFilter` does not apply and `req.path` is
+  `/`, so write the JSON body directly and read `req.originalUrl`.
+
+**Scoping.** Enforced by
+`api/src/database/prisma/tenant-scope.extension.ts` via AsyncLocalStorage.
+
+- Scoped models are declared in `common/tenant/tenant-scoped-models.ts`,
+  **exhaustive over `Prisma.ModelName` at the type level — a new model must be
+  classified or the build fails.**
+- **Email lookups are `findFirst`, not `findUnique`** — an address no longer
+  identifies a row on its own. Compound unique keys call `requireTenantId`.
+- **Links that leave the app use `baseUrlFor()`**, never `APP_URL`; pass an
+  explicit tenant id inside a `runUnscoped` sweep.
+- **A cron that composes per-tenant content must re-enter `runWithTenant`** —
+  `runUnscoped` is for *finding* rows across tenants, never for *rendering*.
+- **Deleting a community** passes three gates (never root, already suspended,
+  caller retypes the domain) and the purge filters by `tenantId` explicitly
+  rather than trusting the extension.
+- **System-admin actions on other communities are audited on the root tenant** —
+  `audit_log` is itself scoped.
+
+**Identity.** Roles are `non_validated`, `member`, `moderator`, `admin`,
+`system_admin`, `automation`, `disabled`. `SystemAdminGuard` requires the role
+**and** `req.tenant.isRoot`; `setRole` refuses to assign or remove
+`system_admin`.
+
+- **Guards key on `users.is_service_account`**, never on role (deliberately
+  mutable) and never on the address. A community may hold several service
+  accounts, so no guard may assume one row per community.
+- A non-person account's address is `<local>@<tenant slug>.internal` — the
+  **slug**, so it survives a host change. Changing what it computes without
+  migrating stored rows grows a second account rather than renaming one, so
+  code change and rename migration ship together.
+- Scheduled deletion never touches an `admin`, a `system_admin` or a service
+  account (`AUTO_DELETE_ELIGIBLE`). **Creating a tenant creates its first
+  admin**, without which a community is a dead end — registration is
+  invite-gated.
+
+**Cookies.** The session cookie is **host-only — never set a `domain`** in
+`common/utils/auth-cookie.util.ts`, or one login is valid across every tenant.
+`SameSite=strict` survives the OAuth handoff; don't loosen it.
+
+**OAuth** (detail in `docs/REQ-TENANT-01.md` .8/.9). Each tenant brings its own
+credentials and **NULL means that provider is off** — there is no platform-wide
+fallback app. **Connecting a provider is a different route from signing in with
+one** and takes the user from the session, carrying the user id in the
+**signed** `state`, never a query parameter. The callback branches on where it
+landed (`req.tenant?.id === state.tenantId`), never on a stored flag.
+
+**Configuration and secrets** (`docs/SECRETS.md`, REQ-TENANT-01.9).
+
 - **Whose domain a community is on decides its fallbacks, and it is derived,
-  never stored** (`isOnDeploymentDomain` in `tenant-domain.util.ts`, reached
-  through `TenantResolutionService.isOnDeploymentDomain(tenantId)`). A community
-  on a subdomain of this deployment may fall back to the deployment's Google app
-  and its Brevo/Resend credentials; a community on its own domain may not, and
-  must bring its own. One predicate answers three questions -- which Google
-  redirect URI applies, whether the OAuth callback needs the handoff hop, and
-  whether the deployment's email credentials may be used -- so a stored flag
-  would be a fourth answer that could disagree with the domain. The suffix match
-  carries a dot: `notcommunityeventsproject.com` is a domain somebody else can
-  register.
+  never stored** (`isOnDeploymentDomain`): on a subdomain of this deployment it
+  may fall back to the deployment's Google and Brevo credentials, on its own
+  domain it must bring its own. The suffix match carries a dot; the root tenant
+  is answered by `is_root`. **The fallback has three copies** (`BrevoService`,
+  `ResendService`, `BrevoWebhookService.register`) — gate a new one too.
+- **A credential never goes in `app_config`** — those rows are served to
+  unauthenticated visitors. Per-community credentials live in `tenant_secrets`,
+  and **the encryption key is bootstrap config, never in the database.**
+- Env vars are classified in `common/config/env-classification.ts`, held to
+  `.env.example` by a spec both ways — **an unclassified variable fails the
+  build.**
+- **The mail domain is never derived from a tenant's host**, and **a deployment
+  below the apex must set `BASE_DOMAIN` to the apex** — with no MX a sender
+  falls back to the A record, so replies time out instead of being refused.
+  Contact addresses resolve most-specific-first through `AppConfigService`;
+  blank inherits.
 
-  **The root tenant is answered by `is_root`, not by the string compare** -- it
-  *is* the deployment, and a drifted `APP_URL` must not stop the operator's own
-  community sending mail.
+**Email.** `email_provider_config` is scoped, so the dispatcher groups its batch
+by `tenantId`. **A provider's allowance and its template ids belong to the
+ACCOUNT, not the community**, so both the local counter and the account budget
+must permit a send and an inherited template id addresses the wrong library. A
+community on its own domain has **no email fallback** — fatal where the OAuth
+equivalent is not, since registration, verification and resets are all mail.
 
-  The rule generalises REQ-TENANT-01.9's consent argument rather than replacing
-  it: signing members in through the platform's app, or mailing them from the
-  platform's address, is accurate for a community that visibly *is* the platform
-  and misleading for one that presents as its own entity. **The fallback has
-  three copies** -- `BrevoService.getEffectiveConfig`, `ResendService`, and
-  `BrevoWebhookService.register`, which holds its own `|| env` line; a new one
-  must be gated too.
-- **The OAuth callback runs on one fixed host and hands the session back.**
-  `state` is signed and carries the originating tenant; the callback writes a
-  single-use `oauth_handoffs` row and redirects to that tenant's own host to
-  redeem it. Two rules fall out: the tenant in a decoded `state` must be read
-  **before** any error branch (a cancelled sign-in still has to know where to
-  return), and the callback resolves a user belonging to a tenant other than the
-  host's, so it runs inside an explicit `runWithTenant`.
-
-  **As of `v2-12` the handoff is conditional, and the condition is where the
-  callback landed** -- `req.tenant?.id === state.tenantId`, never a flag saying
-  what kind of community this is. Matching means the cookie can be set here
-  directly and no handoff row is written; not matching means it leaves as a
-  ticket. Used as the branch, this is also the "check the state against
-  `req.tenant`" the design asked for, so the host is never trusted alone: an
-  unexpected landing falls back to the handoff, which works from anywhere.
-  `GoogleOAuthService.callbackUrl` is per-tenant for the same reason and
-  **must return the same value on both legs** -- Google matches `redirect_uri`
-  at the token exchange too, and a mismatch names neither side.
-- Exactly one tenant has `is_root = true`; its admin is the system admin. This
-  is a **database constraint**, not a convention: `root_marker` is `true` on the
-  root and NULL elsewhere, and its unique index rejects a second root (MySQL has
-  no partial unique index, but permits repeated NULLs in a unique one). Write
-  `is_root` and `root_marker` together, always.
-- `domain` is stored bare and lower-cased and **cannot hold a `www.` prefix** —
-  `normalizeTenantDomain` strips it on the way in, so `www.<domain>` and
-  `<domain>` cannot become two rows. Use that same function for any Host-header
-  lookup; seeding and resolution must not drift.
-- The root tenant's domain comes from `ROOT_TENANT_URL` if set, else `APP_URL`
-  (`resolveRootTenantDomain`). **Not** `BASE_DOMAIN` — that is the mail domain.
-- The root tenant is created by `bootstrap.ts`, so a database that is migrated
-  and seeded but not bootstrapped has **no tenant at all**. As of `v2-4` domain
-  resolution fails loudly on that (503 `TENANT_NOT_CONFIGURED` + an error log)
-  rather than 404ing every request.
-- `bootstrap.ts` writes the root tenant with `ON DUPLICATE KEY UPDATE domain =
-  VALUES(domain)`, so **re-running it overwrites the domain from `APP_URL`**.
-  That self-heals a wrong domain, but a stale `APP_URL` silently reverts a
-  manual fix — which is exactly how stage came up unresolvable on the `v2-4`
-  deploy.
-- Sub-communities (`sub1.baseurl`) are explicitly out of scope for
-  REQ-TENANT-01 — unrecognized subdomains 404 like any other unrecognized
-  domain, no special-casing.
-- **Host-header resolution landed in `v2-4`** (`api/src/common/tenant/`).
-  `TenantMiddleware` runs ahead of every route and sets `req.tenant`
-  (`TenantContext`: id, slug, domain, isRoot, status); read it rather than
-  re-resolving. `TenantResolutionService.resolve()` never throws — an unknown
-  host is an outcome, not an error — and caches results, misses included, on a
-  short TTL with a 500-entry ceiling.
-- **Adding a route that must answer without a tenant means editing
-  `UNSCOPED_PATHS`** in `tenant.middleware.ts`. Only `/api/v1/health` is in it.
-  The exemption is a string compare against `req.originalUrl`, not
-  `MiddlewareConsumer.exclude()`, because a wrong exclude pattern fails open —
-  every route unscoped, silently.
-- **Middleware cannot use `GlobalExceptionFilter`**: it wraps route handlers, so
-  an exception thrown in middleware unwinds to Express's stock HTML error page
-  instead. `TenantMiddleware` writes its JSON body directly, matching the
-  filter's shape. Its `reason` values (`TENANT_NOT_FOUND`,
-  `TENANT_NOT_CONFIGURED`, `TENANT_SUSPENDED`) are a contract the frontend reads
-  to decide whether to show the holding page — don't rename them on one side.
-- **Nest mounts module middleware at a path and Express strips it**, so
-  `req.path`/`req.url` are `/` inside any middleware registered via
-  `forRoutes()`. Use `req.originalUrl`.
-- **Tenant scoping enforcement point is the Prisma Client Extension**
-  (`api/src/database/prisma/tenant-scope.extension.ts`), not individual services
-  or controllers. Which models it scopes is declared in
-  `api/src/common/tenant/tenant-scoped-models.ts`, which is exhaustive over
-  `Prisma.ModelName` at the type level — **a new model must be classified as
-  scoped or global or the build fails**, and adding `tenant_id` in
-  `schema.prisma` means adding it to that list in the same change.
-- The tenant reaches the extension through **AsyncLocalStorage**
-  (`tenant-store.ts`), established by `TenantMiddleware` around `next()`. Three
-  states, deliberately distinct: a tenant, `null` (explicitly waived by
-  `runUnscoped`), and no context at all — which throws. Note **Prisma promises
-  are lazy**, so `runWithTenant(id, () => prisma.x.find())` runs the query
-  *outside* the context; await inside the callback.
-- **`users` and `app_config` are tenant-scoped as of `v2-6`.** Email is unique
-  per tenant (`@@unique([tenantId, email])`), not globally, so one address can
-  hold a separate account in each community and login resolves against the
-  tenant that owns the URL. `oauth_accounts` is keyed
-  `(tenant_id, provider, provider_id)` for the same reason.
-- **`seed.ts` may only write tenant-independent reference data.** It runs before
-  `bootstrap.ts` creates the root tenant, so a row it writes to a scoped table
-  takes the `tenant_id` sentinel and is rejected by the foreign key. The
-  `app_config` defaults and the automation account live in `bootstrap.ts` for
-  exactly this reason; the install is still `migrate` -> `seed` -> `bootstrap`.
-- **Links that leave the app must use the tenant's host**, via
-  `TenantResolutionService.baseUrlFor()` — never `APP_URL`, which is one value
-  for the whole deployment. Verification and reset emails, invite links, event
-  links and calendar feeds all resolve tokens against scoped tables, so a link
-  to the wrong host finds nothing and the flow fails silently. Pass an explicit
-  tenant id inside a `runUnscoped` sweep, where there is no ambient one.
-  `APP_URL` legitimately survives for the OAuth callback registered with Google,
-  the "is this stage" check, and the cookie-clearing domain.
-- **A cron sweep that composes per-tenant content must re-enter
-  `runWithTenant`.** `runUnscoped` is right for *finding* rows across tenants and
-  wrong for *rendering* anything: `app_config` is scoped, so branding read under
-  a waiver returns whichever tenant the engine reached first. See the seats
-  reminder in `events.service.ts`.
-- **Email lookups are `findFirst`, not `findUnique`.** An address no longer
-  identifies a row on its own. The exception is a compound unique key
-  (`app_config`'s upserts), which Prisma will not let the extension merge a
-  tenant into — those call `requireTenantId`, like raw SQL.
-- **Roles as of `v2-6`:** `non_validated`, `member`, `moderator`, `admin`,
-  `system_admin`, `automation`, `disabled`. `system_admin` is the deployment
-  operator (tenant management); `SystemAdminGuard` requires the role **and**
-  `req.tenant.isRoot`, and `admin.service.setRole` refuses to assign or remove
-  it — bootstrap creates the first one, further ones are a database edit.
-  `disabled` grants nothing at all, since `RolesGuard` is an allowlist.
-- **A service account exists only where something can use it**
-  (`tenantGetsServiceAccount`): the root tenant always, other communities on a
-  **stage deployment only**. It used to be created everywhere, justified as
-  owning the rows the deployment writes inside that community — which was false:
-  `audit_log.user_id` is nullable and nothing looks a non-root one up. In
-  production a customer community gets none at all.
-- **`automationLogin` matches that**: root anywhere, non-root on stage only. A
-  single platform-wide `CLAUDE_AUTOMATION_SECRET` would otherwise mint a session
-  inside a customer's community. Gating on `IS_STAGE` means the capability cannot
-  exist in production rather than existing behind a promise to disable it.
-- **`isStageDeployment()` reads `process.env`, not `ConfigService`** — deliberate
-  and the only flag that does. `bootstrap.ts`/`provision-tenant.ts` are plain
-  node processes with nothing to inject from, and two services capture `IS_STAGE`
-  in their constructors, which would make it untestable in both states.
-- **The service account holds `automation` wherever it exists**, root or not. A
-  community's own admin may change its role (it is inert — NULL password hash, so
-  nothing can authenticate as it, and the actor is already an admin there).
-  `system_admin` is the exception and stays guarded on both sides.
-- **`users.is_service_account` marks a non-human account.** Guards key on that
-  column, never on the role (deliberately mutable — the root account gets
-  flipped to admin and back for testing) and never on the address. Service
-  accounts cannot be deleted by any path and are hidden from the member
-  directory and the leaderboard.
-
-  **Not "the one" per tenant since `v2-29`**: a community may hold several, its
-  own `automation` account plus an integration account per outside service. Any
-  guard that assumes a single row per community is wrong, and `OperatorGuard`
-  is the one that matters — it grants deployment-wide rights on this column, so
-  what keeps a Muse token away from it is that the token authenticates nothing
-  outside `/api/v1/muse`.
-- **A non-person account's address names its own community** (`v2-29`):
-  `<local>@<tenant slug>.internal`, built by `automationAccountEmail()` /
-  `integrationAccountEmail()` in `service-account.util.ts`, with the slug read
-  through `TenantResolutionService.slugFor()`. The slug and not the domain —
-  a community can move host, and an address built from the old one silently
-  stops saying whose it is.
-
-  It was one deployment-wide constant until `v2-29`, so every community's
-  service account read `automation@communityevents.internal` — byte-identical
-  across communities, which is exactly how a correctly-scoped row came to be
-  reported as a cross-tenant leak on stage. **The address is still not an
-  identifier**, but `createServiceAccount` upserts `ON DUPLICATE KEY UPDATE`
-  against `(tenant_id, email)`, so changing what it computes without migrating
-  the stored rows grows a *second* service account per community rather than
-  renaming the one there. That has now been the trap twice (`v2-10`, `v2-29`):
-  the code change and the rename migration ship together, always.
-- **Nothing is deleted on a timer if it is an `admin`, a `system_admin` or a
-  service account** (`AUTO_DELETE_ELIGIBLE`). The interactive paths already
-  refused them; the scheduled sweeps were the gap, and `inactivityCheck`
-  soft-deletes anything idle past 120 days and hard-deletes it 30 days later
-  with no confirmation. Admins still get the 60/90-day re-engagement nudges —
-  only the deletion stages exclude them.
-- **Creating a tenant creates its first admin.** Without one a community is a
-  dead end: registration needs an invite, invites need an existing member of that
-  tenant, and its only other account is the `disabled` service account. The
-  fields are create-only. A one-time setup link replaces the password hand-off in
-  `v2-15`.
-- **A new community is seeded with the platform's Terms and Privacy Policy**
-  (`api/src/common/legal/legal-defaults.ts`), by `bootstrap.ts` for the root
-  tenant and by `tenants-admin.service.create` for every other. `/terms` and
-  `/privacy` render whatever `app_config` holds, and a missing row is not an
-  error there — it is a titled page with nothing under it, which reads as
-  answered. They are templates, not finished documents: `{{brand_name}}`,
-  `{{legal_entity}}` and `{{support_email}}` are filled in on the **public read**
-  (`getPublicValue`), never at seed time, so renaming a community does not
-  strand its old name inside two documents nobody re-reads. The admin editor
-  deliberately sees the raw copy.
-- **`legal_entity` is deployment-wide (`LEGAL_ENTITY_NAME`), not per-community.**
-  One operator runs every community on a deployment, and a community cannot
-  accurately describe processing it does not control. Blank falls back to the
-  community's own name, which is right only when the two are the same.
-- **`legal_reviewed_at` is what says a human read them.** Empty until an admin
-  confirms at Admin → Legal; until then every admin of that community sees a
-  banner in the app shell. Seeding is what makes this necessary — the pages look
-  finished, so nothing else would ever prompt a review. It rides in the branding
-  payload so the banner costs no extra request.
-- **`system_admin` is assignable from the UI to the root tenant's service account
-  only, by someone who already holds it.** Both halves matter and neither implies
-  the other: constraining only the target let any root-community admin mint the
-  role that operates every community. Humans still cannot be promoted. The picker
-  reads `isRoot` off the branding payload so it stops offering an option the API
-  would refuse. Temporary — expected to revert to database-only before
-  production.
-- **`automationLogin` keys on `is_service_account` + the root tenant, never the
-  role.** The account is deliberately flipped between roles for testing, so a
-  role check locks automation out exactly when it is being used.
-- **Which env vars are bootstrap and which are runtime config is declared in
-  `api/src/common/config/env-classification.ts`**, one entry per variable with
-  the reasoning, and a spec holds it to `.env.example` in both directions. Adding
-  a variable to the sample env without classifying it fails the build, the same
-  way an unclassified Prisma model does. Bootstrap is eleven variables and should
-  stay that size; `DB_MODE` is named by REQ-TENANT-01.4 but was never
-  implemented, and is not the same thing as the reserved `tenants.db_mode`
-  column.
-- **A community's contact addresses are per-tenant** (`mail_domain`,
-  `contact_support_email`, `contact_calendar_email`, `contact_event_email` in
-  `app_config`, edited in Site Settings). Resolve them through
-  `AppConfigService.supportEmail()` / `.calendarOrganizerEmail()` /
-  `.eventOrganizerEmail()`, never `instance-contact.ts` directly — those are the
-  deployment-wide env layer underneath. Order is most-specific-first: the
-  community's own address, then a derivation from its own mail domain, then the
-  env var, then a derivation from the deployment domain. Blank means inherit, so
-  an install that sets nothing is unaffected.
-- **Tenant creation asks for the mail domain** (`CreateTenantDto.mailDomain`),
-  writing it as an ordinary `mail_domain` row on the new tenant — the same
-  setting its admin edits later, not a second home for the value. Create-only,
-  like the first-admin fields. The dialog prefills the deployment's own mail
-  domain when the new community is a subdomain of it, and deliberately suggests
-  nothing otherwise.
-- **The mail domain is never derived from the tenant's host.** A tenant is a web
-  host; a tenant subdomain normally publishes no MX record, so
-  `hello@dayton.example.com` would bounce silently. Same failure the `www.` strip
-  guards against, one level down. Pass an explicit tenant id inside a
-  `runUnscoped` sweep, as with `baseUrlFor()`.
-- **And a deployment below the apex must set `BASE_DOMAIN` to the apex** — the
-  gap both guards above leave open, found 2026-10-20. The last step of the chain
-  derives from the *deployment's* own host, and stage is
-  `stage.communityeventsproject.com`, where Email Routing is apex-only and no MX
-  exists, so every tenant inheriting the default got
-  `calendar-stage@stage.…` and `noreply@stage.…`. **With no MX a sender falls
-  back to the A record**, which is Cloudflare's web proxy: replies time out
-  instead of being refused, so the sender's mail server retries for 48 hours and
-  warns them repeatedly. Loud for the member, silent for us. Every stage
-  deployment is in this position by construction. See `docs/CUTOVER_PLAN.md`'s
-  inbound-mail section; `v2-34` exists to make this class of failure visible.
-- **A credential still never goes in `app_config`** — but the reason changed in
-  `v2-7`. It is no longer that nowhere is safe; it is that `app_config` rows are
-  served to unauthenticated visitors (the branding payload, the public
-  `/config/:key`), so a secret there is one allowlist edit away from a public
-  response. Per-community credentials live in **`tenant_secrets`**, a separate
-  scoped table whose whole value column is encrypted.
-- **Three secrets are per-community as of `v2-7`** — `geocoding_api_key`,
-  `places_api_key`, `anthropic_api_key` (`tenant-secret-keys.ts`), resolved
-  most-specific-first through `TenantSecretsService.resolve()` with the env var
-  as the deployment default, and set at Admin → API Keys. Each is metered against
-  whoever owns the key, which is the argument for per-community. The rest stay in
-  env with a reason recorded per variable; the class is now called `secret`
-  rather than `secret-pending-v2-7`. The mail *identity* (`BREVO_FROM_*`) stays
-  with the email keys, and `v2-9` made both per-community in
-  `email_provider_config` rather than in `tenant_secrets` — they move together
-  because a provider rejects a From address on a domain that account has not
-  verified.
-- **The encryption key is bootstrap config and is never in the database** — a
-  dump holding both the key and the ciphertext is a dump of the plaintext, which
-  is the whole threat. `SECRET_ENCRYPTION_KEY`, `SECRET_ENCRYPTION_KEYS_RETIRED`
-  and `SECRET_ENCRYPTION_KEY_FILE` took bootstrap from eleven variables to
-  fourteen; the key is the one value that could not be runtime config even in
-  principle, since it is what makes runtime config readable.
-- **A fresh deployment generates its own key** (`secret-key-bootstrap.ts`, run
-  from `main.ts` after the database is reachable), writes it to the key file on
-  the appdata volume, and logs loudly that it needs backing up. Generating is
-  allowed **only when the database holds no encrypted value** — what the data
-  contributes is not the key but a constraint on it, since every envelope names
-  its key id. Three refusals follow from that, all at startup rather than at the
-  first credential read: no key with secrets present, a key that cannot read
-  what is stored, and (a warning, not a refusal) data still under a retired key.
-  Legacy plaintext names no key, so a pre-`v2-7` database still generates
-  cleanly.
-- **Rotation loses nothing; losing the key loses everything.**
-  `SECRET_ENCRYPTION_KEYS_RETIRED` plus `npm run secrets:rewrap` moves every
-  value onto a new key with the deployment serving throughout. If the key is
-  genuinely gone, `npm run secrets:reset` is the explicit destructive recovery —
-  it NULLs every encrypted column so a new key can be generated, guarded by a
-  confirmation phrase rather than a boolean for the same reason deleting a
-  community makes you retype its domain. `docs/SECRETS.md` is the operator-facing
-  version; `docs/TENANT_ONBOARDING.md` covers the provider-side setup.
-- **The achievement catalogue is per-community as of `v2-10`.** `achievements`
-  was global reference data, so every community shared one catalogue — and it
-  held DinnerBears' copy, which nobody else could override because the rows
-  belonged to nobody. It is scoped now, unique on `(tenant_id, key)`, and seeded
-  by `bootstrap.ts` and `tenants-admin.service.create`.
-
-  **`key` is an identifier, not copy.** `founding_member` is joined on in
-  `adminBackfillFounders` and the merch gate, `patriotic_2026` in the splash
-  component; only the display fields differ per community. Raw SQL that joins
-  the catalogue therefore needs its own `tenant_id` predicate — matching on the
-  key alone was correct while exactly one row in the database held it, and now
-  multiplies by the number of communities.
-
-  **A migration that fans a shared table out per tenant must swap the unique
-  index first.** Copying is what makes a key appear twice; doing it while the
-  single-column unique index is still in force dies on `Duplicate entry`. The
-  e2e harness builds an empty database, so that branch selects zero rows and is
-  never exercised — **no migration in this repo is tested against populated
-  data**, which is how it reached stage.
-
-- **A community on its own domain has no email fallback (`v2-12`), and that is
-  fatal in a way the OAuth equivalent is not.** No Google credentials still
-  leaves email/password working; no Brevo key leaves a community nobody can
-  join, since registration is invite-gated and invitations, address verification
-  and password resets are all mail. For now this is a warning on Admin → Email
-  (`mayUseDeploymentCredentials` in the config payload) and nothing more —
-  decided with Rob 2026-09-08, because an operator creating a community by hand
-  may not have the key at that moment. It becomes a hard gate when self-service
-  lands; recorded against `v2-15`.
-- **Email sending is per-community as of `v2-9`.** `email_provider_config` is
-  scoped: its Brevo key, From identity, template ids, webhook token and daily
-  counters all belong to a community, resolved with the env credentials as the
-  deployment default. A cron that sends must therefore re-enter `runWithTenant`
-  per message — the dispatcher groups its batch by `tenantId` for exactly this
-  reason, since sending the whole batch under one config mails every community
-  through whichever account the engine loaded first. **Template ids are scoped
-  too**, so a newly created community has none and falls back to
-  `BREVO_TEMPLATE_*`; set those on the deployment or every new community sends
-  the raw-HTML fallback, which works and therefore goes unnoticed.
-- **A provider's daily allowance belongs to the ACCOUNT, not the community.** A
-  community with no key of its own sends on the deployment's, so several share
-  one Brevo account and one allowance. Two of them each counting only their own
-  sends against their own limit of 300 will spend 350 of one 300/day account and
-  be cut off having never exceeded what either believed was its budget. So there
-  are two numbers and they answer different questions: `brevoSentToday` is
-  attribution and is never overwritten by the provider, while the account budget
-  (`BrevoService.getAccountQuota`, cached against a hash of the API key) is what
-  gates sending. Both must allow a message. Only a `free` plan reports a daily
-  figure — a prepaid balance has no daily cap, and treating it as one would stop
-  sending at an imaginary line.
-- **A Brevo template id belongs to the ACCOUNT too, exactly like the allowance
-  above.** It is a number in one account's own template library, so `getTemplateId`
-  falls back to `BREVO_TEMPLATE_*` **only** where the community is sending on the
-  deployment's key. A community with its own key and no ids of its own falls
-  through to the raw-HTML body — plain, but it sends. Handing it the deployment's
-  id would address a different template over there, or none, and Brevo refuses
-  the send. Worse than inheriting a key, because an inherited id is a *valid
-  number* pointing into somebody else's library and nothing looks wrong until the
-  provider says no (`v2-12`; latent since `v2-9`, reachable only once a community
-  had its own key). An id set at Admin → Email must come from that community's
-  library.
-- **`EMAIL_QUOTA_TIMEZONE` is the operator's calendar day, not the provider's.**
-  It was built to mirror the provider's reset, which turned out to be
-  unknowable: `GET /v3/account` has no timezone field, and separate accounts can
-  reset on separate cycles, so one deployment-wide setting could not match them
-  all. The account budget above is what makes that safe to accept — a send needs
-  both budgets, so a local counter that zeroes mid-provider-day cannot overshoot.
-  What the setting decides is only which day a human reading the screen is
-  looking at. `quotaDayStart` takes the offset in force at midnight rather than
-  the one in force now, so a DST changeover day does not sit an hour out for its
-  whole length.
-- **Tenant management lives at `/api/v1/system/tenants`**, under `system/` and
-  not `admin/` because it acts on the registry of communities rather than inside
-  one. The root tenant cannot be suspended and its domain cannot be changed
-  there — both would lock the system admin out of the only host the API answers
-  on.
-- **Deleting a community passes three gates**: never the root tenant, it must
-  already be `suspended`, and the caller retypes its domain. Suspending stays the
-  ordinary way to take one offline. The purge filters by `tenantId`
-  **explicitly** rather than through the extension — the one place in the
-  codebase that should — because a `deleteMany({})` that silently lost its filter
-  would empty every community, and a transaction client is not somewhere to bet
-  on an extension being applied. Order does not matter (every FK among scoped
-  tables is `CASCADE`); the `tenant_id` keys stay `RESTRICT` so the final
-  `tenants.delete()` fails loudly if the model list ever misses a table.
-- **A community's people are managed from the root tenant** at
-  `/api/v1/system/tenants/:id/users` — list, add, change role, suspend, set
-  password. Necessary because a system admin holds no account in the communities
-  they administer and those admin screens live on each community's own host, so
-  an admin who left or forgot their password made a community unreachable. It
-  refuses to touch a **service account** or any **system_admin**, and cannot
-  grant `system_admin`, matching `admin.service.setRole`.
-- **System-admin actions on other communities are audited on the ROOT tenant.**
-  `audit_log` is itself scoped, so an entry written against the community would
-  be deleted along with it (for a delete) and would hand that community's admin
-  an edit history of the operator (for everything else). The community id goes in
-  the metadata.
-
-**Cookie scoping — fixed in `v2-6`.** The session cookie is **host-only**: no
-`Domain` attribute, so it belongs to the exact tenant host that issued it. It
-previously carried `domain: BASE_DOMAIN`, which under v2 meant one login valid
-across every tenant, since `.example.com` covers all of them. `BASE_DOMAIN` is
-now only the mail domain, plus clearing pre-`v2-6` cookies. Options live in
-`api/src/common/utils/auth-cookie.util.ts` — never set a `domain` there.
-
-One consequence, **closed by `v2-8`**: Google's callback lands on a single fixed
-host, so a host-only cookie set there does not reach a different tenant's host.
-REQ-TENANT-01.8's signed `state` plus the single-use `oauth_handoffs` ticket
-carry the session back to the originating host, so OAuth now works on every
-tenant that has credentials. **`SameSite=strict` survives that redirect** — it
-was expected to need `lax` and does not, because SameSite decides whether a
-cookie is *attached* to a request, not whether one can be *set* in a response.
-Don't loosen it on the theory that the handoff needs it.
-
-**`express-session` is gone, and `SESSION_SECRET` with it** (`v2-6`). The
-comment claiming a session was "required by passport-google-oauth20" was wrong
-for this configuration: `GoogleStrategy` does not pass `state: true`, so
-passport-oauth2 picks its `NullStore`, whose `store()`/`verify()` never touch
-`req.session` and whose `verify()` returns true unconditionally. Nothing else
-read `req.session`. So the middleware only minted a `connect.sid` cookie per
-visitor and leaked a MemoryStore entry per request. Removing it changes no
-behaviour — `state` was already unverified, and REQ-TENANT-01.8's signed state
-(`v2-8`) was the real fix and landed there, needing no store either. `SESSION_SECRET` can be
-dropped from any `.env`; nothing reads it.
-
-**The v1 design note this replaced, kept because the reasoning still explains
-the shape of the problem:** v1 runs `BASE_DOMAIN=www.dinnerbears.com` in prod
-because `www` is genuinely the only public web host — the apex publishes MX
-only, no A record. The same value doubles as the auth cookie domain, which
-means a subdomain like `cincinnati.dinnerbears.com` is a *sibling* of the
-cookie domain rather than a child, so sessions don't carry to city
-subdomains. v1 left this alone (nobody used those subdomains, and changing a
-live cookie domain strands old cookies for up to 7 days) — v2 can't leave it
-alone in the same way, since tenants *are* domains under the new model and
-this exact www/apex/cookie-scope interaction will recur for every tenant
-domain, not just one.
-
-## Bug-Driven Development Workflow
-
-When asked to work on bugs, Claude Code should:
-
-1. Call `GET /api/v1/admin/feedback/open-bugs` to retrieve all open bug tickets
-2. Present the list to Rob and ask which to work on
-3. Implement the fix
-4. Call `PATCH /api/v1/admin/feedback/:id/status` with `{status: "resolved"}` on the fixed ticket
-5. Add an admin note via `POST /api/v1/admin/feedback/:id/notes` summarizing what was changed
-
-## Branching & Release Workflow
-
-v1's phase-based workflow (`/phase-start`/`/phase-testing`/`/phase-done`/
-`/release`, `PHASES.md`, publishing to `:stage`/`:latest`) lives in the old
-repo, not here — see the intro for why those commands were removed from
-this repo rather than kept for reference. This repo uses its own v2 scheme:
-
-| Command | Does | Touches `main`? |
-| --- | --- | --- |
-| `/v2-start <N>` | Cuts a `v2-<N>-<slug>` branch off `main` | No |
-| `/v2-testing <N>` | Pushes the **unmerged** branch to the `v2-stage` image + gives Rob testing notes | No |
-| `/v2-done <N>` | Docs (`V2_PHASES.md`, `docs/NEXT_RELEASE_V2.md`), tag `v2-<N>`, merge to `main`, re-stamp `v2-stage` | Yes |
-
-Branch naming: `v2-<number>-<kebab-case-slug>`, e.g. `v2-1-prisma-swap`.
-Tags: `v2-<number>`. Docker: `rtippenhauer/community-events:v2-stage`, built
-by `scripts/publish-v2-stage.sh` — the only publish script in this repo.
-There is no v2 prod tag yet; that's created at the actual 2.0 cutover, not
-before.
-
-Bug fixes and other ad hoc work that aren't tied to a v2 item still need a
-branch, not a direct commit to `main` — reuse the current item's branch if
-one is in progress, otherwise create a short-lived `bugfix-<slug>` or
-`chore-<slug>` branch, merged via PR + real merge commit (never squash) once
-ready.
-
-**Versioning:** `package.json`'s version in this repo is still v1's
-(`1.5.1`) and shouldn't be bumped as part of routine v2 work — there's no
-`/v2-release` yet. `docs/NEXT_RELEASE_V2.md` accumulates a running draft of
-v2's customer-facing changes via `/v2-done`; Rob will hand-trim it into the
-actual 2.0 release copy at cutover, likely by building a `/release`-style
-command at that point rather than inventing the flow speculatively now.
+**Also scoped:** `users`, `app_config`, `achievements`. An achievement's `key`
+is an identifier joined on in code, not copy, so raw SQL joining the catalogue
+needs its own `tenant_id` predicate.
