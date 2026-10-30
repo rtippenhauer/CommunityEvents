@@ -1075,3 +1075,47 @@ these keys — see `LEGAL_CONFIG_KEYS` / `SITE_SETTING_KEYS` in
   `<UPLOAD_PATH>/branding/` and served public+static at
   `/api/uploads/branding/<filename>`; the resulting path is saved to the
   `brand_logo_url`/`brand_splash_url`/`brand_icon_url` `app_config` rows
+
+## Prisma 7 mechanics
+
+Moved out of `CLAUDE.md` so it loads on demand rather than in every session.
+These are properties of how this repo drives Prisma, not of the schema itself.
+
+### Connection
+
+- **No `url` in the schema's datasource block.** The connection string is built
+  in `prisma.config.ts` from the existing `DB_*` vars, and the client takes a
+  driver adapter, `@prisma/adapter-mariadb` — which is the MySQL adapter
+  despite the name.
+- **`allowPublicKeyRetrieval` is required, not optional.** MySQL 8/9 use
+  `caching_sha2_password`, and over a non-TLS connection the driver must fetch
+  the server's RSA public key to complete a first-time handshake. Without it
+  every query fails as a "pool timeout" that never mentions authentication.
+
+### Field naming
+
+Scalar fields are camelCase with `@map` to their snake_case columns, and
+relation fields carry the old entity property names. This is deliberate:
+controllers return rows straight to the client, so **a field name here IS the
+JSON key the frontend consumes.**
+
+### Types that do not round-trip
+
+- **DATE/TIME columns come back as `Date`**, where the TypeORM entities typed
+  them as strings. `api/src/common/utils/prisma-date.util.ts` converts both
+  ways — use it rather than string-slicing a `Date`.
+
+  **Check write responses, not only the GETs that follow them.** `POST /events`
+  and `PATCH /events/:id` once returned ISO timestamps where the GETs returned
+  date strings, so publishing an event redrew 6:30pm as 12:30 and
+  `cutoffTimeLabel` rendered `12:NaN AM`. The existing wire-format tests missed
+  it because every one created a row and then *fetched* it, asserting the GET
+  and never the write response a client actually stores.
+
+### Hidden columns
+
+Four `locations` columns are hidden by a global `omit` in `PrismaService`
+(`moderatorNotes`, `contactName`, `contactPhone`, `contactEmail`), standing in
+for TypeORM's `select: false`. Only `findOneWithModFields` opts back in. Prisma
+returns every scalar by default, so a new query is safe only because the omit
+is global.

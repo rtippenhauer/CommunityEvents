@@ -12,18 +12,17 @@ those are the live v1 deployment. This repo publishes **only** `:v2-stage`, via
 load whole large files into context.**
 
 **Detail lives elsewhere and is not restated here.** `V2_PHASES.md` — per-item
-history, decisions, running order, current status, deferred work.
-`docs/REQ-TENANT-01.md` (foundational) and
-`docs/REQ-{VALIDATE,CMS,CITIES,IMPORT,JOURNAL}-01.md` — requirements.
-`docs/CUTOVER_PLAN.md` — cutover, v1 drift, inbound mail. `docs/SECRETS.md`,
-`docs/TENANT_ONBOARDING.md`, `docs/DATABASE_SCHEMA.md` (non-authoritative).
+history, decisions, running order, status, deferred work. `docs/REQ-TENANT-01.md`
+(foundational) and `docs/REQ-{VALIDATE,CMS,CITIES,IMPORT,JOURNAL}-01.md`.
+`docs/CUTOVER_PLAN.md` — cutover, v1 drift, inbound mail. Also
+`docs/SECRETS.md`, `docs/TENANT_ONBOARDING.md`, `docs/DATABASE_SCHEMA.md`.
 
 ## Product model
 
-- **One deployment, one database, tenant-scoped.** A tenant is a community and
-  is a database row — not a container or a database.
-- **A city is a row inside a tenant**, not a hostname and not a subdomain.
-- **Stage and prod are the only two environments**, each with its own database.
+**One deployment, one database, tenant-scoped.** A tenant is a community and is
+a database row, not a container or a database. **A city is a row inside a
+tenant**, not a hostname and not a subdomain. Stage and prod are the only two
+environments, each with its own database.
 
 ## Stack
 
@@ -34,19 +33,19 @@ Brevo email with Resend overflow · Web Push + VAPID · Docker Compose behind
 NGINX Proxy Manager, with no public ports on api or mysql.
 
 **Testing is Vitest everywhere** (Jest, ts-jest, Karma and Jasmine are
-uninstalled): `api/` has `vitest.config.mts` for unit specs and
-`vitest.config.e2e.mts` for the Supertest suites in `api/test/`; `frontend/`
-uses Angular's `unit-test` builder; `e2e/` is Playwright at the repo root.
+uninstalled): `api/` has separate unit and e2e configs, the latter driving the
+Supertest suites in `api/test/`; `frontend/` uses Angular's `unit-test`
+builder; `e2e/` is Playwright at the repo root.
 
 ## Branching & release
 
-v2 work runs through `/v2-start <N>` → `/v2-testing <N>` → `/v2-done <N>`
-(branch `v2-<N>-<slug>`, tag `v2-<N>`; only `/v2-done` touches `main`). Ad hoc
-work still needs a branch — reuse the current item's, else `bugfix-<slug>` /
-`chore-<slug>` — merged by PR with a real merge commit, **never squashed**.
-`package.json`'s version is still v1's; routine v2 work does not bump it.
+v2 items run `/v2-start <N>` → `/v2-testing <N>` → `/v2-done <N>` (branch
+`v2-<N>-<slug>`, tag `v2-<N>`; only `/v2-done` touches `main`). Ad hoc work
+still needs a branch — the current item's, else `bugfix-`/`chore-<slug>` —
+merged by PR with a real merge commit, **never squashed**. `package.json` stays
+on v1's version.
 
-**Stage lives at `stage.communityeventsproject.com` in the Unraid container
+**Stage is `stage.communityeventsproject.com`, container
 `CommunityEvents-v2-Stage`. Run `/stage` before shelling in, deploying or
 diagnosing it** — the image is Alpine with no `bash`, and the entrypoint starts
 the app even when a migration fails.
@@ -58,27 +57,25 @@ the app even when a migration fails.
   an Angular Material component wherever one exists
 - Typed services for all HTTP — never call `HttpClient` from a component
 - **Never write a colour literal in a component** — use a `--ce-*` token, named
-  for its job (`--ce-chrome` is the nav) rather than its colour, with the
-  matching measured `--ce-on-*` for text on it. Success/error tints and
-  third-party brand colours are the only exceptions.
+  for its job rather than its colour, with the matching measured `--ce-on-*`
+  for text on it. Success/error tints and third-party brand colours are the
+  only exceptions.
 - **`core/utils/palette.ts` is the only place colours are derived, and it is
   pure** — no DOM, so the admin preview renders exactly what it writes.
 
 ## NestJS conventions (STRICT)
 
 - One module per feature; DTOs with class-validator; guards on every protected
-  route — never trust client role state. **Never expose stack traces**;
-  `GlobalExceptionFilter` handles all errors.
+  route — never trust client role state. **Never expose stack traces.**
 - **Prisma for all data access.** Raw SQL only where Prisma cannot express the
   statement, with a comment saying why.
 - **Tenant scoping is automatic — never add a `tenant_id` filter by hand.** The
-  Client Extension injects it, nested writes and includes included. **Raw SQL
-  is the exception** and must carry its own predicate from
-  `requireTenantId('<usage>')` — it produces no compile error when a model
-  becomes scoped, which is where scoping bugs hide.
-- **Work that crosses tenants says so** — `runUnscoped('<reason>', ...)`. No
-  context at all throws, so a forgotten context fails rather than leaks.
-- **Secrets are encrypted automatically** by a second extension — never call
+  extension injects it, nested writes and includes included. **Raw SQL is the
+  exception** and carries its own predicate from `requireTenantId('<usage>')` —
+  it produces no compile error when a model becomes scoped, which is where
+  scoping bugs hide. **Work that crosses tenants says so**:
+  `runUnscoped('<reason>', ...)`, and no context at all throws.
+- **Secrets are encrypted automatically** — never call
   `encryptSecret`/`decryptSecret`; a new encrypted column goes in
   `common/crypto/encrypted-columns.ts`. **An encrypted column cannot be
   filtered, ordered, grouped or joined on** (the cipher is randomised): look
@@ -102,16 +99,10 @@ the app even when a migration fails.
   tenant-independent data** — it runs before any tenant exists, so a row it
   writes to a scoped table takes the `tenant_id` sentinel and is rejected by
   the foreign key.
-- **Prisma 7:** no `url` in the datasource block (it is in `prisma.config.ts`),
-  and the client takes the `@prisma/adapter-mariadb` adapter — the MySQL one,
-  despite the name. **`allowPublicKeyRetrieval` is required**, or every query
-  fails as a "pool timeout" that never mentions authentication.
 - **Prisma promises are lazy** — `runWithTenant(id, () => prisma.x.find())`
   builds the query in context and runs it outside. Await inside the callback.
-- **Scalar fields are camelCase with `@map`**; a field name here IS the JSON key
-  the frontend consumes. **DATE/TIME columns come back as `Date`** — convert
-  with `prisma-date.util.ts`, never by string-slicing, and check write
-  responses, not only the GETs that follow them.
+- **Connection, field naming and DATE/TIME conversion each have a silent
+  trap** — read "Prisma 7 mechanics" in `docs/DATABASE_SCHEMA.md` first.
 - **No migration here is tested against populated data** by the suite — the e2e
   harness builds an empty database. Test data-moving migrations by hand.
 
@@ -124,10 +115,9 @@ the app even when a migration fails.
   use `normalizeTenantDomain` for any Host-header lookup.
 - Exactly one tenant has `is_root`, enforced by a unique index on the nullable
   `root_marker`. **Write `is_root` and `root_marker` together, always.**
-- A route that must answer without a tenant goes in `UNSCOPED_PATHS` — a string
-  compare on `req.originalUrl`, because a wrong `exclude()` pattern fails open.
-  Inside middleware `GlobalExceptionFilter` does not apply and `req.path` is
-  `/`, so write the JSON body directly and read `req.originalUrl`.
+- A tenant-free route goes in `UNSCOPED_PATHS` — a `req.originalUrl` compare,
+  because a wrong `exclude()` fails open. Inside middleware
+  `GlobalExceptionFilter` does not apply and `req.path` is `/`.
 
 **Scoping.** Enforced by
 `api/src/database/prisma/tenant-scope.extension.ts` via AsyncLocalStorage.
@@ -142,10 +132,9 @@ the app even when a migration fails.
 - **A cron that composes per-tenant content must re-enter `runWithTenant`** —
   `runUnscoped` is for *finding* rows across tenants, never for *rendering*.
 - **Deleting a community** passes three gates (never root, already suspended,
-  caller retypes the domain) and the purge filters by `tenantId` explicitly
-  rather than trusting the extension.
-- **System-admin actions on other communities are audited on the root tenant** —
-  `audit_log` is itself scoped.
+  caller retypes the domain) and the purge filters by `tenantId` explicitly.
+  **System-admin actions on other communities are audited on the root tenant**,
+  since `audit_log` is itself scoped.
 
 **Identity.** Roles are `non_validated`, `member`, `moderator`, `admin`,
 `system_admin`, `automation`, `disabled`. `SystemAdminGuard` requires the role
@@ -157,8 +146,7 @@ the app even when a migration fails.
   accounts, so no guard may assume one row per community.
 - A non-person account's address is `<local>@<tenant slug>.internal` — the
   **slug**, so it survives a host change. Changing what it computes without
-  migrating stored rows grows a second account rather than renaming one, so
-  code change and rename migration ship together.
+  migrating stored rows grows a second account rather than renaming one.
 - Scheduled deletion never touches an `admin`, a `system_admin` or a service
   account (`AUTO_DELETE_ELIGIBLE`). **Creating a tenant creates its first
   admin**, without which a community is a dead end — registration is
@@ -168,12 +156,12 @@ the app even when a migration fails.
 `common/utils/auth-cookie.util.ts`, or one login is valid across every tenant.
 `SameSite=strict` survives the OAuth handoff; don't loosen it.
 
-**OAuth** (detail in `docs/REQ-TENANT-01.md` .8/.9). Each tenant brings its own
-credentials and **NULL means that provider is off** — there is no platform-wide
-fallback app. **Connecting a provider is a different route from signing in with
-one** and takes the user from the session, carrying the user id in the
-**signed** `state`, never a query parameter. The callback branches on where it
-landed (`req.tenant?.id === state.tenantId`), never on a stored flag.
+**OAuth** (REQ-TENANT-01.8/.9). Each tenant brings its own credentials and
+**NULL means that provider is off** — there is no platform-wide fallback app.
+**Connecting a provider is a different route from signing in with one** and
+takes the user from the session, carrying the user id in the **signed** `state`,
+never a query parameter. The callback branches on where it landed, never on a
+stored flag.
 
 **Configuration and secrets** (`docs/SECRETS.md`, REQ-TENANT-01.9).
 
@@ -202,6 +190,6 @@ must permit a send and an inherited template id addresses the wrong library. A
 community on its own domain has **no email fallback** — fatal where the OAuth
 equivalent is not, since registration, verification and resets are all mail.
 
-**Also scoped:** `users`, `app_config`, `achievements`. An achievement's `key`
-is an identifier joined on in code, not copy, so raw SQL joining the catalogue
-needs its own `tenant_id` predicate.
+**Also scoped:** `users`, `app_config`, `achievements` — and an achievement's
+`key` is an identifier joined on in code, not copy, so raw SQL joining the
+catalogue needs its own `tenant_id` predicate.
