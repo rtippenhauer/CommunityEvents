@@ -215,6 +215,15 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
                   }
                 </div>
               </div>
+              @if (brand.features().cities && event()!.city) {
+                <div class="info-row">
+                  <mat-icon>map</mat-icon>
+                  <div>
+                    <div class="info-label">City</div>
+                    <div class="info-value">{{ event()!.city!.name }}</div>
+                  </div>
+                </div>
+              }
               <div class="info-row">
                 <mat-icon>location_on</mat-icon>
                 <div>

@@ -104,6 +104,18 @@ interface Location {
           <mat-error>{{ brand.locationSingular() }} is required</mat-error>
         </mat-form-field>
 
+        <!--
+          A city with no venues is a dead end that used to be silent: picking it
+          empties the select (a venue belongs to a city), the required validator
+          on locationId then refuses the save, and nothing on screen said why.
+        -->
+        @if (emptyCityName(); as cityName) {
+          <p class="no-venues">
+            No {{ brand.locationPluralLower() }} in {{ cityName }} yet — add one there before
+            creating {{ brand.dinnerPluralLower() }} in this city.
+          </p>
+        }
+
         <mat-form-field appearance="outline">
           <mat-label>Event Title</mat-label>
           <input
@@ -200,6 +212,12 @@ interface Location {
         mat-form-field {
           width: 100%;
         }
+      }
+      .no-venues {
+        margin: -4px 0 10px;
+        font-size: 0.85rem;
+        line-height: 1.35;
+        color: var(--ce-text-muted);
       }
       .date-time-row {
         display: flex;
@@ -371,6 +389,18 @@ export class EventFormDialogComponent implements OnInit {
         eventTime: presetTime ?? (time || DEFAULT_CADENCE_TIME),
       });
     });
+  }
+
+  /**
+   * The chosen city's name when that city holds no venues, else null. Drives
+   * the hint above the empty select -- without it the dialog simply refuses to
+   * save and says nothing, which is how adding a city dead-ends.
+   */
+  emptyCityName(): string | null {
+    const cityId = this.form.controls.cityId.value;
+    if (!cityId || !this.brand.features().cities) return null;
+    if (this.filteredLocations().length > 0) return null;
+    return this.cities().find((c) => c.id === cityId)?.name ?? null;
   }
 
   private filterLocations(cityId: number): void {

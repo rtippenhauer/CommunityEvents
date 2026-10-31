@@ -9,10 +9,13 @@ import {
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
 import { EventsService, Event } from '../../core/services/events.service';
 import { AuthService } from '../../core/services/auth.service';
+import { CityService } from '../../core/services/city.service';
 import { EventCardComponent } from '../../shared/components/event-card/event-card.component';
 import { CalendarSubscribeComponent } from '../../shared/components/calendar-subscribe/calendar-subscribe.component';
 
@@ -30,8 +33,10 @@ interface CalendarDay {
     DatePipe,
     MatButtonModule,
     MatCheckboxModule,
+    MatFormFieldModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    MatSelectModule,
     EventCardComponent,
     CalendarSubscribeComponent,
   ],
@@ -85,6 +90,21 @@ interface CalendarDay {
             }
           </div>
 
+          @if (!cityService.isSingleCity()) {
+            <mat-form-field appearance="outline" class="city-field">
+              <mat-label>City</mat-label>
+              <mat-select
+                [value]="cityFilter()"
+                (selectionChange)="cityFilter.set($event.value)"
+              >
+                <mat-option [value]="null">All cities</mat-option>
+                @for (city of cityService.cities(); track city.id) {
+                  <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          }
+
           <button mat-button class="today-btn" (click)="goToday()">Today</button>
           @if (isLoggedIn()) {
             <mat-checkbox
@@ -126,6 +146,11 @@ interface CalendarDay {
     `
       :host {
         display: block;
+      }
+
+      .city-field {
+        width: 100%;
+        margin-top: 10px;
       }
 
       .calendar-page {
@@ -348,9 +373,19 @@ export class CalendarComponent implements OnInit {
 
   readonly DOW_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
+  readonly cityService = inject(CityService);
+
   readonly allEvents = signal<Event[]>([]);
   readonly loading = signal(true);
   readonly myOnly = signal(false);
+
+  /**
+   * null means every city, matching the events list. Filtered here rather than
+   * re-fetched so the mini-calendar's dots follow the choice -- they are
+   * derived from `monthEvents`, and a server round trip would leave a dot on a
+   * day whose only event is in a city the member just filtered out.
+   */
+  readonly cityFilter = signal<number | null>(null);
 
   private readonly today = new Date();
   readonly viewYear = signal(this.today.getFullYear());
@@ -367,8 +402,10 @@ export class CalendarComponent implements OnInit {
 
   readonly monthEvents = computed(() => {
     const prefix = this.monthPrefix();
+    const cityId = this.cityFilter();
     return this.allEvents().filter((e) => {
       if (!e.eventDate.startsWith(prefix)) return false;
+      if (cityId !== null && e.cityId !== cityId) return false;
       if (this.myOnly()) return e.myRsvpStatus === 'going' || e.myRsvpStatus === 'maybe';
       return true;
     });

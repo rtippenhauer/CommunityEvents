@@ -213,7 +213,10 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
 
       .card-city {
         font-size: 0.72rem;
-        color: #999;
+        // Was a bare #999, which is 2.85:1 on a light card -- below AA, and a
+        // colour belonging to no community. The token is contrast-checked
+        // against --ce-surface in palette.ts.
+        color: var(--ce-text-muted);
         margin-bottom: 3px;
       }
 
