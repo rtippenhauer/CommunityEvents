@@ -73,7 +73,13 @@ export class InvitesService {
 
     const expiresAt = new Date();
     if (dto.type === InviteType.MEMBER) {
-      expiresAt.setHours(expiresAt.getHours() + 48);
+      // Elapsed hours, not wall-clock hours. `setHours(getHours() + 48)` walks
+      // the local hour field, so across a DST boundary "48 hours" becomes 47 or
+      // 49 real ones -- the member's link outlives or undercuts the window the
+      // email promises them. `setDate` below is left alone deliberately: an
+      // expiry in *days* is a calendar duration, and the same time of day N
+      // days later is what "expires in 30 days" means to a reader.
+      expiresAt.setTime(expiresAt.getTime() + 48 * 60 * 60 * 1000);
     } else if (dto.noExpiry) {
       expiresAt.setFullYear(2099);
     } else {
