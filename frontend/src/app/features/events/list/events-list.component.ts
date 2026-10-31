@@ -84,7 +84,7 @@ interface City {
         <mat-form-field appearance="outline" class="city-field">
           <mat-label>City</mat-label>
           <mat-select [formControl]="cityCtrl">
-            <mat-option [value]="null">All cities</mat-option>
+            <mat-option [value]="0">All cities</mat-option>
             @for (city of cities(); track city.id) {
               <mat-option [value]="city.id">{{ city.name }}</mat-option>
             }
@@ -193,15 +193,22 @@ export class EventsListComponent implements OnInit {
   readonly loading = signal(true);
 
   readonly fromDateCtrl = new FormControl<Date>(new Date(), { nonNullable: true });
-  readonly cityCtrl = new FormControl<number | null>(null);
+  // 0, not null, is "no city chosen". MatSelect treats a null value as having
+  // no selection at all and falls back to the placeholder, so the `All cities`
+  // option could never display even though it was selected -- the field simply
+  // read blank. A sentinel the select can match renders the label.
+  readonly cityCtrl = new FormControl<number>(0, { nonNullable: true });
   readonly myOnly = signal(false);
 
   // No city seeding here any more (v2-24). The subdomain this used to read
   // is gone -- a city is a row, not a hostname -- and the default it stood in
   // for is better answered by the server: with no cityId in the query, the
   // events endpoint applies the signed-in member's own city preferences.
-  // Leaving the control null is therefore not "no filter", it is "whatever
+  // Leaving the control at 0 is therefore not "no filter", it is "whatever
   // this member asked for", which is what the old effect was guessing at.
+  // Which is also why the option reads "All cities" rather than something
+  // narrower: it is literally every city for a member who has set no
+  // preferences, and no rows means every city.
 
   readonly displayEvents = computed(() => {
     if (!this.myOnly()) return this.events();
@@ -225,7 +232,7 @@ export class EventsListComponent implements OnInit {
     const fromDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     this.eventsService
       .getAll({
-        cityId: this.cityCtrl.value ?? undefined,
+        cityId: this.cityCtrl.value || undefined,
         fromDate,
       })
       .subscribe({

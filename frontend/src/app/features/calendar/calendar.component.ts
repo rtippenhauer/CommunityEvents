@@ -97,7 +97,7 @@ interface CalendarDay {
                 [value]="cityFilter()"
                 (selectionChange)="cityFilter.set($event.value)"
               >
-                <mat-option [value]="null">All cities</mat-option>
+                <mat-option [value]="0">All cities</mat-option>
                 @for (city of cityService.cities(); track city.id) {
                   <mat-option [value]="city.id">{{ city.name }}</mat-option>
                 }
@@ -380,12 +380,16 @@ export class CalendarComponent implements OnInit {
   readonly myOnly = signal(false);
 
   /**
-   * null means every city, matching the events list. Filtered here rather than
-   * re-fetched so the mini-calendar's dots follow the choice -- they are
-   * derived from `monthEvents`, and a server round trip would leave a dot on a
-   * day whose only event is in a city the member just filtered out.
+   * 0 means every city, matching the events list -- and 0 rather than null
+   * because MatSelect reads a null value as no selection and shows the
+   * placeholder, so an `All cities` option set to null can never display.
+   *
+   * Filtered here rather than re-fetched so the mini-calendar's dots follow
+   * the choice -- they are derived from `monthEvents`, and a server round trip
+   * would leave a dot on a day whose only event is in a city the member just
+   * filtered out.
    */
-  readonly cityFilter = signal<number | null>(null);
+  readonly cityFilter = signal<number>(0);
 
   private readonly today = new Date();
   readonly viewYear = signal(this.today.getFullYear());
@@ -405,7 +409,7 @@ export class CalendarComponent implements OnInit {
     const cityId = this.cityFilter();
     return this.allEvents().filter((e) => {
       if (!e.eventDate.startsWith(prefix)) return false;
-      if (cityId !== null && e.cityId !== cityId) return false;
+      if (cityId !== 0 && e.cityId !== cityId) return false;
       if (this.myOnly()) return e.myRsvpStatus === 'going' || e.myRsvpStatus === 'maybe';
       return true;
     });
