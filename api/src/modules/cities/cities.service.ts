@@ -308,8 +308,20 @@ export class CitiesService {
    *    a state the UI cannot draw and the event form refuses to save from. It
    *    is refused outright until at least one city exists, because there would
    *    be nothing to backfill to.
-   *  - **Off** retires every city and clears `city_id` on **future events, all
-   *    locations and all members**, leaving past events alone.
+   *  - **Off** clears `city_id` on **future events, all locations and all
+   *    members**, leaving past events alone.
+   *
+   * **Off deliberately does NOT retire the cities**, though it used to. While
+   * the feature is off nothing reads `is_active` -- the flag hides cities
+   * everywhere on its own -- so retiring them bought nothing while off and
+   * cost the admin two things on the way back: the active/retired curation
+   * they had built, and the ability to turn the feature on at all, since the
+   * backfill needs an *active* city and the off switch had just left none.
+   * Turning it off and straight back on, the likeliest thing an admin tries,
+   * answered with "add a city" while the screen listed several (Rob found it
+   * on stage, 2026-10-31). The refusal below survives for the case it is
+   * actually true of: a community that has never made a city, or has retired
+   * every one of them by hand.
    *
    * Member preferences are dropped on the way off and not rebuilt on the way
    * back on: a set of cities is a statement about a feature that was not
@@ -349,7 +361,6 @@ export class CitiesService {
         await t.events.updateMany({ where: { eventDate: { gte: today } }, data: { cityId: null } });
         await t.locations.updateMany({ where: {}, data: { cityId: null } });
         await t.users.updateMany({ where: {}, data: { cityId: null } });
-        await t.cities.updateMany({ where: { isActive: true }, data: { isActive: false } });
       });
     }
 

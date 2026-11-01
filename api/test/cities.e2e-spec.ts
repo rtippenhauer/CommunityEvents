@@ -396,12 +396,18 @@ describe('Cities (e2e)', () => {
       expect((await prisma.events.findFirst({ where: { id: future.id } }))!.cityId).toBeNull();
       expect((await prisma.locations.findFirst({ where: { id: location.id } }))!.cityId).toBeNull();
       expect((await prisma.users.findFirst({ where: { id: member.id } }))!.cityId).toBeNull();
-      expect(await prisma.cities.findMany({ where: { isActive: true } })).toEqual([]);
+      // The cities themselves are left alone. Retiring them here is what made
+      // off-then-on unreachable, since the backfill needs an active one.
+      expect((await prisma.cities.findFirst({ where: { id: homeCity.id } }))!.isActive).toBe(true);
+    });
+
+    it('turns back on with no step in between', async () => {
+      await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);
+      await asAdmin('put', '/admin/cities/feature').send({ enabled: true }).expect(200);
     });
 
     it('backfills every null city on the way back on', async () => {
       await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);
-      await asAdmin('post', `/admin/cities/${homeCity.id}/reactivate`).expect(201);
       await asAdmin('put', '/admin/cities/feature').send({ enabled: true }).expect(200);
 
       // The state the UI cannot draw — cities required, rows with none — must
@@ -412,8 +418,10 @@ describe('Cities (e2e)', () => {
 
     it('refuses to turn on with no city to file anything under', async () => {
       await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);
-      // Every city was retired by the step above, so there is nothing to
-      // backfill to and the refusal is the honest answer.
+      // Retired by hand, which is now the only way to reach this state -- the
+      // off switch no longer does it. With nothing active there is nothing to
+      // backfill to, and the refusal is the honest answer.
+      await asAdmin('post', `/admin/cities/${homeCity.id}/retire`).send({}).expect(201);
       await asAdmin('put', '/admin/cities/feature').send({ enabled: true }).expect(400);
     });
 
