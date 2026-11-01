@@ -101,6 +101,27 @@ interface City {
       } @else {
         <!-- ── Edit form ── -->
         <form [formGroup]="form" class="location-form">
+          <!--
+            Cities are off by default on a new community, and this screen is
+            where that costs something: a venue added now carries no city, and
+            turning cities on later files every one of them under the first
+            city rather than asking. So the notice names the feature (an admin
+            setting up a community has no reason to know it exists), says what
+            these venues will lack, and points at the cheaper order. Admins and
+            moderators only -- a member cannot act on it, and telling them a
+            feature is off they cannot turn on is noise.
+          -->
+          @if (!brand.features().cities && isAdminOrMod() && !data.location) {
+            <div class="city-off-notice">
+              <mat-icon>info</mat-icon>
+              <div>
+                Cities are turned off, so this {{ brand.locationSingularLower() }} won't belong to
+                one. If you expect {{ brand.dinnerPluralLower() }} in more than one city, turn
+                cities on at <strong>Admin → Cities</strong> first — anything added before then
+                lands in your first city, and you reassign by hand.
+              </div>
+            </div>
+          }
           <div class="name-field-wrap">
             <mat-form-field appearance="outline" class="name-field">
               <mat-label>Name</mat-label>
@@ -253,6 +274,28 @@ interface City {
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
+      .city-off-notice {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        margin-bottom: 4px;
+        padding: 10px 12px;
+        border: 1px solid var(--ce-rule);
+        border-radius: 8px;
+        background: var(--ce-surface-variant);
+        color: var(--ce-text);
+        font-size: 0.85rem;
+        line-height: 1.4;
+      }
+
+      .city-off-notice mat-icon {
+        flex: 0 0 auto;
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: var(--ce-text-muted);
+      }
+
       .location-form {
         display: flex;
         flex-direction: column;
