@@ -353,7 +353,10 @@ export const routes: Routes = [
       import('./features/admin/facebook-accounts/admin-facebook-accounts.component').then(
         (m) => m.AdminFacebookAccountsComponent,
       ),
-    canActivate: [authGuard, adminGuard],
+    // Moderators too (Rob, 2026-11-01) -- the person marking attendance at the
+    // dinner is the one who knows which Facebook name is which member. See the
+    // controller for what the old admin-only gate cost.
+    canActivate: [authGuard, moderatorGuard],
   },
   {
     path: 'admin/legal',
