@@ -3870,3 +3870,112 @@ and a community's own domain.
 what it needs, see which steps are genuinely done as judged by the deployment
 rather than by their own ticking, and be told what is wrong when something is
 half-configured.
+
+### v2-45 — Coordinates on a city, and a suggested city for a new venue
+
+**Status:** Not started. Raised by Rob 2026-11-01 while stage-testing `v2-24`,
+and deliberately not built there — `v2-24` is on the cutover path and
+`v2-25`'s import brings real city assignments, so nothing downstream needs
+this.
+
+Cities carry no location today. `locations` already carries `lat`/`lng`,
+geocoded whenever the address changes, so the missing half is the city end:
+give a city coordinates and the venue form can suggest which city a new venue
+belongs to instead of asking every time.
+
+**Where the coordinates come from is the first decision.** Either geocode the
+city's name when it is created (the geocoding and Places keys are already
+per-community in `tenant_secrets`), or take the centroid of the venues already
+filed under it. The centroid is self-correcting and needs no new
+configuration, but it is empty for a brand-new city — so probably geocode on
+create, centroid as a later refinement, with an admin override either way.
+
+**Suggest, never assign.** Same rule REQ-CITIES-01.6 states for the backfill:
+"a starting point, not an assignment." The suggestion belongs in the form, is
+overridable with no friction, and the server never files a venue on geography.
+A community may organise by something that is not geography at all; the cities
+table is a label for a group of people.
+
+**No "which of these two?" warning.** This was the first design and it is
+wrong. Richmond, Indiana sits about 45 miles from Cincinnati and 40 from
+Dayton, so if Richmond is not its own city row, *every* venue there is a coin
+flip and the warning fires for a whole region rather than an occasional edge.
+A warning that cries wolf over a cluster gets clicked through, which is worse
+than no warning. Instead the distance ratio **gates whether to suggest at
+all**: clearly nearest one city, prefill it; close between two, leave the field
+empty exactly as today. It degrades to current behaviour precisely where
+current behaviour is the only honest answer.
+
+**Straight-line distance is a proxy that fails where it matters, and the
+DinnerBears data is the proof.** Hamilton and Middletown sit in the
+Cincinnati–Dayton corridor on I-75 — Middletown almost exactly midway — and
+both are *Cincinnati* dinners, because the Cincinnati group drives there. The
+city is a property of the **group**, not of the venue's position. No
+coordinate maths produces that answer, which is why the feature is a
+convenience for communities whose cities are far apart and will stay manual
+for the corridor.
+
+**Two alternatives were considered and rejected, both on Rob's own data.**
+Defaulting to the creating admin's own city fails because one organiser runs
+several cities — Rob creates for Cincinnati and Dayton both, so it is the same
+coin flip wearing a different hat. Sticky-within-the-session (repeat the last
+city picked, reset on reload) helps batch entry and cannot drift, since it only
+repeats a choice made moments earlier; it is the one variant worth building if
+the geographic suggestion proves not to earn its keep, and it needs no
+coordinates at all.
+
+**It must degrade to a plain pick.** Geocoding fails, and a residence entered
+by hand may have no coordinates, so the form still has to let somebody choose.
+
+**Definition of done:** a city can hold coordinates and an admin can set them;
+adding a venue whose address geocodes clearly nearest one city prefills that
+city, overridable; a venue between two cities, or with no usable fix, leaves
+the field empty and is picked by hand; nothing on the server assigns a city
+from geography.
+
+### v2-46 — Split the admin menu: operator, admin, moderator
+
+**Status:** Not started. Raised by Rob 2026-11-01.
+
+One menu serves three audiences today. It is labelled `Admin` for an admin and
+`Moderation` for a moderator (`app.component.html`), and inside it every entry
+is individually gated — `@if (isAdmin())` around most of the Security and
+Settings groups, `@if (isSystemAdmin())` around Communities, `@if (isAdmin() &&
+brandConfig.isRoot())` around release composing. A moderator opens the same
+tree and finds most of it missing.
+
+**Three audiences, not three permission levels on one list.** An operator
+administers the *deployment* — the registry of communities, the inbound-mail
+log across all of them, the bug board — and holds no account in most of the
+communities they run. An admin runs *one* community. A moderator does the
+day-to-day on its members and content. The first is a different job rather
+than more of the same one, which is the same argument that put tenant
+management at `/api/v1/system/tenants` instead of under `admin/`.
+
+**What moves to a System menu:** `/admin/tenants` (which is already the one
+admin-prefixed route behind `systemAdminGuard`, and whose URL should move with
+it), `/system/inbound-mail`, `/system/bugs`, and release composing — which is
+`isAdmin() && isRoot()` today, an awkward way of spelling "the operator".
+
+**What a Moderator menu holds:** the member list with vouch and the ordinary
+ban, attendance and walk-ins, announcements, moderation. Everything a
+moderator can already reach — the point is that it is a menu built for them
+rather than an admin menu with the holes showing.
+
+**The nav is not the permission.** Every route keeps its guard and every
+handler keeps its check; this is about not offering what cannot be used.
+`roles.util.ts` already states the rule for the in-handler half — ask
+`hasAdminRights`/`isElevatedRole`, never `===` — and the menu should read the
+same vocabulary rather than re-deriving it.
+
+**Watch the mobile sidenav, which is a second copy.** The same entries are
+listed again as `mat-list-item`s with their own `@if`s, and `isAdminMenuActive()`
+matches on URL prefixes in a third place. Three lists that must agree is how
+the Connect-button gap in `v2-12` happened; splitting the menu is a good moment
+to make them one source.
+
+**Definition of done:** an operator, a community admin and a moderator each
+see a menu whose every entry they can use; no entry is hidden inside a group
+labelled for somebody else; the desktop menu, the mobile sidenav and the
+active-state matching are driven from one declaration; every route keeps the
+guard it has today.
