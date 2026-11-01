@@ -53,10 +53,10 @@ interface CityRow extends AdminCity {
 
       <!--
         The toggle lives here rather than on Site Settings with the other
-        feature switches, because it is the only one that rewrites data: on
-        backfills every event, venue and member with no city, off clears them.
-        The API refuses this key through the ordinary settings endpoint for the
-        same reason.
+        feature switches, because turning it on rewrites data: every event,
+        venue and member with no city is backfilled to the first one. The API
+        refuses this key through the ordinary settings endpoint for the same
+        reason. Turning it off writes only the flag.
       -->
       <div class="feature-card">
         <mat-slide-toggle
@@ -70,11 +70,11 @@ interface CityRow extends AdminCity {
           @if (enabled()) {
             Every {{ brand.dinnerSingularLower() }}, {{ brand.locationSingularLower() }} and member
             belongs to a city, and members choose which cities they want to see and hear about.
-            Turning this off clears those — past {{ brand.dinnerPluralLower() }} keep theirs, and
-            your cities are kept as they are, so turning it back on resumes where you left off.
+            Turning this off hides cities everywhere and changes nothing else, so turning it
+            back on picks up exactly where you left off.
           } @else {
-            Cities are hidden everywhere and nothing asks for one. Turning this on files everything
-            that has no city under your first one.
+            Cities are hidden everywhere and nothing asks for one. Anything already filed under a
+            city keeps it. Turning this on files whatever has no city under your first one.
           }
         </p>
       </div>

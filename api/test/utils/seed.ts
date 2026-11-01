@@ -69,7 +69,9 @@ export async function enableCities(prisma: PrismaService, tenantId: number): Pro
 
 export async function seedLocation(
   prisma: PrismaService,
-  cityId: number,
+  // Nullable since v2-24 made `city_id` nullable: a community with city
+  // filtering off has venues with no city at all.
+  cityId: number | null,
   overrides: LocationOverrides = {},
 ): Promise<Location> {
   return prisma.locations.create({

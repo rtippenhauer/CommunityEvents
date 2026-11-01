@@ -109,10 +109,10 @@ export const SITE_SETTING_KEYS = [
   // single-city community is better served by cities being invisible than by
   // every form carrying a select with one option in it.
   //
-  // **Never written through the ordinary settings path** -- both directions
-  // move rows (on backfills every null `city_id`, off clears them), so
-  // `updateConfigValue` refuses it and `CitiesService.setEnabled` is the only
-  // way in. A plain PATCH would leave a community
+  // **Never written through the ordinary settings path** -- turning it on
+  // backfills every null `city_id`, so `updateConfigValue` refuses it and
+  // `CitiesService.setEnabled` is the only way in. A plain PATCH would leave a
+  // community
   // with cities required and rows that have none, which the event form cannot
   // save from.
   'feature_cities',

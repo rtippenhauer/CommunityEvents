@@ -359,7 +359,7 @@ describe('Cities (e2e)', () => {
         .expect(400);
     });
 
-    it('clears future events, all locations and all members on the way off', async () => {
+    it('leaves every assignment alone on the way off', async () => {
       const location = await seedLocation(prisma, homeCity.id);
       const past = await prisma.events.create({
         data: {
@@ -390,30 +390,48 @@ describe('Cities (e2e)', () => {
         },
       });
 
+      await prisma.user_city_preferences.create({
+        data: { tenantId: TEST_TENANT_ID, userId: member.id, cityId: homeCity.id },
+      });
+
       await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);
 
+      // REQ-CITIES-01.6: "nothing is nulled out, so turning it on again lands
+      // where it left off". Clearing these is what sent Rob's own account back
+      // filed under whichever city he had restored to get the toggle moving.
       expect((await prisma.events.findFirst({ where: { id: past.id } }))!.cityId).toBe(homeCity.id);
-      expect((await prisma.events.findFirst({ where: { id: future.id } }))!.cityId).toBeNull();
-      expect((await prisma.locations.findFirst({ where: { id: location.id } }))!.cityId).toBeNull();
-      expect((await prisma.users.findFirst({ where: { id: member.id } }))!.cityId).toBeNull();
-      // The cities themselves are left alone. Retiring them here is what made
-      // off-then-on unreachable, since the backfill needs an active one.
+      expect((await prisma.events.findFirst({ where: { id: future.id } }))!.cityId).toBe(homeCity.id);
+      expect((await prisma.locations.findFirst({ where: { id: location.id } }))!.cityId).toBe(
+        homeCity.id,
+      );
+      expect((await prisma.users.findFirst({ where: { id: member.id } }))!.cityId).toBe(homeCity.id);
       expect((await prisma.cities.findFirst({ where: { id: homeCity.id } }))!.isActive).toBe(true);
+      expect(await prisma.user_city_preferences.findMany({ where: { userId: member.id } })).toHaveLength(1);
     });
 
-    it('turns back on with no step in between', async () => {
+    it('turns back on with no step in between, landing where it left off', async () => {
+      const dayton = await seedCity(prisma, { name: 'Dayton' });
+      await prisma.users.update({ where: { id: member.id }, data: { cityId: dayton.id } });
+
       await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);
       await asAdmin('put', '/admin/cities/feature').send({ enabled: true }).expect(200);
+
+      // Not homeCity, which is what a re-backfill would have produced.
+      expect((await prisma.users.findFirst({ where: { id: member.id } }))!.cityId).toBe(dayton.id);
     });
 
-    it('backfills every null city on the way back on', async () => {
+    it('backfills only what was created with no city while it was off', async () => {
       await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);
+      const stranded = await seedLocation(prisma, null);
       await asAdmin('put', '/admin/cities/feature').send({ enabled: true }).expect(200);
 
       // The state the UI cannot draw — cities required, rows with none — must
       // not be observable at any point.
       expect(await prisma.users.findMany({ where: { cityId: null } })).toEqual([]);
       expect(await prisma.locations.findMany({ where: { cityId: null } })).toEqual([]);
+      expect((await prisma.locations.findFirst({ where: { id: stranded.id } }))!.cityId).toBe(
+        homeCity.id,
+      );
     });
 
     it('refuses to turn on with no city to file anything under', async () => {

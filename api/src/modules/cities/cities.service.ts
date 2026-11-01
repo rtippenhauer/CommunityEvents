@@ -300,42 +300,45 @@ export class CitiesService {
    * same transaction as the flag.
    *
    * **It cannot be an ordinary site setting**, which is why `feature_cities` is
-   * rejected by the bulk settings write and only moves through here. Both
-   * directions change rows:
+   * rejected by the bulk settings write and only moves through here, because
+   * turning it **on** moves rows: every null `city_id` is backfilled to this
+   * community's first city, so a community is never observably "cities on with
+   * rows that have none" — a state the UI cannot draw and the event form
+   * refuses to save from. It is refused outright until at least one city
+   * exists, because there would be nothing to backfill to.
    *
-   *  - **On** backfills every null `city_id` to this community's first city, so
-   *    a community is never observably "cities on with rows that have none" —
-   *    a state the UI cannot draw and the event form refuses to save from. It
-   *    is refused outright until at least one city exists, because there would
-   *    be nothing to backfill to.
-   *  - **Off** clears `city_id` on **future events, all locations and all
-   *    members**, leaving past events alone.
+   * **Turning it off writes nothing but the flag** (REQ-CITIES-01.6: "nothing
+   * is nulled out, so turning it on again lands where it left off rather than
+   * re-backfilling everything to the first city"). It used to clear `city_id`
+   * on future events, every location and every member, and retire every city
+   * besides. Both were wrong, and compounded:
    *
-   * **Off deliberately does NOT retire the cities**, though it used to. While
-   * the feature is off nothing reads `is_active` -- the flag hides cities
-   * everywhere on its own -- so retiring them bought nothing while off and
-   * cost the admin two things on the way back: the active/retired curation
-   * they had built, and the ability to turn the feature on at all, since the
-   * backfill needs an *active* city and the off switch had just left none.
-   * Turning it off and straight back on, the likeliest thing an admin tries,
-   * answered with "add a city" while the screen listed several (Rob found it
-   * on stage, 2026-10-31). The refusal below survives for the case it is
-   * actually true of: a community that has never made a city, or has retired
-   * every one of them by hand.
+   *  - Retiring them all meant **on** could not find an active city to
+   *    backfill to, so off-then-on — the likeliest thing an admin tries —
+   *    answered "add a city" while the screen listed several.
+   *  - Pressing Restore to get past that made whichever city the admin
+   *    happened to restore first the backfill target, so the round trip
+   *    silently moved **every** member, venue and future event into it. Rob
+   *    turned it off and back on and came back filed under `Default`.
    *
-   * Member preferences are dropped on the way off and not rebuilt on the way
-   * back on: a set of cities is a statement about a feature that was not
-   * running, and inventing one would opt members into a filter they never
-   * chose. No rows means All, which is where everybody starts.
+   * Nothing reads a city while the feature is off, so keeping the assignments
+   * costs nothing and is what makes the switch reversible. Member preferences
+   * stay for the same reason: a preference set is an assignment like any
+   * other, and dropping it silently widened every member back to All.
+   *
+   * Found on stage by Rob, 2026-10-31.
    */
   async setEnabled(enabled: boolean, userId: number): Promise<{ enabled: boolean }> {
     const current = await this.isEnabled();
     if (current === enabled) return { enabled };
 
     if (enabled) {
+      // Lowest id, not lowest name (REQ-CITIES-01.6): "the first city the
+      // admin created is the default by construction". Alphabetical order
+      // makes the target move when a city is added or renamed.
       const first = await this.prisma.cities.findFirst({
         where: { isActive: true },
-        orderBy: { name: 'asc' },
+        orderBy: { id: 'asc' },
       });
       if (!first) {
         throw new BadRequestException(
@@ -347,20 +350,6 @@ export class CitiesService {
         for (const model of ['events', 'locations', 'users']) {
           await t[model].updateMany({ where: { cityId: null }, data: { cityId: first.id } });
         }
-      });
-    } else {
-      // `updateMany({ where: {} })` below is the sharpest edge in this file --
-      // no predicate at all, relying entirely on the extension to add the
-      // tenant inside a transaction. Asserted rather than assumed: see
-      // "leaves another community data alone" in `cities.e2e-spec.ts`.
-      await this.prisma.$transaction(async (tx) => {
-        const t = tx as unknown as Record<string, CityDelegate>;
-        await t.user_city_preferences.deleteMany({ where: {} });
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        await t.events.updateMany({ where: { eventDate: { gte: today } }, data: { cityId: null } });
-        await t.locations.updateMany({ where: {}, data: { cityId: null } });
-        await t.users.updateMany({ where: {}, data: { cityId: null } });
       });
     }
 
