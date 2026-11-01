@@ -1929,14 +1929,23 @@ is simply not marking that person attended. Without the callout the screen
 would validate people silently and the trail would be the only record that
 it happened.
 
-**Automatic should mean "when a human marks it", and this needs deciding
-before it is built.** Attendance is also written by paths with no moderator
-present — walk-ins are human, but `v2-29`'s Facebook link credits a past
-event marked *Attended* through the normal attendance path, so a member
-linking their own Facebook account could validate themselves. The
-recommendation is that `validation_source: attendance` requires a human
-actor, and a sync-written attendance leaves the role alone; the member is
-then vouched for or validated at the next dinner somebody marks them at.
+**Resolved 2026-11-01 (Rob): every path that writes attendance today has a
+human actor, so there is no carve-out to build.** The worry was that
+`v2-29`'s Facebook link credits a past event marked *Attended* through the
+normal attendance path, letting a member validate themselves by linking
+their own account. They cannot: both halves are admin-gated and the member
+is the actor in neither. `PATCH /admin/facebook-accounts/:id/attendance` is
+`@Roles(ADMIN, MODERATOR)` and `POST /admin/facebook-accounts/:id/link` is
+`@Roles(ADMIN)` — and that controller is the *only* place linking happens,
+because `v2-29` made matching a human decision and left the sync able only
+to suggest. So a validated-by-attendance member was ticked by one human who
+was there and matched by another.
+
+What that leaves is a rule for later rather than a condition to code: the
+actor recorded in `validation_source: attendance` must be a person. If
+something ever writes attendance without one — a self-service check-in, an
+unattended import — it must not validate, and this is the paragraph that
+says why.
 
 **Un-marking attendance does not un-validate.** Validation is a fact about
 having met someone, not a derived view of the attendance row. It follows
@@ -1947,8 +1956,8 @@ nothing, and an already-credited member is not credited twice.
 validation populate the full trail and log to the audit service,
 consistently; marking a non-validated member attended validates them with
 no extra gesture; the attendance screen shows which members are
-non-validated before anyone is marked; attendance written without a human
-actor does not validate; un-marking attendance leaves validation in place;
+non-validated before anyone is marked; an attendance write with no human actor — should
+one ever exist — does not validate; un-marking attendance leaves validation in place;
 pre-existing validated members keep null trail columns rather than
 fabricated ones; attempting to validate an already-validated member via
 either path is rejected, not silently overwritten.
