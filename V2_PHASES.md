@@ -1915,11 +1915,43 @@ same trail: when a moderator/admin marks a non-validated member as
 attended, an option in the same action validates them, recording the
 marking admin/moderator and timestamp.
 
+**Amended 2026-11-01 (Rob): automatic, not an option.** Marking a
+non-validated member attended validates them, with no second gesture. The
+role exists because they joined through a non-validated event invite, and
+meeting them at a dinner is precisely the validation it was waiting for —
+an opt-in checkbox beside the tick makes the common case two actions and
+leaves the member non-validated whenever somebody forgets.
+
+**The attendance screen calls out who is non-validated** (Rob, same date).
+Automatic means the consequence happens at the moment of ticking, so the
+moderator has to be able to see it coming: the row is marked, and declining
+is simply not marking that person attended. Without the callout the screen
+would validate people silently and the trail would be the only record that
+it happened.
+
+**Automatic should mean "when a human marks it", and this needs deciding
+before it is built.** Attendance is also written by paths with no moderator
+present — walk-ins are human, but `v2-29`'s Facebook link credits a past
+event marked *Attended* through the normal attendance path, so a member
+linking their own Facebook account could validate themselves. The
+recommendation is that `validation_source: attendance` requires a human
+actor, and a sync-written attendance leaves the role alone; the member is
+then vouched for or validated at the next dinner somebody marks them at.
+
+**Un-marking attendance does not un-validate.** Validation is a fact about
+having met someone, not a derived view of the attendance row. It follows
+the shape `v2-29` already uses on the same path: a NULL `attended` earns
+nothing, and an already-credited member is not credited twice.
+
 **Definition of done:** both the vouch path and attendance-triggered
 validation populate the full trail and log to the audit service,
-consistently; pre-existing validated members keep null trail columns
-rather than fabricated ones; attempting to validate an already-validated
-member via either path is rejected, not silently overwritten.
+consistently; marking a non-validated member attended validates them with
+no extra gesture; the attendance screen shows which members are
+non-validated before anyone is marked; attendance written without a human
+actor does not validate; un-marking attendance leaves validation in place;
+pre-existing validated members keep null trail columns rather than
+fabricated ones; attempting to validate an already-validated member via
+either path is rejected, not silently overwritten.
 
 ### v2-18 — Shared media pipeline (REQ-CMS-01.1)
 **Status:** Not started (deferred). Depends on v2-17. First of the
