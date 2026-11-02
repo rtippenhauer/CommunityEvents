@@ -598,7 +598,10 @@ export class LocationFormDialogComponent implements OnInit {
       address: val.address,
       isPrivate: val.isPrivate,
       isResidence: val.isResidence,
-      cityId: val.cityId,
+      // 0 is the form's "no city chosen" placeholder, not an id. With cities
+      // off there is no field to choose from, so send null and let the API
+      // decide whether that is allowed -- `@IsPositive()` rejects 0 outright.
+      cityId: val.cityId || null,
       phone: val.phone.trim() || null,
       websiteUrl: val.websiteUrl.trim() || null,
       description: val.description.trim() || null,

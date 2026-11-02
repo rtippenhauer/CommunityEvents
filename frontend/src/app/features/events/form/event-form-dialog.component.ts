@@ -417,7 +417,10 @@ export class EventFormDialogComponent implements OnInit {
 
     const val = this.form.getRawValue();
     const payload = {
-      cityId: val.cityId,
+      // 0 is the form's "no city chosen" placeholder, not an id. With cities
+      // off there is no field to choose from, so send null and let the API
+      // decide whether that is allowed -- `@IsPositive()` rejects 0 outright.
+      cityId: val.cityId || null,
       locationId: val.locationId,
       title: val.title.trim(),
       eventDate: toDateString(val.eventDate),

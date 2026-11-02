@@ -53,7 +53,8 @@ export interface CreateLocationPayload {
   phone?: string | null;
   websiteUrl?: string | null;
   description?: string | null;
-  cityId: number;
+  /** Null where the community has city filtering off (`v2-24`). */
+  cityId: number | null;
   moderatorNotes?: string | null;
   contactName?: string | null;
   contactPhone?: string | null;

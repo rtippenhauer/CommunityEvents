@@ -540,6 +540,92 @@ describe('Cities (e2e)', () => {
     });
   });
 
+  /**
+   * Creating things while cities are off (Rob, on stage, 2026-11-01).
+   *
+   * `v2-24` made `city_id` nullable and the forms stop rendering a city field
+   * when filtering is off -- but `CreateLocationDto` and `CreateEventDto` still
+   * declared `@IsInt() @IsPositive() cityId: number`, so the request died in
+   * the validation pipe with "cityId must be a positive number" before any
+   * service saw it. The venue form's own notice said the venue would not
+   * belong to a city, which the API then refused to allow.
+   *
+   * Whether a city is required is not a property of the request, so the DTO
+   * cannot answer it -- only `resolveRequiredCityId` knows whether filtering
+   * is on. Both directions are asserted here for that reason: optional in the
+   * DTO must not become optional in effect.
+   */
+  describe('creating things while cities are off', () => {
+    const offThen = async () => {
+      await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);
+    };
+
+    it('accepts a venue with no city and stores none', async () => {
+      await offThen();
+
+      const res = await asAdmin('post', '/locations')
+        .send({ name: 'No City Diner', address: '1 Nowhere Rd' })
+        .expect(201);
+
+      const row = await inTenant(TEST_TENANT_ID, () =>
+        prisma.locations.findFirstOrThrow({ where: { id: res.body.id } }),
+      );
+      expect(row.cityId).toBeNull();
+    });
+
+    it('accepts an explicit null just as it accepts an omission', async () => {
+      await offThen();
+
+      const res = await asAdmin('post', '/locations')
+        .send({ name: 'Null City Diner', address: '2 Nowhere Rd', cityId: null })
+        .expect(201);
+
+      const row = await inTenant(TEST_TENANT_ID, () =>
+        prisma.locations.findFirstOrThrow({ where: { id: res.body.id } }),
+      );
+      expect(row.cityId).toBeNull();
+    });
+
+    it('accepts an event with no city and stores none', async () => {
+      await offThen();
+
+      const venue = await asAdmin('post', '/locations')
+        .send({ name: 'Eventless Diner', address: '3 Nowhere Rd' })
+        .expect(201);
+
+      const res = await asAdmin('post', '/events')
+        .send({
+          locationId: venue.body.id,
+          title: 'A dinner in no city',
+          eventDate: dateOffset(14),
+          eventTime: '18:30',
+        })
+        .expect(201);
+
+      const row = await inTenant(TEST_TENANT_ID, () =>
+        prisma.events.findFirstOrThrow({ where: { id: res.body.id } }),
+      );
+      expect(row.cityId).toBeNull();
+    });
+
+    it('still refuses a venue with no city while filtering is ON', async () => {
+      // The guard that makes the DTO change safe. Optional in the DTO is not
+      // optional in effect: the service decides, and it says no here.
+      await asAdmin('post', '/locations')
+        .send({ name: 'Cityless While On', address: '4 Nowhere Rd' })
+        .expect(400);
+    });
+
+    it('still refuses a city that belongs to nobody', async () => {
+      // 0 used to be what the form sent for "none chosen". It is not an id and
+      // must not become one by being allowed through as falsy.
+      await offThen();
+      await asAdmin('post', '/locations')
+        .send({ name: 'Zero City', address: '5 Nowhere Rd', cityId: 0 })
+        .expect(400);
+    });
+  });
+
   // ── 6. The preference set is a filter, never a gate ──────────────────────
 
   describe('member city preferences', () => {

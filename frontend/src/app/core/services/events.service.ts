@@ -170,7 +170,8 @@ export interface GuestLinkInfo {
 }
 
 export interface CreateEventPayload {
-  cityId: number;
+  /** Null where the community has city filtering off (`v2-24`). */
+  cityId: number | null;
   locationId: number;
   title: string;
   description?: string | null;
@@ -183,7 +184,8 @@ export interface CreateEventPayload {
 }
 
 export interface UpdateEventPayload {
-  cityId?: number;
+  /** Null where the community has city filtering off (`v2-24`). */
+  cityId?: number | null;
   locationId?: number;
   title?: string;
   description?: string | null;
