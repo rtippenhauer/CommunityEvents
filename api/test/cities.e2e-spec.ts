@@ -555,6 +555,115 @@ describe('Cities (e2e)', () => {
    * is on. Both directions are asserted here for that reason: optional in the
    * DTO must not become optional in effect.
    */
+  /**
+   * The default city (Rob, 2026-11-01).
+   *
+   * It exists because two code paths answered "which city" differently and
+   * neither answer was chosen by anybody: the enable backfill took the lowest
+   * id, a new member took the lowest *name*. Renaming a city silently moved
+   * one of them. The marker makes it one explicit answer.
+   */
+  describe('the default city', () => {
+    it('does not hand the marker to a city added second', async () => {
+      // `homeCity` is seeded straight through Prisma and carries no marker,
+      // which is the state `bootstrap.ts` left real communities in before
+      // this column existed. Keying "is this the first city" on the *marker*
+      // rather than on there being any active city made the second city the
+      // default -- caught here rather than on stage.
+      const second = await asAdmin('post', '/admin/cities').send({ name: 'Second' }).expect(201);
+
+      const rows = await inTenant(TEST_TENANT_ID, () => prisma.cities.findMany());
+      expect(rows.find((c) => c.id === second.body.id)!.isDefault).toBeNull();
+      // Nothing is marked, so resolution falls back to the lowest active id --
+      // still homeCity, which is what the behaviour was before the marker.
+      expect(rows.filter((c) => c.isDefault === true)).toHaveLength(0);
+    });
+
+    it('marks a city default when the community has no active one', async () => {
+      // Retired rather than deleted: members, venues and events point at
+      // `homeCity` and the foreign keys are restrictive, which is the whole
+      // reason retiring exists. Filtering is turned off first so retiring
+      // needs no destination to move those rows to.
+      await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);
+      await asAdmin('post', `/admin/cities/${homeCity.id}/retire`).send({}).expect(201);
+
+      const only = await asAdmin('post', '/admin/cities').send({ name: 'Only' }).expect(201);
+
+      const rows = await inTenant(TEST_TENANT_ID, () => prisma.cities.findMany());
+      expect(rows.filter((c) => c.isDefault === true).map((c) => c.id)).toEqual([only.body.id]);
+    });
+
+    it('moves the marker rather than adding a second one', async () => {
+      const second = await asAdmin('post', '/admin/cities').send({ name: 'Second' }).expect(201);
+      await asAdmin('post', `/admin/cities/${second.body.id}/default`).expect(201);
+
+      const rows = await inTenant(TEST_TENANT_ID, () => prisma.cities.findMany());
+      // The unique index would reject a second `true`, so a bare set without
+      // the clear is a failed write rather than a subtly wrong one.
+      expect(rows.filter((c) => c.isDefault === true).map((c) => c.id)).toEqual([second.body.id]);
+    });
+
+    it('files the backfill under the default, not the lowest id', async () => {
+      const second = await asAdmin('post', '/admin/cities').send({ name: 'Second' }).expect(201);
+      await asAdmin('post', `/admin/cities/${second.body.id}/default`).expect(201);
+
+      await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);
+      const venue = await asAdmin('post', '/locations')
+        .send({ name: 'Filed Later', address: '9 Nowhere Rd' })
+        .expect(201);
+      await asAdmin('put', '/admin/cities/feature').send({ enabled: true }).expect(200);
+
+      const row = await inTenant(TEST_TENANT_ID, () =>
+        prisma.locations.findFirstOrThrow({ where: { id: venue.body.id } }),
+      );
+      expect(row.cityId).toBe(second.body.id);
+    });
+
+    it('refuses to make a retired city the default', async () => {
+      const second = await asAdmin('post', '/admin/cities').send({ name: 'Second' }).expect(201);
+      await asAdmin('post', `/admin/cities/${second.body.id}/retire`)
+        .send({ moveToCityId: homeCity.id })
+        .expect(201);
+      await asAdmin('post', `/admin/cities/${second.body.id}/default`).expect(400);
+    });
+
+    it('hands the marker to the destination when the default is retired', async () => {
+      const second = await asAdmin('post', '/admin/cities').send({ name: 'Second' }).expect(201);
+      // The harness seeds `homeCity` straight through Prisma, so the marker
+      // has to be put there explicitly — this is the state `bootstrap.ts`
+      // now leaves a real community in.
+      await asAdmin('post', `/admin/cities/${homeCity.id}/default`).expect(201);
+
+      // Retire the default; its rows go to `second`, and so should the marker.
+      await asAdmin('post', `/admin/cities/${homeCity.id}/retire`)
+        .send({ moveToCityId: second.body.id })
+        .expect(201);
+
+      const rows = await inTenant(TEST_TENANT_ID, () => prisma.cities.findMany());
+      expect(rows.filter((c) => c.isDefault === true).map((c) => c.id)).toEqual([second.body.id]);
+    });
+
+    it('is scoped: one community setting its default leaves another alone', async () => {
+      await prisma.tenants.create({
+        data: { id: TENANT_B_ID, slug: 'other-default', domain: TENANT_B_DOMAIN },
+      });
+      const theirCity = await inTenant(TENANT_B_ID, () => seedCity(prisma, { name: 'Theirs' }));
+      await inTenant(TENANT_B_ID, () =>
+        prisma.cities.update({ where: { id: theirCity.id }, data: { isDefault: true } }),
+      );
+
+      const second = await asAdmin('post', '/admin/cities').send({ name: 'Second' }).expect(201);
+      await asAdmin('post', `/admin/cities/${second.body.id}/default`).expect(201);
+
+      // The clear is an unfiltered `updateMany` leaning on the scoping
+      // extension, exactly like the retirement walk above -- so assert it.
+      const theirs = await inTenant(TENANT_B_ID, () =>
+        prisma.cities.findFirstOrThrow({ where: { id: theirCity.id } }),
+      );
+      expect(theirs.isDefault).toBe(true);
+    });
+  });
+
   describe('creating things while cities are off', () => {
     const offThen = async () => {
       await asAdmin('put', '/admin/cities/feature').send({ enabled: false }).expect(200);

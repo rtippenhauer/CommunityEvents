@@ -281,7 +281,16 @@ async function main(): Promise<void> {
     // $executeRawUnsafe returns the affected-row count directly, where TypeORM
     // handed back a ResultSetHeader to read .affectedRows from.
     const deactivated = await tx.$executeRawUnsafe(
-      `UPDATE cities SET is_active = 0 WHERE tenant_id = ? AND id <> ?`,
+      `UPDATE cities SET is_active = 0, is_default = NULL WHERE tenant_id = ? AND id <> ?`,
+      tenantRow.id,
+      cityId,
+    );
+    // The surviving city is this community's default (v2-24). Cleared above
+    // before being set here, in that order: `(tenant_id, is_default)` is
+    // unique, so setting first would collide with whichever city already
+    // held the marker rather than replacing it.
+    await tx.$executeRawUnsafe(
+      `UPDATE cities SET is_default = 1 WHERE tenant_id = ? AND id = ?`,
       tenantRow.id,
       cityId,
     );

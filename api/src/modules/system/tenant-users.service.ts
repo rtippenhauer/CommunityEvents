@@ -118,10 +118,28 @@ export class TenantUsersService {
       throw new BadRequestException(`${email} already has an account in this community.`);
     }
 
-    const city = await this.prisma.cities.findFirst({ orderBy: { id: 'asc' } });
-    if (!city) {
-      throw new BadRequestException('No city exists to attach the account to. Run the seed first.');
-    }
+    // **Inside the community being administered**, like the clash check above.
+    // Without the wrapper this resolved against the *ambient* tenant -- the
+    // root one, since the operator is on the root host -- and handed the new
+    // account a `city_id` belonging to a different community. The scoping
+    // extension was working correctly; the question was asked in the wrong
+    // scope, which is the one failure mode it cannot catch.
+    //
+    // The community's default city, else its lowest-id active one. No throw:
+    // `users.city_id` is nullable since v2-24 and a community with city
+    // filtering off legitimately has no cities at all, where the old error
+    // ("Run the seed first") described a problem that no longer exists.
+    const cityId = await runWithTenant(tenantId, async () => {
+      const marked = await this.prisma.cities.findFirst({
+        where: { isDefault: true, isActive: true },
+      });
+      if (marked) return marked.id;
+      const first = await this.prisma.cities.findFirst({
+        where: { isActive: true },
+        orderBy: { id: 'asc' },
+      });
+      return first?.id ?? null;
+    });
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
     // runUnscoped with an explicit tenantId, matching how the first admin and
@@ -131,7 +149,7 @@ export class TenantUsersService {
       await this.prisma.users.create({
         data: {
           tenantId,
-          cityId: city.id,
+          cityId,
           fullName: dto.fullName.trim() || 'Member',
           email,
           passwordHash,

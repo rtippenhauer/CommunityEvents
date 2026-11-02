@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -74,7 +74,12 @@ interface CityRow extends AdminCity {
             back on picks up exactly where you left off.
           } @else {
             Cities are hidden everywhere and nothing asks for one. Anything already filed under a
-            city keeps it. Turning this on files whatever has no city under your first one.
+            city keeps it. Turning this on files whatever has no city under
+            @if (defaultCityName(); as name) {
+              <strong>{{ name }}</strong>, your default city.
+            } @else {
+              your default city.
+            }
           }
         </p>
       </div>
@@ -92,6 +97,10 @@ interface CityRow extends AdminCity {
             <div class="city-card" [class.retired]="!city.isActive">
               <div class="city-header">
                 <h3>{{ city.name }}</h3>
+                @if (city.isDefault === true) {
+                  <mat-chip class="chip-default" matTooltip="New members land here, and
+                    turning city filtering on files anything without a city here.">Default</mat-chip>
+                }
                 @if (!city.isActive) {
                   <mat-chip class="chip-inactive">Retired</mat-chip>
                 }
@@ -112,6 +121,16 @@ interface CityRow extends AdminCity {
                 <button mat-button (click)="openEdit(city)">
                   <mat-icon>edit</mat-icon> Rename
                 </button>
+                @if (city.isActive && city.isDefault !== true) {
+                  <button
+                    mat-button
+                    (click)="makeDefault(city)"
+                    matTooltip="New members land here, and turning city filtering on
+                      files anything without a city here."
+                  >
+                    <mat-icon>star</mat-icon> Make default
+                  </button>
+                }
                 @if (city.isActive) {
                   <button
                     mat-button
@@ -236,6 +255,11 @@ interface CityRow extends AdminCity {
       .chip-inactive {
         background: var(--ce-surface-variant) !important;
       }
+
+      .chip-default {
+        background: var(--ce-accent) !important;
+        color: var(--ce-on-accent) !important;
+      }
       @media (max-width: 480px) {
         .cities-grid {
           grid-template-columns: 1fr;
@@ -342,6 +366,23 @@ export class AdminCitiesComponent implements OnInit {
       .subscribe((result) => {
         if (result) this.refresh();
       });
+  }
+
+  /**
+   * The default city's name, for the hint that says where the backfill will
+   * file everything. Null while the list is loading or when no city is
+   * marked, where the copy stays deliberately unnamed rather than guessing
+   * the fallback and being wrong the moment somebody adds a city.
+   */
+  readonly defaultCityName = computed(
+    () => this.cityRows().find((c) => c.isDefault === true)?.name ?? null,
+  );
+
+  makeDefault(city: AdminCity): void {
+    this.citiesAdminService.setDefault(city.id).subscribe({
+      next: () => this.refresh(),
+      error: (err: HttpErrorResponse) => this.report(err, 'Could not set the default city'),
+    });
   }
 
   restore(city: AdminCity): void {

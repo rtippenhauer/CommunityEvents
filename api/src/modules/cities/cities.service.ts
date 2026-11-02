@@ -128,11 +128,57 @@ export class CitiesService {
    */
   async defaultCityId(): Promise<number | null> {
     if (!(await this.isEnabled())) return null;
+    return this.resolveDefaultCityId();
+  }
+
+  /**
+   * The community's default city, ignoring the toggle.
+   *
+   * **One answer, used by both callers that need one** -- the enable backfill
+   * and `defaultCityId` above. They used to disagree: the backfill took the
+   * lowest id and this took the lowest *name*, so a community whose first city
+   * was not alphabetically first filed its existing rows in one place and its
+   * new members in another. Neither ordering was a choice anybody made, and
+   * renaming a city silently moved one of them (Rob, 2026-11-01).
+   *
+   * The fallback stays, because a default is not guaranteed: retiring the
+   * default city clears the marker, and a community can sit without one. It is
+   * the lowest id rather than the lowest name for the reason REQ-CITIES-01.6
+   * gives -- the first city the admin created is the default by construction,
+   * and ids do not move when somebody renames.
+   */
+  async resolveDefaultCityId(): Promise<number | null> {
+    const marked = await this.prisma.cities.findFirst({
+      where: { isDefault: true, isActive: true },
+    });
+    if (marked) return marked.id;
     const first = await this.prisma.cities.findFirst({
       where: { isActive: true },
-      orderBy: { name: 'asc' },
+      orderBy: { id: 'asc' },
     });
     return first?.id ?? null;
+  }
+
+  /**
+   * Names the city everything with none will be filed under.
+   *
+   * Clears the previous marker in the same transaction: the unique index on
+   * `(tenant_id, is_default)` rejects a second `true`, so setting without
+   * clearing is not a subtly wrong write, it is a failed one.
+   */
+  async setDefault(id: number): Promise<City> {
+    const city = await this.findById(id);
+    if (!city.isActive) {
+      throw new BadRequestException('A retired city cannot be the default');
+    }
+    if (city.isDefault === true) return city;
+
+    await this.prisma.$transaction(async (tx) => {
+      const t = tx as unknown as Record<string, CityDelegate>;
+      await t.cities.updateMany({ where: { isDefault: true }, data: { isDefault: null } });
+      await t.cities.update({ where: { id }, data: { isDefault: true } });
+    });
+    return this.findById(id);
   }
 
   private async assertNameAvailable(name: string, excludeId?: number): Promise<void> {
@@ -145,8 +191,21 @@ export class CitiesService {
   async create(dto: CreateCityDto): Promise<City> {
     const name = dto.name.trim();
     await this.assertNameAvailable(name);
+    const isActive = dto.isActive ?? true;
+    // The community's **first** active city becomes its default, so a
+    // one-city community never has to think about the setting and the marker
+    // exists before anybody turns filtering on.
+    //
+    // Keyed on there being no active city at all, not merely no *marker*. A
+    // community can hold unmarked cities -- `bootstrap.ts` wrote them before
+    // this column existed, and a test seeds them directly -- and in that
+    // state "no marker yet" would hand the default to whichever city was
+    // added second, which is the opposite of first.
+    const existingActive = isActive
+      ? await this.prisma.cities.findFirst({ where: { isActive: true } })
+      : null;
     return this.prisma.cities.create({
-      data: { name, isActive: dto.isActive ?? true },
+      data: { name, isActive, isDefault: isActive && !existingActive ? true : null },
     });
   }
 
@@ -263,10 +322,20 @@ export class CitiesService {
           await delegate.updateMany({ where, data: { cityId: destination } });
         }
       }
-      await (tx as unknown as Record<string, CityDelegate>).cities.update({
+      // Retiring the default hands the marker to wherever its rows just went,
+      // which is the only city we know the admin considered equivalent. With
+      // filtering off there is no destination, so the community is left with
+      // no default and `resolveDefaultCityId` falls back to the lowest id --
+      // deliberately not "pick one for them", since any pick would be the
+      // guess this marker exists to replace.
+      const t = tx as unknown as Record<string, CityDelegate>;
+      await t.cities.update({
         where: { id },
-        data: { isActive: false },
+        data: { isActive: false, ...(city.isDefault === true ? { isDefault: null } : {}) },
       });
+      if (city.isDefault === true && destination !== null) {
+        await t.cities.update({ where: { id: destination }, data: { isDefault: true } });
+      }
     });
 
     return { ...impact, cityName: city.name };
@@ -333,14 +402,11 @@ export class CitiesService {
     if (current === enabled) return { enabled };
 
     if (enabled) {
-      // Lowest id, not lowest name (REQ-CITIES-01.6): "the first city the
-      // admin created is the default by construction". Alphabetical order
-      // makes the target move when a city is added or renamed.
-      const first = await this.prisma.cities.findFirst({
-        where: { isActive: true },
-        orderBy: { id: 'asc' },
-      });
-      if (!first) {
+      // The explicit default, falling back to the lowest id. Shared with
+      // `defaultCityId` so a new member lands where the backfill filed
+      // everything else -- see `resolveDefaultCityId`.
+      const target = await this.resolveDefaultCityId();
+      if (target === null) {
         throw new BadRequestException(
           'Add a city before turning city filtering on — there would be nothing to file anything under',
         );
@@ -348,7 +414,7 @@ export class CitiesService {
       await this.prisma.$transaction(async (tx) => {
         const t = tx as unknown as Record<string, CityDelegate>;
         for (const model of ['events', 'locations', 'users']) {
-          await t[model].updateMany({ where: { cityId: null }, data: { cityId: first.id } });
+          await t[model].updateMany({ where: { cityId: null }, data: { cityId: target } });
         }
       });
     }

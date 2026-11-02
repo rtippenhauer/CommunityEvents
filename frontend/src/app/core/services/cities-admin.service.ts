@@ -6,6 +6,13 @@ export interface AdminCity {
   id: number;
   name: string;
   isActive: boolean;
+  /**
+   * The community's default city, or null/absent on every other row.
+   *
+   * Never `false` — it is a marker backed by a unique index, not a boolean.
+   * Compare with `=== true`.
+   */
+  isDefault?: boolean | null;
   createdAt: string;
 }
 
@@ -49,6 +56,11 @@ export class CitiesAdminService {
     return this.http.patch<AdminCity>(`${this.base}/${id}`, payload);
   }
 
+  /** Names the city the backfill files under, and new members land in. */
+  setDefault(id: number): Observable<AdminCity> {
+    return this.http.post<AdminCity>(`${this.base}/${id}/default`, {});
+  }
+
   reactivate(id: number): Observable<AdminCity> {
     return this.http.post<AdminCity>(`${this.base}/${id}/reactivate`, {});
   }
@@ -64,8 +76,12 @@ export class CitiesAdminService {
   /**
    * Its own route rather than a switch on Admin → Site Settings, because it
    * rewrites data as well as the flag: turning it on backfills every event,
-   * venue and member that has no city, and turning it off clears them and
-   * retires every city. The settings endpoint refuses this key outright.
+   * venue and member that has no city, filing them under the default city.
+   * The settings endpoint refuses this key outright.
+   *
+   * Turning it **off** writes only the flag. It used to clear every
+   * assignment and retire every city, which made turning it back on a
+   * data-loss event rather than a reversal (Rob, on stage, 2026-10-31).
    */
   setFeature(enabled: boolean): Observable<{ enabled: boolean }> {
     return this.http.put<{ enabled: boolean }>(`${this.base}/feature`, { enabled });

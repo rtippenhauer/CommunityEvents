@@ -388,6 +388,23 @@ model cities {
   id                  Int                     @id @default(autoincrement()) @db.UnsignedInt
   name                String                  @db.VarChar(100)
   isActive            Boolean                 @default(true) @map("is_active")
+  /// The community's default city: where the backfill files everything when
+  /// city filtering is turned on, and where a brand-new member lands.
+  ///
+  /// **Only ever `true` or NULL, never `false`** -- it is a marker, not a
+  /// boolean, for the same reason `tenants.root_marker` is: MySQL has no
+  /// partial unique index but permits repeated NULLs in a unique one, so
+  /// `(tenant_id, is_default)` is what makes "at most one default per
+  /// community" a database constraint rather than a convention. Writing
+  /// `false` would make *that* value unique per community too, which is
+  /// nonsense; `CitiesService` writes `null` to clear.
+  ///
+  /// Nullable rather than required because a community can lose its default
+  /// by retiring it, and resolution falls back to the lowest id. Added in
+  /// `v2-24` after two code paths disagreed -- the enable backfill took the
+  /// lowest id and a new member took the lowest *name* -- and neither was a
+  /// choice anybody made.
+  isDefault           Boolean?                @map("is_default")
   createdAt           DateTime                @default(now()) @map("created_at") @db.DateTime(0)
   announcements       announcements[]
   events              events[]
@@ -403,6 +420,7 @@ model cities {
   /// was globally unique, so in practice the first community to claim one took
   /// it from everybody else.
   @@unique([tenantId, name], map: "uq_city_tenant_name")
+  @@unique([tenantId, isDefault], map: "uq_city_tenant_default")
   @@index([tenantId], map: "idx_cities_tenant")
 }
 

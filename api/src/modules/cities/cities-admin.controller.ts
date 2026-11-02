@@ -57,6 +57,19 @@ export class CitiesAdminController {
     return this.citiesService.update(id, dto);
   }
 
+  /**
+   * Names this city the default: where the enable backfill files everything
+   * with no city, and where a new member lands.
+   *
+   * A POST on the city rather than a field on `PATCH :id`, because it is not a
+   * property of this row alone -- it clears whichever city held it, so sending
+   * it alongside a rename would make one request quietly write two cities.
+   */
+  @Post(':id/default')
+  setDefault(@Param('id', ParseIntPipe) id: number) {
+    return this.citiesService.setDefault(id);
+  }
+
   @Post(':id/reactivate')
   reactivate(@Param('id', ParseIntPipe) id: number) {
     return this.citiesService.reactivate(id);

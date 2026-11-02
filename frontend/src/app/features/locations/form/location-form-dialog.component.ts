@@ -118,7 +118,7 @@ interface City {
                 Cities are turned off, so this {{ brand.locationSingularLower() }} won't belong to
                 one. If you expect {{ brand.dinnerPluralLower() }} in more than one city, turn
                 cities on at <strong>Admin → Cities</strong> first — anything added before then
-                lands in your first city, and you reassign by hand.
+                lands in your default city, and you reassign by hand.
               </div>
             </div>
           }
