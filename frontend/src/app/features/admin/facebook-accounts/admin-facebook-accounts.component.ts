@@ -69,14 +69,28 @@ interface AdminUserRow {
         linked automatically — two people can share a name.
       </p>
 
+      <!-- No counts while the load is failed or in flight: "(0)" is a claim
+           about the data, and an unread queue has no count to report. -->
       <mat-tab-group [selectedIndex]="tabIndex()" (selectedIndexChange)="selectTab($event)">
-        <mat-tab [label]="'Unmatched (' + counts().unmatched + ')'" />
-        <mat-tab [label]="'Linked (' + counts().linked + ')'" />
-        <mat-tab [label]="'Not a member (' + counts().not_member + ')'" />
+        <mat-tab [label]="tabLabel('Unmatched', counts().unmatched)" />
+        <mat-tab [label]="tabLabel('Linked', counts().linked)" />
+        <mat-tab [label]="tabLabel('Not a member', counts().not_member)" />
       </mat-tab-group>
 
       @if (loading()) {
         <p class="empty">Loading…</p>
+      } @else if (loadFailed()) {
+        <!-- Distinct from the empty state on purpose. A failed load used to
+             render "Nobody is waiting to be matched" under a toast that
+             dismisses itself after six seconds, so the queue read as clear
+             when it was simply unread. -->
+        <div class="load-failed">
+          <mat-icon>error_outline</mat-icon>
+          <div>
+            <p>The queue could not be loaded, so this is not "nobody is waiting" — it is unknown.</p>
+            <button mat-stroked-button type="button" (click)="reload()">Try again</button>
+          </div>
+        </div>
       } @else if (visible().length === 0) {
         <p class="empty">
           @switch (tab()) {
@@ -261,6 +275,27 @@ interface AdminUserRow {
         color: var(--ce-text-muted);
         padding: 1.5rem 0;
       }
+
+      .load-failed {
+        display: flex;
+        gap: 0.75rem;
+        align-items: flex-start;
+        margin: 1.5rem 0;
+        padding: 1rem;
+        border: 1px solid var(--ce-rule);
+        border-radius: 8px;
+        background: var(--ce-surface-variant);
+        color: var(--ce-text);
+      }
+
+      .load-failed mat-icon {
+        flex: none;
+        color: var(--ce-error);
+      }
+
+      .load-failed p {
+        margin: 0 0 0.75rem;
+      }
     `,
   ],
 })
@@ -274,6 +309,7 @@ export class AdminFacebookAccountsComponent implements OnInit {
   readonly all = signal<FacebookAccount[]>([]);
   readonly members = signal<AdminUserRow[]>([]);
   readonly loading = signal(true);
+  readonly loadFailed = signal(false);
   readonly tabIndex = signal(0);
 
   readonly tab = computed<FacebookAccountStatus>(() => this.tabs[this.tabIndex()]);
@@ -363,8 +399,18 @@ export class AdminFacebookAccountsComponent implements OnInit {
     });
   }
 
+  tabLabel(name: string, count: number): string {
+    return this.loading() || this.loadFailed() ? name : `${name} (${count})`;
+  }
+
+  /** The retry button; `load` is private and the template needs a way in. */
+  reload(): void {
+    this.load();
+  }
+
   private load(): void {
     this.loading.set(true);
+    this.loadFailed.set(false);
     // Every status in one request: the tab counts need all three, and the list
     // is a review queue rather than an unbounded log.
     this.accountsService.list().subscribe({
@@ -374,6 +420,7 @@ export class AdminFacebookAccountsComponent implements OnInit {
       },
       error: () => {
         this.loading.set(false);
+        this.loadFailed.set(true);
         this.snackBar.open('Could not load Facebook accounts', 'Dismiss', { duration: 6000 });
       },
     });
