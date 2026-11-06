@@ -5,7 +5,7 @@ import type { Prisma, users as User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EventStatus, InboundEmailOutcome, RsvpStatus } from '../../database/enums';
 import { asDateString, asTimeString } from '../../common/utils/prisma-date.util';
-import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS, eventUid, parseEventUid } from '../../common/utils/ics.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, icsSequence, EVENT_DURATION_MS, eventUid, parseEventUid } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { AppConfigService } from '../app-config/app-config.service';
 import { CitiesService } from '../cities/cities.service';
@@ -328,7 +328,7 @@ export class CalendarService {
     const dtEnd = toIcsUtcString(endUtc);
     const lastMod = toIcsUtcString(new Date(event.updatedAt));
     const dtStamp = toIcsUtcString(new Date());
-    const sequence = Math.floor(new Date(event.updatedAt).getTime() / 60000) % 999999;
+    const sequence = icsSequence(new Date(event.updatedAt));
 
     const isCancelled = event.status === EventStatus.CANCELLED;
 
@@ -448,14 +448,13 @@ export class CalendarService {
     const now = new Date();
     const lastMod = toIcsUtcString(new Date(event.updatedAt));
     const dtStamp = toIcsUtcString(now);
-    // Must reflect when THIS invite was sent, not when the event was last edited —
+    // Keyed on when THIS invite was sent, not on when the event was last edited —
     // re-confirming the same RSVP (toggling away and back to Going) re-sends this
     // same UID with the event's unchanged updatedAt, so a SEQUENCE derived from
-    // that never advances between sends. Without an incrementing SEQUENCE (and
-    // with DTSTAMP previously missing entirely), calendar clients have no signal
-    // that a later email supersedes an earlier one and can create a duplicate
-    // pending invitation per message instead of updating the same one in place.
-    const sequence = Math.floor(now.getTime() / 1000) % 999999;
+    // that never advances between sends and the client has no signal that the
+    // later email supersedes the earlier one. See icsSequence for why it must
+    // also never wrap.
+    const sequence = icsSequence(now);
 
     // eventDate/eventTime are DATE/TIME columns. The entity typed them as
     // strings; Prisma returns Dates. Calling .split on a Date throws, so both
