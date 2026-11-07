@@ -57,8 +57,8 @@ Two decisions bound it:
 | 3 | ~~**v2-33 — port v1's five bugfixes**~~ | **Done 2026-10-19** (tag `v2-33`). Every one was verified as a live defect here rather than taken on trust from v1's port doc, and all six stage checks passed. Its stage pass cost two days of inbound-mail infrastructure, not code — see that section and `docs/CUTOVER_PLAN.md`. |
 | 4 | ~~**v2-34 — an inbound email log**~~ | **Done 2026-10-22** (tag `v2-34`). **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
 | 5 | ~~**v2-29 — port Phase 39**~~ | **Done 2026-10-24** (tag `v2-29`). With v2-33 this repo is level with prod DinnerBears. Stage ran **two** communities mirroring independently, which is the clause of the definition of done a single-community run cannot test. Stage also found the cover photos missing and private venue addresses unredacted — both from hand-writing queries v1 delegated to `EventsService`, and both invisible to the suite because neither event endpoint had a test. |
-| 6 | **v2-24 — cities** | **Next up** (2026-10-24, now that v2-29 is done). REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. Also carries the `CitiesAdminController` gap v2-12 left open deliberately: `@Roles(ADMIN)` over a global table. |
-| 7 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
+| 6 | ~~**v2-24 — cities**~~ | **Done 2026-11-07** (tag `v2-24`). REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. Also carries the `CitiesAdminController` gap v2-12 left open deliberately: `@Roles(ADMIN)` over a global table. |
+| 7 | **v2-25 — the import** | **In progress / next up** (2026-11-07, now that v2-24 is done). The deliverable. Dry-run cycle against a copy before anything real. |
 | 8 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
 `v2-31` (a real email log) is not a blocker but is wanted early: the current
@@ -2074,9 +2074,69 @@ a grid/lightbox on the event page; a non-attendee's upload is rejected; a
 non-validated member's upload is rejected even if marked attended.
 
 ### v2-24 — Cities as a toggleable event filter, tenant-scoped (REQ-CITIES-01)
-**Status:** Not started (deferred). Sequenced before v2-25 (import) — the
-import script needs a settled city model rather than one it has to work
-around.
+**Status:** **Complete** (2026-11-07, tag `v2-24`). Sequenced before v2-25
+(import) — the import script needs a settled city model rather than one it has
+to work around.
+
+**Two things below are the design as specified and NOT as shipped**, both
+revised on stage and both load-bearing, so read them here rather than from the
+prose further down:
+
+1. **Turning the toggle OFF writes only the flag.** The spec had it deactivate
+   every city and clear `city_id` on future events, locations and users. Both
+   were wrong and compounded: retiring every city meant turning it back ON could
+   find no active city to backfill to, and pressing Restore to get past that made
+   whichever city the admin happened to restore first the backfill target — so
+   off-then-on, the likeliest thing anybody tries, silently moved every member,
+   venue and upcoming event into it. Nothing reads a city while the feature is
+   off, so keeping the assignments costs nothing and is what makes the switch
+   reversible. Found by Rob on stage 2026-10-31.
+2. **The backfill target is an explicit default city, not "the tenant's first".**
+   `cities.is_default` is a real marked row (unique per tenant on a nullable
+   marker, the `root_marker` pattern), set at Admin → Cities, with the lowest id
+   as the fallback when no marker exists. The enable-backfill and the new-member
+   default used to disagree — one took the lowest id and the other the lowest
+   *name* — so a community whose first city was not alphabetically first filed
+   its existing rows in one place and its new members in another, and renaming a
+   city silently moved one of them (Rob, 2026-11-01). One answer now,
+   `resolveDefaultCityId`.
+
+**The `CitiesAdminController` hole v2-12 left open is closed**: `cities` is
+tenant-scoped, so the controller can no longer reach another community's rows,
+and `subdomain` and its deployment-wide unique index are gone with it.
+
+**Three defects found on stage that the suite could not have caught**, beyond
+the two above: a venue or event could not be created at all while cities were
+*off* (the form sent no `cityId` and the API required one); the city filter
+rendered blank where it meant "All cities"; and a new venue or event opened on
+an empty city box rather than the default, which is what the default is for.
+The last is the one worth remembering — `is_default` shipped in `bb2e901` and
+**nothing outside Admin → Cities ever read it**, so the column was correct,
+tested, and connected to nothing a member or admin would ever see.
+
+**Rode along, unrelated to cities but found in the same pass:** the calendar
+SEQUENCE wrap (see below), a 48-hour invite expiry that was wall-clock rather
+than elapsed, moderators unable to work the Facebook review queue, and a hero
+note breaking the image row.
+
+**The calendar SEQUENCE wrap is a v1 defect fixed in both repos** (v1 1.6.4, PR
+#49). `SEQUENCE` was taken `% 999999`, which returns to zero every 11d 13h 46m
+39s; after each wrap a `METHOD:REQUEST` for an event the member had already seen
+carried a *lower* number and was discarded in silence, leaving whatever their
+calendar held. `icsSequence` counts seconds from 2020 rather than from the Unix
+epoch — epoch seconds cross the RFC 5545 signed-32-bit cap in 2038, seconds
+since 2020 not until 2088. The new value far exceeds anything `% 999999` could
+produce, so every client steps up across the deploy and none is stranded holding
+a higher number. **It does not repair an already-stale calendar**: the invite
+fires on a *transition* into Going, so a member already Going must toggle their
+RSVP. Three call sites, and the third (`GET /events/:id/ics` and the guest feed)
+was missed on the first pass because the sweep grepped one file instead of the
+codebase.
+
+**Known gap, carried forward:** the migration was run against a populated copy
+with four communities, but `v2-10`'s recorded gap — the e2e harness builds an
+empty database, so no migration in this repo is *tested* against populated data
+— is unchanged.
 
 `cities` currently has no `tenant_id` at all — the one model the v2-6
 scoping pass never touched — and its `subdomain` column is globally
@@ -2269,7 +2329,8 @@ before; `facebook_group_config` is gone while `campaign_facebook` invites
 still work.
 
 ### v2-25 — DinnerBears import (new tenant) (REQ-IMPORT-01)
-**Status:** Not started (deferred). Sequenced last, per Rob (2026-08-30).
+**Status:** **Next up** (2026-11-07, now that v2-24 is done). Sequenced last,
+per Rob (2026-08-30).
 Depends on v2-24 — cities import as tenant-scoped rows now, not excluded,
 and each imported user's legacy single city becomes one row in their new
 `user_city_preferences` set. No other technical dependency on v2-17

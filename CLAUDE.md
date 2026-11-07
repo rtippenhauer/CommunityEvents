@@ -67,15 +67,16 @@ beyond what `docs/REQ-TENANT-01.md` specifies.
 ## V2 Rewrite Status
 
 **Current v2 work item:** **none in progress.** Next on the cutover path is
-**`v2-24`** — cities (`REQ-CITIES-01`). Not catch-up: it is new v2 work that
-`v2-25`'s import depends on, and it carries the `CitiesAdminController` gap
-`v2-12` left open deliberately (`@Roles(ADMIN)` over a global table). After it,
-`v2-25` (the import) and a production deployment that does not exist yet.
+**`v2-25`** — the DinnerBears import (`REQ-IMPORT-01`), and after it a
+production deployment that does not exist yet. Those two are all that is left
+between here and a live DinnerBears.
 
 **With `v2-29` done, this repo is caught up to prod DinnerBears** — `v2-33` was
-the bugfix half and `v2-29` the Phase 39 half. The next v1 reconciliation point
-is unchanged: this repo was last reconciled against v1 **v1.6.3**; if v1's
-`package.json` is ahead, read its port doc for the delta before planning.
+the bugfix half and `v2-29` the Phase 39 half. **This repo was last reconciled
+against v1 `v1.6.4`**, which `v2-24` moved from 1.6.3: the calendar SEQUENCE
+wrap was fixed in v1 first (PR #49, v1 1.6.4) and ported here in the same pass.
+If v1's `package.json` is ahead of 1.6.4, read its port doc for the delta
+before planning.
 
 **One thing `v2-34` left open, not a blocker:** `FALLBACK_FORWARD_TO` is still
 unset on the Cloudflare Worker, so the forward-on-failure path is dormant until
@@ -120,9 +121,9 @@ queries already order by, so the id still breaks `DATETIME(0)` ties without
 deciding anything on its own.
 
 **`v2-33` + `v2-29` is what "caught up to prod DinnerBears" means** — the
-bugfixes and Phase 39 (MUSE) respectively. `v2-24` (cities) is *not* catch-up;
-it is new v2 work the import depends on. Then `v2-25` (the import) and a
-production deployment.
+bugfixes and Phase 39 (MUSE) respectively. `v2-24` (cities, done 2026-11-07) is
+*not* catch-up; it is new v2 work the import depends on. What is left is
+`v2-25` (the import) and a production deployment.
 
 **Just merged:** the **dispatcher claim bugfix** — v2-27's first half, carved
 out. Stage-verified 2026-10-12 and merged to `main` 2026-10-14 as PR #25
@@ -141,10 +142,76 @@ Then `v2-33` (v1's five bugfixes) and `v2-29` (port v1's Phase 39).
 V2_PHASES.md's "Running order". The critical path to a live DinnerBears is the
 dispatcher claim fix, `v2-33` (v1's five outstanding bugfixes), `v2-29` (port
 v1's Phase 39), `v2-24` (cities) and `v2-25` (the import), plus a production
-deployment that does not exist yet. `v2-31` and `v2-32` were not on that path;
+deployment that does not exist yet. All but the last two are done. `v2-31` and `v2-32` were not on that path;
 both were pulled forward by Rob and are done.
 
 **Completed v2 items:**
+- **`v2-24` — Cities as a toggleable, tenant-scoped event filter**
+  (2026-11-07, `REQ-CITIES-01`). The last item before the import, which depends
+  on it. `cities` was the one model the `v2-6` scoping pass never touched, so
+  this closed a **live cross-tenant write hole** rather than only a design gap:
+  `CitiesAdminController` was `@Roles(ADMIN)` over a global table, which let any
+  community's admin rename or retire a city another depended on and claim a
+  `subdomain` deployment-wide. `v2-12` recorded it and left it open for here.
+
+  **A city is a row, not a hostname** (Rob, 2026-10-14). `subdomain` and its
+  globally-unique index are gone, and with them `findBySubdomainOrNull`,
+  `cityForTenant` and the `bootstrap.ts`/`seed.ts` reads. What that cost is a
+  registration *default*, not a capability — members already chose their city at
+  Profile → Settings.
+
+  **The toggle is asymmetric on purpose, and the symmetric version was
+  destructive.** Turning cities **on** backfills every null `city_id` to the
+  default, so a community is never observably "cities on with rows that have
+  none" — a state the UI cannot draw and the event form refuses to save from.
+  Turning it **off** writes nothing but the flag. The spec had off clear
+  assignments and retire every city, and those two compounded: with every city
+  retired, **on** could find no active city to backfill to and answered "add a
+  city" while the screen listed several; pressing Restore to get past that made
+  whichever city was restored first the backfill target, so off-then-on silently
+  moved every member, venue and upcoming event into it. Nothing reads a city
+  while the feature is off, so keeping the assignments costs nothing and is what
+  makes the switch reversible. Rob found it on stage, 2026-10-31.
+
+  **`cities.is_default` is one answer to a question that previously had two.**
+  The enable-backfill took the lowest id and the new-member default took the
+  lowest *name*, so a community whose first city was not alphabetically first
+  filed its existing rows in one place and its new members in another — and
+  renaming a city silently moved one of them. `resolveDefaultCityId` is now the
+  single answer: the marked row, falling back to the lowest id, never the name.
+  The marker is unique per tenant on a **nullable** column, the `root_marker`
+  pattern, so setting one without clearing the old is a failed write rather than
+  a subtly wrong one.
+
+  **A column can be correct, tested, and connected to nothing.** `is_default`
+  shipped complete and **nothing outside Admin → Cities ever read it**, so a new
+  venue or event still opened on an empty city box — which is the entire purpose
+  of having a default. Found by Rob on stage, not by the suite, because every
+  test asserted the API and none opened the form. The rule it leaves: a default
+  that no screen applies is not a default, and the test that would have caught
+  it is the one that renders the thing a human touches.
+
+  **Retiring moves rows and is therefore its own route**, not an `isActive:
+  false` that looks like any other field write — it shows what it will move,
+  counted per table from the DMMF-derived relation list rather than a
+  hand-written one, so the next model to gain a `city_id` is not missed.
+  **Past events keep their retired city**: a dinner that happened in Indiana
+  happened in Indiana. That requires `CitiesService` to stop filtering
+  `isActive: true` on *lookup by id* — hiding a city from a chooser and hiding
+  it from resolution are different questions, and conflating them blanked every
+  `mat-select` and blocked saves behind `Validators.min(1)`.
+
+  **The calendar SEQUENCE wrap rode along and was fixed in v1 first.**
+  `SEQUENCE` was taken `% 999999`, returning to zero every 11d 13h 46m 39s;
+  after each wrap an invite for an event the member had already seen carried a
+  *lower* number and was discarded in silence, leaving a stale answer in their
+  calendar while the site showed the new one. `icsSequence` counts seconds from
+  2020 — epoch seconds cross the RFC 5545 signed-32-bit cap in 2038, seconds
+  since 2020 not until 2088. **It does not repair an already-stale calendar**:
+  the invite fires on a *transition* into Going. Three call sites, and the third
+  was missed first time because the sweep grepped one file instead of the
+  codebase.
+
 - **`v2-29` — v1's Phase 39 ported: Muse API + Facebook RSVP sync**
   (2026-10-24). The last catch-up item; with `v2-33`'s bugfixes this repo is
   level with prod DinnerBears.
@@ -559,7 +626,9 @@ both were pulled forward by Rob and are done.
   address into a client id; the admin screen then discarded the API's
   explanation, the same shape `v2-8` fixed in `exchange_failed`. And
   `CitiesAdminController` is `@Roles(ADMIN)` over a global table — left open
-  deliberately, recorded against `v2-24`.
+  deliberately, recorded against `v2-24`, and **closed there** (2026-11-07):
+  `cities` is tenant-scoped, so the controller can no longer reach another
+  community's rows.
 
   **Known gap:** the callback's handoff branch ships verified by unit tests
   alone. Stage runs two communities and after this item both take the direct
@@ -852,8 +921,12 @@ both were pulled forward by Rob and are done.
   exception unwinds to Express's stock HTML error page, so the middleware
   writes its JSON body directly.
 - **`v2-5` — Tenant-scoping Prisma Client Extension** (2026-08-14). `tenant_id`
-  on 27 transactional models, 12 left global (28 and 11 as of `v2-10`, which
-  scoped `achievements`). The split is declared once in
+  on 27 transactional models, 12 left global at the time. **Don't read a count
+  here as current** — it has moved with almost every item since (`v2-10` scoped
+  `achievements`, `v2-24` scoped `cities`, and several items added models); it
+  is 39 scoped and 11 global today, and
+  `api/src/common/tenant/tenant-scoped-models.ts` is the only answer that
+  cannot rot. The split is declared once in
   `api/src/common/tenant/tenant-scoped-models.ts` and is exhaustive over
   `Prisma.ModelName` at the type level, so a new model that nobody classified
   does not compile. Verified by `test/tenant-isolation.e2e-spec.ts`: two tenants
@@ -1039,9 +1112,17 @@ fixes existed that nothing in this repo mentioned — while the sentence
 directly beside it said bugfixes may keep landing, so the list could never have
 been final. What is frozen is **phases**. A restated list rots silently; a
 version number rots visibly, so the rule is: **this repo was last reconciled
-against v1 v1.6.3**, and if v1's `package.json` is ahead, read its port doc for
+against v1 v1.6.4**, and if v1's `package.json` is ahead, read its port doc for
 the delta before planning anything. The v1 repo is a sibling checkout
 (`../DinnerBears`), so that is a file read, not a question.
+
+**1.6.4 went the other way, which is the first time that has happened.** The
+calendar SEQUENCE wrap was found *here* during `v2-24`'s stage pass, and was a
+live defect in both repos. It was fixed in v1 first (PR #49) and ported back,
+rather than fixed here and left broken for the members currently using v1 —
+which is the right order whenever a defect this repo finds also affects the
+deployment actually serving people. So a v1 version being ahead does not by
+itself mean this repo is behind; check which direction the fix travelled.
 
 **DinnerBears is ONE tenant; Cincinnati and Dayton are cities inside it**
 (Rob, 2026-10-03) — and as of 2026-10-14 this is simply a description of v1
@@ -1082,11 +1163,11 @@ plausible-sounding problem in a planning doc costs more than a missing one.
 `REQ-IMPORT-01` is still marked superseded in part, now only for the
 one-tenant-per-source-database framing.
 
-What stands between here and a live DinnerBears — `/v2-done 14`, the
-dispatcher claim step carved out of `v2-27`, `v2-33` (v1's five bugfixes),
-**`v2-34` (an inbound email log)**, `v2-29` (port Phase 39), `v2-24` (cities,
-which the import depends on), `v2-25` (the import) — plus a production
-deployment that does not exist yet.
+What stands between here and a live DinnerBears is now **`v2-25` (the import)
+and a production deployment that does not exist yet**, and nothing else. Done
+and behind us, in the order they ran: `v2-14`, the dispatcher claim step carved
+out of `v2-27`, `v2-33` (v1's five bugfixes), `v2-34` (an inbound email log),
+`v2-29` (port Phase 39) and `v2-24` (cities, which the import depends on).
 
 **`v2-34` was pulled onto this path on 2026-10-20 and the parity test below is
 deliberately overruled for it.** It is an instrument *for* the cutover rather
@@ -1625,6 +1706,39 @@ authoritative (per REQ-TENANT-01.3).
   e2e harness builds an empty database, so that branch selects zero rows and is
   never exercised — **no migration in this repo is tested against populated
   data**, which is how it reached stage.
+
+- **`cities` is tenant-scoped as of `v2-24`**, which closed the last model the
+  `v2-6` pass missed. `name` is unique per tenant, `subdomain` is gone with its
+  deployment-wide unique index, and **a city is a row, not a hostname** — do not
+  reintroduce one. Six tables carry `city_id` and the count is derived from the
+  Prisma DMMF at boot (`city-relations.ts` refuses to start if a seventh
+  appears), so a new model with a city is caught the way an unclassified scoped
+  model is.
+
+  **`city_id` is nullable everywhere and the requirement lives in the business
+  layer**, because that is the only layer that knows the tenant's
+  `feature_cities` flag. A NOT NULL column cannot express a toggle that is
+  sometimes off.
+
+  **A city is retired, never deleted**, and every `city_id` FK is `NoAction`
+  deliberately: nothing deletes a city, so the key is a backstop that refuses an
+  unplanned delete rather than quietly emptying columns. **Lookup by id must not
+  filter `isActive`** — hiding a city from a chooser and hiding it from
+  resolution are different questions, and conflating them blanks every select
+  built from the row and blocks saves behind `Validators.min(1)`.
+
+  **One answer to "which city is the default": `resolveDefaultCityId`** — the
+  row marked `is_default`, falling back to the lowest id, never the lowest name
+  (a rename must not move it). The marker is unique per tenant on a **nullable**
+  column, the same `root_marker` pattern the root tenant uses, so setting one
+  without clearing the previous is a failed write rather than a subtly wrong
+  one. Both the enable-backfill and the new-member default go through it;
+  having two answers is precisely the bug `v2-24` fixed.
+
+  **The toggle is asymmetric and must stay that way.** On backfills nulls to the
+  default; **off writes only the flag**. Clearing assignments on the way off
+  made off-then-on silently refile every member, venue and upcoming event under
+  whichever city was restored first.
 
 - **A community on its own domain has no email fallback (`v2-12`), and that is
   fatal in a way the OAuth equivalent is not.** No Google credentials still
