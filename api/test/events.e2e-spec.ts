@@ -368,4 +368,29 @@ describe('Events CRUD (e2e)', () => {
         .expect(403);
     });
   });
+
+  describe('GET /events/:id/ics (Add to Calendar)', () => {
+    // Nothing covered this route, which is how it kept the wrapping SEQUENCE
+    // through the fix that replaced the other two call sites (v1 PR #49, then
+    // a57da3b). Both this and the guest-link download share buildIcs.
+    it('serves a calendar entry whose SEQUENCE cannot wrap', async () => {
+      const created = await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload())
+        .expect(201);
+
+      const res = await request(server).get(`/api/v1/events/${created.body.id}/ics`).expect(200);
+
+      expect(res.headers['content-type']).toContain('text/calendar');
+      expect(res.text).toContain('BEGIN:VCALENDAR');
+
+      // The old formula was updatedAt minutes % 999999, so it could not exceed
+      // 999998. Asserting the bound rather than an exact number keeps this
+      // about the wrap, which is the property that matters: a client ignores a
+      // calendar object whose SEQUENCE has gone backwards for a UID it holds.
+      const sequence = Number(res.text.match(/SEQUENCE:(\d+)/)?.[1]);
+      expect(sequence).toBeGreaterThan(999999);
+    });
+  });
 });

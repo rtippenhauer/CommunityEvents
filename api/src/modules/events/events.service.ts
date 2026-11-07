@@ -48,7 +48,7 @@ import { isPastRsvpCutoff } from '../../common/utils/rsvp-cutoff.util';
 import { easternToday } from '../../common/utils/event-location-snapshot.util';
 import { toPublicUser } from '../../common/utils/public-user.util';
 import { emailPalette, type EmailPalette } from '../../common/utils/color.util';
-import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, EVENT_DURATION_MS, eventUid } from '../../common/utils/ics.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, icsSequence, EVENT_DURATION_MS, eventUid } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 
 /** An event with its location (and that location's photos) loaded. */
@@ -1474,7 +1474,8 @@ export class EventsService {
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
 
     const lastMod = toIcsUtcString(new Date(event.updatedAt));
-    const sequence = Math.floor(new Date(event.updatedAt).getTime() / 60000) % 999999;
+    // Must only ever increase for this UID — see icsSequence.
+    const sequence = icsSequence(new Date(event.updatedAt));
 
     const descParts: string[] = [`🍽️ ${event.locationName}`];
     if (event.locationAddress) descParts.push(event.locationAddress);
