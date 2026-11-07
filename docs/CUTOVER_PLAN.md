@@ -35,8 +35,19 @@ repo mentioned. A duplicated list goes stale silently every time a v1 bugfix
 lands, while a version number goes stale *visibly*.
 
 So the check is a version comparison, not a reading: **this document was last
-reconciled against v1 v1.6.3.** If v1's `package.json` is ahead of that, the
+reconciled against v1 v1.6.4.** If v1's `package.json` is ahead of that, the
 delta is in its port doc and has not been recorded here yet.
+
+**1.6.4 travelled the other way, which is the first time that has happened.**
+The calendar `SEQUENCE` wrap was found *here*, during `v2-24`'s stage pass, and
+was a live defect in both repos — `SEQUENCE` was taken `% 999999` and returned
+to zero every 11d 13h 46m 39s, after which an invite for an event the member
+had already seen carried a lower number and was discarded in silence. It was
+fixed in v1 first (PR #49) and ported back, rather than fixed here and left
+broken for the members v1 is currently serving, which is the right order
+whenever a defect this repo finds also affects the live deployment. So a v1
+version being ahead does not by itself mean this repo is behind — check which
+direction the fix travelled.
 
 **The port list was growing faster than it was shrinking.** Two decisions on
 2026-10-01 stop that:
