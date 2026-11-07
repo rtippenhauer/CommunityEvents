@@ -21,6 +21,7 @@ import {
 import { AuthService } from '../../../core/services/auth.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { isElevatedRole } from '../../../core/utils/roles.util';
+import { preselectCityId } from '../../../core/utils/city-preselect.util';
 
 export interface LocationFormDialogData {
   location?: Location;
@@ -35,6 +36,8 @@ interface City {
    * the select has something to show rather than rendering blank.
    */
   isActive?: boolean;
+  /** True on the community's default city, absent on every other. */
+  isDefault?: boolean | null;
 }
 
 @Component({
@@ -530,11 +533,13 @@ export class LocationFormDialogComponent implements OnInit {
         this.form.controls.cityId.addValidators([Validators.required, Validators.min(1)]);
         this.form.controls.cityId.updateValueAndValidity({ emitEvent: false });
       }
-      // Single-region fork: the city selector is hidden (see template), so
-      // auto-select the sole city for new locations. Edit mode patches cityId
-      // synchronously below before this async callback resolves.
-      if (cities.length === 1 && !this.form.controls.cityId.value) {
-        this.form.controls.cityId.setValue(cities[0].id);
+      // A new location opens on the community's default city — see
+      // preselectCityId for which city that is and why. Edit mode patches
+      // cityId synchronously below, before this async callback resolves, so
+      // the guard leaves an already-set value alone.
+      if (!this.form.controls.cityId.value) {
+        const preselect = preselectCityId(cities);
+        if (preselect) this.form.controls.cityId.setValue(preselect);
       }
     });
     if (this.data.location) {

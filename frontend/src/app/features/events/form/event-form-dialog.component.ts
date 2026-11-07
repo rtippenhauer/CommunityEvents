@@ -14,6 +14,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { EventsService, Event, EventStatus } from '../../../core/services/events.service';
 import { AppConfigService } from '../../../core/services/app-config.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
+import { preselectCityId } from '../../../core/utils/city-preselect.util';
 
 export interface EventFormDialogData {
   event?: Event;
@@ -56,6 +57,8 @@ interface City {
    * the select has something to show rather than rendering blank.
    */
   isActive?: boolean;
+  /** True on the community's default city, absent on every other. */
+  isDefault?: boolean | null;
 }
 interface Location {
   id: number;
@@ -292,12 +295,14 @@ export class EventFormDialogComponent implements OnInit {
         this.form.controls.cityId.addValidators([Validators.required, Validators.min(1)]);
         this.form.controls.cityId.updateValueAndValidity({ emitEvent: false });
       }
-      // Single-region fork: there's only one city and its selector is hidden
-      // (see template), so auto-select it for new events. The guard leaves an
-      // already-set value alone — edit mode patches cityId synchronously below
-      // before this async callback fires.
-      if (c.length === 1 && !this.form.controls.cityId.value) {
-        this.form.controls.cityId.setValue(c[0].id);
+      // A new event opens on the community's default city — see preselectCityId
+      // for which city that is and why. setValue emits, so the cityId
+      // subscription below filters the venue list to match. The guard leaves an
+      // already-set value alone: both edit mode and a preset patch cityId
+      // synchronously below, before this async callback fires.
+      if (!this.form.controls.cityId.value) {
+        const preselect = preselectCityId(c);
+        if (preselect) this.form.controls.cityId.setValue(preselect);
       }
     });
 
