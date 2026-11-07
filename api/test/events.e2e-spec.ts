@@ -1,7 +1,8 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp, truncateAllTables } from './utils/test-app';
-import { seedCity, seedLocation, seedUser, loginAs } from './utils/seed';
+import { seedCity, seedLocation, seedUser, loginAs, enableCities } from './utils/seed';
+import { TEST_TENANT_ID } from './setup-env';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import type { cities as City, locations as Location } from '@prisma/client';
 import { UserRole } from '../src/database/enums';
@@ -27,6 +28,11 @@ describe('Events CRUD (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAllTables(prisma);
+    // `feature_cities` defaults OFF (v2-24), and with it off the service layer
+    // writes `city_id` as null whatever the request carried -- the requirement
+    // moved out of the database, so a spec that seeds a city and never turns
+    // the feature on is testing a community that does not use cities.
+    await enableCities(prisma, TEST_TENANT_ID);
     city = await seedCity(prisma);
     location = await seedLocation(prisma, city.id);
 
@@ -360,6 +366,31 @@ describe('Events CRUD (e2e)', () => {
         .delete(`/api/v1/events/${created.body.id}`)
         .set('Cookie', memberCookie)
         .expect(403);
+    });
+  });
+
+  describe('GET /events/:id/ics (Add to Calendar)', () => {
+    // Nothing covered this route, which is how it kept the wrapping SEQUENCE
+    // through the fix that replaced the other two call sites (v1 PR #49, then
+    // a57da3b). Both this and the guest-link download share buildIcs.
+    it('serves a calendar entry whose SEQUENCE cannot wrap', async () => {
+      const created = await request(server)
+        .post('/api/v1/events')
+        .set('Cookie', adminCookie)
+        .send(validEventPayload())
+        .expect(201);
+
+      const res = await request(server).get(`/api/v1/events/${created.body.id}/ics`).expect(200);
+
+      expect(res.headers['content-type']).toContain('text/calendar');
+      expect(res.text).toContain('BEGIN:VCALENDAR');
+
+      // The old formula was updatedAt minutes % 999999, so it could not exceed
+      // 999998. Asserting the bound rather than an exact number keeps this
+      // about the wrap, which is the property that matters: a client ignores a
+      // calendar object whose SEQUENCE has gone backwards for a UID it holds.
+      const sequence = Number(res.text.match(/SEQUENCE:(\d+)/)?.[1]);
+      expect(sequence).toBeGreaterThan(999999);
     });
   });
 });

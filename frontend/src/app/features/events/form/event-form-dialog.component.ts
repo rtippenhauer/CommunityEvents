@@ -14,6 +14,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { EventsService, Event, EventStatus } from '../../../core/services/events.service';
 import { AppConfigService } from '../../../core/services/app-config.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
+import { preselectCityId } from '../../../core/utils/city-preselect.util';
 
 export interface EventFormDialogData {
   event?: Event;
@@ -50,6 +51,14 @@ function toDateString(d: Date): string {
 interface City {
   id: number;
   name: string;
+  /**
+   * Absent for the active cities; false for the one entry `?include=` adds —
+   * the row's own current city, kept in the list after it has been retired so
+   * the select has something to show rather than rendering blank.
+   */
+  isActive?: boolean;
+  /** True on the community's default city, absent on every other. */
+  isDefault?: boolean | null;
 }
 interface Location {
   id: number;
@@ -76,12 +85,12 @@ interface Location {
 
     <mat-dialog-content>
       <form [formGroup]="form" class="event-form">
-        @if (cities().length > 1) {
+        @if (brand.features().cities && cities().length > 1) {
           <mat-form-field appearance="outline">
             <mat-label>City</mat-label>
             <mat-select formControlName="cityId">
               @for (city of cities(); track city.id) {
-                <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                <mat-option [value]="city.id">{{ city.name }}{{ city.isActive === false ? ' (retired)' : '' }}</mat-option>
               }
             </mat-select>
             <mat-error>City is required</mat-error>
@@ -97,6 +106,18 @@ interface Location {
           </mat-select>
           <mat-error>{{ brand.locationSingular() }} is required</mat-error>
         </mat-form-field>
+
+        <!--
+          A city with no venues is a dead end that used to be silent: picking it
+          empties the select (a venue belongs to a city), the required validator
+          on locationId then refuses the save, and nothing on screen said why.
+        -->
+        @if (emptyCityName(); as cityName) {
+          <p class="no-venues">
+            No {{ brand.locationPluralLower() }} in {{ cityName }} yet — add one there before
+            creating {{ brand.dinnerPluralLower() }} in this city.
+          </p>
+        }
 
         <mat-form-field appearance="outline">
           <mat-label>Event Title</mat-label>
@@ -195,6 +216,12 @@ interface Location {
           width: 100%;
         }
       }
+      .no-venues {
+        margin: -4px 0 10px;
+        font-size: 0.85rem;
+        line-height: 1.35;
+        color: var(--ce-text-muted);
+      }
       .date-time-row {
         display: flex;
         gap: 12px;
@@ -236,7 +263,15 @@ export class EventFormDialogComponent implements OnInit {
   readonly saving = signal(false);
 
   readonly form = this.fb.group({
-    cityId: [0, [Validators.required, Validators.min(1)]],
+    // No validator on the city (v2-24). It used to carry
+    // `Validators.required + min(1)`, which is wrong in two situations this
+    // item creates: a community with city filtering off has no city to pick,
+    // and editing a past event whose city has since been retired left the
+    // select empty and blocked a save that had nothing to do with cities.
+    // The requirement belongs to the server, which is the only side that can
+    // see the community's toggle; the load below re-applies it here when the
+    // toggle is actually on.
+    cityId: [0],
     locationId: [0, [Validators.required, Validators.min(1)]],
     title: ['', Validators.required],
     eventDate: [nextWeekdayDate(DEFAULT_CADENCE_WEEKDAY), Validators.required],
@@ -249,14 +284,25 @@ export class EventFormDialogComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    this.http.get<City[]>('/api/v1/cities').subscribe((c) => {
+    // `include` keeps this event's own city in the list even when it has
+    // since been retired, labelled rather than silently dropped.
+    const include = this.data.event?.cityId ?? this.data.preset?.cityId;
+    this.http
+      .get<City[]>(`/api/v1/cities${include ? `?include=${include}` : ''}`)
+      .subscribe((c) => {
       this.cities.set(c);
-      // Single-region fork: there's only one city and its selector is hidden
-      // (see template), so auto-select it for new events. The guard leaves an
-      // already-set value alone — edit mode patches cityId synchronously below
-      // before this async callback fires.
-      if (c.length === 1 && !this.form.controls.cityId.value) {
-        this.form.controls.cityId.setValue(c[0].id);
+      if (this.brand.features().cities) {
+        this.form.controls.cityId.addValidators([Validators.required, Validators.min(1)]);
+        this.form.controls.cityId.updateValueAndValidity({ emitEvent: false });
+      }
+      // A new event opens on the community's default city — see preselectCityId
+      // for which city that is and why. setValue emits, so the cityId
+      // subscription below filters the venue list to match. The guard leaves an
+      // already-set value alone: both edit mode and a preset patch cityId
+      // synchronously below, before this async callback fires.
+      if (!this.form.controls.cityId.value) {
+        const preselect = preselectCityId(c);
+        if (preselect) this.form.controls.cityId.setValue(preselect);
       }
     });
 
@@ -296,7 +342,10 @@ export class EventFormDialogComponent implements OnInit {
     if (this.data.event) {
       const e = this.data.event;
       this.form.patchValue({
-        cityId: e.cityId,
+        // 0 rather than null: the control is seeded with 0 and the city is
+        // nullable since v2-24 (an event in a community that does not use
+        // cities has none).
+        cityId: e.cityId ?? 0,
         locationId: e.locationId ?? 0,
         title: e.title,
         eventDate: parseLocalDate(e.eventDate),
@@ -347,6 +396,18 @@ export class EventFormDialogComponent implements OnInit {
     });
   }
 
+  /**
+   * The chosen city's name when that city holds no venues, else null. Drives
+   * the hint above the empty select -- without it the dialog simply refuses to
+   * save and says nothing, which is how adding a city dead-ends.
+   */
+  emptyCityName(): string | null {
+    const cityId = this.form.controls.cityId.value;
+    if (!cityId || !this.brand.features().cities) return null;
+    if (this.filteredLocations().length > 0) return null;
+    return this.cities().find((c) => c.id === cityId)?.name ?? null;
+  }
+
   private filterLocations(cityId: number): void {
     const all = this.locations();
     this.filteredLocations.set(cityId ? all.filter((r) => r.cityId === cityId) : all);
@@ -361,7 +422,10 @@ export class EventFormDialogComponent implements OnInit {
 
     const val = this.form.getRawValue();
     const payload = {
-      cityId: val.cityId,
+      // 0 is the form's "no city chosen" placeholder, not an id. With cities
+      // off there is no field to choose from, so send null and let the API
+      // decide whether that is allowed -- `@IsPositive()` rejects 0 outright.
+      cityId: val.cityId || null,
       locationId: val.locationId,
       title: val.title.trim(),
       eventDate: toDateString(val.eventDate),

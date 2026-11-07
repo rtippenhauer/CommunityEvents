@@ -3,6 +3,7 @@ import { unlink } from 'fs/promises';
 import { join } from 'path';
 import type { users as User } from '@prisma/client';
 import { requireTenantId } from '../../common/tenant/tenant-store';
+import { CitiesService } from '../cities/cities.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -48,6 +49,7 @@ export class UsersService {
     private readonly auditService: AuditService,
     private readonly emailService: EmailService,
     private readonly avatarsService: AvatarsService,
+    private readonly cities: CitiesService,
   ) {}
 
   async findById(id: number) {
@@ -60,11 +62,23 @@ export class UsersService {
   }
 
   async updateProfile(user: User, dto: UpdateProfileDto) {
+    // A city the member picks still has to be one of this community's, and an
+    // active one. The database stopped enforcing even its presence in v2-24
+    // (every `city_id` is nullable so the feature can be turned off), so this
+    // is the layer that checks -- and the only one that can see the toggle.
+    let cityId: number | undefined;
+    if (dto.cityId) {
+      cityId = (await this.cities.resolveRequiredCityId(dto.cityId)) ?? undefined;
+      if (cityId === undefined) {
+        throw new BadRequestException('This community does not use cities');
+      }
+    }
+
     const saved = await this.prisma.users.update({
       where: { id: user.id },
       data: {
         ...(dto.fullName ? { fullName: dto.fullName } : {}),
-        ...(dto.cityId ? { cityId: dto.cityId } : {}),
+        ...(cityId !== undefined ? { cityId } : {}),
         ...(dto.profilePhotoPath === null ? { profilePhotoPath: null } : {}),
       },
     });
@@ -160,6 +174,9 @@ export class UsersService {
       -- is a LEFT JOIN besides, so a filter here would only be able to blank the
       -- inviter name, never to widen the result.
       LEFT JOIN users inviter ON inviter.id = u.invited_by
+      -- The cities table is tenant-scoped as of v2-24, and this join needs no
+      -- predicate of its own: it hangs off u, which the statement already
+      -- scopes, so a row can only reach a city its own community owns.
       LEFT JOIN cities city ON city.id = u.city_id${elevatedJoins}
       WHERE u.tenant_id = ?
         AND ${statusClause}

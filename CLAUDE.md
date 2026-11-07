@@ -190,6 +190,25 @@ must permit a send and an inherited template id addresses the wrong library. A
 community on its own domain has **no email fallback** — fatal where the OAuth
 equivalent is not, since registration, verification and resets are all mail.
 
-**Also scoped:** `users`, `app_config`, `achievements` — and an achievement's
-`key` is an identifier joined on in code, not copy, so raw SQL joining the
-catalogue needs its own `tenant_id` predicate.
+**Also scoped:** `users`, `app_config`, `achievements`, `cities` — and an
+achievement's `key` is an identifier joined on in code, not copy, so raw SQL
+joining the catalogue needs its own `tenant_id` predicate.
+
+**Cities** (`v2-24`, REQ-CITIES-01). A city is a row, not a hostname — there is
+no `subdomain` and reintroducing one is a regression. `city_id` is nullable
+everywhere because the requirement belongs to the business layer, the only one
+that knows the tenant's `feature_cities` flag.
+
+- **A city is retired, never deleted**, so every `city_id` FK stays `NoAction`
+  as a backstop. **Lookup by id must not filter `isActive`** — hiding a city
+  from a chooser and hiding it from resolution are different questions, and
+  conflating them blanks every select built from the row.
+- **`resolveDefaultCityId` is the single answer** to which city is the default:
+  the `is_default` row, falling back to the lowest **id**, never the name — a
+  rename must not move it. The marker is unique per tenant on a nullable
+  column, the `root_marker` pattern.
+- **The toggle is asymmetric.** On backfills nulls to the default; **off writes
+  only the flag.** Clearing assignments made off-then-on refile every member,
+  venue and upcoming event under whichever city was restored first.
+- Six tables carry `city_id`; the list is derived from the Prisma DMMF and
+  `city-relations.ts` refuses to boot if a seventh appears.

@@ -68,6 +68,12 @@ html {
 
   // ── Platform-fixed. Not branding: red means error everywhere. ────────────
   --ce-success:            #5DCA98;
+  // The same red as the overlay below, opaque, for a foreground mark on a
+  // light surface -- an icon or a line of text. `--ce-error-overlay` is a 75%
+  // wash meant to sit *behind* white text and cannot do this job; a component
+  // reaching for a non-existent `--ce-error` is how `v2-29` ended up with a
+  // warning box rendered dark-on-dark. 7.3:1 on white.
+  --ce-error:              #b41414;
   --ce-error-overlay:      rgba(180, 20, 20, 0.75);
 
   // ── Type ─────────────────────────────────────────────────────────────────

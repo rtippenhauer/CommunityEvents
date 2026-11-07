@@ -25,12 +25,9 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Clipboard } from '@angular/cdk/clipboard';
 
-const HIDDEN_INVITES_KEY = 'db_hidden_invites';
+import { CityService } from '../../../core/services/city.service';
 
-interface FacebookGroup {
-  id: number;
-  name: string;
-}
+const HIDDEN_INVITES_KEY = 'db_hidden_invites';
 
 interface Invite {
   id: number;
@@ -103,17 +100,23 @@ interface Invite {
               </mat-form-field>
             }
 
-            @if (form.value.type === 'campaign_facebook') {
+            <!--
+              A city picker, where this was a Facebook group picker (v2-24).
+              The campaign type survives because it is attribution -- it sets
+              users.invite_source -- while the group it named pointed into a
+              table built for automated group posting that Meta's API blocks.
+              Optional: a campaign that is not about one city names none.
+            -->
+            @if (form.value.type === 'campaign_facebook' && cityService.enabled()) {
               <mat-form-field appearance="outline">
-                <mat-label>Facebook Group</mat-label>
-                <mat-select formControlName="facebookGroupId">
-                  @for (group of fbGroups(); track group.id) {
-                    <mat-option [value]="group.id">{{ group.name }}</mat-option>
-                  }
-                  @if (fbGroups().length === 0) {
-                    <mat-option disabled>No groups configured</mat-option>
+                <mat-label>City (optional)</mat-label>
+                <mat-select formControlName="cityId">
+                  <mat-option [value]="null">Every city</mat-option>
+                  @for (city of cityService.cities(); track city.id) {
+                    <mat-option [value]="city.id">{{ city.name }}</mat-option>
                   }
                 </mat-select>
+                <mat-hint>Files members who join through this link under a city</mat-hint>
               </mat-form-field>
             }
 
@@ -394,9 +397,9 @@ export class AdminInvitesComponent implements OnInit {
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly snackBar = inject(MatSnackBar);
   private readonly clipboard = inject(Clipboard);
+  readonly cityService = inject(CityService);
 
   readonly invites = signal<Invite[]>([]);
-  readonly fbGroups = signal<FacebookGroup[]>([]);
   readonly newInviteUrl = signal<string | null>(null);
   readonly columns = ['type', 'boundToEmail', 'uses', 'expires', 'status', 'actions'];
 
@@ -419,7 +422,7 @@ export class AdminInvitesComponent implements OnInit {
     type: ['member' as 'member' | 'admin' | 'campaign_facebook', Validators.required],
     boundToEmail: [''],
     boundToName: [''],
-    facebookGroupId: [null as number | null],
+    cityId: [null as number | null],
     expiryDays: [null as number | null],
     maxUses: [null as number | null],
     noExpiry: [false],
@@ -427,9 +430,6 @@ export class AdminInvitesComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadInvites();
-    this.http.get<FacebookGroup[]>('/api/v1/facebook-groups').subscribe({
-      next: (groups) => this.fbGroups.set(groups),
-    });
   }
 
   loadInvites(): void {
@@ -442,15 +442,15 @@ export class AdminInvitesComponent implements OnInit {
   }
 
   create(): void {
-    const { type, boundToEmail, boundToName, facebookGroupId, expiryDays, maxUses, noExpiry } =
+    const { type, boundToEmail, boundToName, cityId, expiryDays, maxUses, noExpiry } =
       this.form.getRawValue();
     const body: Record<string, unknown> = { type };
     if (type === 'member') {
       body['boundToEmail'] = boundToEmail;
       if (boundToName) body['boundToName'] = boundToName;
     }
-    if (type === 'campaign_facebook' && facebookGroupId) {
-      body['facebookGroupId'] = facebookGroupId;
+    if (type === 'campaign_facebook' && cityId) {
+      body['cityId'] = cityId;
     }
     if (type !== 'member') {
       if (noExpiry) body['noExpiry'] = true;

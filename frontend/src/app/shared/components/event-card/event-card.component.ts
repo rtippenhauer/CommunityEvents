@@ -45,8 +45,8 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
         <div class="card-date">
           {{ event().eventDate | date: 'EEE, MMM d' }} &middot; {{ formatTime(event().eventTime) }}
         </div>
-        @if (!compact()) {
-          <div class="card-city">{{ event().city.name }}</div>
+        @if (!compact() && event().city) {
+          <div class="card-city">{{ event().city!.name }}</div>
         }
         <div class="card-location" [class.muted]="event().status === 'cancelled'">
           {{ event().locationName }}
@@ -213,7 +213,10 @@ import { formatEventTime, initials as sharedInitials } from '../../utils/format-
 
       .card-city {
         font-size: 0.72rem;
-        color: #999;
+        // Was a bare #999, which is 2.85:1 on a light card -- below AA, and a
+        // colour belonging to no community. The token is contrast-checked
+        // against --ce-surface in palette.ts.
+        color: var(--ce-text-muted);
         margin-bottom: 3px;
       }
 

@@ -1,7 +1,8 @@
 import { BadRequestException, Body, Controller, Get, Header, Headers, HttpCode, Patch, Post, Query, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
-import { IsEnum, IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -13,16 +14,31 @@ import type { users as User } from '@prisma/client';
 
 class UpdateCalendarSettingsDto {
   @IsOptional()
-  @IsEnum(['all', 'city'])
-  cityFilter?: 'all' | 'city';
-
-  @IsOptional()
   @IsBoolean()
   rsvpOnly?: boolean;
 
+  /**
+   * An on/off since v2-24; which cities it covers is `cityIds`.
+   *
+   * Read off the raw body: the global pipe's `enableImplicitConversion` coerces
+   * before `class-validator` runs, so a bare `@IsBoolean()` accepts any
+   * non-empty string as `true` (v2-29). Here that would silently subscribe a
+   * member to an email per new event.
+   */
   @IsOptional()
-  @IsEnum(['none', 'city', 'all'])
-  autoInvite?: 'none' | 'city' | 'all';
+  @Transform(({ obj }) => (obj as { autoInvite?: unknown }).autoInvite)
+  @IsBoolean()
+  autoInvite?: boolean;
+
+  /**
+   * The member's whole city set, replaced wholesale. An empty array is a
+   * meaningful value — "every city" — and is not the same as omitting the key,
+   * which leaves the set alone.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  cityIds?: number[];
 }
 
 /**

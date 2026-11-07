@@ -87,8 +87,16 @@ interface PublicRsvp {
 
 export interface Event {
   id: number;
-  cityId: number;
-  city: { id: number; name: string; subdomain: string };
+  cityId: number | null;
+  /**
+   * Null when the community does not use cities, or when the event predates
+   * the city being filed (v2-24). `subdomain` went with the column.
+   *
+   * Typed nullable deliberately: the event card rendered `city.name`
+   * unguarded and threw on every card the moment city filtering was turned
+   * off. The null is what makes that a compile error next time.
+   */
+  city: { id: number; name: string } | null;
   locationId: number | null;
   location: EventLocation | null;
   locationName: string;
@@ -162,7 +170,8 @@ export interface GuestLinkInfo {
 }
 
 export interface CreateEventPayload {
-  cityId: number;
+  /** Null where the community has city filtering off (`v2-24`). */
+  cityId: number | null;
   locationId: number;
   title: string;
   description?: string | null;
@@ -175,7 +184,8 @@ export interface CreateEventPayload {
 }
 
 export interface UpdateEventPayload {
-  cityId?: number;
+  /** Null where the community has city filtering off (`v2-24`). */
+  cityId?: number | null;
   locationId?: number;
   title?: string;
   description?: string | null;

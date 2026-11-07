@@ -151,7 +151,9 @@ import { hasAdminRights, isElevatedRole } from '../../../core/utils/roles.util';
                 <mat-icon class="private-icon" matTooltip="Private location">lock</mat-icon>
               }
             </mat-card-title>
-            <mat-card-subtitle>{{ location()!.city.name }}</mat-card-subtitle>
+            @if (location()!.city) {
+              <mat-card-subtitle>{{ location()!.city!.name }}</mat-card-subtitle>
+            }
           </mat-card-header>
           <mat-card-content class="info-body">
             <div class="info-row">

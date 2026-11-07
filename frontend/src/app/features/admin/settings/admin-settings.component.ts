@@ -15,6 +15,7 @@ import { AppConfigService, BrandImageSlot } from '../../../core/services/app-con
 import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { AvatarsService, Avatar } from '../../../core/services/avatars.service';
 import { stripLogoBackground } from '../../../shared/utils/strip-logo-background';
+import { buildImagePrompt } from './image-prompt';
 
 const WEEKDAYS = [
   { value: '0', label: 'Sunday' },
@@ -359,11 +360,30 @@ const WEEKDAYS = [
                       (change)="onImageSelected('hero', $event)"
                     />
                   </div>
+                  <p class="image-note">
+                    A wide photograph works best. Your page colours are laid over it so the text
+                    stays readable, so a busy or very bright image is fine.
+                  </p>
                 </div>
-                <p class="hero-note">
-                  A wide photograph works best. Your page colours are laid over it so the text
-                  stays readable, so a busy or very bright image is fine.
-                </p>
+              </div>
+
+              <div class="image-prompt">
+                <button mat-button type="button" (click)="promptOpen.set(!promptOpen())">
+                  <mat-icon>{{ promptOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
+                  Don't have these? Ask an assistant to make them
+                </button>
+                @if (promptOpen()) {
+                  <p class="muted">
+                    Copy this into ChatGPT or Claude. It already names your community, your
+                    tagline and your three brand colours, so the set comes back matching what
+                    you have. Download each image and upload it above.
+                  </p>
+                  <pre class="prompt">{{ imagePrompt() }}</pre>
+                  <button mat-stroked-button type="button" (click)="copyImagePrompt()">
+                    <mat-icon>content_copy</mat-icon>
+                    Copy prompt
+                  </button>
+                }
               </div>
 
               <p class="cadence-hint">
@@ -819,6 +839,40 @@ const WEEKDAYS = [
         gap: 4px;
         flex-wrap: wrap;
       }
+      /*
+       * Belongs inside .image-controls, never as a sibling of it. The row is a
+       * row-direction flex container and .image-controls carries min-width: 0,
+       * so a third item squeezed the label to one word per line and overlapped
+       * the note across it (Rob, on stage, 2026-11-03).
+       */
+      .image-note {
+        margin: 6px 0 0;
+        font-size: 0.82rem;
+        line-height: 1.4;
+        color: var(--ce-text-muted);
+      }
+      .image-prompt {
+        margin-top: 12px;
+        .muted {
+          margin: 4px 0 10px;
+          font-size: 0.85rem;
+          line-height: 1.5;
+          color: var(--ce-text-muted);
+        }
+      }
+      .prompt {
+        background: var(--ce-surface-variant);
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 0.75rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 260px;
+        overflow-y: auto;
+        margin: 0 0 12px;
+        color: var(--ce-text);
+      }
       .center {
         display: flex;
         justify-content: center;
@@ -842,6 +896,41 @@ export class AdminSettingsComponent implements OnInit {
   readonly avatars = signal<Avatar[]>([]);
   readonly uploadingAvatar = signal(false);
   readonly weekdays = WEEKDAYS;
+  readonly promptOpen = signal(false);
+
+  /**
+   * The copyable prompt for generating this community's brand images.
+   *
+   * Computed rather than a constant because it interpolates the community's
+   * live name, tagline and seed colours -- an admin who changes a colour and
+   * copies the prompt should get the colour they can see on this screen.
+   */
+  readonly imagePrompt = computed(() => {
+    const brand = this.brandConfigService.brand();
+    return buildImagePrompt({
+      name: brand.name,
+      tagline: brand.tagline,
+      colorPrimary: brand.colorPrimary,
+      colorAccent: brand.colorAccent,
+      colorBackground: brand.colorBackground,
+      dinnerPluralLower: this.brandConfigService.dinnerPluralLower(),
+    });
+  });
+
+  /** Mirrors admin-appearance's copyPrompt, including why a failure is spoken. */
+  async copyImagePrompt(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(this.imagePrompt());
+      this.snackBar.open('Prompt copied', 'OK', { duration: 2500 });
+    } catch {
+      // Clipboard access is refused in plenty of ordinary situations (an
+      // insecure origin, a permissions policy). The prompt is on screen and
+      // selectable, so say that rather than failing silently.
+      this.snackBar.open('Could not copy — select the text and copy it manually', 'OK', {
+        duration: 5000,
+      });
+    }
+  }
 
   /** The date this demo goes, for the card above. See BrandConfigService. */
   readonly demoExpiresLabel = computed<string | null>(() => {

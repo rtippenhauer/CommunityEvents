@@ -57,8 +57,8 @@ Two decisions bound it:
 | 3 | ~~**v2-33 — port v1's five bugfixes**~~ | **Done 2026-10-19** (tag `v2-33`). Every one was verified as a live defect here rather than taken on trust from v1's port doc, and all six stage checks passed. Its stage pass cost two days of inbound-mail infrastructure, not code — see that section and `docs/CUTOVER_PLAN.md`. |
 | 4 | ~~**v2-34 — an inbound email log**~~ | **Done 2026-10-22** (tag `v2-34`). **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
 | 5 | ~~**v2-29 — port Phase 39**~~ | **Done 2026-10-24** (tag `v2-29`). With v2-33 this repo is level with prod DinnerBears. Stage ran **two** communities mirroring independently, which is the clause of the definition of done a single-community run cannot test. Stage also found the cover photos missing and private venue addresses unredacted — both from hand-writing queries v1 delegated to `EventsService`, and both invisible to the suite because neither event endpoint had a test. |
-| 6 | **v2-24 — cities** | **Next up** (2026-10-24, now that v2-29 is done). REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. Also carries the `CitiesAdminController` gap v2-12 left open deliberately: `@Roles(ADMIN)` over a global table. |
-| 7 | **v2-25 — the import** | The deliverable. Dry-run cycle against a copy before anything real. |
+| 6 | ~~**v2-24 — cities**~~ | **Done 2026-11-07** (tag `v2-24`). REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. Also carries the `CitiesAdminController` gap v2-12 left open deliberately: `@Roles(ADMIN)` over a global table. |
+| 7 | **v2-25 — the import** | **In progress / next up** (2026-11-07, now that v2-24 is done). The deliverable. Dry-run cycle against a copy before anything real. |
 | 8 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
 `v2-31` (a real email log) is not a blocker but is wanted early: the current
@@ -1915,11 +1915,52 @@ same trail: when a moderator/admin marks a non-validated member as
 attended, an option in the same action validates them, recording the
 marking admin/moderator and timestamp.
 
+**Amended 2026-11-01 (Rob): automatic, not an option.** Marking a
+non-validated member attended validates them, with no second gesture. The
+role exists because they joined through a non-validated event invite, and
+meeting them at a dinner is precisely the validation it was waiting for —
+an opt-in checkbox beside the tick makes the common case two actions and
+leaves the member non-validated whenever somebody forgets.
+
+**The attendance screen calls out who is non-validated** (Rob, same date).
+Automatic means the consequence happens at the moment of ticking, so the
+moderator has to be able to see it coming: the row is marked, and declining
+is simply not marking that person attended. Without the callout the screen
+would validate people silently and the trail would be the only record that
+it happened.
+
+**Resolved 2026-11-01 (Rob): every path that writes attendance today has a
+human actor, so there is no carve-out to build.** The worry was that
+`v2-29`'s Facebook link credits a past event marked *Attended* through the
+normal attendance path, letting a member validate themselves by linking
+their own account. They cannot: both halves are admin-gated and the member
+is the actor in neither. `PATCH /admin/facebook-accounts/:id/attendance` is
+`@Roles(ADMIN, MODERATOR)` and `POST /admin/facebook-accounts/:id/link` is
+`@Roles(ADMIN)` — and that controller is the *only* place linking happens,
+because `v2-29` made matching a human decision and left the sync able only
+to suggest. So a validated-by-attendance member was ticked by one human who
+was there and matched by another.
+
+What that leaves is a rule for later rather than a condition to code: the
+actor recorded in `validation_source: attendance` must be a person. If
+something ever writes attendance without one — a self-service check-in, an
+unattended import — it must not validate, and this is the paragraph that
+says why.
+
+**Un-marking attendance does not un-validate.** Validation is a fact about
+having met someone, not a derived view of the attendance row. It follows
+the shape `v2-29` already uses on the same path: a NULL `attended` earns
+nothing, and an already-credited member is not credited twice.
+
 **Definition of done:** both the vouch path and attendance-triggered
 validation populate the full trail and log to the audit service,
-consistently; pre-existing validated members keep null trail columns
-rather than fabricated ones; attempting to validate an already-validated
-member via either path is rejected, not silently overwritten.
+consistently; marking a non-validated member attended validates them with
+no extra gesture; the attendance screen shows which members are
+non-validated before anyone is marked; an attendance write with no human actor — should
+one ever exist — does not validate; un-marking attendance leaves validation in place;
+pre-existing validated members keep null trail columns rather than
+fabricated ones; attempting to validate an already-validated member via
+either path is rejected, not silently overwritten.
 
 ### v2-18 — Shared media pipeline (REQ-CMS-01.1)
 **Status:** Not started (deferred). Depends on v2-17. First of the
@@ -2033,9 +2074,69 @@ a grid/lightbox on the event page; a non-attendee's upload is rejected; a
 non-validated member's upload is rejected even if marked attended.
 
 ### v2-24 — Cities as a toggleable event filter, tenant-scoped (REQ-CITIES-01)
-**Status:** Not started (deferred). Sequenced before v2-25 (import) — the
-import script needs a settled city model rather than one it has to work
-around.
+**Status:** **Complete** (2026-11-07, tag `v2-24`). Sequenced before v2-25
+(import) — the import script needs a settled city model rather than one it has
+to work around.
+
+**Two things below are the design as specified and NOT as shipped**, both
+revised on stage and both load-bearing, so read them here rather than from the
+prose further down:
+
+1. **Turning the toggle OFF writes only the flag.** The spec had it deactivate
+   every city and clear `city_id` on future events, locations and users. Both
+   were wrong and compounded: retiring every city meant turning it back ON could
+   find no active city to backfill to, and pressing Restore to get past that made
+   whichever city the admin happened to restore first the backfill target — so
+   off-then-on, the likeliest thing anybody tries, silently moved every member,
+   venue and upcoming event into it. Nothing reads a city while the feature is
+   off, so keeping the assignments costs nothing and is what makes the switch
+   reversible. Found by Rob on stage 2026-10-31.
+2. **The backfill target is an explicit default city, not "the tenant's first".**
+   `cities.is_default` is a real marked row (unique per tenant on a nullable
+   marker, the `root_marker` pattern), set at Admin → Cities, with the lowest id
+   as the fallback when no marker exists. The enable-backfill and the new-member
+   default used to disagree — one took the lowest id and the other the lowest
+   *name* — so a community whose first city was not alphabetically first filed
+   its existing rows in one place and its new members in another, and renaming a
+   city silently moved one of them (Rob, 2026-11-01). One answer now,
+   `resolveDefaultCityId`.
+
+**The `CitiesAdminController` hole v2-12 left open is closed**: `cities` is
+tenant-scoped, so the controller can no longer reach another community's rows,
+and `subdomain` and its deployment-wide unique index are gone with it.
+
+**Three defects found on stage that the suite could not have caught**, beyond
+the two above: a venue or event could not be created at all while cities were
+*off* (the form sent no `cityId` and the API required one); the city filter
+rendered blank where it meant "All cities"; and a new venue or event opened on
+an empty city box rather than the default, which is what the default is for.
+The last is the one worth remembering — `is_default` shipped in `bb2e901` and
+**nothing outside Admin → Cities ever read it**, so the column was correct,
+tested, and connected to nothing a member or admin would ever see.
+
+**Rode along, unrelated to cities but found in the same pass:** the calendar
+SEQUENCE wrap (see below), a 48-hour invite expiry that was wall-clock rather
+than elapsed, moderators unable to work the Facebook review queue, and a hero
+note breaking the image row.
+
+**The calendar SEQUENCE wrap is a v1 defect fixed in both repos** (v1 1.6.4, PR
+#49). `SEQUENCE` was taken `% 999999`, which returns to zero every 11d 13h 46m
+39s; after each wrap a `METHOD:REQUEST` for an event the member had already seen
+carried a *lower* number and was discarded in silence, leaving whatever their
+calendar held. `icsSequence` counts seconds from 2020 rather than from the Unix
+epoch — epoch seconds cross the RFC 5545 signed-32-bit cap in 2038, seconds
+since 2020 not until 2088. The new value far exceeds anything `% 999999` could
+produce, so every client steps up across the deploy and none is stranded holding
+a higher number. **It does not repair an already-stale calendar**: the invite
+fires on a *transition* into Going, so a member already Going must toggle their
+RSVP. Three call sites, and the third (`GET /events/:id/ics` and the guest feed)
+was missed on the first pass because the sweep grepped one file instead of the
+codebase.
+
+**Known gap, carried forward:** the migration was run against a populated copy
+with four communities, but `v2-10`'s recorded gap — the e2e harness builds an
+empty database, so no migration in this repo is *tested* against populated data
+— is unchanged.
 
 `cities` currently has no `tenant_id` at all — the one model the v2-6
 scoping pass never touched — and its `subdomain` column is globally
@@ -2228,7 +2329,8 @@ before; `facebook_group_config` is gone while `campaign_facebook` invites
 still work.
 
 ### v2-25 — DinnerBears import (new tenant) (REQ-IMPORT-01)
-**Status:** Not started (deferred). Sequenced last, per Rob (2026-08-30).
+**Status:** **Next up** (2026-11-07, now that v2-24 is done). Sequenced last,
+per Rob (2026-08-30).
 Depends on v2-24 — cities import as tenant-scoped rows now, not excluded,
 and each imported user's legacy single city becomes one row in their new
 `user_city_preferences` set. No other technical dependency on v2-17
@@ -3870,3 +3972,112 @@ and a community's own domain.
 what it needs, see which steps are genuinely done as judged by the deployment
 rather than by their own ticking, and be told what is wrong when something is
 half-configured.
+
+### v2-45 — Coordinates on a city, and a suggested city for a new venue
+
+**Status:** Not started. Raised by Rob 2026-11-01 while stage-testing `v2-24`,
+and deliberately not built there — `v2-24` is on the cutover path and
+`v2-25`'s import brings real city assignments, so nothing downstream needs
+this.
+
+Cities carry no location today. `locations` already carries `lat`/`lng`,
+geocoded whenever the address changes, so the missing half is the city end:
+give a city coordinates and the venue form can suggest which city a new venue
+belongs to instead of asking every time.
+
+**Where the coordinates come from is the first decision.** Either geocode the
+city's name when it is created (the geocoding and Places keys are already
+per-community in `tenant_secrets`), or take the centroid of the venues already
+filed under it. The centroid is self-correcting and needs no new
+configuration, but it is empty for a brand-new city — so probably geocode on
+create, centroid as a later refinement, with an admin override either way.
+
+**Suggest, never assign.** Same rule REQ-CITIES-01.6 states for the backfill:
+"a starting point, not an assignment." The suggestion belongs in the form, is
+overridable with no friction, and the server never files a venue on geography.
+A community may organise by something that is not geography at all; the cities
+table is a label for a group of people.
+
+**No "which of these two?" warning.** This was the first design and it is
+wrong. Richmond, Indiana sits about 45 miles from Cincinnati and 40 from
+Dayton, so if Richmond is not its own city row, *every* venue there is a coin
+flip and the warning fires for a whole region rather than an occasional edge.
+A warning that cries wolf over a cluster gets clicked through, which is worse
+than no warning. Instead the distance ratio **gates whether to suggest at
+all**: clearly nearest one city, prefill it; close between two, leave the field
+empty exactly as today. It degrades to current behaviour precisely where
+current behaviour is the only honest answer.
+
+**Straight-line distance is a proxy that fails where it matters, and the
+DinnerBears data is the proof.** Hamilton and Middletown sit in the
+Cincinnati–Dayton corridor on I-75 — Middletown almost exactly midway — and
+both are *Cincinnati* dinners, because the Cincinnati group drives there. The
+city is a property of the **group**, not of the venue's position. No
+coordinate maths produces that answer, which is why the feature is a
+convenience for communities whose cities are far apart and will stay manual
+for the corridor.
+
+**Two alternatives were considered and rejected, both on Rob's own data.**
+Defaulting to the creating admin's own city fails because one organiser runs
+several cities — Rob creates for Cincinnati and Dayton both, so it is the same
+coin flip wearing a different hat. Sticky-within-the-session (repeat the last
+city picked, reset on reload) helps batch entry and cannot drift, since it only
+repeats a choice made moments earlier; it is the one variant worth building if
+the geographic suggestion proves not to earn its keep, and it needs no
+coordinates at all.
+
+**It must degrade to a plain pick.** Geocoding fails, and a residence entered
+by hand may have no coordinates, so the form still has to let somebody choose.
+
+**Definition of done:** a city can hold coordinates and an admin can set them;
+adding a venue whose address geocodes clearly nearest one city prefills that
+city, overridable; a venue between two cities, or with no usable fix, leaves
+the field empty and is picked by hand; nothing on the server assigns a city
+from geography.
+
+### v2-46 — Split the admin menu: operator, admin, moderator
+
+**Status:** Not started. Raised by Rob 2026-11-01.
+
+One menu serves three audiences today. It is labelled `Admin` for an admin and
+`Moderation` for a moderator (`app.component.html`), and inside it every entry
+is individually gated — `@if (isAdmin())` around most of the Security and
+Settings groups, `@if (isSystemAdmin())` around Communities, `@if (isAdmin() &&
+brandConfig.isRoot())` around release composing. A moderator opens the same
+tree and finds most of it missing.
+
+**Three audiences, not three permission levels on one list.** An operator
+administers the *deployment* — the registry of communities, the inbound-mail
+log across all of them, the bug board — and holds no account in most of the
+communities they run. An admin runs *one* community. A moderator does the
+day-to-day on its members and content. The first is a different job rather
+than more of the same one, which is the same argument that put tenant
+management at `/api/v1/system/tenants` instead of under `admin/`.
+
+**What moves to a System menu:** `/admin/tenants` (which is already the one
+admin-prefixed route behind `systemAdminGuard`, and whose URL should move with
+it), `/system/inbound-mail`, `/system/bugs`, and release composing — which is
+`isAdmin() && isRoot()` today, an awkward way of spelling "the operator".
+
+**What a Moderator menu holds:** the member list with vouch and the ordinary
+ban, attendance and walk-ins, announcements, moderation. Everything a
+moderator can already reach — the point is that it is a menu built for them
+rather than an admin menu with the holes showing.
+
+**The nav is not the permission.** Every route keeps its guard and every
+handler keeps its check; this is about not offering what cannot be used.
+`roles.util.ts` already states the rule for the in-handler half — ask
+`hasAdminRights`/`isElevatedRole`, never `===` — and the menu should read the
+same vocabulary rather than re-deriving it.
+
+**Watch the mobile sidenav, which is a second copy.** The same entries are
+listed again as `mat-list-item`s with their own `@if`s, and `isAdminMenuActive()`
+matches on URL prefixes in a third place. Three lists that must agree is how
+the Connect-button gap in `v2-12` happened; splitting the menu is a good moment
+to make them one source.
+
+**Definition of done:** an operator, a community admin and a moderator each
+see a menu whose every entry they can use; no entry is hidden inside a group
+labelled for somebody else; the desktop menu, the mobile sidenav and the
+active-state matching are driven from one declaration; every route keeps the
+guard it has today.

@@ -136,9 +136,12 @@ export class IntegrationsService {
    * be changed afterwards through `setRole`, which refuses anything but the two
    * integration roles for these accounts.
    *
-   * `city_id` is NOT NULL on `users` and `cities` is global, so any city serves
-   * -- the field is meaningless for an account that attends nothing. Same
-   * reasoning as `createServiceAccount`.
+   * No city (v2-24). It was always meaningless for an account that attends
+   * nothing, and the only reason one was looked up is that `users.city_id`
+   * used to be NOT NULL. That lookup took "any city", which stopped being
+   * safe the moment `cities` was scoped -- and it also made account creation
+   * fail outright on a community with no cities, which is now every brand-new
+   * one. Same change as `createServiceAccount`.
    */
   async createAccount(name: string, actorId: number): Promise<IntegrationAccountView> {
     const slug = slugify(name);
@@ -165,12 +168,6 @@ export class IntegrationsService {
       throw new BadRequestException(`An account already exists at ${email}.`);
     }
 
-    const city = await this.prisma.cities.findFirst({ select: { id: true } });
-    if (city === null) {
-      // Seeded reference data, so this means the install never ran seed.js.
-      throw new BadRequestException('No cities exist; the deployment is not fully seeded.');
-    }
-
     const created = await this.prisma.users.create({
       data: {
         fullName: name,
@@ -180,7 +177,6 @@ export class IntegrationsService {
         // NULL on purpose -- see the class comment. This is what makes the
         // account unable to hold a session.
         passwordHash: null,
-        cityId: city.id,
         role: UserRole.MUSE,
         status: UserStatus.ACTIVE,
         isServiceAccount: true,

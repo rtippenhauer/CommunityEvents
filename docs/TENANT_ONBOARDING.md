@@ -571,11 +571,19 @@ all, by any amount of configuration here.
    "Point Muse at this community" card shows the address with a copy button, and
    it is derived from the host you are on, so it is right for this community by
    construction. Muse holds one base URL and one token per community.
-4. **Work the review queue.** After the first sync, Admin -> Facebook Accounts
-   lists everybody seen. Nothing is linked automatically — two people can share
-   a name, and a wrong link marks the wrong member Going and emails them about a
-   dinner they never chose. Link each person to a member, or mark them "Not a
-   member" (still counted in the headcount, just out of the queue).
+4. **Work the review queue.** After the first sync, Admin -> Security ->
+   Facebook Accounts lists everybody seen. Nothing is linked automatically —
+   two people can share a name, and a wrong link marks the wrong member Going
+   and emails them about a dinner they never chose. Link each person to a
+   member, or mark them "Not a member" (still counted in the headcount, just
+   out of the queue).
+
+   **Moderators can work this queue as well as admins** (2026-11-01), because
+   the person marking attendance at the dinner is usually the one who knows
+   which Facebook name belongs to which member. Their menu reads *Moderation*
+   rather than *Admin*; the screen is the same. A wrong link is visible there,
+   reversible from the same row, and recorded in the audit log with whoever
+   made it.
 
 ### A setup prompt for Muse
 

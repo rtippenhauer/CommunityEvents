@@ -89,22 +89,22 @@ export class AuthService {
   }
 
   /**
-   * The city a new account is filed under: the subdomain's city when the
-   * signup came in on one, otherwise the first city this instance has.
+   * The city a new account is filed under: this community's first active city
+   * by name, or **none** when the community does not use cities.
    *
-   * Previously written inline as `cities[0].id`, which throws an unhelpful
-   * TypeError on a fresh instance with no cities configured. Prisma also
-   * requires users.city_id, so the value has to be known to be present rather
-   * than possibly-undefined.
+   * It used to take a `subdomainCityId` argument, derived from the first label
+   * of the host. That went with the `subdomain` column in v2-24 -- a city is a
+   * row, not a hostname (Rob, 2026-10-14), and nobody ever used the city URLs.
+   * What it cost is a registration *default*, not a capability: members pick
+   * their own city at Profile → Settings, and the first-city fallback was
+   * already where the overwhelming majority landed.
+   *
+   * Returning null is now a normal outcome rather than the error it used to
+   * be, because `users.city_id` is nullable and a community with cities off
+   * has no city for anybody to be in.
    */
-  private async resolveCityId(subdomainCityId?: number): Promise<number> {
-    if (subdomainCityId) return subdomainCityId;
-    const cities = await this.citiesService.findAll();
-    const first = cities[0];
-    if (!first) {
-      throw new BadRequestException('This instance has no active city configured');
-    }
-    return first.id;
+  private async resolveCityId(): Promise<number | null> {
+    return this.citiesService.defaultCityId();
   }
 
   private async releaseDeletedEmail(email: string): Promise<void> {
@@ -125,7 +125,6 @@ export class AuthService {
     displayName: string,
     inviteToken?: string,
     profilePhoto?: string | null,
-    subdomainCityId?: number,
   ): Promise<User> {
     // Primary lookup: existing OAuth account
     const existing = await this.prisma.oauth_accounts.findFirst({
@@ -185,7 +184,7 @@ export class AuthService {
       }
     }
 
-    const cityId = await this.resolveCityId(subdomainCityId);
+    const cityId = await this.resolveCityId();
 
     // Free up the email address if a soft-deleted account is still holding it
     await this.releaseDeletedEmail(email.toLowerCase());
@@ -258,7 +257,6 @@ export class AuthService {
     inviteToken?: string,
     profilePhoto?: string | null,
     profileUrl?: string | null,
-    subdomainCityId?: number,
   ): Promise<User> {
     const existing = await this.prisma.oauth_accounts.findFirst({
       where: { provider: OAuthProvider.FACEBOOK, providerId: facebookId },
@@ -308,7 +306,7 @@ export class AuthService {
       throw new AuthFlowError('invalid_invite');
     }
 
-    const cityId = await this.resolveCityId(subdomainCityId);
+    const cityId = await this.resolveCityId();
 
     // Free up the email address if a soft-deleted account is still holding it
     if (email) await this.releaseDeletedEmail(email.toLowerCase());
@@ -922,7 +920,6 @@ export class AuthService {
     fullName: string,
     email: string,
     password: string,
-    subdomainCityId?: number,
   ): Promise<User> {
     const lowerEmail = email.toLowerCase();
 
@@ -949,7 +946,7 @@ export class AuthService {
       await this.releaseDeletedEmail(lowerEmail);
     }
 
-    const cityId = await this.resolveCityId(subdomainCityId);
+    const cityId = await this.resolveCityId();
     const passwordHash = await bcrypt.hash(password, 12);
     const verificationToken = randomBytes(32).toString('hex');
     const verificationExpires = new Date();

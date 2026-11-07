@@ -131,6 +131,8 @@ export interface BrandFeatures {
   merch: boolean;
   members: boolean;
   requireMembership: boolean;
+  /** Does this community file its events, venues and members under cities? */
+  cities: boolean;
 }
 
 // Default assets for a community that has uploaded none (v2-10). These used to
@@ -252,6 +254,11 @@ const DEFAULT_BRAND: BrandConfig = {
     merch: true,
     members: true,
     requireMembership: false,
+    // Off until a community turns it on, matching the API's default. The
+    // pessimistic direction here is OFF: hiding a city picker for a moment
+    // costs nothing, where showing one on a community with no cities offers a
+    // select with nothing in it.
+    cities: false,
   },
 };
 

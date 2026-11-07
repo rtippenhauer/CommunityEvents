@@ -967,3 +967,87 @@ platform, so two communities' accounts can be told apart at a glance.
 **Turning an integration off takes one change.** Each account has a setting for
 which service it acts as. Switch it away and its key stops working immediately;
 switch it back and the same key works again, with nothing to reissue.
+
+## Meeting in more than one city
+
+Some communities meet in several places. **Cities** is a setting you turn on
+when yours does, and leave off when it doesn't — and when it is off, cities are
+invisible everywhere rather than being an empty field on every form.
+
+**With it on, every event and venue is filed under a city**, and members choose
+which cities they want to hear about. That choice is no longer one city or all
+of them: a member can pick any combination, so somebody who is happy to travel
+to two of your three cities can say exactly that. The choice applies
+consistently — to the events they see, to their calendar feed, and to which
+events they are invited to.
+
+**A city never gates anything.** A member can RSVP to, rate and attend an event
+in any city, whatever they have chosen to be notified about. The setting
+decides what reaches them, not what they are allowed to do.
+
+### Retiring a city
+
+**A city is never deleted — it is retired.** Retiring one stops it being offered
+on any form, and nothing else: its row stays and every event, venue and member
+pointing at it stays valid. Before it goes, you are shown exactly what will move
+and where, counted per kind of record.
+
+**Past events keep the city they happened in.** A dinner that happened in
+Indiana happened in Indiana, and a community that stops meeting somewhere should
+not retroactively have met somewhere else. Upcoming events, venues and members
+move to a city you pick; history stays put.
+
+### A default city
+
+**One city is marked the default**, and it is the one everything with no city of
+its own is filed under — new members when they join, and new venues and events,
+which now open with it already selected instead of an empty box. Your first city
+becomes the default automatically, so a community meeting in one place never has
+to think about the setting at all.
+
+### Turning the setting off and on again
+
+**Turning cities off writes nothing but the setting.** Your cities stay, and so
+does every assignment, so turning it back on lands where you left off. Earlier
+in testing it cleared assignments and retired every city, which made the round
+trip quietly destructive — turning it off and on again moved every member, venue
+and upcoming event into whichever city happened to be restored first.
+
+**Turning it on files anything with no city under the default**, so you are never
+left with records the forms cannot save.
+
+### Also in this release
+
+- **City subdomains are gone.** Addresses like `cincinnati.example.com` were
+  never used, and a city is a property of an event rather than a separate
+  website. Everything they offered is still available from the filters and from
+  Profile → Settings.
+- **The city filter reads "All cities"** rather than appearing blank.
+- **Each community's cities are its own.** They are no longer shared across
+  every community on the deployment, where one community's admin could rename or
+  retire a city another depended on.
+- **Facebook groups have been removed.** Facebook blocks automated posting to
+  groups, so the feature had stopped working; invites that record Facebook as
+  their source are unaffected.
+
+## Fixes found while testing
+
+- **A calendar invitation is no longer ignored.** Every invitation carries a
+  version number that has to climb; ours reset to zero every eleven and a half
+  days, and after each reset calendar apps silently discarded the update. A
+  member who changed their RSVP could be left with the old answer in their
+  calendar while the site showed the new one, with nothing to indicate anything
+  had gone wrong. This affected invitations, subscribed calendar feeds and the
+  Add to Calendar download.
+
+  *If your calendar is currently showing the wrong answer for an event, change
+  your RSVP away and back — the correction is sent with the next invitation, not
+  applied retroactively.*
+
+- **An invitation that expires in 48 hours now expires in 48 actual hours**,
+  rather than at a fixed time of day that could cut the window short.
+- **Moderators can work the Facebook review queue**, which previously required
+  an admin. A queue that failed to load now says so instead of appearing empty.
+- **A venue or event can be created while cities are off**, which the form
+  previously refused.
+- **A note added to the hero image no longer pushes the images out of line.**

@@ -251,7 +251,6 @@ bootstrap` with the same env vars.)
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `INSTANCE_CITY_NAME` | ✓ | Your region/community name |
-| `INSTANCE_CITY_SUBDOMAIN` | | Defaults to a slug of the name |
 | `INSTANCE_BRAND_NAME` | | Leave unset to keep editing later in the UI |
 | `INSTANCE_BRAND_TAGLINE` | | |
 | `INSTANCE_THEME_PRIMARY` / `_ACCENT` / `_BACKGROUND` | | `#RRGGBB` |

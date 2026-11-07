@@ -45,6 +45,19 @@ export const TENANT_SCOPED_MODELS = [
   'app_config',
   'announcements',
   'audit_log',
+  /**
+   * Scoped as of v2-24, and the last model the v2-6 pass had left global.
+   *
+   * It was reference data `seed.ts` wrote -- the same category `avatar` and
+   * `merch_config` are still in -- but a city is a community's own geography,
+   * not a list every community shares. Global, its admin controller was
+   * `@Roles(ADMIN)` over a table with no tenant filter, so any community's
+   * admin could rename or retire a city another community depended on. The
+   * seeded rows moved to `bootstrap.ts` and `tenants-admin.service.create`
+   * for exactly the reason `app_config` did in v2-6: bootstrap is where the
+   * community first exists.
+   */
+  'cities',
   'content_flags',
   'content_reports',
   'custom_icons',
@@ -63,7 +76,6 @@ export const TENANT_SCOPED_MODELS = [
   /// event or person, which is why those uniques carry the tenant.
   'facebook_accounts',
   'facebook_event_attendees',
-  'facebook_group_config',
   'feedback',
   'feedback_notes',
   'feedback_upvotes',
@@ -80,6 +92,7 @@ export const TENANT_SCOPED_MODELS = [
   'oauth_handoffs',
   'push_subscriptions',
   'tenant_secrets',
+  'user_city_preferences',
   'users',
 ] as const;
 
@@ -101,9 +114,14 @@ export const TENANT_SCOPED_MODELS = [
  *  2. **Reference data written by `seed.ts`, which runs before any tenant
  *     exists.** The install order is `migrate deploy` -> `seed.js` ->
  *     `bootstrap.js`, and it is bootstrap that creates the root tenant.
- *     `cities`, `avatar` and `merch_config` are all seeded into a database
- *     with zero tenant rows, so they cannot carry a NOT NULL `tenant_id`
- *     without reordering the install.
+ *     `avatar` and `merch_config` are seeded into a database with zero
+ *     tenant rows, so they cannot carry a NOT NULL `tenant_id` without
+ *     reordering the install.
+ *
+ *     `cities` was in this group until v2-24 and is not any more, for the
+ *     same reason `app_config` and `users` left it in v2-6: a city belongs
+ *     to one community, so its rows moved to `bootstrap.ts` and
+ *     `tenants-admin.service.create`, which run after the tenant exists.
  *
  *     `app_config` and `users` used to be in this group and are not any more:
  *     v2-6 moved the rows that genuinely belong to a community (branding and
@@ -115,7 +133,6 @@ export const TENANT_SCOPED_MODELS = [
  */
 export const GLOBAL_MODELS = [
   'avatar',
-  'cities',
   /**
    * Both of v2-32's report tables are global, for opposite-looking reasons that
    * are the same reason: each has to outlive the community it came from.

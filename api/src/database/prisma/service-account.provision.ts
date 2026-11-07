@@ -78,22 +78,30 @@ export function tenantGetsServiceAccount(isRoot: boolean): boolean {
   return isRoot || isStageDeployment();
 }
 
+/**
+ * The `cityId` argument went in v2-24.
+ *
+ * It was never meaningful -- a service account is not a person and does not
+ * meet anywhere -- and existed only because `users.city_id` was NOT NULL.
+ * Every caller satisfied it by finding "any city", which stopped being safe
+ * when `cities` became tenant-scoped: the first row in the table now belongs
+ * to a *specific* community, so a new community's service account would have
+ * been filed under someone else's geography.
+ */
 export async function createServiceAccount(
   tx: SqlExecutor,
   tenantId: number,
-  cityId: number,
   tenantSlug: string,
 ): Promise<void> {
   await tx.$executeRawUnsafe(
     `INSERT INTO users
        (tenant_id, full_name, email, email_status, email_verified_at,
         password_hash, city_id, role, status, is_service_account)
-     VALUES (?, ?, ?, 'active', NOW(), NULL, ?, ?, 'active', 1)
+     VALUES (?, ?, ?, 'active', NOW(), NULL, NULL, ?, 'active', 1)
      ON DUPLICATE KEY UPDATE is_service_account = 1`,
     tenantId,
     AUTOMATION_ACCOUNT_NAME,
     automationAccountEmail(tenantSlug),
-    cityId,
     'automation',
   );
 }

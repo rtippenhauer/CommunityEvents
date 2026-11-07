@@ -121,7 +121,13 @@ export async function seedDemoTenant(
   tenantId: number,
   opts: { isRoot?: boolean } = {},
 ): Promise<DemoSeedSummary> {
-  const cityId = await resolveCityId(prisma);
+  // No city (v2-24). A demo is meant to look like a community somebody just
+  // created, and a new community starts with no cities and `feature_cities`
+  // off -- so seeding one would show every visitor a feature most communities
+  // will never turn on. The column is nullable now, which is what makes that
+  // expressible; before this item it was NOT NULL and the demo had to borrow
+  // whichever city happened to be first in a global table.
+  const cityId = null;
 
   await seedSettings(prisma, tenantId);
   await seedLegal(prisma, tenantId);
@@ -135,7 +141,7 @@ export async function seedDemoTenant(
       select: { slug: true },
     });
     if (tenant) {
-      await createServiceAccount(prisma, tenantId, cityId, tenant.slug);
+      await createServiceAccount(prisma, tenantId, tenant.slug);
     }
   }
 
@@ -235,19 +241,6 @@ async function seedAchievements(prisma: PrismaClient, tenantId: number): Promise
 }
 
 /**
- * `users.city_id` is required and cities are seeded before any tenant exists, so
- * there is always one. Picked by id rather than by name: the demo does not care
- * which city it nominally sits in, only that the column is satisfiable.
- */
-async function resolveCityId(prisma: PrismaClient): Promise<number> {
-  const city = await prisma.cities.findFirst({ where: { isActive: true }, orderBy: { id: 'asc' } });
-  if (!city) {
-    throw new Error('No active city exists — run the seed step before provisioning the demo.');
-  }
-  return city.id;
-}
-
-/**
  * The seeded members.
  *
  * Their addresses are on `.invalid`, which RFC 2606 reserves and which therefore
@@ -259,7 +252,7 @@ async function resolveCityId(prisma: PrismaClient): Promise<number> {
 async function seedMembers(
   prisma: PrismaClient,
   tenantId: number,
-  cityId: number,
+  cityId: number | null,
 ): Promise<{ id: number; fullName: string }[]> {
   // Hashed once. bcrypt at cost 12 is deliberately slow and every seeded member
   // shares this password, so hashing per member would add seconds to the
@@ -292,7 +285,7 @@ async function seedMembers(
 async function seedLocations(
   prisma: PrismaClient,
   tenantId: number,
-  cityId: number,
+  cityId: number | null,
   createdById: number,
 ): Promise<{ id: number; name: string; address: string }[]> {
   const locations: { id: number; name: string; address: string }[] = [];
@@ -340,7 +333,7 @@ async function seedLocations(
 async function seedEvents(
   prisma: PrismaClient,
   tenantId: number,
-  cityId: number,
+  cityId: number | null,
   locations: { id: number; name: string; address: string }[],
   createdById: number,
   opts: { count: number; past: boolean },

@@ -36,9 +36,23 @@ import { MarkFacebookAttendanceDto } from './dto/mark-facebook-attendance.dto';
  * rendered it, and no screen ever wrote one -- so the feature looked finished
  * and was unusable by a human. The equivalent omission here is this controller.
  *
- * Under `admin/` and `@Roles(ADMIN)`: these are one community's own links, made
- * by its own admin. Not `moderator`, because a wrong link marks the wrong
- * member Going and emails them a confirmation.
+ * Under `admin/`, and `@Roles(ADMIN, MODERATOR)` throughout: these are one
+ * community's own links, made by the people who run its dinners.
+ *
+ * `v2-29` gated linking at `admin` on the grounds that a wrong link marks the
+ * wrong member Going and emails them a confirmation. **Overruled by Rob,
+ * 2026-11-01**, and the reasoning it replaces is worth keeping: the risk is
+ * real but it is a *mistake*, not an escalation — it is visible on the screen,
+ * reversible from the same screen, and audited with the actor. What the gate
+ * actually cost was the common case, since the moderator marking attendance at
+ * the dinner is the person who knows which Facebook name is which member, and
+ * sending them to find an admin is how a queue stops being worked.
+ *
+ * **Every route moves together, which is the part that is not negotiable.**
+ * `list` or the triage routes left at `admin` would give a moderator a screen
+ * they cannot read, or a link they cannot undo — and a role that can make a
+ * wrong link but not reverse it is strictly worse than one that cannot make it.
+ * `attendance` was already `ADMIN, MODERATOR`.
  */
 @Controller('admin/facebook-accounts')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -58,7 +72,7 @@ export class FacebookAccountsController {
    * (Unmatched / Linked / Not a member).
    */
   @Get()
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   list(@Query() query: FacebookAccountsQueryDto): Promise<FacebookAccountView[]> {
     return this.accounts.list(query.status);
   }
@@ -78,7 +92,7 @@ export class FacebookAccountsController {
    * the screen can say what happened.
    */
   @Post(':id/link')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   @HttpCode(200)
   async link(
     @Param('id', ParseIntPipe) id: number,
@@ -106,7 +120,7 @@ export class FacebookAccountsController {
    * may well be attending.
    */
   @Post(':id/unlink')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   @HttpCode(204)
   unlink(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: User): Promise<void> {
     return this.accounts.unlink(id, actor.id);
@@ -114,7 +128,7 @@ export class FacebookAccountsController {
 
   /** Still counted in the headcount, out of the review queue. */
   @Post(':id/not-a-member')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   @HttpCode(204)
   markNotAMember(
     @Param('id', ParseIntPipe) id: number,
@@ -143,7 +157,7 @@ export class FacebookAccountsController {
 
   /** Puts a `not_member` or `linked` row back in the queue for another look. */
   @Post(':id/unmatched')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.MODERATOR)
   @HttpCode(204)
   markUnmatched(
     @Param('id', ParseIntPipe) id: number,

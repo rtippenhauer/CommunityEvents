@@ -89,7 +89,15 @@ interface Invite {
             @if (creating()) {
               <mat-spinner diameter="18" />
             } @else {
-              <mat-icon>add_link</mat-icon> Generate Invite Link
+              <!--
+                The icon is wrapped rather than left loose beside the label.
+                MatButton projects a mat-icon into its own leading-icon slot,
+                and an @else block holding more than one root node projects
+                none of them (NG8011) - so the icon rendered as ordinary inline
+                content, unspaced and unaligned, while the build said so on
+                every run.
+              -->
+              <span class="btn-label"><mat-icon>add_link</mat-icon> Generate Invite Link</span>
             }
           </button>
         </form>
@@ -175,6 +183,14 @@ interface Invite {
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
+      /* Keeps the icon and its label on one baseline now that they share a
+         wrapper rather than being projected into MatButton's icon slot. */
+      .btn-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
       .invite-page {
         max-width: 600px;
         margin: 0 auto;

@@ -1,40 +1,49 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { BrandConfigService } from './brand-config.service';
 
 export interface City {
   id: number;
   name: string;
-  subdomain: string;
+  /**
+   * False for a city the community has retired.
+   *
+   * Only ever present on the extra entry `include` adds — the row's own
+   * current value, kept in the list so a picker can show it rather than
+   * rendering blank. Everything else the endpoint returns is active.
+   */
+  isActive?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
 export class CityService {
   private readonly http = inject(HttpClient);
+  private readonly brand = inject(BrandConfigService);
 
   readonly cities = signal<City[]>([]);
 
-  readonly currentCity = computed<City | undefined>(() => {
-    const cities = this.cities();
-    const subdomain = window.location.hostname.match(/^([a-z0-9-]+)\./)?.[1]?.toLowerCase();
-    const bySubdomain = subdomain
-      ? cities.find((c) => c.subdomain.toLowerCase() === subdomain)
-      : undefined;
-    if (bySubdomain) return bySubdomain;
-    // Root-domain / single-region fork: the host carries no chapter subdomain
-    // (the app is served straight from the apex, e.g. sons.example.com with no
-    // city prefix), so fall back to the sole active city when there's exactly
-    // one. The public /cities endpoint already returns active cities only.
-    if (cities.length === 1) return cities[0];
-    return undefined;
-  });
+  /** Whether this community files anything under cities at all. */
+  readonly enabled = computed<boolean>(() => this.brand.features().cities);
 
-  // True for a single-region fork — used to hide the city selector/filter,
-  // which is meaningless when there's nothing to switch between. Also true
-  // before the list loads (0 cities), which is fine: the filters it gates
-  // have nothing to show until the list arrives anyway.
-  readonly isSingleCity = computed<boolean>(() => this.cities().length <= 1);
+  /**
+   * Hide the city controls when there is nothing to choose between — the
+   * feature is off, or the community meets in one place.
+   *
+   * `currentCity` and the subdomain sniffing that produced it are gone with
+   * v2-24: a city is a row, not a hostname, so there was never a city to read
+   * off `window.location`. Nothing needs "the city we are on" any more; a
+   * member's own city is on their profile and the filter is their preference
+   * set.
+   */
+  readonly isSingleCity = computed<boolean>(() => !this.enabled() || this.cities().length <= 1);
 
   constructor() {
-    this.http.get<City[]>('/api/v1/cities').subscribe((cities) => this.cities.set(cities));
+    this.load();
+  }
+
+  /** Reloads the list — called after an admin adds or retires one. */
+  load(include?: number): void {
+    const query = include === undefined ? '' : `?include=${include}`;
+    this.http.get<City[]>(`/api/v1/cities${query}`).subscribe((cities) => this.cities.set(cities));
   }
 }

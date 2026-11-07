@@ -312,6 +312,105 @@ describe('Facebook sync (e2e)', () => {
     });
   });
 
+  /**
+   * Who may work the review queue (Rob, 2026-11-01).
+   *
+   * `v2-29` gated the whole controller at `admin` except the attendance mark.
+   * Every route is `ADMIN, MODERATOR` now, and the reason this is a test rather
+   * than a reading of the decorators is that the routes have to move
+   * **together**: a moderator who can link but not unlink cannot fix their own
+   * mistake, and one who cannot `list` gets a screen that will not load. Each
+   * route is asserted separately so widening one and forgetting another fails
+   * here instead of on stage.
+   */
+  describe('role gates', () => {
+    let moderatorCookie: string;
+    let memberCookie: string;
+    let accountId: number;
+    let target: User;
+
+    beforeEach(async () => {
+      const moderator = await seedUser(prisma, city.id, {
+        role: UserRole.MODERATOR,
+        email: 'mod@example.test',
+      });
+      moderatorCookie = await inTenant(() => loginAs(app, moderator));
+
+      const member = await seedUser(prisma, city.id, {
+        role: UserRole.MEMBER,
+        email: 'plain@example.test',
+      });
+      memberCookie = await inTenant(() => loginAs(app, member));
+
+      target = await seedUser(prisma, city.id, { email: 'target@example.test' });
+
+      const account = await inTenant(() =>
+        prisma.facebook_accounts.create({
+          data: {
+            facebookUserId: '100000000000777',
+            displayName: 'Queue Person',
+            status: 'unmatched',
+          },
+        }),
+      );
+      accountId = account.id;
+    });
+
+    const asModerator = (method: 'get' | 'post' | 'patch', path: string) =>
+      request(server)[method](`/api/v1/admin/facebook-accounts${path}`)
+        .set('Host', TEST_TENANT_DOMAIN)
+        .set('Cookie', moderatorCookie);
+
+    it('lets a moderator read the queue', async () => {
+      const res = await asModerator('get', '').expect(200);
+      expect(res.body.map((row: { displayName: string }) => row.displayName)).toContain(
+        'Queue Person',
+      );
+    });
+
+    it('lets a moderator link, and the link is really written', async () => {
+      await asModerator('post', `/${accountId}/link`).send({ userId: target.id }).expect(200);
+
+      const row = await inTenant(() =>
+        prisma.facebook_accounts.findFirstOrThrow({ where: { id: accountId } }),
+      );
+      expect(row.userId).toBe(target.id);
+      expect(row.status).toBe('linked');
+    });
+
+    it('lets a moderator undo what a moderator can do', async () => {
+      await asModerator('post', `/${accountId}/link`).send({ userId: target.id }).expect(200);
+      await asModerator('post', `/${accountId}/unlink`).expect(204);
+      await asModerator('post', `/${accountId}/not-a-member`).expect(204);
+      await asModerator('post', `/${accountId}/unmatched`).expect(204);
+
+      const row = await inTenant(() =>
+        prisma.facebook_accounts.findFirstOrThrow({ where: { id: accountId } }),
+      );
+      expect(row.status).toBe('unmatched');
+      expect(row.userId).toBeNull();
+    });
+
+    it('still refuses a plain member every route', async () => {
+      const calls: [('get' | 'post' | 'patch'), string][] = [
+        ['get', ''],
+        ['post', `/${accountId}/link`],
+        ['post', `/${accountId}/unlink`],
+        ['post', `/${accountId}/not-a-member`],
+        ['post', `/${accountId}/unmatched`],
+        ['patch', `/${accountId}/attendance`],
+      ];
+
+      for (const [method, path] of calls) {
+        await request(server)[method](`/api/v1/admin/facebook-accounts${path}`)
+          .set('Host', TEST_TENANT_DOMAIN)
+          .set('Cookie', memberCookie)
+          .send({ userId: target.id })
+          .expect(403);
+      }
+    });
+  });
+
   describe('linked members (rules 7, 8, 10)', () => {
     /** Links a Facebook person to a member through the admin screen. */
     const linkTo = async (facebookUserId: string, userId: number) => {

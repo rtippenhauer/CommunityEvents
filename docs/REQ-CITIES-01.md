@@ -187,11 +187,30 @@ those rows have to land somewhere rather than becoming invalid the moment
 the flag flips.
 
 - **Backfill on enable:** every existing event, user and location with a
-  null `city_id` is assigned the tenant's **first city** — lowest id
-  among its active cities, which with the 01.2 guard ("at least one city
-  must exist") always resolves. No new `is_default` column: the first
-  city the admin created is the default by construction, and an admin who
-  wants a different one edits the rows afterward.
+  null `city_id` is assigned the tenant's **default city**, which with the
+  01.2 guard ("at least one city must exist") always resolves.
+
+  > **Amended 2026-11-01 (Rob): there IS an `is_default` column.** This said
+  > "lowest id among its active cities. No new `is_default` column: the first
+  > city the admin created is the default by construction, and an admin who
+  > wants a different one edits the rows afterward."
+  >
+  > What broke it was not the reasoning but that **the rule had a second
+  > copy, and the copies disagreed**: the backfill took the lowest id while a
+  > brand-new member took the lowest *name*, so a community whose first city
+  > was not alphabetically first filed its existing rows in one place and
+  > every new member in another. Renaming a city silently moved one of them.
+  >
+  > "Edits the rows afterward" was also the expensive half. The backfill is
+  > the one moment the choice is cheap — afterwards it is every event, venue
+  > and member, by hand.
+  >
+  > `cities.is_default` is a marker, only ever `true` or NULL, with
+  > `(tenant_id, is_default)` unique — the `tenants.root_marker` pattern,
+  > since MySQL has no partial unique index. Resolution still falls back to
+  > the lowest active id, so the old behaviour is what a community with no
+  > marker gets, and the migration gives every existing community exactly
+  > that city.
 - **The backfill is a starting point, not an assignment.** Users and
   locations can change their city freely after the fact through the
   ordinary edit paths — the backfill exists so nothing is left invalid,

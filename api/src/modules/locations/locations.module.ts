@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CitiesModule } from '../cities/cities.module';
 import { LocationsService } from './locations.service';
 import { RatingsService } from './ratings.service';
 import { LocationsController } from './locations.controller';
@@ -12,6 +13,7 @@ import { LocationVisibilityService } from '../../common/services/location-visibi
   imports: [
     CommunityModule,
     AppConfigModule,
+    CitiesModule,
   ],
   providers: [LocationsService, RatingsService, GeocodingService, EnrichmentService, LocationVisibilityService],
   controllers: [LocationsController],

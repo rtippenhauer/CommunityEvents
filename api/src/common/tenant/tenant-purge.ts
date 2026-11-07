@@ -19,8 +19,14 @@
  *    leaves every member who registered through one pointing at a row that is
  *    going away. That is every member of a real community except its first
  *    admin, which makes this the common case rather than an edge one.
- *  - `invites.facebook_group_id -> facebook_group_config` — same shape, one
- *    table earlier.
+ *  - every `city_id -> cities` — `cities` sorts near the front of the list and
+ *    five tables point at it with NO ACTION keys, four of which (`events`,
+ *    `locations`, `users`, `invites`) sort after it. Added by v2-24, which
+ *    scoped `cities`; before that it was global and the purge never touched it.
+ *    Deliberately NOT made cascading: nothing in the product deletes a city, so
+ *    the restrictive key stays a backstop against an unplanned one, and this
+ *    purge — the single path that legitimately removes them — says so out loud
+ *    by clearing the columns first.
  *  - `users.invited_by -> users` — self-referential, so no ordering of the list
  *    can fix it: a single `DELETE` that removes an inviter and the member they
  *    invited checks the constraint row by row, and fails depending on which the
@@ -61,9 +67,26 @@ export interface PurgeExecutor {
  * foreign keys it reads out of the migrations.
  */
 export const PURGE_PRECLEARED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
-  users: ['inviteId', 'invitedBy'],
-  invites: ['facebookGroupId'],
+  users: ['inviteId', 'invitedBy', 'cityId'],
+  invites: ['cityId'],
+  events: ['cityId'],
+  locations: ['cityId'],
+  announcements: ['cityId'],
 };
+
+/**
+ * Models deleted ahead of the alphabetical walk, because they hold a
+ * **non-nullable** reference to a table that sorts before them.
+ *
+ * Nulling is the usual fix and is not available here: `user_city_preferences`
+ * points at `cities` with a required column, and `cities` sorts first, so the
+ * walk would reach `cities.deleteMany` while preference rows still named one.
+ * Deleting it early is safe for the same reason nulling the others is — the
+ * rows it points at are about to cease to exist — and it is one line rather
+ * than a cascade, which would weaken the backstop that keeps an *unplanned*
+ * city delete failing loudly.
+ */
+export const PURGE_PREDELETED_MODELS: readonly string[] = ['user_city_preferences'];
 
 /**
  * Deletes every scoped row belonging to `tenantId`, leaving the `tenants` row
@@ -88,9 +111,17 @@ export async function purgeTenantRows(
   }
 
   const deleted: Record<string, number> = {};
-  for (const model of TENANT_SCOPED_MODELS) {
+  const recordDelete = async (model: TenantScopedModel): Promise<void> => {
     const { count } = await delegates[model].deleteMany({ where: { tenantId } });
     if (count > 0) deleted[model] = count;
+  };
+
+  for (const model of PURGE_PREDELETED_MODELS) {
+    await recordDelete(model as TenantScopedModel);
+  }
+  for (const model of TENANT_SCOPED_MODELS) {
+    if (PURGE_PREDELETED_MODELS.includes(model)) continue;
+    await recordDelete(model);
   }
   return deleted;
 }

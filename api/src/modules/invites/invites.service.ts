@@ -37,9 +37,14 @@ export class InvitesService {
     if (dto.type === InviteType.MEMBER && !dto.boundToEmail) {
       throw new BadRequestException('Member invites require boundToEmail');
     }
-    if (dto.type === InviteType.CAMPAIGN_FACEBOOK && !dto.facebookGroupId) {
-      throw new BadRequestException('Campaign invites require facebookGroupId');
-    }
+    // `campaign_facebook` survives v2-24 and its group picker does not.
+    //
+    // The *type* is attribution -- it is what `users.invite_source` records
+    // about where a member came from -- and the group id was a reference into
+    // `facebook_group_config`, a table built for automated group posting that
+    // Meta's API already blocks. The picker became a city picker; the
+    // requirement that used to be "name a group" is simply gone, because there
+    // is nothing left for the answer to point at.
 
     if (dto.type === InviteType.MEMBER && dto.boundToEmail) {
       const existingMember = await this.prisma.users.findFirst({
@@ -68,7 +73,13 @@ export class InvitesService {
 
     const expiresAt = new Date();
     if (dto.type === InviteType.MEMBER) {
-      expiresAt.setHours(expiresAt.getHours() + 48);
+      // Elapsed hours, not wall-clock hours. `setHours(getHours() + 48)` walks
+      // the local hour field, so across a DST boundary "48 hours" becomes 47 or
+      // 49 real ones -- the member's link outlives or undercuts the window the
+      // email promises them. `setDate` below is left alone deliberately: an
+      // expiry in *days* is a calendar duration, and the same time of day N
+      // days later is what "expires in 30 days" means to a reader.
+      expiresAt.setTime(expiresAt.getTime() + 48 * 60 * 60 * 1000);
     } else if (dto.noExpiry) {
       expiresAt.setFullYear(2099);
     } else {
@@ -81,7 +92,6 @@ export class InvitesService {
         type: dto.type,
         createdBy: creator.id,
         cityId: dto.cityId ?? null,
-        facebookGroupId: dto.facebookGroupId ?? null,
         boundToEmail: dto.boundToEmail ? dto.boundToEmail.toLowerCase() : null,
         boundToName: dto.boundToName ?? null,
         expiresAt,

@@ -21,6 +21,7 @@ import {
 import { AuthService } from '../../../core/services/auth.service';
 import { BrandConfigService } from '../../../core/services/brand-config.service';
 import { isElevatedRole } from '../../../core/utils/roles.util';
+import { preselectCityId } from '../../../core/utils/city-preselect.util';
 
 export interface LocationFormDialogData {
   location?: Location;
@@ -29,6 +30,14 @@ export interface LocationFormDialogData {
 interface City {
   id: number;
   name: string;
+  /**
+   * Absent for the active cities; false for the one entry `?include=` adds —
+   * the row's own current city, kept in the list after it has been retired so
+   * the select has something to show rather than rendering blank.
+   */
+  isActive?: boolean;
+  /** True on the community's default city, absent on every other. */
+  isDefault?: boolean | null;
 }
 
 @Component({
@@ -95,6 +104,27 @@ interface City {
       } @else {
         <!-- ── Edit form ── -->
         <form [formGroup]="form" class="location-form">
+          <!--
+            Cities are off by default on a new community, and this screen is
+            where that costs something: a venue added now carries no city, and
+            turning cities on later files every one of them under the first
+            city rather than asking. So the notice names the feature (an admin
+            setting up a community has no reason to know it exists), says what
+            these venues will lack, and points at the cheaper order. Admins and
+            moderators only -- a member cannot act on it, and telling them a
+            feature is off they cannot turn on is noise.
+          -->
+          @if (!brand.features().cities && isAdminOrMod() && !data.location) {
+            <div class="city-off-notice">
+              <mat-icon>info</mat-icon>
+              <div>
+                Cities are turned off, so this {{ brand.locationSingularLower() }} won't belong to
+                one. If you expect {{ brand.dinnerPluralLower() }} in more than one city, turn
+                cities on at <strong>Admin → Cities</strong> first — anything added before then
+                lands in your default city, and you reassign by hand.
+              </div>
+            </div>
+          }
           <div class="name-field-wrap">
             <mat-form-field appearance="outline" class="name-field">
               <mat-label>Name</mat-label>
@@ -159,12 +189,12 @@ interface City {
             (e.g. "Rob &amp; Terry's").
           </p>
 
-          @if (cities.length > 1) {
+          @if (brand.features().cities && cities.length > 1) {
             <mat-form-field appearance="outline">
               <mat-label>City</mat-label>
               <mat-select formControlName="cityId">
                 @for (city of cities; track city.id) {
-                  <mat-option [value]="city.id">{{ city.name }}</mat-option>
+                  <mat-option [value]="city.id">{{ city.name }}{{ city.isActive === false ? ' (retired)' : '' }}</mat-option>
                 }
               </mat-select>
               <mat-error>City is required</mat-error>
@@ -247,6 +277,28 @@ interface City {
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
+      .city-off-notice {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        margin-bottom: 4px;
+        padding: 10px 12px;
+        border: 1px solid var(--ce-rule);
+        border-radius: 8px;
+        background: var(--ce-surface-variant);
+        color: var(--ce-text);
+        font-size: 0.85rem;
+        line-height: 1.4;
+      }
+
+      .city-off-notice mat-icon {
+        flex: 0 0 auto;
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: var(--ce-text-muted);
+      }
+
       .location-form {
         display: flex;
         flex-direction: column;
@@ -454,7 +506,9 @@ export class LocationFormDialogComponent implements OnInit {
     address: ['', [Validators.required, Validators.maxLength(500)]],
     isPrivate: [false],
     isResidence: [false],
-    cityId: [0, [Validators.required, Validators.min(1)]],
+    // Unvalidated here, required by the server when the community has city
+    // filtering on -- see the note in event-form-dialog, same reasoning.
+    cityId: [0],
     phone: [''],
     websiteUrl: [''],
     description: [''],
@@ -470,13 +524,22 @@ export class LocationFormDialogComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.http.get<City[]>('/api/v1/cities').subscribe((cities) => {
+    const include = this.data.location?.cityId;
+    this.http
+      .get<City[]>(`/api/v1/cities${include ? `?include=${include}` : ''}`)
+      .subscribe((cities) => {
       this.cities = cities;
-      // Single-region fork: the city selector is hidden (see template), so
-      // auto-select the sole city for new locations. Edit mode patches cityId
-      // synchronously below before this async callback resolves.
-      if (cities.length === 1 && !this.form.controls.cityId.value) {
-        this.form.controls.cityId.setValue(cities[0].id);
+      if (this.brand.features().cities) {
+        this.form.controls.cityId.addValidators([Validators.required, Validators.min(1)]);
+        this.form.controls.cityId.updateValueAndValidity({ emitEvent: false });
+      }
+      // A new location opens on the community's default city — see
+      // preselectCityId for which city that is and why. Edit mode patches
+      // cityId synchronously below, before this async callback resolves, so
+      // the guard leaves an already-set value alone.
+      if (!this.form.controls.cityId.value) {
+        const preselect = preselectCityId(cities);
+        if (preselect) this.form.controls.cityId.setValue(preselect);
       }
     });
     if (this.data.location) {
@@ -486,7 +549,8 @@ export class LocationFormDialogComponent implements OnInit {
         address: r.address ?? '',
         isPrivate: r.isPrivate,
         isResidence: r.isResidence,
-        cityId: r.cityId,
+        // Nullable since v2-24; the control is seeded with 0.
+        cityId: r.cityId ?? 0,
         phone: r.phone ?? '',
         websiteUrl: r.websiteUrl ?? '',
         description: r.description ?? '',
@@ -539,7 +603,10 @@ export class LocationFormDialogComponent implements OnInit {
       address: val.address,
       isPrivate: val.isPrivate,
       isResidence: val.isResidence,
-      cityId: val.cityId,
+      // 0 is the form's "no city chosen" placeholder, not an id. With cities
+      // off there is no field to choose from, so send null and let the API
+      // decide whether that is allowed -- `@IsPositive()` rejects 0 outright.
+      cityId: val.cityId || null,
       phone: val.phone.trim() || null,
       websiteUrl: val.websiteUrl.trim() || null,
       description: val.description.trim() || null,
