@@ -97,7 +97,13 @@ async function main(): Promise<void> {
     );
   }
 
-  if (explain) console.log(formatExclusions());
+  if (explain) {
+    console.log(formatExclusions());
+    // On its own, `--explain` is documentation: it reads nothing and connects
+    // to nothing, so it should not demand a tenant or a source. Combined with
+    // a real invocation it prints first and the run proceeds.
+    if (!process.env.TENANT_SLUG && !process.env.SOURCE_DATABASE_URL) return;
+  }
 
   const slug = required('TENANT_SLUG').toLowerCase();
   if (!/^[a-z0-9-]{1,50}$/.test(slug)) {
