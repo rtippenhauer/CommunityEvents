@@ -392,7 +392,12 @@ export const BACKFILL_PASSES: readonly BackfillPass[] = [
       // `city_id` keeps it. Their event list widens where it was never narrow,
       // which is the closest a single set can come to an answer v1 recorded
       // per-question.
-      const rows = await ctx.fetch('users', ['id', 'city_id', 'calendar_city_filter']);
+      // `full_name` is fetched only to name the member in the notes below. A
+      // count alone is not actionable: this is the one member whose view the
+      // import changes on purpose, and the operator should be able to tell them
+      // so without going back to the source database to find out who.
+      const rows = await ctx.fetch('users', ['id', 'full_name', 'city_id', 'calendar_city_filter']);
+      const named: string[] = [];
       let written = 0;
       let allCount = 0;
 
@@ -412,18 +417,21 @@ export const BACKFILL_PASSES: readonly BackfillPass[] = [
         );
         if (cityId.value === null) {
           ctx.note(
-            `users#${String(row['id'])} chose city-only calendar but has no importable ` +
-              'city, so no preference row was written. The member sees every city.',
+            `${String(row['full_name'])} (users#${String(row['id'])}) chose city-only calendar ` +
+              'but has no importable city, so no preference row was written. The member sees ' +
+              'every city.',
           );
           continue;
         }
 
         await ctx.create('user_city_preferences', { userId: newUserId, cityId: cityId.value });
+        named.push(`${String(row['full_name'])} (users#${String(row['id'])})`);
         written += 1;
       }
 
       ctx.note(
-        `${written} member(s) had calendar_city_filter='city' and got one preference row; ` +
+        `${written} member(s) had calendar_city_filter='city' and got one preference row` +
+          `${named.length > 0 ? `: ${named.join(', ')}` : ''}; ` +
           `${allCount} kept every city (no rows), which is what they see on v1 today.`,
       );
       return written;
