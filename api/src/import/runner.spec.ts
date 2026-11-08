@@ -64,6 +64,7 @@ describe('buildRow', () => {
       { id: 1, event_id: 4, user_id: 7, city_id: 1, status: 'going' },
       ctx,
       (r) => skips.push(r),
+      () => undefined,
     );
 
     expect(built?.data).toEqual({
@@ -86,6 +87,7 @@ describe('buildRow', () => {
       { id: 1, event_id: 4, user_id: 7, city_id: null, status: 'going' },
       ctx,
       () => undefined,
+      () => undefined,
     );
 
     expect(built?.data.eventId).not.toBe(4);
@@ -101,6 +103,7 @@ describe('buildRow', () => {
       { id: 1, event_id: 4, user_id: 7, city_id: null, status: 'going' },
       ctx,
       (r) => skips.push(r),
+      () => undefined,
     );
 
     expect(built?.data.cityId).toBeNull();
@@ -121,6 +124,7 @@ describe('buildRow', () => {
         { id: 1, event_id: 4, user_id: 7, city_id: 1, status: 'going' },
         ctx,
         (r) => skips.push(r),
+        () => undefined,
       );
 
       expect(built).toBeUndefined();
@@ -129,19 +133,25 @@ describe('buildRow', () => {
       ]);
     });
 
-    it('nulls the column when the key is nullable, and still reports it', () => {
+    it('nulls the column when the key is nullable, and reports it apart from skips', () => {
+      // Apart, because the row is still written. Counting a blanked column as a
+      // skipped row makes `imported + skipped` overshoot the source count, and
+      // validation then fails a clean import.
       const { ctx } = contextWith({ events: { 4: 104 }, users: { 7: 207 }, cities: {} });
       const skips: string[] = [];
+      const nulls: string[] = [];
 
       const built = buildRow(
         plan,
         { id: 1, event_id: 4, user_id: 7, city_id: 1, status: 'going' },
         ctx,
         (r) => skips.push(r),
+        (r) => nulls.push(r),
       );
 
       expect(built?.data.cityId).toBeNull();
-      expect(skips[0]).toContain('written as NULL');
+      expect(nulls[0]).toContain('written as NULL');
+      expect(skips).toEqual([]);
     });
 
     it('skips a required key that is NULL in the source', () => {
@@ -153,6 +163,7 @@ describe('buildRow', () => {
         { id: 1, event_id: null, user_id: 7, city_id: 1, status: 'going' },
         ctx,
         (r) => skips.push(r),
+        () => undefined,
       );
 
       expect(built).toBeUndefined();
@@ -173,6 +184,7 @@ describe('buildRow', () => {
           { id: 1, event_id: 4, user_id: 7, city_id: 1, status: 'going' },
           ctx,
           () => undefined,
+          () => undefined,
         ),
       ).toThrow(IdMapSequencingError);
     });
@@ -190,6 +202,7 @@ describe('buildRow', () => {
         withTransform,
         { id: 1, event_id: 4, user_id: 7, city_id: 1, status: 'going' },
         ctx,
+        () => undefined,
         () => undefined,
       );
 
@@ -215,6 +228,7 @@ describe('buildRow', () => {
         { id: 1, event_id: 4, user_id: 7, city_id: 1, status: 'going' },
         ctx,
         (r) => skips.push(r),
+        () => undefined,
       );
 
       expect(built).toBeUndefined();
@@ -242,6 +256,7 @@ describe('buildRow', () => {
         { id: 1, event_id: 4, user_id: 7, city_id: 1, status: 'going' },
         ctx,
         () => undefined,
+        () => undefined,
       );
 
       expect(built).toEqual({
@@ -264,6 +279,7 @@ describe('buildRow', () => {
         { id: 1, event_id: 4, user_id: 7, city_id: 1, status: 'going' },
         ctx,
         () => undefined,
+        () => undefined,
       );
 
       expect(built?.mapName).toBe('system_reports');
@@ -274,7 +290,7 @@ describe('buildRow', () => {
     const noModel: TablePlan = { source: 'x', model: null, columns: {} };
     const { ctx } = contextWith({});
 
-    expect(() => buildRow(noModel, { id: 1 }, ctx, () => undefined)).toThrow(
+    expect(() => buildRow(noModel, { id: 1 }, ctx, () => undefined, () => undefined)).toThrow(
       /must redirect every row/,
     );
   });

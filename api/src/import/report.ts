@@ -23,28 +23,43 @@ export function formatRunReport(report: RunReport): string {
   lines.push('');
 
   const width = Math.max(...report.tables.map((t) => t.source.length), 'source table'.length);
-  lines.push(`${'source table'.padEnd(width)}  ${'source'.padStart(7)}  ${'imported'.padStart(8)}  skipped`);
-  lines.push(`${'-'.repeat(width)}  ${'-'.repeat(7)}  ${'-'.repeat(8)}  -------`);
+  lines.push(
+    `${'source table'.padEnd(width)}  ${'source'.padStart(7)}  ${'imported'.padStart(8)}  ` +
+      `${'skipped'.padStart(7)}  nulled`,
+  );
+  lines.push(`${'-'.repeat(width)}  ${'-'.repeat(7)}  ${'-'.repeat(8)}  ${'-'.repeat(7)}  ------`);
 
   let sourceTotal = 0;
   let importedTotal = 0;
   let skippedTotal = 0;
+  let nulledTotal = 0;
+  const cell = (n: number, w: number): string => (n === 0 ? ''.padStart(w) : String(n).padStart(w));
 
   for (const table of report.tables) {
     const skipped = table.skipped.reduce((sum, s) => sum + s.count, 0);
+    const nulled = table.nulled.reduce((sum, s) => sum + s.count, 0);
     sourceTotal += table.sourceRows;
     importedTotal += table.imported;
     skippedTotal += skipped;
+    nulledTotal += nulled;
     lines.push(
       `${table.source.padEnd(width)}  ${String(table.sourceRows).padStart(7)}  ` +
-        `${String(table.imported).padStart(8)}  ${skipped === 0 ? '' : String(skipped)}`,
+        `${String(table.imported).padStart(8)}  ${cell(skipped, 7)}  ${cell(nulled, 6)}`,
     );
   }
 
-  lines.push(`${'-'.repeat(width)}  ${'-'.repeat(7)}  ${'-'.repeat(8)}  -------`);
+  lines.push(`${'-'.repeat(width)}  ${'-'.repeat(7)}  ${'-'.repeat(8)}  ${'-'.repeat(7)}  ------`);
   lines.push(
     `${'total'.padEnd(width)}  ${String(sourceTotal).padStart(7)}  ` +
-      `${String(importedTotal).padStart(8)}  ${skippedTotal === 0 ? '' : String(skippedTotal)}`,
+      `${String(importedTotal).padStart(8)}  ${cell(skippedTotal, 7)}  ${cell(nulledTotal, 6)}`,
+  );
+  // Said rather than left to be worked out: the two columns answer different
+  // questions, and only the first one has to close against the source.
+  lines.push('');
+  lines.push(
+    `imported + skipped = ${String(importedTotal + skippedTotal)}, against ` +
+      `${String(sourceTotal)} source row(s). "nulled" counts columns blanked on rows that ` +
+      'were imported, so it is not part of that sum.',
   );
 
   // Skipped rows, grouped by reason. REQ-IMPORT-01.4 asks for "any rows skipped
@@ -58,6 +73,19 @@ export function formatRunReport(report: RunReport): string {
     for (const table of withSkips) {
       for (const skip of table.skipped) {
         lines.push(`  ${String(skip.count).padStart(5)}  ${skip.reason}`);
+      }
+    }
+  }
+
+  // Kept out of the list above. These rows were imported; one of their columns
+  // was not, and reporting that as "not imported" overstates it.
+  const withNulls = report.tables.filter((t) => t.nulled.length > 0);
+  if (withNulls.length > 0) {
+    lines.push('');
+    lines.push('Columns blanked on rows that WERE imported, by reason:');
+    for (const table of withNulls) {
+      for (const entry of table.nulled) {
+        lines.push(`  ${String(entry.count).padStart(5)}  ${entry.reason}`);
       }
     }
   }

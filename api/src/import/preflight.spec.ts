@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import { EXCLUDED_TABLES, TABLE_PLANS } from './plan';
 import { expectedSourceColumns } from './plan-types';
@@ -189,5 +190,37 @@ describe('the import plan', () => {
     for (const entry of EXCLUDED_TABLES) {
       expect(entry.reason.length, entry.source).toBeGreaterThan(20);
     }
+  });
+
+  it('only remaps columns the target stores as an id', () => {
+    // A `fk` rule on a column that is not an id fails silently and
+    // destructively: the value is looked up in the id map, nothing matches, and
+    // a nullable rule writes NULL over real data without the run failing.
+    //
+    // `events.reservation_confirmed_by` is why this test exists. It is the name
+    // of whoever confirmed the booking, typed in -- VARCHAR(255) in v1 and
+    // String? in v2 -- and the plan declared it an FK to `users`. A dry run
+    // against the live community nulled it on 14 events and reported each one
+    // as a routine orphan.
+    const fieldTypes = new Map(
+      Prisma.dmmf.datamodel.models.map((model) => [
+        model.name,
+        new Map(model.fields.map((field) => [field.name, field.type])),
+      ]),
+    );
+    const wrong: string[] = [];
+
+    for (const plan of TABLE_PLANS) {
+      if (!plan.model) continue;
+      for (const [column, rule] of Object.entries(plan.columns)) {
+        if (rule.kind !== 'fk') continue;
+        const type = fieldTypes.get(plan.model)?.get(rule.field);
+        if (type !== undefined && type !== 'Int' && type !== 'BigInt') {
+          wrong.push(`${plan.source}.${column} -> ${plan.model}.${rule.field} is ${type}`);
+        }
+      }
+    }
+
+    expect(wrong).toEqual([]);
   });
 });

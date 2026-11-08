@@ -37,7 +37,16 @@ export interface TableResult {
   readonly source: string;
   readonly sourceRows: number;
   readonly imported: number;
+  /** Rows not written at all. These are what the count arithmetic closes on. */
   readonly skipped: { reason: string; count: number }[];
+  /**
+   * Columns blanked on rows that *were* written — a nullable foreign key whose
+   * target is not in the source. Counted apart from `skipped` because
+   * collapsing the two makes `imported + skipped` exceed the source row count
+   * and turns a clean import into a validation failure. They also read
+   * differently: a skip loses a row, a null loses one field of one.
+   */
+  readonly nulled: { reason: string; count: number }[];
 }
 
 export interface RunReport {
@@ -224,6 +233,10 @@ async function runTable(
   const recordSkip = (reason: string): void => {
     skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
   };
+  const nulled = new Map<string, number>();
+  const recordNulled = (reason: string): void => {
+    nulled.set(reason, (nulled.get(reason) ?? 0) + 1);
+  };
 
   // Read the whole table before writing any of it, so the write is one
   // transaction rather than one per batch. These tables are small -- 62
@@ -232,7 +245,7 @@ async function runTable(
   const rows = await source.readAll(plan.source, columns, plan.orderBy ?? 'id');
 
   const built = rows.flatMap((row) => {
-    const result = buildRow(plan, row, ctx, recordSkip);
+    const result = buildRow(plan, row, ctx, recordSkip, recordNulled);
     return result ? [{ sourceId: Number(row['id']), ...result }] : [];
   });
 
@@ -248,6 +261,7 @@ async function runTable(
       sourceRows,
       imported: built.length,
       skipped: [...skipped.entries()].map(([reason, count]) => ({ reason, count })),
+      nulled: [...nulled.entries()].map(([reason, count]) => ({ reason, count })),
     };
   }
 
@@ -287,6 +301,7 @@ async function runTable(
     sourceRows,
     imported: assigned.length,
     skipped: [...skipped.entries()].map(([reason, count]) => ({ reason, count })),
+    nulled: [...nulled.entries()].map(([reason, count]) => ({ reason, count })),
   };
 }
 
@@ -306,6 +321,7 @@ export function buildRow(
   row: Record<string, unknown>,
   ctx: TableContext,
   recordSkip: (reason: string) => void,
+  recordNulled: (reason: string) => void,
 ): { model: string; mapName: string; data: Record<string, unknown> } | undefined {
   const data: Record<string, unknown> = {};
 
@@ -338,7 +354,7 @@ export function buildRow(
         );
         return undefined;
       }
-      recordSkip(
+      recordNulled(
         `${plan.source}.${column} points at ${rule.table}#${String(raw)}, which was not ` +
           'imported; written as NULL',
       );

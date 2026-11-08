@@ -43,6 +43,11 @@ export async function validate(
   // 1: the arithmetic has to close. Every source row was either written or
   // skipped for a stated reason; a row that is neither is one the import lost
   // without noticing, which is the failure a count comparison exists to catch.
+  //
+  // `nulled` is deliberately not in this sum. A blanked nullable foreign key
+  // leaves the row written, so counting it here made a correct import of the
+  // live community fail: 32 events in, 32 written, 14 with a null coordinator.
+  // See TableResult.
   for (const table of report.tables) {
     const expected = table.imported;
     if (expected === 0) continue;

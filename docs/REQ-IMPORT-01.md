@@ -12,7 +12,9 @@ revising.
 
 ## What changed on implementation (2026-11-07)
 
-Four amendments, all from reading v1's code and schema rather than its docs.
+Five amendments. The first four came from reading v1's code and schema rather
+than its docs; the fifth came from the first dry run against the live
+community, which is the only thing that could have found it.
 The implementation is `api/src/import/` with the entry point
 `api/src/import-dinnerbears.ts`; `docs/CUTOVER_PLAN.md` has the invocation.
 
@@ -60,6 +62,24 @@ reads them — both ORMs carry reset and verification tokens as inline columns o
 `invites.guest_rsvp_id` imports as NULL because there was never a row to point
 at. The import's preflight asserts their *absence*, so that reading is checked
 against the real database rather than taken on trust.
+
+**5. Two bugs the dry run against live data found (2026-11-08).** Both were
+invisible to a fixture built from v1's schema, because both need real values
+to show themselves.
+
+`events.reservation_confirmed_by` is the *name* of whoever confirmed the
+booking, typed in — `VARCHAR(255)` in v1 and `String?` in v2 — and the plan
+declared it a foreign key to `users`. The import read "Charles Nottingham" as a
+user id, found no match, and wrote NULL. On the live community that silently
+blanked 14 of 32 events, each one reported as a routine orphaned key.
+`preflight.spec.ts` now holds every `fk` rule against the target field's type,
+so a remap of a non-id column fails the build rather than the data.
+
+Separately, a blanked nullable key was counted as a *skipped row*, so
+`imported + skipped` exceeded the source row count and validation would have
+failed a correct import — 32 events in, 32 written, 14 "skipped". The two are
+now counted and reported apart: a skip loses a row, a null loses one field of
+one, and only the first closes against the source count.
 
 **The definition of done's last bullet is moot**, for the reason the
 2026-10-14 correction already gives: there is no second source database. The

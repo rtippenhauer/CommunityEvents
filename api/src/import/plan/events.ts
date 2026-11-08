@@ -115,7 +115,10 @@ export const eventsPlan: TablePlan = {
     reservation_contact_name: copy('reservationContactName'),
     reservation_contact_email: copy('reservationContactEmail'),
     reservation_confirmed: copy('reservationConfirmed'),
-    reservation_confirmed_by: fk('reservationConfirmedBy', 'users', false),
+    // A typed-in name, not a user id: VARCHAR(255) in v1 (migration
+    // 1750300001000) and String? in v2. Importing it as an FK read
+    // "Charles Nottingham" as an id and wrote NULL over it.
+    reservation_confirmed_by: copy('reservationConfirmedBy'),
     reservation_confirmed_at: copy('reservationConfirmedAt'),
     reservation_confirmed_note: copy('reservationConfirmedNote'),
     reservation_seats_email_sent: copy('reservationSeatsEmailSent'),

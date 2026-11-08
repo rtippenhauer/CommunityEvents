@@ -191,6 +191,17 @@ describe('DinnerBears import (e2e)', () => {
       created_at: '2024-02-15 00:00:00',
     });
 
+    // A nullable foreign key pointing at a user that is not in the source --
+    // v1 hard-deleted accounts and left the audit trail behind. The row is
+    // still imported; only the column is blanked. See the dry-run test below.
+    await source.insert('audit_log', {
+      user_id: 999_999,
+      action: 'user.delete',
+      entity_type: 'user',
+      entity_id: 999_999,
+      created_at: '2024-02-16 00:00:00',
+    });
+
     locationId = await source.insert('locations', {
       name: 'The Test Kitchen',
       address: '1 Main St',
@@ -577,6 +588,34 @@ describe('DinnerBears import (e2e)', () => {
           count: 1,
         },
       ]);
+    });
+
+    it('counts a blanked nullable key apart from a skipped row', async () => {
+      // These were one number once, and the live community showed why they
+      // cannot be: 32 events in, 32 written, 14 with an orphaned reservation
+      // coordinator. `imported + skipped` came to 46 against 32 source rows and
+      // validation failed a correct import.
+      const report = await importOnce({ dryRun: true });
+      const audit = report.tables.find((t) => t.source === 'audit_log');
+
+      expect(audit).toMatchObject({ sourceRows: 2, imported: 2, skipped: [] });
+      expect(audit?.nulled).toEqual([
+        {
+          reason:
+            'audit_log.user_id points at users#999999, which was not imported; written as NULL',
+          count: 1,
+        },
+      ]);
+    });
+
+    it('closes the arithmetic on every table', async () => {
+      // The property validation asserts. Stated here as well, because the
+      // failure it catches is an import that lost rows without saying so.
+      const report = await importOnce({ dryRun: true });
+      for (const table of report.tables) {
+        const skipped = table.skipped.reduce((sum, s) => sum + s.count, 0);
+        expect(table.imported + skipped, table.source).toBe(table.sourceRows);
+      }
     });
   });
 
