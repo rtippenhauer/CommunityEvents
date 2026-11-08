@@ -29,7 +29,7 @@ No `synchronize: true`. No manual schema changes.
 | `events` | 4 | Weekly dinner events |
 | `event_rsvps` | 4 | Member RSVPs |
 | `event_guest_links` | 4 | Shareable/email guest invite links |
-| `event_guest_rsvps` | 5.5 | Guest RSVPs (no account required) |
+| `event_guest_rsvps` | 5.5 | **Never created** — see its section (`v2-25`) |
 | `email_queue` | 5 | Outbound email queue |
 | `email_provider_config` | 5 | Brevo/Gmail toggle and counters |
 | `email_suppressions` | 5 | Post-deletion email suppression hashes |
@@ -39,8 +39,8 @@ No `synchronize: true`. No manual schema changes.
 | `feedback_upvotes` | 6 | Member upvotes on feedback tickets |
 | `releases` | 6 | Published release/changelog entries |
 | `release_feedback` | 6 | Join: releases ↔ feedback tickets |
-| `password_reset_tokens` | 11 | Password reset flow (token table) |
-| `email_verification_tokens` | 11 | Email verification for new accounts |
+| `password_reset_tokens` | 11 | **Never created** — inline columns on `users` instead |
+| `email_verification_tokens` | 11 | **Never created** — inline columns on `users` instead |
 | `push_subscriptions` | 7 | Web Push VAPID subscriptions |
 | `notifications` | 7 | In-app notification inbox |
 | `announcements` | 7 | Admin/moderator announcements |
@@ -276,7 +276,16 @@ and its group picker became a city picker.
 
 ## password_reset_tokens
 
-Phase 11. Token-per-row model (alternative to inline columns on users — both exist; these are the legacy rows).
+> **This table does not exist** (established in `v2-25`, 2026-11-07). No v1
+> migration ever created it, no v1 code reads it, and there is no Prisma model
+> for it here — so it is in neither database. The section is kept because the
+> shape below is what was once intended, not what is deployed.
+> `api/prisma/schema.prisma` is the source of truth; the import's preflight
+> asserts this table's **absence** rather than trusting this doc.
+
+Phase 11. Token-per-row model, intended as an alternative to the inline
+columns on `users`. Only the inline columns were ever built, and they are what
+both v1 and v2 use.
 
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
@@ -291,7 +300,14 @@ created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 
 ## email_verification_tokens
 
-Phase 11.
+> **This table does not exist** (established in `v2-25`, 2026-11-07). No v1
+> migration ever created it, no v1 code reads it, and there is no Prisma model
+> for it here — so it is in neither database. The section is kept because the
+> shape below is what was once intended, not what is deployed.
+> `api/prisma/schema.prisma` is the source of truth; the import's preflight
+> asserts this table's **absence** rather than trusting this doc.
+
+Phase 11. Same inline-column story as `password_reset_tokens`.
 
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
@@ -490,7 +506,18 @@ INDEX idx_token (token)
 
 ## event_guest_rsvps
 
-No-account RSVPs (used by public links and guest invite links).
+> **This table does not exist** (established in `v2-25`, 2026-11-07). No v1
+> migration ever created it, no v1 code reads it, and there is no Prisma model
+> for it here — so it is in neither database. The section is kept because the
+> shape below is what was once intended, not what is deployed.
+> `api/prisma/schema.prisma` is the source of truth; the import's preflight
+> asserts this table's **absence** rather than trusting this doc.
+
+No-account RSVPs, intended for public links and guest invite links. v2 kept
+`invites.guest_rsvp_id`, the `guest_rsvp` invite flavour and
+`tmpl_guest_rsvp_confirmation`, but never the table — so the import writes that
+column as NULL. Guest *attendance* is unaffected: it lives on
+`event_guest_links.attended`.
 
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
@@ -1072,9 +1099,9 @@ these keys — see `LEGAL_CONFIG_KEYS` / `SITE_SETTING_KEYS` in
 - `email_suppressions` hash: `SHA-256(SECRET_SUPPRESSION_SALT + email.toLowerCase())`
   — salt stored in `.env` as `EMAIL_SUPPRESSION_SALT`
 - Guest RSVP links expire at event datetime, not a fixed duration
-- `event_guest_links` and `event_guest_rsvps` are separate tables —
-  a link may be generated but never used; they join only when
-  `guest_rsvp_id` is populated on the link record
+- `event_guest_links` was intended to join `event_guest_rsvps` through
+  `guest_rsvp_id`, but that table was never created (`v2-25`), so the column is
+  always NULL. A guest's attendance lives on `event_guest_links.attended`.
 - Campaign invite lineage: `users.invite_source = 'facebook_group'`,
   `users.invite_source_name` (free text; `facebook_group_config` went in `v2-24`)
 - Single-use member invites: check `bound_to_email` matches registering
@@ -1132,6 +1159,44 @@ JSON key the frontend consumes.**
   `cutoffTimeLabel` rendered `12:NaN AM`. The existing wire-format tests missed
   it because every one created a row and then *fetched* it, asserting the GET
   and never the write response a client actually stores.
+
+### The runtime DMMF is not the schema (found in `v2-25`)
+
+`Prisma.dmmf.datamodel.models[].fields[]` carries **`name`, `kind`, `type` and
+`dbName` — and nothing else.** In particular `isRequired` and
+`hasDefaultValue` are gone in Prisma 7, so the generated client cannot answer
+"may this column hold NULL" or "does it have a default". Code that needs either
+reads `information_schema` from the database it is writing to;
+`api/src/import/target-schema.ts` is the worked example, and it explains why
+parsing `schema.prisma` would be a second source of truth that drifts.
+
+What it *is* good for is the type (for value coercion) and `dbName` (to map a
+Prisma field back to its column), which is how that file bridges the two.
+
+### Writing NULL to a NOT NULL column blames the wrong field
+
+Prisma does not reject `null` for a required field directly. It falls back from
+the **unchecked** create input to the **checked** one, and then reports *that*
+input's first complaint — which is usually a missing nested relation somewhere
+else in the payload. A null `invites.expires_at` surfaces as
+`Argument 'creator' is missing`, and a null `users.has_membership` as
+`Unknown argument 'cityId'. Did you mean 'city'?`.
+
+Both name a different field than the one at fault, and both read as a bug in
+how the caller writes rows rather than as one bad value. If you see Prisma ask
+for a nested relation on a payload that is passing plain foreign-key scalars,
+look for a `null` on a NOT NULL column first.
+
+### MySQL booleans arrive as numbers
+
+MySQL has no boolean type, so a `Boolean` field is `TINYINT(1)` underneath and
+a driver reading that table directly (mysql2, in the v1 import) hands back `0`
+or `1`. Prisma's validator rejects an Int for a Boolean field.
+
+**Coerce on the target field's declared type, never on the value's shape.** A
+`TINYINT(1)` flag and a genuinely small integer are the same wire type, so a
+rule like "a 0 or a 1 means a boolean" turns `event_rsvps.additional_guests = 1`
+into `true`.
 
 ### Hidden columns
 
