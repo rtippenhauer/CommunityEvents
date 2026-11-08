@@ -1,3 +1,4 @@
+import { toDateColumn, toTimeColumn } from '../../common/utils/prisma-date.util';
 import { copy, custom, fk, type TablePlan } from '../plan-types';
 
 /**
@@ -64,7 +65,8 @@ export const locationPhotosPlan: TablePlan = {
     file_name: copy('fileName'),
     mime_type: copy('mimeType'),
     sort_order: copy('sortOrder'),
-    uploaded_by: fk('uploadedBy', 'users', false),
+    // NOT NULL in both schemas: a photo always names who uploaded it.
+    uploaded_by: fk('uploadedBy', 'users', true),
     created_at: copy('createdAt'),
   },
 };
@@ -95,12 +97,13 @@ export const eventsPlan: TablePlan = {
     description: copy('description'),
     additional_info: copy('additionalInfo'),
 
-    // DATE and TIME columns, and the one pair in this import where Prisma 7's
-    // conversion rules bite — see "Prisma 7 mechanics" in docs/DATABASE_SCHEMA.md.
-    // Read from the source as strings and written as strings for that reason;
-    // round-tripping them through a JS Date applies an offset twice.
-    event_date: custom('DATE: carried as a string, never through a JS Date.'),
-    event_time: custom('TIME: carried as a string, never through a JS Date.'),
+    // The one pair in this import where Prisma 7's conversion rules bite — see
+    // "Prisma 7 mechanics" in docs/DATABASE_SCHEMA.md. Both are read from the
+    // source as strings (`dateStrings: ['DATE']`, and mysql2 returns TIME as a
+    // string already) and anchored to UTC on the way in by the same two helpers
+    // the rest of the codebase writes these columns with.
+    event_date: custom('DATE: string -> UTC-anchored Date via toDateColumn.'),
+    event_time: custom('TIME: string -> 1970-01-01 Date via toTimeColumn.'),
 
     status: copy('status'),
     is_secret: copy('isSecret'),
@@ -117,15 +120,21 @@ export const eventsPlan: TablePlan = {
     reservation_confirmed_note: copy('reservationConfirmedNote'),
     reservation_seats_email_sent: copy('reservationSeatsEmailSent'),
     reservation_confirm_token: copy('reservationConfirmToken'),
-    created_by: fk('createdById', 'users', false),
+    // NOT NULL in both schemas: a dinner always names its author.
+    created_by: fk('createdById', 'users', true),
     created_at: copy('createdAt'),
     updated_at: copy('updatedAt'),
   },
   transform: (row) => ({
     action: 'write',
     data: {
-      eventDate: row['event_date'],
-      eventTime: row['event_time'],
+      // Anchored to UTC rather than parsed loosely, so they round-trip through
+      // `toDateString`/`toTimeString` unchanged. Parsing '2026-03-14' without
+      // the explicit Z applies the host's offset, which moves the dinner to the
+      // previous day in any negative-offset timezone — the exact bug
+      // `toEventDateStrings` exists to stop on the read side.
+      eventDate: toDateColumn(String(row['event_date'])),
+      eventTime: toTimeColumn(String(row['event_time'])),
     },
   }),
   note: 'After locations and users; before every RSVP, comment and rating.',

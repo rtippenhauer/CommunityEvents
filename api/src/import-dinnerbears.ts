@@ -6,7 +6,12 @@
  *   TENANT_SLUG=dinnerbears \
  *   TENANT_DOMAIN=www.dinnerbears.com \
  *   ALLOW_IMPORT=<target database name> \
- *   npm run import:dinnerbears -- --dry-run
+ *   node dist/import-dinnerbears.js --dry-run
+ *
+ * Run from the compiled output, as `bootstrap.ts` and `provision-tenant.ts`
+ * are: that is what the container has, and `npm run import:dinnerbears` (the
+ * ts-node equivalent) currently fails on Node 24 for every script in this
+ * family, not just this one.
  *
  * **Run it with `--dry-run` first, against a copy, and read the counts.** The
  * dry run reads every row, resolves every foreign key and reports what it would

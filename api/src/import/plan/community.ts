@@ -106,7 +106,8 @@ export const announcementsPlan: TablePlan = {
     city_id: fk('cityId', 'cities', false),
     status: copy('status'),
     published_at: copy('publishedAt'),
-    created_by: fk('createdBy', 'users', false),
+    // NOT NULL in both schemas: an announcement always names its author.
+    created_by: fk('createdBy', 'users', true),
     created_at: copy('createdAt'),
     updated_at: copy('updatedAt'),
   },

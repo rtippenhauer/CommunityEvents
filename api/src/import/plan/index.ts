@@ -227,6 +227,44 @@ export const EXCLUDED_TABLES: readonly ExcludedTable[] = [
  */
 export const BACKFILL_PASSES: readonly BackfillPass[] = [
   {
+    name: 'cities.default-marker',
+    describe: 'Mark the default city, which v1 had no column for',
+    run: async (ctx) => {
+      // v1 answered "which city am I in" with the hostname, so it has no
+      // default-city column. v2 needs one: `resolveDefaultCityId` is the single
+      // answer to where a new member lands and where the city backfill would
+      // file anything null.
+      //
+      // The **lowest source id** wins, which is Cincinnati — matching v1's own
+      // fallback (the first city) and Rob's 2026-10-14 call that new members
+      // default to Cincinnati. Deliberately not the lowest *name*:
+      // `resolveDefaultCityId` is explicit that a rename must not move the
+      // default, and "Cincinnati" only happens to sort first today.
+      //
+      // Written as `true`, never `false` — the `root_marker` pattern, where the
+      // unique index on (tenant_id, is_default) is what makes "at most one
+      // default per community" a database constraint rather than a convention.
+      // Every other city keeps the NULL it was imported with, and MySQL permits
+      // repeated NULLs in a unique index.
+      const rows = await ctx.fetch('cities', ['id']);
+      const lowest = rows
+        .map((row) => Number(row['id']))
+        .sort((a, b) => a - b)
+        .find((id) => ctx.ids.resolve('cities', id, 'cities.default-marker') !== undefined);
+
+      if (lowest === undefined) {
+        ctx.note('No city was imported, so none could be marked default.');
+        return 0;
+      }
+      if (ctx.dryRun) return 1;
+
+      const newId = ctx.ids.resolve('cities', lowest, 'cities.default-marker');
+      await ctx.update('cities', newId as number, { isDefault: true });
+      return 1;
+    },
+  },
+
+  {
     name: 'users.invite-lineage',
     describe: "Invite lineage: who invited whom, and which invite they redeemed",
     run: async (ctx) => {

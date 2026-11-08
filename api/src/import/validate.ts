@@ -147,7 +147,11 @@ export async function validate(
   // registration is invite-gated, so nobody can let themselves in. The import
   // satisfies that by bringing v1's admins rather than by seeding one, which
   // means it is worth checking that it actually did.
-  const admins = await runWithTenant(tenantId, () =>
+  const admins = await runWithTenant(tenantId, async () =>
+    // Awaited *inside* the callback. A Prisma promise is lazy: returning it
+    // unawaited builds the query in context and runs it outside, where there is
+    // no tenant -- so it reads whatever the ambient fallback is rather than this
+    // community, and reports an empty one as having no admin.
     prisma.users.findMany({ select: { id: true, email: true, role: true, isServiceAccount: true } }),
   );
   const realAdmins = admins.filter((u) => !u.isServiceAccount && hasAdminRights(u.role));
@@ -171,7 +175,7 @@ export async function validate(
   }
 
   // Exactly one default city, which is what `resolveDefaultCityId` relies on.
-  const defaults = await runWithTenant(tenantId, () =>
+  const defaults = await runWithTenant(tenantId, async () =>
     prisma.cities.count({ where: { isDefault: true } }),
   );
   if (defaults !== 1) {
@@ -187,7 +191,7 @@ export async function validate(
   // member-visible: 26 of 62 live iCal subscriptions depend on it still
   // identifying the same person. Compared against the source rather than merely
   // counted as non-null, by the caller that holds the source connection.
-  const withToken = await runWithTenant(tenantId, () =>
+  const withToken = await runWithTenant(tenantId, async () =>
     prisma.users.count({ where: { calendarToken: { not: null } } }),
   );
   findings.push({
@@ -200,8 +204,10 @@ export async function validate(
 
   // Nothing should have landed in the root tenant or any other community. This
   // is the same question as 3 from the other side, and it is cheap.
-  const stray = await runUnscoped('checking the import wrote nothing outside its tenant', () =>
-    prisma.users.count({ where: { tenantId: { not: tenantId }, calendarToken: { not: null } } }),
+  const stray = await runUnscoped(
+    'checking the import wrote nothing outside its tenant',
+    async () =>
+      prisma.users.count({ where: { tenantId: { not: tenantId }, calendarToken: { not: null } } }),
   );
   if (stray > 0) {
     findings.push({

@@ -453,8 +453,14 @@ assumed go-live was distant. It is not any more.
 
 #### How it is run
 
-`api/src/import-dinnerbears.ts`, via `npm run import:dinnerbears`. Four
-variables, all passed inline on the command rather than written to any `.env` —
+`api/src/import-dinnerbears.ts`, run from the compiled output as
+`node dist/import-dinnerbears.js` — the same way `bootstrap.js` and
+`provision-tenant.js` are run, and what the container actually has.
+`npm run import:dinnerbears` is the ts-node equivalent and currently fails on
+Node 24, as every script in that family does; that is a pre-existing local
+tooling problem, not something specific to the import.
+
+Four variables, all passed inline on the command rather than written to any `.env` —
 they are arguments to a one-time operation, not configuration, which is why
 `env-classification.ts` has them as `install`:
 

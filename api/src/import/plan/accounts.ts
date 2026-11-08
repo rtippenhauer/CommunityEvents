@@ -31,24 +31,12 @@ export const citiesPlan: TablePlan = {
     is_active: copy('isActive'),
     created_at: copy('createdAt'),
   },
-  transform: (_row, ctx) => {
-    // `is_default` has no source column: v1 had no notion of a default city, it
-    // had a hostname. v2 needs one, because `resolveDefaultCityId` is the single
-    // answer to where a new member lands and where the backfill files
-    // everything.
-    //
-    // The lowest source id wins, which is Cincinnati — matching both v1's own
-    // fallback (first city) and Rob's 2026-10-14 call that new members default
-    // to Cincinnati. Deliberately **not** the lowest name: `resolveDefaultCityId`
-    // is explicit that a rename must not move the default, and "Cincinnati"
-    // only happens to sort first.
-    //
-    // Written as `true` or NULL and never `false` — it is the `root_marker`
-    // pattern, where the unique index on (tenant_id, is_default) is what makes
-    // "at most one default" a database constraint.
-    const isFirst = ctx.ids.size('cities') === 0;
-    return { action: 'write', data: { isDefault: isFirst ? true : null } };
-  },
+  // `is_default` has no source column — v1 had no notion of a default city, it
+  // had a hostname — and it is written by the `cities.default-marker` backfill
+  // pass rather than here. Not a style choice: ids are merged into the map only
+  // once a table's transaction commits, so a transform cannot ask "am I the
+  // first row of this table" and get a true answer. Asking anyway marked every
+  // city default and failed the unique index, which is the index doing its job.
   note: 'First: users, locations, events, announcements and invites all carry a city.',
 };
 
@@ -327,7 +315,10 @@ export const invitesPlan: TablePlan = {
     id: custom('Source id is recorded in the id map, never written.'),
     token: copy('token'),
     type: copy('type'),
-    created_by: fk('createdBy', 'users', false),
+    // Required in both schemas: an invite always names who created it. So an
+    // invite whose creator was not imported is skipped and reported rather than
+    // written with a null, which the column would refuse anyway.
+    created_by: fk('createdBy', 'users', true),
     city_id: fk('cityId', 'cities', false),
     event_id: fk('eventId', 'events', false),
     invite_flavor: copy('inviteFlavor'),

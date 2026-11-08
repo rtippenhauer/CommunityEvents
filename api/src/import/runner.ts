@@ -1,10 +1,12 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { runUnscoped, runWithTenant } from '../common/tenant/tenant-store';
+import { toDateColumn, toTimeColumn } from '../common/utils/prisma-date.util';
 import { IdMap } from './id-map';
 import { BACKFILL_PASSES, TABLE_PLANS } from './plan';
 import type { RowOutcome, TablePlan } from './plan-types';
 import { expectedSourceColumns } from './plan-types';
 import type { SourceReader } from './source-reader';
+import { loadTargetSchema, type TargetSchema } from './target-schema';
 
 /**
  * The write side of the import (REQ-IMPORT-01.2, 01.4).
@@ -79,7 +81,7 @@ export async function createTenant(
   // same check — running twice against the same target must be refused rather
   // than silently duplicating, and the tenant row is what makes "the same
   // target" decidable.
-  const existing = await runUnscoped('checking whether the import target already exists', () =>
+  const existing = await runUnscoped('checking whether the import target already exists', async () =>
     prisma.tenants.findFirst({
       where: { OR: [{ domain: options.domain }, { slug: options.slug }] },
     }),
@@ -94,7 +96,7 @@ export async function createTenant(
     );
   }
 
-  const root = await runUnscoped('checking the deployment has a root tenant', () =>
+  const root = await runUnscoped('checking the deployment has a root tenant', async () =>
     prisma.tenants.findFirst({ where: { rootMarker: true } }),
   );
   if (!root) {
@@ -111,7 +113,7 @@ export async function createTenant(
     return { tenantId: 0 };
   }
 
-  const tenant = await runUnscoped('creating the imported community', () =>
+  const tenant = await runUnscoped('creating the imported community', async () =>
     prisma.tenants.create({
       data: {
         slug: options.slug,
@@ -134,6 +136,12 @@ export async function runImport(
 ): Promise<RunReport> {
   const { tenantId } = await createTenant(prisma, options);
 
+  // Read once, before the first table: which target columns are NOT NULL with a
+  // default, so a NULL arriving from v1 falls to the default instead of being
+  // written. See target-schema.ts for why this is a query rather than a DMMF
+  // lookup.
+  const target = await loadTargetSchema(prisma);
+
   const ids = new IdMap();
   const notes: string[] = [];
   const note = (message: string): void => {
@@ -142,7 +150,7 @@ export async function runImport(
   const tables: TableResult[] = [];
 
   for (const plan of TABLE_PLANS) {
-    tables.push(await runTable(prisma, source, plan, { ...options, tenantId, ids, note }));
+    tables.push(await runTable(prisma, source, plan, { ...options, tenantId, ids, note, target }));
   }
 
   const backfills: RunReport['backfills'] = [];
@@ -193,6 +201,8 @@ interface TableContext extends RunOptions {
   readonly tenantId: number;
   readonly ids: IdMap;
   readonly note: (message: string) => void;
+  /** What the target columns permit, for the NULL-to-default decision. */
+  readonly target: TargetSchema;
 }
 
 async function runTable(
@@ -249,7 +259,7 @@ async function runTable(
   // once the transaction commits. A rolled-back table that had already
   // populated the map would leave every later table resolving foreign keys to
   // rows that do not exist.
-  const assigned = await runWithTenant(ctx.tenantId, () =>
+  const assigned = await runWithTenant(ctx.tenantId, async () =>
     prisma.$transaction(
       async (tx) => {
         const out: { mapName: string; sourceId: number; newId: number }[] = [];
@@ -358,14 +368,159 @@ export function buildRow(
     );
   }
 
-  return {
-    model,
-    mapName: outcome?.idMapName ?? model,
-    // A redirect replaces the column rules rather than merging over them: the
-    // rules name fields on the plan's default model, and most of them are not
-    // fields on the one being redirected to. See RowOutcome.
-    data: outcome?.model ? (outcome.data ?? {}) : { ...data, ...(outcome?.data ?? {}) },
-  };
+  // A redirect replaces the column rules rather than merging over them: the
+  // rules name fields on the plan's default model, and most of them are not
+  // fields on the one being redirected to. See RowOutcome.
+  const merged = outcome?.model ? (outcome.data ?? {}) : { ...data, ...(outcome?.data ?? {}) };
+
+  // Coerced after the merge, not before, so a transform's output is covered by
+  // the same rules. Several transforms hand back a raw source value —
+  // `isPrivate: row['is_private']` is a MySQL TINYINT(1), which is a number —
+  // and coercing only the `copy` rules would leave exactly those uncovered.
+  const coerced: Record<string, unknown> = {};
+  for (const [field, value] of Object.entries(merged)) {
+    const next = coerceToField(model, field, value, ctx.target);
+    if (next === OMIT_FIELD) continue;
+
+    // A NULL for a column that is NOT NULL and has no default. The row cannot
+    // be written, and the useful thing is to say which column — Prisma's own
+    // error for this is actively misleading: it rejects the unchecked create
+    // input and reports the *checked* one's first complaint, which is a missing
+    // nested relation several fields away from the actual problem. Chasing
+    // `Argument 'creator' is missing` when the real answer was a null
+    // `expires_at` is exactly the kind of time this script cannot afford to
+    // waste on cutover day.
+    const column = ctx.target.get(model)?.get(field);
+    if (next === null && column && !column.nullable && !column.hasDefault) {
+      recordSkip(
+        `${plan.source}: ${model}.${field} is NOT NULL with no default, and the source row ` +
+          'has no value for it',
+      );
+      return undefined;
+    }
+
+    coerced[field] = next;
+  }
+
+  return { model, mapName: outcome?.idMapName ?? model, data: coerced };
+}
+
+/**
+ * Every model's scalar field types, from the generated client.
+ *
+ * Built once. The alternative to consulting it is coercing on the shape of the
+ * *source* value, which cannot be done correctly: MySQL's `TINYINT(1)` and a
+ * genuine small integer are the same wire type, so "a 0 or a 1 means a boolean"
+ * turns `additional_guests = 1` into `true`.
+ */
+/**
+ * Every model's scalar field types, from the generated client.
+ *
+ * Only the *type* comes from here. Nullability does not: Prisma 7's runtime
+ * DMMF carries `name`, `kind`, `type` and `dbName` and nothing else, so
+ * `TargetSchema` reads that from the target database — see `target-schema.ts`.
+ */
+const FIELD_TYPES: Map<string, Map<string, string>> = new Map(
+  Prisma.dmmf.datamodel.models.map((model) => [
+    model.name,
+    new Map(model.fields.filter((f) => f.kind !== 'object').map((f) => [f.name, f.type])),
+  ]),
+);
+
+/**
+ * Returned instead of a value when the field should be left out of the payload
+ * entirely, so Prisma applies its own default.
+ *
+ * A distinct sentinel rather than `undefined`, because `undefined` is a value a
+ * source row can legitimately produce and the two mean opposite things to
+ * Prisma: `{ field: undefined }` and omitting `field` are the same, but
+ * confusing "omit" with "the source held nothing" loses the distinction between
+ * a column that defaults and one that is genuinely nullable.
+ */
+export const OMIT_FIELD = Symbol('omit');
+
+/**
+ * Converts a source value to what Prisma expects for the column it is going
+ * into.
+ *
+ * **The boolean case is why this exists**, and it is a bug that would have
+ * reached the real run: MySQL has no boolean type, so v1 stores every flag as
+ * `TINYINT(1)` and mysql2 returns `0` or `1`. Prisma's validator rejects an Int
+ * for a Boolean field outright — `Argument 'isActive': Invalid value provided.
+ * Expected Boolean, provided Int` — so the first table with a flag on it fails,
+ * which on this plan is `cities`, the very first table.
+ *
+ * Driven by the *target* field's declared type rather than by the source
+ * value's shape, because the two are indistinguishable at the wire level: a
+ * `TINYINT(1)` flag and a small count both arrive as a number, and a rule like
+ * "a 0 or a 1 is a boolean" would turn `additional_guests = 1` into `true`.
+ *
+ * Anything else is passed through untouched. In particular `Decimal` stays the
+ * string mysql2 produces — which is correct, and deliberately not parsed
+ * through a float: a venue's latitude is exactly the kind of value that loses
+ * its last digit to binary floating point.
+ */
+export function coerceToField(
+  model: string | null,
+  field: string,
+  value: unknown,
+  target?: TargetSchema,
+): unknown {
+  if (value === null || value === undefined) {
+    // A NULL arriving for a column v2 declares NOT NULL. Writing it fails, and
+    // not in an obvious way: Prisma rejects `null` for a required field by
+    // falling back to the *checked* create input, whose error then names some
+    // unrelated foreign-key scalar as the unknown argument. The column has a
+    // default, so leaving it out is both correct and what the default is for.
+    //
+    // v1's own columns are NOT NULL wherever v2's are, so this does not fire on
+    // the real database — it is what stops a schema difference becoming a
+    // confusing failure pointing at the wrong column.
+    const column = model ? target?.get(model)?.get(field) : undefined;
+    if (column && !column.nullable && column.hasDefault) return OMIT_FIELD;
+    return null;
+  }
+
+  const type = model ? FIELD_TYPES.get(model)?.get(field) : undefined;
+
+  if (type === 'Boolean') {
+    // Buffer is included because MySQL's BIT columns arrive that way, and v1
+    // has used both BIT and TINYINT(1) for flags over its life.
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'bigint') return value !== 0n;
+    if (Buffer.isBuffer(value)) return value.some((byte) => byte !== 0);
+    if (typeof value === 'string') return value !== '' && value !== '0';
+    return Boolean(value);
+  }
+
+  if (type === 'Int' && typeof value === 'string') {
+    // A count that came back as a string, which mysql2 does for anything it
+    // treats as a big number. Prisma wants an Int.
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+
+  if (type === 'BigInt' && typeof value === 'string') return BigInt(value);
+
+  if (type === 'DateTime' && typeof value === 'string') {
+    // A bare DATE or TIME column. mysql2 hands both back as strings — DATE
+    // because the reader asks it to (a date with no timezone must not become a
+    // Date and be converted twice), TIME because the driver always does. Prisma
+    // wants a DateTime and rejects either outright: `premature end of input.
+    // Expected ISO-8601 DateTime`.
+    //
+    // Both are anchored to UTC by the same two helpers the rest of the codebase
+    // writes these columns with, so they round-trip through
+    // `toDateString`/`toTimeString` unchanged. Parsing without the explicit Z
+    // applies the host's offset, which moves a date to the previous day in any
+    // negative-offset timezone.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return toDateColumn(value);
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(value)) return toTimeColumn(value);
+    return new Date(value);
+  }
+
+  return value;
 }
 
 /**

@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
+import { toDateString, toTimeString } from '../common/utils/prisma-date.util';
 import { IdMap, IdMapSequencingError } from './id-map';
-import { TABLE_PLANS } from './plan';
+import { BACKFILL_PASSES, TABLE_PLANS } from './plan';
 import { copy, custom, fk, type TablePlan } from './plan-types';
 import { buildRow } from './runner';
 
@@ -25,7 +26,14 @@ function contextWith(maps: Record<string, Record<number, number>>) {
       withEmailCredentials: false,
       tenantId: 9,
       ids,
-      note: (m: string) => notes.push(m),
+      note: (m: string) => {
+        notes.push(m);
+      },
+      // Empty: with no column metadata, a NULL is written as NULL rather than
+      // omitted, which is what these tests assert on. The NULL-to-default
+      // behaviour is covered against the real schema in the e2e spec, since it
+      // is a fact about the database rather than about this logic.
+      target: new Map(),
     },
   };
 }
@@ -345,20 +353,83 @@ describe('the plan against schema.prisma', () => {
 });
 
 describe('the city plan', () => {
-  it('marks the first city default and leaves the rest null, never false', () => {
-    // The `root_marker` pattern: the unique index on (tenant_id, is_default) is
-    // what makes "at most one default" a database constraint, and writing
-    // `false` would make that value unique per community too.
+  it('writes no default marker while importing rows', () => {
+    // Deliberately not a transform. Ids are merged into the map only once a
+    // table's transaction commits, so a transform cannot ask "am I the first
+    // row of this table" and get a true answer — asking anyway marked every
+    // city default and failed the unique index. It is a backfill pass instead.
     const plan = TABLE_PLANS.find((p) => p.source === 'cities');
-    const { ctx, ids } = contextWith({});
-    ids.open('cities');
 
-    const first = plan?.transform?.({ id: 1, name: 'Cincinnati' }, ctx);
-    expect(first).toEqual({ action: 'write', data: { isDefault: true } });
+    expect(plan?.transform).toBeUndefined();
+  });
 
-    ids.record('cities', 1, 500);
-    const second = plan?.transform?.({ id: 2, name: 'Dayton' }, ctx);
-    expect(second).toEqual({ action: 'write', data: { isDefault: null } });
+  it('drops the subdomain with a reason rather than silently', () => {
+    const plan = TABLE_PLANS.find((p) => p.source === 'cities');
+    const rule = plan?.columns['subdomain'];
+
+    expect(rule?.kind).toBe('drop');
+    expect(rule && 'reason' in rule ? rule.reason : '').toMatch(/a city is a row, not a host/);
+  });
+});
+
+describe('the default-city pass', () => {
+  const pass = BACKFILL_PASSES.find((p) => p.name === 'cities.default-marker');
+
+  /** A backfill context over a fixed set of source cities. */
+  function passContext(sourceIds: number[], mapped: Record<number, number>) {
+    const { ids, notes, ctx } = contextWith({ cities: mapped });
+    const updates: { model: string; id: number; data: Record<string, unknown> }[] = [];
+    return {
+      notes,
+      updates,
+      ctx: {
+        ...ctx,
+        ids,
+        dryRun: false,
+        fetch: async () => sourceIds.map((id) => ({ id })),
+        update: async (model: string, id: number, data: Record<string, unknown>) => {
+          updates.push({ model, id, data });
+        },
+        create: async () => undefined,
+        upsert: async () => undefined,
+      },
+    };
+  }
+
+  it('marks the lowest source id, not the lowest name', async () => {
+    // resolveDefaultCityId is explicit that a rename must not move the default.
+    const { ctx, updates } = passContext([2, 1], { 1: 500, 2: 501 });
+
+    const count = await pass?.run(ctx);
+
+    expect(count).toBe(1);
+    expect(updates).toEqual([{ model: 'cities', id: 500, data: { isDefault: true } }]);
+  });
+
+  it('writes true, never false, so the unique index means what it says', async () => {
+    const { ctx, updates } = passContext([1, 2], { 1: 500, 2: 501 });
+    await pass?.run(ctx);
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0].data.isDefault).toBe(true);
+  });
+
+  it('skips a lowest-id city that was not imported', async () => {
+    // An orphan at the front of the list must not leave the community with no
+    // default at all.
+    const { ctx, updates } = passContext([1, 2], { 2: 501 });
+    await pass?.run(ctx);
+
+    expect(updates).toEqual([{ model: 'cities', id: 501, data: { isDefault: true } }]);
+  });
+
+  it('reports rather than throwing when no city was imported', async () => {
+    const { ctx, updates, notes } = passContext([1], {});
+    const count = await pass?.run(ctx);
+
+    expect(count).toBe(0);
+    expect(updates).toEqual([]);
+    expect(notes[0]).toContain('none could be marked default');
   });
 });
 
@@ -583,16 +654,20 @@ describe('the content report plans', () => {
 });
 
 describe('the events plan', () => {
-  it('carries event_date and event_time as strings', () => {
-    // A bare DATE has no timezone, so parsing it into a Date and letting Prisma
-    // convert it again shifts the dinner by a day either side of midnight.
+  it('anchors the date and time to UTC so they round-trip unchanged', () => {
+    // A bare DATE has no timezone. Parsing '2026-03-14' without the explicit Z
+    // applies the host's offset, which moves the dinner to the previous day in
+    // any negative-offset timezone — the same bug toEventDateStrings exists to
+    // stop on the read side, and this machine is one of those timezones.
     const plan = TABLE_PLANS.find((p) => p.source === 'events');
     const { ctx } = contextWith({});
 
     const outcome = plan?.transform?.({ event_date: '2026-03-14', event_time: '19:00:00' }, ctx);
+    const data = (outcome as unknown as { data: { eventDate: Date; eventTime: Date } }).data;
 
-    expect(outcome).toMatchObject({
-      data: { eventDate: '2026-03-14', eventTime: '19:00:00' },
-    });
+    expect(toDateString(data.eventDate)).toBe('2026-03-14');
+    expect(toTimeString(data.eventTime)).toBe('19:00:00');
+    // A TIME is stored on 1970-01-01, which is how the driver hands it back.
+    expect(data.eventTime.toISOString()).toBe('1970-01-01T19:00:00.000Z');
   });
 });
