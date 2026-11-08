@@ -451,6 +451,56 @@ on 2026-08-30 because it is the highest-consequence one-time operation in the
 project and benefits from the most complete schema. That reasoning was sound and
 assumed go-live was distant. It is not any more.
 
+#### How it is run
+
+`api/src/import-dinnerbears.ts`, via `npm run import:dinnerbears`. Four
+variables, all passed inline on the command rather than written to any `.env` —
+they are arguments to a one-time operation, not configuration, which is why
+`env-classification.ts` has them as `install`:
+
+| Variable | What it is |
+|---|---|
+| `SOURCE_DATABASE_URL` | The v1 connection, **read-only**. The script proves the credential cannot write by attempting a write and requiring it to fail — a connection string saying "readonly" is not the same as a credential that is, and the live community database is on the other end. |
+| `TENANT_SLUG` | The new community's slug, e.g. `dinnerbears`. |
+| `TENANT_DOMAIN` | Its host, e.g. `www.dinnerbears.com`. Normalised through `normalizeTenantDomain`, so the `www.` is stripped and it resolves by exactly the rule the Host-header middleware uses. |
+| `ALLOW_IMPORT` | Must equal `DB_NAME`. The same confirm-the-target idiom `provision-tenant.ts` uses, with stronger grounds: the usual way to get this wrong is a shell that still has stage's environment loaded. |
+
+Flags: `--dry-run` (reads everything, resolves every foreign key, writes
+nothing), `--explain` (prints every deliberate exclusion and dropped column with
+its reason), and `--with-email-credentials` (**default off** — see below).
+
+**Run `--dry-run` first, against a copy.** It is seconds on a community of 62
+and it is how a drifted column or an orphaned row gets found. The run refuses to
+start at all if the source schema and the import plan disagree in either
+direction: a column v1 has that the plan does not account for is one the import
+would otherwise drop in silence.
+
+**Email credentials are withheld unless asked for.** `--with-email-credentials`
+is what carries `brevo_api_key` and `resend_api_key` across; without it they
+import as NULL and `resend_overflow_enabled` is forced off. That last part
+matters for a reason worth repeating: Resend is dormant by default, so a copied
+row arriving with overflow switched on turns a dormant provider into a live one
+with nobody having enabled it. This gate is **not** the only guard and
+deliberately so — a tenant moved to a `*.stage.communityeventsproject.com` host
+*gains* the ability to send by inheriting the deployment's env key, which is why
+stage's own keys come out too.
+
+**Re-running against the same target is refused, not merged.** The tenant row is
+what makes "the same target" decidable, so a second run with the same slug or
+domain stops before reading anything. To redo an import, delete the community
+and run again.
+
+The import **creates the tenant itself and seeds nothing**, which is the
+opposite of how every other community is made. `tenants-admin.service.create`
+and `provision-tenant.ts` both give a new tenant a city list, an achievement
+catalogue, legal `app_config` rows, an `email_provider_config` row and a first
+admin — and every one of those collides here. The achievement catalogue is the
+sharp one: its `key` is an identifier `member_achievements` joins on, so merging
+a seeded catalogue with v1's would silently repoint earned badges. Everything
+comes from v1 instead, which is also how the community keeps its own copy,
+branding and admins. `validate()` then checks an admin actually arrived, because
+a community with none is a dead end — registration is invite-gated.
+
 ### 6. Production deployment
 
 **Confirmed shape (Rob, 2026-10-14):** two deployments, each with **its own

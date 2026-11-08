@@ -35,6 +35,11 @@ describe('env classification (REQ-TENANT-01.4)', () => {
       readRepoFile('docs', 'NEW_INSTANCE_SETUP.md'),
       readRepoFile('docker', 'communityevents-v2-stage-unraid.xml'),
       readRepoFile('docker', 'docker-compose.yml'),
+      // The import's arguments (v2-25) are documented here rather than in
+      // .env.example, because .env is the one place they must never be: they
+      // are arguments to a one-time operation, passed inline on the command
+      // that runs it, and one of them carries a live credential.
+      readRepoFile('docs', 'CUTOVER_PLAN.md'),
     ].join('\n');
 
     // Whole tokens, not substrings: a plain `includes` would count
