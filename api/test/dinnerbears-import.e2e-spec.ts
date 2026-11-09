@@ -977,16 +977,26 @@ describe('DinnerBears import (e2e)', () => {
     });
 
     describe('email credentials', () => {
-      it('withholds both keys and forces overflow off by default', async () => {
+      it('withholds both keys and switches both providers off by default', async () => {
         // The rehearsal runs live member data on stage, where the point is that
         // it cannot mail real members. Resend is dormant by default, so a copied
         // row arriving with overflow on makes it live with nobody enabling it.
+        //
+        // `brevoEnabled` matters more than it looks, and used to be copied
+        // across. A NULL key is not the same as "cannot send": BrevoService
+        // resolves `db?.brevoApiKey || env.apiKey`, so a community on a
+        // subdomain of the deployment falls back to the DEPLOYMENT's Brevo
+        // account. Enabled with no key of its own, it would have mailed every
+        // member it just imported while the report said credentials were
+        // withheld. The dispatcher gates on this flag, so off is what makes
+        // the claim true.
         const config = await runWithTenant(tenantId, async () =>
           prisma.email_provider_config.findFirst(),
         );
 
         expect(config?.brevoApiKey).toBeNull();
         expect(config?.resendApiKey).toBeNull();
+        expect(config?.brevoEnabled).toBe(false);
         expect(config?.resendOverflowEnabled).toBe(false);
       });
 
@@ -998,8 +1008,10 @@ describe('DinnerBears import (e2e)', () => {
           prisma.email_provider_config.findFirst(),
         );
 
+        // Not brevoEnabled: that is asserted off above, and the point here is
+        // that switching the provider off does not discard what belongs to the
+        // account behind it.
         expect(config).toMatchObject({
-          brevoEnabled: true,
           brevoDailyLimit: 300,
           brevoSentToday: 7,
           tmplInvite: 12,
@@ -1046,6 +1058,7 @@ describe('DinnerBears import (e2e)', () => {
       // encrypted-columns.ts and the extension does it on write.
       expect(config?.brevoApiKey).toBe('xkeysib-live-secret');
       expect(config?.resendApiKey).toBe('re_live_secret');
+      expect(config?.brevoEnabled).toBe(true);
       expect(config?.resendOverflowEnabled).toBe(true);
     }, 60_000);
 

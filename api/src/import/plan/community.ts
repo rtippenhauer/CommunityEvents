@@ -445,7 +445,7 @@ export const emailProviderConfigPlan: TablePlan = {
   model: 'email_provider_config',
   columns: {
     id: custom('Source id is recorded in the id map, never written.'),
-    brevo_enabled: copy('brevoEnabled'),
+    brevo_enabled: custom('Forced off unless --with-email-credentials.'),
     resend_overflow_enabled: custom('Forced off unless --with-email-credentials.'),
     brevo_daily_limit: copy('brevoDailyLimit'),
     resend_daily_limit: copy('resendDailyLimit'),
@@ -485,13 +485,27 @@ export const emailProviderConfigPlan: TablePlan = {
     if (!ctx.withEmailCredentials) {
       ctx.note(
         'email_provider_config imported WITHOUT credentials: brevo_api_key and ' +
-          'resend_api_key are NULL and resend_overflow_enabled is off. Re-run with ' +
+          'resend_api_key are NULL, and both providers are switched off. Re-run with ' +
           '--with-email-credentials, or set the keys in Admin → Email, before this ' +
           'community can send.',
       );
+      // `brevoEnabled` is forced off for the same reason the keys are withheld,
+      // and leaving it true was a hole rather than an inconsistency. A NULL key
+      // does not mean "cannot send": `BrevoService` resolves
+      // `db?.brevoApiKey || env.apiKey`, so a community on a subdomain of this
+      // deployment falls back to the DEPLOYMENT's Brevo account. Imported
+      // enabled with no key of its own, such a community would have mailed
+      // every member it just imported, on the operator's own sending account,
+      // while the report said credentials were withheld. The dispatcher gates
+      // on this flag, so switching it off is what makes "withheld" true.
       return {
         action: 'write',
-        data: { brevoApiKey: null, resendApiKey: null, resendOverflowEnabled: false },
+        data: {
+          brevoApiKey: null,
+          resendApiKey: null,
+          brevoEnabled: false,
+          resendOverflowEnabled: false,
+        },
       };
     }
     ctx.note('email_provider_config imported WITH credentials — this tenant can send email.');
@@ -500,6 +514,7 @@ export const emailProviderConfigPlan: TablePlan = {
       data: {
         brevoApiKey: row['brevo_api_key'],
         resendApiKey: row['resend_api_key'],
+        brevoEnabled: row['brevo_enabled'],
         resendOverflowEnabled: row['resend_overflow_enabled'],
       },
     };

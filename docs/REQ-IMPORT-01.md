@@ -12,9 +12,9 @@ revising.
 
 ## What changed on implementation (2026-11-07)
 
-Five amendments. The first four came from reading v1's code and schema rather
-than its docs; the fifth came from the first dry run against the live
-community, which is the only thing that could have found it.
+Six amendments. The first four came from reading v1's code and schema rather
+than its docs; the last two came from running it against the live
+community, which is the only thing that could have found them.
 The implementation is `api/src/import/` with the entry point
 `api/src/import-dinnerbears.ts`; `docs/CUTOVER_PLAN.md` has the invocation.
 
@@ -80,6 +80,19 @@ Separately, a blanked nullable key was counted as a *skipped row*, so
 failed a correct import — 32 events in, 32 written, 14 "skipped". The two are
 now counted and reported apart: a skip loses a row, a null loses one field of
 one, and only the first closes against the source count.
+
+**6. "Credentials withheld" did not mean "cannot send" (2026-11-08).** Found
+on the rehearsal, from an admin screen showing Brevo switched on with no key
+behind it. `brevo_enabled` was copied from v1 while `resend_overflow_enabled`
+was forced off -- an asymmetry that looked cosmetic and was not.
+`BrevoService` resolves `db?.brevoApiKey || env.apiKey`, so a community on a
+subdomain of the deployment falls back to the **deployment's** Brevo account.
+Imported enabled with no key of its own, such a community could have mailed
+every member it had just imported, on the operator's own sending account,
+while the run report said credentials were withheld. The dispatcher gates on
+the flag, so the import now forces it off alongside the keys. The community
+that found it was safe only because `demo.dinnerbears.com` is on its own
+domain.
 
 **The definition of done's last bullet is moot**, for the reason the
 2026-10-14 correction already gives: there is no second source database. The
