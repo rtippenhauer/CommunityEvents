@@ -200,6 +200,15 @@ async function main(): Promise<void> {
     console.log(
       `Tenant #${String(report.tenantId)} "${slug}" -> ${domain} is imported and validated.\n` +
         '  Point DNS and the reverse proxy at this deployment for that host.\n' +
+        // Said here because this is what the operator reads at the end of a
+        // run, and because the community looks broken rather than incomplete
+        // without it: every photo row imported, every image 404s. This script
+        // moves rows and deliberately does not touch the filesystem -- it runs
+        // inside a container that need not have v1's volume mounted at all.
+        '  Uploaded files are NOT copied by this script. Copy v1 uploads into this\n' +
+        '    deployment upload mount, root included -- profile photos live there:\n' +
+        '      cp -an <v1 uploads>/. <upload mount>/\n' +
+        '    Confirm the mount from the container, never from a doc.\n' +
         (withEmailCredentials
           ? ''
           : '  No email credentials were imported: set them in Admin -> Email before go-live.\n') +

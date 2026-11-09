@@ -1033,6 +1033,28 @@ callback (`v2-12`), so the redirect URI in both consoles has to be updated to
 the new host before sign-in works. Google matches `redirect_uri` at the token
 exchange too — a mismatch names neither side.
 
+### Uploaded files
+
+**The import does not copy them** (REQ-IMPORT-01, out of scope). It moves rows;
+every photo row lands pointing at a file that is not there, and the community
+reads as broken rather than half-migrated -- 1,012 venue photos alone on the
+2026-11-08 stage rehearsal.
+
+Both deployments serve the same five named subdirectories plus the uploads
+root, where profile photos live, and filenames are `<timestamp>-<random>` with
+no tenant prefix. So the copy is flat and collisions are not a practical
+concern, but the trailing `/.` is: without it the root-level profile photos are
+left behind.
+
+```sh
+cp -an /mnt/user/appdata/dinnerbears/uploads/.        /mnt/user/appdata/communityevents_stage/upload/
+```
+
+`-n` so a re-run cannot overwrite what another community has since uploaded.
+**Read the destination off the container, not from this file** --
+`docker inspect <container> --format '{{json .Mounts}}'` -- for the reason the
+paths-have-drifted section above gives.
+
 ### Sessions
 
 Cookies are host-only as of `v2-6`. **Every member re-logs in at cutover.**

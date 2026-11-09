@@ -282,6 +282,13 @@ Per project convention (Vitest + Supertest):
 
 ## Out of scope
 
+- **Uploaded files.** This is a database import: it moves rows and never
+  touches the filesystem, and it runs inside a container that need not have
+  v1's volume mounted at all. Every `location_photos` row and every
+  `profile_photo_path` imports and points at a file that is not there yet, so
+  the community looks broken rather than incomplete. Copying v1's uploads tree
+  into the deployment's upload mount is a separate cutover step --
+  `docs/CUTOVER_PLAN.md` -- and the script's completion message says so.
 - Live/incremental sync — this is a one-time import per source database,
   not ongoing replication. DinnerBears keeps running independently until
   you decide to cut members over manually.
