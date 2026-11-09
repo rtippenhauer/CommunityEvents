@@ -3,10 +3,11 @@
 # Separate from every other database in play:
 #   - the real Unraid instance (192.168.2.241) used by stage — never touched
 #     from a dev machine
-#   - docker-compose.test.yml's throwaway e2e DB (port 3307, tmpfs, no volume)
+#   - docker-compose.test.yml's throwaway e2e DB (port 3310, tmpfs, no volume)
 #   - whatever else happens to hold port 3306 on the dev box
 #
-# Port 3308 because 3306 and 3307 are both commonly taken locally. Data is
+# Port 3308 because 3306 and 3307 are both commonly taken locally (3307 is
+# why the e2e database moved to 3310 -- see docker-compose.test.yml). Data is
 # persistent (named volume) — unlike the test DB, this one is meant to survive
 # restarts so migration state and seed data stick around between sessions.
 #

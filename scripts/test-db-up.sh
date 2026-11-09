@@ -13,7 +13,7 @@ set -euo pipefail
 # A fixed `sleep` only moves the race. The reliable probe is the capability we
 # actually need: authenticate as root and execute a statement.
 
-CONTAINER="dinnerbears-mysql-test"
+CONTAINER="communityevents-mysql-test"
 COMPOSE_FILE="docker/docker-compose.test.yml"
 DB_NAME="${DB_NAME:-dinnerbears_test}"
 DB_PASSWORD="${DB_PASSWORD:-test}"

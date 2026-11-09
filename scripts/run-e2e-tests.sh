@@ -7,8 +7,14 @@ set -euo pipefail
 COMPOSE="docker compose --project-directory . -f docker/docker-compose.test.yml"
 
 cleanup() {
+  # Capture the real exit status FIRST. Without this the trap's own last
+  # command decided the script's status, so a run where the database never
+  # started -- `up --wait` failing on a container-name conflict -- tore down
+  # cleanly and exited 0. Nothing ran, and it looked like a pass.
+  local status=$?
   echo "==> Tearing down test database"
-  $COMPOSE down --remove-orphans
+  $COMPOSE down --remove-orphans || true
+  exit "$status"
 }
 trap cleanup EXIT
 

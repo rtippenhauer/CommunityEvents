@@ -25,7 +25,7 @@ export default function globalSetup(): void {
   const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = process.env;
 
   // DATABASE_URL, not the DB_* vars, because the Prisma CLI injects the repo
-  // root .env over the environment it was invoked with — passing DB_PORT=3307
+  // root .env over the environment it was invoked with — passing DB_PORT=3310
   // here is silently replaced by the dev database's 3308 and the migration
   // lands in the wrong database. The root .env defines no DATABASE_URL, so
   // this one survives. prisma.config.ts prefers it over the DB_* vars.
