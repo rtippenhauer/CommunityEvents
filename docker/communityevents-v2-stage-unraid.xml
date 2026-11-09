@@ -14,7 +14,7 @@
   <Project>https://github.com/rtippenhauer/CommunityEvents</Project>
   <Overview>CommunityEvents v2 rewrite — stage container. Tracks the :v2-stage image tag, pushed by /v2-testing and /v2-done as v2 items land. Points at its own communityevents database, separate from v1 DinnerBears.</Overview>
   <Category>Tools:</Category>
-  <WebUI>http://[IP]:[PORT:8082]/</WebUI>
+  <WebUI>http://[IP]:[PORT:20025]/</WebUI>
   <TemplateURL/>
   <Icon/>
   <ExtraParams>--restart unless-stopped</ExtraParams>
@@ -25,7 +25,7 @@
   <DonateLink/>
   <Requires/>
 
-  <Config Name="Web Port" Target="8080" Default="8082" Mode="tcp" Description="Host port for the stage web interface. Default 8082, not 8080, so it doesn't collide with the v1 DinnerBears container if both run at once — confirm against whatever's already in use on this Unraid box." Type="Port" Display="always" Required="true" Mask="false">8082</Config>
+  <Config Name="Web Port" Target="8080" Default="20025" Mode="tcp" Description="Host port for the stage web interface. 20025 is this project's allocated stage port — see ../PORTS.md, project 02, 20PP5. Take a new port from that file rather than picking one here." Type="Port" Display="always" Required="true" Mask="false">20025</Config>
 
   <Config Name="DB Host" Target="DB_HOST" Default="192.168.2.241" Mode="" Description="MySQL host IP address (same server as v1's, different database)" Type="Variable" Display="always" Required="true" Mask="false">192.168.2.241</Config>
   <Config Name="DB Port" Target="DB_PORT" Default="3306" Mode="" Description="MySQL port" Type="Variable" Display="always" Required="true" Mask="false">3306</Config>

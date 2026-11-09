@@ -25,16 +25,17 @@ services:
     environment:
       - MYSQL_ROOT_PASSWORD=test
       - MYSQL_DATABASE=dinnerbears_test
-    # 3310 is this project's allocated port (Rob, 2026-11-09): CommunityEvents
-    # 3310, glitch's stash 3315, the original DinnerBears 3320, claude tracker
-    # 3025. It used to be 3307, which other long-lived containers on this
-    # machine also published -- and losing that race does NOT fail. The
-    # container still starts, every connection to 127.0.0.1:3307 reaches
-    # whoever bound it first, and the suite migrates into a stranger's MySQL
-    # and passes. The only symptom is the clock: that database is disk-backed
-    # where this one is tmpfs, and the same suite went from 617s to 10,385s.
+    # 3025 is this project's allocated port. The whole list lives in
+    # ../PORTS.md -- project 02, MySQL test 3PP5 -- and a new port is taken
+    # from there, never invented here. It used to be 3307, which other
+    # long-lived containers on this machine also published -- and losing that
+    # race does NOT fail. The container still starts, every connection to
+    # 127.0.0.1:3307 reaches whoever bound it first, and the suite migrates
+    # into a stranger's MySQL and passes. The only symptom is the clock: that
+    # database is disk-backed where this one is tmpfs, and the same suite went
+    # from 617s to 10,385s.
     ports:
-      - "3310:3306"
+      - "3025:3306"
     tmpfs:
       - /var/lib/mysql
     # --protocol=tcp is the whole point of this healthcheck, not a detail.

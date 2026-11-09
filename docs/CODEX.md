@@ -39,7 +39,7 @@ run e2e with:
 ```
 TEST_STACK=communityevents-test-codex
 TEST_DB_CONTAINER=communityevents-mysql-test-codex
-TEST_DB_PORT=3308
+TEST_DB_PORT=3021
 ```
 
 Never stop, reset or remove `dinnerbears-mysql-test`. It belongs to the other
@@ -72,13 +72,13 @@ you couldn't run, and every decision you made that the spec didn't cover.
 
 Do this first, as its own commit ("test: isolate the e2e database per checkout").
 The e2e setup uses a fixed compose project name (`communityevents-test`),
-container name (`communityevents-mysql-test`) and host port (`3310`). Make all three
+container name (`communityevents-mysql-test`) and host port (`3025`). Make all three
 overridable, keeping today's values as defaults so existing checkouts behave
 identically:
 
 - `docker/docker-compose.test.yml`: `name: ${TEST_STACK:-communityevents-test}`,
   `container_name: ${TEST_DB_CONTAINER:-communityevents-mysql-test}`,
-  `ports: "${TEST_DB_PORT:-3310}:3306"`.
+  `ports: "${TEST_DB_PORT:-3025}:3306"`.
 - `scripts/test-db-up.sh` and `scripts/run-e2e-tests.sh`: read the same
   variables with the same defaults, and pass `DB_PORT=$TEST_DB_PORT` to the test
   run. Teardown must only touch its own stack.

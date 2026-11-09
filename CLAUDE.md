@@ -45,6 +45,12 @@ still needs a branch — the current item's, else `bugfix-`/`chore-<slug>` —
 merged by PR with a real merge commit, **never squashed**. `package.json` stays
 on v1's version.
 
+**Ports: see `C:\Users\rtipp\source\repos\PORTS.md`** -- one list for every
+project on this machine. CommunityEvents is project 02: stage web 20025, dev
+database 3020, test database 3025. **Take a new port from that file, never
+pick one here** -- ports chosen ad hoc collided silently, and the e2e suite
+spent three runs against another project's MySQL at 13x the duration.
+
 **Stage is `stage.communityeventsproject.com`, container
 `CommunityEvents-v2-Stage`. Run `/stage` before shelling in, deploying or
 diagnosing it** — the image is Alpine with no `bash`, and the entrypoint starts

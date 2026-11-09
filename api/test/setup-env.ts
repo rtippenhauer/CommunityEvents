@@ -16,7 +16,7 @@ function setDefault(key: string, value: string): void {
 
 setDefault('NODE_ENV', 'test');
 setDefault('DB_HOST', '127.0.0.1');
-setDefault('DB_PORT', '3310');
+setDefault('DB_PORT', '3025');
 setDefault('DB_USER', 'root');
 setDefault('DB_PASSWORD', 'test');
 setDefault('DB_NAME', 'dinnerbears_test');
