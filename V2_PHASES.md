@@ -4152,6 +4152,28 @@ tenant data and REQ-IMPORT-01 takes an amendment saying so. That is the second
 half of this item and the reason it is worth doing before more communities
 land, not after.
 
+**Who may see a list, and who may edit it** (Rob, 2026-11-09): the rows belong
+to the community, its own admin edits them, and only that community's people
+see them.
+
+Scoping delivers most of that for free — the host resolves the tenant, so a
+visitor to one community's picker cannot be served another's rows. Two gaps
+need closing by hand:
+
+- **`GET /avatars/manifest` is public and unguarded.** Its comment explains
+  why — the picker "needs the list before a member is fully authenticated,
+  same as it did when this was a static `/avatars/manifest.json` file". That
+  stopped being true: the only two callers are `profile-settings` and
+  `admin-settings`, both behind a session, and nothing on the registration or
+  login path touches it. So it takes `JwtAuthGuard` and the comment goes.
+  Scoped-but-public would still leak one community's preset *labels* and file
+  names to anyone who knows its host.
+- **`merch` is already right** and is worth copying rather than re-deriving:
+  `@Controller('merch')` is `JwtAuthGuard` at the class, with `RolesGuard` and
+  `@Roles(ADMIN)` on the two `admin/config` routes. Members read, the
+  community's admin writes. Once the table is scoped, that is exactly the rule
+  asked for here.
+
 **Watch the lookups by id.** `AvatarsService` reads and writes by primary key
 — `findUnique({where:{id}})`, `update`, `delete` — and an id is globally
 unique, so the extension has nothing to narrow and one community's admin can
@@ -4164,6 +4186,7 @@ and `GLOBAL_MODELS`' category (2) is empty; `avatar.path` is unique per tenant
 and `merch_config` is one row per tenant rather than the id-1 singleton; a
 migration assigns existing rows and no community loses its picker or its store
 link; every by-id read and write in `AvatarsService` is tenant-narrowed; the
+avatar manifest requires a session and serves only the host community's rows; the
 seed writes neither table and bootstrap and tenant creation seed them instead,
 with the init-migration round trip gone; the import brings v1's avatar rows
 over and REQ-IMPORT-01 records the change.
