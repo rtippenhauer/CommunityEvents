@@ -491,8 +491,11 @@ export class TenantsAdminService {
     await runUnscoped(`deleting tenant ${existing.domain} and all of its data`, async () => {
       // One transaction, so a failure part-way leaves the community intact
       // rather than half-erased. The timeout is raised well past Prisma's 5s
-      // default: this is 29 deletes over what may be years of one community's
-      // history, and it runs once in that community's lifetime.
+      // default: this is a count and a delete for every scoped model, over what
+      // may be years of one community's history, and it runs once in that
+      // community's lifetime. The counts are cheap next to the deletes -- one
+      // indexed `tenant_id` lookup each -- but they are inside the transaction
+      // deliberately, so the record matches what was actually removed.
       await this.prisma.$transaction(
         async (tx) => {
           deleted = await purgeTenantRows(tx, id);
