@@ -1051,6 +1051,12 @@ cp -an /mnt/user/appdata/dinnerbears/uploads/.        /mnt/user/appdata/communit
 ```
 
 `-n` so a re-run cannot overwrite what another community has since uploaded.
+
+**Check the result in a private window.** Any page opened before the copy holds
+a cached 404 per image URL, and a hard reload only revalidates what the current
+page requests -- so a correct copy looks like a partial one, with some faces
+loading and some not. On the 2026-11-08 rehearsal that cost a round of
+debugging before an `ls` showed every file present on both sides.
 **Read the destination off the container, not from this file** --
 `docker inspect <container> --format '{{json .Mounts}}'` -- for the reason the
 paths-have-drifted section above gives.
