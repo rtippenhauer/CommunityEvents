@@ -1052,15 +1052,27 @@ cp -an /mnt/user/appdata/dinnerbears/uploads/.        /mnt/user/appdata/communit
 
 `-n` so a re-run cannot overwrite what another community has since uploaded.
 
-**Branding is not in the import either, and never was.** v1's logo is a
-build-time asset -- `frontend/src/assets/logo.png`, the `DEFAULT_LOGO` in
-`brand-config.service.ts` -- because v1 had one community and could bake it in.
-v2 cannot: branding is per-community, so the logo is tenant data and an
-imported community falls back to the platform mark until somebody uploads one
-through Admin -> Branding. There is no `branding/` directory in v1's uploads to
-copy, for the same reason. Upload v1's `logo.png` after each import, including
-after a delete-and-re-import, since a fresh tenant starts with an empty
-`brand_logo_url`.
+**Branding is not in the import either, and never was.** v1 bakes its whole
+brand into the frontend bundle -- it had one community, so it could. v2 makes
+all six brand images tenant data, so none of it is in either database and none
+of it can be imported. There is no `branding/` directory in v1's uploads to
+copy, for the same reason. An imported community falls back to the platform
+marks until somebody uploads them through Admin -> Branding, which looks like a
+half-finished import and is not one.
+
+| v2 `app_config` key | v1 file, in `frontend/public/images/` |
+| --- | --- |
+| `brand_logo_url` | `Dinnerbears Logo 1024x1024.png` |
+| `brand_icon_url` | `DinnerBearsIcon.png` |
+| `brand_splash_url` | `dinnerbears-splash.png` |
+| `brand_error_url` | `ErrorMenuBoard.png` |
+| `brand_story_url` | `story-map.png` |
+| `brand_hero_url` | no v1 equivalent -- v2 only |
+
+`frontend/src/assets/logo.png` is the `DEFAULT_LOGO` fallback in v1's
+`brand-config.service.ts` and is the same mark at a smaller size; the 1024px
+file in `public/images/` is the one to upload. Redo these after every
+delete-and-re-import: a fresh tenant starts with all six keys empty.
 
 **Check the result in a private window.** Any page opened before the copy holds
 a cached 404 per image URL, and a hard reload only revalidates what the current
