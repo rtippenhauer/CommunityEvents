@@ -1052,6 +1052,16 @@ cp -an /mnt/user/appdata/dinnerbears/uploads/.        /mnt/user/appdata/communit
 
 `-n` so a re-run cannot overwrite what another community has since uploaded.
 
+**Branding is not in the import either, and never was.** v1's logo is a
+build-time asset -- `frontend/src/assets/logo.png`, the `DEFAULT_LOGO` in
+`brand-config.service.ts` -- because v1 had one community and could bake it in.
+v2 cannot: branding is per-community, so the logo is tenant data and an
+imported community falls back to the platform mark until somebody uploads one
+through Admin -> Branding. There is no `branding/` directory in v1's uploads to
+copy, for the same reason. Upload v1's `logo.png` after each import, including
+after a delete-and-re-import, since a fresh tenant starts with an empty
+`brand_logo_url`.
+
 **Check the result in a private window.** Any page opened before the copy holds
 a cached 404 per image URL, and a hard reload only revalidates what the current
 page requests -- so a correct copy looks like a partial one, with some faces
