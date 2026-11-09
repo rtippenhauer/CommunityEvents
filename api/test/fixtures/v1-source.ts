@@ -152,7 +152,7 @@ export interface V1Fixture {
  */
 export async function createV1Fixture(database = 'dinnerbears_v1_fixture'): Promise<V1Fixture> {
   const host = process.env.DB_HOST ?? '127.0.0.1';
-  const port = Number(process.env.DB_PORT ?? 3307);
+  const port = Number(process.env.DB_PORT ?? 3025);
   const user = process.env.DB_USER ?? 'root';
   const password = process.env.DB_PASSWORD ?? 'test';
 
