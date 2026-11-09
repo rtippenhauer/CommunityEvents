@@ -192,6 +192,16 @@ interface PublicStats {
         border-radius: 0;
         overflow: hidden;
 
+        /* max-width: none alone is not full bleed: the app-content padding
+           still insets it, so the photograph stopped 24px short of the stats
+           strip and the story band below, both of which break out the same
+           way. Same negative margins as those two, for the same reason. */
+        margin: 0 -16px;
+
+        @media (min-width: 768px) {
+          margin: 0 -24px;
+        }
+
         /* Put the columns back on the same measure the unscrimmed hero uses,
            now that the section itself runs full width for the photograph. */
         > .hero-text,
