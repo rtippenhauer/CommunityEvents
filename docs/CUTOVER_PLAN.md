@@ -451,6 +451,62 @@ on 2026-08-30 because it is the highest-consequence one-time operation in the
 project and benefits from the most complete schema. That reasoning was sound and
 assumed go-live was distant. It is not any more.
 
+#### How it is run
+
+`api/src/import-dinnerbears.ts`, run from the compiled output as
+`node dist/import-dinnerbears.js` — the same way `bootstrap.js` and
+`provision-tenant.js` are run, and what the container actually has.
+`npm run import:dinnerbears` is the ts-node equivalent and currently fails on
+Node 24, as every script in that family does; that is a pre-existing local
+tooling problem, not something specific to the import.
+
+Four variables, all passed inline on the command rather than written to any `.env` —
+they are arguments to a one-time operation, not configuration, which is why
+`env-classification.ts` has them as `install`:
+
+| Variable | What it is |
+|---|---|
+| `SOURCE_DATABASE_URL` | The v1 connection, **read-only**. The script proves the credential cannot write by attempting a write and requiring it to fail — a connection string saying "readonly" is not the same as a credential that is, and the live community database is on the other end. |
+| `TENANT_SLUG` | The new community's slug, e.g. `dinnerbears`. |
+| `TENANT_DOMAIN` | Its host, e.g. `www.dinnerbears.com`. Normalised through `normalizeTenantDomain`, so the `www.` is stripped and it resolves by exactly the rule the Host-header middleware uses. |
+| `ALLOW_IMPORT` | Must equal `DB_NAME`. The same confirm-the-target idiom `provision-tenant.ts` uses, with stronger grounds: the usual way to get this wrong is a shell that still has stage's environment loaded. |
+
+Flags: `--dry-run` (reads everything, resolves every foreign key, writes
+nothing), `--explain` (prints every deliberate exclusion and dropped column with
+its reason), and `--with-email-credentials` (**default off** — see below).
+
+**Run `--dry-run` first, against a copy.** It is seconds on a community of 62
+and it is how a drifted column or an orphaned row gets found. The run refuses to
+start at all if the source schema and the import plan disagree in either
+direction: a column v1 has that the plan does not account for is one the import
+would otherwise drop in silence.
+
+**Email credentials are withheld unless asked for.** `--with-email-credentials`
+is what carries `brevo_api_key` and `resend_api_key` across; without it they
+import as NULL and `resend_overflow_enabled` is forced off. That last part
+matters for a reason worth repeating: Resend is dormant by default, so a copied
+row arriving with overflow switched on turns a dormant provider into a live one
+with nobody having enabled it. This gate is **not** the only guard and
+deliberately so — a tenant moved to a `*.stage.communityeventsproject.com` host
+*gains* the ability to send by inheriting the deployment's env key, which is why
+stage's own keys come out too.
+
+**Re-running against the same target is refused, not merged.** The tenant row is
+what makes "the same target" decidable, so a second run with the same slug or
+domain stops before reading anything. To redo an import, delete the community
+and run again.
+
+The import **creates the tenant itself and seeds nothing**, which is the
+opposite of how every other community is made. `tenants-admin.service.create`
+and `provision-tenant.ts` both give a new tenant a city list, an achievement
+catalogue, legal `app_config` rows, an `email_provider_config` row and a first
+admin — and every one of those collides here. The achievement catalogue is the
+sharp one: its `key` is an identifier `member_achievements` joins on, so merging
+a seeded catalogue with v1's would silently repoint earned badges. Everything
+comes from v1 instead, which is also how the community keeps its own copy,
+branding and admins. `validate()` then checks an admin actually arrived, because
+a community with none is a dead end — registration is invite-gated.
+
 ### 6. Production deployment
 
 **Confirmed shape (Rob, 2026-10-14):** two deployments, each with **its own
@@ -976,6 +1032,56 @@ on its own domain registers its **own redirect URI** and takes the direct
 callback (`v2-12`), so the redirect URI in both consoles has to be updated to
 the new host before sign-in works. Google matches `redirect_uri` at the token
 exchange too — a mismatch names neither side.
+
+### Uploaded files
+
+**The import does not copy them** (REQ-IMPORT-01, out of scope). It moves rows;
+every photo row lands pointing at a file that is not there, and the community
+reads as broken rather than half-migrated -- 1,012 venue photos alone on the
+2026-11-08 stage rehearsal.
+
+Both deployments serve the same five named subdirectories plus the uploads
+root, where profile photos live, and filenames are `<timestamp>-<random>` with
+no tenant prefix. So the copy is flat and collisions are not a practical
+concern, but the trailing `/.` is: without it the root-level profile photos are
+left behind.
+
+```sh
+cp -an /mnt/user/appdata/dinnerbears/uploads/.        /mnt/user/appdata/communityevents_stage/upload/
+```
+
+`-n` so a re-run cannot overwrite what another community has since uploaded.
+
+**Branding is not in the import either, and never was.** v1 bakes its whole
+brand into the frontend bundle -- it had one community, so it could. v2 makes
+all six brand images tenant data, so none of it is in either database and none
+of it can be imported. There is no `branding/` directory in v1's uploads to
+copy, for the same reason. An imported community falls back to the platform
+marks until somebody uploads them through Admin -> Branding, which looks like a
+half-finished import and is not one.
+
+| v2 `app_config` key | v1 file, in `frontend/public/images/` |
+| --- | --- |
+| `brand_logo_url` | `Dinnerbears Logo 1024x1024.png` |
+| `brand_icon_url` | `DinnerBearsIcon.png` |
+| `brand_splash_url` | `dinnerbears-splash.png` |
+| `brand_error_url` | `ErrorMenuBoard.png` |
+| `brand_story_url` | `story-map.png` |
+| `brand_hero_url` | no v1 equivalent -- v2 only |
+
+`frontend/src/assets/logo.png` is the `DEFAULT_LOGO` fallback in v1's
+`brand-config.service.ts` and is the same mark at a smaller size; the 1024px
+file in `public/images/` is the one to upload. Redo these after every
+delete-and-re-import: a fresh tenant starts with all six keys empty.
+
+**Check the result in a private window.** Any page opened before the copy holds
+a cached 404 per image URL, and a hard reload only revalidates what the current
+page requests -- so a correct copy looks like a partial one, with some faces
+loading and some not. On the 2026-11-08 rehearsal that cost a round of
+debugging before an `ls` showed every file present on both sides.
+**Read the destination off the container, not from this file** --
+`docker inspect <container> --format '{{json .Mounts}}'` -- for the reason the
+paths-have-drifted section above gives.
 
 ### Sessions
 

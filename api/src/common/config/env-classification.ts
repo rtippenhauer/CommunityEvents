@@ -26,8 +26,9 @@ export type EnvClass =
    */
   | 'bootstrap'
   /**
-   * Read once by `bootstrap.ts` / `provision-tenant.ts` / `seed-test-data.ts`
-   * and never by a request. These are install arguments, not configuration:
+   * Read once by `bootstrap.ts` / `provision-tenant.ts` / `seed-test-data.ts` /
+   * `import-dinnerbears.ts` and never by a request. These are install
+   * arguments, not configuration:
    * after the first run their value lives in the database and editing the env
    * changes nothing. They are not candidates for runtime config because there
    * is no runtime that reads them.
@@ -153,6 +154,24 @@ export const ENV_CLASSIFICATION: Readonly<Record<string, EnvVarClassification>> 
   TENANT_DOMAIN: { cls: 'install', note: 'provision-tenant.ts argument.' },
   TENANT_SLUG: { cls: 'install', note: 'provision-tenant.ts argument.' },
   TENANT_STATUS: { cls: 'install', note: 'provision-tenant.ts argument.' },
+  ALLOW_IMPORT: { cls: 'install', note: 'import-dinnerbears.ts argument (v2-25).' },
+  /**
+   * The v1 connection string for `import-dinnerbears.ts`.
+   *
+   * Classified `install` rather than `secret` even though it carries a
+   * credential, because that is what it is: a one-time argument to a manually
+   * triggered script, passed inline on the command that runs it and never
+   * written to a `.env` anywhere. REQ-IMPORT-01.1 asks for exactly that — "not
+   * a bootstrap env var, this is a deliberate, manually-triggered operation".
+   *
+   * Nothing reads it at runtime, so there is no deployment that should hold it.
+   * The credential in it must be read-only, and the script proves that against
+   * the server rather than trusting the URL.
+   */
+  SOURCE_DATABASE_URL: {
+    cls: 'install',
+    note: 'import-dinnerbears.ts argument (v2-25). Read-only v1 connection, passed inline.',
+  },
   ALLOW_TEST_DATA: { cls: 'install' },
   TEST_DATA_TENANT: { cls: 'install' },
   TEST_MEMBER_COUNT: { cls: 'install' },

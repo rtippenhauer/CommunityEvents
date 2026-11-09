@@ -1051,3 +1051,54 @@ left with records the forms cannot save.
 - **A venue or event can be created while cities are off**, which the form
   previously refused.
 - **A note added to the hero image no longer pushes the images out of line.**
+
+## Bringing an existing community across
+
+A community that already runs on DinnerBears can be moved here whole, in one
+pass, rather than rebuilt by hand. Everything the community is made of comes
+with it: its members and their profiles, every venue and event with the
+photographs attached to them, ratings, comments, announcements, invitations,
+achievements and points, and the history behind all of it.
+
+**Nobody has to do anything on the day.** Members keep the password they had,
+so signing in works exactly as before. Anyone who subscribed to the calendar
+feed keeps receiving events at the same address — the subscription is carried
+across rather than reissued, which matters because a calendar that quietly
+stops updating gives no sign that anything is wrong. Who invited whom is kept
+too, so the community's own lineage survives the move.
+
+**It can be rehearsed.** A dry run reads the old site and writes nothing at
+all, reporting exactly what would be brought over, what would be left behind
+and why. The real run refuses to start unless it is told the name of the
+database it is about to write to, and refuses to run twice into the same
+community.
+
+**A community arrives unable to send email, on purpose.** Its stored keys are
+not carried across unless they are explicitly asked for, and both email
+providers arrive switched off. An imported community cannot mail its members
+until somebody turns it on, which is what you want while you are still checking
+that everything landed correctly.
+
+**Three things are deliberately left for you to do** after the move: copy the
+uploaded files across, upload the community's logo and other images, and enter
+its Google and email credentials. Each is reported at the end of the run rather
+than assumed.
+
+### Fixes found while testing
+
+- **The name of whoever reserved a table is no longer lost.** It was being read
+  as if it identified a member account, and because it never could, the name was
+  blanked on every event that had one — fourteen of thirty-two in the first real
+  rehearsal, each reported as routine.
+- **"Credentials withheld" now actually means the community cannot send.** The
+  keys were being left out while the switch that uses them stayed on, and a
+  community sitting on a subdomain of this deployment would fall back to the
+  deployment's own email account — able to mail every member it had just
+  imported, while the report said its credentials had been withheld.
+- **Deleting a community now reports everything it removed.** Tables emptied as
+  a side effect of another table being emptied were counted as holding nothing,
+  so the permanent record of a deleted community understated it — by 299 rows
+  across four tables in the case that found it. Nothing was ever left behind;
+  the record was simply short.
+- **The home page photograph spans the full width of the page**, instead of
+  stopping just short of the bands above and below it.

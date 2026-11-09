@@ -2,12 +2,102 @@
 
 **Project:** Community Events
 **Area:** Data migration / tenant provisioning
-**Status:** Draft — **superseded in part, 2026-10-03; corrected 2026-10-14.**
+**Status:** **Implemented 2026-11-07** (`v2-25`) — superseded in part,
+2026-10-03; corrected 2026-10-14; amended on implementation, 2026-11-07.
 
 This doc describes one tenant per source database. DinnerBears is **one tenant
 with Cincinnati and Dayton as cities** (Rob, 2026-10-03), so 01.1 and 01.4's
 "second run produces a second tenant" is out of date and this doc needs
 revising.
+
+## What changed on implementation (2026-11-07)
+
+Six amendments. The first four came from reading v1's code and schema rather
+than its docs; the last two came from running it against the live
+community, which is the only thing that could have found them.
+The implementation is `api/src/import/` with the entry point
+`api/src/import-dinnerbears.ts`; `docs/CUTOVER_PLAN.md` has the invocation.
+
+**1. City preferences are the reverse of what 01.3 says, decided by Rob.**
+01.3 below says each member's legacy city becomes one `user_city_preferences`
+row, "not 'All'", on the grounds that this "preserves their existing implicit
+filter". **There is no such filter.** v1's `CityService.currentCity()` resolves
+a city from the *hostname*, and on `www.dinnerbears.com` — the host everybody
+actually uses, with two active cities — it returns `undefined`, so the home page
+requests events with no `cityId` at all. Every member sees both cities today,
+and `calendar_city_filter` defaults to `all` as well. One row per member would
+*narrow* what all 62 see, on both the event list and the calendar feed, with
+nothing shown to explain it.
+
+So the import writes **no rows** (which means every city), except for a member
+who set `calendar_city_filter = 'city'` — the only explicit city choice v1
+offered — who gets one row for their `city_id`. Everything else in 01.3's
+cities bullet stands: `feature_cities` goes on, no backfill runs, and
+`calendar_auto_invite` imports as an on/off with `none` staying off.
+
+**2. v1's `feedback` splits across two tables** (Rob, 2026-11-07). v2 put
+product reports in the global `system_reports` and community comments in the
+scoped `feedback`, and the import follows that split by category: `comment`
+stays in `feedback`, `bug` and `feature_request` become `system_reports` rows
+attributed to the remapped member and to this tenant. **The split loses things,
+named here rather than discovered later:** `system_reports` has no notes table,
+no upvotes table, and no `is_private`, `release_note`, `upvote_count` or
+`seen_at`. Notes and upvotes on a split ticket are skipped and counted; a
+ticket with no title gets one derived from its body, because
+`system_reports.title` is NOT NULL where v1's is nullable.
+
+**3. `app_config` imports, and is not listed in 01.3.** It became tenant-scoped
+in v2-6, so those rows are what make the imported community look like
+DinnerBears rather than a blank tenant — terminology, home copy, the brand
+story, invite expiry, inactivity thresholds, guest limits. Safe to import
+wholesale: every `app_config` key v1 seeds was checked and none holds a
+credential, which matters because these rows are served to unauthenticated
+visitors.
+
+**4. Three tables in v1's schema doc do not exist.** `event_guest_rsvps`,
+`password_reset_tokens` and `email_verification_tokens` are described in v1's
+`docs/DATABASE_SCHEMA.md`, but no v1 migration creates them and no v1 code
+reads them — both ORMs carry reset and verification tokens as inline columns on
+`users`, which do import. So nothing in v1 lacks a home in v2, and
+`invites.guest_rsvp_id` imports as NULL because there was never a row to point
+at. The import's preflight asserts their *absence*, so that reading is checked
+against the real database rather than taken on trust.
+
+**5. Two bugs the dry run against live data found (2026-11-08).** Both were
+invisible to a fixture built from v1's schema, because both need real values
+to show themselves.
+
+`events.reservation_confirmed_by` is the *name* of whoever confirmed the
+booking, typed in — `VARCHAR(255)` in v1 and `String?` in v2 — and the plan
+declared it a foreign key to `users`. The import read "Charles Nottingham" as a
+user id, found no match, and wrote NULL. On the live community that silently
+blanked 14 of 32 events, each one reported as a routine orphaned key.
+`preflight.spec.ts` now holds every `fk` rule against the target field's type,
+so a remap of a non-id column fails the build rather than the data.
+
+Separately, a blanked nullable key was counted as a *skipped row*, so
+`imported + skipped` exceeded the source row count and validation would have
+failed a correct import — 32 events in, 32 written, 14 "skipped". The two are
+now counted and reported apart: a skip loses a row, a null loses one field of
+one, and only the first closes against the source count.
+
+**6. "Credentials withheld" did not mean "cannot send" (2026-11-08).** Found
+on the rehearsal, from an admin screen showing Brevo switched on with no key
+behind it. `brevo_enabled` was copied from v1 while `resend_overflow_enabled`
+was forced off -- an asymmetry that looked cosmetic and was not.
+`BrevoService` resolves `db?.brevoApiKey || env.apiKey`, so a community on a
+subdomain of the deployment falls back to the **deployment's** Brevo account.
+Imported enabled with no key of its own, such a community could have mailed
+every member it had just imported, on the operator's own sending account,
+while the run report said credentials were withheld. The dispatcher gates on
+the flag, so the import now forces it off alongside the keys. The community
+that found it was safe only because `demo.dinnerbears.com` is on its own
+domain.
+
+**The definition of done's last bullet is moot**, for the reason the
+2026-10-14 correction already gives: there is no second source database. The
+connection and target slug are parameters, which is what keeping the script
+general is now worth.
 
 **What changed on 2026-10-14: there is only ONE source database.** The
 2026-10-03 note said the import was "two source databases into one tenant" and
@@ -155,7 +245,17 @@ superseded by the new architecture):
   against the **same** target tenant must be refused, not silently
   duplicate data.
 
-### Check before import: uploaded images in feedback bodies
+### Check before import: uploaded images in feedback bodies — **closed, nothing to do**
+
+**Answered 2026-11-07: nothing is lost and no body HTML needs rewriting.** v1's
+`main.ts` serves exactly the same five named upload subdirectories v2 does
+(`locations`, `achievements`, `custom-icons`, `branding`, `avatars`) and nothing
+at the uploads root — and it has no `feedback` or `reports` prefix at all, which
+v2 added. v1's `feedback` table also has no `screenshots` column, so a ticket
+could only ever have carried an image embedded in its body HTML, and such a URL
+was **already broken in v1**. The original note is kept below for the reasoning.
+
+
 
 A feedback ticket's body is HTML and may embed `<img src="/api/uploads/...">`.
 v2 serves only **named subdirectories** of the upload path and deliberately not
@@ -195,6 +295,13 @@ Per project convention (Vitest + Supertest):
 
 ## Out of scope
 
+- **Uploaded files.** This is a database import: it moves rows and never
+  touches the filesystem, and it runs inside a container that need not have
+  v1's volume mounted at all. Every `location_photos` row and every
+  `profile_photo_path` imports and points at a file that is not there yet, so
+  the community looks broken rather than incomplete. Copying v1's uploads tree
+  into the deployment's upload mount is a separate cutover step --
+  `docs/CUTOVER_PLAN.md` -- and the script's completion message says so.
 - Live/incremental sync — this is a one-time import per source database,
   not ongoing replication. DinnerBears keeps running independently until
   you decide to cut members over manually.

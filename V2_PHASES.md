@@ -58,8 +58,9 @@ Two decisions bound it:
 | 4 | ~~**v2-34 — an inbound email log**~~ | **Done 2026-10-22** (tag `v2-34`). **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
 | 5 | ~~**v2-29 — port Phase 39**~~ | **Done 2026-10-24** (tag `v2-29`). With v2-33 this repo is level with prod DinnerBears. Stage ran **two** communities mirroring independently, which is the clause of the definition of done a single-community run cannot test. Stage also found the cover photos missing and private venue addresses unredacted — both from hand-writing queries v1 delegated to `EventsService`, and both invisible to the suite because neither event endpoint had a test. |
 | 6 | ~~**v2-24 — cities**~~ | **Done 2026-11-07** (tag `v2-24`). REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. Also carries the `CitiesAdminController` gap v2-12 left open deliberately: `@Roles(ADMIN)` over a global table. |
-| 7 | **v2-25 — the import** | **In progress / next up** (2026-11-07, now that v2-24 is done). The deliverable. Dry-run cycle against a copy before anything real. |
-| 8 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
+| 7 | ~~**v2-25 — the import**~~ | **Done 2026-11-09** (tag `v2-25`). The deliverable. Dry runs against the *live* v1 database — not a copy — found three defects no fixture could have, including one that would have let an imported community mail every member it had just imported. Rehearsed end to end on stage, delete-and-re-import included. Raised `v2-47`, which now blocks item 8. |
+| 8 | **v2-47 — scope avatars and merch to a community** | **Blocks production** (Rob, 2026-11-09). Not cosmetic sequencing: prod cannot ship with `avatar` global. Hand-restoring the rows to give DinnerBears its picker back puts its bears in the root tenant's picker as well, and every community after it inherits a list no admin can edit. Scoped first, the production import carries the rows itself and nothing is written by hand. |
+| 9 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
 `v2-31` (a real email log) is not a blocker but is wanted early: the current
 screen is 100 rows with no search, which stops answering "did this member get
@@ -2329,8 +2330,27 @@ before; `facebook_group_config` is gone while `campaign_facebook` invites
 still work.
 
 ### v2-25 — DinnerBears import (new tenant) (REQ-IMPORT-01)
-**Status:** **Next up** (2026-11-07, now that v2-24 is done). Sequenced last,
+**Status:** **Complete** (2026-11-09, tag `v2-25`). Sequenced last,
 per Rob (2026-08-30).
+
+**Outcome:** met. The whole of DinnerBears imported into a new tenant on stage
+— 4,175 rows across 35 tables, arithmetic closing against the source, zero
+validation errors — and the cycle was rehearsed end to end several times,
+including delete-and-re-import. Three defects a fixture could not have found
+came out of pointing the dry run at the live v1 database: a typed-in
+reservation name imported as a foreign key and blanked on fourteen of
+thirty-two events, blanked nullable columns counted as skipped rows (which
+would have failed validation on a *correct* import), and `brevo_enabled`
+carried across while the keys were withheld — the last of which would have let
+an imported community mail every member it had just imported, using the
+deployment's own Brevo account.
+
+**Found by this item, fixed here, belonging elsewhere:** the tenant purge's
+record understated what it destroyed, because a table emptied by a cascade
+reports zero when the walk reaches it (`ff42b13`).
+
+**Raised by this item, deferred:** `v2-47` — avatars and merch are deployment
+data and should be tenant data. Blocks the production deployment.
 Depends on v2-24 — cities import as tenant-scoped rows now, not excluded,
 and each imported user's legacy single city becomes one row in their new
 `user_city_preferences` set. No other technical dependency on v2-17
@@ -4081,3 +4101,111 @@ see a menu whose every entry they can use; no entry is hidden inside a group
 labelled for somebody else; the desktop menu, the mobile sidenav and the
 active-state matching are driven from one declaration; every route keeps the
 guard it has today.
+
+### v2-47 — Avatars and merch belong to a community, not to the deployment
+
+**Status:** **In progress** (2026-11-09). Raised by Rob 2026-11-09, from the v2-25 import.
+**Blocks the production deployment** (Rob, 2026-11-09) — see the running
+order above. Widened the same day to cover `merch_config` (Rob): same
+misclassification, same fix.
+
+`avatar` and `merch_config` are the two models still in `GLOBAL_MODELS` as
+"reference data `seed.ts` wrote" — a preset avatar list and a store, both
+shared by every community on the deployment. Scoping them is the same move
+v2-24 made for `cities`, for the same reason: the admin page that manages the
+avatar list is `@Roles(ADMIN)` over a table with no tenant filter, so one
+community's admin adds and removes presets every other community sees, and
+`merch_config` is a singleton pinned to id 1 whose `store_url` and
+`founding_bear_product_url` point every community at DinnerBears' store.
+
+**The category is the bug, not the two rows in it.** "Reference data written
+by `seed.ts`" describes *when a row is created*, not *who owns it* — the seed
+runs before any tenant exists, so everything it writes looks global whether or
+not it is. `app_config` and `users` left that category in v2-6 and `cities` in
+v2-24, each time for this reason. An audit of `GLOBAL_MODELS` on 2026-11-09
+found these two are the last of it: every other entry carries a justification
+that holds (`tenants` is circular; `releases`/`release_feedback` are the
+platform's own notes; `email_suppressions` is a property of the address rather
+than of whoever mailed it; `facebook_deletion_requests` arrives with no host to
+resolve; `demo_requests` precedes its tenant and `demo_feedback` outlives it;
+`system_reports`' audience is every community's admins; `inbound_emails` must
+hold the row that resolved to nobody). **Moving both empties category (2)**,
+which is the outcome worth having: nothing is left there to misclassify next.
+
+**What surfaced it.** The DinnerBears import landed on stage with an empty
+avatar chooser. Three things had to line up for that: the import skips the
+table on purpose (`plan/index.ts` — importing v1's 32 rows would show bears to
+every community), `bootstrap.ts` deletes `/avatars/bear-%` so a fresh fork does
+not inherit them, and stage had been bootstrapped. Restoring the rows by hand
+fixes stage and is exactly the wrong fix for prod, where the second community
+to exist would find bears in its picker with no admin able to remove them.
+
+**Member photos are not at risk.** `users.profile_photo_path` stores a path
+string, not a foreign key onto `avatar` — which is why the import carries
+presets across correctly today, and why scoping the catalogue cannot orphan
+anybody's picture. The 32 static files ship in the frontend image
+(`frontend/public/avatars/`); only the rows are in question.
+
+**The workaround was the tell.** `bootstrap.ts` deletes `/avatars/bear-%` so
+a fresh fork does not inherit DinnerBears' presets. A global table that needs
+per-install deletion is a per-install table; that line is this bug wearing a
+workaround, and it goes away here.
+
+**The unique index has to move with it.** `path` is globally unique
+(`uq_avatar_path`) and becomes unique per tenant, so two communities can both
+present `/avatars/bear-wizard.png`. Uploaded avatars keep their own files under
+`/api/uploads/avatars/`, and `AvatarsService`'s "static assets ship in the image
+and are left alone" rule on delete is unchanged.
+
+**Seeding moves to where the tenant exists.** The init migration seeds the 32
+presets and `bootstrap.ts` then deletes them — a round trip that only makes
+sense while the table is global. Scoped, the seed cannot write the rows at all
+(`seed.ts` runs before any tenant), so they move to `bootstrap.ts` and
+`tenants-admin.service.create`, precisely as the cities rows did. Whether a new
+community starts with the bears, with nothing, or with an operator-chosen
+default set is the one open question in this item.
+
+**Then the import should carry them.** The exclusion in `plan/index.ts` exists
+only because the table is global; once it is not, v1's avatar rows are ordinary
+tenant data and REQ-IMPORT-01 takes an amendment saying so. That is the second
+half of this item and the reason it is worth doing before more communities
+land, not after.
+
+**Who may see a list, and who may edit it** (Rob, 2026-11-09): the rows belong
+to the community, its own admin edits them, and only that community's people
+see them.
+
+Scoping delivers most of that for free — the host resolves the tenant, so a
+visitor to one community's picker cannot be served another's rows. Two gaps
+need closing by hand:
+
+- **`GET /avatars/manifest` is public and unguarded.** Its comment explains
+  why — the picker "needs the list before a member is fully authenticated,
+  same as it did when this was a static `/avatars/manifest.json` file". That
+  stopped being true: the only two callers are `profile-settings` and
+  `admin-settings`, both behind a session, and nothing on the registration or
+  login path touches it. So it takes `JwtAuthGuard` and the comment goes.
+  Scoped-but-public would still leak one community's preset *labels* and file
+  names to anyone who knows its host.
+- **`merch` is already right** and is worth copying rather than re-deriving:
+  `@Controller('merch')` is `JwtAuthGuard` at the class, with `RolesGuard` and
+  `@Roles(ADMIN)` on the two `admin/config` routes. Members read, the
+  community's admin writes. Once the table is scoped, that is exactly the rule
+  asked for here.
+
+**Watch the lookups by id.** `AvatarsService` reads and writes by primary key
+— `findUnique({where:{id}})`, `update`, `delete` — and an id is globally
+unique, so the extension has nothing to narrow and one community's admin can
+edit another's row. These become find-then-act, the same correction the email
+lookups took when `users` was scoped. This is the only part of the change that
+is a security fix rather than a data-ownership one.
+
+**Definition of done:** `avatar` and `merch_config` are both in the scoped list
+and `GLOBAL_MODELS`' category (2) is empty; `avatar.path` is unique per tenant
+and `merch_config` is one row per tenant rather than the id-1 singleton; a
+migration assigns existing rows and no community loses its picker or its store
+link; every by-id read and write in `AvatarsService` is tenant-narrowed; the
+avatar manifest requires a session and serves only the host community's rows; the
+seed writes neither table and bootstrap and tenant creation seed them instead,
+with the init-migration round trip gone; the import brings v1's avatar rows
+over and REQ-IMPORT-01 records the change.

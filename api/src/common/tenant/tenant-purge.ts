@@ -57,6 +57,7 @@ import { TENANT_SCOPED_MODELS, type TenantScopedModel } from './tenant-scoped-mo
  * would force a cast at every call site instead of at this one.
  */
 export interface PurgeExecutor {
+  count(args: { where: { tenantId: number } }): Promise<number>;
   updateMany(args: { where: { tenantId: number }; data: Record<string, null> }): Promise<unknown>;
   deleteMany(args: { where: { tenantId: number } }): Promise<{ count: number }>;
 }
@@ -110,18 +111,33 @@ export async function purgeTenantRows(
     });
   }
 
+  // Counted BEFORE anything is deleted, not from what each `deleteMany`
+  // returns. Most foreign keys among these tables cascade, and a child whose
+  // parent sorts earlier in the alphabetical walk is already gone by the time
+  // the walk reaches it -- so its `deleteMany` honestly reports zero and the
+  // table drops out of the result entirely. Deleting a populated community
+  // understated it by 299 rows across `member_achievements` (cascades from
+  // `achievements`, which sorts first), `location_ratings` and
+  // `facebook_event_attendees` (both from `events`).
+  //
+  // The rows were gone either way -- `tenant_id` is RESTRICT on every one of
+  // these tables, so a single survivor aborts the whole transaction. What was
+  // wrong was the record: `TenantsAdminService.remove` writes this map into
+  // `audit_log` on the root tenant, and it is the only trace a destroyed
+  // community leaves. An operator reading it to confirm what was erased was
+  // being told three tables held nothing.
   const deleted: Record<string, number> = {};
-  const recordDelete = async (model: TenantScopedModel): Promise<void> => {
-    const { count } = await delegates[model].deleteMany({ where: { tenantId } });
+  for (const model of TENANT_SCOPED_MODELS) {
+    const count = await delegates[model].count({ where: { tenantId } });
     if (count > 0) deleted[model] = count;
-  };
+  }
 
   for (const model of PURGE_PREDELETED_MODELS) {
-    await recordDelete(model as TenantScopedModel);
+    await delegates[model as TenantScopedModel].deleteMany({ where: { tenantId } });
   }
   for (const model of TENANT_SCOPED_MODELS) {
     if (PURGE_PREDELETED_MODELS.includes(model)) continue;
-    await recordDelete(model);
+    await delegates[model].deleteMany({ where: { tenantId } });
   }
   return deleted;
 }
