@@ -58,7 +58,7 @@ Two decisions bound it:
 | 4 | ~~**v2-34 — an inbound email log**~~ | **Done 2026-10-22** (tag `v2-34`). **Pulled forward 2026-10-20 (Rob), reversing "post-cutover".** Wanted *as an instrument for the cutover*, not as a feature: inbound mail fails silently seven ways, and the import and first production deployment are exactly when nobody can afford that. Its second job is finding multi-tenant faults we do not know about yet — a message resolving to the wrong community, or to none — while there is still time to fix them. The parity test ("does DinnerBears have it today?") says no and is **overruled here on purpose**: parity measures what members lose, and this is diagnostics for the operator during the riskiest week of the project. Ahead of v2-29 so the Muse sync writes to the log from the start rather than being retrofitted. |
 | 5 | ~~**v2-29 — port Phase 39**~~ | **Done 2026-10-24** (tag `v2-29`). With v2-33 this repo is level with prod DinnerBears. Stage ran **two** communities mirroring independently, which is the clause of the definition of done a single-community run cannot test. Stage also found the cover photos missing and private venue addresses unredacted — both from hand-writing queries v1 delegated to `EventsService`, and both invisible to the suite because neither event endpoint had a test. |
 | 6 | ~~**v2-24 — cities**~~ | **Done 2026-11-07** (tag `v2-24`). REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. Also carries the `CitiesAdminController` gap v2-12 left open deliberately: `@Roles(ADMIN)` over a global table. |
-| 7 | **v2-25 — the import** | **In progress / next up** (2026-11-07, now that v2-24 is done). The deliverable. Dry-run cycle against a copy before anything real. |
+| 7 | ~~**v2-25 — the import**~~ | **Done 2026-11-09** (tag `v2-25`). The deliverable. Dry runs against the *live* v1 database — not a copy — found three defects no fixture could have, including one that would have let an imported community mail every member it had just imported. Rehearsed end to end on stage, delete-and-re-import included. Raised `v2-47`, which now blocks item 8. |
 | 8 | **v2-47 — scope avatars and merch to a community** | **Blocks production** (Rob, 2026-11-09). Not cosmetic sequencing: prod cannot ship with `avatar` global. Hand-restoring the rows to give DinnerBears its picker back puts its bears in the root tenant's picker as well, and every community after it inherits a list no admin can edit. Scoped first, the production import carries the rows itself and nothing is written by hand. |
 | 9 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
@@ -2330,8 +2330,27 @@ before; `facebook_group_config` is gone while `campaign_facebook` invites
 still work.
 
 ### v2-25 — DinnerBears import (new tenant) (REQ-IMPORT-01)
-**Status:** **Next up** (2026-11-07, now that v2-24 is done). Sequenced last,
+**Status:** **Complete** (2026-11-09, tag `v2-25`). Sequenced last,
 per Rob (2026-08-30).
+
+**Outcome:** met. The whole of DinnerBears imported into a new tenant on stage
+— 4,175 rows across 35 tables, arithmetic closing against the source, zero
+validation errors — and the cycle was rehearsed end to end several times,
+including delete-and-re-import. Three defects a fixture could not have found
+came out of pointing the dry run at the live v1 database: a typed-in
+reservation name imported as a foreign key and blanked on fourteen of
+thirty-two events, blanked nullable columns counted as skipped rows (which
+would have failed validation on a *correct* import), and `brevo_enabled`
+carried across while the keys were withheld — the last of which would have let
+an imported community mail every member it had just imported, using the
+deployment's own Brevo account.
+
+**Found by this item, fixed here, belonging elsewhere:** the tenant purge's
+record understated what it destroyed, because a table emptied by a cascade
+reports zero when the walk reaches it (`ff42b13`).
+
+**Raised by this item, deferred:** `v2-47` — avatars and merch are deployment
+data and should be tenant data. Blocks the production deployment.
 Depends on v2-24 — cities import as tenant-scoped rows now, not excluded,
 and each imported user's legacy single city becomes one row in their new
 `user_city_preferences` set. No other technical dependency on v2-17
@@ -4085,7 +4104,7 @@ guard it has today.
 
 ### v2-47 — Avatars and merch belong to a community, not to the deployment
 
-**Status:** Not started. Raised by Rob 2026-11-09, from the v2-25 import.
+**Status:** **In progress** (2026-11-09). Raised by Rob 2026-11-09, from the v2-25 import.
 **Blocks the production deployment** (Rob, 2026-11-09) — see the running
 order above. Widened the same day to cover `merch_config` (Rob): same
 misclassification, same fix.
