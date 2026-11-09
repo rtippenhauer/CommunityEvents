@@ -59,7 +59,8 @@ Two decisions bound it:
 | 5 | ~~**v2-29 — port Phase 39**~~ | **Done 2026-10-24** (tag `v2-29`). With v2-33 this repo is level with prod DinnerBears. Stage ran **two** communities mirroring independently, which is the clause of the definition of done a single-community run cannot test. Stage also found the cover photos missing and private venue addresses unredacted — both from hand-writing queries v1 delegated to `EventsService`, and both invisible to the suite because neither event endpoint had a test. |
 | 6 | ~~**v2-24 — cities**~~ | **Done 2026-11-07** (tag `v2-24`). REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. Also carries the `CitiesAdminController` gap v2-12 left open deliberately: `@Roles(ADMIN)` over a global table. |
 | 7 | **v2-25 — the import** | **In progress / next up** (2026-11-07, now that v2-24 is done). The deliverable. Dry-run cycle against a copy before anything real. |
-| 8 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
+| 8 | **v2-47 — scope avatars to a community** | **Blocks production** (Rob, 2026-11-09). Not cosmetic sequencing: prod cannot ship with `avatar` global. Hand-restoring the rows to give DinnerBears its picker back puts its bears in the root tenant's picker as well, and every community after it inherits a list no admin can edit. Scoped first, the production import carries the rows itself and nothing is written by hand. |
+| 9 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
 `v2-31` (a real email log) is not a blocker but is wanted early: the current
 screen is 100 rows with no search, which stops answering "did this member get
@@ -4085,6 +4086,8 @@ guard it has today.
 ### v2-47 — Avatars belong to a community, not to the deployment
 
 **Status:** Not started. Raised by Rob 2026-11-09, from the v2-25 import.
+**Blocks the production deployment** (Rob, 2026-11-09) — see the running
+order above.
 
 `avatar` is the last of the two models still in `GLOBAL_MODELS` as "reference
 data `seed.ts` wrote" — one preset list shared by every community on the
