@@ -4081,3 +4081,55 @@ see a menu whose every entry they can use; no entry is hidden inside a group
 labelled for somebody else; the desktop menu, the mobile sidenav and the
 active-state matching are driven from one declaration; every route keeps the
 guard it has today.
+
+### v2-47 — Avatars belong to a community, not to the deployment
+
+**Status:** Not started. Raised by Rob 2026-11-09, from the v2-25 import.
+
+`avatar` is the last of the two models still in `GLOBAL_MODELS` as "reference
+data `seed.ts` wrote" — one preset list shared by every community on the
+deployment. Scoping it is the same move v2-24 made for `cities`, for the same
+reason: the admin page that manages the list is `@Roles(ADMIN)` over a table
+with no tenant filter, so one community's admin adds and removes presets that
+every other community sees.
+
+**What surfaced it.** The DinnerBears import landed on stage with an empty
+avatar chooser. Three things had to line up for that: the import skips the
+table on purpose (`plan/index.ts` — importing v1's 32 rows would show bears to
+every community), `bootstrap.ts` deletes `/avatars/bear-%` so a fresh fork does
+not inherit them, and stage had been bootstrapped. Restoring the rows by hand
+fixes stage and is exactly the wrong fix for prod, where the second community
+to exist would find bears in its picker with no admin able to remove them.
+
+**Member photos are not at risk.** `users.profile_photo_path` stores a path
+string, not a foreign key onto `avatar` — which is why the import carries
+presets across correctly today, and why scoping the catalogue cannot orphan
+anybody's picture. The 32 static files ship in the frontend image
+(`frontend/public/avatars/`); only the rows are in question.
+
+**The unique index has to move with it.** `path` is globally unique
+(`uq_avatar_path`) and becomes unique per tenant, so two communities can both
+present `/avatars/bear-wizard.png`. Uploaded avatars keep their own files under
+`/api/uploads/avatars/`, and `AvatarsService`'s "static assets ship in the image
+and are left alone" rule on delete is unchanged.
+
+**Seeding moves to where the tenant exists.** The init migration seeds the 32
+presets and `bootstrap.ts` then deletes them — a round trip that only makes
+sense while the table is global. Scoped, the seed cannot write the rows at all
+(`seed.ts` runs before any tenant), so they move to `bootstrap.ts` and
+`tenants-admin.service.create`, precisely as the cities rows did. Whether a new
+community starts with the bears, with nothing, or with an operator-chosen
+default set is the one open question in this item.
+
+**Then the import should carry them.** The exclusion in `plan/index.ts` exists
+only because the table is global; once it is not, v1's avatar rows are ordinary
+tenant data and REQ-IMPORT-01 takes an amendment saying so. That is the second
+half of this item and the reason it is worth doing before more communities
+land, not after.
+
+**Definition of done:** `avatar` is in the scoped list and `GLOBAL_MODELS`'
+category (2) names only `merch_config`; `path` is unique per tenant; a
+migration assigns existing rows and no community loses its picker; the admin
+page edits only its own community's list; bootstrap and tenant creation seed
+the presets and the init-migration round trip is gone; the import brings v1's
+avatar rows over and REQ-IMPORT-01 records the change.
