@@ -311,6 +311,29 @@ describe('DinnerBears import (e2e)', () => {
       awarded_at: '2026-03-15 00:00:00',
     });
 
+    // v1's avatar presets and its store links (v2-47). Both tables were
+    // excluded from the import until they were scoped -- the exclusion reasons
+    // ("would add duplicates visible to every community", "would point every
+    // community at DinnerBears' store") described the global table, not the
+    // data, and stopped applying when the table stopped being global.
+    await source.insert('avatar', {
+      path: '/avatars/bear-wizard.png',
+      label: 'Wizard',
+      sort_order: 0,
+      created_at: '2024-01-01 00:00:00',
+    });
+    await source.insert('avatar', {
+      path: '/avatars/bear-chef.jpg',
+      label: 'Chef',
+      sort_order: 1,
+      created_at: '2024-01-01 00:00:00',
+    });
+    await source.insert('merch_config', {
+      store_url: 'https://dinnerbears.printful.me/',
+      founding_bear_product_url: 'https://dinnerbears.printful.me/product/founding-bear',
+      updated_at: '2024-01-01 00:00:00',
+    });
+
     const announcementId = await source.insert('announcements', {
       title: 'Welcome',
       body: 'Hello all.',
@@ -973,6 +996,50 @@ describe('DinnerBears import (e2e)', () => {
         expect(notes).toMatchObject({ sourceRows: 2, imported: 1 });
         expect(notes?.skipped[0].reason).toContain('which was not imported');
         expect(upvotes).toMatchObject({ sourceRows: 2, imported: 1 });
+      });
+    });
+
+    /**
+     * v2-47. The community's picker and its store link are tenant data, so the
+     * import is what carries them -- and the alternative was the thing that
+     * raised the item: restoring the rows by hand fixes one community and puts
+     * its presets in every other community's picker, with no admin able to
+     * remove them.
+     */
+    describe('avatars and merch (v2-47)', () => {
+      it("brings v1's presets into the imported community", async () => {
+        const presets = await runWithTenant(tenantId, async () =>
+          prisma.avatar.findMany({ orderBy: { sortOrder: 'asc' } }),
+        );
+
+        expect(presets.map((a) => a.path)).toEqual([
+          '/avatars/bear-wizard.png',
+          '/avatars/bear-chef.jpg',
+        ]);
+        expect(presets.map((a) => a.label)).toEqual(['Wizard', 'Chef']);
+      });
+
+      it('leaves the root community picker empty, where it was', async () => {
+        // The point of the whole item: before scoping there was one table, so
+        // importing DinnerBears' bears meant every community had them.
+        const rootPresets = await runWithTenant(TEST_TENANT_ID, async () =>
+          prisma.avatar.count(),
+        );
+
+        expect(rootPresets).toBe(0);
+      });
+
+      it("carries the store links, to the imported community only", async () => {
+        const [theirs, ours] = await Promise.all([
+          runWithTenant(tenantId, async () => prisma.merch_config.findFirst()),
+          runWithTenant(TEST_TENANT_ID, async () => prisma.merch_config.findFirst()),
+        ]);
+
+        expect(theirs?.storeUrl).toBe('https://dinnerbears.printful.me/');
+        expect(theirs?.foundingBearProductUrl).toBe(
+          'https://dinnerbears.printful.me/product/founding-bear',
+        );
+        expect(ours).toBeNull();
       });
     });
 

@@ -31,13 +31,26 @@ export class MerchService {
     };
   }
 
+  /**
+   * This community's store links.
+   *
+   * **Not `id: 1`** (v2-47). The row was a deployment-wide singleton pinned to
+   * that id, which is why every community's Merch screen showed DinnerBears'
+   * shop and any community's admin could repoint it for all of them. It is one
+   * row per community now (`uq_merch_config_tenant`), found by the scoping
+   * extension's own predicate rather than by a literal.
+   *
+   * Still nullable: `bootstrap.ts` and `tenants-admin.service.create` write the
+   * row, so only a community that predates both has none.
+   */
   async getConfig(): Promise<MerchConfig | null> {
-    return this.prisma.merch_config.findUnique({ where: { id: 1 } });
+    return this.prisma.merch_config.findFirst();
   }
 
   async updateConfig(dto: UpdateMerchConfigDto): Promise<MerchConfig | null> {
     const config = await this.getConfig();
     if (!config) return null;
-    return this.prisma.merch_config.update({ where: { id: 1 }, data: dto });
+    // Keyed on the id the scoped read just returned, not on a literal 1.
+    return this.prisma.merch_config.update({ where: { id: config.id }, data: dto });
   }
 }

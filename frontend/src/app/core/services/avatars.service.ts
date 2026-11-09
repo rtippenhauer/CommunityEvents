@@ -12,7 +12,9 @@ export interface Avatar {
 export class AvatarsService {
   private readonly http = inject(HttpClient);
 
-  // Public list used by the profile avatar picker.
+  // This community's presets, for the profile avatar picker. Requires a
+  // session as of v2-47 and serves only the host community's rows -- it was
+  // an unguarded route over a table every community shared.
   getManifest(): Observable<Avatar[]> {
     return this.http.get<Avatar[]>('/api/v1/avatars/manifest');
   }

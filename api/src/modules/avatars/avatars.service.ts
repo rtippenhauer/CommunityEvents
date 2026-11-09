@@ -23,8 +23,10 @@ export class AvatarsService {
     return rows.map((a) => ({ id: a.id, path: a.path, label: a.label }));
   }
 
-  /** Whether a given path is one of this instance's preset avatars — the
-   *  authoritative check for setAvatar (users can't set an arbitrary path). */
+  /** Whether a given path is one of this community's preset avatars — the
+   *  authoritative check for setAvatar (users can't set an arbitrary path).
+   *  Scoped, so a member cannot adopt a preset another community uploaded by
+   *  pasting its path. */
   async pathExists(path: string): Promise<boolean> {
     return (await this.prisma.avatar.count({ where: { path } })) > 0;
   }
@@ -55,8 +57,24 @@ export class AvatarsService {
     }
   }
 
+  /**
+   * The row, or 404 — and the reason every write above goes through it.
+   *
+   * **`findFirst`, not `findUnique`** (v2-47). An avatar id is unique across
+   * the whole deployment, so `findUnique({ where: { id } })` gives the scoping
+   * extension nothing to narrow: it matched one row and that row might be
+   * another community's. `findFirst` takes the injected `tenant_id` predicate,
+   * so an id belonging to somebody else simply does not resolve and the caller
+   * gets the same 404 as for an id that never existed. The `update` and
+   * `delete` that follow may then key on the id alone, because this call has
+   * already proved the row is ours.
+   *
+   * This is the same correction the email lookups took when `users` became
+   * scoped, and for the same reason: a compound key the caller does not supply
+   * is not enforced by it being unique.
+   */
   private async requireAvatar(id: number): Promise<Avatar> {
-    const avatar = await this.prisma.avatar.findUnique({ where: { id } });
+    const avatar = await this.prisma.avatar.findFirst({ where: { id } });
     if (!avatar) throw new NotFoundException('Avatar not found');
     return avatar;
   }

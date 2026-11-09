@@ -100,12 +100,16 @@ describe('preflight', () => {
 
   describe('an excluded table that is absent', () => {
     it('warns without failing, since nothing depends on it', () => {
-      const result = preflight(cleanSource().filter((c) => c.table !== 'merch_config'));
+      // `email_suppressions` rather than `merch_config`, which was this test's
+      // specimen until v2-47 imported it. An excluded table that is absent
+      // warns; a *planned* table that is absent fails, which is what this
+      // assertion silently became.
+      const result = preflight(cleanSource().filter((c) => c.table !== 'email_suppressions'));
 
       expect(result.ok).toBe(true);
       expect(result.findings).toContainEqual({
         severity: 'warning',
-        message: expect.stringContaining('Excluded source table "merch_config" does not exist'),
+        message: expect.stringContaining('Excluded source table "email_suppressions" does not exist'),
       });
     });
   });

@@ -1,95 +1,37 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as dotenv from 'dotenv';
 import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import { PrismaClient } from '@prisma/client';
 
-/**
- * Read at runtime rather than `import`ed. TypeScript can import JSON directly,
- * but only with resolveJsonModule plus the right interop settings, and those
- * have to be threaded through whichever runner invokes this file. Reading the
- * files keeps the seed independent of compiler configuration.
- */
-function load(table: string): Record<string, unknown>[] {
-  // Resolved relative to this file so it works identically from src/ under
-  // ts-node and from dist/ in the production image -- dist mirrors src, so the
-  // same number of levels lands on api/prisma/seed-data either way.
-  const file = path.join(__dirname, '..', '..', '..', 'prisma', 'seed-data', `${table}.json`);
-  return JSON.parse(fs.readFileSync(file, 'utf8'));
-}
-
-const avatar = load('avatar');
-const merchConfig = load('merch_config');
-
 dotenv.config({ path: path.join(__dirname, '../../../../.env') });
 
 /**
- * Reference and config data a brand-new install needs before it can function.
+ * Tenant-independent reference data a brand-new install needs before it can
+ * function -- **of which there is currently none.**
  *
- * v2 starts from a blank database and imports real records from production
- * separately, so this file covers only the rows the application itself
- * assumes exist -- the avatar set --
- * not user-generated data.
+ * This file still runs, still has its place in the install order
+ * (`migrate deploy` -> `seed.js` -> `bootstrap.js`, see
+ * `docs/NEW_INSTANCE_SETUP.md`) and still writes nothing, because every row it
+ * used to write turned out to belong to a community rather than to the
+ * deployment. In order: the `app_config` defaults and the automation account
+ * left in v2-6, `email_provider_config` in v2-9, the achievement catalogue in
+ * v2-10, the city list in v2-24, and `avatar` and `merch_config` in v2-47.
+ * Each went to `bootstrap.ts` and `tenants-admin.service.create`, which run
+ * after a tenant exists.
  *
- * **Everything here is tenant-independent, and that is now a hard rule rather
- * than an observation.** This runs before bootstrap.js, so no tenant exists
- * yet; any row it wrote to a tenant-scoped table would take the `tenant_id`
- * sentinel 0 and be rejected by that table's foreign key. The `app_config`
- * defaults and the automation service account used to live here and moved to
- * bootstrap.ts in v2-6 for exactly that reason -- both belong to a specific
- * community, and bootstrap is where the community first exists.
+ * **That is a pattern, not a coincidence, and it is the reason this file is
+ * worth keeping empty rather than deleting.** Everything written here is
+ * written into a database with zero tenant rows, so it *looks* deployment-wide
+ * whether or not it is -- a row that belongs to one community takes the
+ * `tenant_id` sentinel 0 here and is rejected by that table's foreign key. The
+ * emptiness is the safeguard: anything added back has to answer "does a row of
+ * this belong to one community, or to the deployment?" out loud, and five
+ * items running have answered "one community" every time.
  *
- * These rows previously arrived as INSERTs scattered across 20 of the 84
- * TypeORM migrations. Collecting them here is what makes those migrations
- * disposable: with the schema owned by a single Prisma migration, the only
- * thing the old migration history still carried was this data.
- *
- * Idempotent by design. Every table is upserted on a natural key, so running
- * it against an already-seeded database is a no-op rather than a duplicate-key
- * failure, and it can be re-run after adding new reference rows.
- *
- * Order-independent too, which is why the captured rows carry no `id` for the
- * tables found by a natural key. Pinning the surrogate ids made the seed fail
- * with a PRIMARY key violation whenever anything had already inserted a row --
- * running bootstrap.js first was enough, because its city took id 1 and the
- * seed then tried to create Cincinnati as id 1 as well. The ids are left to
- * auto-increment; nothing references these rows by id.
- *
- * merch_config is the exception and keeps id 1: it is a true singleton that the
- * application looks up by that id.
- *
- * email_provider_config used to be the other one. It became per-community in
- * v2-9 and moved to bootstrap.ts, for the reason the app_config defaults and the
- * automation account moved there in v2-6: seed runs before any tenant exists, so
- * a row written here takes the tenant_id sentinel and is rejected by the foreign
- * key.
+ * It keeps a working database connection so that the next genuinely
+ * tenant-independent row has somewhere to go, and so a fresh install's console
+ * output still shows the step it documented.
  */
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
-
-/**
- * Normalises a captured JSON row into something Prisma will accept.
- *
- * Two things need doing. createdAt/updatedAt are an artifact of when the
- * data was captured, not meaningful values, so they are dropped and the
- * column defaults (CURRENT_TIMESTAMP) record when this install was actually
- * seeded. And JSON has no date type, so datetime columns arrive as ISO
- * strings and have to become Date objects again.
- *
- * The return type is deliberately loose: these rows are generated from a
- * database dump rather than written by hand, so per-model input types would
- * mean seven near-identical casts without catching anything a mismatched
- * column name would not already fail on at runtime.
- */
-function normalize(row: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(row)) {
-    if (key === 'createdAt' || key === 'updatedAt') continue;
-    out[key] = typeof value === 'string' && ISO_DATE.test(value) ? new Date(value) : value;
-  }
-  return out;
-}
-
 async function main() {
   const prisma = new PrismaClient({
     adapter: new PrismaMariaDb({
@@ -102,41 +44,8 @@ async function main() {
     }),
   });
 
-  // The achievements catalogue used to be seeded here, and so did the city
-  // list. v2-10 scoped the first and v2-24 the second, so both belong to a
-  // community and neither can be written before one exists -- they moved to
-  // bootstrap.ts and tenants-admin.service.create, the same move v2-6 made for
-  // the app_config defaults and v2-9 for email_provider_config.
-  //
-  // Nothing left here has a foreign key to anything, which is what makes it
-  // safe to run before any tenant exists at all.
-
-  for (const row of avatar) {
-    const data = normalize(row);
-    await prisma.avatar.upsert({
-      where: { path: row.path as string },
-      update: data as never,
-      create: data as never,
-    });
-  }
-
-  // Single-row config tables with no natural key -- keyed on their fixed id.
-  for (const row of merchConfig) {
-    const data = normalize(row);
-    await prisma.merch_config.upsert({
-      where: { id: row.id as number },
-      update: data as never,
-      create: data as never,
-    });
-  }
-
-  const counts = {
-    cities: await prisma.cities.count(),
-    avatar: await prisma.avatar.count(),
-    merch_config: await prisma.merch_config.count(),
-  };
-  console.log('Seeded:', counts);
-
+  await prisma.$connect();
+  console.log('Seeded: nothing — no tenant-independent reference data remains (v2-47).');
   await prisma.$disconnect();
 }
 

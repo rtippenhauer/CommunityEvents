@@ -4157,13 +4157,26 @@ present `/avatars/bear-wizard.png`. Uploaded avatars keep their own files under
 `/api/uploads/avatars/`, and `AvatarsService`'s "static assets ship in the image
 and are left alone" rule on delete is unchanged.
 
-**Seeding moves to where the tenant exists.** The init migration seeds the 32
-presets and `bootstrap.ts` then deletes them — a round trip that only makes
-sense while the table is global. Scoped, the seed cannot write the rows at all
+**Seeding moves to where the tenant exists.** `seed.ts` writes the 32 presets
+and `bootstrap.ts` then deletes them — a round trip that only makes sense while
+the table is global. (This said "the init migration seeds" them until the work
+started; the init migration only creates the table, and `seed.ts` reads
+`prisma/seed-data/avatar.json`. The round trip is the same either way.) Scoped, the seed cannot write the rows at all
 (`seed.ts` runs before any tenant), so they move to `bootstrap.ts` and
 `tenants-admin.service.create`, precisely as the cities rows did. Whether a new
 community starts with the bears, with nothing, or with an operator-chosen
 default set is the one open question in this item.
+
+**Answered 2026-11-09 (Rob): one CommunityEvents placeholder, not the bears.**
+A new community's picker holds a single neutral silhouette,
+`/avatars/cep-default.svg`, shipped in the frontend image and written by
+`bootstrap.ts`, `tenants-admin.service.create` and — for communities that
+already exist — the migration. Empty was considered and rejected: the picker is
+reachable from Profile the moment a community exists, and an empty one reads as
+broken rather than as unconfigured. **It is a different file from
+`/assets/default-avatar.svg`**, which is what member lists render when somebody
+has no photo at all; if picking the only preset produced the same image as
+picking nothing, choosing it would be invisible.
 
 **Then the import should carry them.** The exclusion in `plan/index.ts` exists
 only because the table is global; once it is not, v1's avatar rows are ordinary

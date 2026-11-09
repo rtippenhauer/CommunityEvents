@@ -54,7 +54,7 @@ No `synchronize: true`. No manual schema changes.
 | `member_achievements` | 15 | Earned achievements per member |
 | `member_points` | 15 | Bear Points ledger (one row per award event) |
 | `custom_icons` | 17 | Reusable icon library for achievements |
-| `avatar` | 31 | Per-instance preset profile avatars (admin-managed) |
+| `avatar` | 31 | A community's preset profile avatars (admin-managed, tenant-scoped v2-47) |
 
 ---
 
@@ -971,25 +971,75 @@ INDEX idx_created (created_at)
 
 ## avatar
 
-Phase 31. Per-instance preset profile avatars a member can pick from — replaces
-the old static `public/avatars/manifest.json`. Admin-managed (upload/remove) via
-the `avatars` module.
+Phase 31. Preset profile avatars a member can pick from — replaces the old
+static `public/avatars/manifest.json`. Admin-managed (upload/remove) via the
+`avatars` module.
+
+**Tenant-scoped as of v2-47.** It was global until then, which made
+`/admin/avatars` an `@Roles(ADMIN)` screen over a table every community shared:
+adding or removing a preset changed what all of them saw.
 
 ```sql
 id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-path            VARCHAR(500) NOT NULL UNIQUE
+path            VARCHAR(500) NOT NULL
 label           VARCHAR(100) NOT NULL
 sort_order      INT NOT NULL DEFAULT 0
 created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+tenant_id       INT UNSIGNED NOT NULL DEFAULT 0  -- FK tenants(id), RESTRICT
+
+UNIQUE KEY uq_avatar_tenant_path (tenant_id, path)
+KEY idx_avatar_tenant (tenant_id)
 ```
 
-`path` is either a static asset shipped in the image (`/avatars/bear-*.jpg`,
-the 32 seeded DinnerBears bears) or an uploaded one
-(`/api/uploads/avatars/<file>`). A fresh fork's bootstrap deletes the seeded
-bears so it starts empty. Served public via `GET /api/v1/avatars/manifest`;
-admin CRUD at `GET|POST /api/v1/admin/avatars`, `PATCH|DELETE
-/api/v1/admin/avatars/:id`. `UsersService.setAvatar` validates a chosen path
-against this table.
+`path` is either a static asset shipped in the image (`/avatars/*`) or an
+uploaded one (`/api/uploads/avatars/<file>`). It is unique **per community**,
+not globally — the shipped files belong to no community, so two of them may
+both offer `/avatars/bear-wizard.png`.
+
+A new community starts with one neutral placeholder,
+`/avatars/cep-default.svg`, written by `bootstrap.ts` and
+`tenants-admin.service.create` (see `common/avatars/avatar-defaults.ts`). The 32
+DinnerBears bears are **not** seeded any more: they are DinnerBears' own data
+and arrive through the import. Until v2-47 `seed.ts` wrote them and bootstrap
+then deleted `/avatars/bear-%` again — a global table that needed per-install
+deletion, which is what the scoping fixed.
+
+`GET /api/v1/avatars/manifest` **requires a session** as of v2-47 and serves
+only the host community's rows; admin CRUD at `GET|POST /api/v1/admin/avatars`,
+`PATCH|DELETE /api/v1/admin/avatars/:id`, every by-id read and write narrowed by
+tenant. `UsersService.setAvatar` validates a chosen path against this table, so
+a member cannot wear a preset their community does not offer.
+
+**A member's photo does not point here.** `users.profile_photo_path` holds a
+path string, not a foreign key onto `avatar`, so retiring or re-scoping a preset
+cannot orphan anybody's picture.
+
+---
+
+## merch_config
+
+A community's store links, read by the Merch screen.
+
+**Tenant-scoped as of v2-47**, and until then a singleton pinned to `id = 1`:
+one row for the whole deployment, so `store_url` and
+`founding_bear_product_url` pointed every community at DinnerBears' shop and
+any community's admin could repoint it for all of them.
+
+```sql
+id                         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+store_url                  VARCHAR(500) NULL
+founding_bear_product_url  VARCHAR(500) NULL
+updated_at                 DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+tenant_id                  INT UNSIGNED NOT NULL DEFAULT 0  -- FK tenants(id), RESTRICT
+
+UNIQUE KEY uq_merch_config_tenant (tenant_id)
+```
+
+Still one row per community, but as a constraint rather than as everyone
+agreeing to read id 1 — `MerchService` finds it by the scoping extension's own
+predicate. `bootstrap.ts` and `tenants-admin.service.create` write an **empty**
+row; a community acquires a store only when its admin fills one in, and
+`feature_merch` gates the member-facing route.
 
 ---
 

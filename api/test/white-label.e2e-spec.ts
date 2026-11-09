@@ -141,9 +141,24 @@ describe('White-label runtime config (e2e)', () => {
   });
 
   describe('Avatars', () => {
-    it('serves the manifest publicly (no auth)', async () => {
+    // Public until v2-47. The old route comment justified it as "the picker
+    // needs the list before a member is fully authenticated, same as it did
+    // when this was a static /avatars/manifest.json file" -- which had stopped
+    // being true: both callers sit behind a session, and nothing on the
+    // registration or login path reads it. Scoped-but-public would still have
+    // served one community's preset labels and file names to anyone who knew
+    // its host.
+    it('refuses the manifest without a session (v2-47)', async () => {
       await seedAvatar('/avatars/bear-chef.jpg', 'Chef');
-      const res = await request(server).get('/api/v1/avatars/manifest').expect(200);
+      await request(server).get('/api/v1/avatars/manifest').expect(401);
+    });
+
+    it('serves the manifest to a signed-in member', async () => {
+      await seedAvatar('/avatars/bear-chef.jpg', 'Chef');
+      const res = await request(server)
+        .get('/api/v1/avatars/manifest')
+        .set('Cookie', memberCookie)
+        .expect(200);
       expect(res.body).toHaveLength(1);
       expect(res.body[0]).toMatchObject({ path: '/avatars/bear-chef.jpg', label: 'Chef' });
     });
@@ -162,7 +177,10 @@ describe('White-label runtime config (e2e)', () => {
         .set('Cookie', adminCookie)
         .expect(200);
 
-      const res = await request(server).get('/api/v1/avatars/manifest').expect(200);
+      const res = await request(server)
+        .get('/api/v1/avatars/manifest')
+        .set('Cookie', memberCookie)
+        .expect(200);
       expect(res.body).toHaveLength(0);
     });
 

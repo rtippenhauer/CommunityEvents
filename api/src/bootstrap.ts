@@ -59,6 +59,7 @@ import { resolveRootTenantDomain } from './common/utils/tenant-domain.util';
 import { automationAccountEmail } from './common/utils/service-account.util';
 import { LEGAL_DEFAULT_ROWS } from './common/legal/legal-defaults';
 import { achievementDefaultRows } from './common/achievements/achievement-defaults';
+import { avatarDefaultRows } from './common/avatars/avatar-defaults';
 import {
   DEFAULT_TERM_DINNER_SINGULAR,
   DEFAULT_TERM_DINNER_PLURAL,
@@ -321,17 +322,36 @@ Config:
     await upsertSiteSetting(tx, tenantRow.id, 'theme_color_background', process.env.INSTANCE_THEME_BACKGROUND?.trim(),
       'Page background color');
 
-    // ── Avatars: clear the seeded DinnerBears bear set ──────────────────────
-    // The CreateAvatarsTable migration seeds 32 bear presets so DinnerBears is
-    // unchanged, but a fresh fork (esp. a non-bear group) shouldn't inherit
-    // them — it uploads its own set in /admin/avatars. Only removes the static
-    // bear defaults, never any avatars this instance already uploaded.
-    const clearedAvatars = await tx.$executeRawUnsafe(
-      `DELETE FROM avatar WHERE path LIKE '/avatars/bear-%'`,
-    );
-    if (clearedAvatars) {
-      console.log(`\nAvatars:\n  • cleared ${clearedAvatars} default bear avatar(s)`);
+    // ── Avatars: the community's own picker ─────────────────────────────────
+    // This block used to run the other way round: `seed.ts` wrote 32 DinnerBears
+    // bear presets into a global table and bootstrap then DELETEd
+    // `/avatars/bear-%` so a fresh fork did not inherit them. A global table
+    // that needs per-install deletion is a per-install table, and v2-47 scoped
+    // it — so there is nothing to clear and one row to write.
+    //
+    // One neutral placeholder, not the bears (Rob, 2026-11-09): the bears are
+    // DinnerBears' own and reach it through the import. See avatar-defaults.ts.
+    //
+    // `skipDuplicates` for the reason the achievement catalogue uses it: a
+    // re-run must not disturb a picker this community has since edited. It
+    // keys on the (tenant_id, path) unique index.
+    const seededAvatars = await tx.avatar.createMany({
+      data: avatarDefaultRows().map((row) => ({ ...row, tenantId: tenantRow.id })),
+      skipDuplicates: true,
+    });
+    if (seededAvatars.count) {
+      console.log(`\nAvatars:\n  • seeded ${seededAvatars.count} default avatar(s)`);
     }
+
+    // ── Merch: an empty store, owned by this community ──────────────────────
+    // Scoped in v2-47 with the avatars. The row exists so the admin screen has
+    // something to edit; both URLs are null, because the only store this
+    // deployment ever knew was DinnerBears' and that link is its own tenant
+    // data now, arriving with the import rather than seeded for everybody.
+    await tx.merch_config.createMany({
+      data: [{ tenantId: tenantRow.id }],
+      skipDuplicates: true,
+    });
 
     // Clear DinnerBears' seeded home-page story image + hero copy so a fresh
     // fork shows its own (or the generic branded fallback) rather than
@@ -356,7 +376,9 @@ Config:
       tenantRow.id,
     );
     if (clearedTerms) {
-      console.log(`  • cleared ${clearedTerms} seeded terminology row(s)`);
+      console.log(`
+Terminology:
+  • cleared ${clearedTerms} seeded terminology row(s)`);
     }
 
     // ── Email provider config (leave an existing configured row untouched) ──
