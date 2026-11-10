@@ -14,6 +14,7 @@ import { tenantGetsServiceAccount } from '../../database/prisma/service-account.
 import { normalizeTenantDomain } from '../../common/utils/tenant-domain.util';
 import { LEGAL_DEFAULT_ROWS } from '../../common/legal/legal-defaults';
 import { achievementDefaultRows } from '../../common/achievements/achievement-defaults';
+import { avatarDefaultRows } from '../../common/avatars/avatar-defaults';
 import { SITE_SETTING_DEFAULTS } from '../app-config/app-config.service';
 import { newEmailProviderConfig } from '../../common/email/email-config-defaults';
 import { EmailStatus, UserRole, UserStatus } from '../../database/enums';
@@ -302,6 +303,24 @@ export class TenantsAdminService {
           dinnerPluralLower: SITE_SETTING_DEFAULTS.term_dinner_plural.toLowerCase(),
         }).map((row) => ({ ...row, tenantId: created.id })),
       });
+    });
+
+    // Its own avatar picker (v2-47). One neutral placeholder rather than the
+    // 32 bears, which are DinnerBears' own and arrive with the import -- a
+    // community created here has no claim on them, and a picker it did not
+    // choose and cannot empty is the bug v2-47 fixed. See `avatar-defaults.ts`
+    // for why it is not simply left empty.
+    await runUnscoped("seeding the new tenant's avatar picker", async () => {
+      await this.prisma.avatar.createMany({
+        data: avatarDefaultRows().map((row) => ({ ...row, tenantId: created.id })),
+      });
+    });
+
+    // Its own store links (v2-47), empty. The row exists so Admin -> Merch has
+    // something to edit; until v2-47 every community read id 1 and so pointed
+    // at DinnerBears' shop.
+    await runUnscoped("seeding the new tenant's merch config", async () => {
+      await this.prisma.merch_config.create({ data: { tenantId: created.id } });
     });
 
     // Its own email quota and counters (v2-9). No credential: the key and

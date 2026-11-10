@@ -544,3 +544,57 @@ export const facebookDeletionRequestsPlan: TablePlan = {
   note: 'Global in v2 — the only imported table whose rows carry no tenant_id.',
 };
 
+
+/**
+ * The community's preset avatar picker (v2-47).
+ *
+ * Excluded from the import until v2-47, and the exclusion's reason was the bug:
+ * "reference data seeded per deployment, and global in v2 — importing v1's set
+ * would add duplicates visible to every community". Both halves stopped being
+ * true when the table was scoped. v1's 32 bears are DinnerBears' own presets,
+ * they are ordinary tenant data now, and importing them is what gives the
+ * imported community back the picker a hand-restore could only have given to
+ * everybody at once.
+ *
+ * `path` is unique per community as of v2-47, so two communities may both carry
+ * `/avatars/bear-wizard.png` — which they must, since the file ships in the
+ * frontend image and belongs to neither. The static files are not imported and
+ * do not need to be; only the rows are tenant data.
+ *
+ * No collision with the placeholder `bootstrap.ts` seeds: the import creates
+ * its tenant directly and seeds nothing (see `createTenant`), so an imported
+ * community's picker is exactly v1's.
+ */
+export const avatarPlan: TablePlan = {
+  source: 'avatar',
+  model: 'avatar',
+  columns: {
+    id: custom('Source id is recorded in the id map, never written.'),
+    path: copy('path'),
+    label: copy('label'),
+    sort_order: copy('sortOrder'),
+    created_at: copy('createdAt'),
+  },
+  note: "No dependencies — members reference a preset by path string, not by id.",
+};
+
+/**
+ * The community's store links (v2-47).
+ *
+ * Also excluded until v2-47, for the reason that was itself the defect:
+ * "importing it would point every community at DinnerBears' store". It no
+ * longer can — one row per community as of `uq_merch_config_tenant` — and
+ * pointing *DinnerBears* at DinnerBears' store is the correct outcome, which
+ * the exclusion made impossible without an operator editing the row by hand.
+ */
+export const merchConfigPlan: TablePlan = {
+  source: 'merch_config',
+  model: 'merch_config',
+  columns: {
+    id: custom('Source id is recorded in the id map, never written.'),
+    store_url: copy('storeUrl'),
+    founding_bear_product_url: copy('foundingBearProductUrl'),
+    updated_at: copy('updatedAt'),
+  },
+  note: 'One row per community in v2, where v1 had one per deployment.',
+};

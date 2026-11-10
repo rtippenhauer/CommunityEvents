@@ -46,6 +46,20 @@ export const TENANT_SCOPED_MODELS = [
   'announcements',
   'audit_log',
   /**
+   * The preset avatar picker, scoped as of v2-47 -- the last of category (2)
+   * below, together with `merch_config`.
+   *
+   * The list is a community's own and its admin edits it at `/admin/avatars`,
+   * which was `@Roles(ADMIN)` over a table with no tenant filter: adding or
+   * removing a preset changed what every other community saw. `path` became
+   * unique per tenant with the move, so the same shipped file may appear in
+   * two communities' pickers.
+   *
+   * Nothing about a member's own photo is affected -- `profile_photo_path`
+   * holds a path, not a foreign key onto this table.
+   */
+  'avatar',
+  /**
    * Scoped as of v2-24, and the last model the v2-6 pass had left global.
    *
    * It was reference data `seed.ts` wrote -- the same category `avatar` and
@@ -86,6 +100,15 @@ export const TENANT_SCOPED_MODELS = [
   'login_sessions',
   'member_achievements',
   'member_points',
+  /**
+   * A community's store links, scoped as of v2-47 with `avatar`.
+   *
+   * It was a singleton pinned to id 1, which is the global-table bug in its
+   * most literal form: one row of `store_url` and `founding_bear_product_url`
+   * pointing every community at DinnerBears' shop, writable by any community's
+   * admin. One row per community now, by `uq_merch_config_tenant`.
+   */
+  'merch_config',
   'notification_preferences',
   'notifications',
   'oauth_accounts',
@@ -112,27 +135,30 @@ export const TENANT_SCOPED_MODELS = [
  *     callback from Facebook carrying no host we could resolve a tenant from.
  *
  *  2. **Reference data written by `seed.ts`, which runs before any tenant
- *     exists.** The install order is `migrate deploy` -> `seed.js` ->
- *     `bootstrap.js`, and it is bootstrap that creates the root tenant.
- *     `avatar` and `merch_config` are seeded into a database with zero
- *     tenant rows, so they cannot carry a NOT NULL `tenant_id` without
- *     reordering the install.
+ *     exists** — **empty as of v2-47, and meant to stay that way.**
  *
- *     `cities` was in this group until v2-24 and is not any more, for the
- *     same reason `app_config` and `users` left it in v2-6: a city belongs
- *     to one community, so its rows moved to `bootstrap.ts` and
- *     `tenants-admin.service.create`, which run after the tenant exists.
+ *     This category was never a reason, only a circumstance. The install order
+ *     is `migrate deploy` -> `seed.js` -> `bootstrap.js` and it is bootstrap
+ *     that creates the root tenant, so everything `seed.ts` writes is written
+ *     into a database with zero tenant rows and *looks* global whether or not
+ *     it is. "When a row is created" is not "who owns it", and every model
+ *     that sat here turned out to be owned by a community after all:
+ *     `app_config` and `users` left in v2-6, `cities` in v2-24, and `avatar`
+ *     and `merch_config` in v2-47. Each move was the same move — the rows go
+ *     to `bootstrap.ts` and `tenants-admin.service.create`, which run after a
+ *     tenant exists.
  *
- *     `app_config` and `users` used to be in this group and are not any more:
- *     v2-6 moved the rows that genuinely belong to a community (branding and
- *     feature flags; every account) into the scoped list, and moved the two
- *     things `seed.ts` wrote that had no tenant — the `app_config` defaults and
- *     the automation account — into `bootstrap.ts`, which creates the tenant
- *     first. Anything left here in category (2) is reference data that is the
- *     same for every community, not configuration of one.
+ *     Each was also the same bug: an admin screen over a table with no tenant
+ *     filter, so one community's admin edited what every other community saw.
+ *
+ *     **A new model does not belong here.** If the only argument for calling it
+ *     global is that `seed.ts` would like to write it, that is an argument
+ *     about the install order, and rows have moved out of it five times now
+ *     (v2-6, v2-9, v2-10, v2-24, v2-47).
+ *     Put it in category (1) with a reason that survives without the seed, or
+ *     scope it and seed it where the tenant exists.
  */
 export const GLOBAL_MODELS = [
-  'avatar',
   /**
    * Both of v2-32's report tables are global, for opposite-looking reasons that
    * are the same reason: each has to outlive the community it came from.
@@ -175,7 +201,6 @@ export const GLOBAL_MODELS = [
    * reports about the deployment's own plumbing, held by whoever operates it.
    */
   'inbound_emails',
-  'merch_config',
   'release_feedback',
   'releases',
   'system_reports',

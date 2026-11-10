@@ -59,7 +59,7 @@ Two decisions bound it:
 | 5 | ~~**v2-29 — port Phase 39**~~ | **Done 2026-10-24** (tag `v2-29`). With v2-33 this repo is level with prod DinnerBears. Stage ran **two** communities mirroring independently, which is the clause of the definition of done a single-community run cannot test. Stage also found the cover photos missing and private venue addresses unredacted — both from hand-writing queries v1 delegated to `EventsService`, and both invisible to the suite because neither event endpoint had a test. |
 | 6 | ~~**v2-24 — cities**~~ | **Done 2026-11-07** (tag `v2-24`). REQ-IMPORT-01.3 has the import switch `feature_cities` on and write each member's legacy city into `user_city_preferences`. Both are v2-24 deliverables, so the import cannot precede it. Also carries the `CitiesAdminController` gap v2-12 left open deliberately: `@Roles(ADMIN)` over a global table. |
 | 7 | ~~**v2-25 — the import**~~ | **Done 2026-11-09** (tag `v2-25`). The deliverable. Dry runs against the *live* v1 database — not a copy — found three defects no fixture could have, including one that would have let an imported community mail every member it had just imported. Rehearsed end to end on stage, delete-and-re-import included. Raised `v2-47`, which now blocks item 8. |
-| 8 | **v2-47 — scope avatars and merch to a community** | **Blocks production** (Rob, 2026-11-09). Not cosmetic sequencing: prod cannot ship with `avatar` global. Hand-restoring the rows to give DinnerBears its picker back puts its bears in the root tenant's picker as well, and every community after it inherits a list no admin can edit. Scoped first, the production import carries the rows itself and nothing is written by hand. |
+| 8 | ~~**v2-47 — scope avatars and merch to a community**~~ | **Done 2026-11-09** (tag `v2-47`). Unblocks production. Both models scoped, emptying `GLOBAL_MODELS`' category (2). Rehearsed on stage, where the delete-and-re-import brought DinnerBears' 32 presets and its store link across for the first time — the two tables the import had never carried. |
 | 9 | **Production deployment** | Does not exist yet: no v2 prod image tag, no prod Unraid template (`docker/` carries stage and the old v1 one only), no prod database, no `SECRET_ENCRYPTION_KEY` on a mapped prod volume. Not a numbered item because it is operations, not code — see `docs/CUTOVER_PLAN.md`. |
 
 `v2-31` (a real email log) is not a blocker but is wanted early: the current
@@ -4104,7 +4104,7 @@ guard it has today.
 
 ### v2-47 — Avatars and merch belong to a community, not to the deployment
 
-**Status:** **In progress** (2026-11-09). Raised by Rob 2026-11-09, from the v2-25 import.
+**Status:** **Complete** (2026-11-09, tag `v2-47`). Raised by Rob 2026-11-09, from the v2-25 import.
 **Blocks the production deployment** (Rob, 2026-11-09) — see the running
 order above. Widened the same day to cover `merch_config` (Rob): same
 misclassification, same fix.
@@ -4157,13 +4157,26 @@ present `/avatars/bear-wizard.png`. Uploaded avatars keep their own files under
 `/api/uploads/avatars/`, and `AvatarsService`'s "static assets ship in the image
 and are left alone" rule on delete is unchanged.
 
-**Seeding moves to where the tenant exists.** The init migration seeds the 32
-presets and `bootstrap.ts` then deletes them — a round trip that only makes
-sense while the table is global. Scoped, the seed cannot write the rows at all
+**Seeding moves to where the tenant exists.** `seed.ts` writes the 32 presets
+and `bootstrap.ts` then deletes them — a round trip that only makes sense while
+the table is global. (This said "the init migration seeds" them until the work
+started; the init migration only creates the table, and `seed.ts` reads
+`prisma/seed-data/avatar.json`. The round trip is the same either way.) Scoped, the seed cannot write the rows at all
 (`seed.ts` runs before any tenant), so they move to `bootstrap.ts` and
 `tenants-admin.service.create`, precisely as the cities rows did. Whether a new
 community starts with the bears, with nothing, or with an operator-chosen
 default set is the one open question in this item.
+
+**Answered 2026-11-09 (Rob): one CommunityEvents placeholder, not the bears.**
+A new community's picker holds a single neutral silhouette,
+`/avatars/cep-default.svg`, shipped in the frontend image and written by
+`bootstrap.ts`, `tenants-admin.service.create` and — for communities that
+already exist — the migration. Empty was considered and rejected: the picker is
+reachable from Profile the moment a community exists, and an empty one reads as
+broken rather than as unconfigured. **It is a different file from
+`/assets/default-avatar.svg`**, which is what member lists render when somebody
+has no photo at all; if picking the only preset produced the same image as
+picking nothing, choosing it would be invisible.
 
 **Then the import should carry them.** The exclusion in `plan/index.ts` exists
 only because the table is global; once it is not, v1's avatar rows are ordinary
@@ -4209,3 +4222,44 @@ avatar manifest requires a session and serves only the host community's rows; th
 seed writes neither table and bootstrap and tenant creation seed them instead,
 with the init-migration round trip gone; the import brings v1's avatar rows
 over and REQ-IMPORT-01 records the change.
+
+**Outcome (2026-11-09).** All seven clauses met. 1283 e2e tests across 61
+files, up from 1267/60: twelve new scoping cases, three in the import spec,
+and one from splitting the manifest test into with- and without-session.
+The migration was hand-tested against a populated probe first — a root
+tenant, a tenant imported before the move, and an empty one — because the
+e2e harness builds an empty database where every copy step selects zero rows.
+
+**Three things the stage pass taught, none of them predictable from the
+source:**
+
+1. **Stage's root tenant had no bears to find.** The picker came up holding
+   one row, and it was an upload of Rob's rather than the placeholder. The
+   v1-era `bootstrap.ts` ran `DELETE FROM avatar WHERE path LIKE
+   '/avatars/bear-%'` on every fresh install, deliberately, so a new fork
+   would not inherit DinnerBears' set — so stage lost them at install, months
+   before this item. The ids proved it: the table began at 36, and 32 of the
+   missing 1–35 were the bears. **Step 4 copies from the root tenant's rows**,
+   so with root empty there was nothing for any community to inherit, and the
+   migration behaved correctly on a table that had already been emptied.
+2. **The delete-and-re-import is what restored them**, and it is the only
+   thing that could have: the import reads v1's *live* database read-only, and
+   v1 still holds all 32 presets and its single `merch_config` row. That run
+   also exercised both new import plans end to end for the first time, which
+   is the rehearsal the production cutover needs and which no fixture
+   substitutes for.
+3. **A migration is frozen once `/v2-testing` deploys it**, even with the
+   branch unmerged and everything else on it still cheap to change. Prisma
+   checksums each applied migration, so an edit in place makes the next
+   `migrate deploy` fail — and the stage entrypoint does not fail the
+   container on a bad migration, so it would surface later as an
+   unrelated-looking 500. A cosmetic defect found afterwards (`NOW()` writes
+   MySQL server local time where the app writes UTC, ~5h of skew on
+   `created_at`) is therefore left alone; nothing reads the column, since the
+   picker orders by `sort_order` then `id`.
+
+**Noted, not fixed:** `provision-tenant.ts` still does not seed the
+achievement catalogue, unlike `tenants-admin.create`. Pre-existing and
+unrelated to this item, but it is the same class of divergence that file has
+had once before — the avatar and merch seeds were added to all three creation
+paths here precisely because of it.

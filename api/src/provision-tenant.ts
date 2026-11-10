@@ -25,6 +25,7 @@ import { PrismaClient } from '@prisma/client';
 import { normalizeTenantDomain } from './common/utils/tenant-domain.util';
 import { LEGAL_DEFAULT_ROWS } from './common/legal/legal-defaults';
 import { newEmailProviderConfig } from './common/email/email-config-defaults';
+import { avatarDefaultRows } from './common/avatars/avatar-defaults';
 import {
   createServiceAccount,
   tenantGetsServiceAccount,
@@ -147,6 +148,23 @@ async function main(): Promise<void> {
         data: { tenantId: tenant.id, ...newEmailProviderConfig() },
       });
     }
+
+    // Its avatar picker and its store row (v2-47), for the same reason the two
+    // above are here: a community provisioned by this script must not be
+    // subtly different from one made through the UI. An empty picker reads as
+    // broken rather than as unconfigured, and the Merch admin screen has
+    // nothing to edit without a row.
+    //
+    // One neutral placeholder, not the 32 bears -- those are DinnerBears' own
+    // and arrive through the import. See `avatar-defaults.ts`.
+    await prisma.avatar.createMany({
+      data: avatarDefaultRows().map((row) => ({ ...row, tenantId: tenant.id })),
+      skipDuplicates: true,
+    });
+    await prisma.merch_config.createMany({
+      data: [{ tenantId: tenant.id }],
+      skipDuplicates: true,
+    });
 
     // A community other than the root one gets a service account on stage only,
     // because nothing in production can use it -- see tenantGetsServiceAccount.

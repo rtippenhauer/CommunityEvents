@@ -215,16 +215,22 @@ static files baked into the shared image and shown before the app boots:
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-The container entrypoint runs database **migrations automatically** on startup
-(creating all tables + the baseline seed data). Watch the logs until you see
+The container entrypoint runs database **migrations automatically** on startup,
+creating all the tables. Watch the logs until you see
 `[entrypoint] Migrations complete.`
 
 ## 7. Bootstrap your instance (one time)
 
-Migrations leave the database seeded with DinnerBears' *default* cities, copy,
-and bear avatars. The bootstrap step turns that into **your** instance: one
-active city, your branding, an email-config row, your first admin (email +
-password), and a cleared avatar set (so a non-bear group doesn't inherit bears).
+Migrations leave the database empty of community data — `seed.ts` writes
+nothing as of v2-47, because everything it used to write turned out to belong
+to a community rather than to the deployment. Bootstrap is what creates **your**
+instance: the root tenant, your branding, legal copy, an email-config row, an
+achievement catalogue, a service account, your first admin (email + password),
+and an avatar picker holding one neutral placeholder.
+
+Nothing is deleted any more. Bootstrap used to clear the 32 seeded bears so a
+non-bear group did not inherit them; the bears are DinnerBears' own tenant data
+now and are never written in the first place.
 
 Run it once, passing your values as env vars. In the production container:
 

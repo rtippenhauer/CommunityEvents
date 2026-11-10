@@ -358,12 +358,35 @@ model audit_log {
   @@index([tenantId], map: "idx_audit_log_tenant")
 }
 
+/// A preset avatar a community offers its members in the picker (v2-47).
+///
+/// Scoped since v2-47, and it was the clearest case left in the "reference data
+/// `seed.ts` wrote" category: the list is a community's own, its admin adds and
+/// removes entries at `/admin/avatars`, and that controller is `@Roles(ADMIN)`
+/// -- so while the table was global, one community's admin edited the picker
+/// every other community saw.
+///
+/// **A row is not a member's photo.** `users.profile_photo_path` stores a path
+/// string, not a foreign key onto this table, so retiring a preset cannot
+/// orphan anybody's picture and scoping the catalogue cannot either. The static
+/// files under `/avatars/` ship in the frontend image; only the rows are
+/// tenant data.
 model avatar {
   id        Int      @id @default(autoincrement()) @db.UnsignedInt
-  path      String   @unique(map: "uq_avatar_path") @db.VarChar(500)
+  path      String   @db.VarChar(500)
   label     String   @db.VarChar(100)
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(6)
+  tenantId  Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant    tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_avatar_tenant")
+
+  /// Unique per community, not globally. `uq_avatar_path` was global until
+  /// v2-47, which meant the second community to want `/avatars/bear-wizard.png`
+  /// could not have it -- the first one to be imported had taken the path out
+  /// of every other community's reach, for a file that ships in the image and
+  /// belongs to none of them.
+  @@unique([tenantId, path], map: "uq_avatar_tenant_path")
+  @@index([tenantId], map: "idx_avatar_tenant")
 }
 
 /// A city a community meets in (v2-24, REQ-CITIES-01).
@@ -1252,11 +1275,25 @@ model member_points {
   @@index([tenantId], map: "idx_member_points_tenant")
 }
 
+/// A community's store links (v2-47).
+///
+/// Scoped since v2-47, together with `avatar` and for the same reason. Until
+/// then this was a singleton pinned to id 1, so `store_url` and
+/// `founding_bear_product_url` pointed every community on the deployment at
+/// DinnerBears' store -- and the `@Roles(ADMIN)` write route let any
+/// community's admin repoint it for all of them.
+///
+/// Still one row per community, but enforced by `uq_merch_config_tenant`
+/// rather than by everyone agreeing to read id 1.
 model merch_config {
   id                     Int      @id @default(autoincrement()) @db.UnsignedInt
   storeUrl               String?  @map("store_url") @db.VarChar(500)
   foundingBearProductUrl String?  @map("founding_bear_product_url") @db.VarChar(500)
   updatedAt              DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+  tenantId               Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant                 tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_merch_config_tenant")
+
+  @@unique([tenantId], map: "uq_merch_config_tenant")
 }
 
 model notification_preferences {
@@ -1672,6 +1709,8 @@ model tenants {
   event_facebook_links     event_facebook_links[]
   facebook_accounts        facebook_accounts[]
   facebook_event_attendees facebook_event_attendees[]
+  avatar                   avatar[]
+  merch_config             merch_config[]
 
   @@index([status], map: "idx_tenant_status")
 }

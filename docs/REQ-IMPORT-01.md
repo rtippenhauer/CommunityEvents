@@ -218,6 +218,22 @@ scoped to the new tenant:
   imports as-is (it stays an on/off per REQ-CITIES-01.3), so a member who
   had auto-invite off does not acquire it on import.
 
+- **Avatars and merch** — imported as tenant-scoped rows per v2-47
+  (amended 2026-11-09; both were on the excluded list until then). v1's
+  preset avatar rows become the imported community's own picker, and its
+  `merch_config` becomes that community's store links. The exclusions
+  were written while both tables were global, and both reasons described
+  the global table rather than the data: importing the presets "would add
+  duplicates visible to every community" and importing the store would
+  "point every community at DinnerBears' store". Neither can happen once
+  the rows carry a `tenant_id`, and the alternative — restoring the rows
+  by hand — is what raised v2-47, because it gives one community its
+  picker back by putting its presets in every other community's. The
+  static image files are not imported and do not need to be: they ship in
+  the frontend image, and `users.profile_photo_path` holds a path string
+  rather than a foreign key onto `avatar`, so a member's picture is
+  unaffected either way.
+
 **Explicitly not imported** (platform-level, not tenant data, or
 superseded by the new architecture):
 - Email queue/send history, bounce/suppression records (suppression is

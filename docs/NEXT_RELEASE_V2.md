@@ -1102,3 +1102,40 @@ than assumed.
   the record was simply short.
 - **The home page photograph spans the full width of the page**, instead of
   stopping just short of the bands above and below it.
+
+## Your profile pictures and your store are your own
+
+The set of profile pictures members choose from now belongs to your community,
+and so does your merchandise store. Before, both were shared across every
+community on the site: one set of preset pictures, one store link.
+
+**Your picture set is yours to curate.** Adding a preset adds it for your
+members, and removing one removes it for your members — neither reaches
+anybody else's community. Previously an administrator editing the list was
+editing it for everyone, without any way to tell.
+
+**Two communities can now offer the same picture.** A preset is identified by
+the file behind it, and a file could only be claimed once across the whole
+site, so whoever added it first put it out of everyone else's reach. Each
+community now keeps its own list and the same picture can appear in as many as
+want it.
+
+**Your store link is yours.** The shop address and the founding-member product
+link are set per community now. A community that has not set one up sees
+nothing, rather than being pointed at somebody else's shop.
+
+**Removing a preset still never disturbs anybody's picture.** A member keeps
+the picture they chose until they choose another — exactly as before.
+
+**A new community starts with a single neutral placeholder** in its picture
+set, rather than inheriting a list it did not choose. Upload your own set in
+Admin → Appearance whenever you like.
+
+### Also in this release
+
+- **The list of preset pictures now requires you to be signed in.** It is a
+  list of what your community offers, and there is no reason for a passer-by to
+  be able to read it.
+- **A community brought across from the old site now carries its preset
+  pictures and its store link with it**, along with everything else. Both were
+  previously left behind and had to be set up again by hand.

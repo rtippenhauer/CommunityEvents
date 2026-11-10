@@ -196,9 +196,13 @@ must permit a send and an inherited template id addresses the wrong library. A
 community on its own domain has **no email fallback** — fatal where the OAuth
 equivalent is not, since registration, verification and resets are all mail.
 
-**Also scoped:** `users`, `app_config`, `achievements`, `cities` — and an
-achievement's `key` is an identifier joined on in code, not copy, so raw SQL
-joining the catalogue needs its own `tenant_id` predicate.
+**Also scoped:** `users`, `app_config`, `achievements`, `cities`, `avatar`,
+`merch_config` — and an achievement's `key` is an identifier joined on in
+code, not copy, so raw SQL joining the catalogue needs its own `tenant_id`
+predicate. **`GLOBAL_MODELS`' category (2), "reference data `seed.ts` wrote",
+is empty as of `v2-47` and is meant to stay that way** — it described when a
+row is created, not who owns it, and every model in it turned out to belong to
+a community. `seed.ts` now writes nothing at all.
 
 **Cities** (`v2-24`, REQ-CITIES-01). A city is a row, not a hostname — there is
 no `subdomain` and reintroducing one is a regression. `city_id` is nullable

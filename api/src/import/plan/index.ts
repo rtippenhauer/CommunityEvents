@@ -29,6 +29,7 @@ import {
   announcementCommentsPlan,
   announcementsPlan,
   auditLogPlan,
+  avatarPlan,
   contentFlagsPlan,
   contentReportsPlan,
   customIconsPlan,
@@ -39,6 +40,7 @@ import {
   feedbackUpvotesPlan,
   memberAchievementsPlan,
   memberPointsPlan,
+  merchConfigPlan,
 } from './community';
 
 /**
@@ -65,6 +67,12 @@ export const TABLE_PLANS: readonly TablePlan[] = [
   // Config, which records who last changed each row.
   appConfigPlan,
   emailProviderConfigPlan,
+
+  // The community's own presets and store links, scoped in v2-47 and imported
+  // from that item on. Neither references anything, so they sit with the rest
+  // of the configuration rather than later in the dependency order.
+  avatarPlan,
+  merchConfigPlan,
 
   // Everything that hangs off a user and nothing else.
   oauthAccountsPlan,
@@ -163,20 +171,6 @@ export const EXCLUDED_TABLES: readonly ExcludedTable[] = [
       'Dropped in its entirety per REQ-CITIES-01.5 — the table is gone in v2, not ' +
       'just its city relation, so there is nothing to migrate. campaign_facebook ' +
       'invites still import with their type and city.',
-  },
-  {
-    source: 'avatar',
-    reason:
-      'Reference data seeded per deployment, and global in v2 — importing v1\'s set ' +
-      'would add duplicates visible to every community. Members who picked a preset ' +
-      'keep their profile_photo_path, which points at a file rather than at this row.',
-  },
-  {
-    source: 'merch_config',
-    reason:
-      'Global in v2: a single row for the whole deployment. Importing it would ' +
-      "point every community at DinnerBears' store. Set it by hand if the " +
-      'deployment should carry it.',
   },
 
   // Documented in v1's docs/DATABASE_SCHEMA.md but created by no migration and
