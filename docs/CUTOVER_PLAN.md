@@ -538,22 +538,59 @@ this document and are easy to lose:
 > and the domain are deliberately not the same string; neither is a typo for the
 > other.
 
-It does not exist in any form yet:
+**The repo side was built 2026-11-09** (`chore-prod-deployment`); the Unraid and
+MySQL side is still to do. What exists now:
 
-- **No v2 production image tag.** `scripts/publish-v2-stage.sh` is the only
-  publish script here, and `:stage` / `:latest` belong to v1's pipeline and must
-  not be touched. A new tag is created at the cutover, not before.
-- **No production Unraid template.** `docker/` carries
-  `communityevents-v2-stage-unraid.xml` and the old `dinnerbears-unraid.xml`.
+- **`scripts/promote-v2-prod.sh`** publishes `:v2-prod`, and **it does not
+  build**. It retags the `:v2-stage` digest and pushes that, so what runs on
+  production is byte-identical to what passed Rob's stage pass. A rebuild from
+  the same commit is *not* the same image — the base image, the npm registry
+  and Google Fonts all move underneath it — so the digest is the only thing the
+  testing pass actually signed off on. `--expect-commit <sha>` refuses to
+  promote an image built from a different commit, and the script prints the
+  source digest and baked `GIT_COMMIT` so the promotion is recorded. `:stage`
+  and `:latest` are v1's and are never written here.
+- **`docker/communityevents-v2-prod-unraid.xml`**, carrying the same 48
+  variables as the stage template. The differences that matter: `IS_STAGE=false`
+  (the *only* runtime difference between a prod and a stage container, since
+  both run `NODE_ENV=production`, so leaving it true puts a stage banner on the
+  live site), web port **20020** (`PORTS.md` project 02, claimed the same day),
+  database `communityevents`, VAPID promoted to required, `BASE_DOMAIN` set
+  explicitly to the apex, and `/app/uploads` mapped as a *sibling* of
+  `/app/appdata` rather than nested inside it as stage's accidentally is.
+- **Still to do on Unraid:** create the `communityevents` database and its
+  grant, create both appdata folders, add the container from the template, fill
+  the secrets into `<appdata>/.env`, boot, run bootstrap, back up the key.
+
+Two drifts were found and fixed while writing the production template, both in
+the *stage* one, and both of the kind that only surfaces when somebody finally
+performs the operation the file describes:
+
+- The stage template said database and user `communityevents` /
+  `communityevents_user`. The live container has used `communityevents_stage`
+  for **both** since it was created. That name is now production's, so a re-add
+  of stage from the old template would have pointed stage at production's
+  database — the same class of failure as the mount drift recorded above, and
+  the reason the production template says to grant each account on its own
+  database only.
+- `SESSION_SECRET` is still set on the live stage container and has been dead
+  since v2-6 removed the package. `INSTANCE_CITY_SUBDOMAIN` was likewise still
+  in the stage template although v2-24 removed `cities.subdomain`; both are gone
+  from the templates now.
+
+Still outstanding, and operations rather than code:
+
 - **No production database.**
 - **No `SECRET_ENCRYPTION_KEY` on a mapped production volume.** See
   `docs/SECRETS.md`. Getting this wrong is how v2-7's stage deploy produced
   three keys in three container recreates. Map `/app/appdata` before first boot,
   and back the key up the moment it is generated.
-- **No VAPID keypair — and it must be v1's, not a fresh one** (decided by Rob,
-  2026-10-14). Copy `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` from v1's
-  environment into production's, **before anybody subscribes to push on the new
-  deployment**.
+- **No VAPID keypair on production — and it must be v1's, not a fresh one**
+  (decided by Rob, 2026-10-14). The keypair already exists: it is in
+  **DinnerBears' appdata `.env`** (confirmed by Rob 2026-11-09), so this is a
+  copy rather than a generation. Copy `VAPID_PUBLIC_KEY` and
+  `VAPID_PRIVATE_KEY` from there into production's `.env`, **before anybody
+  subscribes to push on the new deployment**.
 
   One keypair serves every tenant, by design and not by omission:
   `PushService.onModuleInit` reads the three values from env once at boot and
@@ -576,6 +613,62 @@ It does not exist in any form yet:
   **Omitting them fails quietly**: with any of the three unset, `PushService`
   logs "VAPID keys not configured — push notifications disabled" and carries
   on. Nothing errors, no screen says anything, push simply never works.
+
+#### Bringing production up, in order
+
+The order matters in three places, each marked. Everything here is done on
+Unraid; none of it is code.
+
+1. **MySQL.** Create the `communityevents` database and a `communityevents`
+   account granted **on that database only**. Not `communityevents_stage`,
+   which is stage's, and not `dinnerbears`, which v1 is still serving and the
+   import reads. A production account that can reach all three turns a mistyped
+   `DB_NAME` into a silent cross-environment write instead of a connection
+   error.
+2. **Folders.** Create `/mnt/user/appdata/communityevents/appdata` and
+   `/mnt/user/appdata/communityevents/uploads`. **Before first boot** — this is
+   the first ordering constraint. An unmapped `/app/appdata` means the
+   encryption key generated on boot lives only inside the container, so the
+   next recreate makes a new one and the deployment then refuses to start,
+   because the database holds secrets encrypted under a key that no longer
+   exists. That is v2-7's refusal working correctly and it reads as an
+   unrelated outage.
+3. **Add the container** from `docker/communityevents-v2-prod-unraid.xml`.
+   Leave every `Mask="true"` field empty: Unraid does not persist them.
+4. **Write `<appdata>/.env`** with the secrets — `DB_PASSWORD`, `JWT_SECRET`
+   (a new one; sharing stage's or v1's would let a token minted on one
+   deployment be accepted by the other), `EMAIL_SUPPRESSION_SALT`,
+   `BREVO_API_KEY`, the Google OAuth pair, `CLOUDFLARE_EMAIL_SECRET`, and
+   **`VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` copied verbatim out of
+   DinnerBears' own appdata `.env`**. Leave `SECRET_ENCRYPTION_KEY` unset so
+   one is generated.
+5. **DNS and NGINX Proxy Manager** for `www.communityeventsproject.com` →
+   port 20020, **before first boot** — the second ordering constraint, because
+   `APP_URL`'s host is also the authorized redirect URI registered with Google.
+6. **Boot, and read the log before anything else.** The entrypoint does not
+   fail the container on a failed migration — it runs
+   `migrate deploy ... || echo "WARNING: Migration failed"` — so a
+   half-migrated database serves traffic and the symptom surfaces much later as
+   an unrelated-looking 500. The line to confirm is
+   `[entrypoint] Migrations complete.`, and the `Datasource` line is what
+   confirms which database it actually attached to.
+7. **Back up `secret-encryption.key` the moment it appears.** The third
+   ordering constraint, and the only irreversible one on this list: lose that
+   file and every stored credential in the production database is
+   unrecoverable. Note `/app/uploads` is *not* inside the appdata mount here,
+   unlike stage, so backing up the key does not incidentally copy the uploads.
+8. **Bootstrap the root tenant**, once migrations are confirmed complete:
+   `docker exec CommunityEvents-v2-Prod node /app/dist/bootstrap.js`. It
+   inherits the container's environment, so it needs no `-e` flags. This
+   creates the **operator's own** community, which serves the landing page and
+   holds the `system_admin` account. DinnerBears is **not** created here — it
+   arrives later as a non-root tenant through the import.
+9. **Then the import**, per "The rehearsal belongs on stage and the real import
+   on production" above.
+
+Confirm what is live at each step with
+`curl -s https://www.communityeventsproject.com/api/v1/health`, whose
+`gitCommit` should match the commit `promote-v2-prod.sh` reported.
 
 ---
 
