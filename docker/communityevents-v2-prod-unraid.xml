@@ -96,7 +96,11 @@
        the /app/appdata mount. That nesting on stage was accidental and is
        documented as surprising — a backup sized from the key alone also copies
        every uploaded file. Production has no data to preserve, so it starts
-       with the shape that was intended. Create both folders before first boot. -->
+       with the shape that was intended. Docker creates both host folders on
+       first start and entrypoint.sh chmods them, so there is nothing to
+       prepare by hand; what matters is that these two mappings EXIST, and
+       that the paths are spelt correctly, since a typo self-creates in
+       silence. -->
   <Config Name="Uploads" Target="/app/uploads" Default="/mnt/user/appdata/communityevents/uploads" Mode="rw" Description="Persistent storage for uploaded photos and files. Separate from v1's dinnerbears/uploads and from stage's — the import COPIES v1's files here rather than sharing them, so size this for DinnerBears' existing uploads." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/communityevents/uploads</Config>
 
   <!-- REQUIRED, and easy to miss: the generated encryption key is written here,

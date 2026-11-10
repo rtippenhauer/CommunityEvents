@@ -559,7 +559,7 @@ MySQL side is still to do. What exists now:
   explicitly to the apex, and `/app/uploads` mapped as a *sibling* of
   `/app/appdata` rather than nested inside it as stage's accidentally is.
 - **Still to do on Unraid:** create the `communityevents` database and its
-  grant, create both appdata folders, add the container from the template, fill
+  grant, add the container from the template (which creates its own folders), fill
   the secrets into `<appdata>/.env`, boot, run bootstrap, back up the key.
 
 Two drifts were found and fixed while writing the production template, both in
@@ -616,54 +616,83 @@ Still outstanding, and operations rather than code:
 
 #### Bringing production up, in order
 
-The order matters in three places, each marked. Everything here is done on
-Unraid; none of it is code.
+Everything here is done on Unraid; none of it is code. Only two steps are
+genuinely order-dependent, and both are marked: the database must exist before
+the container boots, or `migrate deploy` fails and the entrypoint starts the
+app anyway; and the encryption key must be backed up once it is generated. The
+rest is just a sensible sequence — in particular you do **not** have to prepare
+the filesystem in advance, because the container does that itself.
 
-1. **MySQL.** Create the `communityevents` database and a `communityevents`
+1. **MySQL, before the container boots** — the first of the two real ordering
+   constraints. Create the `communityevents` database and a `communityevents`
    account granted **on that database only**. Not `communityevents_stage`,
    which is stage's, and not `dinnerbears`, which v1 is still serving and the
    import reads. A production account that can reach all three turns a mistyped
    `DB_NAME` into a silent cross-environment write instead of a connection
    error.
-2. **Folders.** Create `/mnt/user/appdata/communityevents/appdata` and
-   `/mnt/user/appdata/communityevents/uploads`. **Before first boot** — this is
-   the first ordering constraint. An unmapped `/app/appdata` means the
-   encryption key generated on boot lives only inside the container, so the
-   next recreate makes a new one and the deployment then refuses to start,
-   because the database holds secrets encrypted under a key that no longer
-   exists. That is v2-7's refusal working correctly and it reads as an
-   unrelated outage.
-3. **Add the container** from `docker/communityevents-v2-prod-unraid.xml`.
-   Leave every `Mask="true"` field empty: Unraid does not persist them.
-4. **Write `<appdata>/.env`** with the secrets — `DB_PASSWORD`, `JWT_SECRET`
-   (a new one; sharing stage's or v1's would let a token minted on one
-   deployment be accepted by the other), `EMAIL_SUPPRESSION_SALT`,
-   `BREVO_API_KEY`, the Google OAuth pair, `CLOUDFLARE_EMAIL_SECRET`, and
-   **`VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` copied verbatim out of
-   DinnerBears' own appdata `.env`**. Leave `SECRET_ENCRYPTION_KEY` unset so
-   one is generated.
-5. **DNS and NGINX Proxy Manager** for `www.communityeventsproject.com` →
-   port 20020, **before first boot** — the second ordering constraint, because
-   `APP_URL`'s host is also the authorized redirect URI registered with Google.
-6. **Boot, and read the log before anything else.** The entrypoint does not
+2. **Add the container** from `docker/communityevents-v2-prod-unraid.xml`, and
+   **let it create its own folders** — do not pre-create them. Docker creates a
+   bind mount's host path if it is missing, the container runs as root (the
+   image defines a `nestjs` user but never `USER`s to it), and
+   `entrypoint.sh`'s first line is
+   `chmod 777 /app/uploads /app/appdata`. So the folders, their owner and their
+   mode all take care of themselves.
+
+   **What must not be missing is the *mapping*, not the folder.** That is
+   v2-7's failure and it is a different thing: with no `/app/appdata` entry in
+   the template at all, the key generated on boot lives only inside the
+   container, the next recreate makes a new one, and the deployment then
+   refuses to start because the database holds secrets encrypted under a key
+   that no longer exists. It reads as an unrelated outage.
+
+   The residual risk is a **typo in the host path**, which does not error —
+   Docker cheerfully creates the misspelt folder, the deployment works, and the
+   key you later back up is the one in the folder you meant rather than the one
+   in use. So confirm the mount after it boots rather than trusting what you
+   typed:
+
+   ```sh
+   docker inspect CommunityEvents-v2-Prod --format '{{json .Mounts}}'
+   ```
+
+   Leave every `Mask="true"` field empty when you add it: Unraid does not
+   persist them.
+3. **Write `<appdata>/.env`** with the secrets, now that the folder exists —
+   `DB_PASSWORD`, `JWT_SECRET` (a new one; sharing stage's or v1's would let a
+   token minted on one deployment be accepted by the other),
+   `EMAIL_SUPPRESSION_SALT`, `BREVO_API_KEY`, the Google OAuth pair,
+   `CLOUDFLARE_EMAIL_SECRET`, and **`VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`
+   copied verbatim out of DinnerBears' own appdata `.env`**. Leave
+   `SECRET_ENCRYPTION_KEY` unset so one is generated. Then restart.
+
+   A first boot before this file exists is harmless and is the normal way to
+   get the folder: the app comes up without its secrets, which is visible and
+   fixable, and the encryption key it generates on that boot persists into the
+   mount like any other.
+4. **DNS and NGINX Proxy Manager** for `www.communityeventsproject.com` →
+   port 20020. Not a boot-order constraint — the app never resolves its own
+   host at startup — but it must be in place before you bootstrap and sign in,
+   and `APP_URL`'s host is also the authorized redirect URI that has to be
+   registered on the Google client, which is the part with a lead time.
+5. **Boot, and read the log before anything else.** The entrypoint does not
    fail the container on a failed migration — it runs
    `migrate deploy ... || echo "WARNING: Migration failed"` — so a
    half-migrated database serves traffic and the symptom surfaces much later as
    an unrelated-looking 500. The line to confirm is
    `[entrypoint] Migrations complete.`, and the `Datasource` line is what
    confirms which database it actually attached to.
-7. **Back up `secret-encryption.key` the moment it appears.** The third
-   ordering constraint, and the only irreversible one on this list: lose that
-   file and every stored credential in the production database is
-   unrecoverable. Note `/app/uploads` is *not* inside the appdata mount here,
-   unlike stage, so backing up the key does not incidentally copy the uploads.
-8. **Bootstrap the root tenant**, once migrations are confirmed complete:
+6. **Back up `secret-encryption.key` the moment it appears.** The only
+   irreversible step on this list: lose that file and every stored credential
+   in the production database is unrecoverable. Note `/app/uploads` is *not*
+   inside the appdata mount here, unlike stage, so backing up the key does not
+   incidentally copy the uploads.
+7. **Bootstrap the root tenant**, once migrations are confirmed complete:
    `docker exec CommunityEvents-v2-Prod node /app/dist/bootstrap.js`. It
    inherits the container's environment, so it needs no `-e` flags. This
    creates the **operator's own** community, which serves the landing page and
    holds the `system_admin` account. DinnerBears is **not** created here — it
    arrives later as a non-root tenant through the import.
-9. **Then the import**, per "The rehearsal belongs on stage and the real import
+8. **Then the import**, per "The rehearsal belongs on stage and the real import
    on production" above.
 
 Confirm what is live at each step with
