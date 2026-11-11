@@ -1,0 +1,131 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>CommunityEvents-v2-Prod</Name>
+  <Repository>rtippenhauer/community-events:v2-prod</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <!-- sh, not bash: the runtime image is Alpine and ships /bin/sh and /bin/ash
+       only. Unraid's Console button runs whatever is named here, so `bash`
+       makes it open and close immediately with no error. -->
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>https://github.com/rtippenhauer/CommunityEvents</Project>
+  <Overview>CommunityEvents v2 — PRODUCTION container. Tracks the :v2-prod image tag, which is never built: scripts/promote-v2-prod.sh retags the :v2-stage digest that was tested, so what runs here is byte-identical to what passed stage. Hosts every production community as a tenant of one deployment; its own root tenant serves the CommunityEvents landing page, and DinnerBears is a non-root tenant on its own domain. Points at the communityevents database, separate from stage's communityevents_stage and from v1's dinnerbears.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:20020]/</WebUI>
+  <TemplateURL/>
+  <Icon/>
+  <ExtraParams>--restart unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="Web Port" Target="8080" Default="20020" Mode="tcp" Description="Host port for the production web interface. 20020 is this project's allocated prod port — see ../PORTS.md, project 02, 20PP0. Take a new port from that file rather than picking one here." Type="Port" Display="always" Required="true" Mask="false">20020</Config>
+
+  <Config Name="DB Host" Target="DB_HOST" Default="192.168.2.241" Mode="" Description="MySQL host IP address — the same server that carries stage and v1, a different database" Type="Variable" Display="always" Required="true" Mask="false">192.168.2.241</Config>
+  <Config Name="DB Port" Target="DB_PORT" Default="3306" Mode="" Description="MySQL port" Type="Variable" Display="always" Required="true" Mask="false">3306</Config>
+  <Config Name="DB Name" Target="DB_NAME" Default="communityevents" Mode="" Description="MySQL database name — the PRODUCTION v2 database. Never dinnerbears (that is v1's, and the import reads it) and never communityevents_stage. This database does not exist until you create it; see docs/NEW_INSTANCE_SETUP.md." Type="Variable" Display="always" Required="true" Mask="false">communityevents</Config>
+  <Config Name="DB User" Target="DB_USER" Default="communityevents" Mode="" Description="MySQL username — matches the database name by convention, as stage's does. Grant it on the communityevents database ONLY: a production account that can also reach communityevents_stage or dinnerbears turns a mistyped DB Name into a silent cross-environment write rather than a connection error." Type="Variable" Display="always" Required="true" Mask="false">communityevents</Config>
+  <Config Name="DB Password" Target="DB_PASSWORD" Default="" Mode="" Description="MySQL password for the communityevents account — a new one, not stage's. Generate: openssl rand -hex 32. Use hex rather than base64 here: entrypoint.sh SOURCES the appdata .env, so a $, backtick, backslash or quote in the value is expanded or mangled by the shell and the failure reads as a wrong password rather than a quoting problem." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+  <Config Name="JWT Secret" Target="JWT_SECRET" Default="" Mode="" Description="Secret key for JWT tokens — generate a new one. Do not reuse v1's or stage's: a shared secret would let a token minted on one deployment be accepted by the other. openssl rand -hex 32. Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Secret Encryption Key" Target="SECRET_ENCRYPTION_KEY" Default="" Mode="" Description="Encrypts every credential stored in the database (v2-7). Leave EMPTY on this new install and one is generated on first start, written to the App Data volume below -- BACK THAT FILE UP THE MOMENT IT APPEARS. Map App Data before first boot: without it each container recreate generates a fresh key, and the deployment then refuses to start because the database holds secrets encrypted under a key that no longer exists. That is how v2-7's stage deploy produced three keys in three recreates. Set this field only to supply a key an existing database already needs. Generate: openssl rand -base64 32. Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Retired Encryption Keys" Target="SECRET_ENCRYPTION_KEYS_RETIRED" Default="" Mode="" Description="Previous encryption keys, comma-separated, decrypt-only. Leave empty except while rotating — see npm run secrets:rewrap. Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="JWT Expires In" Target="JWT_EXPIRES_IN" Default="7d" Mode="" Description="JWT token expiry" Type="Variable" Display="advanced" Required="false" Mask="false">7d</Config>
+
+
+
+  <Config Name="Brevo API Key" Target="BREVO_API_KEY" Default="" Mode="" Description="Brevo API key, the DEPLOYMENT-WIDE DEFAULT only. The normal place to set a key is Admin -&gt; Email, which stores it per community in email_provider_config.brevoApiKey, encrypted (per-community since v2-9). This env var is the fallback a community falls back TO when it has set none, and only a community on this deployment's own domain may use it -- one on its own domain, like DinnerBears, has NO email fallback and must set its own key in the admin UI, which is fatal rather than cosmetic because registration, verification and password resets are all mail. OPTIONAL: leave it unset and set the root tenant's key in the admin UI instead. If you do set it, it goes EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Brevo From Email" Target="BREVO_FROM_EMAIL" Default="" Mode="" Description="From address for outbound emails from the deployment itself" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Brevo From Name" Target="BREVO_FROM_NAME" Default="CommunityEvents" Mode="" Description="Display name on the deployment's own outbound mail. Defaults to CommunityEvents in code if unset, which is right for the root tenant here." Type="Variable" Display="advanced" Required="false" Mask="false">CommunityEvents</Config>
+
+  <Config Name="Resend API Key" Target="RESEND_API_KEY" Default="" Mode="" Description="Resend API key — optional overflow email provider. Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Resend From Email" Target="RESEND_FROM_EMAIL" Default="" Mode="" Description="Resend overflow from-address" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Resend From Name" Target="RESEND_FROM_NAME" Default="" Mode="" Description="Resend overflow from-name" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Email Suppression Salt" Target="EMAIL_SUPPRESSION_SALT" Default="" Mode="" Description="Random salt for email hash suppression. Generate: openssl rand -hex 32. Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
+  <!-- VAPID: production must adopt v1 DinnerBears' EXISTING keypair, not a
+       fresh one (Rob, 2026-10-14). The keys are already in DinnerBears'
+       appdata .env: copy both halves byte for byte BEFORE anybody subscribes
+       to push here. Minting new ones silently kills v1's live subscriptions,
+       because a subscription is bound to the key that created it and nothing
+       can re-establish it. Production has no subscriptions of its own yet, so
+       adopting v1's costs nothing.
+       One keypair serves every tenant by design: PushService.onModuleInit
+       reads these once at boot and hands them to webpush.setVapidDetails
+       globally, and VAPID appears in neither tenant-secret-keys.ts nor
+       encrypted-columns.ts, so there is no per-community override.
+       Omitting them FAILS QUIETLY: the log says "VAPID keys not configured"
+       and the app carries on with push permanently dead. -->
+  <Config Name="VAPID Public Key" Target="VAPID_PUBLIC_KEY" Default="" Mode="" Description="MUST be copied verbatim from v1 DinnerBears' appdata .env, not generated. A fresh key invalidates every existing DinnerBears push subscription with nothing able to restore it. Omitting it disables push silently." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="VAPID Private Key" Target="VAPID_PRIVATE_KEY" Default="" Mode="" Description="MUST be copied verbatim from v1 DinnerBears' appdata .env, the matching half of the public key above" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="VAPID Subject" Target="VAPID_SUBJECT" Default="" Mode="" Description="Contact address in the push JWT (mailto: or URL). This one is NOT part of what binds a subscription, so it is free to become a CommunityEvents address rather than v1's — only the two keys must match. Required here because unset disables push just as a missing key does." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+
+  <Config Name="Geocoding API Key" Target="GEOCODING_API_KEY" Default="" Mode="" Description="Google Geocoding API key. Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Google Places API Key" Target="GOOGLE_PLACES_API_KEY" Default="" Mode="" Description="Google Places API key (location enrichment). Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Anthropic API Key" Target="ANTHROPIC_API_KEY" Default="" Mode="" Description="Optional — powers the admin 'enrich location' helper. Leave unset to disable it. Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
+  <Config Name="Cloudflare Email Secret" Target="CLOUDFLARE_EMAIL_SECRET" Default="" Mode="" Description="Shared secret validating inbound Cloudflare Email Routing webhook calls (calendar RSVP replies). Production needs its own, and Cloudflare's calendar@ routes must point here rather than at stage's calendar-stage@ — see docs/CUTOVER_PLAN.md, 'Inbound mail'. Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+  <Config Name="Admin Email" Target="ADMIN_EMAIL" Default="" Mode="" Description="Email address granted admin on first login" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="App URL" Target="APP_URL" Default="https://www.communityeventsproject.com" Mode="" Description="Public URL of this production deployment — the root tenant's own host. Needs its DNS record and an NGINX Proxy Manager entry pointing at the Web Port above before first boot. Note communityevents.com is somebody else's domain and the GitHub repo name carries no 'project'; neither is a typo for this." Type="Variable" Display="always" Required="true" Mask="false">https://www.communityeventsproject.com</Config>
+  <Config Name="Base Domain" Target="BASE_DOMAIN" Default="communityeventsproject.com" Mode="" Description="Bare APEX domain for derived contact emails — set it EXPLICITLY rather than letting it default. This deployment is served from www., which is below the apex, and a host below the apex normally has no MX record: with no MX a sender falls back to the A record, so replies time out instead of being refused. Not the session cookie scope — v2-6 made that cookie host-only. Never www." Type="Variable" Display="always" Required="true" Mask="false">communityeventsproject.com</Config>
+  <Config Name="Calendar Organizer Email" Target="CALENDAR_ORGANIZER_EMAIL" Default="" Mode="" Description="Optional override — defaults to calendar@BASE_DOMAIN" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Event Organizer Email" Target="EVENT_ORGANIZER_EMAIL" Default="" Mode="" Description="Optional override — defaults to noreply@BASE_DOMAIN" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Support Email" Target="SUPPORT_EMAIL" Default="" Mode="" Description="Optional override — defaults to hello@BASE_DOMAIN" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="production" Type="Variable" Display="always" Required="true" Mask="false">production</Config>
+  <Config Name="Is Stage" Target="IS_STAGE" Default="false" Mode="" Description="false for this container — stage builds flag themselves in the UI and production must not. This is the ONLY field distinguishing a production container from a stage one at runtime, since both run NODE_ENV=production, so leaving it true puts a stage banner on the live site." Type="Variable" Display="always" Required="true" Mask="false">false</Config>
+
+  <Config Name="Email Quota Time Zone" Target="EMAIL_QUOTA_TIMEZONE" Default="America/New_York" Mode="" Description="IANA zone your Brevo accounts reset their daily send allowance in. The counters on Admin -&gt; Email roll over at midnight in this zone. Leave empty for UTC, which ends the sending day at 8pm Eastern and makes the deployment believe it has a fresh 300 sends while Brevo is still counting the old day." Type="Variable" Display="always" Required="false" Mask="false">America/New_York</Config>
+
+  <Config Name="Legal Entity Name" Target="LEGAL_ENTITY_NAME" Default="" Mode="" Description="The company or person operating this deployment, named in the Terms of Service and Privacy Policy every community starts with. Deployment-wide on purpose: one operator runs every community here. Leave empty and each community's legal pages name the community itself, which is right only when the two are the same — on production they are not, since DinnerBears is a tenant rather than the operator." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+
+  <!-- Paths. These are SIBLINGS, unlike stage's, where /app/uploads sits inside
+       the /app/appdata mount. That nesting on stage was accidental and is
+       documented as surprising — a backup sized from the key alone also copies
+       every uploaded file. Production has no data to preserve, so it starts
+       with the shape that was intended. Docker creates both host folders on
+       first start and entrypoint.sh chmods them, so there is nothing to
+       prepare by hand; what matters is that these two mappings EXIST, and
+       that the paths are spelt correctly, since a typo self-creates in
+       silence. -->
+  <Config Name="Uploads" Target="/app/uploads" Default="/mnt/user/appdata/communityevents/uploads" Mode="rw" Description="Persistent storage for uploaded photos and files. Separate from v1's dinnerbears/uploads and from stage's — the import COPIES v1's files here rather than sharing them, so size this for DinnerBears' existing uploads." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/communityevents/uploads</Config>
+
+  <!-- REQUIRED, and easy to miss: the generated encryption key is written here,
+       as is the .env holding every secret. Unraid does not persist template
+       variables marked Mask=true, so put secrets in this path's .env and leave
+       the masked fields above empty (docs/SECRETS.md). The API loads
+       /app/appdata/.env ahead of its own .env. -->
+  <Config Name="App Data" Target="/app/appdata" Default="/mnt/user/appdata/communityevents/appdata" Mode="rw" Description="Persistent storage for secret-encryption.key AND the .env holding every secret. MUST be mapped before first boot: without it a generated key is lost on every container recreate, and the deployment then refuses to start once any secret is stored under the old one. Back up secret-encryption.key the moment it is generated — losing it makes every stored credential in the production database unrecoverable." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/communityevents/appdata</Config>
+
+  <!-- One-time instance bootstrap (api/src/bootstrap.ts). Not read by the app
+       at boot — only by `docker exec <container> node /app/dist/bootstrap.js`,
+       run once by hand after the container is up and migrations have completed.
+       Baking these in as container env vars means that command needs no -e
+       flags: docker exec inherits the container's own environment.
+       On production this creates the ROOT tenant, which is the operator's own
+       CommunityEvents community serving the landing page. DinnerBears is NOT
+       created here — it arrives as a non-root tenant through the import
+       (v2-25), on its own domain. Re-running is a safe no-op unless real
+       members already exist, in which case it refuses unless
+       INSTANCE_BOOTSTRAP_FORCE=true. -->
+  <Config Name="Root Tenant Slug" Target="ROOT_TENANT_SLUG" Default="root" Mode="" Description="Slug of the root tenant row bootstrap creates. Reads as cosmetic and is not: a non-person account's address is &lt;local&gt;@&lt;tenant slug&gt;.internal, so the slug is baked into every service account this deployment creates. Changing it afterwards does not rename those accounts, it grows a second set. Decide it before you run bootstrap; 'root' is fine unless a real community wants that slug." Type="Variable" Display="advanced" Required="false" Mask="false">root</Config>
+  <Config Name="Instance City Name" Target="INSTANCE_CITY_NAME" Default="Default" Mode="" Description="Required for bootstrap — bootstrap.ts errors out if this is unset. 'Default' for the root tenant, which is the operator's own community rather than a real city." Type="Variable" Display="always" Required="true" Mask="false">Default</Config>
+  <Config Name="Instance Brand Name" Target="INSTANCE_BRAND_NAME" Default="CommunityEvents" Mode="" Description="The root tenant's brand — the operator's own, not a tenant's. Editable later in Admin → Site Settings." Type="Variable" Display="always" Required="false" Mask="false">CommunityEvents</Config>
+  <Config Name="Instance Brand Tagline" Target="INSTANCE_BRAND_TAGLINE" Default="" Mode="" Description="Optional" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Theme Primary" Target="INSTANCE_THEME_PRIMARY" Default="" Mode="" Description="Optional, #RRGGBB" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Theme Accent" Target="INSTANCE_THEME_ACCENT" Default="" Mode="" Description="Optional, #RRGGBB" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Theme Background" Target="INSTANCE_THEME_BACKGROUND" Default="" Mode="" Description="Optional, #RRGGBB" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Admin Email" Target="INSTANCE_ADMIN_EMAIL" Default="" Mode="" Description="Required for bootstrap. The first admin of the ROOT tenant — the account that holds system_admin and can administer every other community, so it is the operator's address rather than a community organiser's. Creating a tenant creates its first admin; without one a community is a dead end, because registration is invite-gated." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Instance Admin Name" Target="INSTANCE_ADMIN_NAME" Default="" Mode="" Description="Optional — defaults to 'Admin'" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Instance Admin Password" Target="INSTANCE_ADMIN_PASSWORD" Default="" Mode="" Description="Required for bootstrap. Password for the first production admin sign-in. This is a real credential on a live deployment — treat it as one, and change it after first login. Set this EITHER here OR in the appdata .env (docs/SECRETS.md), not both -- a template row beats the file. The .env is recommended because Mask=true values have silently failed to save more than once, but it is not required: stage runs entirely from template variables and has no .env at all. What is NOT an option is leaving it unset in both places." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Instance Bootstrap Force" Target="INSTANCE_BOOTSTRAP_FORCE" Default="false" Mode="" Description="Leave false. Only set true to re-run bootstrap against a database that already holds real members — on production you almost certainly want the safety refusal." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+</Container>

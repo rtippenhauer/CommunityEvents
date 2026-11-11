@@ -5,8 +5,10 @@ Community dining platform organising recurring group dinners. This repo is the
 from the sibling checkout `../DinnerBears`).
 
 **Never build or push `rtippenhauer/community-events:stage` or `:latest`** —
-those are the live v1 deployment. This repo publishes **only** `:v2-stage`, via
-`scripts/publish-v2-stage.sh`.
+those are the live v1 deployment. This repo publishes `:v2-stage`, built by
+`scripts/publish-v2-stage.sh`, and `:v2-prod`, which is **never built** —
+`scripts/promote-v2-prod.sh` retags the tested `:v2-stage` digest, so
+production runs the bytes that passed stage.
 
 **Before reading a file over 300 lines, grep or Read with offset/limit; never
 load whole large files into context.**
