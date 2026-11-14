@@ -69,6 +69,29 @@ describe.each(Object.entries(TEMPLATES))('%s Unraid template', (_env, template) 
     expect(empty).toEqual([]);
   });
 
+  // The root tenant came up missing on the first production boot: the
+  // entrypoint calls deploy-provision.js, which returns immediately unless
+  // AUTO_PROVISION is exactly "true". Neither template offered the variable at
+  // all, so the install stopped after `migrate deploy` and the deployment
+  // answered 503 TENANT_NOT_CONFIGURED with no tenant to serve.
+  it('offers AUTO_PROVISION with a value', () => {
+    const field = fields(template).find((f) => f.target === 'AUTO_PROVISION');
+    expect(field).toBeDefined();
+    expect(field?.value).not.toEqual('');
+  });
+
+  // APP_URL decides the Google redirect URI (via googleRedirectUri, for a
+  // tenant on the deployment domain) and therefore which host sets the session
+  // cookie. `tenants.domain` cannot hold a `www.` prefix -- normalizeTenantDomain
+  // strips it -- so baseUrlFor() always redirects to the bare host afterwards.
+  // Point APP_URL at www and the cookie is set on www, the post-login redirect
+  // goes to the apex, and the host-only cookie is dropped: sign-in appears to
+  // work and silently leaves the user logged out.
+  it('never points APP_URL at a www host', () => {
+    const appUrl = fields(template).find((f) => f.target === 'APP_URL')?.value ?? '';
+    expect(appUrl).not.toMatch(/:\/\/www\./);
+  });
+
   it('declares a Target and a Name for every field', () => {
     const malformed = fields(template).filter((f) => !f.name || !f.target);
     expect(malformed).toEqual([]);
