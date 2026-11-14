@@ -21,10 +21,20 @@ side — the variable arrives empty and nothing says why:
 2. **Masked fields not persisting.** A variable marked `Mask="true"` has failed
    to save its value more than once in this deployment's history.
 
-The file is
-`/mnt/user/appdata/communityevents_stage/.env` on the host,
-`/app/appdata/.env` in the container, and the API loads it first:
-`envFilePath: ['/app/appdata/.env', '.env']`.
+The file is `/app/appdata/.env` in the container, and the API loads it first:
+`envFilePath: ['/app/appdata/.env', '.env']`. On the host it is:
+
+| Deployment | Host path |
+|---|---|
+| Stage (`CommunityEvents-v2-Stage`) | `/mnt/user/appdata/communityevents_stage/.env` |
+| Production (`CommunityEvents-v2-Prod`) | `/mnt/user/appdata/communityevents/appdata/.env` |
+
+**The production paths are the template's and nothing has been created from it
+yet**, so they are a plan rather than an observation — unlike stage's below.
+They are deliberately *not* stage's shape: stage has `/app/uploads` nested
+inside the `/app/appdata` mount, which was accidental, and production maps the
+two as siblings under `/mnt/user/appdata/communityevents/`. Confirm from the
+container's own mounts once it exists.
 
 **That host path is the live stage container's, confirmed from its own mounts on
 2026-10-20** (`docker inspect CommunityEvents-v2-Stage --format
