@@ -245,3 +245,62 @@ describe('selftestUid / parseSelftestUid', () => {
     expect(parseEventUid('UID:dinnerbears-event-7@dinnerbears.com')).toBe(7);
   });
 });
+
+/**
+ * **The fold, which is what stage found** (2026-11-14).
+ *
+ * A self-test reply came back from a real mail client and was filed as
+ * `unknown_uid`: the reply had arrived, the whole inbound leg worked, and the
+ * UID simply did not match. The cause is a line length.
+ *
+ *     UID:communityevents-selftest-<32 hex>@communityeventsproject.com
+ *
+ * is 87 octets, and RFC 5545 §3.1 caps a CONTENT-LINE at 75 — so the client
+ * folds it across two lines when it echoes it back, and a parser that has not
+ * unfolded first sees two fragments of a UID and no UID.
+ *
+ * It had never bitten because the event UID is ~54 octets and never folds, and
+ * `processRsvpReply` unfolded only *after* asking about the UID. Both parsers
+ * now unfold for themselves, so neither depends on being handed tidy input.
+ */
+describe('UID parsing across an RFC 5545 fold', () => {
+  const nonce = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+
+  it('reads a self-test UID folded by the client', () => {
+    const folded = `UID:communityevents-selftest-${nonce.slice(0, 20)}\r\n ${nonce.slice(20)}@communityeventsproject.com`;
+    expect(parseSelftestUid(folded)).toBe(nonce);
+  });
+
+  it('reads one folded with a tab, which the spec also allows', () => {
+    const folded = `UID:communityevents-selftest-${nonce.slice(0, 10)}\r\n\t${nonce.slice(10)}@communityeventsproject.com`;
+    expect(parseSelftestUid(folded)).toBe(nonce);
+  });
+
+  it('reads a folded UID inside a whole reply body', () => {
+    const ical = [
+      'BEGIN:VCALENDAR',
+      'METHOD:REPLY',
+      'BEGIN:VEVENT',
+      `UID:communityevents-selftest-${nonce.slice(0, 24)}`,
+      ` ${nonce.slice(24)}@communityeventsproject.com`,
+      'ATTENDEE;PARTSTAT=ACCEPTED:mailto:admin@example.test',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+    expect(parseSelftestUid(ical)).toBe(nonce);
+  });
+
+  it('reads an event UID folded too, though it is short enough not to be', () => {
+    // Nothing emits this today. It is asserted because the event parser had the
+    // same latent defect and the only reason it never showed was a line length.
+    expect(parseEventUid('UID:communityevents-event-4\r\n 2@communityeventsproject.com')).toBe(42);
+  });
+
+  it('still refuses a UID broken across lines without a fold marker', () => {
+    // A bare newline is a new CONTENT-LINE, not a continuation. Joining those
+    // would invent a UID out of two unrelated properties.
+    expect(
+      parseSelftestUid(`UID:communityevents-selftest-${nonce.slice(0, 20)}\r\n${nonce.slice(20)}@communityeventsproject.com`),
+    ).toBeNull();
+  });
+});

@@ -165,7 +165,7 @@ describe('Mail-chain self-test (e2e)', () => {
 
     const row = await configRow();
     expect(row?.selftestState).toBe(MailSelfTestState.SENT);
-    expect(row?.selftestNonce).toMatch(/^[0-9a-f]{32}$/);
+    expect(row?.selftestNonce).toMatch(/^[0-9a-f]{16}$/);
     expect(row?.selftestSentAt).toBeInstanceOf(Date);
     expect(row?.selftestProvider).toBe('brevo');
     expect(row?.selftestReplyCount).toBe(0);
@@ -343,6 +343,40 @@ describe('Mail-chain self-test (e2e)', () => {
       InboundEmailOutcome.SELFTEST_REPLY,
     ]);
     expect(log[1].detail).toContain('2');
+  });
+
+  it('passes on a reply whose UID the client folded', async () => {
+    // **The stage failure, 2026-11-14.** A real mail client echoed the UID back
+    // folded across two lines -- RFC 5545 caps a CONTENT-LINE at 75 octets --
+    // and the reply was filed as `unknown_uid`: it had arrived, the whole
+    // inbound leg had worked, and the UID simply did not match. The UID is
+    // short enough not to fold now AND both parsers unfold for themselves; this
+    // asserts the second half, which is the one that does not depend on the
+    // first staying true.
+    await run().expect(200);
+    const nonce = sentNonce();
+    const uid = `communityevents-selftest-${nonce}@communityeventsproject.com`;
+    const folded = reply(uid, 'ACCEPTED').replace(
+      `UID:${uid}`,
+      // A CRLF then a single space: the RFC 5545 continuation a client emits.
+      ['UID:communityevents-selftest-' + nonce.slice(0, 4), ' ' + nonce.slice(4) + '@communityeventsproject.com'].join(
+        '\r\n',
+      ),
+    );
+
+    await postReply(folded);
+
+    expect((await configRow())?.selftestState).toBe(MailSelfTestState.PASSED);
+    expect((await inboundRows()).at(-1)?.outcome).toBe(InboundEmailOutcome.SELFTEST_REPLY);
+  });
+
+  it("keeps the invite UID inside RFC 5545's 75-octet line limit", async () => {
+    // The other half of the same fix: do not emit a line that needs folding
+    // when nothing requires it. A 32-hex nonce made this 88 octets.
+    await run().expect(200);
+    const ics = sent[0].attachments?.[0]?.content ?? '';
+    const uidLine = ics.split(/\r\n/).find((l) => l.startsWith('UID:')) ?? '';
+    expect(Buffer.byteLength(uidLine, 'utf8')).toBeLessThanOrEqual(75);
   });
 
   it('records an unmatched nonce distinctly, and against no community', async () => {

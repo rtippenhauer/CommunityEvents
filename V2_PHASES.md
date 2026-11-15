@@ -4443,3 +4443,48 @@ pre-change invite filed as unknown rather than re-passing.
 is sent with an HTML body and no provider template, deliberately — a template id
 is per-account configuration that may not exist, and a diagnostic that cannot
 run until the thing it diagnoses is configured is no use.
+
+#### Found on stage, and fixed there (2026-11-14)
+
+**The first real round trip came back `unknown_uid`, and the cause was a line
+length.** Rob ran the check on stage, received the invite, pressed Accept, and
+the card stayed on `delivered`. The inbound log told the whole story: two rows,
+*"Unrecognised event reference"*, from his own address, subject
+`Accepted: [Test] Community Events Project setup check — stage.commu…`. **The
+reply had arrived.** MX, Cloudflare Email Routing, the Worker, the shared
+secret, the endpoint and the log all worked on the first attempt — the UID
+simply did not match.
+
+`UID:communityevents-selftest-<32 hex>@communityeventsproject.com` is **87
+octets**, and RFC 5545 §3.1 caps a CONTENT-LINE at 75. So the mail client
+folded it across two lines when echoing it back, and `processRsvpReply` unfolded
+the iCalendar *after* asking about the UID — the inline
+`ical.replace(/\r?\n[ \t]/g, '')` sat in the ATTENDEE parse, several steps
+further down.
+
+**The latent half is the part worth keeping.** `parseEventUid` had exactly the
+same defect and had never shown it, because an event UID is ~54 octets and never
+folds. Nothing about the old code was safe; it was short.
+
+Fixed in two places, deliberately:
+
+- **`unfoldIcs` is now called inside both parsers**, not by their caller. A
+  parser that is correct only when somebody else tidied its input first is a
+  trap for whoever writes the next caller — which is precisely how this landed.
+  `parseAttendee` uses the same helper instead of its own copy.
+- **The nonce dropped from 16 bytes to 8**, putting the UID line at 72 octets so
+  it cannot fold in the first place. 64 bits is ample for a value that
+  identifies a test rather than authorising anything. This is belt and braces,
+  not the fix: the parser change is what makes a folded UID from any client
+  work.
+
+Six more tests: four unit cases on folded UIDs (including a tab continuation,
+a bare newline that must *not* join, and the event UID's latent case), an e2e
+reply whose UID is folded mid-nonce, and an e2e assertion that the emitted UID
+line stays inside 75 octets.
+
+**This is the item justifying itself.** The defect is invisible to every test
+that builds its own iCalendar — the suite passed 1301 cases against a UID
+nothing had folded. It took a real mail client, which is exactly the gap the
+self-test exists to close, and it was found on stage rather than by a member in
+production.

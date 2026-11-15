@@ -125,7 +125,18 @@ export class MailSelfTestService {
       throw new BadRequestException(message);
     }
 
-    const nonce = randomBytes(16).toString('hex');
+    // **Eight bytes, not sixteen, so the UID line cannot fold** (found on
+    // stage, 2026-11-14). `UID:` + the prefix + 16 hex + the domain is 72
+    // octets, inside RFC 5545's 75-octet CONTENT-LINE limit; a 32-hex nonce
+    // made it 88, so the client folded it when echoing it back and the reply
+    // was filed as `unknown_uid`.
+    //
+    // The parser was fixed to unfold -- that is the real fix, and it is in
+    // `unfoldIcs`. This is the second half: do not emit a line that needs
+    // folding when nothing requires it. 64 bits is ample for a value that
+    // identifies a test rather than authorising anything, and a reply must
+    // still arrive through the inbound route to be worth guessing.
+    const nonce = randomBytes(8).toString('hex');
     const now = new Date();
     const startUtc = new Date(now.getTime() + SELFTEST_LEAD_MS);
     const endUtc = new Date(startUtc.getTime() + SELFTEST_DURATION_MS);

@@ -21,6 +21,28 @@ export function eventUid(eventId: number): string {
 }
 
 /**
+ * Undoes RFC 5545 line folding: a CRLF followed by one space or tab is a
+ * continuation, not a new line.
+ *
+ * **Every parser below unfolds for itself, and that is the point** (v2-48,
+ * found on stage). A reply to the mail-chain self-test came back from a real
+ * mail client and was filed as `unknown_uid` -- the message had arrived and the
+ * whole inbound leg had worked, and the UID simply did not match. The reason
+ * was a line length: §3.1 caps a CONTENT-LINE at 75 octets, the self-test UID
+ * is 87, so the client folded it when echoing it back, and the caller unfolded
+ * only *after* asking about the UID.
+ *
+ * The event UID is ~54 octets and never folds, which is the only reason that
+ * parser had never shown the same defect. A parser that is correct only when
+ * somebody else tidied its input first is a trap for whoever writes the next
+ * caller, so the unfolding belongs here rather than in the one place that
+ * happened to remember it.
+ */
+export function unfoldIcs(ical: string): string {
+  return ical.replace(/\r?\n[ \t]/g, '');
+}
+
+/**
  * Event id from an inbound reply's UID, accepting the pre-v2-10 format.
  *
  * Both are matched because the two live side by side indefinitely: a member
@@ -32,7 +54,7 @@ export function eventUid(eventId: number): string {
  * code can observe.
  */
 export function parseEventUid(ical: string): number | null {
-  const match = ical.match(
+  const match = unfoldIcs(ical).match(
     /UID:(?:communityevents-event-(\d+)@communityeventsproject\.com|dinnerbears-event-(\d+)@dinnerbears\.com)/i,
   );
   if (!match) return null;
@@ -75,7 +97,7 @@ export function selftestUid(nonce: string): string {
  * same reasoning `parseEventUid` spells its two alternatives out in full.
  */
 export function parseSelftestUid(ical: string): string | null {
-  const match = ical.match(
+  const match = unfoldIcs(ical).match(
     /UID:communityevents-selftest-([0-9a-f]{8,64})@communityeventsproject\.com/i,
   );
   return match ? match[1].toLowerCase() : null;

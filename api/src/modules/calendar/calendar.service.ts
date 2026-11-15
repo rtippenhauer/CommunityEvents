@@ -5,7 +5,7 @@ import type { Prisma, users as User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EventStatus, InboundEmailOutcome, RsvpStatus } from '../../database/enums';
 import { asDateString, asTimeString } from '../../common/utils/prisma-date.util';
-import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, icsSequence, EVENT_DURATION_MS, eventUid, parseEventUid, parseSelftestUid } from '../../common/utils/ics.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, icsSequence, EVENT_DURATION_MS, eventUid, parseEventUid, parseSelftestUid, unfoldIcs } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { AppConfigService } from '../app-config/app-config.service';
 import { CitiesService } from '../cities/cities.service';
@@ -678,8 +678,10 @@ export class CalendarService {
     partstatMatch: RegExpMatchArray | null;
     emailMatch: RegExpMatchArray | null;
   } {
-    const unfolded = ical.replace(/\r?\n[ \t]/g, '');
-    const attendeeLine = unfolded.match(/^ATTENDEE[^:\r\n]*:[^\r\n]+/im)?.[0] ?? '';
+    // The same helper the UID parsers use. It was this line's inline copy,
+    // which ran *after* the UID was parsed -- which is precisely how a folded
+    // self-test UID reached stage and came back `unknown_uid`.
+    const attendeeLine = unfoldIcs(ical).match(/^ATTENDEE[^:\r\n]*:[^\r\n]+/im)?.[0] ?? '';
     return {
       attendeeLine,
       partstatMatch: attendeeLine.match(/PARTSTAT=([A-Z-]+)/i),
