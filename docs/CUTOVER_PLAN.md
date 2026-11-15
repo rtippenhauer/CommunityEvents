@@ -920,7 +920,7 @@ address whose deployment has no URL is dropped with a log line.
 | Worker | Variable | Value |
 |---|---|---|
 | `communityevents_calendar` | `STAGE_API_URL` | `https://stage.communityeventsproject.com` |
-| | `API_URL` | **unset on purpose** — production does not exist; a non-`calendar-stage@` address is dropped, not posted |
+| | `API_URL` | `https://communityeventsproject.com` — **set 2026-11-15**, when production came up. The **apex**, which serves the API directly rather than redirecting to `www`; the Worker follows no redirects, so a host that 301s would drop the POST. It was deliberately unset until then, because a non-`calendar-stage@` address with no URL is dropped rather than misrouted. The Worker source's own comment still describes it as deliberately unset and is now stale. |
 | | `CLOUDFLARE_EMAIL_SECRET` | a **secret** (not plain text), copied from v1's value on 2026-10-15 with Rob's OK — one value now authenticates to both v1 and v2 stage, so rotating it is a change on both sides |
 | | `FALLBACK_FORWARD_TO` | added by `v2-34`. Where a message the Worker could not hand to the API is forwarded instead, so the payload survives an outage without bouncing to the member. **Must be a verified destination address** (Email Routing → Destination addresses) — an address on one of our own zones is a *routing rule*, not a destination, and forwarding to one fails. Leave unset and the Worker behaves exactly as before, logging and dropping. |
 
@@ -939,10 +939,13 @@ secret in the v1 repo's terms; not changed from here.
   about. Before the wildcard those names did not resolve at all, so nothing
   regressed — but a new tenant still needs an NPM host until NPM gets a
   wildcard host with a wildcard (DNS-challenge) or Cloudflare Origin CA cert.
-- **Email Routing** enabled on the apex. Literal routes `noreply@` and `admin@`
-  forward to Rob's Gmail, and the **catch-all forwards to Gmail too** — so until
-  the calendar route exists, a stage RSVP reply lands in that inbox and never
-  reaches the API.
+- **Email Routing** enabled on the apex. `admin@` forwards to Rob's Gmail;
+  `calendar@` and `calendar-stage@` both target `communityevents_calendar`; the
+  **catch-all drops** (it forwarded to Gmail until the standing shape below was
+  applied). **A dropping catch-all is why a missing rule is invisible**: mail is
+  accepted by the MX, no bounce is generated, the Worker never runs, and nothing
+  appears in the app's inbound log. That is exactly how production's first
+  `calendar@` reply was lost — see "Proved on production" below.
 - **Stage's reply address, verified** by fetching the stage root community's
   subscribed feed (same `contactsFor()` as the emailed invite):
   `ORGANIZER;CN=Community Events Project:mailto:calendar-stage@communityeventsproject.com`.
@@ -950,34 +953,39 @@ secret in the v1 repo's terms; not changed from here.
   stage's second community resolves its own `mail_domain`, and its replies need
   a route in *that* domain's zone.
 - **Routed 2026-10-15:** `calendar-stage@communityeventsproject.com` →
-  `communityevents_calendar` (literal rule, listed ahead of the Gmail catch-all).
-  **`calendar@communityeventsproject.com` is not routed** and must not be until
-  `API_URL` names a real production host.
-- **Still needed on the stage container:** `CLOUDFLARE_EMAIL_SECRET` set to the
-  same value. It was never set there, and `rsvp-reply` refuses everything when
-  the env value is empty — fails closed, so until it is set every reply reaches
-  the API and is answered 401, visible in the Worker's logs and nowhere else.
+  `communityevents_calendar` (literal rule, listed ahead of the catch-all).
+  **`calendar@communityeventsproject.com` routed 2026-11-15**, to the same
+  script, once production existed to point `API_URL` at. **A zone serving both
+  deployments needs both rules** — the Worker is account-level, the rules are
+  per zone, and the one that is missing is the one that fails silently.
+- **`CLOUDFLARE_EMAIL_SECRET` is set on both containers.** `rsvp-reply` refuses
+  everything when the env value is empty — it fails closed, so an unset value
+  answers every reply 401, visible in the Worker's logs and nowhere else. Stage
+  ran that way for a while before it was noticed.
 
 #### Every base URL needs a route, not a Worker (Rob, 2026-10-18)
 
 **Any domain a CommunityEvents deployment serves must be able to receive
-calendar replies**, so each one needs Email Routing and a `calendar-stage@`
-rule. It does **not** need its own Worker: a Worker is account-level, routing
-rules are per zone, and they can all target the same script. Three zones point
-at `communityevents_calendar` today and a fourth costs one rule.
+calendar replies**, so each one needs Email Routing and a rule for whichever
+local part its deployment uses — `calendar-stage@` for stage, `calendar@` for
+production, **both** where one zone serves both. It does **not** need its own
+Worker: a Worker is account-level, routing rules are per zone, and they can all
+target the same script. Three zones point at `communityevents_calendar` today
+and a fourth costs one rule.
 
 **The Worker does not identify the community, and must not try.** It branches
 on the address prefix only, to choose a *deployment* —
-`calendar-stage@` → `STAGE_API_URL`, anything else → `API_URL` (unset, so
-dropped). Which **community** a reply belongs to is resolved at the API from
+`calendar-stage@` → `STAGE_API_URL`, anything else → `API_URL`. Which
+**community** a reply belongs to is resolved at the API from
 the event UID inside the iCal, with the host only narrowing it (`v2-33`'s #45).
 So a new domain changes no code and no Worker variable.
 
 **The local part is per deployment, not per tenant.** `calendarLocalPart()`
 keys on whether `APP_URL` contains `stage`, so every community on the stage
 deployment replies to `calendar-stage@<its own mail domain>`, whatever that
-domain is. `calendar@<domain>` stays unrouted everywhere until a production
-deployment exists to point `API_URL` at.
+domain is, and every community on production replies to `calendar@<its own mail
+domain>`. **So a zone is onboarded per deployment, not per community** — one
+rule serves every community whose mail domain is in that zone.
 
 **Every Worker must hold the deployment's one `CLOUDFLARE_EMAIL_SECRET`, so
 every Worker has to be ours.** The endpoint compares a single env value, which
@@ -989,9 +997,12 @@ supported only for domains in the operator's own Cloudflare account** (Rob,
 2026-10-18). A community that would route its own replies gets no
 RSVP-by-reply until then — it is a missing feature for them, not a broken one.
 
-**Standing shape for every zone** (Rob, 2026-10-18): `calendar-stage@` → the
-Worker, `admin@<domain>` → `rtippenhauer+<domain>@gmail.com`, `noreply@` →
-**drop**, **catch-all drops**.
+**Standing shape for every zone** (Rob, 2026-10-18, extended 2026-11-15):
+`calendar-stage@` → the Worker, **`calendar@` → the same Worker** wherever that
+zone also serves a production community, `admin@<domain>` →
+`rtippenhauer+<domain>@gmail.com`, `noreply@` → **drop**, **catch-all drops**.
+The `calendar@` rule was added to the list after its absence cost production a
+silently lost reply.
 
 **Verified end to end 2026-10-18**, by a tenant at `stage.rtippenhauer.com`
 whose mail domain is `rtippenhauer.com`: a real Gmail Accept on a real invite
@@ -1062,6 +1073,36 @@ the invite looks perfect and the reply dies at the sender.
 > secret, it is already declared as an advanced template field, and a template
 > row beats the file, so putting it in the file while the field exists is the
 > arrangement most likely to look configured and not be.
+
+#### Proved on production, 2026-11-15
+
+The first calendar reply ever to complete the round trip on production did so
+through `v2-48`'s setup check: a real invite to the operator's own address, a
+real Accept in a real mail client, back through Cloudflare to
+`POST /calendar/rsvp-reply`, recorded as `selftest_reply`. Until that moment
+legs 3-5 of the inbound chain had never been exercised on production at all.
+
+**It failed first, and the cause is the lesson in this section restated.** The
+invite sent; nothing came back; the inbound log was empty. `API_URL` was already
+set correctly. What was missing was the **`calendar@` Email Routing rule on the
+zone** — so the apex MX accepted the message and the drop-everything catch-all
+ate it. No bounce, no Worker invocation, no log line in the app. The three
+places this could fail are now distinguishable:
+
+| Symptom | Cause |
+|---|---|
+| No Worker invocation for the address at all | No routing rule — the catch-all dropped it |
+| Worker ran, no POST | Its `API_URL` / `STAGE_API_URL` is unset for that prefix |
+| POST arrived, answered 401 | `CLOUDFLARE_EMAIL_SECRET` differs between Worker and container |
+
+Count invocations by address in the Workers observability panel — events for
+`$metadata.service = communityevents_calendar` grouped by `$metadata.message`
+lists the addresses that actually reached the script. **Zero for an address
+means the mail never got there**, which is the one failure the app cannot see.
+
+**So the setup check is the instrument for this, and the first thing to run in a
+new community.** It is the only signal that crosses all five legs, and it
+reports which leg failed instead of leaving the operator to infer it.
 
 #### The live container's paths have drifted from this template (2026-10-20)
 

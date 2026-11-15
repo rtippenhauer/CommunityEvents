@@ -15,7 +15,10 @@
  * Variables (Workers > Settings > Variables & Secrets):
  *   CLOUDFLARE_EMAIL_SECRET  — secret, must match the API container's env
  *   STAGE_API_URL            — https://stage.communityeventsproject.com
- *   API_URL                  — production; deliberately unset until it exists
+ *   API_URL                  — https://communityeventsproject.com (set 2026-11-15,
+ *                              when production came up; the apex, which serves the
+ *                              API directly — this follows no redirects, so a host
+ *                              that 301s to www would drop the POST)
  *   FALLBACK_FORWARD_TO      — a VERIFIED destination address (Email Routing >
  *                              Destination addresses), where a message we could
  *                              not hand to the API is sent instead. Optional;
