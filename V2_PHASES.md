@@ -4370,3 +4370,76 @@ allowance. A single self-test message needs no quota special-casing.
   unrecognised UID returns `UNKNOWN_UID` and is discarded. The self-test branch
   must therefore be checked first, not added as a third alternative to that
   regex.
+
+#### As built (2026-11-14)
+
+**State on `email_provider_config`, twelve columns and an enum.**
+`selftest_state` is `never_run | sent | delivered | passed | failed`, beside the
+nonce, the address, the provider's message id, the provider name, four
+timestamps, the latest reply's status, a reply count and an error string.
+Migration `20261114120000_email_selftest`, which also appends `selftest_reply`
+and `selftest_unknown` to `inbound_emails.outcome` — appended, `ALGORITHM=INPLACE`,
+for the reason `20261022090000_inbound_counter_proposal` sets out.
+
+- **`selftest_nonce` is UNIQUE and deliberately not encrypted.** The reply
+  resolves its community by filtering on it, and the secret cipher is randomised,
+  so an encrypted column could not be filtered at all. It is also kept out of
+  the HTTP response (`EmailConfigView`'s omit list), because the screen renders
+  the state and has no use for the identifier — there is an e2e test for that.
+- **`delivered` is wired as the optional waypoint the decision called for.**
+  Brevo's `delivered` callback is matched on the provider **message id**, not on
+  the address and subject: an operator's own mailbox receives this deployment's
+  other mail too. That meant `BrevoService.send` had to stop returning `void` —
+  it now answers `BrevoSendResult { messageId }`, and nothing may depend on the
+  id being present. Only a row in `sent` moves, so a late callback cannot walk a
+  passed test backwards.
+
+**`EmailService.sendNowOrThrow`, new, is why a failed send is visible.**
+`sendNow` falls back to the queue, which is right for a password reset and wrong
+here — queued quietly, the test would sit in `sent` reporting a delivery fault
+that is really a refused credential, which is the exact class of invisible
+failure this item exists to end. Both now share one private `sendBranded`, so
+`sendNow`'s behaviour is unchanged. Suppression is checked *before* the send,
+explicitly, because the immediate path deliberately bypasses the suppression
+list.
+
+**`MailSelfTestService` lives in `EmailModule`, not beside the reply branch.**
+CalendarModule already imports EmailModule, so the other direction would be a
+cycle — and the Brevo webhook controller, which needs the `delivered` hook, is
+in EmailModule too. It needs nothing from `CalendarService`.
+
+**The reply branch is the first question `processRsvpReply` asks** after the
+`METHOD:REPLY` check, before `parseEventUid`. `PARTSTAT_TO_RSVP` and
+`parseAttendee` were hoisted out of the event path and are now shared by both,
+rather than copied.
+
+**Admin: `POST /admin/email/selftest`**, `@Roles(ADMIN)`, three an hour, audited
+as `email.selftest_sent`. **No DTO and no body at all** — the address comes off
+the session, and there is an e2e test asserting a `toEmail` in the body is
+ignored. The config row is `upsert`ed, so a community that has never saved its
+email settings can still run the check.
+
+**Frontend:** a *Setup check* card on Admin → Email, between the credentials
+accordion and the log — the order an operator works in. Three separate strings
+rather than a status chip, because `sent` means "go and look in your mail",
+`failed` means "fix this", and only `passed` says anything about the chain. A
+400's message is shown verbatim, which is unusual on that screen and is the
+point: the server worded it for whoever pressed the button. HTTP goes through a
+new typed `MailSelfTestService` with no address parameter, rather than another
+`HttpClient` call from the component.
+
+**Tests:** 9 unit cases on the two UID namespaces (both directions — a self-test
+UID must not parse as an event, and an event UID must not parse as a self-test),
+and `test/mail-selftest.e2e-spec.ts`, 17 cases: the send, the body being
+ignored, the subject naming the domain, the +1h/30m `METHOD:REQUEST`, a
+non-admin refused, suppression and a refused key both failing loudly with
+nothing queued, the pass with **no `event_rsvps` row written anywhere**,
+accept-then-decline keeping `passed` and leaving `passed_at` alone, an unmatched
+nonce logged as `selftest_unknown` against no community, the `delivered`
+waypoint not walking back from `passed`, the key-change reset, and a reply to a
+pre-change invite filed as unknown rather than re-passing.
+
+**Not covered by this item, and not claimed:** the template-id leg. The invite
+is sent with an HTML body and no provider template, deliberately — a template id
+is per-account configuration that may not exist, and a diagnostic that cannot
+run until the thing it diagnoses is configured is no use.

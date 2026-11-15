@@ -9,7 +9,7 @@ import type {
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailProvider, EmailQueueStatus, EmailStatus, SuppressionReason } from '../../database/enums';
 import { EmailCategory, EmailCategoryName, EmailTemplateName, NOTIFICATION_PREF_KEY } from './email.constants';
-import { BrevoService, EmailAttachment } from './brevo.service';
+import { BrevoService, EmailAttachment, type BrevoSendResult } from './brevo.service';
 import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-day';
 import { AppConfigService } from '../app-config/app-config.service';
 import { currentTenantId, requireTenantId } from '../../common/tenant/tenant-store';
@@ -440,26 +440,57 @@ export class EmailService {
     const dto = await this.applyBranding(input);
 
     try {
-      await this.brevo.send({
-        toEmail: dto.toEmail,
-        toName: dto.toName,
-        subject: dto.subject,
-        htmlBody: dto.htmlBody,
-        textBody: dto.textBody,
-        attachments: dto.attachments,
-      });
-      await this.countImmediateSend();
-      await this.recordImmediateSend(dto);
-      // The account allowance we hold is now one send out of date. Dropping it
-      // rather than re-reading it is what keeps this off the critical path: a
-      // password reset is something a person is waiting on, and clearing a map
-      // entry costs nothing where another call to Brevo would have tripled the
-      // time this endpoint takes. Whoever asks next pays for the fresh number.
-      await this.brevo.invalidateAccountQuota();
+      await this.sendBranded(dto);
     } catch (err) {
       this.logger.warn(`Immediate send failed for ${dto.toEmail}, falling back to queue: ${(err as Error).message}`);
       await this.queue({ ...dto, bypassSuppression: true });
     }
+  }
+
+  /**
+   * An immediate send whose failure is the caller's problem, and whose
+   * provider message id the caller gets back (v2-48).
+   *
+   * **The difference from `sendNow` is the queue fallback, and that is the
+   * whole reason this exists.** Falling back is right for mail somebody is
+   * waiting on -- a reset link should arrive late rather than not at all. It is
+   * wrong for the mail-chain self-test, where a send that did not happen is the
+   * finding: queued silently, the test would sit in `sent` reporting a delivery
+   * fault that is really a refused credential, which is the exact class of
+   * invisible failure the self-test exists to end.
+   *
+   * The message id comes back for the same item's sake -- it is what a Brevo
+   * `delivered` callback is matched on. Nothing may depend on it being
+   * non-null; see `BrevoSendResult`.
+   */
+  async sendNowOrThrow(input: QueueEmailDto): Promise<BrevoSendResult> {
+    if (await this.sendingIsBlocked(input.toEmail)) {
+      // Thrown rather than returned quietly: a caller who asked for a send it
+      // must hear about cannot be told 'nothing happened' by a void return.
+      throw new Error('This is a demo community, which cannot send mail.');
+    }
+    return this.sendBranded(await this.applyBranding(input));
+  }
+
+  /** The provider call itself, plus the bookkeeping that must follow a success. */
+  private async sendBranded(dto: QueueEmailDto): Promise<BrevoSendResult> {
+    const result = await this.brevo.send({
+      toEmail: dto.toEmail,
+      toName: dto.toName,
+      subject: dto.subject,
+      htmlBody: dto.htmlBody,
+      textBody: dto.textBody,
+      attachments: dto.attachments,
+    });
+    await this.countImmediateSend();
+    await this.recordImmediateSend(dto);
+    // The account allowance we hold is now one send out of date. Dropping it
+    // rather than re-reading it is what keeps this off the critical path: a
+    // password reset is something a person is waiting on, and clearing a map
+    // entry costs nothing where another call to Brevo would have tripled the
+    // time this endpoint takes. Whoever asks next pays for the fresh number.
+    await this.brevo.invalidateAccountQuota();
+    return result;
   }
 
   /**

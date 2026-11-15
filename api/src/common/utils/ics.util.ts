@@ -40,6 +40,47 @@ export function parseEventUid(ical: string): number | null {
   return parseInt(match[1] ?? match[2], 10);
 }
 
+/**
+ * The UID for a mail-chain self-test invite (v2-48).
+ *
+ * **Its own namespace, carrying a nonce and never an event id.** The whole
+ * point of the self-test is that it proves the chain without touching a
+ * community's data, and a UID in the event namespace would be one slip away
+ * from writing an `event_rsvps` row -- which is to say from a test appearing in
+ * an attendee list or a headcount.
+ *
+ * The domain is the deployment's, exactly as `eventUid`'s is: `eventUid`
+ * hardcodes `@communityeventsproject.com` for every tenant, so the UID
+ * namespace belongs to the deployment regardless of whose community sent the
+ * invite. The *tenant's* domain goes in the invite's title instead, which is
+ * where seeing it is actually worth something -- a wrong sending host is then
+ * visible in the subject line.
+ */
+export function selftestUid(nonce: string): string {
+  return `communityevents-selftest-${nonce}@communityeventsproject.com`;
+}
+
+/**
+ * The nonce from an inbound reply's UID, or null if this is not a self-test.
+ *
+ * **Must be asked before `parseEventUid`.** That function matches two literal
+ * event shapes and returns null for anything else, and its caller turns null
+ * into `UNKNOWN_UID` and discards the message -- so a self-test added as a
+ * third alternative there would be silently thrown away. It is a separate
+ * question asked first, not a third branch of the same regex.
+ *
+ * The nonce character class is deliberately narrow (hex, which is what
+ * `randomBytes().toString('hex')` produces) rather than a loose `.+`: a
+ * combination this code never emits must not be quietly accepted, which is the
+ * same reasoning `parseEventUid` spells its two alternatives out in full.
+ */
+export function parseSelftestUid(ical: string): string | null {
+  const match = ical.match(
+    /UID:communityevents-selftest-([0-9a-f]{8,64})@communityeventsproject\.com/i,
+  );
+  return match ? match[1].toLowerCase() : null;
+}
+
 /** Assumed event length for calendar entries — no explicit end time is stored. */
 export const EVENT_DURATION_MS = 2 * 60 * 60 * 1000;
 

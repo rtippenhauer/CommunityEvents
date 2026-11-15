@@ -5,7 +5,7 @@ import type { Prisma, users as User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { EventStatus, InboundEmailOutcome, RsvpStatus } from '../../database/enums';
 import { asDateString, asTimeString } from '../../common/utils/prisma-date.util';
-import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, icsSequence, EVENT_DURATION_MS, eventUid, parseEventUid } from '../../common/utils/ics.util';
+import { icsEscape, eventTimeToUtc, toIcsUtcString, foldIcsLine, icsSequence, EVENT_DURATION_MS, eventUid, parseEventUid, parseSelftestUid } from '../../common/utils/ics.util';
 import { LocationVisibilityService } from '../../common/services/location-visibility.service';
 import { AppConfigService } from '../app-config/app-config.service';
 import { CitiesService } from '../cities/cities.service';
@@ -14,6 +14,7 @@ import { TenantResolutionService } from '../../common/tenant/tenant-resolution.s
 import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import type { TenantContext } from '../../common/tenant/tenant-context';
 import { extractIcalFromEmail } from './ical-extract.util';
+import { MailSelfTestService } from '../email/mail-selftest.service';
 import { resolveQuotaTimeZone } from '../../common/email/quota-day';
 
 /**
@@ -29,6 +30,20 @@ import { resolveQuotaTimeZone } from '../../common/email/quota-day';
  * not necessarily the host it arrived on — see `TENANT_MISMATCH`, where they
  * differ and that difference is the whole finding.
  */
+/**
+ * The three PARTSTATs a calendar client sends, and what each means to us.
+ *
+ * Module-level and shared by the event path and the self-test path (v2-48)
+ * rather than rebuilt inside the handler: the mapping is a property of the
+ * iCalendar spec, not of which kind of reply arrived, and two copies would be
+ * two things to keep in step.
+ */
+const PARTSTAT_TO_RSVP: Record<string, RsvpStatus> = {
+  ACCEPTED: RsvpStatus.GOING,
+  TENTATIVE: RsvpStatus.MAYBE,
+  DECLINED: RsvpStatus.NOT_GOING,
+};
+
 export interface RsvpReplyOutcome {
   outcome: InboundEmailOutcome;
   detail?: string;
@@ -108,6 +123,7 @@ export class CalendarService {
     private readonly tenantResolution: TenantResolutionService,
     private readonly cities: CitiesService,
     private readonly cityPreferences: CityPreferencesService,
+    private readonly selfTest: MailSelfTestService,
   ) {}
 
   // Per-instance branding for generated calendar files (Phase 32/33). Same
@@ -570,17 +586,21 @@ export class CalendarService {
       return { outcome: InboundEmailOutcome.NOT_A_REPLY };
     }
 
+    // **The self-test is asked about first, not as a third UID alternative**
+    // (v2-48). `parseEventUid` matches two literal event shapes and returns
+    // null for everything else, and the next check turns null into
+    // `UNKNOWN_UID` and discards the message -- so a self-test reply handled
+    // further down would be thrown away before it ever got there.
+    const selftestNonce = parseSelftestUid(ical);
+    if (selftestNonce !== null) return this.processSelfTestReply(ical, selftestNonce);
+
     const eventId = parseEventUid(ical);
     if (eventId === null) {
       this.logger.warn('rsvp-reply: unrecognized UID format');
       return { outcome: InboundEmailOutcome.UNKNOWN_UID };
     }
 
-    // Unfold RFC 5545 line continuations then parse ATTENDEE
-    const unfolded = ical.replace(/\r?\n[ \t]/g, '');
-    const attendeeLine = unfolded.match(/^ATTENDEE[^:\r\n]*:[^\r\n]+/im)?.[0] ?? '';
-    const partstatMatch = attendeeLine.match(/PARTSTAT=([A-Z-]+)/i);
-    const emailMatch = attendeeLine.match(/:mailto:([^\s;,\r\n]+)/i);
+    const { attendeeLine, partstatMatch, emailMatch } = this.parseAttendee(ical);
 
     if (!partstatMatch || !emailMatch) {
       this.logger.warn(`rsvp-reply: could not parse ATTENDEE line: ${attendeeLine || '(not found)'}`);
@@ -597,12 +617,7 @@ export class CalendarService {
     const partstat = partstatMatch[1].toUpperCase();
     const attendeeEmail = emailMatch[1].trim().toLowerCase();
 
-    const statusMap: Record<string, RsvpStatus> = {
-      ACCEPTED: RsvpStatus.GOING,
-      TENTATIVE: RsvpStatus.MAYBE,
-      DECLINED: RsvpStatus.NOT_GOING,
-    };
-    const rsvpStatus = statusMap[partstat];
+    const rsvpStatus = PARTSTAT_TO_RSVP[partstat];
     if (!rsvpStatus) {
       this.logger.debug(`rsvp-reply: unhandled PARTSTAT=${partstat}, ignoring`);
       return {
@@ -648,6 +663,93 @@ export class CalendarService {
     return runWithTenant(event.tenantId, async () =>
       this.recordRsvpReply(eventId, attendeeEmail, rsvpStatus, event.tenantId),
     );
+  }
+
+  /**
+   * The ATTENDEE line's PARTSTAT and address, with RFC 5545 continuations
+   * unfolded first.
+   *
+   * Shared by the event path and the self-test path rather than written twice:
+   * the two differ in what the UID means, not in how a client states who
+   * replied and what they said.
+   */
+  private parseAttendee(ical: string): {
+    attendeeLine: string;
+    partstatMatch: RegExpMatchArray | null;
+    emailMatch: RegExpMatchArray | null;
+  } {
+    const unfolded = ical.replace(/\r?\n[ \t]/g, '');
+    const attendeeLine = unfolded.match(/^ATTENDEE[^:\r\n]*:[^\r\n]+/im)?.[0] ?? '';
+    return {
+      attendeeLine,
+      partstatMatch: attendeeLine.match(/PARTSTAT=([A-Z-]+)/i),
+      emailMatch: attendeeLine.match(/:mailto:([^\s;,\r\n]+)/i),
+    };
+  }
+
+  /**
+   * A reply to the mail-chain self-test (v2-48).
+   *
+   * **No `event_rsvps` row is ever written here**, and there is no event id to
+   * write one against — which is what the separate UID namespace buys. The only
+   * state this moves is the community's own self-test row, found from the nonce
+   * with no ambient tenant.
+   *
+   * The replying address is deliberately not checked against anything. The
+   * invite went to one address, chosen by the deployment from the session and
+   * not by the request, and a client is free to reply as a delegate or from an
+   * alias of the same mailbox — refusing those would fail the test for a
+   * configuration that works.
+   *
+   * `tenantId` is set on every outcome this can reach, the unknown one
+   * included, where it is explicitly null. "This arrived and matched no
+   * community" is the most diagnostic row the inbound log can hold, and
+   * `undefined` would make the caller fall back to whichever host the Worker
+   * happened to POST to.
+   */
+  private async processSelfTestReply(ical: string, nonce: string): Promise<RsvpReplyOutcome> {
+    const { attendeeLine, partstatMatch } = this.parseAttendee(ical);
+    if (!partstatMatch) {
+      this.logger.warn(
+        `rsvp-reply: self-test reply with no PARTSTAT: ${attendeeLine || '(no ATTENDEE line found)'}`,
+      );
+      return {
+        outcome: InboundEmailOutcome.UNPARSEABLE_ATTENDEE,
+        detail: attendeeLine || '(no ATTENDEE line found)',
+      };
+    }
+
+    const partstat = partstatMatch[1].toUpperCase();
+    const rsvpStatus = PARTSTAT_TO_RSVP[partstat];
+    if (!rsvpStatus) {
+      this.logger.debug(`rsvp-reply: self-test reply with unhandled PARTSTAT=${partstat}`);
+      return { outcome: InboundEmailOutcome.UNHANDLED_PARTSTAT, detail: `PARTSTAT=${partstat}` };
+    }
+
+    const result = await this.selfTest.recordReply(nonce, rsvpStatus);
+    if (!result) {
+      // A replayed invite, or one whose community has since had its Brevo key
+      // replaced -- which resets the nonce deliberately, because a test that
+      // passed against a key that is gone says nothing about the key in place.
+      this.logger.warn('rsvp-reply: self-test nonce matches no community');
+      return {
+        outcome: InboundEmailOutcome.SELFTEST_UNKNOWN,
+        detail: 'no community holds this self-test nonce',
+        tenantId: null,
+      };
+    }
+
+    this.logger.log(
+      `rsvp-reply: self-test reply ${result.replyCount} for tenant ${result.tenantId} (${rsvpStatus})`,
+    );
+    return {
+      outcome: InboundEmailOutcome.SELFTEST_REPLY,
+      // The count is what makes accept-then-decline legible in the log, rather
+      // than the second reply looking like a duplicate delivery of the first.
+      detail: `self-test reply ${result.replyCount}: ${partstat}`,
+      tenantId: result.tenantId,
+      rsvpStatus,
+    };
   }
 
   /** The write half of a reply, run inside the event's own community. */

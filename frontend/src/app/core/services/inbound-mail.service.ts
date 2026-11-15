@@ -7,7 +7,7 @@ import { Observable } from 'rxjs';
  *
  * Mirrors `inbound_emails_outcome`. Thirteen values because there are thirteen
  * places the inbound path can stop, every one of which used to be a log line
- * and a silent return.
+ * and a silent return — plus the two the mail-chain self-test added (v2-48).
  */
 export type InboundOutcome =
   | 'recorded'
@@ -23,7 +23,9 @@ export type InboundOutcome =
   | 'tenant_mismatch'
   | 'member_not_found'
   | 'rate_limited'
-  | 'counter_proposal';
+  | 'counter_proposal'
+  | 'selftest_reply'
+  | 'selftest_unknown';
 
 export interface InboundMailRow {
   id: number;
@@ -139,10 +141,21 @@ export const OUTCOME_LABELS: Record<InboundOutcome, string> = {
   member_not_found: 'No member with that address',
   rate_limited: 'Refused — rate limited',
   counter_proposal: 'Proposed a different time',
+  // The whole point of giving the self-test its own outcomes is that these
+  // three are told apart on this screen: an operator proving their setup, a
+  // member RSVPing, and a UID that means nothing to us.
+  selftest_reply: 'Setup check passed',
+  selftest_unknown: 'Setup check — no longer current',
 };
 
 /** The outcomes that are not failures, so the screen can stop shouting about them. */
-export const GOOD_OUTCOMES: readonly InboundOutcome[] = ['recorded', 'unchanged'];
+export const GOOD_OUTCOMES: readonly InboundOutcome[] = [
+  'recorded',
+  'unchanged',
+  // A self-test reply is the single best row this log can hold: it is proof the
+  // whole inbound leg works. Marking it a problem would be exactly backwards.
+  'selftest_reply',
+];
 
 /**
  * Neither a success nor a fault: somebody asked for something.
