@@ -1139,3 +1139,45 @@ Admin → Appearance whenever you like.
 - **A community brought across from the old site now carries its preset
   pictures and its store link with it**, along with everything else. Both were
   previously left behind and had to be set up again by hand.
+
+## Checking your email setup without mailing anybody
+
+**You can now prove your community's email works before a single member
+hears from it.** Admin → Email has a *Setup check*: press the button and you
+receive one real calendar invitation at your own address. Reply to it from your
+mail client — Accept, Maybe or Decline — and the page moves to **Passed**.
+
+That reply is the whole point. It is the only thing that proves every part of
+the chain at once: that your sending key works, that your sending address is
+accepted, that your messages leave correctly, and — the part nothing could
+check before — that replies from your members find their way back to us. Until
+now the only way to discover a broken setup was for a real member to send a
+real reply that quietly went nowhere.
+
+**The invitation goes to you and to nobody else.** There is no field to type
+somebody else's address into, by design: this is a diagnostic, not a way to
+send mail. No member receives anything, and no RSVP is recorded against any of
+your events.
+
+**You can Accept and then Decline**, which takes the test entry off your
+calendar. Both replies count and the check stays passed.
+
+**Failures say what is wrong instead of going quiet.** If no sending
+credentials are set, if your own address has been suppressed after a bounce, or
+if your provider refuses your key, the check says so in those words and names
+the cause. It never sits there looking as though a message is on its way when
+nothing was sent.
+
+**The check resets itself whenever you change your sending key**, because a
+check that passed against a key you have replaced tells you nothing about the
+key you are using now.
+
+**Replies to the check appear in Inbound Mail as their own kind of entry**, so
+a setup check is never confused with a member's RSVP.
+
+### Also in this release
+
+- **Calendar replies with long identifiers are now read correctly.** Mail
+  clients split long lines when they reply, and a reply split in the wrong
+  place used to be filed as unreadable. Found while testing the setup check
+  above — it was reaching us all along and simply not being understood.

@@ -5,6 +5,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { EmailStatus, SuppressionReason } from '../../database/enums';
 import { BrevoWebhookService } from './brevo-webhook.service';
 import { EmailService } from './email.service';
+import { MailSelfTestService } from './mail-selftest.service';
 import { runUnscoped } from '../../common/tenant/tenant-store';
 
 interface BrevoWebhookEvent {
@@ -26,6 +27,7 @@ export class EmailWebhookController {
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
     private readonly webhookRegistration: BrevoWebhookService,
+    private readonly selfTest: MailSelfTestService,
   ) {}
 
   /**
@@ -100,6 +102,14 @@ export class EmailWebhookController {
     switch (evt.event) {
       case 'delivered':
         await setEmailStatus(EmailStatus.ACTIVE, EmailStatus.PENDING);
+        // The mail-chain self-test's optional waypoint (v2-48). Matched on the
+        // provider's message id, which is the only thing here that says *which*
+        // message landed -- an operator's own mailbox receives this
+        // deployment's other mail too, so the address alone would move the
+        // state on an unrelated delivery. A no-op for every other message, and
+        // allowed to never arrive at all: Resend reports nothing, so `passed`
+        // must be reachable straight from `sent`.
+        await this.selfTest.recordDelivered(evt.messageId ?? evt['message-id']);
         break;
 
       case 'hard_bounce':

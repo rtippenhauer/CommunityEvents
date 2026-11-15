@@ -29,6 +29,10 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import {
+  MailSelfTestService,
+  type MailSelfTestState,
+} from '../../../core/services/mail-selftest.service';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -178,6 +182,18 @@ interface EmailConfig {
   tmplGuestRsvpConfirmation: number | null;
   tmplEmailVerification: number | null;
   tmplPasswordReset: number | null;
+  // The mail-chain self-test (v2-48). The nonce is deliberately not here: the
+  // API does not send it, because the screen renders the state rather than the
+  // identifier.
+  selftestState: MailSelfTestState;
+  selftestEmail: string | null;
+  selftestSentAt: string | null;
+  selftestDeliveredAt: string | null;
+  selftestPassedAt: string | null;
+  selftestLastReplyAt: string | null;
+  selftestLastReplyStatus: string | null;
+  selftestReplyCount: number;
+  selftestError: string | null;
 }
 
 @Component({
@@ -534,6 +550,76 @@ interface EmailConfig {
             </form>
           </mat-expansion-panel>
         </mat-accordion>
+
+        <!-- The setup check (v2-48). Placed after the credentials and before
+             the log, because that is the order an operator works in: set a key,
+             prove it carries mail both ways, then watch what goes out. -->
+        <mat-card class="selftest-card">
+          <mat-card-header>
+            <mat-card-title>Setup check</mat-card-title>
+            <mat-card-subtitle>
+              Proves this community can send and receive calendar mail, without mailing a member
+            </mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="selftest-state" [class]="'selftest-' + cfg.selftestState">
+              <mat-icon>{{ selftestIcon() }}</mat-icon>
+              <div>
+                <strong>{{ selftestHeadline() }}</strong>
+                <p>{{ selftestDetail() }}</p>
+              </div>
+            </div>
+
+            @if (cfg.selftestError) {
+              <p class="selftest-error">{{ cfg.selftestError }}</p>
+            }
+
+            @if (cfg.selftestReplyCount > 1) {
+              <!-- Accept-then-decline is a supported path, not an anomaly: it is
+                   how an operator takes the test entry off their own calendar. -->
+              <p class="selftest-note">
+                {{ cfg.selftestReplyCount }} replies received — the latest was
+                {{ replyWord(cfg.selftestLastReplyStatus) }}. The test stays passed, and stays
+                replyable.
+              </p>
+            }
+
+            <p class="selftest-explain">
+              The invitation goes to <strong>your own address</strong> and nowhere else — there is no
+              field to aim it at a member. Reply to it from your mail client and this moves to
+              Passed; that reply is the only signal that exercises the sending key, the verified
+              sender, the outbound DNS and the inbound mail route all at once.
+            </p>
+          </mat-card-content>
+          <mat-card-actions>
+            <button
+              mat-raised-button
+              color="primary"
+              type="button"
+              [disabled]="sendingSelfTest()"
+              (click)="sendSelfTest()"
+            >
+              <!-- The label stays outside the conditional: a @else block
+                   holding both an icon and text has two projectable roots, and
+                   Angular then projects neither into the button's icon slot. -->
+              @if (sendingSelfTest()) {
+                <mat-spinner diameter="18" />
+              } @else {
+                <mat-icon>mark_email_read</mat-icon>
+              }
+              {{
+                sendingSelfTest()
+                  ? 'Sending…'
+                  : cfg.selftestState === 'never_run'
+                    ? 'Send setup check'
+                    : 'Run it again'
+              }}
+            </button>
+            <button mat-stroked-button type="button" (click)="loadConfig()">
+              <mat-icon>refresh</mat-icon> Check for a reply
+            </button>
+          </mat-card-actions>
+        </mat-card>
 
         <!-- The log. Named for what it is: every message this community has
              sent or tried to, with the queue visible inside it as two statuses
@@ -964,6 +1050,73 @@ interface EmailConfig {
         gap: 12px;
         align-items: center;
       }
+      /* The setup check (v2-48). Success and error tints are the one place a
+         colour literal is allowed -- red means error, which is not a branding
+         choice -- and they match the webhook block directly above. Everything
+         else here is a --ce-* token. */
+      .selftest-state {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-top: 8px;
+        color: var(--ce-text-muted);
+        font-size: 0.88rem;
+
+        strong {
+          color: var(--ce-text);
+          font-size: 0.95rem;
+        }
+
+        p {
+          margin: 2px 0 0;
+          line-height: 1.45;
+        }
+
+        mat-icon {
+          flex: 0 0 auto;
+          margin-top: 2px;
+        }
+
+        &.selftest-passed mat-icon {
+          color: #38603a;
+        }
+
+        &.selftest-failed mat-icon {
+          color: #c62828;
+        }
+
+        &.selftest-sent mat-icon,
+        &.selftest-delivered mat-icon {
+          color: #8a6d3b;
+        }
+      }
+      .selftest-error {
+        margin: 12px 0 0;
+        padding: 10px 12px;
+        border-radius: 6px;
+        background: rgba(198, 40, 40, 0.08);
+        color: #c62828;
+        font-size: 0.82rem;
+        line-height: 1.45;
+      }
+      .selftest-note {
+        margin: 12px 0 0;
+        color: var(--ce-text-muted);
+        font-size: 0.82rem;
+        line-height: 1.45;
+      }
+      .selftest-explain {
+        margin: 16px 0 0;
+        color: var(--ce-text-muted);
+        font-size: 0.8rem;
+        line-height: 1.5;
+      }
+      .selftest-card mat-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 16px 16px;
+      }
       .full-width {
         width: 100%;
       }
@@ -1128,6 +1281,9 @@ export class AdminEmailComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly fb = inject(NonNullableFormBuilder);
   private readonly snackBar = inject(MatSnackBar);
+  // A typed service rather than another HttpClient call from this component:
+  // the convention this file predates, and the one new code follows.
+  private readonly selfTestApi = inject(MailSelfTestService);
   private readonly dialog = inject(MatDialog);
 
   readonly queue = signal<EmailLogRow[]>([]);
@@ -1137,6 +1293,7 @@ export class AdminEmailComponent implements OnInit {
   readonly flushing = signal(false);
   readonly saving = signal(false);
   readonly registeringWebhook = signal(false);
+  readonly sendingSelfTest = signal(false);
 
   /**
    * The sending window, and Brevo's own count, once they arrive.
@@ -1422,6 +1579,105 @@ export class AdminEmailComponent implements OnInit {
           this.snackBar.open('Registration failed', 'OK', { duration: 6000 });
         },
       });
+  }
+
+  /**
+   * The setup check, in words (v2-48).
+   *
+   * **Written as three separate strings rather than one status chip** because
+   * the states mean different things to the operator: `sent` is "go and look in
+   * your mail", `failed` is "fix this", and `passed` is the only one that says
+   * anything about the chain working. A single coloured pill would flatten all
+   * three into decoration.
+   */
+  readonly selftestHeadline = computed<string>(() => {
+    switch (this.config()?.selftestState) {
+      case 'passed':
+        return 'Passed — mail works both ways';
+      case 'delivered':
+        return 'Delivered — waiting for your reply';
+      case 'sent':
+        return 'Sent — waiting for your reply';
+      case 'failed':
+        return 'Failed';
+      default:
+        return 'Never run';
+    }
+  });
+
+  readonly selftestDetail = computed<string>(() => {
+    const cfg = this.config();
+    if (!cfg) return '';
+    const to = cfg.selftestEmail ?? 'your address';
+    switch (cfg.selftestState) {
+      case 'passed':
+        // The sentence an operator is actually looking for before a cutover.
+        return `A reply came back from ${to}, so this community can send mail and receive calendar replies.`;
+      case 'delivered':
+        return `Brevo delivered the invitation to ${to}. Open it and reply to finish the check.`;
+      case 'sent':
+        // Deliberately does not claim delivery: `delivered` is an optional
+        // waypoint that only Brevo reports, so "sent" means exactly that.
+        return `The invitation went to ${to}. Open it in your mail client and reply — Accept, Maybe or Decline.`;
+      case 'failed':
+        return 'Nothing was sent. The reason is below.';
+      default:
+        return 'Nothing has been sent yet. Nobody but you will receive the invitation.';
+    }
+  });
+
+  readonly selftestIcon = computed<string>(() => {
+    switch (this.config()?.selftestState) {
+      case 'passed':
+        return 'check_circle';
+      case 'failed':
+        return 'error';
+      case 'sent':
+      case 'delivered':
+        return 'hourglass_top';
+      default:
+        return 'help_outline';
+    }
+  });
+
+  /** A PARTSTAT-derived RSVP status in the words a mail client used. */
+  replyWord(status: string | null): string {
+    switch (status) {
+      case 'going':
+        return 'an Accept';
+      case 'maybe':
+        return 'a Maybe';
+      case 'not_going':
+        return 'a Decline';
+      default:
+        return 'a reply';
+    }
+  }
+
+  /**
+   * Sends the setup check.
+   *
+   * The error body is shown verbatim, which is unusual on this screen and is
+   * the point: a 400 here is a *useful* failure the server worded for whoever
+   * pressed the button — a suppressed address, or a key the provider refused.
+   * Replacing it with "Could not send" would throw away the finding.
+   */
+  sendSelfTest(): void {
+    this.sendingSelfTest.set(true);
+    this.selfTestApi.send().subscribe({
+      next: () => {
+        this.sendingSelfTest.set(false);
+        this.loadConfig();
+        this.snackBar.open('Setup check sent — go and reply to it', 'OK', { duration: 6000 });
+      },
+      error: (err: { error?: { message?: string } }) => {
+        this.sendingSelfTest.set(false);
+        this.loadConfig();
+        this.snackBar.open(err.error?.message ?? 'Could not send the setup check', 'OK', {
+          duration: 10000,
+        });
+      },
+    });
   }
 
   readonly brevoForm = this.fb.group({

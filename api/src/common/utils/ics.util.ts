@@ -21,6 +21,28 @@ export function eventUid(eventId: number): string {
 }
 
 /**
+ * Undoes RFC 5545 line folding: a CRLF followed by one space or tab is a
+ * continuation, not a new line.
+ *
+ * **Every parser below unfolds for itself, and that is the point** (v2-48,
+ * found on stage). A reply to the mail-chain self-test came back from a real
+ * mail client and was filed as `unknown_uid` -- the message had arrived and the
+ * whole inbound leg had worked, and the UID simply did not match. The reason
+ * was a line length: §3.1 caps a CONTENT-LINE at 75 octets, the self-test UID
+ * is 87, so the client folded it when echoing it back, and the caller unfolded
+ * only *after* asking about the UID.
+ *
+ * The event UID is ~54 octets and never folds, which is the only reason that
+ * parser had never shown the same defect. A parser that is correct only when
+ * somebody else tidied its input first is a trap for whoever writes the next
+ * caller, so the unfolding belongs here rather than in the one place that
+ * happened to remember it.
+ */
+export function unfoldIcs(ical: string): string {
+  return ical.replace(/\r?\n[ \t]/g, '');
+}
+
+/**
  * Event id from an inbound reply's UID, accepting the pre-v2-10 format.
  *
  * Both are matched because the two live side by side indefinitely: a member
@@ -32,12 +54,53 @@ export function eventUid(eventId: number): string {
  * code can observe.
  */
 export function parseEventUid(ical: string): number | null {
-  const match = ical.match(
+  const match = unfoldIcs(ical).match(
     /UID:(?:communityevents-event-(\d+)@communityeventsproject\.com|dinnerbears-event-(\d+)@dinnerbears\.com)/i,
   );
   if (!match) return null;
   // Exactly one branch matches, so exactly one group is defined.
   return parseInt(match[1] ?? match[2], 10);
+}
+
+/**
+ * The UID for a mail-chain self-test invite (v2-48).
+ *
+ * **Its own namespace, carrying a nonce and never an event id.** The whole
+ * point of the self-test is that it proves the chain without touching a
+ * community's data, and a UID in the event namespace would be one slip away
+ * from writing an `event_rsvps` row -- which is to say from a test appearing in
+ * an attendee list or a headcount.
+ *
+ * The domain is the deployment's, exactly as `eventUid`'s is: `eventUid`
+ * hardcodes `@communityeventsproject.com` for every tenant, so the UID
+ * namespace belongs to the deployment regardless of whose community sent the
+ * invite. The *tenant's* domain goes in the invite's title instead, which is
+ * where seeing it is actually worth something -- a wrong sending host is then
+ * visible in the subject line.
+ */
+export function selftestUid(nonce: string): string {
+  return `communityevents-selftest-${nonce}@communityeventsproject.com`;
+}
+
+/**
+ * The nonce from an inbound reply's UID, or null if this is not a self-test.
+ *
+ * **Must be asked before `parseEventUid`.** That function matches two literal
+ * event shapes and returns null for anything else, and its caller turns null
+ * into `UNKNOWN_UID` and discards the message -- so a self-test added as a
+ * third alternative there would be silently thrown away. It is a separate
+ * question asked first, not a third branch of the same regex.
+ *
+ * The nonce character class is deliberately narrow (hex, which is what
+ * `randomBytes().toString('hex')` produces) rather than a loose `.+`: a
+ * combination this code never emits must not be quietly accepted, which is the
+ * same reasoning `parseEventUid` spells its two alternatives out in full.
+ */
+export function parseSelftestUid(ical: string): string | null {
+  const match = unfoldIcs(ical).match(
+    /UID:communityevents-selftest-([0-9a-f]{8,64})@communityeventsproject\.com/i,
+  );
+  return match ? match[1].toLowerCase() : null;
 }
 
 /** Assumed event length for calendar entries — no explicit end time is stored. */

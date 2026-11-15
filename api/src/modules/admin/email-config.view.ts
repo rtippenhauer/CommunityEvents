@@ -28,7 +28,12 @@ import { quotaDayStart } from '../../common/email/quota-day';
  */
 export type EmailConfigView = Omit<
   EmailProviderConfig,
-  'brevoApiKey' | 'resendApiKey' | 'webhookSecret' | 'webhookSecretPrevious' | 'webhookId'
+  | 'brevoApiKey'
+  | 'resendApiKey'
+  | 'webhookSecret'
+  | 'webhookSecretPrevious'
+  | 'webhookId'
+  | 'selftestNonce'
 > & {
   readonly brevoApiKeySet: boolean;
   readonly resendApiKeySet: boolean;
@@ -99,6 +104,23 @@ function unconfigured(tenantId: number, timeZone: string): EmailProviderConfig {
     webhookId: null,
     brevoApiKeySetAt: null,
     lastSuccessfulSendAt: null,
+    // A community with no row has never run the mail-chain self-test, which is
+    // exactly what `never_run` says (v2-48). None of these is a secret: the
+    // nonce identifies a test rather than authorising anything, and the screen
+    // needs the state, the address and the reason a run failed to say anything
+    // useful at all.
+    selftestState: 'never_run',
+    selftestNonce: null,
+    selftestEmail: null,
+    selftestMessageId: null,
+    selftestProvider: null,
+    selftestSentAt: null,
+    selftestDeliveredAt: null,
+    selftestPassedAt: null,
+    selftestLastReplyAt: null,
+    selftestLastReplyStatus: null,
+    selftestReplyCount: 0,
+    selftestError: null,
   };
 }
 
@@ -163,6 +185,11 @@ export function toEmailConfigView(
     webhookSecret: _webhookSecret,
     webhookSecretPrevious: _webhookSecretPrevious,
     webhookId,
+    // Not a credential, and still not the browser's business (v2-48). It
+    // identifies one community's self-test, and the screen renders the state
+    // rather than the nonce -- so this file's rule applies: adding a column
+    // means deciding what the screen sees, and the answer here is nothing.
+    selftestNonce: _selftestNonce,
     ...rest
   } = config;
   return {

@@ -1147,6 +1147,21 @@ the send.
 Brevo webhooks are per-community and self-registering; re-register after the
 cutover rather than assuming the v1 registration carries.
 
+**Prove it with the setup check, not with a real event** (`v2-48`). Admin →
+Email → *Setup check* sends one real calendar invitation to the acting admin's
+own address; replying to it from a mail client moves the state to **Passed**.
+That reply is the only signal that traverses all five legs at once — the key,
+the verified sender, the template path, the outbound DNS and the inbound MX
+through Cloudflare Email Routing to `POST /calendar/rsvp-reply` — and it is the
+reason this is no longer a thing a member has to discover. **Run it after the
+cutover, on the production host, before announcing anything**: every previous
+email defect was found in production by a member, which is the state of affairs
+this ends. A failure is loud and names its cause (no credentials, a suppressed
+address, a key the provider refused) rather than sitting silently in `sent`.
+
+The check is reset to `never_run` whenever the community's Brevo key changes,
+because a pass against a replaced key says nothing about the key in place.
+
 ### OAuth
 
 Each tenant supplies its own Google and Meta credentials (`v2-8`). A community

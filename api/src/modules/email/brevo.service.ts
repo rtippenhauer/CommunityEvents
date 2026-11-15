@@ -51,6 +51,24 @@ export interface BrevoAccountQuota {
   fetchedAt: number;
 }
 
+/**
+ * What came back from a send (v2-48).
+ *
+ * `send` used to return `void`, which threw away the one value that lets a
+ * deliverability callback be matched to the message that caused it. The
+ * mail-chain self-test needs exactly that: Brevo's `delivered` event names a
+ * message id, and matching on the recipient and subject instead would be a
+ * guess -- an admin's own mailbox receives this deployment's other mail too.
+ *
+ * `messageId` is null where there was nothing to send on (no API key), or where
+ * Brevo answered without one. **Nothing may depend on it being present**: it
+ * decorates and correlates, and the `delivered` state it feeds is an optional
+ * waypoint for precisely this reason.
+ */
+export interface BrevoSendResult {
+  messageId: string | null;
+}
+
 export interface BrevoSendPayload {
   toEmail: string;
   toName?: string | null;
@@ -289,12 +307,12 @@ export class BrevoService {
     this.budgetCache.delete(createHash('sha256').update(apiKey).digest('hex'));
   }
 
-  async send(payload: BrevoSendPayload): Promise<void> {
+  async send(payload: BrevoSendPayload): Promise<BrevoSendResult> {
     const { apiKey, fromEmail, fromName } = await this.getEffectiveConfig();
 
     if (!apiKey) {
       this.logger.warn(`Brevo not configured — skipping email to ${payload.toEmail}`);
-      return;
+      return { messageId: null };
     }
 
     const body: Record<string, unknown> = {
@@ -365,6 +383,19 @@ export class BrevoService {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Brevo API error ${response.status}: ${text}`);
+    }
+
+    // Best-effort, and never allowed to fail a send that has already happened:
+    // the message is gone whatever this body says, so an unparseable response
+    // costs the correlation id and nothing else. Brevo answers a single-
+    // recipient send with `{ messageId }` and a multi-recipient one with
+    // `{ messageIds: [...] }`; everything here sends to one address.
+    try {
+      const body = (await response.json()) as { messageId?: unknown; messageIds?: unknown[] };
+      const id = body.messageId ?? body.messageIds?.[0];
+      return { messageId: typeof id === 'string' ? id : null };
+    } catch {
+      return { messageId: null };
     }
   }
 

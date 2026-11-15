@@ -61,6 +61,7 @@ Two decisions bound it:
 | 7 | ~~**v2-25 — the import**~~ | **Done 2026-11-09** (tag `v2-25`). The deliverable. Dry runs against the *live* v1 database — not a copy — found three defects no fixture could have, including one that would have let an imported community mail every member it had just imported. Rehearsed end to end on stage, delete-and-re-import included. Raised `v2-47`, which now blocks item 8. |
 | 8 | ~~**v2-47 — scope avatars and merch to a community**~~ | **Done 2026-11-09** (tag `v2-47`). Unblocks production. Both models scoped, emptying `GLOBAL_MODELS`' category (2). Rehearsed on stage, where the delete-and-re-import brought DinnerBears' 32 presets and its store link across for the first time — the two tables the import had never carried. |
 | 9 | **Production deployment** | **In progress.** The repo side landed 2026-11-09 on `chore-prod-deployment`: `scripts/promote-v2-prod.sh` (retags the tested `:v2-stage` digest as `:v2-prod` — it never builds, because a rebuild from the same commit is not the same image) and `docker/communityevents-v2-prod-unraid.xml` (prod port 20020, database `communityevents`, `IS_STAGE=false`). Writing the prod template found two drifts in the *stage* one, both fixed: its DB name and user said `communityevents`/`communityevents_user` while the live container has always used `communityevents_stage` for both — and `communityevents` is now production's name, so a re-add would have pointed stage at production's data. What remains is operations, not code — create the database, the appdata folders and the container, copy v1's VAPID keypair in, bootstrap, back up the key. See `docs/CUTOVER_PLAN.md` § 6. |
+| 10 | ~~**v2-48 — prove a community's mail chain without mailing members**~~ | **Done 2026-11-15** (tag `v2-48`). **Unblocks the DinnerBears cutover**, which Rob had made conditional on it (2026-11-14): *"I will not cut over to dinnerbears until we can validate email without testing in prod."* An admin sends one real calendar invite to their own address and replies to it; that reply traversing Cloudflare Email Routing back to `POST /rsvp-reply` is the only signal exercising all five legs at once. Proved on stage with a real mail client, Accept then Decline. It earned its keep before shipping: the first live round trip came back `unknown_uid` because an 87-octet UID is folded by the sending client and both UID parsers ran before anything unfolded — a defect 1301 e2e cases could not see, because no test folds its own iCalendar. See that item below. |
 
 `v2-31` (a real email log) is not a blocker but is wanted early: the current
 screen is 100 rows with no search, which stops answering "did this member get
@@ -4263,3 +4264,227 @@ achievement catalogue, unlike `tenants-admin.create`. Pre-existing and
 unrelated to this item, but it is the same class of divergence that file has
 had once before — the avatar and merch seeds were added to all three creation
 paths here precisely because of it.
+
+### v2-48 — Prove a community's mail and calendar chain without sending to members
+
+**Status:** **Complete** (2026-11-15, tag `v2-48`). Proved end to end on stage: real invite, real mail client, Accept then Decline, both replies logged as `selftest_reply` with no event touched.
+Raised by Rob 2026-11-13, from the provider-setup work. **Made a cutover
+blocker 2026-11-14** (Rob): *"I will not cut over to dinnerbears until we can
+validate email without testing in prod."*
+
+**The problem is that every email defect so far was found in production, by a
+member.** A community's mail chain has five independent legs — the Brevo key,
+the verified sender, the template ids, the outbound DNS (SPF/DKIM), and the
+inbound MX through Cloudflare Email Routing to `POST /rsvp-reply` — and the
+only thing that currently exercises any of them is a real event mailing real
+members. The admin screen can say a key is *set*; nothing can say it *works*.
+The inbound leg is the worst of the five, because `v2-34`'s whole premise is
+that it fails silently seven ways.
+
+**The shape: one invite, to the operator's own address, that answers itself.**
+An admin presses a button, gets a genuine calendar invite, and replies to it
+from their own mail client. The reply coming back is the proof — it is the
+only signal that traverses all five legs.
+
+#### Definition of done
+
+1. **Admin-triggered, to the acting admin's own address only.** The address
+   comes off the session user, never from a request body: there is no field to
+   aim the test at a member, and no way to turn it into a send tool.
+2. **A real `METHOD:REQUEST` invite for a near-future event**, so the mail
+   client renders Accept / Maybe / Decline. Default start **+1 hour, 30
+   minutes long** — long enough to be a real entry, short enough not to
+   clutter a day.
+3. **The title names the sending domain and says it is a test**, e.g.
+   `[Test] CommunityEvents setup check — dinnerbears.com` (Rob, 2026-11-14).
+   The domain comes from `baseUrlFor()`, so a wrong host is visible in the
+   subject line — that is the bug class this catches, not a cosmetic detail.
+4. **Its own UID namespace, carrying a nonce and never an event id.**
+   `communityevents-selftest-<nonce>@communityeventsproject.com`, parsed
+   *before* `parseEventUid`. No `event_rsvps` row is ever written, so a test
+   cannot appear in an attendee list or a count.
+5. **Five states on the community's own config row:** `never_run` → `sent` →
+   (`delivered`) → `passed`, plus `failed`. **`delivered` is an optional
+   waypoint, not a required step** — see the Resend decision below.
+6. **`passed` is driven by the reply, and the test stays replyable after it
+   passes.** Accept *then* decline is a supported path, not an edge case (Rob,
+   2026-11-14: "We should allow an Accept and then a decline also, so we can
+   remove it from my calendar"). A later reply is logged and accepted, never
+   rejected as unknown — otherwise the decline bounces and the event is stuck
+   on the operator's calendar.
+7. **The reply resolves its community from the nonce with no ambient tenant.**
+   `runUnscoped` to find the row, `runWithTenant` to write it. The nonce is
+   unique and **must stay out of `encrypted-columns.ts`**, because an encrypted
+   column cannot be filtered.
+8. **A distinct inbound-log outcome**, so `v2-34`'s log distinguishes a
+   self-test reply from a member's RSVP and from a genuinely unknown UID.
+9. **A suppressed address fails loudly.** If the operator's own address is on
+   `email_suppressions`, the send is dropped — the test must report *"this
+   address is suppressed"* rather than sitting in `sent` looking like a
+   delivery fault. That is a real misconfiguration worth surfacing, not a
+   false negative.
+10. **Reset to `never_run` when the Brevo key changes**, via the existing
+    `keyChanged` branch in `PATCH email/config`. A passing test against a
+    replaced key is a lie.
+11. **Admin-only, rate-limited, audited.**
+12. **Tests:** unit on UID parse — a self-test UID, an unmatched nonce, a real
+    event UID not mistaken for a self-test and vice versa; e2e on the reply
+    branch — pass, a second reply *after* passing still accepted, and an
+    unknown nonce recorded distinctly.
+
+#### Decisions taken before any code
+
+**State columns go on `email_provider_config`, not a new model.** It is
+already tenant-scoped with exactly one row per community, which is the
+cardinality a self-test has. A new model would mean a
+`tenant-scoped-models.ts` change for no gain.
+
+**Brevo only, and that is not a limitation of the round trip.** Confirmed
+2026-11-14: **the reply leg is provider-independent.** Replies arrive at
+`POST /api/v1/calendar/rsvp-reply` from the Cloudflare email worker, off the
+domain's MX — Brevo and Resend are outbound-only. An invite sent through
+Resend would reply on exactly the same path with no new plumbing. What Resend
+lacks is only the *delivery confirmation*: there is no Resend webhook anywhere
+in the codebase, and `webhookSecret` / `webhookSecretPrevious` / `webhookId`
+are Brevo's despite the un-prefixed names. **Hence `delivered` must be an
+optional enrichment rather than a step between `sent` and `passed`** — wired as
+a strict chain, the Resend version could never pass, because nothing would
+ever move it off `sent`. A provider field on the state is enough to drop
+Resend in later.
+
+**Quota is a non-issue.** Rob checked Brevo's own statistics 2026-11-14: the
+busiest day ever recorded was **27 emails** against the 300/day free
+allowance. A single self-test message needs no quota special-casing.
+
+#### Found while scoping, and relied on
+
+- **All three PARTSTATs are already handled** — `ACCEPTED`→going,
+  `TENTATIVE`→maybe, `DECLINED`→not going — and a second reply with a
+  *different* status updates rather than being refused. The accept-then-decline
+  requirement needs no change to that path.
+- **`eventUid()` hardcodes `@communityeventsproject.com` for every tenant**, so
+  the UID namespace is the deployment's regardless of community. The self-test
+  UID follows it. The *tenant's* domain appears in the title instead, which is
+  where it is actually worth seeing.
+- **`parseEventUid` matches only two literal event shapes**, so an
+  unrecognised UID returns `UNKNOWN_UID` and is discarded. The self-test branch
+  must therefore be checked first, not added as a third alternative to that
+  regex.
+
+#### As built (2026-11-14)
+
+**State on `email_provider_config`, twelve columns and an enum.**
+`selftest_state` is `never_run | sent | delivered | passed | failed`, beside the
+nonce, the address, the provider's message id, the provider name, four
+timestamps, the latest reply's status, a reply count and an error string.
+Migration `20261114120000_email_selftest`, which also appends `selftest_reply`
+and `selftest_unknown` to `inbound_emails.outcome` — appended, `ALGORITHM=INPLACE`,
+for the reason `20261022090000_inbound_counter_proposal` sets out.
+
+- **`selftest_nonce` is UNIQUE and deliberately not encrypted.** The reply
+  resolves its community by filtering on it, and the secret cipher is randomised,
+  so an encrypted column could not be filtered at all. It is also kept out of
+  the HTTP response (`EmailConfigView`'s omit list), because the screen renders
+  the state and has no use for the identifier — there is an e2e test for that.
+- **`delivered` is wired as the optional waypoint the decision called for.**
+  Brevo's `delivered` callback is matched on the provider **message id**, not on
+  the address and subject: an operator's own mailbox receives this deployment's
+  other mail too. That meant `BrevoService.send` had to stop returning `void` —
+  it now answers `BrevoSendResult { messageId }`, and nothing may depend on the
+  id being present. Only a row in `sent` moves, so a late callback cannot walk a
+  passed test backwards.
+
+**`EmailService.sendNowOrThrow`, new, is why a failed send is visible.**
+`sendNow` falls back to the queue, which is right for a password reset and wrong
+here — queued quietly, the test would sit in `sent` reporting a delivery fault
+that is really a refused credential, which is the exact class of invisible
+failure this item exists to end. Both now share one private `sendBranded`, so
+`sendNow`'s behaviour is unchanged. Suppression is checked *before* the send,
+explicitly, because the immediate path deliberately bypasses the suppression
+list.
+
+**`MailSelfTestService` lives in `EmailModule`, not beside the reply branch.**
+CalendarModule already imports EmailModule, so the other direction would be a
+cycle — and the Brevo webhook controller, which needs the `delivered` hook, is
+in EmailModule too. It needs nothing from `CalendarService`.
+
+**The reply branch is the first question `processRsvpReply` asks** after the
+`METHOD:REPLY` check, before `parseEventUid`. `PARTSTAT_TO_RSVP` and
+`parseAttendee` were hoisted out of the event path and are now shared by both,
+rather than copied.
+
+**Admin: `POST /admin/email/selftest`**, `@Roles(ADMIN)`, three an hour, audited
+as `email.selftest_sent`. **No DTO and no body at all** — the address comes off
+the session, and there is an e2e test asserting a `toEmail` in the body is
+ignored. The config row is `upsert`ed, so a community that has never saved its
+email settings can still run the check.
+
+**Frontend:** a *Setup check* card on Admin → Email, between the credentials
+accordion and the log — the order an operator works in. Three separate strings
+rather than a status chip, because `sent` means "go and look in your mail",
+`failed` means "fix this", and only `passed` says anything about the chain. A
+400's message is shown verbatim, which is unusual on that screen and is the
+point: the server worded it for whoever pressed the button. HTTP goes through a
+new typed `MailSelfTestService` with no address parameter, rather than another
+`HttpClient` call from the component.
+
+**Tests:** 9 unit cases on the two UID namespaces (both directions — a self-test
+UID must not parse as an event, and an event UID must not parse as a self-test),
+and `test/mail-selftest.e2e-spec.ts`, 17 cases: the send, the body being
+ignored, the subject naming the domain, the +1h/30m `METHOD:REQUEST`, a
+non-admin refused, suppression and a refused key both failing loudly with
+nothing queued, the pass with **no `event_rsvps` row written anywhere**,
+accept-then-decline keeping `passed` and leaving `passed_at` alone, an unmatched
+nonce logged as `selftest_unknown` against no community, the `delivered`
+waypoint not walking back from `passed`, the key-change reset, and a reply to a
+pre-change invite filed as unknown rather than re-passing.
+
+**Not covered by this item, and not claimed:** the template-id leg. The invite
+is sent with an HTML body and no provider template, deliberately — a template id
+is per-account configuration that may not exist, and a diagnostic that cannot
+run until the thing it diagnoses is configured is no use.
+
+#### Found on stage, and fixed there (2026-11-14)
+
+**The first real round trip came back `unknown_uid`, and the cause was a line
+length.** Rob ran the check on stage, received the invite, pressed Accept, and
+the card stayed on `delivered`. The inbound log told the whole story: two rows,
+*"Unrecognised event reference"*, from his own address, subject
+`Accepted: [Test] Community Events Project setup check — stage.commu…`. **The
+reply had arrived.** MX, Cloudflare Email Routing, the Worker, the shared
+secret, the endpoint and the log all worked on the first attempt — the UID
+simply did not match.
+
+`UID:communityevents-selftest-<32 hex>@communityeventsproject.com` is **87
+octets**, and RFC 5545 §3.1 caps a CONTENT-LINE at 75. So the mail client
+folded it across two lines when echoing it back, and `processRsvpReply` unfolded
+the iCalendar *after* asking about the UID — the inline
+`ical.replace(/\r?\n[ \t]/g, '')` sat in the ATTENDEE parse, several steps
+further down.
+
+**The latent half is the part worth keeping.** `parseEventUid` had exactly the
+same defect and had never shown it, because an event UID is ~54 octets and never
+folds. Nothing about the old code was safe; it was short.
+
+Fixed in two places, deliberately:
+
+- **`unfoldIcs` is now called inside both parsers**, not by their caller. A
+  parser that is correct only when somebody else tidied its input first is a
+  trap for whoever writes the next caller — which is precisely how this landed.
+  `parseAttendee` uses the same helper instead of its own copy.
+- **The nonce dropped from 16 bytes to 8**, putting the UID line at 72 octets so
+  it cannot fold in the first place. 64 bits is ample for a value that
+  identifies a test rather than authorising anything. This is belt and braces,
+  not the fix: the parser change is what makes a folded UID from any client
+  work.
+
+Six more tests: four unit cases on folded UIDs (including a tab continuation,
+a bare newline that must *not* join, and the event UID's latent case), an e2e
+reply whose UID is folded mid-nonce, and an e2e assertion that the emitted UID
+line stays inside 75 octets.
+
+**This is the item justifying itself.** The defect is invisible to every test
+that builds its own iCalendar — the suite passed 1301 cases against a UID
+nothing had folded. It took a real mail client, which is exactly the gap the
+self-test exists to close, and it was found on stage rather than by a member in
+production.

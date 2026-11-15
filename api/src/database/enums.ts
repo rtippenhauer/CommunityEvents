@@ -65,9 +65,40 @@ export const InboundEmailOutcome = {
    * fact in the message.
    */
   COUNTER_PROPOSAL: 'counter_proposal',
+  /**
+   * A reply to the mail-chain self-test (v2-48), not to a real event. Its own
+   * outcome because telling three things apart is the whole value of the log
+   * here: an operator proving their setup, a member RSVPing, and a UID that
+   * means nothing to us.
+   */
+  SELFTEST_REPLY: 'selftest_reply',
+  /**
+   * A self-test UID whose nonce matches no community -- a replayed old invite,
+   * or one whose community has since had its Brevo key replaced, which resets
+   * the nonce. Distinct from `UNKNOWN_UID`, which means the UID was never ours.
+   */
+  SELFTEST_UNKNOWN: 'selftest_unknown',
 } as const;
 export type InboundEmailOutcome =
   (typeof InboundEmailOutcome)[keyof typeof InboundEmailOutcome];
+
+/**
+ * How far a community's mail-chain self-test has got (v2-48). Mirrors
+ * `email_provider_config_selftest_state` in schema.prisma.
+ *
+ * **`DELIVERED` is an optional waypoint, not a step.** Only Brevo reports
+ * deliverability, and the reply leg is provider-independent -- so a strict
+ * `sent` → `delivered` → `passed` chain would make the Resend version of this
+ * test impossible to pass, because nothing would ever move it off `SENT`.
+ */
+export const MailSelfTestState = {
+  NEVER_RUN: 'never_run',
+  SENT: 'sent',
+  DELIVERED: 'delivered',
+  PASSED: 'passed',
+  FAILED: 'failed',
+} as const;
+export type MailSelfTestState = (typeof MailSelfTestState)[keyof typeof MailSelfTestState];
 
 // from announcement.entity.ts
 export const AnnouncementStatus = {

@@ -129,7 +129,7 @@ describe('Email/Push Dispatch (e2e)', () => {
         organizationId: 'org-1',
         fetchedAt: Date.now(),
       });
-      const send = vi.spyOn(brevo, 'send').mockResolvedValue(undefined);
+      const send = vi.spyOn(brevo, 'send').mockResolvedValue({ messageId: null });
 
       const row = await emailService.queue({
         toEmail: 'shared-account@example.test',
@@ -161,7 +161,7 @@ describe('Email/Push Dispatch (e2e)', () => {
         organizationId: 'org-1',
         fetchedAt: Date.now(),
       });
-      const send = vi.spyOn(brevo, 'send').mockResolvedValue(undefined);
+      const send = vi.spyOn(brevo, 'send').mockResolvedValue({ messageId: null });
 
       for (let n = 0; n < 5; n++) {
         await emailService.queue({
@@ -193,7 +193,7 @@ describe('Email/Push Dispatch (e2e)', () => {
         organizationId: 'org-1',
         fetchedAt: Date.now(),
       });
-      const send = vi.spyOn(brevo, 'send').mockResolvedValue(undefined);
+      const send = vi.spyOn(brevo, 'send').mockResolvedValue({ messageId: null });
 
       await emailService.queue({
         toEmail: 'prepaid@example.test',

@@ -22,6 +22,7 @@ import { InboundEmailLogService } from '../email/inbound-email-log.service';
 import { EmailDispatcherService } from '../email/email-dispatcher.service';
 import { BrevoWebhookService } from '../email/brevo-webhook.service';
 import { BrevoService } from '../email/brevo.service';
+import { MailSelfTestService } from '../email/mail-selftest.service';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -54,6 +55,7 @@ export class AdminController {
     private readonly emailDispatcher: EmailDispatcherService,
     private readonly brevoWebhook: BrevoWebhookService,
     private readonly brevo: BrevoService,
+    private readonly selfTest: MailSelfTestService,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly tenantResolution: TenantResolutionService,
@@ -379,6 +381,12 @@ export class AdminController {
     // stop an operator fixing their own credentials. The outcome is recorded on
     // the row and shown on the screen.
     if (keyChanged) {
+      // **A passing self-test against a replaced key is a lie** (v2-48). The
+      // new key may belong to a different Brevo account, with its own sender
+      // verification and its own template library — three of the five legs the
+      // test covers, re-pointed at something nothing has ever exercised. Reset
+      // here, in the branch that already exists for exactly this reason.
+      await this.selfTest.resetForKeyChange();
       await this.brevoWebhook.register({ newToken: true });
       const refreshed = await this.prisma.email_provider_config.findFirst();
       if (refreshed) {
@@ -391,6 +399,38 @@ export class AdminController {
 
     return toEmailConfigView(
       rollForwardWindow(updated, this.quotaTimeZone()),
+      await this.mayUseDeploymentCredentials(),
+    );
+  }
+
+  /**
+   * Prove this community's whole mail and calendar chain, without mailing a
+   * member (v2-48).
+   *
+   * **The address is the acting admin's, taken from the session**, and there is
+   * no body on this route at all — no DTO, no field, nothing to validate. That
+   * is the feature's shape rather than an omission: a route that accepted an
+   * address and sent a real calendar invite to it would be a send tool, and
+   * this is a diagnostic. Whoever can press the button gets the mail.
+   *
+   * Rate-limited hard, because each press is a real provider send and a real
+   * entry on somebody's calendar. Three an hour is enough to retry after
+   * fixing a credential and far short of anything that would spend an
+   * allowance — Brevo's busiest day ever recorded on this deployment was 27
+   * messages against 300 (Rob, 2026-11-14).
+   */
+  @Post('email/selftest')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } })
+  async sendEmailSelfTest(@CurrentUser() actor: User): Promise<EmailConfigView> {
+    const config = await this.selfTest.run({
+      id: actor.id,
+      email: actor.email,
+      fullName: actor.fullName,
+    });
+    return toEmailConfigView(
+      rollForwardWindow(config, this.quotaTimeZone()),
       await this.mayUseDeploymentCredentials(),
     );
   }

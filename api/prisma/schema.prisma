@@ -686,6 +686,60 @@ model email_provider_config {
   /// back from Prisma as a JS BigInt, which `JSON.stringify` throws on, and
   /// nothing here does arithmetic on it.
   webhookId                 String?   @map("webhook_id") @db.VarChar(64)
+  /// How far this community's mail-chain self-test has got (v2-48).
+  ///
+  /// **Here rather than in a model of its own** because this table is already
+  /// tenant-scoped with exactly one row per community, which is the cardinality
+  /// a self-test has. A new model would mean a `tenant-scoped-models.ts` change
+  /// for no gain.
+  ///
+  /// `delivered` is an **optional waypoint, not a step between `sent` and
+  /// `passed`**. Only Brevo reports deliverability -- there is no Resend webhook
+  /// anywhere in this codebase -- and the reply leg is provider-independent, so
+  /// a strict chain would make the Resend version of this test impossible to
+  /// pass: nothing would ever move it off `sent`.
+  selftestState             email_provider_config_selftest_state @default(never_run) @map("selftest_state")
+  /// The nonce in the invite's UID, which is how a reply finds its way back to
+  /// this row with no ambient tenant.
+  ///
+  /// **Must never be added to `encrypted-columns.ts`.** The cipher is
+  /// randomised, so an encrypted column cannot be filtered -- and filtering on
+  /// this is the only thing it is for. Unique so the reply's lookup cannot
+  /// match two communities; nullable, and MySQL permits any number of NULLs in
+  /// a unique index, which is the same pattern as `root_marker`.
+  selftestNonce             String?   @unique(map: "uq_email_provider_config_selftest_nonce") @map("selftest_nonce") @db.VarChar(64)
+  /// Where the invite went. Always the acting admin's own address, taken from
+  /// the session -- the endpoint has no field to aim it anywhere else. Kept so
+  /// the screen can say which mailbox to go and look in.
+  selftestEmail             String?   @map("selftest_email") @db.VarChar(255)
+  /// Brevo's id for the invite, which is what a `delivered` callback is matched
+  /// on. Exact correlation rather than a guess from the address and subject: an
+  /// admin's own mailbox receives this deployment's other mail too.
+  selftestMessageId         String?   @map("selftest_message_id") @db.VarChar(255)
+  /// Which provider carried the invite. The state is provider-independent
+  /// otherwise, and this is what lets Resend be dropped in later without
+  /// changing the meaning of a stored `passed`.
+  selftestProvider          String?   @map("selftest_provider") @db.VarChar(20)
+  selftestSentAt            DateTime? @map("selftest_sent_at") @db.DateTime(0)
+  selftestDeliveredAt       DateTime? @map("selftest_delivered_at") @db.DateTime(0)
+  selftestPassedAt          DateTime? @map("selftest_passed_at") @db.DateTime(0)
+  /// When the most recent reply arrived, which is NOT `selftest_passed_at`: the
+  /// test stays replyable after it passes, so an operator can Accept and then
+  /// Decline to get the entry off their calendar. The first reply sets both;
+  /// every later one moves only this.
+  selftestLastReplyAt       DateTime? @map("selftest_last_reply_at") @db.DateTime(0)
+  /// What the latest reply said, as plain text rather than the RSVP enum --
+  /// same reasoning as `inbound_emails.rsvp_status`. No `event_rsvps` row is
+  /// ever written for a self-test, so this is the only record that the operator
+  /// pressed Accept, and then Decline.
+  selftestLastReplyStatus   String?   @map("selftest_last_reply_status") @db.VarChar(20)
+  /// How many replies have arrived, so accept-then-decline is visible as two
+  /// rather than inferred from a changed status.
+  selftestReplyCount        Int       @default(0) @map("selftest_reply_count") @db.UnsignedInt
+  /// Why the last attempt failed, or NULL. A suppressed operator address lands
+  /// here, which is the point: that misconfiguration otherwise leaves the test
+  /// sitting in `sent` looking like a delivery fault.
+  selftestError             String?   @map("selftest_error") @db.VarChar(500)
   tenantId                  Int       @default(0) @map("tenant_id") @db.UnsignedInt
   tenant                    tenants   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_provider_config_tenant")
 
@@ -2035,6 +2089,17 @@ enum inbound_emails_outcome {
   /// order is the MySQL ENUM order, and appending is the one change InnoDB
   /// makes in place. See `20261010100000_email_queue_claim`.
   counter_proposal
+  /// **A reply to the mail-chain self-test** (v2-48), not to a real event. Its
+  /// own outcome because the whole value of the log here is being able to tell
+  /// the three apart: an operator proving their setup, a member RSVPing, and a
+  /// UID that means nothing to us. Without this they would all read as a
+  /// member's RSVP or as `unknown_uid`.
+  selftest_reply
+  /// A reply carrying a self-test UID whose nonce matches no community. What a
+  /// test looks like after its community's Brevo key was replaced (which resets
+  /// the nonce), and what a replayed old invite looks like. Distinct from
+  /// `unknown_uid`, which means the UID was not one of ours at all.
+  selftest_unknown
 }
 
 enum email_queue_status {
@@ -2063,6 +2128,26 @@ enum email_queue_status {
 enum email_queue_provider {
   brevo
   gmail
+}
+
+/// How far a community's mail-chain self-test has got (v2-48).
+enum email_provider_config_selftest_state {
+  /// No self-test has ever been sent for this community, or the Brevo key has
+  /// changed since one was -- a passing test against a replaced key is a lie.
+  never_run
+  /// The invite reached the provider. Everything after this depends on somebody
+  /// opening their mail client.
+  sent
+  /// Brevo said it landed in the mailbox. **An optional waypoint, not a
+  /// required step**: Resend reports nothing, so a test can go straight from
+  /// `sent` to `passed`.
+  delivered
+  /// A reply came back through the MX, the Cloudflare Worker and
+  /// `POST /calendar/rsvp-reply`. The only state that means all five legs work.
+  passed
+  /// The send itself did not happen, or the provider refused it. The reason is
+  /// on `selftest_error`.
+  failed
 }
 
 enum users_role {

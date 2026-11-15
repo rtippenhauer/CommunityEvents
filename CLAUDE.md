@@ -197,6 +197,11 @@ ACCOUNT, not the community**, so both the local counter and the account budget
 must permit a send and an inherited template id addresses the wrong library. A
 community on its own domain has **no email fallback** — fatal where the OAuth
 equivalent is not, since registration, verification and resets are all mail.
+**A community's chain is proved by the self-test** (`v2-48`), never by mailing
+members: one invite to the acting admin, whose reply is the only signal that
+crosses all five legs. **Parse an inbound UID only after `unfoldIcs`** — a
+CONTENT-LINE over 75 octets is folded by the sending client, which is how a
+self-test reply reached stage and was filed `unknown_uid`.
 
 **Also scoped:** `users`, `app_config`, `achievements`, `cities`, `avatar`,
 `merch_config` — and an achievement's `key` is an identifier joined on in

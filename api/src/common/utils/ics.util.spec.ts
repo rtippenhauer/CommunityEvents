@@ -1,4 +1,14 @@
-import { eventTimeToUtc, foldIcsLine, icsEscape, icsSequence, toIcsUtcString } from './ics.util';
+import {
+  eventTimeToUtc,
+  eventUid,
+  foldIcsLine,
+  icsEscape,
+  icsSequence,
+  parseEventUid,
+  parseSelftestUid,
+  selftestUid,
+  toIcsUtcString,
+} from './ics.util';
 
 /**
  * RFC 5545 output. Calendar clients are unforgiving here: an unescaped comma
@@ -154,5 +164,143 @@ describe('icsSequence', () => {
     // A SEQUENCE must be a non-negative INTEGER. Nothing should produce a date
     // this old, but a bad import or a clock skewed backwards would.
     expect(icsSequence(new Date('2019-01-01T00:00:00Z'))).toBe(0);
+  });
+});
+
+/**
+ * The two UID namespaces, and the rule that keeps them apart (v2-48).
+ *
+ * This is the pair of functions the mail-chain self-test hangs off, and the
+ * failure mode if they blur is not cosmetic: a self-test UID mistaken for an
+ * event would write an RSVP against whatever number it parsed out, putting a
+ * test into a real attendee list — and an event UID mistaken for a self-test
+ * would silently discard a member's RSVP and move an operator's test to
+ * "passed" instead.
+ */
+describe('selftestUid / parseSelftestUid', () => {
+  it('round-trips a nonce', () => {
+    const nonce = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+    expect(parseSelftestUid(`UID:${selftestUid(nonce)}`)).toBe(nonce);
+  });
+
+  it('uses the deployment domain, not a community one', () => {
+    // Deliberately the same choice `eventUid` makes: a UID must stay stable
+    // for the life of the entry, and a community can change its domain. The
+    // tenant's own host is shown in the invite's title instead.
+    expect(selftestUid('abc123de')).toBe(
+      'communityevents-selftest-abc123de@communityeventsproject.com',
+    );
+  });
+
+  it('finds the nonce inside a whole iCalendar body', () => {
+    const ical = [
+      'BEGIN:VCALENDAR',
+      'METHOD:REPLY',
+      'BEGIN:VEVENT',
+      `UID:${selftestUid('deadbeefdeadbeef')}`,
+      'ATTENDEE;PARTSTAT=ACCEPTED:mailto:admin@example.test',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+    expect(parseSelftestUid(ical)).toBe('deadbeefdeadbeef');
+  });
+
+  it('is case-insensitive on the UID and normalises the nonce', () => {
+    // Some clients upper-case header names, and a few echo the UID's case.
+    // The nonce is compared against a stored lower-case hex string, so it is
+    // normalised here rather than at the three call sites.
+    expect(parseSelftestUid('uid:COMMUNITYEVENTS-SELFTEST-ABCDEF01@COMMUNITYEVENTSPROJECT.COM')).toBe(
+      'abcdef01',
+    );
+  });
+
+  it('does not match an event UID', () => {
+    expect(parseSelftestUid(`UID:${eventUid(42)}`)).toBeNull();
+    expect(parseSelftestUid('UID:dinnerbears-event-42@dinnerbears.com')).toBeNull();
+  });
+
+  it('does not match a nonce shape this code never emits', () => {
+    // Narrow on purpose, like parseEventUid's two spelled-out alternatives: a
+    // loose `.+` would accept anything at all in the nonce position and hand
+    // it to a database lookup.
+    expect(parseSelftestUid('UID:communityevents-selftest-@communityeventsproject.com')).toBeNull();
+    expect(
+      parseSelftestUid('UID:communityevents-selftest-not-hex!@communityeventsproject.com'),
+    ).toBeNull();
+    expect(parseSelftestUid('UID:communityevents-selftest-abc@example.com')).toBeNull();
+  });
+
+  it('returns null for a message with no UID at all', () => {
+    expect(parseSelftestUid('BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR')).toBeNull();
+  });
+
+  it('is not fooled by a self-test UID into returning an event id', () => {
+    // The other direction of the same rule, and the reason the self-test is
+    // asked about FIRST in processRsvpReply: parseEventUid must not claim one.
+    expect(parseEventUid(`UID:${selftestUid('00ff00ff00ff00ff')}`)).toBeNull();
+  });
+
+  it('still parses a real event UID, both formats', () => {
+    expect(parseEventUid(`UID:${eventUid(7)}`)).toBe(7);
+    expect(parseEventUid('UID:dinnerbears-event-7@dinnerbears.com')).toBe(7);
+  });
+});
+
+/**
+ * **The fold, which is what stage found** (2026-11-14).
+ *
+ * A self-test reply came back from a real mail client and was filed as
+ * `unknown_uid`: the reply had arrived, the whole inbound leg worked, and the
+ * UID simply did not match. The cause is a line length.
+ *
+ *     UID:communityevents-selftest-<32 hex>@communityeventsproject.com
+ *
+ * is 87 octets, and RFC 5545 §3.1 caps a CONTENT-LINE at 75 — so the client
+ * folds it across two lines when it echoes it back, and a parser that has not
+ * unfolded first sees two fragments of a UID and no UID.
+ *
+ * It had never bitten because the event UID is ~54 octets and never folds, and
+ * `processRsvpReply` unfolded only *after* asking about the UID. Both parsers
+ * now unfold for themselves, so neither depends on being handed tidy input.
+ */
+describe('UID parsing across an RFC 5545 fold', () => {
+  const nonce = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+
+  it('reads a self-test UID folded by the client', () => {
+    const folded = `UID:communityevents-selftest-${nonce.slice(0, 20)}\r\n ${nonce.slice(20)}@communityeventsproject.com`;
+    expect(parseSelftestUid(folded)).toBe(nonce);
+  });
+
+  it('reads one folded with a tab, which the spec also allows', () => {
+    const folded = `UID:communityevents-selftest-${nonce.slice(0, 10)}\r\n\t${nonce.slice(10)}@communityeventsproject.com`;
+    expect(parseSelftestUid(folded)).toBe(nonce);
+  });
+
+  it('reads a folded UID inside a whole reply body', () => {
+    const ical = [
+      'BEGIN:VCALENDAR',
+      'METHOD:REPLY',
+      'BEGIN:VEVENT',
+      `UID:communityevents-selftest-${nonce.slice(0, 24)}`,
+      ` ${nonce.slice(24)}@communityeventsproject.com`,
+      'ATTENDEE;PARTSTAT=ACCEPTED:mailto:admin@example.test',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+    expect(parseSelftestUid(ical)).toBe(nonce);
+  });
+
+  it('reads an event UID folded too, though it is short enough not to be', () => {
+    // Nothing emits this today. It is asserted because the event parser had the
+    // same latent defect and the only reason it never showed was a line length.
+    expect(parseEventUid('UID:communityevents-event-4\r\n 2@communityeventsproject.com')).toBe(42);
+  });
+
+  it('still refuses a UID broken across lines without a fold marker', () => {
+    // A bare newline is a new CONTENT-LINE, not a continuation. Joining those
+    // would invent a UID out of two unrelated properties.
+    expect(
+      parseSelftestUid(`UID:communityevents-selftest-${nonce.slice(0, 20)}\r\n${nonce.slice(20)}@communityeventsproject.com`),
+    ).toBeNull();
   });
 });
