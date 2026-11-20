@@ -29,9 +29,20 @@ export interface ImagePromptBrand {
  *
  * The dimensions are what the app actually renders, not round numbers: the
  * logo sits in a 120x48 preview and a nav bar, the icon is a square mark, and
- * the hero and error backdrops are full-bleed behind text. An admin given a
- * square hero gets a crop they did not choose, which looks like a bug in the
- * page rather than a mismatched upload.
+ * the hero is full-bleed behind text. An admin given a square hero gets a crop
+ * they did not choose, which looks like a bug in the page rather than a
+ * mismatched upload.
+ *
+ * **The error backdrop is the one that is NOT full-bleed**, and it was
+ * specified as though it were -- `1600x900px, landscape` against a box that is
+ * 1232x1080 on a 1080p screen, because error pages sit in the same 1280px
+ * column every other page does. `background-size: cover` then threw away about
+ * a third of the upload's width, which reads as a badly sized image rather
+ * than as a mismatch between the spec and the frame. It was briefly fixed the
+ * other way round, by making the page full-bleed; Rob reverted that on
+ * 2026-11-20 because every other page is the centred column and the error page
+ * looked out of place without it. So the frame is the fixed thing here and the
+ * spec follows it: 1600x1400 is 1.14:1, which is the box.
  */
 const SLOTS = [
   {
@@ -69,10 +80,12 @@ const SLOTS = [
   },
   {
     label: 'Error Page Backdrop',
-    spec: '1600x900px, landscape',
+    spec: '1600x1400px, slightly wider than tall',
     brief:
-      'sits behind error pages. It should be calm and low-contrast -- an apology, not a ' +
-      'celebration -- because it is seen when something has gone wrong.',
+      'sits behind error pages, framed in the page column rather than filling the window, ' +
+      'with a small card centred on it. It should be calm and low-contrast -- an apology, ' +
+      'not a celebration -- because it is seen when something has gone wrong. Keep anything ' +
+      'you care about away from the centre, where the card covers it.',
   },
 ] as const;
 

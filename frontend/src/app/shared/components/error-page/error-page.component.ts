@@ -59,14 +59,8 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
          The sizing properties below are for the uploaded case; a gradient fills
          its box regardless. Without them an uploaded photo tiles at its natural
          size. */
-      /* 70vh, not 100vh: this sits below a 60px header and above a 162px
-         footer, so a full viewport height here guarantees a scrollbar on a
-         page whose entire content is one small card. It is also what keeps the
-         box a sane shape for the backdrop -- full width by 70vh is 2.5:1 on a
-         1920 screen, so a 16:9 upload loses some height to the cover crop
-         rather than a third of its width to the old 1232px column. */
       .error-bg {
-        min-height: 70vh;
+        min-height: 100vh;
         background-image:
           radial-gradient(
             ellipse 120% 80% at 50% 0%,
