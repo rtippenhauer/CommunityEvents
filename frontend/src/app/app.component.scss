@@ -339,24 +339,6 @@
   @media (min-width: 768px) { padding: 24px; }
 }
 
-// An error page is a backdrop, not a card on a page, so it is the one route
-// that opts out of the reading-width column.
-//
-// Without this the uploaded backdrop is drawn into a 1232x1080 box on a 1920
-// screen -- the 1280px column less its padding -- and `background-size: cover`
-// then crops about a third of a 16:9 image's width away and leaves surface
-// gutters either side. It reads as a mismatched upload rather than as a
-// container that is too narrow, which is how it was reported.
-//
-// `:has()` rather than a class on the route: the three error screens
-// (not-found, feature-unavailable, auth-error) each wrap `app-error-page` in
-// their own component, so a class would have to be remembered in three places
-// and a fourth would be added without it. The selector matches at any depth.
-.app-content:has(app-error-page) {
-  max-width: none;
-  padding: 0;
-}
-
 // ── Footer ────────────────────────────────────────────────────────────────────
 
 .app-footer {
