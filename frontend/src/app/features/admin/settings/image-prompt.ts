@@ -43,6 +43,14 @@ export interface ImagePromptBrand {
  * 2026-11-20 because every other page is the centred column and the error page
  * looked out of place without it. So the frame is the fixed thing here and the
  * spec follows it: 1600x1400 is 1.14:1, which is the box.
+ *
+ * That only became true once the box stopped changing shape. It was sized with
+ * `min-height: 100vh`, so it was 1.14:1 on a 1080p desktop and 0.39:1 on a
+ * phone -- one upload showing 70% of its height on the first and 49% of its
+ * width on the second, with no spec able to satisfy both. `error-page.component.ts`
+ * now pins it with `aspect-ratio: 8 / 7`, and **8/7 and 1600x1400 are the same
+ * number written twice** -- change one without the other and this slot silently
+ * goes back to being cropped.
  */
 const SLOTS = [
   {
