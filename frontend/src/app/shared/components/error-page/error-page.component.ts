@@ -58,9 +58,41 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
 
          The sizing properties below are for the uploaded case; a gradient fills
          its box regardless. Without them an uploaded photo tiles at its natural
-         size. */
+         size.
+
+         **The frame is a fixed shape, and that is the point.** It used to be
+         min-height: 100vh inside the centred 1280px column, which is not one
+         shape but a different one at every window size: 1232x1080 (1.14:1) on
+         a 1080p desktop, 328x844 (0.39:1) on a phone. Under cover that meant
+         no upload could ever be correct -- the measured page showed 70% of a
+         backdrop's height on desktop and 49% of its width on a phone, from the
+         same file. So no spec could be written for it, which is why "the image
+         is the wrong size" kept coming back however the image was generated.
+
+         aspect-ratio pins it to 8/7, which is the 1600x1400 the brand-image
+         prompt asks for (admin/settings/image-prompt.ts -- the two numbers
+         are a pair; change one and change the other). A correctly sized upload
+         now fits edge to edge with no crop at any width. The max-width keeps it
+         a panel rather than a 1078px slab taller than the viewport, and matches
+         every other page sitting in a centred column: full-bleed was tried in
+         PR #52 and reverted, see that prompt file's SLOTS comment.
+
+         Height still yields to content: the ratio is a preferred height, and
+         min-height's default of auto lets the box grow past it when the card
+         needs more -- a long message on a narrow phone. **Do not "help" that
+         along with min-height: fit-content**, which was tried here and does the
+         opposite: it pins the box at the ratio height and lets a 512px card
+         overflow a 313px box. Measured, not reasoned about.
+
+         The ratio therefore holds exactly wherever the card fits inside it,
+         which is every desktop and tablet width, and relaxes towards square on
+         a phone, where the card plus padding is simply taller. The narrow-width
+         padding below exists to keep that drift small. */
       .error-bg {
-        min-height: 100vh;
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+        aspect-ratio: 8 / 7;
         background-image:
           radial-gradient(
             ellipse 120% 80% at 50% 0%,
@@ -75,6 +107,16 @@ import { BrandConfigService } from '../../../core/services/brand-config.service'
         align-items: center;
         justify-content: center;
         padding: 48px 16px;
+      }
+
+      /* 48px top and bottom is 96px of a phone's ~313px frame, which is what
+         pushes the box past its ratio and starts cropping the backdrop
+         sideways. Halving it is enough for the card to fit inside the ratio
+         again at 390px wide. */
+      @media (max-width: 599.98px) {
+        .error-bg {
+          padding: 24px 12px;
+        }
       }
 
       .error-card {
