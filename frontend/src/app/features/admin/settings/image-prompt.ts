@@ -27,11 +27,36 @@ export interface ImagePromptBrand {
 /**
  * The six uploadable slots, with the size and shape each one is drawn at.
  *
- * The dimensions are what the app actually renders, not round numbers: the
- * logo sits in a 120x48 preview and a nav bar, the icon is a square mark, and
- * the hero is full-bleed behind text. An admin given a square hero gets a crop
- * they did not choose, which looks like a bug in the page rather than a
- * mismatched upload.
+ * The dimensions are what the app actually renders, not round numbers. An
+ * admin given a square hero gets a crop they did not choose, which looks like
+ * a bug in the page rather than a mismatched upload.
+ *
+ * **Every slot was measured against its real frame on 2026-11-23**, after the
+ * error backdrop turned out to have been specified against a frame nobody had
+ * looked at. It was not the exception. At 1920x1080 and at 390x844:
+ *
+ * | Slot    | Frame @1920 | Frame @390 | Fixed shape? |
+ * | ------- | ----------- | ---------- | ------------ |
+ * | Logo    | 32x32 contain | same     | yes, height-driven |
+ * | Splash  | 812x964 (0.84) | 328x240 (1.37) | NO |
+ * | Hero    | 1280x679 (1.89) | 360x1055 (0.34) | NO |
+ * | Story   | follows the upload | follows the upload | no frame at all |
+ * | Error   | 760x665 (1.143) | 358x324 (1.105) | yes, pinned |
+ *
+ * **Only the error backdrop could be pinned, and that is not an oversight.**
+ * It holds one small card, so a fixed `aspect-ratio` cannot clip anything.
+ * `.hero` is a two-column grid sized by its own copy and `.splash-panel` is a
+ * flex column stretching to match the login form -- both MUST follow content,
+ * and pinning either would cut text off. So their briefs describe the crop
+ * range and ask for a centred subject rather than naming a frame that does not
+ * exist. Do not "fix" them with an aspect-ratio later; that trade was looked at
+ * and the text is what loses.
+ *
+ * **Story has no frame.** `.map-img` is `width: 100%` with height auto, so the
+ * image renders at its own ratio, whole, always. The computed `object-fit:
+ * fill` on it is the CSS default and never engages, because height is never
+ * constrained -- it looks like a distortion bug in a devtools readout and is
+ * not one.
  *
  * **The error backdrop is the one that is NOT full-bleed**, and it was
  * specified as though it were -- `1600x900px, landscape` against a box that is
@@ -57,8 +82,10 @@ const SLOTS = [
     label: 'Logo',
     spec: '1200x400px, transparent PNG, wide',
     brief:
-      'the wordmark shown in the nav bar and footer. The community NAME must be legible at ' +
-      '160px wide. A small symbol beside the text is fine; text alone is also fine.',
+      'the wordmark shown in the nav bar and footer. It is rendered 32px TALL -- about ' +
+      '96px wide at this shape -- so the community NAME has to survive being that small. ' +
+      'Few letters, heavy strokes, high contrast. A small symbol beside the text is fine; ' +
+      'text alone is also fine.',
   },
   {
     label: 'Icon',
@@ -69,22 +96,29 @@ const SLOTS = [
   },
   {
     label: 'Splash',
-    spec: '1600x900px, landscape',
+    spec: '1400x1200px, a little wider than tall',
     brief:
-      'the hero image on the login page. It should suggest ' +
-      'people sharing a table, without legible text of its own.',
+      'the panel beside the login form. Its shape is not fixed -- it is tall and narrow ' +
+      'next to the form on a desktop and a short wide band above it on a phone -- so it is ' +
+      'cropped differently on every screen. Keep the subject centred and leave room at all ' +
+      'four edges. It should suggest people sharing a table, without legible text of its own.',
   },
   {
     label: 'Hero Background',
-    spec: '2400x1000px, very wide landscape',
+    spec: '2400x1350px, wide landscape',
     brief:
       'sits behind the home page welcome, with a colour wash laid over it and text on top. ' +
-      'Busy or bright is fine; avoid anything with its own writing.',
+      'It is cropped hard and unpredictably -- the page is wide on a desktop and very tall ' +
+      'on a phone -- so only the centre is reliably visible. Busy or bright is fine; avoid ' +
+      'anything with its own writing, and avoid putting the subject near an edge.',
   },
   {
     label: 'Story Brand Image',
-    spec: '1200x800px, landscape',
-    brief: 'illustrates the "Our Story" section on the home page. Warmer and more candid.',
+    spec: '1200x800px, landscape (any shape works)',
+    brief:
+      'illustrates the "Our Story" section on the home page. Warmer and more candid. This ' +
+      'is the one image that is never cropped -- it is shown whole at whatever shape you ' +
+      'give it -- so a portrait or a square is fine if it suits the picture better.',
   },
   {
     label: 'Error Page Backdrop',
