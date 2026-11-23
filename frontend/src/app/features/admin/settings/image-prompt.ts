@@ -39,7 +39,7 @@ export interface ImagePromptBrand {
  * | ------- | ----------- | ---------- | ------------ |
  * | Logo    | 32x32 contain | same     | yes, height-driven |
  * | Splash  | 812x964 (0.84) | 328x240 (1.37) | width yes, height viewport |
- * | Hero    | 1280x679 (1.89) | 360x1055 (0.34) | NO |
+ * | Hero    | 1280x404 (3.17) signed out, 1280x679 (1.89) signed in | 360x746 (0.48) | NO |
  * | Story   | follows the upload | follows the upload | no frame at all |
  * | Error   | 760x665 (1.143) | 358x324 (1.105) | yes, pinned |
  *
@@ -92,6 +92,25 @@ export interface ImagePromptBrand {
  * taller than the viewport. The frame is predictable; it is not fixed. Spec to
  * the range, do not pin.
  *
+ * **Hero is specified at 1.2 because that maximises its worst case too**, by
+ * the same arithmetic and with a much wider swing to cover. Measured on stage
+ * 2026-11-23, the frame is 3.17 signed out, 1.89 signed in, and 0.48 on a
+ * phone -- a 6.5x range, because `.hero` is a two-column grid on a desktop and
+ * a stacked single column on a phone. Balancing the extremes puts the ideal
+ * near the geometric mean of the widest and narrowest frame, which lands just
+ * over 1:1:
+ *
+ * | Spec         | signed out | signed in | phone | worst |
+ * | ------------ | ---------- | --------- | ----- | ----- |
+ * | 2400x1350    | 56%        | 94%       | 27%   | 27%   |
+ * | 1942x809 old | 76%        | 79%       | 20%   | 20%   |
+ * | 1200x1000    | 38%        | 63%       | 40%   | 38%   |
+ *
+ * 38% sounds poor and is the best available: the slot cannot show most of an
+ * upload at both extremes, which is why the brief calls it a texture. The
+ * earlier `2400x1350` was picked to look like a hero image rather than to fit
+ * this frame, and cost the phone two thirds of the upload's width.
+ *
  * **Story has no frame.** `.map-img` is `width: 100%` with height auto, so the
  * image renders at its own ratio, whole, always. The computed `object-fit:
  * fill` on it is the CSS default and never engages, because height is never
@@ -122,8 +141,10 @@ const SLOTS = [
     label: 'Logo',
     spec: '1200x400px, transparent PNG, wide',
     brief:
-      'the wordmark shown in the nav bar and footer. It is rendered 32px TALL -- about ' +
-      '96px wide at this shape -- so the community NAME has to survive being that small. ' +
+      'the wordmark shown in the nav bar and footer. It is rendered 32px TALL with its width ' +
+      'left to follow this shape -- about 96px at 3:1 -- so the community NAME has to ' +
+      'survive being that small. A SQUARE upload here renders 32x32 and can only hold a ' +
+      'monogram, which wastes the slot: the nav then shows no community name at all. ' +
       'Few letters, heavy strokes, high contrast. A small symbol beside the text is fine; ' +
       'text alone is also fine.',
   },
@@ -146,12 +167,13 @@ const SLOTS = [
   },
   {
     label: 'Hero Background',
-    spec: '2400x1350px, wide landscape',
+    spec: '1200x1000px, slightly wider than tall',
     brief:
       'sits behind the home page welcome, with a colour wash laid over it and text on top. ' +
-      'It is cropped hard and unpredictably -- the page is wide on a desktop and very tall ' +
-      'on a phone -- so only the centre is reliably visible. Busy or bright is fine; avoid ' +
-      'anything with its own writing, and avoid putting the subject near an edge.',
+      'This is the most heavily cropped slot in the set -- the frame is a wide band on a ' +
+      'desktop and a tall column on a phone, so only the middle is ever reliably visible, ' +
+      'and no shape avoids that. Treat it as a texture rather than a picture: busy or bright ' +
+      'is fine, nothing with its own writing, and nothing you care about near an edge.',
   },
   {
     label: 'Story Brand Image',
