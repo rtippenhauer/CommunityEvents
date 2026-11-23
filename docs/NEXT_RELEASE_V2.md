@@ -1181,3 +1181,39 @@ a setup check is never confused with a member's RSVP.
   clients split long lines when they reply, and a reply split in the wrong
   place used to be filed as unreadable. Found while testing the setup check
   above — it was reaching us all along and simply not being understood.
+
+## Artwork that fits where it is shown
+
+The **Site Settings** screen gives you a prompt to hand an AI image generator,
+so a community without a designer can still get a matching set of artwork. The
+prompt asks for six images and tells the generator what each one is for.
+
+**Four of those six asked for the wrong shape.** The sizes in the prompt had
+never been checked against the space each image is actually drawn in, so an
+admin could follow the instructions exactly and still get a logo that reads
+small, a splash panel sliced down the middle, or a backdrop with its subject
+cropped off. Every slot has now been measured on a desktop and on a phone, and
+the prompt asks for what the page really shows.
+
+**Where an image is cropped, the prompt now says so.** The welcome banner and
+the panel beside the sign-in form change shape with the window — wide on a
+desktop, tall on a phone — so no single size can ever fill both. Rather than
+name a size that is only right once, those two now explain the crop and ask for
+the subject to be centred, which is the thing that survives it.
+
+**The "Our Story" picture is never cropped, and now says that too.** It is
+shown whole at whatever shape you give it, so a portrait or a square is just as
+welcome as a landscape. That was always true and nothing in the prompt
+mentioned it.
+
+### Also in this release
+
+- **The error page backdrop fits its frame.** Error pages sit in the same
+  centred column as every other page, but the backdrop was specified as though
+  it filled the window, so roughly a third of each upload was cut away. The
+  frame is now a fixed shape and the prompt asks for exactly that shape, so a
+  correctly generated backdrop is shown whole on any screen.
+- **The logo instructions describe the real size.** The prompt claimed the
+  community name had to be legible at 160 pixels wide; it is drawn at about 96.
+  Asking for the right size produces a mark that reads in the navigation bar
+  rather than one tuned for space that was never there.
