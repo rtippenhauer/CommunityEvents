@@ -38,19 +38,59 @@ export interface ImagePromptBrand {
  * | Slot    | Frame @1920 | Frame @390 | Fixed shape? |
  * | ------- | ----------- | ---------- | ------------ |
  * | Logo    | 32x32 contain | same     | yes, height-driven |
- * | Splash  | 812x964 (0.84) | 328x240 (1.37) | NO |
+ * | Splash  | 812x964 (0.84) | 328x240 (1.37) | width yes, height viewport |
  * | Hero    | 1280x679 (1.89) | 360x1055 (0.34) | NO |
  * | Story   | follows the upload | follows the upload | no frame at all |
  * | Error   | 760x665 (1.143) | 358x324 (1.105) | yes, pinned |
  *
  * **Only the error backdrop could be pinned, and that is not an oversight.**
  * It holds one small card, so a fixed `aspect-ratio` cannot clip anything.
- * `.hero` is a two-column grid sized by its own copy and `.splash-panel` is a
- * flex column stretching to match the login form -- both MUST follow content,
- * and pinning either would cut text off. So their briefs describe the crop
- * range and ask for a centred subject rather than naming a frame that does not
- * exist. Do not "fix" them with an aspect-ratio later; that trade was looked at
- * and the text is what loses.
+ * `.hero` is a two-column grid sized by its own copy, so it MUST follow
+ * content and pinning it would cut text off; its brief describes the crop
+ * range and asks for a centred subject rather than naming a frame that does
+ * not exist.
+ *
+ * **Splash is the one that is predictable without being pinnable**, and this
+ * comment said the opposite until 2026-11-23. It claimed `.splash-panel` is a
+ * flex column "stretching to match the login form", i.e. content-driven like
+ * `.hero`. It is not. `.login-page` is `min-height: calc(100vh - 64px - 52px)`
+ * -- driven by the VIEWPORT, not by the form -- and `.splash-panel` is
+ * `flex: 1` beside a `flex: 0 0 420px` form inside the 1232px column, so its
+ * width is 812px at every desktop size and its height is the window minus
+ * about 116px. That is not a fixed ratio, but it is a known RANGE, which is
+ * all a spec needs:
+ *
+ * | Window    | Splash frame | Ratio |
+ * | --------- | ------------ | ----- |
+ * | 1920x1080 | 812x964      | 0.84  |
+ * | 1920x900  | 812x784      | 1.04  |
+ * | 2560x1440 | 812x1324     | 0.61  |
+ * | 390x844   | 328x240      | 1.37  |
+ *
+ * So the desktop frame is portrait and the phone band is landscape, and under
+ * `object-fit: cover` the spec is whichever ratio loses least across all four.
+ * Measured as the fraction of the upload actually visible:
+ *
+ * | Spec         | 1080p | 1440p | phone | worst |
+ * | ------------ | ----- | ----- | ----- | ----- |
+ * | 1600x900 old | 47%   | 34%   | 77%   | 34%   |
+ * | 1400x1200    | 72%   | 52%   | 86%   | 52%   |
+ * | 1200x1200    | 84%   | 61%   | 73%   | 61%   |
+ * | 1200x1500    | 95%   | 76%   | 58%   | 58%   |
+ *
+ * **1200x1200 is specified because it maximises the worst case**, not because
+ * square is tidy. The original `1600x900` was the real defect -- a 16:9 upload
+ * in a portrait slot shows under half its width, which is the sliced-off faces
+ * Rob saw on the Magick Musings login page. Portrait 1200x1500 reads better on
+ * desktop and was briefly going to be specified, but it pays for that on the
+ * phone band, where the frame flips landscape; square is within a few points
+ * of the best case everywhere and has no bad case.
+ *
+ * Pinning the panel with an `aspect-ratio` is still wrong, for a different
+ * reason than `.hero`: the panel's job is to fill the page's height beside the
+ * form, and pinning it would either leave a gap under it or push the page
+ * taller than the viewport. The frame is predictable; it is not fixed. Spec to
+ * the range, do not pin.
  *
  * **Story has no frame.** `.map-img` is `width: 100%` with height auto, so the
  * image renders at its own ratio, whole, always. The computed `object-fit:
@@ -96,12 +136,13 @@ const SLOTS = [
   },
   {
     label: 'Splash',
-    spec: '1400x1200px, a little wider than tall',
+    spec: '1200x1200px, square',
     brief:
-      'the panel beside the login form. Its shape is not fixed -- it is tall and narrow ' +
-      'next to the form on a desktop and a short wide band above it on a phone -- so it is ' +
-      'cropped differently on every screen. Keep the subject centred and leave room at all ' +
-      'four edges. It should suggest people sharing a table, without legible text of its own.',
+      'the panel beside the login form. Square on purpose: the panel is TALLER than it is ' +
+      'wide next to the form on a desktop, and a short wide band above it on a phone, so a ' +
+      'square loses the least to cropping at both. Keep the subject centred and leave room ' +
+      'at all four edges -- the edges are what gets cut. It should suggest people sharing a ' +
+      'table, without legible text of its own.',
   },
   {
     label: 'Hero Background',
