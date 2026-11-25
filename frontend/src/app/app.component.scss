@@ -152,6 +152,27 @@
 
 .app-toolbar {
   background: linear-gradient(135deg, var(--ce-chrome) 0%, var(--ce-chrome-raised, #4A2208) 100%) !important;
+  /* A flat chrome layer UNDER the gradient, and it must stay after the
+     shorthand above -- `background` resets background-color to transparent, so
+     declaring it first would simply be thrown away.
+
+     The gradient alone is the whole dark bar, and it is one paint layer. When
+     that layer does not paint, the borders below still do, and the toolbar
+     becomes a transparent strip between two dark rules with the page showing
+     through it. Everything in the bar is coloured --ce-on-chrome (white on a
+     dark community, measured by onColorFor), so the logo, the hamburger and
+     the avatar all turn white-on-near-white and disappear while staying
+     clickable -- reported on iOS Safari right after a Google sign-in on
+     magickmusings.com, 2026-11-25, where a page restore is the likely trigger.
+
+     This does not chase that trigger. A gradient between two tones 11 hex
+     points apart is decoration; being dark is the contract --ce-on-chrome is
+     measured against. So the contract gets its own declaration and the
+     decoration sits on top, which also covers the var() failure modes: an
+     empty --ce-chrome-raised makes the gradient invalid at computed-value time
+     and silently drops the whole background, and no fallback literal can catch
+     that, because an empty value IS a value. */
+  background-color: var(--ce-chrome, #3D1C05) !important;
   color: var(--ce-on-chrome, #fff) !important;
   padding: 0 12px;
   gap: 0;
