@@ -169,7 +169,8 @@ const SLOTS = [
     label: 'Hero Background',
     spec: '1200x1000px, slightly wider than tall',
     brief:
-      'sits behind the home page welcome, with a colour wash laid over it and text on top. ' +
+      'the backdrop behind the home page welcome, with a colour wash laid over it and text ' +
+      'on top. ' +
       'This is the most heavily cropped slot in the set -- the frame is a wide band on a ' +
       'desktop and a tall column on a phone, so only the middle is ever reliably visible, ' +
       'and no shape avoids that. Treat it as a texture rather than a picture: busy or bright ' +
@@ -179,7 +180,8 @@ const SLOTS = [
     label: 'Story Brand Image',
     spec: '1200x800px, landscape (any shape works)',
     brief:
-      'illustrates the "Our Story" section on the home page. Warmer and more candid. This ' +
+      'the picture illustrating the "Our Story" section on the home page. Warmer and more ' +
+      'candid. This ' +
       'is the one image that is never cropped -- it is shown whole at whatever shape you ' +
       'give it -- so a portrait or a square is fine if it suits the picture better.',
   },
@@ -187,7 +189,8 @@ const SLOTS = [
     label: 'Error Page Backdrop',
     spec: '1600x1400px, slightly wider than tall',
     brief:
-      'sits behind error pages, framed in the page column rather than filling the window, ' +
+      'the backdrop behind error pages, framed in the page column rather than filling the ' +
+      'window, ' +
       'with a small card centred on it. It should be calm and low-contrast -- an apology, ' +
       'not a celebration -- because it is seen when something has gone wrong. Keep anything ' +
       'you care about away from the centre, where the card covers it.',
@@ -201,6 +204,14 @@ const SLOTS = [
  * look like a set, and an assistant told about all six at once keeps a
  * consistent subject and treatment across them. The slot labels match the
  * screen word for word so there is no guessing which file goes where.
+ *
+ * **Every brief must read as a NOUN PHRASE**, because the line below prefixes
+ * it with "This is ". Three of them were verb phrases until 2026-11-24 and
+ * shipped as "This is sits behind the home page welcome" and "This is
+ * illustrates the Our Story section" -- in a prompt whose whole job is to be
+ * pasted into an assistant, which is the one place sloppy wording is read
+ * literally. A spec guards this now; it is not obvious from the slot table,
+ * where each brief is just a string.
  */
 export function buildImagePrompt(brand: ImagePromptBrand): string {
   const slots = SLOTS.map(

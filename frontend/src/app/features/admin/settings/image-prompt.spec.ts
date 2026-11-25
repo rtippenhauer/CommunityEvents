@@ -11,6 +11,21 @@ const BRAND: ImagePromptBrand = {
 };
 
 describe('buildImagePrompt', () => {
+  // Each slot line is rendered as `This is ${brief}`, so a brief that opens
+  // with a verb produces "This is sits behind the home page welcome". Three
+  // did, and shipped. The prompt is pasted verbatim into an image assistant,
+  // so this is a defect in the product's output, not a typo in a comment.
+  it('renders every slot line as a grammatical sentence', () => {
+    const prompt = buildImagePrompt(BRAND);
+    const slotLines = prompt.split('\n').filter((l) => /^\d+\. \*\*/.test(l));
+    expect(slotLines).toHaveLength(6);
+    for (const line of slotLines) {
+      const after = line.split('This is ')[1] ?? '';
+      expect(after.length, line).toBeGreaterThan(0);
+      expect(after, line).not.toMatch(/^(sits|illustrates|shows|appears|goes|holds)\b/);
+    }
+  });
+
   // The whole point of generating this rather than storing a constant: a
   // prompt that does not name the community produces artwork for no community
   // in particular, which is the failure brand-mark.util.ts exists to avoid.
