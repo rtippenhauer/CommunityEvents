@@ -1058,9 +1058,18 @@ export class AdminSettingsComponent implements OnInit {
           void this.brandConfigService.refresh().finally(() => this.uploadingSlot.set(null));
           this.snackBar.open('Image updated', 'OK', { duration: 3000 });
         },
-        error: () => {
+        // Show what the server said, not a generic failure. The API answers a
+        // rejected upload with a 400 naming the reason -- wrong file type,
+        // too large -- and each one has a different thing to do about it.
+        // Discarding that left "Failed to upload image" as the only symptom
+        // of three unrelated problems. The fallback covers a request that
+        // never reached the app at all, where there is no message to show.
+        error: (err: unknown) => {
           this.uploadingSlot.set(null);
-          this.snackBar.open('Failed to upload image', 'OK', { duration: 4000 });
+          const message =
+            (err as { error?: { message?: string } } | null)?.error?.message ??
+            'Failed to upload image';
+          this.snackBar.open(message, 'OK', { duration: 8000 });
         },
       });
     });

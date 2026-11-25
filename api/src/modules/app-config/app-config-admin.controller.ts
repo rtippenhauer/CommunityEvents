@@ -6,11 +6,13 @@ import {
   Param,
   Patch,
   Post,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Request } from 'express';
 import { diskStorage } from 'multer';
 import type { FileFilterCallback } from 'multer';
 import { extname, join } from 'path';
@@ -27,6 +29,18 @@ import type { users as User } from '@prisma/client';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+
+/**
+ * The upload ceiling, named rather than inlined because the message quotes it.
+ *
+ * A rejected upload used to be indistinguishable from any other failure: the
+ * filter below called back with a plain `Error`, which Nest renders as a 500
+ * "Internal server error", and an oversized file raised a `MulterError` nobody
+ * caught, which rendered the same. The admin screen then showed "Failed to
+ * upload image" for a HEIC from a phone, a 6MB PNG and a dropped connection
+ * alike -- three different things to do about it and no way to tell which.
+ */
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 // Maps the :slot route param to its app_config key. The frontend falls back to
 // its compiled-in default asset whenever the stored value is empty.
@@ -72,9 +86,18 @@ const imageFilter = (
   const ext = extname(file.originalname).toLowerCase();
   if (ALLOWED_MIME.includes(file.mimetype) && ALLOWED_EXT.includes(ext)) {
     cb(null, true);
-  } else {
-    cb(new Error('Only JPEG, PNG, WebP, and GIF images are allowed'));
+    return;
   }
+  // A BadRequestException, not an Error: multer hands whatever it is to Nest
+  // unchanged, and only an HttpException carries a status and a message the
+  // client is allowed to see. Naming the rejected type matters because the
+  // common case is a phone photo -- HEIC looks like a normal image everywhere
+  // except here.
+  cb(
+    new BadRequestException(
+      `${ext || file.mimetype} is not a supported image. Use JPEG, PNG, WebP or GIF.`,
+    ),
+  );
 };
 
 @Controller('admin/config')
@@ -111,17 +134,31 @@ export class AppConfigAdminController {
     FileInterceptor('image', {
       storage: brandImageStorage,
       fileFilter: imageFilter,
-      limits: { fileSize: 5 * 1024 * 1024 },
+      limits: { fileSize: MAX_UPLOAD_BYTES },
     }),
   )
   async uploadBrandImage(
     @Param('slot') slot: string,
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: User,
+    @Req() req: Request,
   ) {
     const key = BRAND_IMAGE_SLOTS[slot];
     if (!key) throw new BadRequestException('Unknown brand image slot');
-    if (!file) throw new BadRequestException('No image uploaded');
+    // Multer drops an oversized file silently -- it aborts the stream, leaves
+    // `file` undefined and does NOT raise through the filter path, so without
+    // this the handler reads as "no file chosen". The two cases are told apart
+    // by whether the request carried a body at all.
+    if (!file) {
+      const declared = Number(req.headers['content-length'] ?? 0);
+      if (declared > MAX_UPLOAD_BYTES) {
+        throw new BadRequestException(
+          `That image is ${(declared / 1024 / 1024).toFixed(1)}MB. The limit is ` +
+            `${MAX_UPLOAD_BYTES / 1024 / 1024}MB -- save it as JPEG or WebP, or at a smaller size.`,
+        );
+      }
+      throw new BadRequestException('No image uploaded');
+    }
     const url = `/api/uploads/branding/${file.filename}`;
     await this.appConfigService.updateConfigValue(key, url, user.id);
     return { value: url };
