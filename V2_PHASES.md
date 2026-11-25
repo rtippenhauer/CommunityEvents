@@ -4488,3 +4488,61 @@ that builds its own iCalendar — the suite passed 1301 cases against a UID
 nothing had folded. It took a real mail client, which is exactly the gap the
 self-test exists to close, and it was found on stage rather than by a member in
 production.
+
+### v2-49 — Tell a social-login member why their password reset never arrives
+
+**Status:** Not started. Raised by Rob 2026-11-25.
+
+**A member who signed up with Google and then uses "Forgot my password" is
+sent nothing at all, and told that something was sent.**
+`AuthService.forgotPassword` (`api/src/modules/auth/auth.service.ts`) returns
+silently on `!user.passwordHash`, which a Google-only account never has:
+
+```ts
+// Always return success to prevent email enumeration
+if (!user || !user.passwordHash || user.status !== UserStatus.ACTIVE) return;
+```
+
+The controller answers with the same reassuring message either way, by design.
+So the member waits for a mail that was never queued, tries again, checks spam,
+and concludes the site is broken — when their account is fine and the sign-in
+button three inches above the link would have worked.
+
+**The silence is deliberate and must stay.** That early return is the
+anti-enumeration guard: answering differently for an address that exists would
+turn the endpoint into a membership oracle for every community on the
+deployment. **This item does not change the HTTP response.** It changes what
+is *emailed* to an address that already proved it owns the account, which
+leaks nothing to the person who typed it — exactly the reasoning behind the
+reset mail itself.
+
+**Shape of the work.** Split the one early return into its three cases. No
+user, or a non-`ACTIVE` one, stays silent. A user with no `passwordHash` but a
+row in `oauth_accounts` gets a *different* email: this account signs in with
+Google (or Facebook — use the row's `provider`), here is the button, and if you
+would rather have a password, here is how to set one. A user with neither is
+the genuine edge case and stays silent as now.
+
+**Points to settle while doing it.**
+
+- **Name the right provider.** `oauth_accounts` is tenant-scoped and keyed
+  `[tenantId, provider, providerId]`, so the lookup is naturally scoped and a
+  member may hold both Google and Facebook rows. Name what they actually have
+  rather than assuming Google.
+- **A linked account is not a social-only account.** Somebody who registered
+  with a password and later connected Google has a `passwordHash`, so they
+  never reach this branch — correct, and worth a test so it stays that way.
+- **This needs its own `EmailCategory`**, not `PASSWORD_RESET`: it is not a
+  reset, it carries no token, and filing it under that category would corrupt
+  the quota and log picture for real resets.
+- **An invite-gated deployment makes the stakes higher.** Registration is by
+  invite, so a member locked out this way cannot simply sign up again.
+- **The e2e suite can cover this fully** — create a user with
+  `passwordHash: null` and an `oauth_accounts` row, POST `/auth/forgot-password`,
+  and assert both the unchanged 200 and the mail that was queued.
+
+**Worth considering together:** the login screen could say the same thing at
+the point of failure. A member whose email matches a social-only account and
+who types a password gets "invalid credentials" today, which is the same dead
+end one step earlier. Out of scope unless it falls out cheaply — the email is
+what was asked for, and it reaches somebody who has already left the page.
