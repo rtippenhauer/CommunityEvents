@@ -1322,6 +1322,27 @@ was the first entry of.
 | **Queued, unsent mail in the dispatcher** | A copied `email_provider_config` row can arrive with overflow **on**, and the queue is what turns that into real sends | Queued rows settle as `BLOCKED`, not `SENT` — see the email guard above |
 | **A Google-linked account** | OAuth is per tenant now and `NULL` means off; a linked account with no credentials on the new side cannot sign in | That member signs in with Google on the new deployment |
 
+### Also verify on stage: an invite's entry moves and withdraws (`v2-50`)
+
+Not a seed — there is nothing to carry across the import — but it belongs on
+this list, because it is member-held calendar state and it fails the same
+silent way the rows above do.
+
+Reported from v1 prod on 2026-11-25 and confirmed here: a published dinner that
+moves day stays on the old day in every calendar an invite email put it in, and
+a cancelled one is never withdrawn at all. Pressing resync does not help, which
+is the part that misleads — resync refreshes the *subscribed feed*, a different
+entry from the one the invite created, so a member who resyncs sees the feed
+entry correct and concludes the calendar is fine.
+
+**The cutover carries this to DinnerBears members**, and it lands on the group
+already most exposed: 26 of 62 keep a calendar, and auto-invite recipients
+include members who have never opened the site. So once `v2-50` ships, add it
+to the stage pass — publish a dinner to yourself, move it a day, confirm the
+entry moves in a real Google Calendar, then cancel it and confirm the entry
+goes. Until it ships, treat "moved a published dinner" as a change that has to
+be announced by other means.
+
 ### Which host the rehearsal tenant keeps decides what the rehearsal can prove
 
 **Decided by Rob, 2026-11-15: keep `stage.dinnerbears.com`.** The rehearsal
