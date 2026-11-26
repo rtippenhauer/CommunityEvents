@@ -30,9 +30,20 @@ import { EmailLogQueryDto } from './dto/email-log-query.dto';
  * has to take -- a new column on the model is required here until it is either
  * rendered or listed above.
  */
+// `attachments` is omitted alongside the bodies, and for the same reason
+// (v2-50): the log lists what was sent and to whom, and an `.ics` is several KB
+// of calendar text per row that no column on that screen renders. The
+// dispatcher is the only reader. Leaving it in made the compiler ask for it
+// here the moment the column existed, which is the type layer doing its job.
 export type EmailLogRow = Omit<
   EmailQueueRow,
-  'htmlBody' | 'textBody' | 'templateParams' | 'tenantId' | 'bodyClearedAt' | 'claimedAt'
+  | 'htmlBody'
+  | 'textBody'
+  | 'templateParams'
+  | 'tenantId'
+  | 'bodyClearedAt'
+  | 'claimedAt'
+  | 'attachments'
 >;
 
 export interface EmailLogPage {
@@ -423,6 +434,19 @@ export class EmailService {
         templateParams: (dto.templateParams as Prisma.InputJsonValue) ?? Prisma.DbNull,
         htmlBody: dto.htmlBody ?? null,
         textBody: dto.textBody ?? null,
+        // Persisted since v2-50. Before it this field was accepted on the DTO
+        // and dropped here, so a queued message with a calendar invite reached
+        // the provider without one -- and because the row looked complete,
+        // nothing failed. It cost deliveries on the working path too: sendNow
+        // falls back to this method when the provider throws, which turned a
+        // publish invite into the same email minus its invite.
+        //
+        // DbNull, not null, for the same reason as templateParams above:
+        // Prisma distinguishes a SQL NULL from a JSON null in a nullable Json
+        // column, and the SQL NULL is what "no attachments" means.
+        attachments: dto.attachments
+          ? (dto.attachments as unknown as Prisma.InputJsonValue)
+          : Prisma.DbNull,
         priority: dto.priority ?? 5,
         sendAfter: dto.sendAfter ?? null,
         status: EmailQueueStatus.PENDING,
@@ -925,6 +949,13 @@ export class EmailService {
         htmlBody: null,
         textBody: null,
         templateParams: Prisma.DbNull,
+        // Cleared with the bodies since v2-50, and for the same reason: an
+        // `.ics` is rendered content, several KB of it per invited member on
+        // every publish, change and cancellation. Left out, this one column
+        // would keep growing after the sweep that exists to bound this table
+        // had already run -- and a spent calendar invite reconstructs nothing
+        // the row's own columns do not already say.
+        attachments: Prisma.DbNull,
         bodyClearedAt: now,
       },
     });

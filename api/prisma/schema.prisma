@@ -618,74 +618,74 @@ model email_log_views {
 }
 
 model email_provider_config {
-  id                        Int       @id @default(autoincrement()) @db.UnsignedInt
-  brevoEnabled              Boolean   @default(true) @map("brevo_enabled")
-  resendOverflowEnabled     Boolean   @default(false) @map("resend_overflow_enabled")
-  brevoDailyLimit           Int       @default(300) @map("brevo_daily_limit")
-  resendDailyLimit          Int       @default(1000) @map("resend_daily_limit")
-  brevoSentToday            Int       @default(0) @map("brevo_sent_today")
-  resendSentToday           Int       @default(0) @map("resend_sent_today")
-  brevoApiKey               String?   @map("brevo_api_key") @db.VarChar(500)
-  brevoFromEmail            String?   @map("brevo_from_email") @db.VarChar(255)
-  brevoFromName             String?   @map("brevo_from_name") @db.VarChar(200)
-  resendApiKey              String?   @map("resend_api_key") @db.VarChar(500)
-  resendFromEmail           String?   @map("resend_from_email") @db.VarChar(255)
-  resendFromName            String?   @map("resend_from_name") @db.VarChar(200)
-  tmplInvite                Int?      @map("tmpl_invite") @db.UnsignedInt
-  tmplSecurityAlert         Int?      @map("tmpl_security_alert") @db.UnsignedInt
-  tmplEventPublished        Int?      @map("tmpl_event_published") @db.UnsignedInt
-  tmplRsvpConfirmation      Int?      @map("tmpl_rsvp_confirmation") @db.UnsignedInt
-  tmplEventReminder         Int?      @map("tmpl_event_reminder") @db.UnsignedInt
-  tmplAccountDeletion       Int?      @map("tmpl_account_deletion") @db.UnsignedInt
-  tmplReengagement60        Int?      @map("tmpl_reengagement_60") @db.UnsignedInt
-  tmplReengagement90        Int?      @map("tmpl_reengagement_90") @db.UnsignedInt
-  tmplGuestRsvpConfirmation Int?      @map("tmpl_guest_rsvp_confirmation") @db.UnsignedInt
-  tmplEmailVerification     Int?      @map("tmpl_email_verification") @db.UnsignedInt
-  tmplPasswordReset         Int?      @map("tmpl_password_reset") @db.UnsignedInt
-  tmplProviderDisconnected  Int?      @map("tmpl_provider_disconnected") @db.UnsignedInt
-  tmplAccountDeleted        Int?      @map("tmpl_account_deleted") @db.UnsignedInt
+  id                        Int                                  @id @default(autoincrement()) @db.UnsignedInt
+  brevoEnabled              Boolean                              @default(true) @map("brevo_enabled")
+  resendOverflowEnabled     Boolean                              @default(false) @map("resend_overflow_enabled")
+  brevoDailyLimit           Int                                  @default(300) @map("brevo_daily_limit")
+  resendDailyLimit          Int                                  @default(1000) @map("resend_daily_limit")
+  brevoSentToday            Int                                  @default(0) @map("brevo_sent_today")
+  resendSentToday           Int                                  @default(0) @map("resend_sent_today")
+  brevoApiKey               String?                              @map("brevo_api_key") @db.VarChar(500)
+  brevoFromEmail            String?                              @map("brevo_from_email") @db.VarChar(255)
+  brevoFromName             String?                              @map("brevo_from_name") @db.VarChar(200)
+  resendApiKey              String?                              @map("resend_api_key") @db.VarChar(500)
+  resendFromEmail           String?                              @map("resend_from_email") @db.VarChar(255)
+  resendFromName            String?                              @map("resend_from_name") @db.VarChar(200)
+  tmplInvite                Int?                                 @map("tmpl_invite") @db.UnsignedInt
+  tmplSecurityAlert         Int?                                 @map("tmpl_security_alert") @db.UnsignedInt
+  tmplEventPublished        Int?                                 @map("tmpl_event_published") @db.UnsignedInt
+  tmplRsvpConfirmation      Int?                                 @map("tmpl_rsvp_confirmation") @db.UnsignedInt
+  tmplEventReminder         Int?                                 @map("tmpl_event_reminder") @db.UnsignedInt
+  tmplAccountDeletion       Int?                                 @map("tmpl_account_deletion") @db.UnsignedInt
+  tmplReengagement60        Int?                                 @map("tmpl_reengagement_60") @db.UnsignedInt
+  tmplReengagement90        Int?                                 @map("tmpl_reengagement_90") @db.UnsignedInt
+  tmplGuestRsvpConfirmation Int?                                 @map("tmpl_guest_rsvp_confirmation") @db.UnsignedInt
+  tmplEmailVerification     Int?                                 @map("tmpl_email_verification") @db.UnsignedInt
+  tmplPasswordReset         Int?                                 @map("tmpl_password_reset") @db.UnsignedInt
+  tmplProviderDisconnected  Int?                                 @map("tmpl_provider_disconnected") @db.UnsignedInt
+  tmplAccountDeleted        Int?                                 @map("tmpl_account_deleted") @db.UnsignedInt
   /// When the daily counters beside it were last zeroed -- an instant, not a
   /// calendar day. It was a DATE column, which forced the rollover test to be a
   /// UTC day comparison and so drew the deployment's sending day in a zone the
   /// provider does not use. See `quota-day.ts`: the boundary is now
   /// `EMAIL_QUOTA_TIMEZONE`'s midnight, which the database can compare directly
   /// against this.
-  lastResetDate             DateTime  @map("last_reset_date") @db.DateTime(3)
-  updatedAt                 DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  lastResetDate             DateTime                             @map("last_reset_date") @db.DateTime(3)
+  updatedAt                 DateTime                             @default(now()) @map("updated_at") @db.DateTime(0)
   /// Authenticates Brevo's deliverability callbacks for THIS community's Brevo
   /// account. Encrypted like the keys beside it, so it cannot be looked up by
   /// value -- the tenant is resolved from the Host header first and the token
   /// compared after decryption.
-  webhookSecret             String?   @map("webhook_secret") @db.VarChar(500)
+  webhookSecret             String?                              @map("webhook_secret") @db.VarChar(500)
   /// The token this one replaced, accepted for a grace window after a rotation
   /// so callbacks already in flight are not rejected. Same idea as
   /// SECRET_ENCRYPTION_KEYS_RETIRED: the old value still verifies while the new
   /// one takes over. Cleared once the window passes.
-  webhookSecretPrevious     String?   @map("webhook_secret_previous") @db.VarChar(500)
+  webhookSecretPrevious     String?                              @map("webhook_secret_previous") @db.VarChar(500)
   /// When the current token was minted. Rotation is scheduled off this, and it
   /// is what the grace window for `webhookSecretPrevious` is measured from.
-  webhookRotatedAt          DateTime? @map("webhook_rotated_at") @db.DateTime(0)
+  webhookRotatedAt          DateTime?                            @map("webhook_rotated_at") @db.DateTime(0)
   /// Why the last registration or rotation attempt failed, or NULL if it did
   /// not. Kept so the admin screen can say what went wrong rather than showing
   /// an unregistered webhook with no explanation -- a revoked API key and a
   /// Brevo outage need different responses from the operator.
-  webhookError              String?   @map("webhook_error") @db.VarChar(500)
+  webhookError              String?                              @map("webhook_error") @db.VarChar(500)
   /// When this community's Brevo key was last replaced. Not an expiry -- Brevo
   /// keys do not expire unless one is chosen at creation, and choosing one for
   /// a key nothing can auto-rotate schedules an outage. It is here so the screen
   /// can show the key's age rather than assert a policy.
-  brevoApiKeySetAt          DateTime? @map("brevo_api_key_set_at") @db.DateTime(0)
+  brevoApiKeySetAt          DateTime?                            @map("brevo_api_key_set_at") @db.DateTime(0)
   /// The last message this community actually got out of a provider. Brevo
   /// deactivates an API key after 90 days of inactivity, so a community that
   /// has gone quiet is heading for a broken key with nothing in this codebase
   /// changing -- which is a warning worth showing before it happens.
-  lastSuccessfulSendAt      DateTime? @map("last_successful_send_at") @db.DateTime(0)
+  lastSuccessfulSendAt      DateTime?                            @map("last_successful_send_at") @db.DateTime(0)
   /// Brevo's id for the webhook this deployment registered, so re-registering
   /// updates it rather than adding a duplicate (an account is capped at 40).
   /// Stored as a string although Brevo returns a number: a BIGINT column comes
   /// back from Prisma as a JS BigInt, which `JSON.stringify` throws on, and
   /// nothing here does arithmetic on it.
-  webhookId                 String?   @map("webhook_id") @db.VarChar(64)
+  webhookId                 String?                              @map("webhook_id") @db.VarChar(64)
   /// How far this community's mail-chain self-test has got (v2-48).
   ///
   /// **Here rather than in a model of its own** because this table is already
@@ -707,41 +707,41 @@ model email_provider_config {
   /// this is the only thing it is for. Unique so the reply's lookup cannot
   /// match two communities; nullable, and MySQL permits any number of NULLs in
   /// a unique index, which is the same pattern as `root_marker`.
-  selftestNonce             String?   @unique(map: "uq_email_provider_config_selftest_nonce") @map("selftest_nonce") @db.VarChar(64)
+  selftestNonce             String?                              @unique(map: "uq_email_provider_config_selftest_nonce") @map("selftest_nonce") @db.VarChar(64)
   /// Where the invite went. Always the acting admin's own address, taken from
   /// the session -- the endpoint has no field to aim it anywhere else. Kept so
   /// the screen can say which mailbox to go and look in.
-  selftestEmail             String?   @map("selftest_email") @db.VarChar(255)
+  selftestEmail             String?                              @map("selftest_email") @db.VarChar(255)
   /// Brevo's id for the invite, which is what a `delivered` callback is matched
   /// on. Exact correlation rather than a guess from the address and subject: an
   /// admin's own mailbox receives this deployment's other mail too.
-  selftestMessageId         String?   @map("selftest_message_id") @db.VarChar(255)
+  selftestMessageId         String?                              @map("selftest_message_id") @db.VarChar(255)
   /// Which provider carried the invite. The state is provider-independent
   /// otherwise, and this is what lets Resend be dropped in later without
   /// changing the meaning of a stored `passed`.
-  selftestProvider          String?   @map("selftest_provider") @db.VarChar(20)
-  selftestSentAt            DateTime? @map("selftest_sent_at") @db.DateTime(0)
-  selftestDeliveredAt       DateTime? @map("selftest_delivered_at") @db.DateTime(0)
-  selftestPassedAt          DateTime? @map("selftest_passed_at") @db.DateTime(0)
+  selftestProvider          String?                              @map("selftest_provider") @db.VarChar(20)
+  selftestSentAt            DateTime?                            @map("selftest_sent_at") @db.DateTime(0)
+  selftestDeliveredAt       DateTime?                            @map("selftest_delivered_at") @db.DateTime(0)
+  selftestPassedAt          DateTime?                            @map("selftest_passed_at") @db.DateTime(0)
   /// When the most recent reply arrived, which is NOT `selftest_passed_at`: the
   /// test stays replyable after it passes, so an operator can Accept and then
   /// Decline to get the entry off their calendar. The first reply sets both;
   /// every later one moves only this.
-  selftestLastReplyAt       DateTime? @map("selftest_last_reply_at") @db.DateTime(0)
+  selftestLastReplyAt       DateTime?                            @map("selftest_last_reply_at") @db.DateTime(0)
   /// What the latest reply said, as plain text rather than the RSVP enum --
   /// same reasoning as `inbound_emails.rsvp_status`. No `event_rsvps` row is
   /// ever written for a self-test, so this is the only record that the operator
   /// pressed Accept, and then Decline.
-  selftestLastReplyStatus   String?   @map("selftest_last_reply_status") @db.VarChar(20)
+  selftestLastReplyStatus   String?                              @map("selftest_last_reply_status") @db.VarChar(20)
   /// How many replies have arrived, so accept-then-decline is visible as two
   /// rather than inferred from a changed status.
-  selftestReplyCount        Int       @default(0) @map("selftest_reply_count") @db.UnsignedInt
+  selftestReplyCount        Int                                  @default(0) @map("selftest_reply_count") @db.UnsignedInt
   /// Why the last attempt failed, or NULL. A suppressed operator address lands
   /// here, which is the point: that misconfiguration otherwise leaves the test
   /// sitting in `sent` looking like a delivery fault.
-  selftestError             String?   @map("selftest_error") @db.VarChar(500)
-  tenantId                  Int       @default(0) @map("tenant_id") @db.UnsignedInt
-  tenant                    tenants   @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_provider_config_tenant")
+  selftestError             String?                              @map("selftest_error") @db.VarChar(500)
+  tenantId                  Int                                  @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant                    tenants                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_email_provider_config_tenant")
 
   @@unique([tenantId], map: "uq_email_provider_config_tenant")
 }
@@ -761,6 +761,20 @@ model email_queue {
   category       String?               @db.VarChar(50)
   htmlBody       String?               @map("html_body") @db.LongText
   textBody       String?               @map("text_body") @db.Text
+  /// Files to send with the message, as `[{ content, name, contentType }]`.
+  ///
+  /// Added by `v2-50`. Before it, `queue()` accepted `attachments` on its DTO
+  /// and silently dropped them, because there was nowhere to put them -- only
+  /// the immediate path reached a provider with them attached. That made
+  /// attaching a calendar invite to any queued message a no-op whose queue row
+  /// still looked correct, and it also meant `sendNow`'s fallback to the queue
+  /// turned an invite email into the same email without its invite.
+  ///
+  /// `content` is the decoded text, not base64: the providers encode it
+  /// themselves and storing it pre-encoded would hide an `.ics` from the admin
+  /// log and from anyone debugging a bad invite. Only ever a few KB of
+  /// calendar text today.
+  attachments    Json?
   priority       Int                   @default(5) @db.TinyInt
   status         email_queue_status    @default(pending)
   provider       email_queue_provider?
@@ -965,6 +979,58 @@ model event_guest_links {
   @@index([tenantId], map: "idx_event_guest_links_tenant")
 }
 
+/// Who was actually sent a `METHOD:REQUEST` for an event, and at what SEQUENCE
+/// (`v2-50`).
+///
+/// **The record exists because nothing else can answer the question.** Moving or
+/// cancelling a published dinner has to reach everyone holding a calendar entry
+/// an invite created, and that set is not derivable from anything stored:
+///
+/// - Auto-invite opt-in changes. Recomputing from `users.calendarAutoInvite` at
+///   change time misses whoever turned it off and mails whoever turned it on.
+/// - The publish sweep skips members who had already RSVP'd, and RSVP rows
+///   change afterwards.
+/// - **A targeted member may never have been sent anything.** `sendNow` is gated
+///   by `sendingIsBlocked` -- demo communities and suppressed addresses -- so
+///   being in the target set is not the same as holding an entry.
+///
+/// And `email_queue` is no help: `sendNow` writes a row only when the send
+/// *fails*, so a delivered invite leaves no trace there at all.
+///
+/// Keyed on **email**, not `userId`, with the user id kept alongside for joins.
+/// The address is the ATTENDEE identity inside the `.ics`, so it is what a
+/// client matches an update against; `userId` is nullable so that guest-link
+/// invites, which receive no REQUEST today, can be recorded here unchanged if
+/// they ever do.
+model event_calendar_invites {
+  id           Int      @id @default(autoincrement()) @db.UnsignedInt
+  eventId      Int      @map("event_id") @db.UnsignedInt
+  /// NULL for a recipient who is not a member row -- see the note above.
+  userId       Int?     @map("user_id") @db.UnsignedInt
+  /// Lower-cased, as the ATTENDEE line was written.
+  email        String   @db.VarChar(255)
+  /// The SEQUENCE of the last REQUEST or CANCEL sent to this address for this
+  /// event. A later send must be strictly higher or the client ignores it, and
+  /// comparing against the stored value is what makes that checkable in a test
+  /// rather than assumed from the clock.
+  lastSequence Int      @default(0) @map("last_sequence")
+  /// When the first REQUEST went out. Not updated by later sends -- "when did
+  /// this entry appear in their calendar" is the useful question.
+  sentAt       DateTime @default(now()) @map("sent_at") @db.DateTime(0)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  event        events   @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_event_invite_event")
+  /// Cascade, not SetNull: a deleted member must not leave their address
+  /// behind here. A guest row carries no user id and is unaffected.
+  user         users?   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_event_invite_user")
+  tenantId     Int      @default(0) @map("tenant_id") @db.UnsignedInt
+  tenant       tenants  @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_event_calendar_invites_tenant")
+
+  /// One row per address per event. The upsert on re-send keys on this.
+  @@unique([tenantId, eventId, email], map: "uq_event_invite_recipient")
+  @@index([eventId], map: "idx_event_invite_event")
+  @@index([tenantId], map: "idx_event_calendar_invites_tenant")
+}
+
 model event_rsvps {
   id                 Int                 @id @default(autoincrement()) @db.UnsignedInt
   eventId            Int                 @map("event_id") @db.UnsignedInt
@@ -1036,6 +1102,7 @@ model events {
   achievements              achievements[]
   event_comments            event_comments[]
   event_guest_links         event_guest_links[]
+  calendarInvites           event_calendar_invites[]
   rsvps                     event_rsvps[]
   city                      cities?                    @relation(fields: [cityId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_city")
   createdByUser             users                      @relation("events_created_byTousers", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_event_created_by")
@@ -1732,6 +1799,7 @@ model tenants {
   event_comment_replies    event_comment_replies[]
   event_comments           event_comments[]
   event_guest_links        event_guest_links[]
+  event_calendar_invites   event_calendar_invites[]
   event_rsvps              event_rsvps[]
   events                   events[]
   feedback                 feedback[]
@@ -1845,6 +1913,7 @@ model users {
   event_comment_replies                                        event_comment_replies[]
   event_comments                                               event_comments[]
   event_guest_links                                            event_guest_links[]
+  event_calendar_invites                                       event_calendar_invites[]
   event_rsvps                                                  event_rsvps[]
   events_events_created_byTousers                              events[]                  @relation("events_created_byTousers")
   events_events_reservation_assignee_idTousers                 events[]                  @relation("events_reservation_assignee_idTousers")

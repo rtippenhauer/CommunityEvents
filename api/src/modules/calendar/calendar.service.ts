@@ -451,6 +451,15 @@ export class CalendarService {
     recipient: { name: string; email: string },
     appUrl: string,
     locationAddress: string | null = event.locationAddress,
+    // `v2-50`: the caller may supply the instant so it can derive the SAME
+    // SEQUENCE this attachment carries and record it. Defaulted, so every
+    // existing call is unchanged. Recomputing `icsSequence(new Date())` at the
+    // call site instead would usually agree and occasionally not, which is the
+    // worst kind of nearly-right -- the stored value is what a later update is
+    // required to exceed.
+    at: Date = new Date(),
+    /** See the note at `const sequence` below. */
+    sequenceOverride?: number,
   ): Promise<string> {
     const { brandName, eventSingular } = await this.getBrand();
     // Ambient tenant here, unlike buildFeed: every caller reaches this from a
@@ -461,7 +470,7 @@ export class CalendarService {
     const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
     const dtStart = toIcsUtcString(startUtc);
     const dtEnd = toIcsUtcString(endUtc);
-    const now = new Date();
+    const now = at;
     const lastMod = toIcsUtcString(new Date(event.updatedAt));
     const dtStamp = toIcsUtcString(now);
     // Keyed on when THIS invite was sent, not on when the event was last edited —
@@ -470,7 +479,13 @@ export class CalendarService {
     // that never advances between sends and the client has no signal that the
     // later email supersedes the earlier one. See icsSequence for why it must
     // also never wrap.
-    const sequence = icsSequence(now);
+    //
+    // `v2-50` lets the caller override it. `icsSequence` has one-second
+    // resolution, so a dinner published and then moved inside the same second
+    // re-sends the SAME sequence and every client ignores the correction. The
+    // requirement is "higher than the last one this address received", which
+    // the recorded value knows and the clock does not.
+    const sequence = sequenceOverride ?? icsSequence(now);
 
     // eventDate/eventTime are DATE/TIME columns. The entity typed them as
     // strings; Prisma returns Dates. Calling .split on a Date throws, so both
@@ -521,6 +536,72 @@ export class CalendarService {
       `ORGANIZER;CN=${brandName}:mailto:${contacts.organizer}`,
       foldIcsLine(`ATTENDEE;CN=${icsEscape(recipient.name)};RSVP=TRUE:mailto:${recipient.email}`),
       'STATUS:CONFIRMED',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ];
+
+    return lines.join('\r\n');
+  }
+
+  /**
+   * The withdrawal of an invite this service previously sent (`v2-50`).
+   *
+   * Until this existed, cancelling a published event mailed everyone a notice
+   * and left the calendar entry sitting there. `grep "METHOD:" api/src` found
+   * PUBLISH, REQUEST and the inbound REPLY/COUNTER, and nothing else -- there
+   * has never been a way to remove an entry an invite created.
+   *
+   * **The UID is the whole mechanism**, and it is already right: `eventUid`
+   * derives from the event id alone, so a CANCEL carries the same UID as the
+   * REQUEST that created the entry however much the event has since been
+   * edited. A client matches on it and withdraws the entry; get it wrong and
+   * the member keeps the original and gains nothing.
+   *
+   * Deliberately thinner than the invite. No DESCRIPTION, no URL, no LOCATION:
+   * a cancellation has nothing to tell anybody and no address to leak, which
+   * also means it needs no visibility argument. DTSTART stays because RFC 5546
+   * requires it, and SUMMARY stays so the client can name what it removed.
+   *
+   * `recipient` is not optional even though a CANCEL is valid without an
+   * ATTENDEE, because Google matches the withdrawal against the attendee line
+   * of the invite it is withdrawing. The caller holds the recorded address for
+   * exactly this reason.
+   */
+  async buildCancelAttachment(
+    event: IcsEventLike,
+    recipient: { name: string; email: string },
+    at: Date = new Date(),
+    /** See buildInviteAttachment's -- the same guarantee, for the same reason. */
+    sequenceOverride?: number,
+  ): Promise<string> {
+    const { brandName, eventSingular } = await this.getBrand();
+    const contacts = await this.contactsFor();
+    const startUtc = eventTimeToUtc(asDateString(event.eventDate), asTimeString(event.eventTime));
+    const endUtc = new Date(startUtc.getTime() + EVENT_DURATION_MS);
+
+    // Same clock-derived sequence as the invite, for the same reason: it has to
+    // be strictly higher than whatever the last REQUEST carried, and the event's
+    // own updatedAt does not advance reliably between sends. Overridable for
+    // the same reason the invite's is -- one-second resolution is not a
+    // guarantee, and a withdrawal a client ignores leaves the entry in place.
+    const sequence = sequenceOverride ?? icsSequence(at);
+
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      `PRODID:-//${brandName}//${brandName} Calendar//EN`,
+      'CALSCALE:GREGORIAN',
+      'METHOD:CANCEL',
+      'BEGIN:VEVENT',
+      `UID:${eventUid(event.id)}`,
+      `DTSTAMP:${toIcsUtcString(at)}`,
+      `DTSTART:${toIcsUtcString(startUtc)}`,
+      `DTEND:${toIcsUtcString(endUtc)}`,
+      `SEQUENCE:${sequence}`,
+      foldIcsLine(`SUMMARY:${icsEscape(`${brandName} ${eventSingular} at ${event.locationName}`)}`),
+      `ORGANIZER;CN=${brandName}:mailto:${contacts.organizer}`,
+      foldIcsLine(`ATTENDEE;CN=${icsEscape(recipient.name)}:mailto:${recipient.email}`),
+      'STATUS:CANCELLED',
       'END:VEVENT',
       'END:VCALENDAR',
     ];

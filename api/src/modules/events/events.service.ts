@@ -14,7 +14,7 @@ import type {
   event_rsvps as EventRsvp,
   users as User,
 } from '@prisma/client';
-import { runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
+import { requireTenantId, runUnscoped, runWithTenant } from '../../common/tenant/tenant-store';
 import { FacebookHeadcountService } from '../facebook/facebook-headcount.service';
 import { AuditService } from '../audit/audit.service';
 import { CitiesService } from '../cities/cities.service';
@@ -637,6 +637,46 @@ export class EventsService {
 </body>
 </html>`;
 
+    // Everyone holding a calendar entry an invite created (v2-50). Until this,
+    // there was no METHOD:CANCEL anywhere in the codebase, so a cancelled
+    // dinner stayed in every one of these calendars for good -- the notice
+    // below was the only thing that ever went out.
+    const invited = new Map(
+      (await this.calendarInviteRecipients(event.id)).map((r) => [r.email.toLowerCase(), r]),
+    );
+    const mailed = new Set<string>();
+
+    // Guaranteed higher than anything already sent -- see the note in
+    // sendUpdateEmails. A cancellation a client ignores is worse than most
+    // ignored messages: the entry stays, for a dinner that is not happening.
+    const at = new Date();
+    // Reduced rather than spread into Math.max: the spread is one argument per
+    // invited member, and a large community is exactly where that stops being
+    // a theoretical limit.
+    const sequence = [...invited.values()].reduce(
+      (highest, r) => Math.max(highest, r.lastSequence + 1),
+      icsSequence(at),
+    );
+
+    /**
+     * The withdrawal for one recipient, or `undefined` when they hold no entry.
+     *
+     * No visibility argument, unlike the update's: a cancellation carries no
+     * LOCATION, so there is no address for it to leak.
+     */
+    const cancelFor = async (email: string, name: string) => {
+      if (!invited.has(email.toLowerCase())) return undefined;
+      const ics = await this.calendarService.buildCancelAttachment(
+        event,
+        { name, email },
+        at,
+        sequence,
+      );
+      return [
+        { content: ics, name: 'dinner-cancelled.ics', contentType: 'text/calendar; method=CANCEL' },
+      ];
+    };
+
     // Members who RSVPd
     const rsvps = await this.prisma.event_rsvps.findMany({
       where: { eventId: event.id },
@@ -652,7 +692,9 @@ export class EventsService {
         toName: rsvp.user.fullName,
         subject: `Cancelled: ${event.title}`,
         htmlBody: buildHtml(rsvp.user.fullName),
+        attachments: await cancelFor(rsvp.user.email, rsvp.user.fullName),
       });
+      mailed.add(rsvp.user.email.toLowerCase());
     }
 
     // Guest link holders (member-invited + public RSVPs) with an email who haven't already cancelled
@@ -668,8 +710,28 @@ export class EventsService {
         toName: name,
         subject: `Cancelled: ${event.title}`,
         htmlBody: buildHtml(name),
+        attachments: await cancelFor(link.recipientEmail, name),
+      });
+      mailed.add(link.recipientEmail.toLowerCase());
+    }
+
+    // Auto-invited members who never answered -- the group no cancellation
+    // notice has ever reached, still holding an entry for a dinner that is not
+    // happening.
+    for (const record of invited.values()) {
+      if (mailed.has(record.email.toLowerCase())) continue;
+      const name = record.user?.fullName ?? record.email;
+      await this.emailService.queue({
+        category: EmailCategory.EVENT_CANCELLED,
+        toEmail: record.email,
+        toName: name,
+        subject: `Cancelled: ${event.title}`,
+        htmlBody: buildHtml(name),
+        attachments: await cancelFor(record.email, name),
       });
     }
+
+    await this.bumpInviteSequence(event.id, sequence);
   }
 
   private async sendUpdateEmails(event: EventWithLocation): Promise<void> {
@@ -721,6 +783,62 @@ export class EventsService {
 </body>
 </html>`;
 
+    // Everyone holding a calendar entry an invite created (v2-50), keyed by
+    // address -- the ATTENDEE identity a client matches a later REQUEST
+    // against. Before this, the mail below went out with no `.ics` at all, so
+    // a member's calendar kept the old date however many notices they read.
+    const invited = new Map(
+      (await this.calendarInviteRecipients(event.id)).map((r) => [r.email.toLowerCase(), r]),
+    );
+    // Addresses the loops below have mailed, so the sweep over invite
+    // recipients does not send a second copy to someone who also holds an RSVP.
+    const mailed = new Set<string>();
+
+    // One instant for every attachment in this run, so they all carry the same
+    // SEQUENCE and one statement can record it.
+    //
+    // **Not simply `icsSequence(at)`.** That has one-second resolution, so a
+    // dinner published and then moved inside the same second re-sends the same
+    // SEQUENCE and every client ignores the correction -- the member keeps the
+    // old date and we have told ourselves we fixed it. The requirement is
+    // "higher than the last one these addresses received", which the record
+    // knows; the clock is only a convenient way of usually satisfying it.
+    const at = new Date();
+    // Reduced rather than spread into Math.max: the spread is one argument per
+    // invited member, and a large community is exactly where that stops being
+    // a theoretical limit.
+    const sequence = [...invited.values()].reduce(
+      (highest, r) => Math.max(highest, r.lastSequence + 1),
+      icsSequence(at),
+    );
+
+    /**
+     * The corrected invite for one recipient, or `undefined` when they hold no
+     * entry to correct -- an RSVP holder who was never sent a REQUEST, or a
+     * guest-link holder, who never receives one at all.
+     *
+     * **`showAddress` is the caller's, not this event's.** The publish sweep
+     * can use a blanket `!isPrivate` because every recipient there is a
+     * non-responder; here the recipients include Going members, who have
+     * earned the address. Passing the event's own value would put a private
+     * venue's address into the calendar entry of somebody the email body hides
+     * it from -- and a calendar entry outlives the email.
+     */
+    const inviteFor = async (email: string, name: string, showAddress: boolean) => {
+      if (!invited.has(email.toLowerCase())) return undefined;
+      const ics = await this.calendarService.buildInviteAttachment(
+        event,
+        { name, email },
+        appUrl,
+        showAddress ? event.locationAddress : null,
+        at,
+        sequence,
+      );
+      return [
+        { content: ics, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' },
+      ];
+    };
+
     const rsvps = await this.prisma.event_rsvps.findMany({
       where: { eventId: event.id },
       include: {
@@ -740,7 +858,9 @@ export class EventsService {
         toName: rsvp.user.fullName,
         subject: `Updated: ${event.title}`,
         htmlBody: buildHtml(rsvp.user.fullName, showAddress),
+        attachments: await inviteFor(rsvp.user.email, rsvp.user.fullName, showAddress),
       });
+      mailed.add(rsvp.user.email.toLowerCase());
     }
 
     const guestLinks = await this.prisma.event_guest_links.findMany({
@@ -767,8 +887,40 @@ export class EventsService {
         toName: name,
         subject: `Updated: ${event.title}`,
         htmlBody: buildHtml(name, showAddress),
+        // Returns undefined today: nothing sends a guest link a REQUEST, so
+        // there is no entry of theirs to move. Routed through the same helper
+        // so that stops being true the moment a record exists for them.
+        attachments: await inviteFor(link.recipientEmail, name, showAddress),
+      });
+      mailed.add(link.recipientEmail.toLowerCase());
+    }
+
+    // **The group this method never reached.** Members the publish sweep
+    // invited who have not answered have no RSVP row and no guest link, so
+    // every notice above skipped them -- while holding, by definition, a
+    // calendar entry on the old date. They are the reported defect's worst
+    // case: told nothing, and shown something wrong.
+    for (const record of invited.values()) {
+      if (mailed.has(record.email.toLowerCase())) continue;
+      const name = record.user?.fullName ?? record.email;
+      // No RSVP, so no earned visibility. An admin or moderator still sees the
+      // address by role, which is why the user row is loaded with the record.
+      const showAddress = this.locationVisibility.canViewAddressSync(
+        event.location ?? { id: -1, isPrivate: false },
+        record.user ? this.locationVisibility.isAdminOrMod(record.user) : false,
+        false,
+      );
+      await this.emailService.queue({
+        category: EmailCategory.EVENT_CHANGED,
+        toEmail: record.email,
+        toName: name,
+        subject: `Updated: ${event.title}`,
+        htmlBody: buildHtml(name, showAddress),
+        attachments: await inviteFor(record.email, name, showAddress),
       });
     }
+
+    await this.bumpInviteSequence(event.id, sequence);
   }
 
   async remove(id: number): Promise<void> {
@@ -1055,23 +1207,121 @@ export class EventsService {
 </body>
 </html>`;
 
+      // One instant for both, so the SEQUENCE recorded is the SEQUENCE sent
+      // (v2-50). See buildInviteAttachment's `at` parameter.
+      const at = new Date();
       const icsContent = await this.calendarService.buildInviteAttachment(
         event,
         { name: member.fullName, email: member.email },
         appUrl,
         locationAddress,
+        at,
       );
 
-      await this.emailService.sendNow({
-        category: EmailCategory.EVENT_PUBLISHED,
-        toEmail: member.email,
-        toName: member.fullName,
-        subject: `${brandName} ${eventSingularLower} at ${event.locationName} — ${dateDisplay}`,
-        htmlBody: html,
-        attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
-      }).catch((err: unknown) => {
+      try {
+        await this.emailService.sendNow({
+          category: EmailCategory.EVENT_PUBLISHED,
+          toEmail: member.email,
+          toName: member.fullName,
+          subject: `${brandName} ${eventSingularLower} at ${event.locationName} — ${dateDisplay}`,
+          htmlBody: html,
+          attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
+        });
+        // Recorded only on a send that did not throw, which is the whole point
+        // of the record: it answers "does this address hold a calendar entry",
+        // not "did we intend to send one". A `.catch` used to swallow the
+        // failure here and the restructure is what makes the difference
+        // observable.
+        await this.recordCalendarInvite(event.id, member.email, member.id, icsSequence(at));
+      } catch (err: unknown) {
         this.logger.warn(`Publish invite failed for ${member.email}: ${(err as Error)?.message}`);
+      }
+    }
+  }
+
+  /**
+   * Remember that a `METHOD:REQUEST` reached this address for this event
+   * (`v2-50`).
+   *
+   * Upserted rather than inserted: re-confirming an RSVP re-sends the same UID
+   * to the same address, and what matters afterwards is the LATEST sequence,
+   * since the next update has to exceed it. `sentAt` is left alone on the
+   * update so it keeps meaning "when did this entry appear in their calendar".
+   *
+   * A failure here must not fail the send. The member has the invite either
+   * way, and losing the row costs them a future update -- bad, but strictly
+   * better than an exception unwinding a loop that still has members to mail.
+   */
+  private async recordCalendarInvite(
+    eventId: number,
+    email: string,
+    userId: number | null,
+    sequence: number,
+  ): Promise<void> {
+    try {
+      await this.prisma.event_calendar_invites.upsert({
+        // A compound unique carrying the tenant cannot be merged with an
+        // injected filter, so it names the tenant explicitly -- the same
+        // escape hatch app_config.upsert uses, and it throws rather than
+        // guessing when there is no tenant in context.
+        where: {
+          tenantId_eventId_email: {
+            tenantId: requireTenantId('record calendar invite'),
+            eventId,
+            email: email.toLowerCase(),
+          },
+        },
+        update: { lastSequence: sequence, userId },
+        create: { eventId, email: email.toLowerCase(), userId, lastSequence: sequence },
       });
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Could not record calendar invite for ${email} on event ${eventId}: ${(err as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * Everyone holding a calendar entry this event's invites created (`v2-50`).
+   *
+   * The user row comes along because address visibility is decided per
+   * recipient -- an admin or moderator sees a private venue's address where an
+   * ordinary non-responder does not.
+   */
+  private async calendarInviteRecipients(eventId: number) {
+    return this.prisma.event_calendar_invites.findMany({
+      where: { eventId },
+      include: { user: true },
+    });
+  }
+
+  /**
+   * Record the SEQUENCE every recipient of this event just received (`v2-50`).
+   *
+   * One statement for the whole event, because every recorded recipient gets an
+   * attachment in the same sweep -- there is no subset to track. The stored
+   * value is what the NEXT change has to exceed, and `icsSequence` is derived
+   * from the clock, so the next one always will.
+   *
+   * Written after the sends rather than before, but the direction of error is
+   * safe either way: a stored sequence higher than one a member actually
+   * received still makes the following send higher than both.
+   *
+   * `updateMany`, not `update` -- there is no single row here, and a row may
+   * have gone (a member deleted mid-sweep cascades theirs away), which
+   * `update` answers with P2025 inside a `void`ed call and so an unhandled
+   * rejection.
+   */
+  private async bumpInviteSequence(eventId: number, sequence: number): Promise<void> {
+    try {
+      await this.prisma.event_calendar_invites.updateMany({
+        where: { eventId },
+        data: { lastSequence: sequence },
+      });
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Could not record invite sequence for event ${eventId}: ${(err as Error)?.message}`,
+      );
     }
   }
 
@@ -1155,22 +1405,29 @@ export class EventsService {
 </body>
 </html>`;
 
+    // One instant for the attachment and the record (v2-50).
+    const at = new Date();
     const icsContent = await this.calendarService.buildInviteAttachment(
       event,
       { name: user.fullName, email: user.email },
       appUrl,
+      undefined,
+      at,
     );
 
-    await this.emailService.sendNow({
-      category: EmailCategory.RSVP_CONFIRMATION,
-      toEmail: user.email,
-      toName: user.fullName,
-      subject: `You're going to ${brandName} at ${event.locationName}!`,
-      htmlBody: html,
-      attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
-    }).catch((err: unknown) => {
+    try {
+      await this.emailService.sendNow({
+        category: EmailCategory.RSVP_CONFIRMATION,
+        toEmail: user.email,
+        toName: user.fullName,
+        subject: `You're going to ${brandName} at ${event.locationName}!`,
+        htmlBody: html,
+        attachments: [{ content: icsContent, name: 'dinner-invite.ics', contentType: 'text/calendar; method=REQUEST' }],
+      });
+      await this.recordCalendarInvite(event.id, user.email, user.id, icsSequence(at));
+    } catch (err: unknown) {
       this.logger.warn(`RSVP confirmation email failed for user ${userId}: ${(err as Error)?.message}`);
-    });
+    }
   }
 
   async removeRsvp(eventId: number, userId: number): Promise<void> {

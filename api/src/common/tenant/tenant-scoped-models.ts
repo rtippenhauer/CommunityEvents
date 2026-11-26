@@ -78,6 +78,11 @@ export const TENANT_SCOPED_MODELS = [
   'email_provider_config',
   'email_log_views',
   'email_queue',
+  /// Who was sent a calendar invite for an event (v2-50). Scoped for the plain
+  /// reason the event and the member are: a community's mailing list of one
+  /// dinner. Its unique key carries the tenant because two communities may hold
+  /// rows for the same address.
+  'event_calendar_invites',
   'event_comment_replies',
   'event_comments',
   'event_guest_links',

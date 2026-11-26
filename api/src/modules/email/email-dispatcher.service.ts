@@ -18,6 +18,7 @@ import { quotaDayStart, resolveQuotaTimeZone } from '../../common/email/quota-da
 import { BrevoService } from './brevo.service';
 import { ResendService } from './resend.service';
 import { EmailTemplateName } from './email.constants';
+import { readAttachments } from './queue-attachments.util';
 
 const MAX_ATTEMPTS = 3;
 const BATCH_SIZE = 20;
@@ -476,6 +477,12 @@ export class EmailDispatcherService {
       return false;
     }
 
+    // Stored by queue() since v2-50. Read defensively rather than cast: this is
+    // a Json column, so a row written by an older build has NULL here and a
+    // hand-edited one could hold anything. A malformed value must not take a
+    // whole batch down -- the message still has a body worth delivering.
+    const attachments = readAttachments(email.attachments, email.id, this.logger);
+
     try {
       if (useBrevo) {
         await this.brevo.send({
@@ -486,6 +493,7 @@ export class EmailDispatcherService {
           templateParams: (email.templateParams as Record<string, unknown>) ?? undefined,
           htmlBody: email.htmlBody,
           textBody: email.textBody,
+          attachments,
         });
         patch.provider = EmailProvider.BREVO;
         providerConfig.brevoSentToday += 1;
@@ -500,6 +508,7 @@ export class EmailDispatcherService {
           subject: email.subject,
           htmlBody: email.htmlBody,
           textBody: email.textBody,
+          attachments,
         });
         patch.provider = EmailProvider.GMAIL;
         providerConfig.resendSentToday += 1;

@@ -4,6 +4,7 @@ import { PrismaService } from '../../database/prisma/prisma.service';
 import { requireTenantId } from '../../common/tenant/tenant-store';
 import { TenantResolutionService } from '../../common/tenant/tenant-resolution.service';
 import { EMAIL_SEND_TIMEOUT_MS } from './email.constants';
+import type { EmailAttachment } from './brevo.service';
 
 export interface ResendSendPayload {
   toEmail: string;
@@ -11,6 +12,14 @@ export interface ResendSendPayload {
   subject: string;
   htmlBody?: string | null;
   textBody?: string | null;
+  /**
+   * Added by `v2-50`. Resend has always supported attachments; this service
+   * simply never sent them, so **a message that overflowed to Resend arrived
+   * without its calendar invite** while the identical message on Brevo carried
+   * one. Nothing reported it: overflow is by definition the busy day, and the
+   * send itself succeeded.
+   */
+  attachments?: EmailAttachment[];
 }
 
 @Injectable()
@@ -74,6 +83,24 @@ export class ResendService {
 
     if (payload.htmlBody) body['html'] = payload.htmlBody;
     if (payload.textBody) body['text'] = payload.textBody;
+
+    // Resend takes `filename`, where Brevo takes `name` -- the one difference
+    // worth noting, because a wrong key here is accepted and silently ignored
+    // rather than rejected. Base64, as Brevo's does, since the stored content
+    // is decoded text (see the migration note on email_queue.attachments).
+    //
+    // `contentType` is deliberately not forwarded, and neither does the Brevo
+    // path forward it: both providers infer the MIME type from the extension,
+    // and for a calendar invite the METHOD that matters is the one INSIDE the
+    // .ics, which is what clients read. Sending `text/calendar; method=CANCEL`
+    // as a header while the body said REQUEST would be the dangerous case, and
+    // it cannot arise while neither provider is told.
+    if (payload.attachments?.length) {
+      body['attachments'] = payload.attachments.map((a) => ({
+        filename: a.name,
+        content: Buffer.from(a.content, 'utf-8').toString('base64'),
+      }));
+    }
 
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
