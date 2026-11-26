@@ -4546,3 +4546,146 @@ the point of failure. A member whose email matches a social-only account and
 who types a password gets "invalid credentials" today, which is the same dead
 end one step earlier. Out of scope unless it falls out cheaply — the email is
 what was asked for, and it reaches somebody who has already left the page.
+
+---
+
+### v2-50 — Move and cancel the calendar entry an invite already created
+
+**Status:** Not started
+**Reported:** from v1 DinnerBears prod, 2026-11-25. Not being fixed in v1.
+
+A published dinner was moved from Tue Dec 1 to Wed Dec 2. The website moved.
+Members' calendars did not, and pressing resync did not help — resync refreshes
+the *subscribed feed*, which is a different calendar entry from the one the
+invite email created. Nothing in this repo has ever updated or withdrawn an
+entry an invite put there.
+
+**Confirmed against this repo at `c6f9e18`**, read-only, rather than taken from
+the v1 analysis:
+
+| Claim | Verified |
+|---|---|
+| Only two senders carry a `METHOD:REQUEST` | `events.service.ts:1071` (publish invite) and `:1170` (RSVP confirmation), both via `calendarService.buildInviteAttachment` (`calendar.service.ts:449`) |
+| Update mail carries no `.ics` | `sendUpdateEmails` (`events.service.ts:675`) queues with no `attachments` |
+| Update mail reaches only RSVP holders and guest links | same method; auto-invited non-responders get nothing at all |
+| Cancellation mail carries no `.ics` | `sendCancellationEmails` (`:591`), same shape |
+| No `METHOD:CANCEL` exists anywhere | `grep -rn "METHOD:" api/src` — only PUBLISH, REQUEST and inbound REPLY/COUNTER |
+
+Two things that make the fix cheaper than it looks. `eventUid` is derived from
+the event **id** alone, so the UID is stable across a date or venue change and
+a new REQUEST updates the entry rather than creating a second one. And
+`update()` already branches exactly where the work belongs
+(`events.service.ts:572-580`): cancelled-and-was-published, versus
+was-published-and-still-published with `changedDate || changedTime ||
+changedLocation`. No new trigger logic is needed — only new content on two
+paths that already fire at the right moments.
+
+#### The blocker the report did not find: the queue drops attachments
+
+`sendUpdateEmails` and `sendCancellationEmails` both use `emailService.queue()`,
+and **`queue()` never persists `dto.attachments`** — `email_queue` has no such
+column (`email.service.ts:411-431`). Only the direct path passes them to the
+provider (`:483`). So attaching an `.ics` to either method as written is a
+silent no-op, and no test would catch it, because the queue row looks correct.
+
+It is already biting the working path too: `sendNow` falls back to `queue()`
+when the immediate send throws (`email.service.ts:446`), so a provider hiccup
+during a publish turns an invite email into the same email **without its
+invite**, and logs it as a successful queue.
+
+**Recommendation: give `email_queue` an attachments column and have the
+dispatcher pass it through**, rather than routing these two through `sendNow`.
+It is the only option that also closes the existing hazard, and a publish-time
+mass send is exactly when a provider hiccup is likely.
+
+#### Who receives the update or cancellation
+
+**Record invite sends in their own table. Do not recompute.** Recomputing from
+current auto-invite settings is not merely approximate, it is wrong in three
+directions at once, and the third is not in the report:
+
+1. It misses anyone who has since turned auto-invite off, and mails anyone who
+   turned it on after publish.
+2. The publish sweep excludes members who had already RSVP'd at publish time
+   (`events.service.ts:1041`), and RSVP rows change afterwards.
+3. **It assumes the invite was sent.** `sendNow` is gated by `sendingIsBlocked`
+   (demo communities, suppression), so some targeted members never received a
+   REQUEST and have no calendar entry to correct.
+
+There is no existing record to lean on: `sendNow` writes an `email_queue` row
+only when the send **fails**, so a successful invite leaves no trace at all.
+
+Shape: `(tenantId, eventId, userId, email, lastSequence, sentAt)`, unique on
+`(tenantId, eventId, email)`, written after a REQUEST is accepted by the
+provider. Tenant-scoped, so it must be classified in
+`common/tenant/tenant-scoped-models.ts` or the build fails.
+
+The table also makes the next two questions answer themselves: the sweep sends
+to whoever is recorded, and never has to reason about current state.
+
+#### Guest links — excluded, and here is why
+
+**A guest link holder has never received a REQUEST.** Both senders address
+`users` rows: `sendPublishInvites` queries `users` directly, and
+`sendRsvpConfirmation` takes a `userId`. Nothing builds an invite for
+`event_guest_links`. So there is no entry in a guest's calendar to move or
+withdraw, and sending them a CANCEL would withdraw nothing.
+
+They keep receiving the HTML update and cancellation emails they already get.
+If guest invites are ever added, they will appear in the record table and the
+sweep picks them up with no further change — which is the main argument for
+keying the table on email rather than on `userId`.
+
+#### Members who are Not Going — send it
+
+The question is not what they answered, it is whether an entry is sitting in
+their calendar. `sendRsvpConfirmation` fires only on a **new** GOING
+(`events.service.ts:956-958`), so declining never produced a REQUEST by that
+route — but the publish auto-invite does not consider RSVP status beyond "has a
+row", so a member who was auto-invited and then declined **does** have an entry.
+
+Leaving it stale shows them a dinner on a night it is not happening. A REQUEST
+with a higher SEQUENCE updates the time while clients keep the existing
+PARTSTAT, so this corrects the entry without re-prompting in the clients that
+matter. A wrong entry is worse than a declined one.
+
+#### Private locations
+
+`buildInviteAttachment` already takes a `locationAddress` override defaulting to
+`event.locationAddress` (`calendar.service.ts:449-453`), so the rule is
+expressible — but **the publish sweep's version of it must not be copied.**
+`sendPublishInvites` uses a blanket `addressVisible = !event.location?.isPrivate`
+(`:970`), which is sound only because every recipient there is, by construction,
+a non-responder. The update sweep's recipients include Going members, who have
+earned visibility. It must use the per-recipient rule `sendUpdateEmails` already
+applies — `locationVisibility.canViewAddressSync(..., rsvp.status === GOING)` —
+and pass the result into the builder. Getting this backwards leaks a private
+address into a calendar entry, where it persists long after the email.
+
+#### Definition of Done
+
+- `buildCancelAttachment` on `CalendarService`: `METHOD:CANCEL`,
+  `STATUS:CANCELLED`, the same UID, `icsSequence(now)`, ORGANIZER and ATTENDEE.
+- `email_queue` carries attachments, dispatcher included.
+- Invite sends recorded; both sweeps send to the recorded set.
+- Update: `text/calendar; method=REQUEST`, new DTSTART/LOCATION, higher SEQUENCE.
+- Cancel: `text/calendar; method=CANCEL`, higher SEQUENCE.
+- Private-location visibility computed per recipient, not per event.
+
+#### Tests
+
+e2e, asserted per recipient group (RSVP holders, auto-invited non-responders):
+
+- Move a published dinner's date: every recipient's mail carries a REQUEST with
+  the same UID, the new date, and a SEQUENCE above the original invite's.
+- Cancel it: every recipient's mail carries a CANCEL with the same UID and a
+  higher SEQUENCE.
+- Negative: a private-location dinner's update invite carries no address to a
+  recipient who cannot see one.
+- Regression for the queue defect: an attachment survives `queue()` and reaches
+  the dispatcher. Without this the other three can pass against a no-op.
+
+#### Stage check
+
+Publish a dinner to yourself, move it a day — the entry should move in Google
+Calendar. Then cancel it — the entry should disappear or show as cancelled.
